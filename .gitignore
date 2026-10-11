@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+runs/
+config.json
+build/
+dist/
+*.spec
+
+# Local diagnostics and editor files
+test-config.json
+*.log
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
