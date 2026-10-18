@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import ctypes as C
+import hashlib
 import json
 import logging
 from pathlib import Path
+import re
 import threading
 import time
 from datetime import datetime
 
 from .config import ROOT, RESOURCE_ROOT, Settings
-from .models import AutomationError, FocusLost, InputInterrupted, RunReport, Scene, Stopped, TaskResult, Token
+from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, RunReport, Scene, Stopped, TaskResult, Token
 from .vision import Vision, save_scene
 from .ocr_isolation import IsolatedVision
 from .windows import find_game, is_admin, is_elevated, launch
@@ -49,6 +51,7 @@ class Context:
         self._currency_deploy_request = None
         self._currency_equipment_request = None
         self._currency_position_request = None
+        self._du_actions = []
 
     def log(self, message: str, level="info"):
         self.runner.log(message, level)
@@ -100,15 +103,18 @@ class Context:
         if self.report.operation.startswith("currency_wars"):
             raise AutomationError("货币战争当前仅允许只读识别，禁止发送游戏输入。")
 
-    def click(self, scene: Scene, target: Token | tuple[float, float]):
+    def click(self, scene: Scene, target: Token | tuple[float, float], *, du_intent="navigation"):
         self._require_gameplay_input()
         self.checkpoint()
         if self.scene_epoch != self.runner.input_epoch:
             raise InputInterrupted("暂停恢复后须重新识别，未发送旧画面点击。")
         if scene is not self.last_scene or time.monotonic() - scene.captured_at > 8:
             raise AutomationError("识别画面已经过期，请重新识别后操作。")
-        from .policy import guard_click, replenishment_dialog
-        guard_click(scene, target)
+        from .policy import guard_click, guard_differential_universe_click, replenishment_dialog
+        if self.report.operation == "differential_universe":
+            guard_differential_universe_click(scene, target, intent=du_intent)
+        else:
+            guard_click(scene, target, allow_differential_universe=self.report.operation == "differential_universe")
         coordinates = target.center if isinstance(target, Token) else target
         resource_dialog = replenishment_dialog(scene)
         if resource_dialog and (not isinstance(target, Token) or target.text.strip() != "取消"):
@@ -116,16 +122,39 @@ class Context:
             raise AutomationError("开拓力补充/兑换界面只允许取消，已禁止该操作。")
         label = target.text if isinstance(target, Token) else f"{coordinates[0]:.3f},{coordinates[1]:.3f}"
         self.log(f"点击：{label}")
+        du_record = None
+        if self.report.operation == "differential_universe":
+            before = self.evidence(scene, "du_before_" + re.sub(r"[^\w\u3400-\u9fff-]", "_", label)[:32])
+            du_record = {"action": label, "status": "sent", "before": str(before), "page_text": scene.text}
+            self.report.differential_universe.setdefault("actions", []).append(du_record)
         try:
             self.window.click(*coordinates, scene.geometry)
         except FocusLost:
             self._focus_interrupted()
         self.last_scene = None
         self.sleep(self.settings.action_delay)
+        if du_record is not None:
+            after = self._snapshot_after_du_input()
+            after_path = self.evidence(after, "du_after_action")
+            du_record["after"] = str(after_path)
+            du_record["after_text"] = after.text
+
+    def _snapshot_after_du_input(self, timeout=60):
+        """Observe after a Differential Universe input, retrying blank transition frames."""
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                return self.snapshot()
+            except EmptyCapture:
+                if time.monotonic() >= deadline:
+                    raise AutomationError(f"差分宇宙操作后持续黑屏超过 {timeout} 秒，已停止输入。")
+                self.sleep(.7)
 
     def key(self, name: str):
         self._require_gameplay_input()
         self.checkpoint()
+        if self.report.operation == "differential_universe" and name != "esc":
+            raise AutomationError("差分宇宙仅允许在启动前关闭已识别的规则弹窗；其他按键未授权。")
         if name not in ("esc", "f4"):
             raise AutomationError("日常流程仅允许返回键和指南快捷键；其他快捷键被禁止。")
         if self.last_scene is None or self.scene_epoch != self.runner.input_epoch:
@@ -136,6 +165,111 @@ class Context:
             self._focus_interrupted()
         self.last_scene = None
         self.sleep(self.settings.action_delay)
+
+    def differential_universe_auto_click(self, scene: Scene, point: tuple[float, float], verifier):
+        if self.report.operation != "differential_universe":
+            raise AutomationError("自动战斗图标点击仅用于差分宇宙运行。")
+        self.checkpoint()
+        if scene is not self.last_scene or self.scene_epoch != self.runner.input_epoch or time.monotonic() - scene.captured_at > 8:
+            raise InputInterrupted("自动战斗图标位置已过期，需要重新识别。")
+        state, target = verifier._auto_state(scene)
+        if state != "off" or target is None or tuple(target) != tuple(point):
+            raise AutomationError("自动战斗开关没有在当前画面确认关闭，未发送点击。")
+        before = self.evidence(scene, "du_before_auto_battle")
+        self.last_scene = None
+        try:
+            self.window.click(*point, scene.geometry)
+        except FocusLost:
+            self._focus_interrupted()
+        self.sleep(self.settings.action_delay)
+        after = self._snapshot_after_du_input()
+        after_state, _ = verifier._auto_state(after)
+        after_path = self.evidence(after, "du_after_auto_battle")
+        record = {"action": "enable_auto_battle", "status": "verified" if after_state == "on" else "unknown",
+                  "before": str(before), "after": str(after_path), "before_text": scene.text,
+                  "after_text": after.text, "state": after_state}
+        self.report.differential_universe.setdefault("actions", []).append(record)
+        if after_state != "on":
+            raise AutomationError("未能核实自动战斗已开启，已停止本轮。")
+        return after
+
+    def _persist_du_ledger(self):
+        if self.report.operation != "differential_universe" or not self.report.run_dir:
+            return
+        import json
+        root = Path(self.report.run_dir)
+        ledger = root / "differential-universe-ledger.json"
+        du = self.report.differential_universe
+        payload = {
+            "schema_version": 1,
+            "session_id": du.get("session_id"),
+            "updated_at": datetime.now().astimezone().isoformat(),
+            "requested_runs": du.get("requested_runs", 0),
+            "completed_runs": du.get("completed_runs", 0),
+            "current_run": du.get("current_run", 0),
+            "run_results": du.get("run_results", []),
+            "actions": du.get("actions", []),
+            "page_history": du.get("page_history", []),
+        }
+        import uuid
+        temp = ledger.with_suffix(f".{uuid.uuid4().hex}.tmp")
+        try:
+            temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            temp.replace(ledger)
+            du["ledger_path"] = str(ledger)
+        except OSError as error:
+            raise AutomationError(f"差分宇宙证据台账无法落盘，已禁止后续操作：{error}") from error
+
+    def _du_field_input(self, scene: Scene, action: str, perform):
+        if self.report.operation != "differential_universe":
+            raise AutomationError("位面探索输入只用于差分宇宙。")
+        self.checkpoint()
+        if (self.scene_epoch != self.runner.input_epoch or scene is not self.last_scene
+                or not 0 <= time.monotonic() - scene.captured_at <= 8):
+            raise InputInterrupted("位面探索目标画面已过期，须重新识别后再操作。")
+        from .policy import guard_differential_universe_field_input
+        guard_differential_universe_field_input(scene, action=action)
+        before = self.evidence(scene, "du_before_" + action)
+        record = {"action": action, "status": "requested", "before": str(before),
+                  "before_text": scene.text, "run": self.report.differential_universe.get("current_run", 0),
+                  "run_id": (self.report.differential_universe.get("run_results") or [{}])[-1].get("run_id")}
+        self.report.differential_universe.setdefault("actions", []).append(record)
+        self._persist_du_ledger()
+        self.last_scene = None
+        try:
+            perform()
+        except FocusLost:
+            self._focus_interrupted()
+        after = self._snapshot_after_du_input(timeout=20)
+        after_path = self.evidence(after, "du_after_" + action)
+        record.update(status="observed", after=str(after_path), after_text=after.text)
+        self.report.differential_universe["actions"][-1] = record
+        self._persist_du_ledger()
+        return after
+
+    def differential_universe_move(self, scene: Scene, direction: str, duration_ms: int):
+        if direction.casefold() not in ("w", "a", "s", "d"):
+            raise AutomationError("差分宇宙移动方向只允许 W/A/S/D。")
+        return self._du_field_input(
+            scene, f"move_{direction.casefold()}_{duration_ms}ms",
+            lambda: self.window.key_hold(direction, duration_ms, scene.geometry, checkpoint=self.checkpoint))
+
+    def differential_universe_look(self, scene: Scene, delta_x: float, delta_y: float = 0,
+                                   duration_ms: int = 250):
+        label = f"look_{delta_x:+.2f}_{delta_y:+.2f}"
+        return self._du_field_input(
+            scene, label,
+            lambda: self.window.look(delta_x, delta_y, duration_ms, scene.geometry, checkpoint=self.checkpoint))
+
+    def differential_universe_enter_random_gate(self, scene: Scene, target: Token):
+        from .policy import guard_differential_universe_portal
+        guard_differential_universe_portal(scene, target)
+        return self._du_field_input(scene, "enter_random_gate_f", lambda: self.window.key("f"))
+
+    def differential_universe_interact(self, scene: Scene, target: Token):
+        from .policy import guard_differential_universe_field_interact
+        guard_differential_universe_field_interact(scene, target)
+        return self._du_field_input(scene, "anomaly_interact_f", lambda: self.window.key("f"))
 
     def wait(self, predicate, timeout=30, description="界面") -> Scene:
         elapsed = 0.0
@@ -161,6 +295,8 @@ class Context:
 
     def scroll(self, amount: int):
         self._require_gameplay_input()
+        if self.report.operation == "differential_universe":
+            raise AutomationError("差分宇宙自动流程不滚动页面。")
         self.checkpoint()
         if self.scene_epoch != self.runner.input_epoch:
             raise InputInterrupted("暂停后滚动目标已失效，需要重新识别。")
@@ -179,6 +315,8 @@ class Context:
 
     def move(self, scene: Scene, point: tuple[float, float]):
         self._require_gameplay_input()
+        if self.report.operation == "differential_universe":
+            raise AutomationError("差分宇宙自动流程不发送游标移动。")
         self.checkpoint()
         if self.scene_epoch != self.runner.input_epoch:
             raise InputInterrupted("暂停后移动目标已失效，需要重新识别。")
@@ -191,6 +329,8 @@ class Context:
         self._scroll_anchor = (point, scene.geometry, self.scene_epoch)
 
     def drag(self, scene: Scene, start: tuple[float, float], end: tuple[float, float]):
+        if self.report.operation == "differential_universe":
+            raise AutomationError("差分宇宙自动流程禁止拖动。")
         route=()
         if self.report.operation=='currency_wars_flow_test' and self._currency_position_request is not None:
             requested_scene,field,profile=self._currency_position_request
@@ -712,6 +852,7 @@ class Context:
 
 class Runner:
     def __init__(self, settings: Settings, emit=None, *, new_battle_run=False, operation="daily",
+                 du_runs=None, du_resume_active=False, du_periodic_rank=None,
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False):
         self.settings = settings
@@ -741,6 +882,19 @@ class Runner:
         self.currency_timeout_probe = currency_timeout_probe
         self.report.operation = operation
         self.battle_budget = None
+        self.du_runs = settings.differential_universe_runs if du_runs is None else du_runs
+        if isinstance(self.du_runs, bool) or not isinstance(self.du_runs, int) or not 1 <= self.du_runs <= 3:
+            raise ValueError("差分宇宙局数必须是 1～3 的整数。")
+        if type(du_resume_active) is not bool or (du_resume_active and operation != "differential_universe"):
+            raise ValueError("接续差分宇宙仅适用于差分宇宙操作，且必须为布尔值。")
+        if (du_periodic_rank is not None and
+                (isinstance(du_periodic_rank, bool) or not isinstance(du_periodic_rank, int)
+                 or not 1 <= du_periodic_rank <= 10 or operation != "differential_universe")):
+            raise ValueError("周期演算接续难度必须是 1～10 的整数，且仅适用于差分宇宙操作。")
+        if du_periodic_rank is not None and not du_resume_active:
+            raise ValueError("周期演算接续难度只可配合 --resume-active-du。")
+        self.du_resume_active = du_resume_active
+        self.du_periodic_rank = du_periodic_rank
 
     def _run_tasks(self, context, workflow):
         selected = [name for name in ("assignments", "battle", "daily", "mail", "battlepass")
@@ -926,10 +1080,11 @@ class Runner:
             if not mutex or already_running:
                 raise AutomationError("另一个 AutoHSR 任务正在运行，请先停止后重试。")
             currency_wars = self.report.operation in ("currency_wars", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test")
-            if self.report.operation not in ("daily", "reward_only", "currency_wars", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test"):
+            differential_universe = self.report.operation == "differential_universe"
+            if self.report.operation not in ("daily", "reward_only", "currency_wars", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe"):
                 raise AutomationError("未知运行类型，未访问游戏。")
-            self.settings.validate("currency_wars" if currency_wars else "daily")
-            if not currency_wars and self.settings.battle and self.settings.allow_stamina_spend:
+            self.settings.validate("currency_wars" if currency_wars else "differential_universe" if differential_universe else "daily")
+            if not currency_wars and not differential_universe and self.settings.battle and self.settings.allow_stamina_spend:
                 from .recovery import BattleBudget
                 self.battle_budget = BattleBudget(ROOT / "runs", self.settings, self.report)
                 self.battle_budget.begin(new_run=self.new_battle_run)
@@ -937,7 +1092,7 @@ class Runner:
             monitor = threading.Thread(target=self._hotkeys, name="AutoHSR-hotkeys", daemon=True)
             monitor.start()
             monitor_started = True
-            if not currency_wars and self.settings.auto_launch:
+            if not currency_wars and not differential_universe and self.settings.auto_launch:
                 self.log(launch_game(self.settings))
                 self.log("等待游戏窗口；首次登录/更新请手动完成。")
                 for _ in range(120):
@@ -961,6 +1116,16 @@ class Runner:
             context.battle_budget = self.battle_budget
             if currency_wars:
                 self._inspect_currency_wars(context)
+            elif differential_universe:
+                from .differential_universe import DifferentialUniverseWorkflow
+                # A universe may already have begun; never replay the whole run
+                # after an interrupted input or pause. Preserve evidence and stop.
+                result = DifferentialUniverseWorkflow(context, self.du_runs,
+                    resume_active=self.du_resume_active, periodic_rank=self.du_periodic_rank).run()
+                self.report.results.append(result)
+                self.report.status = "success" if result.status == "ok" else "partial"
+                self.report.failure_task = "" if result.status == "ok" else "differential_universe"
+                self.emit(dict(type="task", **result.__dict__))
             else:
                 workflow = DailyWorkflow(context)
                 initial = context.snapshot()
@@ -972,12 +1137,14 @@ class Runner:
             self.report.status = "stopped"
             self.report.error = str(error)
             self.report.safe_next = ("货币战争操作已停止；核对画面和本次动作记录后重新识别。" if self.report.operation.startswith("currency_wars") else
+                                     "差分宇宙自动演算已停止；核对本次截图、OCR 与动作记录。不要继续现有未完成存档。" if self.report.operation == "differential_universe" else
                                      "停止请求已生效；核对当前战斗及消耗后，可选择仅补领奖。")
             self.log(str(error), "warning")
         except Exception as error:
             self.report.status = "partial" if self.report.daily_verified else "failed"
             self.report.error = str(error)
             self.report.safe_next = ("货币战争操作失败；核对动作记录与前后截图，不自动重放。" if self.report.operation.startswith("currency_wars") else
+                                     "差分宇宙自动演算失败；核对当前页面、动作记录与截图后再决定如何处理存档。" if self.report.operation == "differential_universe" else
                                      "请人工核对当前界面和消耗；返回主界面后仅补领奖，新增刷本预算需明确确认。")
             self.log(str(error), "error")
             if context and context.last_scene:
@@ -1011,10 +1178,36 @@ class Runner:
                 self.report.status = "partial" if self.report.daily_verified else "failed"
                 self.report.error = (self.report.error + "；" if self.report.error else "") + f"报告保存失败：{error}"
                 self.report.safe_next = ("报告未保存；保留动作记录和截图，人工核对后重新识别。" if self.report.operation.startswith("currency_wars") else
+                                         "差分宇宙报告保存失败；保留当前目录，人工核对当前存档和动作。" if self.report.operation == "differential_universe" else
                                          "报告未保存；保留当前证据与刷本记录，人工核对消耗，不要直接重跑刷本。")
                 self.log(f"报告保存失败：{error}", "error")
-            finally:
-                self._logger.removeHandler(handler)
-                handler.close()
+            if self.report.report_saved and self.report.operation == "differential_universe":
+                try:
+                    files = [path for path in directory.rglob("*") if path.is_file()
+                             and path.name not in ("evidence_manifest.json", "evidence_manifest.sha256")]
+                    entries = []
+                    for path in sorted(files, key=lambda p: p.relative_to(directory).as_posix()):
+                        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                        entries.append({"path": path.relative_to(directory).as_posix(),
+                                        "size_bytes": path.stat().st_size, "sha256": digest})
+                    manifest_path = directory / "evidence_manifest.json"
+                    manifest_path.write_text(json.dumps({"algorithm": "sha256", "files": entries},
+                                                        ensure_ascii=False, indent=2), encoding="utf-8")
+                    manifest_digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+                    (directory / "evidence_manifest.sha256").write_text(
+                        f"{manifest_digest}  evidence_manifest.json\n", encoding="ascii")
+                except OSError as error:
+                    self.report.status = "partial"
+                    self.report.error = (self.report.error + "；" if self.report.error else "") + f"证据清单保存失败：{error}"
+                    self.report.safe_next = "报告已保存，但证据清单不完整；核对当前目录与差分宇宙存档后再处理。"
+                    self.log(f"证据清单保存失败：{error}", "error")
+                    try:
+                        temporary = directory / "report.tmp"
+                        temporary.write_text(json.dumps(self.report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+                        temporary.replace(directory / "report.json")
+                    except OSError:
+                        pass
+            self._logger.removeHandler(handler)
+            handler.close()
             self.emit(dict(type="finished", report=self.report.to_dict()))
         return self.report

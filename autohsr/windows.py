@@ -284,7 +284,7 @@ class GameWindow:
         self.send([INPUT(type=0, mi=MOUSEINPUT(round((px-vx)*65535/(vw-1)), round((py-vy)*65535/(vh-1)), 0, 0xC001, 0, 0))], expected)
 
     def key(self, name: str) -> None:
-        vk = {"esc": 0x1B, "f1": 0x70, "f2": 0x71, "f4": 0x73, "v": 0x56, "space": 0x20}.get(name.casefold())
+        vk = {"esc": 0x1B, "f": 0x46, "f1": 0x70, "f2": 0x71, "f4": 0x73, "v": 0x56, "space": 0x20}.get(name.casefold())
         if vk is None:
             raise ValueError(f"Unsupported key: {name}")
         scan = user32.MapVirtualKeyW(vk, 0)
@@ -294,6 +294,55 @@ class GameWindow:
         finally:
             release = INPUT(type=1, ki=KEYBDINPUT(0, scan, 0xA, 0, 0))
             user32.SendInput(1, C.byref(release), C.sizeof(INPUT))
+
+    def key_hold(self, name: str, duration_ms: int, expected: Geometry, *, checkpoint=lambda: None) -> None:
+        """Hold one field-navigation key for a bounded interval, then always release it."""
+        import math
+        if name.casefold() not in ("w", "a", "s", "d"):
+            raise AutomationError("差分宇宙移动只允许 W/A/S/D。")
+        if type(duration_ms) is not int or not 100 <= duration_ms <= 1200:
+            raise AutomationError("差分宇宙移动时长须为 100–1200 毫秒。")
+        checkpoint()
+        vk = {"w": 0x57, "a": 0x41, "s": 0x53, "d": 0x44}[name.casefold()]
+        scan = user32.MapVirtualKeyW(vk, 0)
+        down = INPUT(type=1, ki=KEYBDINPUT(0, scan, 0x8, 0, 0))
+        up = INPUT(type=1, ki=KEYBDINPUT(0, scan, 0xA, 0, 0))
+        self.send([down], expected)
+        started = time.monotonic()
+        try:
+            while (time.monotonic() - started) * 1000 < duration_ms:
+                checkpoint()
+                time.sleep(min(0.05, max(0.005, duration_ms / 1000)))
+        finally:
+            if user32.SendInput(1, C.byref(up), C.sizeof(INPUT)) != 1:
+                raise AutomationError("差分宇宙移动键释放失败；请检查游戏窗口输入状态。")
+
+    def look(self, delta_x: float, delta_y: float, duration_ms: int, expected: Geometry,
+             *, checkpoint=lambda: None) -> None:
+        """Rotate the field camera with a right-button drag; this does not attack or interact."""
+        import math
+        if any(type(v) not in (int, float) or not math.isfinite(v) for v in (delta_x, delta_y)):
+            raise AutomationError("镜头转动幅度无效。")
+        if (abs(delta_x) > 0.18 or abs(delta_y) > 0.12 or (delta_x == 0 and delta_y == 0)
+                or type(duration_ms) is not int or not 100 <= duration_ms <= 800):
+            raise AutomationError("镜头转动须在单次安全幅度内。")
+        start = (0.5, 0.5)
+        end = (start[0] + delta_x, start[1] + delta_y)
+        checkpoint()
+        self.move(*start, expected)
+        right_down = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, 0x0008, 0, 0))
+        right_up = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, 0x0010, 0, 0))
+        steps = max(8, round(duration_ms / 25))
+        try:
+            self.send([right_down], expected)
+            for step in range(1, steps + 1):
+                checkpoint()
+                fraction = step / steps
+                self.move(start[0] + delta_x * fraction, start[1] + delta_y * fraction, expected)
+                time.sleep(duration_ms / 1000 / steps)
+        finally:
+            if user32.SendInput(1, C.byref(right_up), C.sizeof(INPUT)) != 1:
+                raise AutomationError("镜头鼠标键释放失败；请检查游戏窗口输入状态。")
 
     def drag(self, start: tuple[float, float], end: tuple[float, float], expected: Geometry,
              *, checkpoint=lambda: None, waypoints=()) -> None:

@@ -68,6 +68,15 @@ class FakeRunner:
         self.instances.append(self)
 
     def run(self):
+        if self.kwargs.get('operation', '') == 'differential_universe':
+            self.emit(dict(type='task', task='differential_universe', status='running', detail='离线假后端，无游戏输入'))
+            self.release.wait(5)
+            runs = int(getattr(self.settings, 'differential_universe_runs', 3))
+            report = dict(status='stopped' if self.stopped else 'success', operation='differential_universe',
+                results=[], differential_universe=dict(requested_runs=runs, completed_runs=0 if self.stopped else runs,
+                    actions=[], page_history=[], stamina_budget_used=False, premium_currency_used=False, fuel_used=False))
+            self.emit(dict(type='finished', report=report))
+            return report
         if self.kwargs.get('operation', '').startswith('currency_wars'):
             self.emit(dict(type='task', task='currency_wars', status='running', detail='离线只读模拟，无游戏输入'))
             self.release.wait(5)
@@ -248,6 +257,27 @@ def main():
                 pump(root)
                 layout(root)
                 ImageGrab.grab(window=root.winfo_id()).save(OUT / 'currency-readonly-result.png')
+                ui._show_page('differential_universe')
+                check('differential_universe_has_parallel_sidebar_and_action',
+                    ui.nav_buttons['differential_universe'].cget('text') == '差分宇宙' and
+                    ui.start_button.cget('text') == '开始 3 局自动演算' and
+                    str(ui.start_button.cget('state')) == 'normal' and str(ui.reward_button.cget('state')) == 'disabled')
+                ui.differential_universe_runs.set('2')
+                ui.start_button.invoke()
+                pump(root, lambda: ui.runner is not None)
+                du_runner = FakeRunner.instances[-1]
+                check('differential_universe_is_independent_and_uses_unsaved_run_count',
+                    du_runner.kwargs['operation'] == 'differential_universe' and
+                    du_runner.settings.differential_universe_runs == 2 and
+                    not any(getattr(du_runner.settings, name) for name in ui.tasks) and
+                    not du_runner.settings.auto_launch and config.read_bytes() == original)
+                check('differential_universe_busy_locks_controls',
+                    all(str(w.cget('state')) == 'disabled' for w in ui.setting_controls))
+                du_runner.release.set()
+                pump(root, lambda: not ui.busy)
+                check('differential_universe_report_is_separate_and_does_not_save',
+                    '2/2 局' in ui.summary.get() and '每日刷本预算未使用' in ui.summary.get() and
+                    config.read_bytes() == original)
                 fake.Runner = LateFinishRunner
                 try:
                     ui._currency_wars()

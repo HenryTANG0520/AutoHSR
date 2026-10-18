@@ -72,7 +72,7 @@ def build_window(ui, task_names, server_names):
     ui.nav_buttons = {}
     navigation = [("home", "启动"), ("tasks", "每日任务")]
     if hsr:
-        navigation.append(("currency_wars", "货币战争"))
+        navigation.extend((("currency_wars", "货币战争"), ("differential_universe", "差分宇宙")))
     navigation.extend((("logs", "运行日志"), ("settings", "设置")))
     for row, (name, label) in enumerate(navigation, 2):
         button = ttk.Button(rail, text=label, style="Nav.TButton", command=lambda key=name: ui._show_page(key))
@@ -239,6 +239,22 @@ def build_window(ui, task_names, server_names):
         for key, label in REVIEW_ITEMS:
             ui.currency_review.insert("", "end", iid=key, values=(label, "部分验证" if key == "transitions" else "4.6 已采集"))
         ttk.Label(wars, textvariable=ui.currency_observation, style="Hint.TLabel", wraplength=d(830)).grid(row=4, column=0, sticky="ew")
+
+        universe = ui.pages["differential_universe"]
+        heading(universe, "差分宇宙", "独立运行模式 · 不读取或写入每日刷本预算 · 只在实机页面识别明确后推进。")
+        setup = card(universe, 1)
+        ttk.Label(setup, text="本次自动演算", style="CardTitle.TLabel").pack(anchor="w")
+        run_row = ttk.Frame(setup, style="Card.TFrame")
+        run_row.pack(anchor="w", pady=(d(8), d(4)))
+        ttk.Label(run_row, text="局数（1–3）").pack(side="left")
+        ui.du_runs_combo = ttk.Combobox(run_row, textvariable=ui.differential_universe_runs,
+            values=("1", "2", "3"), state="readonly", width=4)
+        ui.du_runs_combo.pack(side="left", padx=(d(8), 0))
+        ui.setting_controls.append(ui.du_runs_combo)
+        ttk.Label(setup, text="自动流程只选择当前页面已识别的继续、祝福或方程奖励，启用游戏内自动战斗，并在胜利结算与返回差分宇宙后开始下一局。未知页面会停止并保存截图与 OCR。不会启动周期演算或货币战争，也不会使用燃料、星琼或开拓力。",
+                  style="CardHint.TLabel", wraplength=d(810)).pack(anchor="w", pady=(d(5), 0))
+        ttk.Label(setup, textvariable=ui.du_status, style="Warning.TLabel", wraplength=d(810)).pack(anchor="w", pady=(d(8), 0))
+        ttk.Label(universe, textvariable=ui.du_observation, style="Hint.TLabel", wraplength=d(830)).grid(row=2, column=0, sticky="ew")
 
     logs = ui.pages["logs"]
     logs.rowconfigure(1, weight=1)

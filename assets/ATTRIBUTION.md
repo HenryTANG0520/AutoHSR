@@ -76,3 +76,18 @@ upstream notices when redistributing models.
 reference for the screenshot, recognition, and simulated-input architecture.
 No BetterGI game-specific templates or trained game-specific models are copied
 into this resource directory.
+
+## Differential Universe local samples
+
+The following recognition templates were cropped locally on 2026-10-18 from
+the Simplified Chinese Star Rail client during Differential Universe development:
+`templates/du_difficulty_i.png`, `templates/du_enemy_target.png`,
+`templates/du_field_enemy.png`, and `templates/du_field_enemy_2.png` through
+`templates/du_field_enemy_5.png`. They contain the difficulty-I control, an
+enemy target indicator, or visible enemy artwork at sampled poses and views.
+Original gameplay evidence remains in the ignored local `runs/` directory;
+these recognition crops do not include account identifiers. Game artwork and
+interface elements belong to their respective rights holders. These are local
+gameplay samples, not copies of the upstream template libraries listed above.
+Their presence does not establish successful combat entry or a completed run;
+development is paused pending the user's guide.

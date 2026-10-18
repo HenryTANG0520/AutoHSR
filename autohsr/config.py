@@ -29,6 +29,7 @@ class Settings:
     action_delay: float = 1.0
     battle_timeout: int = 900
     ocr_confidence: float = 0.65
+    differential_universe_runs: int = 3
 
     def validate(self, operation: str = "daily") -> None:
         if not isinstance(self.game_path, str) or not self.game_path.lower().endswith("starrail.exe"):
@@ -53,6 +54,10 @@ class Settings:
                 raise ValueError(f"{name} 必须是有限数值。")
         if not 0.3 <= self.action_delay <= 5 or not 60 <= self.battle_timeout <= 3600 or not 0.4 <= self.ocr_confidence <= 0.99:
             raise ValueError("等待时间、战斗超时或 OCR 阈值超出允许范围。")
+        if (isinstance(self.differential_universe_runs, bool) or
+                not isinstance(self.differential_universe_runs, int) or
+                not 1 <= self.differential_universe_runs <= 3):
+            raise ValueError("差分宇宙本次自动演算局数应为 1～3 局。")
 
     def save(self, path: Path = CONFIG_PATH) -> None:
         self.validate("save")

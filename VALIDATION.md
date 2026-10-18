@@ -4,6 +4,8 @@
 
 原始日志、报告和截图仅保存在开发者本地，未随公开仓库发布；下列路径用于追溯本次开发验证。
 
+2026-10-18 差分宇宙暂停归档：用户要求先保存并推送现有内容，等待其 Markdown 操作指南和界面介绍后再恢复。**完整自动通关仍为 0/3，功能仅部分实现**；保留同级 GUI 入口、独立操作与报告、周期演算和局部识别/导航原型，不将离线测试与局部接战计为整局成功。最新实机报告 `runs/20261018_195131_956224/report.json` 为 failed、completed_runs=0；实际源码 GUI 入口检查见 `runs/ui_refresh_20261018_190719/`。本次归档全量 415 项单元测试、53 项假后端 GUI 检查及差异格式检查通过，日志为 `runs/publish-differential-paused-20261018-tests.txt` 和 `runs/publish-differential-paused-20261018-gui.txt`。暂停归档期间不操作游戏、不继续实机调试、不重建 EXE，原始本机证据与配置保持忽略。当前限制和恢复接续点见 [差分宇宙记录](docs/differential-universe.md)。
+
 2026-10-18 暂停开发归档：按用户要求保存并推送当前全部未忽略改动，货币战争暂停开发，等待明确恢复。发布前运行 `python -m unittest discover -s autohsr/tests -v`，**388项单元测试通过**，输出保存于本地 `runs/publish-paused-20261018-tests.txt`。本次未操作游戏、未新增实机验收、未重建EXE；当前实机边界、攻略跨版本限制与恢复接续点见 [CURRENCY_WARS.md](CURRENCY_WARS.md) 顶部。
 
 2026-10-18 当前阶段验收：**实机观察与页面识别最小闭环通过**。复用91份真实截图样本、12类页面（含79页教学），图像哈希与保存OCR分类91/91符合预期，复用9份既有独立重OCR记录。本阶段未新采集、未点击游戏、未使用模拟样本替代实机证据；结果与识别锚点见`runs/currency-wars-live-20261018-rules/phase-observation-recognition.json`。未见战败、重连及特殊变体仍未验证。380项单测和48项假后端GUI检查已通过，未重复运行，源码未重建EXE。3个播放设备均静音，已只读复核。

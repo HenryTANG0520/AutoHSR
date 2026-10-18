@@ -155,6 +155,8 @@ class AutoHSRWindow:
         self.battle_timeout = tk.StringVar(value=str(self.settings.battle_timeout))
         self.ocr_confidence = tk.StringVar(value=str(self.settings.ocr_confidence))
         self.form_variables.extend((self.action_delay, self.battle_timeout, self.ocr_confidence))
+        self.differential_universe_runs = tk.StringVar(value=str(self.settings.differential_universe_runs))
+        self.form_variables.append(self.differential_universe_runs)
         self.detect_title = tk.StringVar(value="尚未检测游戏窗口")
         self.detect_size = tk.StringVar(value="客户区尺寸：—")
         self.detect_permission = tk.StringVar(value="助手管理员权限：—")
@@ -163,6 +165,8 @@ class AutoHSRWindow:
         self.currency_source_slot = tk.StringVar(value='3')
         self.currency_zone = tk.StringVar(value='后台')
         self.currency_target_level = tk.StringVar(value='保持')
+        self.du_status = tk.StringVar(value="当前季节：乐园漫记。操作会记录本次页面文字、动作和前后截图。")
+        self.du_observation = tk.StringVar(value="尚无差分宇宙运行记录。")
 
     def _build(self):
         from .desktop import build_window
@@ -174,8 +178,12 @@ class AutoHSRWindow:
             page.grid() if key == name else page.grid_remove()
             self.nav_buttons[key].configure(style="Selected.Nav.TButton" if key == name else "Nav.TButton")
         currency = name == "currency_wars"
-        self.start_button.configure(text="只读识别当前画面" if currency else "开始每日",
-                                    command=self._currency_wars if currency else self._start)
+        differential_universe = name == "differential_universe"
+        self.start_button.configure(
+            text="只读识别当前画面" if currency else
+                 f"开始 {self.differential_universe_runs.get()} 局自动演算" if differential_universe else "开始每日",
+            command=self._currency_wars if currency else
+                    (lambda: self._start(differential_universe=True)) if differential_universe else self._start)
         self._refresh_controls()
 
     def _text_tab(self, title):
@@ -271,7 +279,7 @@ class AutoHSRWindow:
         state = "disabled" if self.busy else "normal"
         for control in self.setting_controls:
             control.configure(state=state)
-        for name in ('currency_source_combo','currency_zone_combo','currency_level_combo'):
+        for name in ('currency_source_combo','currency_zone_combo','currency_level_combo','du_runs_combo'):
             if hasattr(self,name):
                 getattr(self,name).configure(state='disabled' if self.busy else 'readonly')
         allowed = self.settings.allow_stamina_spend
@@ -296,10 +304,13 @@ class AutoHSRWindow:
         for button in (self.save_button, self.check_button, self.launch_button):
             button.configure(state=state)
         currency_page = getattr(self, "active_page", "") == "currency_wars"
-        self.start_button.configure(state="normal" if not self.busy and (currency_page or any(v.get() for v in self.tasks.values())) else "disabled")
         self.pause_button.configure(state="normal" if self.running and self.runner is not None and not self.stopping else "disabled", text="继续" if self.paused else "暂停")
         self.stop_button.configure(state="normal" if self.busy and not self.stopping else "disabled")
-        self.reward_button.configure(state="normal" if not self.busy and not currency_page else "disabled")
+        independent_page = currency_page or getattr(self, "active_page", "") == "differential_universe"
+        if getattr(self, "active_page", "") == "differential_universe":
+            self.start_button.configure(text=f"开始 {self.differential_universe_runs.get()} 局自动演算")
+        self.start_button.configure(state="normal" if not self.busy and (independent_page or any(v.get() for v in self.tasks.values())) else "disabled")
+        self.reward_button.configure(state="normal" if not self.busy and not independent_page else "disabled")
         can_open = not self.busy or self.paused
         self.details_button.configure(state="normal" if can_open else "disabled")
         for button, path, directory in ((self.report_button, self.last_report_file, False), (self.directory_button, self.last_run_dir, True), (self.screenshot_button, self.last_screenshot, False)):
@@ -324,8 +335,14 @@ class AutoHSRWindow:
             if not save and operation.startswith("currency_wars"):
                 values.update(auto_launch=False, assignments=False, battle=False, daily=False, mail=False, battlepass=False,
                               ocr_confidence=float(self.ocr_confidence.get()))
+            elif not save and operation == "differential_universe":
+                values.update(auto_launch=False, assignments=False, battle=False, daily=False, mail=False, battlepass=False,
+                              differential_universe_runs=int(self.differential_universe_runs.get()),
+                              action_delay=float(self.action_delay.get()), battle_timeout=int(self.battle_timeout.get()),
+                              ocr_confidence=float(self.ocr_confidence.get()))
             elif save or operation not in ("check", "launch"):
                 values.update(auto_launch=self.auto_launch.get(),
+                              differential_universe_runs=int(self.differential_universe_runs.get()),
                               **{name: variable.get() if name != "battle" or self.settings.allow_stamina_spend else False for name, variable in self.tasks.items()})
                 if operation == "reward_only":
                     values.update(assignments=False, battle=False, daily=True, mail=False, battlepass=False)
@@ -346,6 +363,7 @@ class AutoHSRWindow:
                 self.target_location.set(settings.target_location)
                 self.stamina_limit.set(str(settings.stamina_limit))
                 self.rounds.set(str(settings.rounds))
+                self.differential_universe_runs.set(str(settings.differential_universe_runs))
                 self._saved_signature = self._form_signature()
                 self._loading = False
                 self._form_changed()
@@ -435,13 +453,13 @@ class AutoHSRWindow:
     def _currency_match_test(self):
         self._start(currency_wars=True,flow_test=True,currency_start_from_lobby=True)
 
-    def _start(self, reward_only=False, *, currency_wars=False, drag_test=False, deploy_test=False, node_test=False, flow_test=False,
+    def _start(self, reward_only=False, *, currency_wars=False, differential_universe=False, drag_test=False, deploy_test=False, node_test=False, flow_test=False,
                currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                currency_control_probe=False,currency_timeout_probe=False) -> None:
         if self.busy or self.closing or (self.worker is not None and self.worker.is_alive()):
             return
         currency_wars = currency_wars or drag_test or deploy_test or node_test or flow_test
-        operation = "currency_wars_flow_test" if flow_test else "currency_wars_node_test" if node_test else "currency_wars_deploy_test" if deploy_test else "currency_wars_drag_test" if drag_test else "currency_wars" if currency_wars else "reward_only" if reward_only else "daily"
+        operation = "currency_wars_flow_test" if flow_test else "currency_wars_node_test" if node_test else "currency_wars_deploy_test" if deploy_test else "currency_wars_drag_test" if drag_test else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "reward_only" if reward_only else "daily"
         settings = self._read_settings(operation=operation)
         if settings is None:
             return
@@ -449,7 +467,7 @@ class AutoHSRWindow:
         new_battle_run = False
         if reward_only:
             settings = reward_only_settings(settings)
-        elif not currency_wars and settings.battle and settings.allow_stamina_spend:
+        elif not currency_wars and not differential_universe and settings.battle and settings.allow_stamina_spend:
             state = recovery_state(ROOT / "runs")
             if state["blocked"]:
                 if state["corrupt"]:
@@ -462,13 +480,14 @@ class AutoHSRWindow:
                     "如只需领取每日奖励，请选否，再点“仅补领奖”。\n确定已人工核对，仍要开始新一轮？", default="no", parent=self.root)
                 if not new_battle_run:
                     return
-        if not currency_wars and not any(getattr(settings, key) for key in TASK_NAMES):
+        if not currency_wars and not differential_universe and not any(getattr(settings, key) for key in TASK_NAMES):
             messagebox.showinfo("未选择任务", "请至少勾选一项每日任务。", parent=self.root)
             return
         self.runner = None
         self.active_operation = operation
         deployment_label=f"备战{currency_source_slot}→空"+('前台' if currency_zone=='front' else '后台')
         self.plan.set("货币战争 · 整局验证 · 超频A0" if flow_test and currency_start_from_lobby else ("货币战争 · 连续流程验证"+(f" · 升级至Lv{currency_target_level}" if currency_target_level else " · 不购买经验")) if flow_test else "货币战争 · 当前节点战斗验证" if node_test else f"货币战争 · 单次{deployment_label}部署" if deploy_test else "货币战争 · 单次前台3→1拖动验证" if drag_test else "货币战争 · 只读识别 · 自动玩法未开放" if currency_wars else
+                      f"差分宇宙 · 乐园漫记 · {settings.differential_universe_runs} 局自动演算 · 不消耗每日刷本预算" if differential_universe else
                       "仅补领奖 · 不刷本 · 不执行附加任务 · 本次不保存" if reward_only else
                       ("自动启动游戏" if settings.auto_launch else "使用已打开的游戏") +
                       (f" · {settings.target_name} / {settings.target_location} · 本轮最多 {settings.stamina_limit} · 每批 {settings.rounds} 轮" if settings.battle else " · 不刷本"))
@@ -479,9 +498,13 @@ class AutoHSRWindow:
         self.confirmed_stamina = self.elapsed_seconds = 0
         self.stamina.set("0")
         self.elapsed.set("00:00")
-        self.current_task.set("货币战争连续流程验证" if flow_test else "货币战争节点战斗验证" if node_test else
+        self.current_task.set("差分宇宙自动演算" if differential_universe else "货币战争连续流程验证" if flow_test else "货币战争节点战斗验证" if node_test else
                               "货币战争部署验证" if deploy_test else "货币战争拖动验证" if drag_test else
                               "货币战争只读识别" if currency_wars else "准备进入游戏")
+        if differential_universe:
+            self.du_status.set(f"正在自动演算 {settings.differential_universe_runs} 局。只在识别到当前季节安全选项后推进；未知页面会停下。F9 暂停，F10 停止。")
+            self.du_observation.set("正在保存本次截图、OCR 与动作记录。")
+            self.last_screenshot = None
         if currency_wars:
             self.currency_status.set("正在推进已校准战斗、选择、编队、奖励及装备；未知反馈停下留证。F9 暂停，F10 停止。" if flow_test else "正在验证当前节点出战与结算。F9 暂停，F10 停止。" if node_test else f"正在部署：{deployment_label}。F9 暂停，F10 停止。" if deploy_test else "正在验证一次前台3→1拖动。F9 暂停，F10 停止。" if drag_test else "正在只读识别，自动玩法保持关闭。F9 暂停，F10 停止。")
             self.currency_observation.set("正在生成本次证据；上次截图与报告保留在运行日志中。")
@@ -496,7 +519,7 @@ class AutoHSRWindow:
             enabled = getattr(settings, name)
             detail = "开拓力刷本未授权" if name == "battle" and not settings.allow_stamina_spend else ("" if enabled else "未勾选")
             self.table.item(name, values=(label, "等待" if enabled else "跳过", detail), tags=() if enabled else ("skipped",))
-        self._log("开始货币战争流程推进验证。" if flow_test else "开始货币战争当前节点战斗验证。" if node_test else "开始货币战争单次部署验证。" if deploy_test else "开始货币战争单次拖动验证。" if drag_test else "开始货币战争只读识别。" if currency_wars else "开始执行每日任务。助手将最小化，让游戏保持前台。")
+        self._log("开始差分宇宙自动演算。助手将最小化，让游戏保持前台。" if differential_universe else "开始货币战争流程推进验证。" if flow_test else "开始货币战争当前节点战斗验证。" if node_test else "开始货币战争单次部署验证。" if deploy_test else "开始货币战争单次拖动验证。" if drag_test else "开始货币战争只读识别。" if currency_wars else "开始执行每日任务。助手将最小化，让游戏保持前台。")
         self.root.iconify()
 
         def work() -> None:
@@ -508,6 +531,7 @@ class AutoHSRWindow:
             try:
                 from .app import Runner
                 runner = Runner(settings, send, new_battle_run=new_battle_run, operation=operation,
+                    **(dict(du_runs=settings.differential_universe_runs) if differential_universe else {}),
                     **(dict(currency_control_probe=True) if currency_control_probe else {}),
                     **(dict(currency_timeout_probe=True) if currency_timeout_probe else {}),
                     **(dict(currency_source_slot=currency_source_slot,currency_zone=currency_zone) if deploy_test else {}),
@@ -682,6 +706,7 @@ class AutoHSRWindow:
                 self._task(result, log=False)
         status = str(report.get("status", "partial"))
         currency = report.get("operation", self.active_operation).startswith("currency_wars")
+        differential_universe = report.get("operation", self.active_operation) == "differential_universe"
         if not currency and report.get("daily_verified") is True:
             self._task(dict(task="daily", status="ok", detail="每日实训奖励已核实领取。"), log=False)
         self._finalize_task_rows(status)
@@ -700,6 +725,15 @@ class AutoHSRWindow:
                 self._currency_observed(report["currency_wars"])
             else:
                 self.currency_observation.set("本次未生成有效观察记录；请查看日志中的原因后重新识别。")
+        if differential_universe:
+            data = report.get("differential_universe") or {}
+            completed = int(data.get("completed_runs", 0) or 0)
+            requested = int(data.get("requested_runs", self.settings.differential_universe_runs) or self.settings.differential_universe_runs)
+            outcome = "全部运行完成并返回" if status == "success" and completed == requested else "已停止，完成情况未达目标"
+            self.summary.set(f"差分宇宙 · {outcome} · {completed}/{requested} 局 · 每日刷本预算未使用" +
+                             ("\n" + str(data.get("last_message") or report.get("error")) if data.get("last_message") or report.get("error") else ""))
+            self.du_status.set(self.summary.get())
+            self.du_observation.set(json.dumps(data, ensure_ascii=False, indent=2) if data else "本次未生成运行观察记录；请查看日志中的失败原因。")
         self.history_context.set(report_context(report, Path(report["run_dir"]) / "report.json" if report.get("run_dir") else None))
         if report.get("report_saved") is False:
             self.history_context.set("本次报告未写入磁盘 · " + self.history_context.get())

@@ -106,6 +106,7 @@ class RunReport:
     safe_next: str = ""
     exit_status: str = "not_requested"
     currency_wars: dict = field(default_factory=dict)
+    differential_universe: dict = field(default_factory=dict)
     report_saved: bool = False
     report_write_error: str = ""
 
