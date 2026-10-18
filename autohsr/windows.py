@@ -79,6 +79,28 @@ def is_admin() -> bool:
     return bool(shell32.IsUserAnAdmin())
 
 
+def is_elevated(hwnd: int) -> bool | None:
+    """Read token elevation to explain Windows UIPI before attempting input."""
+    advapi = C.WinDLL("advapi32", use_last_error=True)
+    advapi.OpenProcessToken.argtypes = [W.HANDLE, W.DWORD, C.POINTER(W.HANDLE)]
+    advapi.GetTokenInformation.argtypes = [W.HANDLE, C.c_int, C.c_void_p, W.DWORD, C.POINTER(W.DWORD)]
+    pid, token, elevated, length = W.DWORD(), W.HANDLE(), W.DWORD(), W.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, C.byref(pid))
+    process = kernel32.OpenProcess(0x1000, False, pid.value)
+    if not process:
+        return None
+    try:
+        if not advapi.OpenProcessToken(process, 8, C.byref(token)):
+            return None
+        if not advapi.GetTokenInformation(token, 20, C.byref(elevated), C.sizeof(elevated), C.byref(length)):
+            return None
+        return bool(elevated.value)
+    finally:
+        if token:
+            kernel32.CloseHandle(token)
+        kernel32.CloseHandle(process)
+
+
 def process_path(hwnd: int) -> str:
     pid = W.DWORD()
     user32.GetWindowThreadProcessId(hwnd, C.byref(pid))
@@ -179,10 +201,12 @@ class GameWindow:
         self.guard()
 
     def guard(self, expected: Geometry | None = None) -> Geometry:
-        if not user32.IsWindow(self.hwnd) or user32.IsIconic(self.hwnd):
-            raise FocusLost("游戏窗口已关闭或最小化，操作已停止。")
+        if not user32.IsWindow(self.hwnd):
+            raise AutomationError("游戏窗口已关闭，当前运行已停止。")
+        if user32.IsIconic(self.hwnd):
+            raise FocusLost("游戏窗口已最小化，等待恢复前台。")
         if user32.GetForegroundWindow() != self.hwnd:
-            raise FocusLost("游戏窗口失去焦点，操作已停止；重新开始时请保持游戏在前台。")
+            raise FocusLost("游戏窗口失去焦点，等待恢复前台。")
         g = geometry(self.hwnd)
         if expected and g != expected:
             raise AutomationError("游戏窗口位置或大小已变化，请重新开始以刷新识别坐标。")
@@ -203,7 +227,8 @@ class GameWindow:
             bgr = np.asarray(raw)[:, :, :3].copy()
         self.guard(g)
         if bgr.std() < 2:
-            raise AutomationError("截图为空或黑屏；请等待加载完成，关闭 HDR/滤镜并使用窗口模式。")
+            from .models import EmptyCapture
+            raise EmptyCapture("截图为空或黑屏；请等待加载完成，关闭 HDR/滤镜并使用窗口模式。")
         return bgr, g
 
     @staticmethod
@@ -231,6 +256,24 @@ class GameWindow:
         up = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, 0x0004, 0, 0))
         self.send([move, down, up], expected)
 
+    def click_held(self,x: float,y: float,expected: Geometry,*,checkpoint=lambda:None) -> None:
+        """One frame-visible click; release even after a pause or focus loss."""
+        import math
+        if any(type(v) not in (int,float) or not math.isfinite(v) or not 0<=v<1 for v in (x,y)):
+            raise AutomationError('点击坐标超出游戏客户区。')
+        checkpoint()
+        self.move(x,y,expected)
+        down=INPUT(type=0,mi=MOUSEINPUT(0,0,0,0x0002,0,0))
+        up=INPUT(type=0,mi=MOUSEINPUT(0,0,0,0x0004,0,0))
+        try:
+            self.send([down],expected)
+            for _ in range(6):
+                checkpoint()
+                time.sleep(.02)
+        finally:
+            if user32.SendInput(1,C.byref(up),C.sizeof(INPUT))!=1:
+                raise AutomationError('左键释放失败，请手动松开鼠标并检查输入权限。')
+
     def move(self, x: float, y: float, expected: Geometry) -> None:
         g = self.guard(expected)
         if not (0 <= x < 1 and 0 <= y < 1):
@@ -251,6 +294,47 @@ class GameWindow:
         finally:
             release = INPUT(type=1, ki=KEYBDINPUT(0, scan, 0xA, 0, 0))
             user32.SendInput(1, C.byref(release), C.sizeof(INPUT))
+
+    def drag(self, start: tuple[float, float], end: tuple[float, float], expected: Geometry,
+             *, checkpoint=lambda: None, waypoints=()) -> None:
+        """Hold left throughout a paced movement; always release on interruption.
+
+        The game polls input per frame, so batching down/move/up together can
+        appear as a click. This primitive is not a verified Currency Wars flow.
+        """
+        import math
+        if not isinstance(waypoints,(tuple,list)) or len(waypoints)>4:
+            raise AutomationError('拖动路径无效。')
+        for point in (start, *waypoints, end):
+            if (len(point) != 2 or any(type(v) not in (int, float) or not math.isfinite(v) or not 0 <= v < 1 for v in point)):
+                raise AutomationError("拖动坐标超出游戏客户区。")
+        checkpoint()
+        self.move(*start, expected)
+        down = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, 0x0002, 0, 0))
+        up = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, 0x0004, 0, 0))
+        try:
+            self.send([down], expected)
+            # Hold through multiple Unity frames before crossing drag threshold.
+            for _ in range(6):
+                checkpoint()
+                time.sleep(.02)
+            previous=start
+            for destination in (*waypoints,end):
+                for step in range(1, 31):
+                    checkpoint()
+                    fraction = step / 30
+                    self.move(previous[0] + (destination[0] - previous[0]) * fraction,
+                              previous[1] + (destination[1] - previous[1]) * fraction, expected)
+                    time.sleep(.02)
+                previous=destination
+            for _ in range(4):
+                checkpoint()
+                time.sleep(.02)
+        finally:
+            # Releasing our held button is required even after focus/F10 loss.
+            # Do not call guarded send(): that could refuse the cleanup itself.
+            if user32.SendInput(1, C.byref(up), C.sizeof(INPUT)) != 1:
+                raise AutomationError("左键释放失败，请手动松开鼠标并检查输入权限。")
 
     def scroll(self, amount: int) -> None:
         # Cursor is first placed inside the game by the caller's guarded click.

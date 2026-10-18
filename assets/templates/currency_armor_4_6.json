@@ -1,0 +1,13 @@
+{
+  "label": "量产型装甲",
+  "game_version": "CNPRODWin4.6.0_D16781997_A16781679_L16781679",
+  "source": "runs\\20261018_115056_016964\\115102_357337_currency_choose_advanced_equipment_selection_after.png",
+  "source_sha256": "f50d667f37825610f0fdf8b9dfd5dc001f061d57af3617f98217dc145a084093",
+  "crop_2560": [
+    2430,
+    815,
+    2490,
+    875
+  ],
+  "provenance": "Inventory tile observed after advanced box choice; cropped item pixels only, no account pixels."
+}

@@ -1,0 +1,13 @@
+{
+  "label": "很硬的甲",
+  "game_version": "CNPRODWin4.6.0_D16781997_A16781679_L16781679",
+  "source": "runs\\20261018_115549_263139\\115611_525750_currency_close_shop_after.png",
+  "source_sha256": "159401ce3933baa50e255fabe508873cd08f9709cc083ddb31e354797ab89b40",
+  "crop_2560": [
+    2320,
+    610,
+    2380,
+    670
+  ],
+  "provenance": "Stable inventory after 3-2 supply; replaces rejected bright pickup-animation crop. Item-only, no account pixels."
+}

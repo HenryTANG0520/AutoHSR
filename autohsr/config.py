@@ -30,17 +30,20 @@ class Settings:
     battle_timeout: int = 900
     ocr_confidence: float = 0.65
 
-    def validate(self) -> None:
+    def validate(self, operation: str = "daily") -> None:
         if not isinstance(self.game_path, str) or not self.game_path.lower().endswith("starrail.exe"):
             raise ValueError("请选择 StarRail.exe 游戏程序。")
-        if not isinstance(self.target_name, str) or len(self.target_name.strip()) < 2:
-            raise ValueError("请填写拟造花萼名称，例如：回忆之蕾。")
-        if not isinstance(self.target_location, str):
-            raise ValueError("副本地点必须是文字，可留空选择首个可见目标。")
-        if isinstance(self.stamina_limit, bool) or not isinstance(self.stamina_limit, int) or not 10 <= self.stamina_limit <= 240 or self.stamina_limit % 10:
-            raise ValueError("开拓力上限应为 10～240 之间的 10 的倍数。")
-        if isinstance(self.rounds, bool) or not isinstance(self.rounds, int) or not 1 <= self.rounds <= 6:
-            raise ValueError("每次挑战轮数应为 1～6。")
+        if operation == "save" or (operation == "daily" and self.battle and self.allow_stamina_spend):
+            if not isinstance(self.target_name, str) or len(self.target_name.strip()) < 2:
+                raise ValueError("请填写拟造花萼名称，例如：回忆之蕾。")
+            if not isinstance(self.target_location, str):
+                raise ValueError("副本地点必须是文字；留空时仅允许唯一匹配目标。")
+            if operation == "daily" and not self.target_location.strip():
+                raise ValueError("刷本必须填写地点，以区分同名花萼；未开始挑战。")
+            if isinstance(self.stamina_limit, bool) or not isinstance(self.stamina_limit, int) or not 10 <= self.stamina_limit <= 240 or self.stamina_limit % 10:
+                raise ValueError("本次运行开拓力上限应为 10～240 之间的 10 的倍数。")
+            if isinstance(self.rounds, bool) or not isinstance(self.rounds, int) or not 1 <= self.rounds <= 6:
+                raise ValueError("每次挑战轮数应为 1～6。")
         for name in ("use_support", "assignments", "battle", "allow_stamina_spend", "daily", "mail", "battlepass", "auto_launch"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} 必须是布尔值。")
@@ -52,7 +55,7 @@ class Settings:
             raise ValueError("等待时间、战斗超时或 OCR 阈值超出允许范围。")
 
     def save(self, path: Path = CONFIG_PATH) -> None:
-        self.validate()
+        self.validate("save")
         temp = path.with_suffix(".tmp")
         temp.write_text(json.dumps(asdict(self), ensure_ascii=False, indent=2), encoding="utf-8")
         temp.replace(path)
@@ -66,5 +69,5 @@ class Settings:
         if unknown:
             raise ValueError(f"配置中存在未知字段：{', '.join(sorted(unknown))}")
         result = cls(**data)
-        result.validate()
+        result.validate("save")
         return result

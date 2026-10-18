@@ -1,0 +1,12 @@
+{
+  "source": "runs\\20261018_120959_509144\\121048_171504_currency_loot_after.png",
+  "sha256": "c769afffe844b0e53f4044c8b1f4db80e9c02f98c1fd1782ff9e9fca0d1e13b0",
+  "crop_2560": [
+    580,
+    800,
+    1940,
+    990
+  ],
+  "game_version": "4.6.0",
+  "excludes_account_pixels": true
+}

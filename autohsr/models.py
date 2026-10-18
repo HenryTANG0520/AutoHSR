@@ -61,11 +61,20 @@ class AutomationError(RuntimeError):
     pass
 
 
+class EmptyCapture(AutomationError):
+    """A blank transition frame; observation can be retried without input."""
+    pass
+
+
 class Stopped(AutomationError):
     pass
 
 
 class FocusLost(AutomationError):
+    pass
+
+
+class InputInterrupted(AutomationError):
     pass
 
 
@@ -82,7 +91,23 @@ class RunReport:
     results: list[TaskResult] = field(default_factory=list)
     stamina_spent: int = 0
     daily_verified: bool = False
+    engagement: int | None = None
     run_dir: str = ""
+    operation: str = "daily"
+    started_at: str = ""
+    finished_at: str = ""
+    source: str = ""
+    game_day: str = "unverified"
+    budget_scope: str = "run"
+    stamina_limit: int = 0
+    stamina_pending: int = 0
+    failure_task: str = ""
+    error: str = ""
+    safe_next: str = ""
+    exit_status: str = "not_requested"
+    currency_wars: dict = field(default_factory=dict)
+    report_saved: bool = False
+    report_write_error: str = ""
 
     def to_dict(self) -> dict:
         from dataclasses import asdict

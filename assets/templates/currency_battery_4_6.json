@@ -1,0 +1,16 @@
+{
+  "label": "光能电池",
+  "game_version": "CNPRODWin4.6.0_D16781997_A16781679_L16781679",
+  "source": "124-photon-battery-info.png",
+  "source_sha256": "d0f200a8eac5efbe0916b9ce2a24d2883e4f6e9cbaab438f6a5e8aa2a0563ea4",
+  "crop_2560": [
+    2430,
+    300,
+    2490,
+    360
+  ],
+  "provenance": "Selected inventory tile beside the equipment panel titled 光能电池; no account pixels.",
+  "clean_source": "runs\\20261018_112139_113068\\112146_928568_currency_close_shop_after.png",
+  "clean_source_sha256": "217faf6056928fae088d6771c7309a0db3cff991f13b8619122deb21f44957d9",
+  "reference_match": 0.8584164977073669
+}

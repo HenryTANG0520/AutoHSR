@@ -401,6 +401,8 @@ class DailyWorkflow:
                 rows.append((name, places[0], entries[0]))
         if location and len(rows) != 1:
             return None
+        if not location and len(rows) > 1:
+            raise AutomationError("同名花萼有多个地点，请填写明确地点后再开始；未消耗开拓力。")
         return rows[0] if rows else None
 
     def _open_calyx(self) -> Scene:
@@ -774,6 +776,7 @@ class DailyWorkflow:
         unknown_auto = 0.0
         while elapsed < self.settings.battle_timeout:
             started = time.monotonic()
+            inactive_before = getattr(getattr(self.ctx, "runner", None), "inactive_duration", 0)
             scene = self._snapshot()
             if self._settlement(scene):
                 return scene
@@ -785,7 +788,8 @@ class DailyWorkflow:
                 unknown_auto += 2
                 if unknown_auto >= 30:
                     raise AutomationError("无法核实自动战斗开关状态，已停止自动输入；请查看本次战斗截图。")
-            elapsed += time.monotonic() - started
+            elapsed += max(0, time.monotonic() - started -
+                           (getattr(getattr(self.ctx, "runner", None), "inactive_duration", 0) - inactive_before))
             self.ctx.sleep(2)
             elapsed += 2
         raise AutomationError("等待战斗超时；未确认挑战成功，已停止后续挑战。")
@@ -841,6 +845,9 @@ class DailyWorkflow:
             start = scene.find("开始挑战", BOTTOM, exact=True)
             if start is None or not scene.has("队伍", TITLE):
                 raise AutomationError("未验证队伍页与开始挑战按钮。")
+            budget = getattr(self.ctx, "battle_budget", None)
+            if budget is not None:
+                budget.reserve(cost)
             self._click(scene, start)
             scene = self._battle_result()
             if self._insufficient(scene):
@@ -850,7 +857,10 @@ class DailyWorkflow:
                 self._exit_result(scene)
                 return self._result("battle", "partial", "战斗失败，停止后续刷本；仅计入此前已确认成功的开拓力。", scene)
             # Accounting happens once, only after a visible success screen.
-            self.ctx.report.stamina_spent += cost
+            if budget is not None:
+                budget.confirm(cost)
+            else:
+                self.ctx.report.stamina_spent += cost
             completed += cost // 10
             self.ctx.evidence(scene, f"battle_success_{completed}")
             self.ctx.log(f"挑战成功，累计确认消耗{self.ctx.report.stamina_spent}开拓力。")
@@ -923,6 +933,7 @@ class DailyWorkflow:
             scene = self._wait(lambda s: normalize(s.text) != previous, description="确认领取实训任务点数")
             scene = self._dismiss_reward(scene)
         activity = self._activity(scene)
+        self.ctx.report.engagement = activity
         if activity != 500:
             detail = "未能识别当前实训活跃值" if activity is None else f"实训活跃值为{activity}/500"
             return self._result("daily", "partial", f"{detail}，尚未确认每日任务完成。", scene)

@@ -1,0 +1,11 @@
+{
+  "source": "123-sparkle-equipment-recommendations.png",
+  "source_sha256": "b932242e76a5e1bb57e296e334484a16439dbabb077385dd260a5287010b74bb",
+  "crop_2560": [
+    2168,
+    1060,
+    2218,
+    1110
+  ],
+  "label": "Empty character equipment slot"
+}

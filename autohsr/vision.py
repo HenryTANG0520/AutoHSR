@@ -48,6 +48,23 @@ class Vision:
             return None
         return ((x1+point[0]+template.shape[1]/2)/width, (y1+point[1]+template.shape[0]/2)/height, confidence)
 
+    def read_number(self,image):
+        """Recognize one tightly bounded numeric field without text detection."""
+        return self._read_field(image,r'[0-9]{1,2}')
+
+    def read_node(self,image):
+        return self._read_field(image,r'[1-3]-[1-9][0-9]?')
+
+    def _read_field(self,image,pattern):
+        import math
+        import re
+        results,_=self.engine(image,use_det=False,use_cls=False)
+        if results and len(results)==1:
+            value,score=results[0]
+            if re.fullmatch(pattern,value) and math.isfinite(float(score)) and max(.85,self.confidence)<=float(score)<=1:
+                return Token(value,float(score),(0,0,1,1))
+        return None
+
 
 def save_scene(scene: Scene, directory: Path, name: str) -> Path:
     import cv2

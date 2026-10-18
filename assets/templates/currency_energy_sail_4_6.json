@@ -1,0 +1,13 @@
+{
+  "label": "蓄能帆",
+  "game_version": "CNPRODWin4.6.0_D16781997_A16781679_L16781679",
+  "source": "runs\\20261018_115549_263139\\115611_525750_currency_close_shop_after.png",
+  "source_sha256": "159401ce3933baa50e255fabe508873cd08f9709cc083ddb31e354797ab89b40",
+  "crop_2560": [
+    2320,
+    715,
+    2380,
+    775
+  ],
+  "provenance": "Inventory after verified 3-2 supply choice; item-only crop. Effect and Sparkle recommendation observed in capture 168."
+}

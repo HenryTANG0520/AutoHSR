@@ -1,0 +1,28 @@
+{
+  "game_version": "CNPRODWin4.6.0_D16781997_A16781679_L16781679",
+  "roi_2560": [
+    1700,
+    330,
+    2180,
+    690
+  ],
+  "notes": "Local unmodified reward-area crops; excludes account identifiers and character panels.",
+  "sources": {
+    "four_blue": "runs/20261018_112400_774044/112432_277419_currency_loot_before.png",
+    "gray_blue": "runs/20261018_110336_918720/110340_425879_currency_loot_before.png",
+    "blue_after_gray": "runs/20261018_110336_918720/110350_124739_currency_loot_before.png"
+  },
+  "gold_before_boss": {
+    "source": "runs\\20261018_121917_327452\\122127_896911_currency_node_before.png",
+    "sha256": "5fdec635b4f5aeaa42abd4e3508db2aacb5c0c62a43199761f73580341ed665c",
+    "crop_2560": [
+      1700,
+      330,
+      2180,
+      690
+    ],
+    "expected_count": 1,
+    "observed_radius": 62.024173736572266,
+    "excludes_account_pixels": true
+  }
+}

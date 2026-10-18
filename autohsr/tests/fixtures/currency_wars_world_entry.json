@@ -1,0 +1,8 @@
+{
+  "source": "4.6.0 live Computer Use capture, 2026-10-18; relevant OCR only, no account identifiers",
+  "tokens": [
+    {"text": "朝露公馆", "score": 0.99863, "box": [0.02917, 0.01111, 0.07708, 0.03889]},
+    {"text": "状态效果", "score": 0.99673, "box": [0.91927, 0.21204, 0.96667, 0.23796]},
+    {"text": "货币战争", "score": 0.99871, "box": [0.63021, 0.55278, 0.68646, 0.58056]}
+  ]
+}

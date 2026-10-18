@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "strategy_id": "joy_quantum_lv7",
+  "scenario": "level7_upgrade_order",
+  "applicability": {
+    "pages": ["preparation", "shop"],
+    "game_versions": ["4.4"],
+    "modes": ["overclock"],
+    "scope_confirmation_required": true
+  },
+  "required_state": ["page", "game_version", "mode", "selected_strategy", "guide_scope_confirmed", "level", "core_present", "core_cost"],
+  "allowed_actions": ["hold_experience", "review_level8"],
+  "selection_basis": "仅比较攻略指定的7级顺序。hold_experience表示暂不建议购买经验；review_level8仅表示可进一步评估升8，不表示现在购买。候选名单不触发购买。攻略全文明确超频适用；标准模式、难度和4.6兼容性未核实。攻略预览费用不作为局内核心费用。",
+  "rules": [
+    {"id": "G7-before-four-cost", "priority": 100, "all": [{"field": "level", "op": "eq", "value": 7}, {"field": "core_cost", "op": "lt", "value": 4}], "action": "hold_experience", "source_id": "guide-operation", "evidence_class": "guide_rule"},
+    {"id": "G7-after-four-cost", "priority": 90, "all": [{"field": "level", "op": "eq", "value": 7}, {"field": "core_cost", "op": "gte", "value": 4}], "action": "review_level8", "source_id": "guide-operation", "evidence_class": "guide_rule"}
+  ],
+  "fallback": "stop_and_request_missing_state",
+  "stop_conditions": ["未知页面或关键字段未知", "攻略与当前版本不匹配", "模式/难度适用性未经确认", "未选择此攻略或未确认拥有银狼Lv.999", "等级不是7级", "配置无效"],
+  "sources": [
+    {"id": "guide-operation", "kind": "guide", "path": "runs/currency-wars-advice-20261018/07-guide-detail.source.jpg", "claim": "白开水多加糖加冰，5欢愉4量子同频；7级先为银狼Lv.999升费用，四费之后升8。列表标V4.4，难度及模式未声明。"},
+    {"id": "guide-version", "kind": "observation", "path": "runs/currency-wars-advice-20261018/06-guide-list.source.jpg", "claim": "实机列表显示V4.4，当前客户端4.6；兼容性未验证。"},
+    {"id": "guide-full-scope", "kind": "observation", "path": "runs/currency-wars-controls-20261018/08-guide-full-page.source.jpg", "claim": "攻略全文明确标注超频博弈适用，更新2026/07/15 V4.4，阵容ID69e59d6e9f310f2fc29a1b97。不能据此推断4.6适用。"},
+    {"id": "guide-preview-cost", "kind": "observation", "path": "runs/currency-wars-controls-20261018/07-core-guide-panel.source.jpg", "claim": "银狼Lv.999攻略最终阵容预览为1星、费用5；不是当前对局所持有角色的费用，core_cost保持未知。"},
+    {"id": "official-46-cost-mechanic", "kind": "observation", "path": "runs/currency-wars-controls-20261018/15-core-trait-full.source.jpg", "claim": "4.6游戏内头号玩家完整说明：每个费用首次达到2星可选择更高费用的1星形态，或不占装备栏的骇客改件。图鉴另有3/4/5费页。仅核实机制存在，不证明7级升费再升8在当前局面合理；跨版本策略验证仍false。"}
+  ],
+  "validation": {"guide_transcribed": true, "live_strategy_verified": false, "automatic_execution": false, "cross_version_verified": false}
+}
