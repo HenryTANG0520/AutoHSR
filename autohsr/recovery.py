@@ -61,6 +61,8 @@ class BattleBudget:
                     pending=self.report.stamina_pending, limit=self.settings.stamina_limit,
                     run_dir=self.report.run_dir, updated_at=datetime.now().astimezone().isoformat(),
                     target=self.settings.target_name, location=self.settings.target_location)
+        data.update(category=self.settings.dungeon_category, requested=self.report.battle_requested,
+                    completed=self.report.battle_completed)
         temp = self.path.with_suffix(".tmp")
         temp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         temp.replace(self.path)

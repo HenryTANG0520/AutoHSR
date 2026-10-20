@@ -387,4 +387,11 @@ class GameWindow:
 
     def scroll(self, amount: int) -> None:
         # Cursor is first placed inside the game by the caller's guarded click.
-        self.send([INPUT(type=0, mi=MOUSEINPUT(0, 0, amount & 0xFFFFFFFF, 0x0800, 0, 0))])
+        if amount == 0:
+            return
+        # Unity treats a large wheel delta in one frame as one pulse. Separate
+        # notches across frames so bounded list scrolling actually advances.
+        direction = 120 if amount > 0 else -120
+        for _ in range(min(120, max(1, (abs(amount) + 119) // 120))):
+            self.send([INPUT(type=0, mi=MOUSEINPUT(0, 0, direction & 0xFFFFFFFF, 0x0800, 0, 0))])
+            time.sleep(.025)

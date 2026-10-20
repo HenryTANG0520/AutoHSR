@@ -293,6 +293,51 @@ class Context:
         stamp = datetime.now().strftime("%H%M%S_%f")
         return save_scene(scene, Path(self.report.run_dir), f"{stamp}_{name}")
 
+    def refine_dungeon_rows(self, scene, category):
+        self.checkpoint()
+        if scene is not self.last_scene or self.scene_epoch != self.runner.input_epoch:
+            raise InputInterrupted("副本名称细读前画面已失效，需要重新识别。")
+        self.vision.refine_dungeon_rows(scene, category)
+        self.checkpoint()
+
+    def refine_planar_support(self, scene):
+        self.checkpoint()
+        if scene is not self.last_scene or self.scene_epoch != self.runner.input_epoch:
+            raise InputInterrupted("支援标记细读前画面已失效。")
+        self.vision.refine_planar_support(scene)
+        self.checkpoint()
+
+    def planar_friend_slot(self, scene, badge):
+        self.checkpoint()
+        if scene is not self.last_scene or self.scene_epoch != self.runner.input_epoch:
+            raise InputInterrupted("支援槽位细读前画面已失效。")
+        return self.vision.planar_friend_slot(scene,badge)
+
+    def planar_approach(self, scene):
+        from .planar_entry import require_field
+        self._require_gameplay_input()
+        self.checkpoint()
+        if (self.report.operation != "daily" or self.settings.dungeon_category != "planar"
+                or self.report.stamina_pending <= 0 or scene is not self.last_scene
+                or self.scene_epoch != self.runner.input_epoch or time.monotonic()-scene.captured_at > 8):
+            raise AutomationError("饰品提取接战缺少本次开始挑战与待核对预算，未移动。")
+        require_field(scene)
+        self.evidence(scene,"planar_before_approach")
+        epoch = self.scene_epoch
+        def held_checkpoint():
+            # Release W before any blocking pause/focus wait.
+            if self.runner._stop.is_set():
+                raise Stopped("任务已停止。")
+            if self.runner._pause.is_set() or self.runner.input_epoch != epoch:
+                raise InputInterrupted("饰品接战移动已中断，恢复后需要重新识别。")
+            self.window.guard(scene.geometry)
+        self.last_scene, self._scroll_anchor = None, None
+        try:
+            self.window.key_hold("w",600,scene.geometry,checkpoint=held_checkpoint)
+        except FocusLost:
+            self._focus_interrupted()
+        self.sleep(self.settings.action_delay)
+
     def scroll(self, amount: int):
         self._require_gameplay_input()
         if self.report.operation == "differential_universe":
@@ -1081,10 +1126,11 @@ class Runner:
                 raise AutomationError("另一个 AutoHSR 任务正在运行，请先停止后重试。")
             currency_wars = self.report.operation in ("currency_wars", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test")
             differential_universe = self.report.operation == "differential_universe"
-            if self.report.operation not in ("daily", "reward_only", "currency_wars", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe"):
+            catalogue = self.report.operation == "dungeon_catalogue"
+            if self.report.operation not in ("daily", "reward_only", "currency_wars", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
                 raise AutomationError("未知运行类型，未访问游戏。")
-            self.settings.validate("currency_wars" if currency_wars else "differential_universe" if differential_universe else "daily")
-            if not currency_wars and not differential_universe and self.settings.battle and self.settings.allow_stamina_spend:
+            self.settings.validate("check" if catalogue else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "daily")
+            if not catalogue and not currency_wars and not differential_universe and self.settings.battle and self.settings.allow_stamina_spend:
                 from .recovery import BattleBudget
                 self.battle_budget = BattleBudget(ROOT / "runs", self.settings, self.report)
                 self.battle_budget.begin(new_run=self.new_battle_run)
@@ -1092,7 +1138,7 @@ class Runner:
             monitor = threading.Thread(target=self._hotkeys, name="AutoHSR-hotkeys", daemon=True)
             monitor.start()
             monitor_started = True
-            if not currency_wars and not differential_universe and self.settings.auto_launch:
+            if not catalogue and not currency_wars and not differential_universe and self.settings.auto_launch:
                 self.log(launch_game(self.settings))
                 self.log("等待游戏窗口；首次登录/更新请手动完成。")
                 for _ in range(120):
@@ -1114,7 +1160,12 @@ class Runner:
                       Vision(self.settings.ocr_confidence))
             context = Context(self, self._window, vision)
             context.battle_budget = self.battle_budget
-            if currency_wars:
+            if catalogue:
+                from .dungeon_workflow import scan_catalogue
+                result = scan_catalogue(DailyWorkflow(context))
+                self.report.results.append(result)
+                self.report.status = "success" if result.status == "ok" else "partial"
+            elif currency_wars:
                 self._inspect_currency_wars(context)
             elif differential_universe:
                 from .differential_universe import DifferentialUniverseWorkflow
@@ -1130,7 +1181,14 @@ class Runner:
                 workflow = DailyWorkflow(context)
                 initial = context.snapshot()
                 context.evidence(initial, "start")
-                workflow.ensure_main()
+                # Planar extraction has a uniquely named existing-save setup
+                # page, including its resource price. Reuse that verified page
+                # when no preceding assignment task needs the phone menu.
+                ready_planar = (self.settings.dungeon_category == "planar" and self.settings.battle
+                                and not self.settings.assignments and workflow._calyx_target(initial)
+                                and workflow._team_page(initial))
+                if not ready_planar:
+                    workflow.ensure_main()
                 self._run_tasks(context, workflow)
             self.log("任务已结束；请查看报告中的验证状态与证据。")
         except Stopped as error:

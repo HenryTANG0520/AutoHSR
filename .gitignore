@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 runs/
 config.json
+dungeons.local.json
 build/
 dist/
 *.spec

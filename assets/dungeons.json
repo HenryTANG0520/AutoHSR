@@ -1,0 +1,532 @@
+{
+  "version": 1,
+  "observed_at": "2026-10-20",
+  "client": "CN 4.6.0",
+  "source_runs": [
+    "20261020_173848_774067",
+    "20261020_174933_827826"
+  ],
+  "native_field_ocr": true,
+  "missions": [
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "绘世学院"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "鸽川区"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "鸽川区"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "「神谕圣地」雅努萨波利斯"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "「纷争荒墟」悬锋城"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "「呓语密林」神悟树庭"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "筑梦边境"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "稚子的梦"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "「白日梦」酒店-梦境"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "流云渡"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "太卜司"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "工造司"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "城郊雪原"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "边缘通路"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "大矿区"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "欢愉之蕾",
+      "location": "「世界尽头」酒馆"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "毁灭之蕾",
+      "location": "渡画泉隐"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "毁灭之蕾",
+      "location": "鳞渊境"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "毁灭之蕾",
+      "location": "收容舱段"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "存护之蕾",
+      "location": "克劳克影视乐园"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "存护之蕾",
+      "location": "支援舱段"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "巡猎之蕾",
+      "location": "「葬忆彼岸」时光归墟"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "巡猎之蕾",
+      "location": "苏乐达™热砂海选会场"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "巡猎之蕾",
+      "location": "城郊雪原"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "丰饶之蕾",
+      "location": "绥园"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "丰饶之蕾",
+      "location": "边缘通路"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "智识之蕾",
+      "location": "海原电视塔"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "智识之蕾",
+      "location": "匹诺康尼大剧院"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "智识之蕾",
+      "location": "铆钉镇"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "同谐之蕾",
+      "location": "「白日梦」酒店-梦境"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "同谐之蕾",
+      "location": "机械聚落"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "虚无之蕾",
+      "location": "「辉痕圣林」神悟树庭"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "虚无之蕾",
+      "location": "丹鼎司"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "虚无之蕾",
+      "location": "大矿区"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "记忆之蕾",
+      "location": "「纷争荒墟」悬锋城"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "塞壬之形",
+      "location": "「酣歌海垠」斯缇科西亚"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "冰酿之形",
+      "location": "「白日梦」酒店-梦境"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "冰棱之形",
+      "location": "流云渡"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "霜晶之形",
+      "location": "残响回廊"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "溟簇之形",
+      "location": "「龙骸古城」斯缇科西亚"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "职司之形",
+      "location": "克劳克影视乐园"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "幽府之形",
+      "location": "绥园"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "锋芒之形",
+      "location": "大矿区"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "残灰之形",
+      "location": "「神谕圣地」雅努萨波利斯"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "嗔怒之形",
+      "location": "朝露公馆"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "燔灼之形",
+      "location": "大矿区"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "炎华之形",
+      "location": "铁卫禁区"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "音爆之形",
+      "location": "鸽川区"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "机狼之形",
+      "location": "幽囚狱"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "震厄之形",
+      "location": "迴星港"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "鸣雷之形",
+      "location": "残响回廊"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "烬日之形",
+      "location": "「穹顶关塞」晨昏之眼"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "今宵之形",
+      "location": "匹诺康尼大剧院"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "天人之形",
+      "location": "丹鼎司"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "巽风之形",
+      "location": "铆钉镇"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "吞噬之形",
+      "location": "渡画泉隐"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "凛月之形",
+      "location": "「呓语密林」神悟树庭"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "焦炙之形",
+      "location": "筑梦边境"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "孽兽之形",
+      "location": "鳞渊境"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "空海之形",
+      "location": "基座舱段"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "役轮之形",
+      "location": "「命运重渊」雅努萨波利斯"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "弦音之形",
+      "location": "匹诺康尼大剧院"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "偃偶之形",
+      "location": "工造司"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "幻光之形",
+      "location": "边缘通路"
+    },
+    {
+      "category": "cavern",
+      "name": "密伶之径",
+      "location": "生研院"
+    },
+    {
+      "category": "cavern",
+      "name": "霜风之径",
+      "location": "收容舱段"
+    },
+    {
+      "category": "cavern",
+      "name": "观火之径",
+      "location": "观览云岛站"
+    },
+    {
+      "category": "cavern",
+      "name": "魔占之径",
+      "location": "绘世学院"
+    },
+    {
+      "category": "cavern",
+      "name": "隐救之径",
+      "location": "「全世矩阵」无名泰坦大墓"
+    },
+    {
+      "category": "cavern",
+      "name": "雳涌之径",
+      "location": "「云端遗堡」晨昏之眼"
+    },
+    {
+      "category": "cavern",
+      "name": "弦歌之径",
+      "location": "「浴血战端」悬锋城"
+    },
+    {
+      "category": "cavern",
+      "name": "迷识之径",
+      "location": "幽囚狱"
+    },
+    {
+      "category": "cavern",
+      "name": "勇骑之径",
+      "location": "匹诺康尼大剧院"
+    },
+    {
+      "category": "cavern",
+      "name": "梦潜之径",
+      "location": "「白日梦」酒店-梦境"
+    },
+    {
+      "category": "cavern",
+      "name": "幽冥之径",
+      "location": "绥园"
+    },
+    {
+      "category": "cavern",
+      "name": "药使之径",
+      "location": "丹鼎司"
+    },
+    {
+      "category": "cavern",
+      "name": "野焰之径",
+      "location": "迴星港"
+    },
+    {
+      "category": "cavern",
+      "name": "圣颂之径",
+      "location": "流云渡"
+    },
+    {
+      "category": "cavern",
+      "name": "睿治之径",
+      "location": "永冬岭"
+    },
+    {
+      "category": "cavern",
+      "name": "漂泊之径",
+      "location": "残响回廊"
+    },
+    {
+      "category": "cavern",
+      "name": "迅拳之径",
+      "location": "铁卫禁区"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "坏灭的喜剧",
+      "location": "寂灭空飨妖都"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "铁骸的锈冢",
+      "location": "「葬忆彼岸」时光归墟"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "晨昏的回眸",
+      "location": "「穹顶关塞」晨昏之眼"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "心兽的战场",
+      "location": "竞锋舰"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "尘梦的赞礼",
+      "location": "匹诺康尼大剧院"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "蛀星的旧魇",
+      "location": "禁闭舱段"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "不死的神实",
+      "location": "鳞渊境"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "寒潮的落幕",
+      "location": "永冬岭"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "毁灭的开端",
+      "location": "支援舱段"
+    },
+    {
+      "category": "planar",
+      "name": "浴火钢心",
+      "location": "位面饰品"
+    },
+    {
+      "category": "planar",
+      "name": "虫虫来袭",
+      "location": "位面饰品"
+    },
+    {
+      "category": "planar",
+      "name": "鎏金追忆",
+      "location": "位面饰品"
+    },
+    {
+      "category": "planar",
+      "name": "西风丛中",
+      "location": "位面饰品"
+    },
+    {
+      "category": "planar",
+      "name": "月下朱殷",
+      "location": "位面饰品"
+    },
+    {
+      "category": "planar",
+      "name": "纷争不休",
+      "location": "位面饰品"
+    },
+    {
+      "category": "planar",
+      "name": "蠹役饥肠",
+      "location": "位面饰品"
+    },
+    {
+      "category": "planar",
+      "name": "永恒笑剧",
+      "location": "位面饰品"
+    },
+    {
+      "category": "planar",
+      "name": "伴你入眠",
+      "location": "位面饰品"
+    },
+    {
+      "category": "planar",
+      "name": "天剑如雨",
+      "location": "位面饰品"
+    },
+    {
+      "category": "planar",
+      "name": "孽果盘生",
+      "location": "位面饰品"
+    },
+    {
+      "category": "planar",
+      "name": "百年冻土",
+      "location": "位面饰品"
+    },
+    {
+      "category": "planar",
+      "name": "温柔话语",
+      "location": "位面饰品"
+    },
+    {
+      "category": "planar",
+      "name": "坚城不倒",
+      "location": "位面饰品"
+    }
+  ]
+}

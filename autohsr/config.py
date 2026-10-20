@@ -18,6 +18,8 @@ class Settings:
     target_location: str = "城郊雪原"
     stamina_limit: int = 240
     rounds: int = 6
+    dungeon_category: str = "auto"
+    challenge_count: int | None = None
     use_support: bool = True
     assignments: bool = True
     battle: bool = True
@@ -36,7 +38,7 @@ class Settings:
             raise ValueError("请选择 StarRail.exe 游戏程序。")
         if operation == "save" or (operation == "daily" and self.battle and self.allow_stamina_spend):
             if not isinstance(self.target_name, str) or len(self.target_name.strip()) < 2:
-                raise ValueError("请填写拟造花萼名称，例如：回忆之蕾。")
+                raise ValueError("请选择副本，例如：回忆之蕾。")
             if not isinstance(self.target_location, str):
                 raise ValueError("副本地点必须是文字；留空时仅允许唯一匹配目标。")
             if operation == "daily" and not self.target_location.strip():
@@ -45,6 +47,13 @@ class Settings:
                 raise ValueError("本次运行开拓力上限应为 10～240 之间的 10 的倍数。")
             if isinstance(self.rounds, bool) or not isinstance(self.rounds, int) or not 1 <= self.rounds <= 6:
                 raise ValueError("每次挑战轮数应为 1～6。")
+            from .dungeons import category_for, count_limit
+            category = category_for(self)
+            if self.challenge_count is not None:
+                if type(self.challenge_count) is not int or not 1 <= self.challenge_count <= count_limit(category):
+                    raise ValueError(f"{category.label}本次挑战次数应为 1～{count_limit(category)}。")
+                if self.challenge_count * category.cost > self.stamina_limit:
+                    raise ValueError("所选次数的预计消耗超过本次开拓力上限，请减少次数或调整上限。")
         for name in ("use_support", "assignments", "battle", "allow_stamina_spend", "daily", "mail", "battlepass", "auto_launch"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} 必须是布尔值。")

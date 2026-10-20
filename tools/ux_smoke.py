@@ -166,6 +166,25 @@ def main():
             for value in ui.tasks.values():
                 value.set(False)
             if PACKAGE == 'autohsr':
+                from autohsr.dungeon_ui import select_category, change_count, set_count
+                ui.tasks['battle'].set(True)
+                saved_dungeon = (ui.dungeon_category.get(), ui.target_name.get(), ui.target_location.get(), ui.challenge_count.get())
+                ui.dungeon_category.set('侵蚀隧洞')
+                select_category(ui)
+                set_count(ui, 2)
+                check('dungeon_category_changes_cost_and_count_limit',
+                      '80' in ui.battle_cost.get() and int(float(ui.challenge_scale.cget('to'))) == 6)
+                change_count(ui, -1)
+                check('dungeon_minus_changes_integer_count_without_running', ui.challenge_count.get() == '1' and not ui.busy and config.read_bytes() == original)
+                ui.dungeon_category.set('历战余响')
+                select_category(ui)
+                set_count(ui, 20)
+                check('weekly_dungeon_count_is_capped_at_three', ui.challenge_count.get() == '3' and '90' in ui.battle_cost.get())
+                ui.dungeon_category.set(saved_dungeon[0])
+                ui.target_name.set(saved_dungeon[1])
+                ui.target_location.set(saved_dungeon[2])
+                ui.challenge_count.set(saved_dungeon[3])
+                ui.tasks['battle'].set(False)
                 ui.stamina_limit.set('invalid disabled draft')
                 ui.target_name.set('')
             else:
@@ -318,6 +337,7 @@ def main():
             if PACKAGE == 'autohsr':
                 ui.stamina_limit.set('10')
                 ui.rounds.set('1')
+                ui.challenge_count.set('1')
                 ui.target_name.set('回忆之蕾')
             else:
                 ui.promoter.set('')

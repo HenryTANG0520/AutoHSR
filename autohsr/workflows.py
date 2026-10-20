@@ -4,6 +4,7 @@ import re
 import time
 from .models import AutomationError, FocusLost, ROI, Scene, Stopped, TaskResult, Token, normalize
 from .policy import replenishment_dialog
+from .dungeons import category_for
 
 
 TITLE: ROI = (0.015, 0.015, 0.32, 0.13)
@@ -207,7 +208,8 @@ class DailyWorkflow:
             if self._in_battle(scene):
                 raise AutomationError("当前在战斗或结算界面，无法安全返回手机菜单。")
             known_page = scene.has(
-                ("委托", "星际和平指南", "每日实训", "生存索引", "邮件", "无名勋礼", "角色", "队伍", "背包", "拟造花萼"),
+                ("委托", "星际和平指南", "每日实训", "生存索引", "邮件", "无名勋礼", "角色", "队伍", "背包", "拟造花萼",
+                 "凝滞虚影", "侵蚀隧洞", "历战余响", "饰品提取", "支援列表"),
                 TITLE,
             )
             if not known_page and not self._world(scene):
@@ -367,7 +369,15 @@ class DailyWorkflow:
         return self._result("assignments", "partial", "委托界面连续变化超过重试上限，保留截图等待检查。", scene)
 
     def _calyx(self, scene: Scene) -> bool:
-        return scene.has("拟造花萼", TITLE) and scene.has("挑战", BOTTOM, exact=True)
+        category = category_for(self.settings)
+        title = "拟造花萼" if category.key.startswith("calyx_") else category.label
+        button = "开始挑战" if category.key == "planar" else "挑战"
+        return scene.has(title, TITLE) and scene.has(button, BOTTOM, exact=True)
+
+    def _team_page(self, scene: Scene) -> bool:
+        if category_for(self.settings).key == "planar":
+            return self._calyx(scene) and scene.has("下载角色", (.30,.60,.55,.78), exact=True)
+        return scene.has("队伍", TITLE) and scene.has("开始挑战", BOTTOM, exact=True)
 
     def _calyx_target(self, scene: Scene) -> bool:
         location = getattr(self.settings, "target_location", "").strip()
@@ -406,6 +416,9 @@ class DailyWorkflow:
         return rows[0] if rows else None
 
     def _open_calyx(self) -> Scene:
+        if self.settings.dungeon_category != "auto":
+            from .dungeon_workflow import open_dungeon
+            return open_dungeon(self)
         scene = self._snapshot()
         if self._calyx_target(scene):
             return scene
@@ -457,7 +470,7 @@ class DailyWorkflow:
         for token in scene.tokens:
             if token.within((0.70, 0, 0.94, 0.14)):
                 match = re.fullmatch(r"(\d{1,3})\s*/\s*(\d{2,3})\s*[|丨+＋]*", token.text.strip())
-                if match and 0 <= int(match.group(1)) <= int(match.group(2)):
+                if match and 100 <= int(match.group(2)) and 0 <= int(match.group(1)) <= int(match.group(2)):
                     values.append(int(match.group(1)))
         return values[0] if len(values) == 1 else None
 
@@ -488,21 +501,31 @@ class DailyWorkflow:
         return values[0] if len(values) == 1 else None
 
     def _limit_batch(self, scene: Scene, remaining: int) -> tuple[Scene, int]:
-        desired = min(remaining, self.settings.rounds * 10)
+        category = category_for(self.settings)
+        unit = category.cost
+        desired = min(remaining, min(self.settings.rounds, category.batch) * unit)
+        if category.weekly_limit and getattr(self, "_weekly_rewards", None) is not None:
+            desired = min(desired, self._weekly_rewards * unit)
         available = self._available(scene)
         if available is not None:
-            desired = min(desired, available // 10 * 10)
-        if desired < 10:
+            desired = min(desired, available // unit * unit)
+        if desired < unit:
             return scene, 0
+        if self._round_count(scene) is None and not category.key.startswith("calyx_"):
+            if not self._calyx(scene) or self._cost(scene) != unit:
+                raise AutomationError(f"未核实{category.label}单次消耗{unit}开拓力，未开始挑战。")
+            if available is None:
+                raise AutomationError("未能独立核实当前开拓力，未开始挑战。")
+            return scene, unit
         for _ in range(24):
             if not self._calyx(scene):
-                raise AutomationError("调整次数前未识别到拟造花萼挑战页。")
+                raise AutomationError("调整次数前未识别到目标副本挑战页。")
             cost = self._cost(scene)
             if cost is None:
-                raise AutomationError("未能唯一识别花萼预计消耗开拓力，已禁止开始挑战。")
+                raise AutomationError("未能唯一识别副本预计消耗开拓力，已禁止开始挑战。")
             rounds = self._round_count(scene)
-            if rounds is None or cost != rounds * 10:
-                raise AutomationError("花萼挑战次数与预计消耗未能独立核对为每轮10开拓力，已禁止开始挑战。")
+            if rounds is None or cost != rounds * unit:
+                raise AutomationError(f"副本挑战次数与预计消耗未能独立核对为每次{unit}开拓力，已禁止开始挑战。")
             if cost == desired:
                 return scene, cost
             if cost < desired:
@@ -511,18 +534,19 @@ class DailyWorkflow:
                     self.ctx.log(f"未确认增加次数按钮，按已核实{rounds}轮、{cost}开拓力挑战。")
                     return scene, cost
                 self._click(scene, plus)
-                scene = self._wait(lambda s: self._calyx(s) and self._cost(s) == cost + 10
+                scene = self._wait(lambda s: self._calyx(s) and self._cost(s) == cost + unit
                                    and self._round_count(s) == rounds + 1,
                                    description="双重验证挑战次数增加")
                 continue
-            minus = scene.find(("−", "-", "－"), (0.61, 0.74, 0.69, 0.85), exact=True)
+            minus_roi = (.74,.78,.80,.86) if category.key == "planar" else (0.61, 0.74, 0.69, 0.85)
+            minus = scene.find(("−", "-", "－"), minus_roi, exact=True)
             if minus is None:
-                minus = self._icon(scene, "count_minus", (0.61, 0.74, 0.69, 0.85))
+                minus = self._icon(scene, "count_minus", minus_roi)
             if minus is None:
                 raise AutomationError("本次挑战消耗超过限制，且未识别到减少次数按钮。")
             before = cost
             self._click(scene, minus)
-            scene = self._wait(lambda s: self._calyx(s) and self._cost(s) == before - 10
+            scene = self._wait(lambda s: self._calyx(s) and self._cost(s) == before - unit
                                and self._round_count(s) == rounds - 1,
                                description="双重验证挑战次数减少")
         raise AutomationError("调整挑战次数超过上限。")
@@ -555,7 +579,7 @@ class DailyWorkflow:
         gold = ((patch[:, :, 0] >= 12) & (patch[:, :, 0] <= 40)
                 & (patch[:, :, 1] >= 100) & (patch[:, :, 2] >= 170))
         white = (patch[:, :, 1] < 65) & (patch[:, :, 2] >= 180)
-        neutral_border = ((patch[:, :, 1] < 65) & (patch[:, :, 2] >= 45)
+        neutral_border = ((patch[:, :, 1] < 100) & (patch[:, :, 2] >= 45)
                           & (patch[:, :, 2] < 180))
         half = patch.shape[1] // 2
         left_knob = float(np.mean(white[:, :half]))
@@ -638,7 +662,8 @@ class DailyWorkflow:
     def _support_marker(scene: Scene) -> bool:
         if scene.image is None:
             return False
-        labels = [t for t in scene.tokens if t.within((0.32, 0.12, 0.98, 0.80))
+        region = (.31,.70,.52,.81) if scene.has("位面饰品提取", TITLE) else (0.32, 0.12, 0.98, 0.80)
+        labels = [t for t in scene.tokens if t.within(region)
                   and normalize(t.text) == "支援"]
         if len(labels) != 1:
             return False
@@ -663,7 +688,9 @@ class DailyWorkflow:
         return scene.has("队伍角色已满", (0.25, 0.20, 0.75, 0.40), exact=True)
 
     def _support(self, scene: Scene) -> Scene:
-        if not scene.has("队伍", TITLE) or not scene.has("开始挑战", BOTTOM, exact=True):
+        if category_for(self.settings).key == "planar":
+            return self._planar_support(scene)
+        if not self._team_page(scene):
             raise AutomationError("支援入口前未验证队伍页和开始挑战按钮，已停止。")
         support = scene.find("支援", BOTTOM, exact=True)
         if support is None:
@@ -719,10 +746,84 @@ class DailyWorkflow:
         if confirm is None:
             raise AutomationError("未识别到支援入队确认，已停止本次挑战。")
         self._click(scene, confirm)
-        scene = self._wait(lambda s: s.has("队伍", TITLE) and s.has("开始挑战", BOTTOM, exact=True)
+        scene = self._wait(lambda s: self._team_page(s)
                            and self._support_marker(s), timeout=15, description="验证队伍中的绿色支援标记")
         self.ctx.evidence(scene, "support_team_verified")
         return scene
+
+    @staticmethod
+    def _planar_picker(scene):
+        return (scene.has("支援列表", TITLE, exact=True)
+                and scene.has("刷新列表", BOTTOM, exact=True)
+                and scene.has("下载角色", (.30,.60,.55,.78), exact=True)
+                and scene.has("开始挑战", BOTTOM, exact=True))
+
+    def _planar_support(self, scene):
+        if not self._team_page(scene):
+            raise AutomationError("饰品提取支援前未核实已有存档准备页。")
+        self.ctx.move(scene,(.60,.60))
+        self._pause()
+        scene = self._snapshot()
+        support = scene.find("支援", BOTTOM, exact=True)
+        if support is None:
+            remove = scene.find("解除支援", BOTTOM, exact=True)
+            if remove is not None and self._planar_marker(scene):
+                # Clear only the borrowed role, then bind a freshly observed
+                # friend card. The saved own-team and build are not edited.
+                scene = self._click(scene, remove)
+                self.ctx.move(scene,(.60,.60))
+                self._pause()
+                scene = self._wait(lambda s:self._team_page(s) and s.has("支援",BOTTOM,exact=True)
+                                   and not self._planar_marker(s),description="核实旧借用支援已解除")
+                support = scene.find("支援",BOTTOM,exact=True)
+        if support is None:
+            raise AutomationError("未识别到饰品提取支援入口。")
+        self._click(scene, support)
+        scene = self._wait(self._planar_picker, description="等待饰品提取支援列表")
+        rows = self._support_friend_rows(scene)
+        if not rows:
+            raise AutomationError("饰品提取未核实完整好友卡片，未选择支援。")
+        if self._planar_marker(scene):
+            selected = []
+            for row in rows:
+                slot = self.ctx.planar_friend_slot(scene,row[0]) if hasattr(self.ctx,"planar_friend_slot") else None
+                if slot:
+                    center = (.337,.3865,.437,.4855)[slot-1]
+                    if scene.has("支援",(center-.012,.78,center+.012,.805),exact=True):
+                        selected.append(row)
+            if len(selected) != 1:
+                raise AutomationError("已有支援标记，但未核实其对应的好友卡片槽位。")
+            self.ctx.evidence(scene,"planar_selected_friend_verified")
+            scene = self._press("esc")
+            return self._wait(lambda s:self._team_page(s) and self._planar_marker(s),description="核实已有好友支援")
+        for candidate in rows[:6]:
+            if not self._planar_picker(scene):
+                raise AutomationError("饰品提取支援列表已变化。")
+            current = [row for row in self._support_friend_rows(scene)
+                       if abs(row[0].center[1]-candidate[0].center[1]) < .02
+                       and normalize(row[1].text) == normalize(candidate[1].text)
+                       and normalize(row[2]) == normalize(candidate[2])]
+            if len(current) != 1:
+                raise AutomationError("饰品提取好友卡片发生变化，未继续选择。")
+            self.ctx.evidence(scene, "planar_friend_before")
+            scene = self._click(scene, current[0][0])
+            feedback = lambda s: (self._team_page(s) and self._planar_marker(s)) or (self._planar_picker(s) and (self._planar_marker(s) or self._support_full(s)))
+            if not feedback(scene):
+                scene = self._wait(feedback, timeout=15, description="核实饰品提取好友支援反馈")
+            if self._support_full(scene):
+                continue
+            if self._planar_picker(scene):
+                scene = self._press("esc")
+            scene = self._wait(lambda s: self._team_page(s) and self._planar_marker(s),
+                               timeout=15, description="核实饰品提取已借用支援")
+            self.ctx.evidence(scene, "planar_friend_verified")
+            return scene
+        raise AutomationError("可见好友均反馈队伍已满，饰品提取未开始。")
+
+    def _planar_marker(self, scene):
+        if hasattr(self.ctx,"refine_planar_support"):
+            self.ctx.refine_planar_support(scene)
+        return self._support_marker(scene)
 
     def _auto_state(self, scene: Scene):
         roi = (0.85, 0, 0.94, 0.13)
@@ -794,9 +895,49 @@ class DailyWorkflow:
             elapsed += 2
         raise AutomationError("等待战斗超时；未确认挑战成功，已停止后续挑战。")
 
+    def _enter_planar_battle(self):
+        from .planar_entry import field_ready, require_field
+        ready = lambda s: field_ready(s) or self._icon(s,"battle_pause",(.93,0,1,.12)) is not None or self._settlement(s)
+        scene = self._wait(ready,timeout=60,description="等待饰品首领现场或战斗")
+        for attempt in range(4):
+            if not field_ready(scene):
+                return
+            self.ctx.log(f"饰品提取接战：第{attempt+1}次短距离接近首领。")
+            self.ctx.planar_approach(scene)
+            scene = self._snapshot()
+            if not field_ready(scene):
+                return
+            require_field(scene)
+            anchor = self._icon(scene,"planar_attack_mouse",(.85,.80,.92,.90),threshold=.85)
+            if anchor is None:
+                raise AutomationError("未匹配饰品首领现场普通攻击的鼠标提示，未攻击。")
+            target = (anchor[0]-.014,anchor[1]+.030)
+            self._click(scene,target)
+            for _ in range(5):
+                self.ctx.sleep(1)
+                scene = self._snapshot()
+                if self._icon(scene,"battle_pause",(.93,0,1,.12)) is not None or self._settlement(scene):
+                    self.ctx.evidence(scene,"planar_battle_entered")
+                    return
+                if not field_ready(scene):
+                    scene = self._wait(ready,timeout=30,description="核实饰品接战转换")
+                    if not field_ready(scene):
+                        return
+        raise AutomationError("饰品首领接战达到四次上限，保留待核对预算，不重放开始挑战。")
+
     @staticmethod
     def _settlement(scene: Scene) -> bool:
         return scene.has(("挑战成功", "战斗失败"), (0.25, 0.10, 0.75, 0.50), exact=True)
+
+    @staticmethod
+    def _settlement_count(scene: Scene) -> int | None:
+        values = []
+        for token in scene.tokens:
+            if token.within((.20,.40,.80,.90)):
+                match = re.fullmatch(r"(?:上轮挑战波次|本次挑战波次|挑战波次)([1-6])", normalize(token.text))
+                if match:
+                    values.append(int(match.group(1)))
+        return values[0] if len(values) == 1 else None
 
     def _exit_result(self, scene: Scene) -> None:
         if not self._settlement(scene):
@@ -821,20 +962,29 @@ class DailyWorkflow:
             return self._result("battle", "skipped", "尚未授权消耗开拓力，刷本任务已跳过。")
         if not self._snapshot().tokens:
             raise AutomationError("画面中没有可识别文字，无法选择花萼。")
-        completed = 0
-        while self.ctx.report.stamina_spent < self.settings.stamina_limit:
+        category = category_for(self.settings)
+        requested = self.settings.challenge_count
+        if category.weekly_limit:
+            requested = min(requested or category.weekly_limit, category.weekly_limit)
+        self.ctx.report.battle_requested = requested
+        completed = self.ctx.report.battle_completed
+        while (self.ctx.report.stamina_spent + category.cost <= self.settings.stamina_limit
+               and (requested is None or completed < requested)):
             scene = self._open_calyx()
             scene = self._disable_quick_refill(scene)
             remaining = self.settings.stamina_limit - self.ctx.report.stamina_spent
+            if requested is not None:
+                remaining = min(remaining, (requested - completed) * category.cost)
             scene, cost = self._limit_batch(scene, remaining)
             if cost == 0:
-                return self._result("battle", "partial", f"可用开拓力不足10，停止刷本；已确认消耗{self.ctx.report.stamina_spent}。", scene)
+                return self._result("battle", "partial", f"可用开拓力不足{category.cost}，停止刷本；已完成{completed}次，确认消耗{self.ctx.report.stamina_spent}。", scene)
             self.ctx.log(f"挑战前复核：消耗{cost}，轮数{self._round_count(scene)}，可用开拓力{self._available(scene)}。")
-            challenge = scene.find("挑战", BOTTOM, exact=True)
-            if challenge is None:
-                raise AutomationError("未识别到花萼挑战按钮。")
-            self._click(scene, challenge)
-            scene = self._wait(lambda s: self._insufficient(s) or s.has("开始挑战", BOTTOM, exact=True) or s.has(("阵亡", "无法挑战")), description="等待挑战队伍页")
+            if category.key != "planar":
+                challenge = scene.find("挑战", BOTTOM, exact=True)
+                if challenge is None:
+                    raise AutomationError("未识别到副本挑战按钮。")
+                self._click(scene, challenge)
+                scene = self._wait(lambda s: self._insufficient(s) or s.has("开始挑战", BOTTOM, exact=True) or s.has(("阵亡", "无法挑战")), description="等待挑战队伍页")
             if self._insufficient(scene):
                 self._cancel_insufficient(scene)
                 return self._result("battle", "partial", f"开拓力不足，已取消补充；已确认消耗{self.ctx.report.stamina_spent}。", scene)
@@ -842,13 +992,20 @@ class DailyWorkflow:
                 return self._result("battle", "partial", "存在阵亡角色或无法挑战提示，需要手动调整队伍。", scene)
             if self.settings.use_support:
                 scene = self._support(scene)
+            if category.key == "planar":
+                scene = self._disable_quick_refill(scene)
+                scene, cost = self._limit_batch(scene, remaining)
+                if not cost or (self.settings.use_support and not self._planar_marker(scene)):
+                    raise AutomationError("饰品提取支援后的费用、次数或支援标记发生未核实变化。")
             start = scene.find("开始挑战", BOTTOM, exact=True)
-            if start is None or not scene.has("队伍", TITLE):
+            if start is None or not self._team_page(scene):
                 raise AutomationError("未验证队伍页与开始挑战按钮。")
             budget = getattr(self.ctx, "battle_budget", None)
             if budget is not None:
                 budget.reserve(cost)
             self._click(scene, start)
+            if category.key == "planar":
+                self._enter_planar_battle()
             scene = self._battle_result()
             if self._insufficient(scene):
                 self._cancel_insufficient(scene)
@@ -856,16 +1013,25 @@ class DailyWorkflow:
             if scene.has("战斗失败", (0.25, 0.10, 0.75, 0.50)):
                 self._exit_result(scene)
                 return self._result("battle", "partial", "战斗失败，停止后续刷本；仅计入此前已确认成功的开拓力。", scene)
+            if self.settings.dungeon_category != "auto" and cost > category.cost:
+                if self._settlement_count(scene) is None:
+                    self.ctx.log("已看到挑战成功，等待结算动画显示本批完成波次。")
+                    scene = self._wait(lambda s: self._settlement(s) and self._settlement_count(s) is not None,
+                                       timeout=30, description="结算波次显示")
+                if self._settlement_count(scene) != cost // category.cost:
+                    raise AutomationError("成功结算未独立核实本批完成波次，保留待核对消耗，不重复挑战。")
             # Accounting happens once, only after a visible success screen.
+            completed += cost // category.cost
+            self.ctx.report.battle_completed = completed
             if budget is not None:
                 budget.confirm(cost)
             else:
                 self.ctx.report.stamina_spent += cost
-            completed += cost // 10
             self.ctx.evidence(scene, f"battle_success_{completed}")
             self.ctx.log(f"挑战成功，累计确认消耗{self.ctx.report.stamina_spent}开拓力。")
             self._exit_result(scene)
-        return self._result("battle", "ok", f"已确认完成{completed}轮花萼，消耗{self.ctx.report.stamina_spent}开拓力。")
+        status = "ok" if requested is None or completed == requested else "partial"
+        return self._result("battle", status, f"已确认完成{completed}次{category.label}，消耗{self.ctx.report.stamina_spent}开拓力。")
 
     def _activity(self, scene: Scene) -> int | None:
         # Do not mistake the 500-point milestone label for current activity.

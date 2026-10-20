@@ -18,7 +18,7 @@ from .config import CONFIG_PATH, ROOT, Settings
 from .ux import report_context, recovery_text, exit_text
 
 TASK_NAMES = {
-    "assignments": "持续委托奖励", "battle": "拟造花萼挑战",
+    "assignments": "持续委托奖励", "battle": "日常副本挑战",
     "daily": "每日实训奖励", "mail": "邮件附件", "battlepass": "无名勋礼奖励",
 }
 STATUS_NAMES = {
@@ -84,7 +84,7 @@ class AutoHSRWindow:
         root.bind_all("<F10>", lambda _: self._stop())
         root.after(100, self._drain)
         self._log("准备就绪。选择任务与副本，然后检测窗口。")
-        self._log("仅使用已有开拓力；首次验证建议采用“测试 10 / 1 轮”。")
+        self._log("仅使用已有开拓力；首次验证建议选择“测试：1次”，核对副本与预计消耗。")
         if not self.settings.allow_stamina_spend:
             self._log("开拓力刷本未授权，当前仅收取委托与奖励。", "warning")
         if config_error:
@@ -133,13 +133,18 @@ class AutoHSRWindow:
         self.target_location = tk.StringVar(value=self.settings.target_location)
         self.stamina_limit = tk.StringVar(value=str(self.settings.stamina_limit))
         self.rounds = tk.StringVar(value=str(self.settings.rounds))
+        from .dungeons import category_for, count_limit
+        category = category_for(self.settings)
+        self.dungeon_category = tk.StringVar(value=category.label)
+        self.challenge_count = tk.StringVar(value=str(self.settings.challenge_count or count_limit(category, self.settings.stamina_limit)))
+        self.battle_cost = tk.StringVar()
         self.use_support = tk.BooleanVar(value=self.settings.use_support)
         self.auto_launch = tk.BooleanVar(value=self.settings.auto_launch)
         self.tasks = {name: tk.BooleanVar(value=getattr(self.settings, name)) for name in TASK_NAMES}
         if not self.settings.allow_stamina_spend:
             self.tasks["battle"].set(False)
         self.form_variables = [self.game_path, self.target_name, self.target_location, self.stamina_limit,
-                               self.rounds, self.use_support, self.auto_launch, *self.tasks.values()]
+                               self.rounds, self.dungeon_category, self.challenge_count, self.use_support, self.auto_launch, *self.tasks.values()]
         self.status = tk.StringVar(value="● 准备就绪")
         self.save_status = tk.StringVar()
         self.summary = tk.StringVar(value="请选择任务并检测窗口；运行结果会保留在这里。")
@@ -214,39 +219,8 @@ class AutoHSRWindow:
         widget.configure(state="disabled")
 
     def _build_battle_fields(self, parent):
-        ttk.Label(parent, text="目标副本", style="Section.TLabel").pack(anchor="w", pady=(2, 0))
-        fields = ttk.Frame(parent, style="Panel.TFrame")
-        fields.pack(fill="x", pady=(5, 7))
-        fields.columnconfigure((0, 1), weight=1, uniform="fields")
-        for col, (label, variable) in enumerate((("花萼名称", self.target_name), ("地点（刷本必填）", self.target_location))):
-            ttk.Label(fields, text=label, style="Muted.TLabel").grid(row=0, column=col, sticky="w", padx=(0 if col == 0 else 10, 0))
-            widget = ttk.Entry(fields, textvariable=variable, width=12)
-            widget.grid(row=1, column=col, sticky="ew", pady=(5, 0), padx=(0 if col == 0 else 10, 0))
-            self.setting_controls.append(widget)
-            self.stamina_controls.append(widget)
-        numbers = ttk.Frame(parent, style="Panel.TFrame")
-        numbers.pack(fill="x", pady=(0, 3))
-        numbers.columnconfigure((0, 1), weight=1, uniform="numbers")
-        for col, (label, variable, high, step) in enumerate((("本次运行最多消耗", self.stamina_limit, 240, 10), ("每次挑战轮数", self.rounds, 6, 1))):
-            ttk.Label(numbers, text=label, style="Muted.TLabel").grid(row=0, column=col, sticky="w", padx=(0 if col == 0 else 10, 0))
-            widget = ttk.Spinbox(numbers, from_=step, to=high, increment=step, textvariable=variable, width=10)
-            widget.grid(row=1, column=col, sticky="ew", pady=(5, 0), padx=(0 if col == 0 else 10, 0))
-            self.setting_controls.append(widget)
-            self.stamina_controls.append(widget)
-        support = ttk.Checkbutton(parent, text="借用好友支援角色", variable=self.use_support)
-        support.pack(anchor="w", pady=(0, 5))
-        self.setting_controls.append(support)
-        self.stamina_controls.append(support)
-        presets = ttk.Frame(parent, style="Panel.TFrame")
-        presets.pack(fill="x")
-        presets.columnconfigure((0, 1), weight=1, uniform="presets")
-        for col, (label, stamina, rounds) in enumerate((("本轮 240 / 每批6轮", 240, 6), ("测试 10 / 1 轮", 10, 1))):
-            button = ttk.Button(presets, text=label, style="Compact.TButton", command=lambda s=stamina, r=rounds: self._preset(s, r))
-            button.grid(row=0, column=col, sticky="ew", padx=(0 if col == 0 else 8, 0))
-            self.setting_controls.append(button)
-            self.stamina_controls.append(button)
-        ttk.Label(parent, text="快捷模式只填写，不会自动运行。", style="Muted.TLabel").pack(anchor="w", pady=(3, 2))
-        ttk.Label(parent, textvariable=self.battle_hint, style="Warning.TLabel", wraplength=355, justify="left").pack(anchor="w")
+        from .dungeon_ui import build_fields
+        build_fields(self, parent)
 
     def _form_signature(self) -> tuple[Any, ...]:
         return tuple(variable.get() for variable in self.form_variables)
@@ -263,7 +237,9 @@ class AutoHSRWindow:
         self.save_status.set("● 有未保存的修改" if self.dirty else ("配置已保存" if self.config_path.exists() else "默认配置 · 尚未保存"))
         self.save_label.configure(foreground="#efc779" if self.dirty else self.MUTED)
         selected = [label for key, label in TASK_NAMES.items() if self.tasks[key].get()]
-        battle = f" · {self.target_name.get()} / {self.target_location.get() or '地点待填写'} · 本轮最多 {self.stamina_limit.get()} · 每批 {self.rounds.get()} 轮" if self.tasks["battle"].get() else " · 不刷本"
+        from .dungeon_ui import refresh_count
+        refresh_count(self)
+        battle = f" · {self.target_name.get()} / {self.target_location.get() or '地点待填写'} · {self.challenge_count.get()} 次 · 开拓力上限 {self.stamina_limit.get()}" if self.tasks["battle"].get() else " · 不刷本"
         self.plan.set(("自动启动游戏" if self.auto_launch.get() else "使用已打开的游戏") + battle + "\n" + "、".join(selected))
         self._refresh_controls()
 
@@ -287,12 +263,15 @@ class AutoHSRWindow:
         battle_enabled = allowed and self.tasks["battle"].get()
         for control in self.stamina_controls:
             control.configure(state="normal" if battle_enabled and not self.busy else "disabled")
+        self.dungeon_category_combo.configure(state="readonly" if battle_enabled and not self.busy else "disabled")
         if not allowed:
             hint = "开拓力刷本未授权，当前仅收取委托与奖励"
         elif not battle_enabled:
-            hint = "未勾选花萼挑战，副本设置暂不参与执行。"
+            hint = "未勾选副本挑战，副本设置暂不参与执行。"
         elif not self.use_support.get():
             hint = "好友支援已关闭；标准每日流程需勾选支援。"
+        elif self.dungeon_category.get() == "饰品提取":
+            hint = "使用游戏中已有差分存档；仅消耗开拓力，不创建或切换存档。"
         else:
             hint = "仅用现有开拓力；不会使用燃料或星琼。"
         self.battle_hint.set(hint)
@@ -322,7 +301,10 @@ class AutoHSRWindow:
             return
         self.stamina_limit.set(str(stamina))
         self.rounds.set(str(rounds))
-        self._log(f"已填写 {'每日' if stamina == 240 else '测试'}模式：上限 {stamina} 开拓力、每次 {rounds} 轮。尚未开始执行。")
+        from .dungeon_ui import selected_category
+        from .dungeons import count_limit
+        self.challenge_count.set(str(count_limit(selected_category(self), stamina)))
+        self._log(f"已填写：上限 {stamina} 开拓力、本次 {self.challenge_count.get()} 次。尚未开始执行。")
 
     def _choose_game(self) -> None:
         path = filedialog.askopenfilename(title="选择 StarRail.exe", filetypes=[("星穹铁道程序", "StarRail.exe"), ("应用程序", "*.exe")], initialdir=str(Path(self.game_path.get()).parent), parent=self.root)
@@ -332,7 +314,10 @@ class AutoHSRWindow:
     def _read_settings(self, save=False, operation="daily") -> Settings | None:
         try:
             values = dict(game_path=self.game_path.get().strip())
-            if not save and operation.startswith("currency_wars"):
+            if not save and operation == "dungeon_catalogue":
+                values.update(auto_launch=False, assignments=False, battle=False, daily=False, mail=False, battlepass=False,
+                              dungeon_category="auto", ocr_confidence=float(self.ocr_confidence.get()))
+            elif not save and operation.startswith("currency_wars"):
                 values.update(auto_launch=False, assignments=False, battle=False, daily=False, mail=False, battlepass=False,
                               ocr_confidence=float(self.ocr_confidence.get()))
             elif not save and operation == "differential_universe":
@@ -349,6 +334,9 @@ class AutoHSRWindow:
                 if values["battle"] and self.settings.allow_stamina_spend:
                     values.update(target_name=self.target_name.get().strip(), target_location=self.target_location.get().strip(),
                                   stamina_limit=int(self.stamina_limit.get()), rounds=int(self.rounds.get()), use_support=self.use_support.get())
+                    from .dungeon_ui import selected_category
+                    values.update(dungeon_category=selected_category(self).key, challenge_count=int(self.challenge_count.get()),
+                                  rounds=min(int(self.challenge_count.get()), selected_category(self).batch))
                 values.update(action_delay=float(self.action_delay.get()), battle_timeout=int(self.battle_timeout.get()),
                               ocr_confidence=float(self.ocr_confidence.get()))
             elif operation == "check":
@@ -453,13 +441,13 @@ class AutoHSRWindow:
     def _currency_match_test(self):
         self._start(currency_wars=True,flow_test=True,currency_start_from_lobby=True)
 
-    def _start(self, reward_only=False, *, currency_wars=False, differential_universe=False, drag_test=False, deploy_test=False, node_test=False, flow_test=False,
+    def _start(self, reward_only=False, *, catalogue=False, currency_wars=False, differential_universe=False, drag_test=False, deploy_test=False, node_test=False, flow_test=False,
                currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                currency_control_probe=False,currency_timeout_probe=False) -> None:
         if self.busy or self.closing or (self.worker is not None and self.worker.is_alive()):
             return
         currency_wars = currency_wars or drag_test or deploy_test or node_test or flow_test
-        operation = "currency_wars_flow_test" if flow_test else "currency_wars_node_test" if node_test else "currency_wars_deploy_test" if deploy_test else "currency_wars_drag_test" if drag_test else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "reward_only" if reward_only else "daily"
+        operation = "dungeon_catalogue" if catalogue else "currency_wars_flow_test" if flow_test else "currency_wars_node_test" if node_test else "currency_wars_deploy_test" if deploy_test else "currency_wars_drag_test" if drag_test else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "reward_only" if reward_only else "daily"
         settings = self._read_settings(operation=operation)
         if settings is None:
             return
@@ -480,7 +468,7 @@ class AutoHSRWindow:
                     "如只需领取每日奖励，请选否，再点“仅补领奖”。\n确定已人工核对，仍要开始新一轮？", default="no", parent=self.root)
                 if not new_battle_run:
                     return
-        if not currency_wars and not differential_universe and not any(getattr(settings, key) for key in TASK_NAMES):
+        if not catalogue and not currency_wars and not differential_universe and not any(getattr(settings, key) for key in TASK_NAMES):
             messagebox.showinfo("未选择任务", "请至少勾选一项每日任务。", parent=self.root)
             return
         self.runner = None
@@ -490,7 +478,9 @@ class AutoHSRWindow:
                       f"差分宇宙 · 乐园漫记 · {settings.differential_universe_runs} 局自动演算 · 不消耗每日刷本预算" if differential_universe else
                       "仅补领奖 · 不刷本 · 不执行附加任务 · 本次不保存" if reward_only else
                       ("自动启动游戏" if settings.auto_launch else "使用已打开的游戏") +
-                      (f" · {settings.target_name} / {settings.target_location} · 本轮最多 {settings.stamina_limit} · 每批 {settings.rounds} 轮" if settings.battle else " · 不刷本"))
+                      (f" · {settings.target_name} / {settings.target_location} · {settings.challenge_count} 次 · 开拓力上限 {settings.stamina_limit}" if settings.battle else " · 不刷本"))
+        if catalogue:
+            self.plan.set("采集生存索引副本目录 · 不开始挑战 · 不消耗资源")
         self._has_run = True
         self.paused = self.stopping = False
         self.focus_waiting = False
@@ -715,6 +705,15 @@ class AutoHSRWindow:
         daily = "已验证" if report.get("daily_verified", False) else "未验证"
         pending = report.get("stamina_pending", 0)
         self.summary.set(f"{STATUS_NAMES.get(status, status)} · 本轮已确认 {self.confirmed_stamina} / 上限 {report.get('stamina_limit', '未记录')} · 待核对 {pending} · 每日奖励 {daily} · {exit_text(report)}" + ("\n" + recovery_text(report) if recovery_text(report) else ""))
+        if report.get("operation", self.active_operation) == "dungeon_catalogue":
+            data = report.get("dungeon_catalogue") or {}
+            self.summary.set(f"副本采集 · {STATUS_NAMES.get(status, status)} · {data.get('count', 0)} 个入口 · 消耗 0 开拓力" + ("\n" + str(report.get("error")) if report.get("error") else ""))
+            if status == "success":
+                from .dungeon_ui import reload_catalogue, update_options
+                reload_catalogue(self)
+                update_options(self)
+        elif report.get("battle_requested") is not None:
+            self.summary.set(f"副本完成 {report.get('battle_completed', 0)} / {report['battle_requested']} 次 · " + self.summary.get())
         if currency:
             outcome = ("已停止" if status == "stopped" else "运行失败" if status == "failed" else
                        "只读识别结束" if report.get('operation', self.active_operation) == 'currency_wars' else

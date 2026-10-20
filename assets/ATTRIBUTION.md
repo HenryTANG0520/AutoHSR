@@ -91,3 +91,29 @@ interface elements belong to their respective rights holders. These are local
 gameplay samples, not copies of the upstream template libraries listed above.
 Their presence does not establish successful combat entry or a completed run;
 development is paused pending the user's guide.
+
+## Daily dungeon catalogue and local recognition samples
+
+`dungeons.json` records mission labels and map labels observed in the Simplified
+Chinese 4.6.0 client on 2026-10-20. The 104 entries were bound to visible entry
+buttons in locally captured Survival Index pages, with native-resolution OCR
+and a small set of exact, sample-backed OCR aliases. No upstream mission data
+file was copied. Account identifiers and player nicknames are not included.
+
+`autohsr/tests/fixtures/dungeons/guide_rows.json` preserves list-region OCR and
+source-image hashes for 63 local observations. `cavern_refill_off.png` contains
+only the observed refill-switch region from a local cavern challenge page.
+Original screenshots remain in ignored local `runs/` directories. Game labels
+and interface pixels belong to their respective rights holders. Catalogue
+coverage is separate from actual combat validation recorded in `VALIDATION.md`.
+
+`planar_support_badge.png` and `planar_friend_slot4.png` are tiny native-resolution
+crops of the support badge and numbered selected-slot flag from the same local
+client. Their source hash and crop rectangles are in `planar_support.json`;
+these crops contain no account identifiers or player nicknames.
+
+`templates/planar_attack_mouse.png` is a local 2026-10-20 crop of the mouse-left
+hint beside the field normal-attack control, resized to the 1920px template
+baseline. Its JSON sidecar records the source hash and rectangle. It is used
+only after this run has started planar extraction and reserved its cost; it
+does not enable general Differential Universe movement or gameplay.
