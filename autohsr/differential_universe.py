@@ -290,6 +290,7 @@ class DifferentialUniverseWorkflow:
             "page_history": self.report["page_history"],
             "reward_collection": self.report.get('reward_collection'),
             "navigation_observations": self.report.get('navigation_observations',[]),
+            "device_detours": self.report.get('device_detours',[]),
             "team_selections": self.report.get('team_selections',[]),
             "daily_interludes": self.report.get('daily_interludes',[]),
         }
@@ -1552,7 +1553,7 @@ class DifferentialUniverseWorkflow:
         raise AutomationError("异常区域直行接近达到上限，仍无可见交互提示；停止并保留进度。")
 
     def _field_anomaly_visual(self,scene,*,field_kind='field_anomaly'):
-        from .du_navigation import event_targets,navigation_targets,random_gate,interaction_hint
+        from .du_navigation import event_targets,navigation_targets,random_gate,interaction_hint,optional_device_prompt
         from .du_detector import forward_barrier
         started,inactive_before=time.monotonic(),self._inactive()
         scans=recoveries=close_backoffs=0
@@ -1563,6 +1564,7 @@ class DifferentialUniverseWorkflow:
         unread_interaction_checks=0
         side_routes=0
         side_route_forward=False
+        device_detours=0
         for step in range(64):
             self.ctx.checkpoint()
             prompt=self._field_interaction_target(scene)
@@ -1592,6 +1594,24 @@ class DifferentialUniverseWorkflow:
             # final movement/OCR frame straddled the search deadline. The
             # independent three-interaction cap still prevents repeating F.
             self._check_deadline(started,inactive_before,ROOM_TIMEOUT,"异常区域视觉接近")
+            device=optional_device_prompt(scene,forge_console_used=self._forge_console_used)
+            if device is not None:
+                if device_detours:
+                    raise AutomationError('已绕行一次，但可选设备仍占据交互范围；停止重复横移。')
+                device_detours+=1
+                self.ctx.log('已识别可选设备挡路，后退并沿左侧有限绕行，再重新定位卡片或门。')
+                self.report.setdefault('device_detours',[]).append({
+                    'run':self.report['current_run'],'device':device.text,
+                    'before':str(self.ctx.evidence(scene,'optional_device_before_detour'))})
+                self._persist_ledger()
+                for direction,duration in (('s',500),('a',1100),('w',1100)):
+                    scene=self.ctx.differential_universe_move(scene,direction,duration)
+                    kind=self._observe(scene,'optional_device_detour_'+direction)
+                    scene,kind=self._wait_known(scene,kind,'optional_device_detour_'+direction)
+                    if kind!=field_kind:
+                        return scene,kind
+                aligned_object_steps=0
+                continue
             if not ignored_device and interaction_hint(scene.image):
                 if unread_interaction_checks>=2:
                     raise AutomationError('F提示已出现，但交互名称尚未核实；停止并保留当前位置。')

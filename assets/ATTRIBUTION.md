@@ -483,3 +483,9 @@ by a closing AutoHSR inspection window. The fixture masks account identifiers
 and local configuration paths; its sidecar omits those OCR tokens and retains
 source/fixture hashes. It tests rejecting helper UI content before game-option
 recognition. It is not independent completion evidence.
+
+`du_runtime/optional_device_blocks_gate.png` is a native wealth-room capture
+with account identifiers masked. Its sidecar retains source/fixture hashes
+and observed OCR excluding identifiers. It tests recognizing a live optional
+machine prompt for bounded avoidance, without authorizing game interaction
+or spending. Game artwork remains the property of HoYoverse.

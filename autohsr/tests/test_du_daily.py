@@ -184,4 +184,3 @@ class DailyInterludeTests(unittest.TestCase):
                 farm.assert_called_once()
                 self.assertEqual(free.call_count,5)
             self.assertEqual(flow.report['completed_runs'],1)
-

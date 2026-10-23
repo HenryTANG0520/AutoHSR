@@ -16,6 +16,60 @@ def t(text,x=.1,y=.05):
 
 
 class DuRuntimeTests(unittest.TestCase):
+    @staticmethod
+    def optional_device_fixture():
+        import cv2,json
+        from pathlib import Path
+        root=Path(__file__).parent/'fixtures/du_runtime/optional_device_blocks_gate'
+        data=json.loads(root.with_suffix('.json').read_text('utf8'))
+        return Scene([Token(v['text'],v['score'],tuple(v['box'])) for v in data['tokens']],
+                     cv2.imread(str(root.with_suffix('.png'))))
+
+    def test_native_optional_machine_only_authorizes_avoidance_with_live_prompt(self):
+        from autohsr.du_navigation import optional_device_prompt
+        from autohsr.policy import guard_differential_universe_field_interact
+        page=self.optional_device_fixture()
+        target=optional_device_prompt(page)
+        self.assertEqual(target.text,'游玩「超级排排乐」')
+        with self.assertRaises(AutomationError):
+            guard_differential_universe_field_interact(page,target)
+        for text in ('游玩「未知游戏」','购买「超级排排乐」','超级排排乐'):
+            changed=Scene([Token(text,v.score,v.box) if v==target else v for v in page.tokens],page.image)
+            self.assertIsNone(optional_device_prompt(changed))
+        wrong_place=Scene([Token(target.text,target.score,(.20,.20,.45,.25)) if v==target else v
+                           for v in page.tokens],page.image)
+        self.assertIsNone(optional_device_prompt(wrong_place))
+        wrong_room=Scene([Token('(6/13) 第二位面-战斗',v.score,v.box) if '位面-' in v.text else v
+                          for v in page.tokens],page.image)
+        self.assertIsNone(optional_device_prompt(wrong_room))
+        page.image[round(.45*1080):round(.65*1080),round(.52*1920):round(.60*1920)]=0
+        self.assertIsNone(optional_device_prompt(page))
+
+    def test_optional_machine_detour_is_bounded_and_never_plays_the_game(self):
+        page=self.optional_device_fixture()
+        ctx=Mock(settings=Settings(),report=RunReport())
+        ctx.differential_universe_move.return_value=page
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._observe=Mock(return_value='field_wealth')
+        with self.assertRaisesRegex(AutomationError,'已绕行一次'):
+            flow._field_anomaly_visual(page,field_kind='field_wealth')
+        self.assertEqual([(c.args[1],c.args[2]) for c in ctx.differential_universe_move.call_args_list],
+                         [('s',500),('a',1100),('w',1100)])
+        ctx.differential_universe_interact.assert_not_called()
+        ctx.differential_universe_enter_random_gate.assert_not_called()
+        ctx.differential_universe_motion.assert_not_called()
+
+    def test_optional_device_detour_stops_on_field_change_before_another_move(self):
+        page=self.optional_device_fixture()
+        next_page=Scene([t('区域待选择')])
+        ctx=Mock(settings=Settings(),report=RunReport())
+        ctx.differential_universe_move.return_value=next_page
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._observe=Mock(return_value='station_choice')
+        self.assertEqual(flow._field_anomaly_visual(page,field_kind='field_wealth'),(next_page,'station_choice'))
+        ctx.differential_universe_move.assert_called_once_with(page,'s',500)
+        ctx.differential_universe_interact.assert_not_called()
+
     def test_recruitment_header_with_blank_cards_waits_for_observed_titles(self):
         import json
         from pathlib import Path
