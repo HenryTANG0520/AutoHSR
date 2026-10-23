@@ -48,6 +48,24 @@ class PlanarResourceTests(unittest.TestCase):
         page=fixture('planar_two_stamina')
         self.assertEqual(payment(self.workflow(page),page),(80,0))
 
+    def test_native_three_digit_planar_price_is_not_clipped_to_two_digits(self):
+        page=fixture('planar_three_stamina')
+        self.assertEqual(payment(self.workflow(page),page),(120,0))
+
+    def test_wide_price_read_needs_independent_resolution_of_a_clipped_prefix(self):
+        from autohsr.models import Token
+        source=fixture('planar_three_stamina')
+        for full,accepted in [('×240',True),('',False),('×120',False)]:
+            with self.subTest(full=full):
+                page=Scene([Token(full,t.score,t.box) if t.text=='×120' else t for t in source.tokens],source.image)
+                reads=[Token(str(n),.99,(0,0,1,1)) for n in (24,240)]
+                with patch.object(self.vision,'_read_field',side_effect=reads):
+                    if accepted:
+                        self.assertEqual(self.vision.planar_payment(page),dict(stamina=240,immersifiers=0))
+                    else:
+                        with self.assertRaises(AutomationError):
+                            self.vision.planar_payment(page)
+
     def test_marginal_stamina_icon_requires_both_layout_templates_at_same_position(self):
         from autohsr.models import Token
         page=fixture('planar_two_stamina')

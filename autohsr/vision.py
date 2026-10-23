@@ -92,12 +92,31 @@ class Vision:
             if match is None:
                 continue
             x, y, _ = match
-            patch = scene.image[round((y-.017)*h):round((y+.017)*h), round((x+.010)*w):round((x+.032)*w)]
-            number = self._read_field(patch, r'[×xX*]?\s*\d{1,3}')
-            value = re.fullmatch(r'[×x*]?(\d{1,3})', normalize(number.text)) if number else None
-            if value is None:
+            # Read both widths: a narrow crop clips three-digit prices, while
+            # a wide crop can include the divider after a two-digit price.
+            values=set()
+            for right in ((.032,.043) if key=='stamina' else (.032,)):
+                patch=scene.image[round((y-.017)*h):round((y+.017)*h),
+                                  round((x+.010)*w):round((x+right)*w)]
+                number=self._read_field(patch,r'[×xX*]?\s*\d{1,3}')
+                value=re.fullmatch(r'[×x*]?(\d{1,3})',normalize(number.text)) if number else None
+                if value:
+                    values.add(int(value[1]))
+            # The independently located full-frame price can disambiguate a
+            # plausible clipped prefix (e.g. 24 versus 240); never invent it
+            # from the requested count or accept conflicting observations.
+            full=set()
+            if key=='stamina':
+                for token in scene.tokens:
+                    if token.score>=.85 and token.within((x+.008,y-.025,min(.88,x+.060),y+.025)):
+                        value=re.fullmatch(r'[×x*]?(\d{1,3})',normalize(token.text))
+                        if value:
+                            full.add(int(value[1]))
+            if len(full)==1:
+                values &= full
+            if len(values)!=1:
                 raise AutomationError('饰品提取资源图标旁的价格无法读取。')
-            prices[key] = int(value.group(1))
+            prices[key] = values.pop()
         return prices
 
     def refine_du_field_header(self,scene):
