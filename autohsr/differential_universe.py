@@ -327,8 +327,19 @@ class DifferentialUniverseWorkflow:
 
     def _settle_supply(self, scene: Scene) -> tuple[Scene, str]:
         """A daily reset may put the owned login reward over an active battle."""
-        revealed = self._daily._supply_revealed(scene)
         claim = self._daily._supply_claim(scene)
+        # A room-entry banner can overlap the remaining-day text behind this
+        # popup. Re-read boundedly without input; keep the exact owned/free
+        # checks instead of interpreting corrupted OCR as a day count.
+        for _ in range(4):
+            if claim is not None:
+                break
+            self.ctx.sleep(.5)
+            scene,kind=self._snapshot('supply_header_recheck')
+            if kind!='login_supply':
+                return scene,kind
+            claim=self._daily._supply_claim(scene)
+        revealed = self._daily._supply_revealed(scene)
         if claim is None or (self._daily._login_supply_closed if revealed
                              else self._daily._login_supply_claimed):
             raise AutomationError('列车补给未核实免费领取入口，或同一阶段已经处理过，停止重复点击。')

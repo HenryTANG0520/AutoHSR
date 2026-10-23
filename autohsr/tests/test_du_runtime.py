@@ -1708,6 +1708,35 @@ class DuRuntimeTests(unittest.TestCase):
         with self.assertRaises(AutomationError):
             flow._settle_supply(revealed)
 
+    def test_monthly_supply_waits_out_overlapping_room_banner_without_guessing_days(self):
+        import json
+        from pathlib import Path
+        claim=t('点击领取今日补给',.5,.862)
+        data=json.loads((Path(__file__).parent/'fixtures/du_runtime/supply_room_banner_overlap.json').read_text('utf8'))
+        bad=Scene([Token(v['text'],v['score'],tuple(v['box'])) for v in data['tokens']])
+        self.assertIsNone(DifferentialUniverseWorkflow(Mock(settings=Settings(),report=RunReport()),1)._daily._supply_claim(bad))
+        ready=Scene([t('列车补给',.5,.071),t('剩余：8天',.5,.120),claim])
+        revealed=Scene(ready.tokens+[t('90',.5,.55),t('星琼',.5,.59)])
+        ctx=Mock(settings=Settings(),report=RunReport())
+        ctx.wait.return_value=revealed
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._snapshot=Mock(side_effect=[(bad,'login_supply'),(ready,'login_supply')])
+        def click(*args,**kwargs):
+            self.assertEqual(flow._snapshot.call_count,2)
+            return ready,'login_supply'
+        flow._click=Mock(side_effect=click)
+        flow._observe=Mock(return_value='login_supply')
+        self.assertEqual(flow._settle_supply(bad),(revealed,'login_supply'))
+        flow._click.assert_called_once_with(ready,claim,intent='du_supply_claim',label='du_supply_claim')
+        self.assertEqual(ctx.sleep.call_count,2)
+        flow=DifferentialUniverseWorkflow(Mock(settings=Settings(),report=RunReport()),1)
+        flow._snapshot=Mock(return_value=(bad,'login_supply'))
+        flow._click=Mock()
+        with self.assertRaisesRegex(AutomationError,'未核实免费领取入口'):
+            flow._settle_supply(bad)
+        self.assertEqual(flow._snapshot.call_count,4)
+        flow._click.assert_not_called()
+
     def test_split_enemy_bar_allows_attack_only_with_live_range_ring(self):
         page=Scene([t('(11/13) 第三位面-精英'),t('等级93',.45,.05),t('「药王秘传」',.55,.05)])
         ctx=Mock(settings=Settings(),report=RunReport())

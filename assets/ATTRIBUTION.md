@@ -548,3 +548,9 @@ requiring a card with existing beacons. Its sidecar retains source/fixture
 hashes and OCR excluding the account identifier. It tests the full reroll
 instruction and named beacon descriptions in the selected-card panel. It is
 local regression evidence, not an independent completion.
+
+`du_runtime/supply_room_banner_overlap.png` is a masked native daily-reset
+login-supply popup over an active room-entry banner. Source/fixture hashes
+and non-identifier OCR are preserved in its sidecar. It tests bounded
+observation retries while the remaining-day text is obscured, retaining the
+same owned-supply and free-claim checks. Game artwork belongs to HoYoverse.
