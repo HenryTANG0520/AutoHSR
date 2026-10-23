@@ -504,3 +504,10 @@ whose reward panels are still sliding in from offscreen. It tests withholding
 the no-rewards conclusion until all four anchors are complete and stable.
 Their sidecars retain hashes and non-identifier OCR; these are local
 regression examples, not independent completion evidence. Artwork is HoYoverse's.
+
+`du_runtime/card_unqualified_caption.png` is a masked native edge-on world
+event card with a bare floating Chinese title. The sidecar retains source and
+fixture hashes and non-identifier OCR. It tests matching a weak learned card
+body to the title above it without lowering the normal detector threshold or
+authorizing F from a title. It is a local regression example, not independent
+completion evidence. Game artwork remains HoYoverse's.

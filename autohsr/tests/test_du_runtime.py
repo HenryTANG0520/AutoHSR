@@ -846,6 +846,36 @@ class DuRuntimeTests(unittest.TestCase):
                           Scene([t('(11/13) 第三位面-事件'),t('普通广告文字',.5,.25)],page.image)):
                 self.assertEqual(event_targets(other),[])
 
+    def test_bare_world_caption_corroborates_edge_on_card_without_global_threshold_change(self):
+        from autohsr.du_navigation import event_targets
+        from autohsr.du_detector import detect_cards
+        from autohsr.policy import guard_differential_universe_field_interact
+        page=self.optional_device_fixture('card_unqualified_caption')
+        self.assertEqual(detect_cards(page),[])
+        self.assertTrue(detect_cards(page,.30))
+        caption=page.find('机器人销售终端',exact=True)
+        targets=event_targets(page)
+        self.assertEqual(len(targets),1)
+        self.assertEqual(targets[0].text,'Card')
+        self.assertAlmostEqual(targets[0].center[0],caption.center[0])
+        with self.assertRaises(AutomationError):
+            guard_differential_universe_field_interact(page,caption)
+
+    def test_bare_caption_needs_a_matching_learned_body_and_live_field_header(self):
+        from autohsr.du_navigation import event_targets
+        page=self.optional_device_fixture('card_unqualified_caption')
+        caption=page.find('机器人销售终端',exact=True)
+        header=next(t for t in page.tokens if '10/13' in t.text)
+        body=Token('Card',.4,(.39,.17,.43,.46))
+        def cards(scene,threshold=.8):return [body] if threshold==.30 else []
+        with patch('autohsr.du_detector.detect_cards',side_effect=cards):
+            self.assertTrue(event_targets(Scene([header,caption],page.image)))
+            self.assertEqual(event_targets(Scene([caption],page.image)),[])
+            self.assertEqual(event_targets(Scene([header,t('普通广告文字',.70,.12)],page.image)),[])
+            self.assertEqual(event_targets(Scene([header,t('普通广告文字',.41,.51)],page.image)),[])
+        with patch('autohsr.du_detector.detect_cards',return_value=[]):
+            self.assertEqual(event_targets(Scene([header,caption],page.image)),[])
+
     def test_guide_tab_without_red_dot_and_with_occluded_lower_edge(self):
         import cv2
         from pathlib import Path

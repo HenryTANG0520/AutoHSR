@@ -352,6 +352,23 @@ def event_targets(scene):
         title=min(candidates,key=lambda token:abs(token.center[0]-.5),default=None)
     if title is None and learned:
         return learned
+    if title is None and scene.image is not None:
+        # A bare floating name can corroborate a weak edge-on card box. Keep
+        # the normal detector threshold and require both sources to agree;
+        # ordinary HUD text or a caption without a learned body is no target.
+        import re
+        captions=[t for t in scene.tokens if t.score>=.90 and t.within((.24,.07,.80,.46))
+                  and .012<=t.box[3]-t.box[1]<=.055
+                  and re.fullmatch(r'[\u3400-\u9fff·]{2,20}',re.sub(r'\s+','',t.text))]
+        if captions:
+            for body in detect_cards(scene,.30) or []:
+                if body.box[3]-body.box[1]<.12:
+                    continue
+                matched=[t for t in captions if body.box[0]-.03<=t.center[0]<=body.box[2]+.03
+                         and -.02<=body.box[1]-t.box[3]<=.14]
+                if matched:
+                    title=min(matched,key=lambda t:abs(t.center[0]-body.center[0]))
+                    break
     if title is None:
         title=scene.find('造物调试台',(.20,.07,.80,.55),exact=True)
     if title is None:
