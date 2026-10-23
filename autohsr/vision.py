@@ -80,6 +80,15 @@ class Vision:
             match = self.template(matched_scene, RESOURCE_ROOT/'assets/templates'/(name+'.png'), (.73,.88,.84,.95), .90)
             if match is None and key == 'stamina':
                 match = self.template(matched_scene, RESOURCE_ROOT/'assets/templates/planar_stamina_cost_single.png', (.73,.88,.84,.95), .90)
+            if match is None and key == 'stamina':
+                # The animated glow can lower either full-icon score. Accept
+                # a marginal fit only when both calibrated layouts agree on
+                # the same icon position; the caller still checks exact cost.
+                weak=[self.template(matched_scene,RESOURCE_ROOT/'assets/templates'/(n+'.png'),
+                                    (.73,.88,.84,.95),.88)
+                      for n in ('planar_stamina_cost','planar_stamina_cost_single')]
+                if all(weak) and abs(weak[0][0]-weak[1][0])<.004 and abs(weak[0][1]-weak[1][1])<.004:
+                    match=max(weak,key=lambda value:value[2])
             if match is None:
                 continue
             x, y, _ = match

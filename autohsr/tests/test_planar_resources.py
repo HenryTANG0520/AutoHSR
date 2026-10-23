@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock,patch
 from autohsr.config import Settings, RESOURCE_ROOT
 from autohsr.models import AutomationError, RunReport, Scene
 from autohsr.recovery import BattleBudget, recovery_state
@@ -43,6 +43,27 @@ class PlanarResourceTests(unittest.TestCase):
         with self.assertRaises(AutomationError):
             payment(flow,page)
         self.assertEqual(payment(flow,page,require_affordable=False),(40,4))
+
+    def test_native_stamina_only_intermediate_price_with_animated_glow(self):
+        page=fixture('planar_two_stamina')
+        self.assertEqual(payment(self.workflow(page),page),(80,0))
+
+    def test_marginal_stamina_icon_requires_both_layout_templates_at_same_position(self):
+        from autohsr.models import Token
+        page=fixture('planar_two_stamina')
+        for second,valid in [((.765,.911,.89),True),(None,False),((.80,.911,.89),False)]:
+            with self.subTest(second=second):
+                def match(scene,path,roi,threshold):
+                    if threshold!=.88:
+                        return None
+                    return (.764,.911,.885) if path.stem=='planar_stamina_cost' else second
+                with patch.object(self.vision,'template',side_effect=match), \
+                     patch.object(self.vision,'_read_field',return_value=Token('80',.99,(0,0,1,1))):
+                    if valid:
+                        self.assertEqual(payment(self.workflow(page),page),(80,0))
+                    else:
+                        with self.assertRaises(AutomationError):
+                            payment(self.workflow(page),page)
 
     def test_dim_auto_is_observation_only_instead_of_a_toggle(self):
         import cv2

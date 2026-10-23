@@ -41,7 +41,36 @@ class DayJournal:
         self.key,self.day=key,day
         self.data={}
 
-    def begin(self,run_id,*,resume_free=False):
+    def _unstarted_batches(self):
+        from .recovery import recovery_state
+        batches=self.data.get('batches')
+        stamina,tokens,planned=(self.data.get(k) for k in
+            ('initial_stamina','initial_immersifiers','planned_challenges'))
+        if (not isinstance(batches,list) or not batches
+                or self.data.get('phase')!=f'farming_batch_{len(batches)}'
+                or type(stamina) is not int or not 0<=stamina<=300
+                or type(tokens) is not int or not 0<=tokens<=12
+                or type(planned) is not int or planned!=stamina//40+tokens or planned<=0):
+            return False
+        for index,record in enumerate(batches,1):
+            folder=self.folder/f'batch-{index:02d}'
+            if (not isinstance(record,dict) or record.get('status')!='failed'
+                    or record.get('report')!=str(folder/'report.json')
+                    or type(record.get('requested')) is not int or not 1<=record['requested']<=min(6,planned)
+                    or not (folder/'report.json').is_file()
+                    or not (folder/'battle-session.json').is_file()):
+                return False
+            state=recovery_state(folder)
+            if (state.get('corrupt') or state.get('blocked') or state.get('status')!='failed'
+                    or state.get('category')!='planar' or state.get('target')!='浴火钢心'
+                    or state.get('location')!='位面饰品'
+                    or state.get('requested')!=record.get('requested')
+                    or any(type(state.get(k)) is not int or state[k]!=0 for k in
+                        ('spent','pending','completed','immersifiers_spent','immersifiers_pending'))):
+                return False
+        return True
+
+    def begin(self,run_id,*,resume_free=False,resume_unstarted=False):
         self.folder.mkdir(parents=True,exist_ok=True)
         self.data=dict(version=1,account_key=self.key,game_day=self.day,status='started',
                        phase='before_daily',du_run_id=run_id,batches=[],free_tasks=[])
@@ -72,6 +101,15 @@ class DayJournal:
                 history.append(dict(du_run_id=self.data.get('du_run_id'),error=self.data.get('error')))
                 self.data.pop('error',None)
                 self.save(status='started',du_run_id=run_id,free_restarts=restarts+1)
+                return True
+            restarts=self.data.get('resource_restarts',0)
+            if (resume_unstarted and self.data.get('status')=='failed'
+                    and type(restarts) is int and 0<=restarts<2 and self._unstarted_batches()):
+                self.data.setdefault('unstarted_restart_history',[]).append(dict(
+                    du_run_id=self.data.get('du_run_id'),error=self.data.get('error')))
+                self.data.pop('error',None)
+                self.save(status='started',phase='farming_resume',du_run_id=run_id,
+                          resource_restarts=restarts+1)
                 return True
             raise AutomationError('当日通关后日常已有中断记录，须核实原结算；未重复消耗资源。')
         return True
@@ -150,13 +188,21 @@ def _farm(flow,journal,workflow,settings):
     available,tokens=workflow._available(scene),inventory(scene)
     if account_key(scene)!=journal.key or available is None or tokens is None:
         raise AutomationError('通关后刷本账号、开拓力或沉浸器余额未核实。')
-    remaining=available//40+tokens
-    journal.save(phase='farming',initial_stamina=available,initial_immersifiers=tokens,
-                 planned_challenges=remaining,
-                 preparation_evidence=str(workflow.ctx.evidence(scene,'du_daily_resources_before')))
+    reused=journal.data.get('phase')=='farming_resume'
+    if reused:
+        remaining=journal.data['planned_challenges']
+        if available//40+tokens<remaining:
+            raise AutomationError('现有资源不足原定次数，未扩大或重建当日刷本计划。')
+        journal.save(phase='farming',resume_resources_evidence=str(
+            workflow.ctx.evidence(scene,'du_daily_resources_rechecked')))
+    else:
+        remaining=available//40+tokens
+        journal.save(phase='farming',initial_stamina=available,initial_immersifiers=tokens,
+                     planned_challenges=remaining,
+                     preparation_evidence=str(workflow.ctx.evidence(scene,'du_daily_resources_before')))
     # Freeze the available challenge count. Regeneration during combat never
     # extends this day's resource plan, and each batch has its own durable bill.
-    index=0
+    index=len(journal.data['batches']) if reused else 0
     while remaining:
         flow.ctx.checkpoint()
         index+=1
@@ -218,7 +264,7 @@ def after_win(flow,scene,kind,*,root=None,now=None):
     scene=settled_home(flow,scene)
     journal=DayJournal(root or ROOT/'runs',account_key(scene),day)
     run_id=(flow.report.get('run_results') or [{}])[-1].get('run_id')
-    if not journal.begin(run_id,resume_free=True):
+    if not journal.begin(run_id,resume_free=True,resume_unstarted=True):
         flow.ctx.log('当前账号本游戏日的通关后日常已完成，继续差分宇宙。')
         return scene,kind
     entry=dict(game_day=journal.day,marker=str(journal.path),status='started')
@@ -228,7 +274,7 @@ def after_win(flow,scene,kind,*,root=None,now=None):
         target_location='位面饰品',challenge_count=None,rounds=6,stamina_limit=240,
         use_support=False,assignments=True,battle=True,allow_stamina_spend=True,daily=True,
         mail=True,battlepass=True,auto_launch=False,differential_universe_daily=False)
-    restart=journal.data.get('free_restarts',0)
+    restart=journal.data.get('free_restarts',0)+journal.data.get('resource_restarts',0)
     free_folder='free-rewards' if not restart else f'free-rewards-retry-{restart:02d}'
     daily=_context(flow,journal.folder/free_folder,settings,journal.day)
     workflow=DailyWorkflow(daily)

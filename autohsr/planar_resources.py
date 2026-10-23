@@ -27,6 +27,9 @@ def payment(workflow, scene, *, require_affordable=True, expected_count=None):
     expected_stamina = (count - expected_tokens) * 40
     if (prices != dict(stamina=expected_stamina, immersifiers=expected_tokens)
             or (require_affordable and expected_stamina > available)):
+        evidence=getattr(workflow.ctx,'evidence',None)
+        if evidence is not None:
+            evidence(scene,'planar_payment_unverified')
         raise AutomationError('饰品提取资源图标、价格与次数不一致，未开始挑战。')
     return expected_stamina, expected_tokens
 
