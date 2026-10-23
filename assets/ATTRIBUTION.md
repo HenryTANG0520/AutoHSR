@@ -477,3 +477,9 @@ are small native UI crops. Their sidecars retain source hashes, original
 dimensions, normalized crop bounds, and the 1920-pixel matching baseline.
 Raw captures stay in ignored local `runs/`. All game artwork belongs to
 HoYoverse and is included solely for client UI recognition and regression.
+
+`du_runtime/helper_occluded_blessing.png` is a native client capture occluded
+by a closing AutoHSR inspection window. The fixture masks account identifiers
+and local configuration paths; its sidecar omits those OCR tokens and retains
+source/fixture hashes. It tests rejecting helper UI content before game-option
+recognition. It is not independent completion evidence.

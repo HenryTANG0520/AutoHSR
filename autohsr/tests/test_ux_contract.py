@@ -48,6 +48,13 @@ class ContractTests(unittest.TestCase):
         self.assertIn('仅补领奖', recovery_text(report))
         self.assertIn('游戏保留', exit_text(report))
 
+    def test_token_only_payment_is_visible_and_needs_resource_reconciliation(self):
+        from autohsr.ux import immersifier_text
+        report=dict(error='结算未知',immersifiers_spent=2,immersifiers_pending=3)
+        self.assertIn('仅补领奖',recovery_text(report))
+        self.assertIn('沉浸器已确认 2，待核对 3',immersifier_text(report))
+        self.assertEqual(immersifier_text({}),'')
+
     def test_focus_wait_does_not_force_focus_and_emits_both_states(self):
         from autohsr.app import Runner
         events = []

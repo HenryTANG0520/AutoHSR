@@ -12,7 +12,7 @@ from datetime import datetime
 
 from .config import ROOT, RESOURCE_ROOT, Settings
 from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, RunReport, Scene, Stopped, TaskResult, Token, normalize
-from .vision import Vision, save_scene
+from .vision import Vision, save_scene,helper_overlay
 from .ocr_isolation import IsolatedVision
 from .windows import find_game, is_admin, is_elevated, launch
 
@@ -70,6 +70,7 @@ class Context:
         self.checkpoint()
 
     def snapshot(self) -> Scene:
+        occluded_frames=0
         while True:
             self.checkpoint()
             self.last_scene = None
@@ -79,6 +80,15 @@ class Context:
             try:
                 image, geometry = self.window.capture()
                 scene = self.vision.read(image, geometry)
+                if helper_overlay(scene):
+                    occluded_frames+=1
+                    if occluded_frames==1:
+                        self.evidence(scene,'helper_occlusion_discarded')
+                        self.log('截图仍有助手界面遮挡，丢弃此帧并重新识别。')
+                    if occluded_frames>=8:
+                        raise AutomationError('连续截图被助手界面遮挡，未按游戏画面发送输入。')
+                    self.sleep(.2)
+                    continue
                 if self.report.operation == "differential_universe":
                     self.vision.refine_du_field_header(scene)
                     self.vision.refine_du_blessing_names(scene)
@@ -1271,7 +1281,7 @@ class Runner:
         while not self._monitor_end.wait(0.05):
             if (self._window.emergency_pressed() if self._window is not None else bool(user32.GetAsyncKeyState(0x79) & 0x8001)):
                 self.stop()
-            current = bool(user32.GetAsyncKeyState(0x78) & 0x8000)
+            current = bool(user32.GetAsyncKeyState(0x78) & 0x8001)
             if self._window is not None and current and not previous and user32.GetForegroundWindow() == self._window.hwnd:
                 self.toggle_pause()
             previous = current

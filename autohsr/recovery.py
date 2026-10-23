@@ -79,7 +79,8 @@ class BattleBudget:
             raise AutomationError(state["reason"])
         if state["blocked"] and not new_run:
             pending = state['pending'] if state['pending'] is not None else '未记录'
-            raise AutomationError(f"上次刷本未完整结束（已确认{state['spent']}，待核对{pending}）。"
+            from .ux import immersifier_text
+            raise AutomationError(f"上次刷本未完整结束（已确认{state['spent']}，待核对{pending}开拓力{immersifier_text(state)}）。"
                                   "请先仅补领奖；开始新一轮刷本须明确确认新增预算。")
         self.report.budget_scope = "run"
         self.report.stamina_limit = self.settings.stamina_limit

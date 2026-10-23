@@ -6,6 +6,12 @@ from pathlib import Path
 from .models import AutomationError, Scene, Token
 
 
+def helper_overlay(scene):
+    """Reject the helper's own desktop UI even if the game regained focus."""
+    anchors=('每日任务','运行日志','保存设置','OCR阈值','战斗超时','操作间隔','配置位置')
+    return scene.has('AutoHSR') and sum(scene.has(label) for label in anchors)>=2
+
+
 class Vision:
     def __init__(self, confidence: float = 0.65):
         from rapidocr_onnxruntime import RapidOCR

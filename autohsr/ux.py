@@ -49,6 +49,12 @@ def recovery_text(report: dict) -> str:
     if not error:
         return ""
     next_step = report.get("safe_next") or (
-        "人工核对当前界面与消耗，返回主界面后仅补领奖。" if report.get("stamina_spent") or report.get("stamina_pending") else
+        "人工核对当前界面与消耗，返回主界面后仅补领奖。" if any(report.get(k) for k in
+            ('stamina_spent','stamina_pending','immersifiers_spent','immersifiers_pending')) else
         "查看本次截图，处理登录/更新或未知页面后重新检测；未确认事项不要视为完成。")
     return f"原因：{error}\n下一步：{next_step}"
+
+
+def immersifier_text(report: dict) -> str:
+    spent,pending=report.get('immersifiers_spent',0),report.get('immersifiers_pending',0)
+    return f' · 沉浸器已确认 {spent}，待核对 {pending}' if spent or pending else ''

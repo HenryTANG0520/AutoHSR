@@ -291,6 +291,7 @@ class DifferentialUniverseWorkflow:
             "reward_collection": self.report.get('reward_collection'),
             "navigation_observations": self.report.get('navigation_observations',[]),
             "team_selections": self.report.get('team_selections',[]),
+            "daily_interludes": self.report.get('daily_interludes',[]),
         }
         temp = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
         temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -703,6 +704,12 @@ class DifferentialUniverseWorkflow:
         from .du_rewards import collect
         scene=collect(self,scene)
         return scene,self._observe(scene,label)
+
+    def _after_completed_run(self,scene,kind,label):
+        if self.settings.differential_universe_rewards:
+            scene,kind=self._collect_rewards(scene,kind,label)
+        from .du_daily import after_win
+        return after_win(self,scene,kind)
 
     def _choice_target(self, scene: Scene, kind: str) -> Token | None:
         if kind in ("blessing_choice","equation_choice","curio_choice","miracle_choice","curio_discard"):
@@ -2087,11 +2094,10 @@ class DifferentialUniverseWorkflow:
             if count_resumed_periodic:
                 self.report["completed_runs"] = 1
             self._persist_ledger()
+            scene,kind=self._after_completed_run(scene,kind,'rewards_after_resumed_run')
             if count_resumed_periodic:
                 self.ctx.log("周期演算接续局已核实胜利结算并计入本次请求局数。")
                 if self.report["completed_runs"] >= self.runs:
-                    if self.settings.differential_universe_rewards:
-                        scene,kind=self._collect_rewards(scene,kind,'rewards_after_resumed_run')
                     self.report["last_message"] = "周期演算当前局已确认胜利结算并返回。"
                     return TaskResult(TASK, "ok", self.report["last_message"])
                 scene, kind = self._snapshot("after_resumed_run")
@@ -2143,8 +2149,7 @@ class DifferentialUniverseWorkflow:
             self._persist_ledger()
             mode_label = "周期演算" if periodic else "新开最低难度"
             self.ctx.log(f"差分宇宙{mode_label}第 {run_no}/{self.runs} 局已核实胜利结算并返回。")
-            if self.settings.differential_universe_rewards:
-                scene,kind=self._collect_rewards(scene,kind,'rewards_after_run')
+            scene,kind=self._after_completed_run(scene,kind,'rewards_after_run')
             if run_no < self.runs:
                 # Do not continue an in-progress run; a fresh, completed return
                 # to the mode page is required before the next start.

@@ -2189,6 +2189,32 @@ class GuideTargetTests(unittest.TestCase):
 
 
 class ContextInputSafetyTests(unittest.TestCase):
+    def test_helper_window_frame_is_discarded_even_after_focus_was_restored(self):
+        from autohsr.vision import helper_overlay
+        from autohsr.tests.test_du_team import fixture
+        self.assertTrue(helper_overlay(fixture('helper_occluded_blessing')))
+        overlay=Scene([token('选择祝福',.1,.06),token('AutoHSR',.2,.2),
+                       token('保存设置',.3,.7),token('运行日志',.3,.6)],geometry=object())
+        game=Scene([token('选择祝福',.1,.06)],geometry=overlay.geometry)
+        self.assertTrue(helper_overlay(overlay))
+        self.assertFalse(helper_overlay(game))
+        context=self.context(game)
+        context.window.capture.return_value=(object(),game.geometry)
+        context.vision.read.side_effect=[overlay,game]
+        self.assertIs(context.snapshot(),game)
+        self.assertEqual(context.window.capture.call_count,2)
+        context.window.click.assert_not_called()
+
+    def test_persistent_helper_occlusion_is_bounded_and_never_becomes_a_game_target(self):
+        overlay=Scene([token('AutoHSR',.2,.2),token('保存设置',.3,.7),token('运行日志',.3,.6)],geometry=object())
+        context=self.context(overlay)
+        context.window.capture.return_value=(object(),overlay.geometry)
+        context.vision.read.return_value=overlay
+        with self.assertRaisesRegex(AutomationError,'遮挡'):
+            context.snapshot()
+        self.assertIsNone(context.last_scene)
+        context.window.click.assert_not_called()
+        self.assertEqual(context.window.capture.call_count,8)
     @staticmethod
     def context(scene: Scene):
         from autohsr.app import Context
@@ -2389,7 +2415,7 @@ class HotkeyScopeTests(unittest.TestCase):
 
         runner._monitor_end = SimpleNamespace(wait=next_frame)
         user32 = SimpleNamespace(
-            GetAsyncKeyState=lambda key: 0x8000 if state[0][1] else 0,
+            GetAsyncKeyState=lambda key: (0x8000 if state[0][1] is True else state[0][1]),
             GetForegroundWindow=lambda: state[0][0],
         )
         with patch("autohsr.windows.user32", user32):
@@ -2405,6 +2431,13 @@ class HotkeyScopeTests(unittest.TestCase):
         self.assertEqual(paused, [True])
         self.assertEqual(runner.input_epoch, 1)
         self.assertTrue(runner._pause.is_set())
+
+    def test_short_f9_press_between_monitor_polls_is_not_lost(self):
+        runner,paused=self.run_hotkey_frames([
+            (self.GAME,0,False),(self.GAME,1,False),(self.GAME,0,False),
+            (self.GAME,1,False),(self.GAME,0,False)])
+        self.assertEqual(paused,[True,False])
+        self.assertEqual(runner.input_epoch,2)
 
     def test_assistant_foreground_f9_is_not_a_global_pause_key(self) -> None:
         runner, paused = self.run_hotkey_frames([

@@ -278,6 +278,7 @@ def main():
                 ImageGrab.grab(window=root.winfo_id()).save(OUT / 'currency-readonly-result.png')
                 ui._show_page('differential_universe')
                 check('du_optional_saving_and_rewards_default_off',not ui.du_save.get() and not ui.du_rewards.get())
+                check('du_daily_interlude_default_off',not ui.du_daily.get())
                 check('du_defaults_to_periodic_named_preset',ui.du_mode.get()=='周期演算' and ui.du_team.get()=='哈哈哈哈')
                 check('differential_universe_has_parallel_sidebar_and_action',
                     ui.nav_buttons['differential_universe'].cget('text') == '差分宇宙' and
@@ -286,9 +287,11 @@ def main():
                 ui.differential_universe_runs.set('10')
                 ui.du_save.set(True)
                 ui.du_rewards.set(True)
+                ui.du_daily.set(True)
                 ui.start_button.invoke()
                 pump(root, lambda: ui.runner is not None)
                 du_runner = FakeRunner.instances[-1]
+                check('du_daily_interlude_is_explicit_in_run_snapshot',du_runner.settings.differential_universe_daily)
                 check('differential_universe_is_independent_and_uses_unsaved_run_count',
                     du_runner.kwargs['operation'] == 'differential_universe' and
                     du_runner.settings.differential_universe_runs == 10 and
@@ -307,6 +310,7 @@ def main():
                 ui.differential_universe_runs.set('1')
                 ui.du_save.set(False)
                 ui.du_rewards.set(False)
+                ui.du_daily.set(False)
                 ui.du_resume_active.set(True)
                 ui.du_resume_mode.set('周期难度 5')
                 ui.start_button.invoke()

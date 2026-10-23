@@ -15,7 +15,7 @@ from tkinter.scrolledtext import ScrolledText
 from typing import Any
 
 from .config import CONFIG_PATH, ROOT, Settings
-from .ux import report_context, recovery_text, exit_text
+from .ux import report_context, recovery_text, exit_text,immersifier_text
 
 TASK_NAMES = {
     "assignments": "持续委托奖励", "battle": "日常副本挑战",
@@ -170,6 +170,8 @@ class AutoHSRWindow:
         self.form_variables.append(self.du_save)
         self.du_rewards = tk.BooleanVar(value=self.settings.differential_universe_rewards)
         self.form_variables.append(self.du_rewards)
+        self.du_daily = tk.BooleanVar(value=self.settings.differential_universe_daily)
+        self.form_variables.append(self.du_daily)
         self.du_resume_mode = tk.StringVar(value="常规演算")
         self.detect_title = tk.StringVar(value="尚未检测游戏窗口")
         self.detect_size = tk.StringVar(value="客户区尺寸：—")
@@ -257,7 +259,7 @@ class AutoHSRWindow:
         state = recovery_state(ROOT / "runs")
         pending = state['pending'] if state['pending'] is not None else '未记录'
         self.recovery_hint.set((state.get("reason") if state["corrupt"] else
-            f"上次刷本未完整结束：已确认 {state['spent']}，待核对 {pending}。可先仅补领奖；新刷本需确认新增预算。")
+            f"上次刷本未完整结束：已确认 {state['spent']}，待核对 {pending} 开拓力{immersifier_text(state)}。可先仅补领奖；新刷本需确认新增预算。")
             if state["blocked"] else "本次运行使用独立预算；异常后保留已确认与待核对消耗。")
 
     def _refresh_controls(self) -> None:
@@ -336,6 +338,7 @@ class AutoHSRWindow:
                               differential_universe_mode='periodic' if self.du_mode.get()=='周期演算' else 'normal',
                               differential_universe_save=self.du_save.get(),
                               differential_universe_rewards=self.du_rewards.get(),
+                              differential_universe_daily=self.du_daily.get(),
                               action_delay=float(self.action_delay.get()), battle_timeout=int(self.battle_timeout.get()),
                               ocr_confidence=float(self.ocr_confidence.get()))
             elif save or operation not in ("check", "launch"):
@@ -345,6 +348,7 @@ class AutoHSRWindow:
                               differential_universe_mode='periodic' if self.du_mode.get()=='周期演算' else 'normal',
                               differential_universe_save=self.du_save.get(),
                               differential_universe_rewards=self.du_rewards.get(),
+                              differential_universe_daily=self.du_daily.get(),
                               **{name: variable.get() if name != "battle" or self.settings.allow_stamina_spend else False for name, variable in self.tasks.items()})
                 if operation == "reward_only":
                     values.update(assignments=False, battle=False, daily=True, mail=False, battlepass=False)
@@ -490,7 +494,7 @@ class AutoHSRWindow:
                     return
                 pending = state['pending'] if state['pending'] is not None else '未记录'
                 new_battle_run = messagebox.askyesno("确认新一轮刷本预算",
-                    f"上次已确认 {state['spent']}，待核对 {pending} 开拓力。\n"
+                    f"上次已确认 {state['spent']}，待核对 {pending} 开拓力{immersifier_text(state)}。\n"
                     f"这不是续跑：本次会新增最多 {settings.stamina_limit} 开拓力预算。\n"
                     "如只需领取每日奖励，请选否，再点“仅补领奖”。\n确定已人工核对，仍要开始新一轮？", default="no", parent=self.root)
                 if not new_battle_run:
@@ -731,7 +735,7 @@ class AutoHSRWindow:
         self._freeze_clock()
         daily = "已验证" if report.get("daily_verified", False) else "未验证"
         pending = report.get("stamina_pending", 0)
-        self.summary.set(f"{STATUS_NAMES.get(status, status)} · 本轮已确认 {self.confirmed_stamina} / 上限 {report.get('stamina_limit', '未记录')} · 待核对 {pending} · 每日奖励 {daily} · {exit_text(report)}" + ("\n" + recovery_text(report) if recovery_text(report) else ""))
+        self.summary.set(f"{STATUS_NAMES.get(status, status)} · 本轮已确认 {self.confirmed_stamina} / 上限 {report.get('stamina_limit', '未记录')} · 待核对 {pending}{immersifier_text(report)} · 每日奖励 {daily} · {exit_text(report)}" + ("\n" + recovery_text(report) if recovery_text(report) else ""))
         if report.get("operation", self.active_operation) == "dungeon_catalogue":
             data = report.get("dungeon_catalogue") or {}
             self.summary.set(f"副本采集 · {STATUS_NAMES.get(status, status)} · {data.get('count', 0)} 个入口 · 消耗 0 开拓力" + ("\n" + str(report.get("error")) if report.get("error") else ""))
@@ -756,7 +760,12 @@ class AutoHSRWindow:
             completed = int(data.get("completed_runs", 0) or 0)
             requested = int(data.get("requested_runs", self.settings.differential_universe_runs) or self.settings.differential_universe_runs)
             outcome = "全部运行完成并返回" if status == "success" and completed == requested else "已停止，完成情况未达目标"
-            self.summary.set(f"差分宇宙 · {outcome} · {completed}/{requested} 局 · 每日刷本预算未使用" +
+            interludes=data.get('daily_interludes') or []
+            daily_summary='每日刷本预算未使用'
+            if interludes:
+                daily_summary=('通关后日常未完成，请查看记录' if any(v.get('status')!='complete' for v in interludes)
+                    else f"通关后日常完成 · 已确认 {sum(v.get('stamina_spent',0) for v in interludes)} 开拓力、{sum(v.get('immersifiers_spent',0) for v in interludes)} 沉浸器")
+            self.summary.set(f"差分宇宙 · {outcome} · {completed}/{requested} 局 · {daily_summary}" +
                              ("\n" + str(data.get("last_message") or report.get("error")) if data.get("last_message") or report.get("error") else ""))
             self.du_status.set(self.summary.get())
             self.du_observation.set(json.dumps(data, ensure_ascii=False, indent=2) if data else "本次未生成运行观察记录；请查看日志中的失败原因。")

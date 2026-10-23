@@ -272,9 +272,14 @@ def build_window(ui, task_names, server_names):
         ui.du_save_check=ttk.Checkbutton(setup,text="保存通关存档（AutoHSR 编号）",variable=ui.du_save,style="Card.TCheckbutton")
         ui.du_save_check.pack(anchor="w",pady=(d(5),0))
         ui.setting_controls.append(ui.du_save_check)
-        ui.du_rewards_check=ttk.Checkbutton(setup,text="领取红点奖励（含已有卡带解锁）",variable=ui.du_rewards,style="Card.TCheckbutton")
-        ui.du_rewards_check.pack(anchor="w",pady=(d(5),0))
+        reward_row=ttk.Frame(setup,style="Card.TFrame")
+        reward_row.pack(anchor="w",pady=(d(5),0))
+        ui.du_rewards_check=ttk.Checkbutton(reward_row,text="领取红点奖励（含已有卡带解锁）",variable=ui.du_rewards,style="Card.TCheckbutton")
+        ui.du_rewards_check.pack(side="left")
         ui.setting_controls.append(ui.du_rewards_check)
+        ui.du_daily_check=ttk.Checkbutton(reward_row,text="每日首次通关后领奖并刷浴火钢心",variable=ui.du_daily,style="Card.TCheckbutton")
+        ui.du_daily_check.pack(side="left",padx=(d(12),0))
+        ui.setting_controls.append(ui.du_daily_check)
         ttk.Label(setup,text="每局从“预设编队”按名称选角，核实“已启用”和四人完整后启动。默认周期演算、哈哈哈哈；周期难度沿用游戏已选值。",
                   style="CardHint.TLabel",wraplength=d(810)).pack(anchor="w",pady=(d(5),0))
         ttk.Label(setup, text="优先战斗站点，自动处理奖励与随意门；周期演算沿用已选难度，常规演算使用难度 I。寻找目标超过 90 秒会停止。F9 暂停 / 继续，F10 停止。",
