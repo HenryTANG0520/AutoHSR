@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .models import AutomationError
+from .storage import replace_file
 
 
 def reward_only_settings(settings):
@@ -71,7 +72,7 @@ class BattleBudget:
                     immersifiers_pending=self.report.immersifiers_pending)
         temp = self.path.with_suffix(".tmp")
         temp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        temp.replace(self.path)
+        replace_file(temp,self.path)
 
     def begin(self, *, new_run=False):
         state = recovery_state(self.runs)

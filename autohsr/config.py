@@ -5,6 +5,7 @@ import math
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from .storage import replace_file
 
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
 RESOURCE_ROOT = Path(getattr(sys, "_MEIPASS", ROOT))
@@ -83,7 +84,7 @@ class Settings:
         self.validate("save")
         temp = path.with_suffix(".tmp")
         temp.write_text(json.dumps(asdict(self), ensure_ascii=False, indent=2), encoding="utf-8")
-        temp.replace(path)
+        replace_file(temp,path)
 
     @classmethod
     def load(cls, path: Path = CONFIG_PATH) -> Settings:

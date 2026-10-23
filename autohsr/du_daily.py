@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 
 from .models import AutomationError,RunReport,Stopped,normalize
+from .storage import replace_file
 
 CHINA=timezone(timedelta(hours=8))
 
@@ -66,7 +67,7 @@ class DayJournal:
         self.data.update(changes,updated_at=datetime.now(CHINA).isoformat())
         temporary=self.path.with_suffix('.tmp')
         temporary.write_text(json.dumps(self.data,ensure_ascii=False,indent=2),encoding='utf8')
-        temporary.replace(self.path)
+        replace_file(temporary,self.path)
 
 
 class _DailyRunner:
@@ -97,7 +98,7 @@ def _save_report(context,status):
     path=Path(context.report.run_dir)/'report.json'
     temporary=path.with_suffix('.tmp')
     temporary.write_text(json.dumps(context.report.to_dict(),ensure_ascii=False,indent=2),encoding='utf8')
-    temporary.replace(path)
+    replace_file(temporary,path)
     return str(path)
 
 

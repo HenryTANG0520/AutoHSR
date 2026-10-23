@@ -15,6 +15,7 @@ from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, 
 from .vision import Vision, save_scene,helper_overlay
 from .ocr_isolation import IsolatedVision
 from .windows import find_game, is_admin, is_elevated, launch
+from .storage import replace_file
 
 
 def launch_game(settings: Settings) -> str:
@@ -250,7 +251,7 @@ class Context:
         temp = ledger.with_suffix(f".{uuid.uuid4().hex}.tmp")
         try:
             temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-            temp.replace(ledger)
+            replace_file(temp,ledger)
             du["ledger_path"] = str(ledger)
         except OSError as error:
             raise AutomationError(f"差分宇宙证据台账无法落盘，已禁止后续操作：{error}") from error
@@ -1424,7 +1425,7 @@ class Runner:
                 self.report.report_saved = True
                 temporary = directory / "report.tmp"
                 temporary.write_text(json.dumps(self.report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-                temporary.replace(directory / "report.json")
+                replace_file(temporary,directory / "report.json")
             except OSError as error:
                 self.report.report_saved = False
                 self.report.report_write_error = str(error)
@@ -1457,7 +1458,7 @@ class Runner:
                     try:
                         temporary = directory / "report.tmp"
                         temporary.write_text(json.dumps(self.report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-                        temporary.replace(directory / "report.json")
+                        replace_file(temporary,directory / "report.json")
                     except OSError:
                         pass
             self._logger.removeHandler(handler)

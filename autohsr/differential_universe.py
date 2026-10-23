@@ -17,6 +17,7 @@ from .models import AutomationError, InputInterrupted, Scene, TaskResult, Token,
 from .du_card_effects import station_card_effect
 from .policy import has_du_field_plane_marker, du_miracle_target_labels, du_miracle_randomize_two, du_event_free_leave,du_event_free_choice,du_flea_market_choice,du_tutorial_close_prompt
 from .workflows import DailyWorkflow
+from .storage import replace_file
 
 
 TASK = "differential_universe"
@@ -296,7 +297,7 @@ class DifferentialUniverseWorkflow:
         }
         temp = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
         temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        temp.replace(path)
+        replace_file(temp,path)
         self.report["ledger_path"] = str(path)
 
     def _observe(self, scene: Scene, label="page") -> str:
