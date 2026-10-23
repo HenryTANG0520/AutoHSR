@@ -17,10 +17,10 @@ def t(text,x=.1,y=.05):
 
 class DuRuntimeTests(unittest.TestCase):
     @staticmethod
-    def optional_device_fixture():
+    def optional_device_fixture(name='optional_device_blocks_gate'):
         import cv2,json
         from pathlib import Path
-        root=Path(__file__).parent/'fixtures/du_runtime/optional_device_blocks_gate'
+        root=Path(__file__).parent/'fixtures/du_runtime'/name
         data=json.loads(root.with_suffix('.json').read_text('utf8'))
         return Scene([Token(v['text'],v['score'],tuple(v['box'])) for v in data['tokens']],
                      cv2.imread(str(root.with_suffix('.png'))))
@@ -74,6 +74,58 @@ class DuRuntimeTests(unittest.TestCase):
         flow=DifferentialUniverseWorkflow(ctx,1)
         flow._observe=Mock(return_value='station_choice')
         self.assertEqual(flow._field_anomaly_visual(page,field_kind='field_wealth'),(next_page,'station_choice'))
+        ctx.differential_universe_move.assert_called_once_with(page,'s',500)
+        ctx.differential_universe_interact.assert_not_called()
+
+    def test_native_chaos_box_is_an_optional_obstacle_not_a_combat_reward(self):
+        from autohsr.du_navigation import optional_device_prompt
+        from autohsr.policy import guard_differential_universe_field_interact
+        page=self.optional_device_fixture('chaos_box_blocks_combat')
+        self.assertEqual(classify_page(page),'field_combat')
+        target=optional_device_prompt(page)
+        self.assertEqual(target.text,'混沌药箱')
+        with self.assertRaises(AutomationError):
+            guard_differential_universe_field_interact(page,target)
+        ctx=Mock(settings=Settings(),report=RunReport())
+        self.assertIsNone(DifferentialUniverseWorkflow(ctx,1)._combat_chest(page))
+        ctx.differential_universe_interact.assert_not_called()
+
+    def test_combat_reuses_bounded_optional_device_detour_without_f_or_attack(self):
+        page=self.optional_device_fixture('chaos_box_blocks_combat')
+        ctx=Mock(settings=Settings(),report=RunReport())
+        ctx.differential_universe_move.return_value=page
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._observe=Mock(return_value='field_combat')
+        with self.assertRaisesRegex(AutomationError,'已绕行一次'):
+            flow._field_visual(page)
+        self.assertEqual([(c.args[1],c.args[2]) for c in ctx.differential_universe_move.call_args_list],
+                         [('s',500),('a',1100),('w',1100)])
+        ctx.differential_universe_interact.assert_not_called()
+        ctx.differential_universe_attack.assert_not_called()
+        ctx.differential_universe_motion.assert_not_called()
+
+    def test_unknown_combat_f_caption_is_rechecked_before_any_forward_input(self):
+        page=self.optional_device_fixture('chaos_box_blocks_combat')
+        page.tokens=[Token('未知装置',v.score,v.box) if v.text=='混沌药箱' else v for v in page.tokens]
+        ctx=Mock(settings=Settings(),report=RunReport())
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._snapshot=Mock(return_value=(page,'field_combat'))
+        with patch('autohsr.du_navigation.verified_attack_reticle',return_value=None):
+            with self.assertRaisesRegex(AutomationError,'停止重复前进'):
+                flow._field_visual(page)
+        self.assertEqual(flow._snapshot.call_count,2)
+        ctx.differential_universe_move.assert_not_called()
+        ctx.differential_universe_motion.assert_not_called()
+        ctx.differential_universe_attack.assert_not_called()
+
+    def test_combat_device_detour_stops_as_soon_as_battle_begins(self):
+        page=self.optional_device_fixture('chaos_box_blocks_combat')
+        battle=Scene([t('战斗开始')])
+        ctx=Mock(settings=Settings(),report=RunReport())
+        ctx.differential_universe_move.return_value=battle
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._observe=Mock(return_value='battle')
+        self.assertEqual(flow._field_visual(page),(battle,'battle'))
         ctx.differential_universe_move.assert_called_once_with(page,'s',500)
         ctx.differential_universe_interact.assert_not_called()
 

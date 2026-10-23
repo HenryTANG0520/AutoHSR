@@ -489,3 +489,9 @@ with account identifiers masked. Its sidecar retains source/fixture hashes
 and observed OCR excluding identifiers. It tests recognizing a live optional
 machine prompt for bounded avoidance, without authorizing game interaction
 or spending. Game artwork remains the property of HoYoverse.
+
+`du_runtime/chaos_box_blocks_combat.png` is a native combat-room capture of
+an optional chaos medicine box obstructing the entrance path. Identifiers are
+masked; the sidecar retains source/fixture hashes and non-identifier OCR. It
+tests shared bounded avoidance and early re-reading of unknown F prompts,
+without authorizing the box's negative-curio exchange. Artwork is HoYoverse's.

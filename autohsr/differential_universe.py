@@ -1273,7 +1273,7 @@ class DifferentialUniverseWorkflow:
         raise AutomationError("位面目标直行接近达到上限，仍未核实交互或接战；停止并保留进度。")
 
     def _field_visual(self, scene, *, field_kind="field_combat",range_seen=False,forward_ready=False):
-        from .du_navigation import navigation_targets,verified_attack_reticle as attack_reticle,random_gate
+        from .du_navigation import navigation_targets,verified_attack_reticle as attack_reticle,random_gate,optional_device_prompt,interaction_hint
         from .du_detector import forward_barrier
         started,inactive_before=time.monotonic(),self._inactive()
         scans=attacks=recoveries=0
@@ -1283,6 +1283,7 @@ class DifferentialUniverseWorkflow:
         ring_waits=0
         element_checked=False
         portal_attempts=0
+        device_detours=unread_interaction_checks=0
         cleared=self._field_cleared
         for step in range(36):
             self.ctx.checkpoint()
@@ -1291,6 +1292,30 @@ class DifferentialUniverseWorkflow:
                 chest=self._combat_chest(scene)
                 if chest is not None:
                     return chest
+            device=optional_device_prompt(scene,forge_console_used=self._forge_console_used)
+            if device is not None:
+                if device_detours:
+                    raise AutomationError('已绕行一次，但可选设备仍占据交互范围；停止重复横移。')
+                device_detours+=1
+                scene,kind=self._avoid_optional_device(scene,field_kind,device)
+                if kind!=field_kind:
+                    return scene,kind
+                range_seen=forward_ready=False
+                aligned_enemy_steps=0
+                continue
+            if (scene.image is not None and interaction_hint(scene.image)
+                    and self._find(scene,('随意门',),(.25,.30,.78,.75)) is None
+                    and (field_kind!='field_combat' or cleared or attack_reticle(scene) is None)):
+                if unread_interaction_checks>=2:
+                    raise AutomationError('F提示已出现，但交互名称尚未核实；停止重复前进并保留当前位置。')
+                self.ctx.sleep(.2)
+                scene,kind=self._snapshot('combat_interaction_caption_recheck')
+                unread_interaction_checks+=1
+                scene,kind=self._wait_known(scene,kind,'combat_interaction_caption_recheck')
+                if kind!=field_kind:
+                    return scene,kind
+                continue
+            unread_interaction_checks=0
             face=random_gate(scene,fast=True) if field_kind=='field_combat' and not cleared else None
             cleared=cleared or (face is not None and face.text=='差分宇宙随意门外观')
             if cleared:
@@ -1552,6 +1577,22 @@ class DifferentialUniverseWorkflow:
                 return scene,kind
         raise AutomationError("异常区域直行接近达到上限，仍无可见交互提示；停止并保留进度。")
 
+    def _avoid_optional_device(self,scene,field_kind,device):
+        self.ctx.log('已识别可选设备挡路，后退并沿左侧有限绕行，再重新定位目标。')
+        record={'run':self.report['current_run'],'device':device.text,
+                'before':str(self.ctx.evidence(scene,'optional_device_before_detour'))}
+        self.report.setdefault('device_detours',[]).append(record)
+        self._persist_ledger()
+        for direction,duration in (('s',500),('a',1100),('w',1100)):
+            scene=self.ctx.differential_universe_move(scene,direction,duration)
+            kind=self._observe(scene,'optional_device_detour_'+direction)
+            scene,kind=self._wait_known(scene,kind,'optional_device_detour_'+direction)
+            if kind!=field_kind:
+                return scene,kind
+        record['after']=str(self.ctx.evidence(scene,'optional_device_after_detour'))
+        self._persist_ledger()
+        return scene,kind
+
     def _field_anomaly_visual(self,scene,*,field_kind='field_anomaly'):
         from .du_navigation import event_targets,navigation_targets,random_gate,interaction_hint,optional_device_prompt
         from .du_detector import forward_barrier
@@ -1599,17 +1640,9 @@ class DifferentialUniverseWorkflow:
                 if device_detours:
                     raise AutomationError('已绕行一次，但可选设备仍占据交互范围；停止重复横移。')
                 device_detours+=1
-                self.ctx.log('已识别可选设备挡路，后退并沿左侧有限绕行，再重新定位卡片或门。')
-                self.report.setdefault('device_detours',[]).append({
-                    'run':self.report['current_run'],'device':device.text,
-                    'before':str(self.ctx.evidence(scene,'optional_device_before_detour'))})
-                self._persist_ledger()
-                for direction,duration in (('s',500),('a',1100),('w',1100)):
-                    scene=self.ctx.differential_universe_move(scene,direction,duration)
-                    kind=self._observe(scene,'optional_device_detour_'+direction)
-                    scene,kind=self._wait_known(scene,kind,'optional_device_detour_'+direction)
-                    if kind!=field_kind:
-                        return scene,kind
+                scene,kind=self._avoid_optional_device(scene,field_kind,device)
+                if kind!=field_kind:
+                    return scene,kind
                 aligned_object_steps=0
                 continue
             if not ignored_device and interaction_hint(scene.image):
