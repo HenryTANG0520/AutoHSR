@@ -85,6 +85,9 @@ def detect_recovery_enemies(scene,threshold=.70):
 
 def _usable_enemies(found):
     return [t for t in found if t.within((.04,.06,.95,.90))
+        and (.01<t.box[0]<t.box[2]<.99 and .02<t.box[1]<t.box[3]<.98)
+        # A clipped oversized background box has an invented centre. Genuine
+        # close enemies remain attackable through their independent ring.
         # A small lower-centre box wholly inside the avatar is not a usable
         # enemy bearing. Real close-range enemies are handled by their ring;
         # verified headings have a separate, bounded occlusion allowance.

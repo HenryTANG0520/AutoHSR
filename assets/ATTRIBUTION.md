@@ -554,3 +554,10 @@ login-supply popup over an active room-entry banner. Source/fixture hashes
 and non-identifier OCR are preserved in its sidecar. It tests bounded
 observation retries while the remaining-day text is obscured, retaining the
 same owned-supply and free-claim checks. Game artwork belongs to HoYoverse.
+
+`gate_tracking_reference.png`, `gate_tracking_occluded.png`, and
+`gate_tracking_wrong_view.png` are masked native nearby frames used to test
+optical-flow continuity of an already detected gate through avatar occlusion.
+Their sidecars retain source/fixture hashes and the original detected box.
+They are local regression views, not independent accuracy or completion
+evidence. Game artwork remains the property of HoYoverse.

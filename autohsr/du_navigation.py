@@ -76,7 +76,7 @@ class BackgroundProgress:
 
 
 def navigation_targets(scene,*,enemies=True):
-    from .du_detector import detect,detect_enemies
+    from .du_detector import detect,detect_enemies,_usable_enemies
     # A positively identified open-eyed door is the game's cleared-room state.
     # Background ornaments occasionally resemble a trained monster; they must
     # not pull navigation away from the now-available exit.
@@ -86,6 +86,8 @@ def navigation_targets(scene,*,enemies=True):
     boss=(learned_enemies if learned_enemies is not None else aurumaton_landmark(scene))
     targets=detect(scene)
     if targets is not None:
+        targets=[t for t in targets if t.text!='Enemy']+(
+            _usable_enemies([t for t in targets if t.text=='Enemy']) if enemies else [])
         if not targets:
             # A distant door can briefly fall below 0.55 during reward/heal
             # effects. Require independent face geometry inside a lower-score
@@ -660,6 +662,8 @@ class FieldMotionWatch:
         self.started_at=time.monotonic()
         self.attack_target=None
         self.attack_frame=None
+        self.gate_target=None
+        self.gate_frame=None
         self.label_approach=profile=='anomaly' and any(t.score==.86 for t in event_targets(scene))
         targets=(event_targets(scene) or navigation_targets(scene,enemies=False)) if profile=="anomaly" else navigation_targets(scene,enemies=False) if profile in ("target","exit") else []
         self.started_near=any(t.box[3]-t.box[1]>.5 for t in targets)
@@ -783,7 +787,10 @@ class FieldMotionWatch:
                 if abs(gate.center[0]-.5)>.06:
                     return "gate_alignment"
         elif self.profile in ("seek","seek_gate"):
-            if gate is not None or navigation_targets(page,enemies=False):
+            targets=navigation_targets(page,enemies=False)
+            if gate is not None or targets:
+                self.gate_target=next((t for t in targets if t.text in ('Target','GateLocked')),gate)
+                self.gate_frame=image
                 return "gate_landmark"
             if self.profile=='seek_gate':
                 return None

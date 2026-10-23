@@ -10,6 +10,23 @@ from autohsr.models import Scene
 
 
 class DuDetectorTests(unittest.TestCase):
+    def test_clipped_enemy_boxes_do_not_supply_bearings_or_reappear_in_exit_navigation(self):
+        from autohsr.du_detector import detect_enemies
+        from autohsr.du_navigation import navigation_targets
+        from autohsr.models import Token
+        valid=Token('Enemy',.9,(.3,.2,.7,.85))
+        gate=Token('Target',.9,(.45,.2,.55,.5))
+        for box in ((.533,0,1,.445),(.533,.02,.99,.445),(0,.2,.4,.7),(.3,.2,1,.7),(.3,.2,.7,1)):
+            clipped=Token('Enemy',.93,box)
+            with patch('autohsr.du_detector._detect',return_value=[clipped,valid]):
+                self.assertEqual(detect_enemies(Scene([])),[valid])
+            with patch('autohsr.du_detector.detect',return_value=[clipped,gate]), \
+                 patch('autohsr.du_detector.detect_enemies',return_value=[]), \
+                 patch('autohsr.du_navigation.random_gate',return_value=None):
+                self.assertEqual(navigation_targets(Scene([])),[gate])
+        with patch('autohsr.du_detector.detect',return_value=[valid,gate]):
+            self.assertEqual(navigation_targets(Scene([]),enemies=False),[gate])
+
     def test_recovery_model_supplies_side_enemy_bearings_and_rejects_corner_avatar(self):
         import cv2,json
         from autohsr.du_detector import detect_recovery_enemies

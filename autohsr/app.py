@@ -375,6 +375,10 @@ class Context:
             result=self.window.field_motion(action,duration_ms,scene.geometry,
                                             checkpoint=check,observe=observe)
             result["scan_samples"]=frames
+            if result.get('reason')=='gate_landmark' and watch.gate_target is not None:
+                self._du_gate_reference=(Scene(scene.tokens,watch.gate_frame,scene.geometry),
+                                         watch.gate_target,time.monotonic())
+                result['gate_target']={'box':list(watch.gate_target.box),'score':float(watch.gate_target.score)}
             if result.get('reason')=='attack_reticle' and watch.attack_target is not None:
                 result['attack_target']={'box':list(watch.attack_target.box),
                                          'score':float(watch.attack_target.score)}

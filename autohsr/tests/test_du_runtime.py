@@ -1428,6 +1428,33 @@ class DuRuntimeTests(unittest.TestCase):
         ctx.differential_universe_move.assert_not_called()
         ctx.differential_universe_look.assert_not_called()
 
+    def test_resumed_unknown_monster_can_restore_pink_gate_heading_without_translation(self):
+        import numpy as np
+        page=Scene([t('(1/13) 第一位面-战斗')],np.zeros((540,960,3),np.uint8))
+        gate=Token('Target',.9,(.45,.2,.55,.5))
+        for found in (True,False):
+            with self.subTest(found=found):
+                ctx=Mock(settings=Settings(),report=RunReport())
+                ctx._du_motion_result={'reason':'duration'}
+                ctx.differential_universe_motion.return_value=page
+                flow=DifferentialUniverseWorkflow(ctx,1,resume_active=True)
+                flow._observe=Mock(return_value='field_combat')
+                flow._wait_known=Mock(side_effect=lambda page,kind,label,**kw:(page,kind))
+                flow._field_visual=Mock(return_value=(page,'field_combat'))
+                with patch('autohsr.du_navigation.verified_attack_reticle',return_value=None), \
+                     patch('autohsr.du_navigation.navigation_targets',return_value=[gate] if found else []):
+                    if found:
+                        self.assertEqual(flow._field_combat(page),(page,'field_combat'))
+                        flow._field_visual.assert_called_once_with(page)
+                    else:
+                        with self.assertRaisesRegex(AutomationError,'未找到怪物或粉色门'):
+                            flow._field_combat(page)
+                        flow._field_visual.assert_not_called()
+                self.assertEqual([c.kwargs['profile'] for c in ctx.differential_universe_motion.call_args_list],
+                                 ['seek_attack','seek_gate'])
+                ctx.differential_universe_move.assert_not_called()
+                ctx.differential_universe_look.assert_not_called()
+
     def test_missed_attack_uses_just_seen_side_ring_before_second_click(self):
         import cv2,json
         from pathlib import Path
@@ -2701,6 +2728,62 @@ class DuRuntimeTests(unittest.TestCase):
             self.assertEqual(item.type,0)
             self.assertEqual(item.mi.dwFlags,1)
         window.move.assert_not_called()
+
+    def test_slow_scan_detection_restores_observed_camera_after_stopping_worker(self):
+        from autohsr.windows import GameWindow,Geometry
+        window=Mock();camera=[0];observed=[]
+        def send(items,*args):
+            camera[0]+=items[0].mi.dx
+        window.send.side_effect=send
+        def observe():
+            observed.append(camera[0])
+            time.sleep(.15)
+            self.assertGreater(camera[0],observed[-1])
+            return 'gate_landmark'
+        result=GameWindow.field_motion(window,'scan_right',1000,Geometry(0,0,1920,1080),
+                                       checkpoint=lambda:None,observe=observe)
+        self.assertEqual(camera[0],observed[-1])
+        self.assertGreater(result['camera_rewind_px'],0)
+        self.assertLess(window.send.call_args.args[0][0].mi.dx,0)
+        calls=window.send.call_count;time.sleep(.06)
+        self.assertEqual(window.send.call_count,calls)
+
+    def test_scan_does_not_rewind_after_user_pause_during_detection(self):
+        from autohsr.windows import GameWindow,Geometry
+        paused=threading.Event();window=Mock()
+        def check():
+            if paused.is_set():
+                raise InputInterrupted('pause')
+        def observe():
+            time.sleep(.10);paused.set();return 'gate_landmark'
+        with self.assertRaisesRegex(InputInterrupted,'pause'):
+            GameWindow.field_motion(window,'scan_right',1000,Geometry(0,0,1920,1080),
+                                    checkpoint=check,observe=observe)
+        self.assertTrue(window.send.called)
+        self.assertTrue(all(c.args[0][0].mi.dx>0 for c in window.send.call_args_list))
+
+    def test_aligned_combat_gate_can_be_briefly_hidden_by_avatar_before_forward_probe(self):
+        import numpy as np
+        page=Scene([t('(1/13) 第一位面-战斗')],np.zeros((540,960,3),np.uint8))
+        hidden=Scene(page.tokens,page.image);near=Scene(page.tokens,page.image)
+        gate=Token('Target',.9,(.55,.2,.61,.5))
+        ring=Token('差分宇宙已锁定敌方目标',.9,(.48,.4,.52,.46))
+        battle=Scene([t('战斗设置')])
+        ctx=Mock(settings=Settings(),report=RunReport())
+        ctx.differential_universe_look.return_value=hidden
+        ctx.differential_universe_motion.return_value=near
+        ctx.differential_universe_attack.return_value=battle
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._field_attack_target=Mock(side_effect=lambda current:None if current is page or current is hidden else (ring,'field_ring_attack'))
+        flow._choose_attack_character=Mock(side_effect=lambda current:(current,'field_combat'))
+        flow._observe=Mock(side_effect=lambda current,label:'battle' if current is battle else 'field_combat')
+        flow._wait_known=Mock(side_effect=lambda page,kind,label,**kw:(page,kind))
+        with patch('autohsr.du_navigation.navigation_targets',side_effect=lambda current,**kw:[gate] if current is page else []), \
+             patch('autohsr.du_navigation.random_gate',return_value=None), \
+             patch('autohsr.du_navigation.verified_attack_reticle',side_effect=lambda current:ring if current is near else None):
+            self.assertEqual(flow._field_visual(page),(battle,'battle'))
+        ctx.differential_universe_motion.assert_called_once_with(hidden,'w',600,profile='engage')
+        ctx.differential_universe_move.assert_not_called()
 
     def test_card_upgrade_miracle_only_selects_combat_cards(self):
         page=Scene([t('选择站点卡'),t('指定1个【战斗】区域，使其等级+2',.3,.145),t('抽牌区'),

@@ -393,8 +393,11 @@ class GameWindow:
         errors=[]
         result={"reason":"duration","frames":0}
         started=time.monotonic()
+        camera_total=0
+        matched_camera_total=None
 
         def drive():
+            nonlocal camera_total
             release=None
             try:
                 checkpoint()
@@ -413,6 +416,7 @@ class GameWindow:
                         if total!=previous:
                             self.send([INPUT(type=0,mi=MOUSEINPUT(total-previous,0,0,1,0,0))],expected)
                             previous=total
+                            camera_total=total
                     cancel.wait(.02)
             except BaseException as error:
                 errors.append(error)
@@ -431,16 +435,28 @@ class GameWindow:
         try:
             while not finished.wait(.06):
                 checkpoint()
+                observed_camera_total=camera_total
                 reason=observe()
                 result["frames"]+=1
                 if reason:
                     result["reason"]=str(reason)
+                    if action=='scan_right' and reason in ('gate_landmark','enemy_landmark','attack_reticle'):
+                        matched_camera_total=observed_camera_total
                     break
         finally:
             cancel.set()
             worker.join()
         if errors:
             raise errors[-1]
+        if matched_camera_total is not None:
+            # The input worker kept turning while the detector examined its
+            # captured frame. Restore that frame's camera position after the
+            # worker has stopped; never do so after a pause or observer error.
+            checkpoint()
+            rewind=camera_total-matched_camera_total
+            if rewind>0:
+                self.send([INPUT(type=0,mi=MOUSEINPUT(-rewind,0,0,1,0,0))],expected)
+            result['camera_rewind_px']=rewind
         result["elapsed_ms"]=round((time.monotonic()-started)*1000)
         return result
 

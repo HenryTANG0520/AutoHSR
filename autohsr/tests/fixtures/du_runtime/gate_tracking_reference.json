@@ -1,0 +1,12 @@
+{
+  "source": "runs\\20261024_043244_503466\\continuous-navigation\\043256_889507_04.png",
+  "source_sha256": "757a9b830e5fc5f36336d6d2024999ff534e91f9e2f48cf69559439db332df38",
+  "sha256": "757a9b830e5fc5f36336d6d2024999ff534e91f9e2f48cf69559439db332df38",
+  "masked_identifiers": true,
+  "box": [
+    0.6195051829,
+    0.3565268057,
+    0.6741310755,
+    0.4917947275
+  ]
+}

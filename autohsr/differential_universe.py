@@ -1235,8 +1235,22 @@ class DifferentialUniverseWorkflow:
                 result=getattr(self.ctx,'_du_motion_result',{})
                 reason=result.get('reason') if isinstance(result,dict) else None
                 range_seen=reason=='attack_reticle'
-                if not range_seen and reason!='enemy_landmark' and attack_reticle(scene) is None:
-                    raise AutomationError('接续战斗现场原地搜索后仍未找到怪物，停止并保留位置。')
+                from .du_detector import detect_recovery_enemies
+                enemy_visible=any(t.text=='Enemy' for t in navigation_targets(scene)) or bool(detect_recovery_enemies(scene))
+                if not range_seen and not enemy_visible and attack_reticle(scene) is None:
+                    # Unseen monster appearances can still be approached along
+                    # the user's pink-door anchor. Search only the camera for
+                    # that anchor, then use the normal bounded forward/ring flow.
+                    scene=self.ctx.differential_universe_motion(scene,'scan_right',8000,profile='seek_gate')
+                    kind=self._observe(scene,'resumed_gate_anchor_reacquired')
+                    scene,kind=self._wait_known(scene,kind,'resumed_gate_anchor_reacquired')
+                    if kind!='field_combat':
+                        return scene,kind
+                    from .du_tracking import recent_gate
+                    if (not any(t.text in ('Target','GateLocked') for t in navigation_targets(scene,enemies=False))
+                            and recent_gate(self.ctx,scene) is None):
+                        raise AutomationError('接续战斗现场未找到怪物或粉色门，停止并保留位置。')
+                    return self._field_visual(scene)
                 return self._field_visual(scene,range_seen=range_seen,prefer_enemy=True)
             if fresh_entry and attack_reticle(scene) is None:
                 # A newly confirmed station restores the game's forward-facing
@@ -1368,6 +1382,11 @@ class DifferentialUniverseWorkflow:
             if cleared:
                 self._field_cleared=True
             targets=navigation_targets(scene,enemies=field_kind=='field_combat' and not cleared)
+            if field_kind=='field_combat' and not cleared and not any(t.text in ('Target','GateLocked') for t in targets):
+                from .du_tracking import recent_gate
+                tracked=recent_gate(self.ctx,scene)
+                if tracked is not None:
+                    targets=targets+[tracked]
             if (attacks or prefer_enemy) and field_kind=='field_combat' and not cleared and not any(t.text=='Enemy' for t in targets):
                 targets=detect_recovery_enemies(scene)+targets
             enemies=[t for t in targets if t.text=="Enemy"]
@@ -1397,8 +1416,8 @@ class DifferentialUniverseWorkflow:
                 # searches that turn the character away from an in-range foe.
                 attack=(Token('差分宇宙直行接战',.99,(.48,.45,.52,.49)),'field_forward_attack')
             if goal is None and aligned_enemy_steps>0 and reticle is None and not attack_ready:
-                # Centering can hide the enemy behind the avatar and also
-                # remove its name bar. Retain only that just-verified heading.
+                # Centering can hide the enemy or its pink-door anchor behind
+                # the avatar. Retain only that just-verified combat heading.
                 scene=self.ctx.differential_universe_motion(scene,'w',600,profile='engage')
                 aligned_enemy_steps-=1
                 result=getattr(self.ctx,'_du_motion_result',{})
@@ -1424,7 +1443,7 @@ class DifferentialUniverseWorkflow:
                 elif reticle is None:
                     if abs(goal.center[0]-.5)>heading_tolerance:
                         delta=max(-.12,min(.12,(goal.center[0]-.5)*.65))
-                        if goal.text=='Enemy' and abs(goal.center[0]-.5-1.6*delta)<.07:
+                        if abs(goal.center[0]-.5-1.6*delta)<.07:
                             aligned_enemy_steps=2
                         scene=self.ctx.differential_universe_look(scene,delta,0,220)
                         label="visual_combat_heading_aligned"
@@ -1559,12 +1578,12 @@ class DifferentialUniverseWorkflow:
                     if kind!=field_kind:
                         return scene,kind
                 scene=self.ctx.differential_universe_motion(scene,'scan_right',8000,
-                    profile='seek_gate' if field_kind!='field_combat' or cleared else 'seek')
+                    profile='seek_gate' if field_kind!='field_combat' or cleared or prefer_enemy else 'seek')
                 sweeps+=1
                 label="visual_stationary_search"
             elif abs(goal.center[0]-.5)>heading_tolerance:
                 delta=max(-.12,min(.12,(goal.center[0]-.5)*.65))
-                if goal.text=='Enemy' and abs(goal.center[0]-.5-1.6*delta)<.07:
+                if field_kind=='field_combat' and not cleared and abs(goal.center[0]-.5-1.6*delta)<.07:
                     aligned_enemy_steps=2
                 scene=self.ctx.differential_universe_look(scene,delta,0,220)
                 label="visual_target_aligned"
