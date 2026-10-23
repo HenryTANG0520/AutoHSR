@@ -1276,7 +1276,7 @@ class DifferentialUniverseWorkflow:
         from .du_navigation import navigation_targets,verified_attack_reticle as attack_reticle,random_gate,optional_device_prompt,interaction_hint
         from .du_detector import forward_barrier
         started,inactive_before=time.monotonic(),self._inactive()
-        scans=attacks=recoveries=0
+        scans=attacks=recoveries=sweeps=0
         close_backoffs=side_routes=0
         side_route_forward=False
         aligned_enemy_steps=0
@@ -1456,10 +1456,17 @@ class DifferentialUniverseWorkflow:
                     return scene,kind
                 continue
             if goal is None:
-                if scans>=16:
+                if sweeps>=2:
                     raise AutomationError("原地镜头搜索达到上限，未找到可用门或怪物；没有继续移动角色。")
-                scene=self.ctx.differential_universe_look(scene,.16,0,400)
-                scans+=1
+                if sweeps==1:
+                    scene=self.ctx.differential_universe_look(scene,0,-.04,250)
+                    kind=self._observe(scene,'visual_search_pitch_checked')
+                    scene,kind=self._wait_known(scene,kind,'visual_search_pitch_checked')
+                    if kind!=field_kind:
+                        return scene,kind
+                scene=self.ctx.differential_universe_motion(scene,'scan_right',8000,
+                    profile='seek_gate' if field_kind!='field_combat' or cleared else 'seek')
+                sweeps+=1
                 label="visual_stationary_search"
             elif abs(goal.center[0]-.5)>heading_tolerance:
                 delta=max(-.12,min(.12,(goal.center[0]-.5)*.65))
@@ -1838,6 +1845,22 @@ class DifferentialUniverseWorkflow:
             raise AutomationError('关闭存档管理后未回到通关结算。')
         return scene,kind
 
+    def _settled_field_entry(self,scene,kind):
+        from .du_navigation import field_frame_ready
+        if scene.image is None:
+            return scene,kind
+        stable=0
+        for _ in range(8):
+            stable=stable+1 if field_frame_ready(scene) else 0
+            if stable>=2:
+                return scene,kind
+            self.ctx.sleep(.2)
+            scene,current=self._snapshot('field_entry_fade_recheck')
+            scene,current=self._wait_known(scene,current,'field_entry_fade_recheck')
+            if current!=kind:
+                return scene,current
+        raise AutomationError('进场画面仍在淡入，未转动镜头或移动角色。')
+
     def _progress_run(self, scene: Scene, kind: str) -> tuple[Scene, str, bool]:
         victory_seen = False
         started,inactive_before=time.monotonic(),self._inactive()
@@ -1924,6 +1947,11 @@ class DifferentialUniverseWorkflow:
                                 'equation_choice','curio_choice','miracle_choice','mask_reward_overlay'):
                         self._field_cleared=True
                     continue
+                if kind.startswith('field_') and self._fresh_field_entry:
+                    scene,current=self._settled_field_entry(scene,kind)
+                    if current!=kind:
+                        kind=current
+                        continue
                 if kind == "field_combat":
                     fresh_entry=self._fresh_field_entry
                     self._fresh_field_entry=False

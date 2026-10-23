@@ -43,6 +43,30 @@ def home(scene):
             and scene.has('开始游戏',(.65,.80,1,1),exact=True))
 
 
+def home_signature(scene):
+    if not home(scene):
+        return None
+    entries=[scene.find(label,(.66,.23,.98,.70),exact=True) for label in HOME_LABELS]
+    return tuple(value for entry in entries for value in entry.box) if all(entries) else None
+
+
+def settled_home(workflow,scene):
+    """Do not declare no rewards while entrance panels still slide offscreen."""
+    if scene.image is None:
+        return scene
+    previous=None
+    for _ in range(8):
+        current=home_signature(scene)
+        if current is not None and previous is not None and max(abs(a-b) for a,b in zip(current,previous))<.005:
+            return scene
+        previous=current
+        workflow.ctx.sleep(.2)
+        scene=workflow.ctx.snapshot()
+        if not home(scene):
+            scene=workflow.ctx.wait(home,timeout=12,description='等候差分宇宙主页入场结束')
+    raise AutomationError('主页菜单仍在入场动画，未确认全部领奖或开始日常。')
+
+
 def red_dots(scene,roi=(0,0,1,1)):
     """Small red circular badges with a white interior mark, not red artwork."""
     if scene.image is None:
@@ -276,6 +300,7 @@ def _collect(workflow,scene,report):
         raise AutomationError('红点领奖须从差分宇宙主页开始。')
     visited={}
     for _ in range(24):
+        scene=settled_home(workflow,scene)
         targets=home_targets(scene)
         if not targets:
             if red_dots(scene):

@@ -129,6 +129,68 @@ class DuRuntimeTests(unittest.TestCase):
         ctx.differential_universe_move.assert_called_once_with(page,'s',500)
         ctx.differential_universe_interact.assert_not_called()
 
+    def test_native_field_fade_is_not_a_reason_to_turn_and_night_is_ready(self):
+        from autohsr.du_navigation import field_frame_ready
+        fade=self.optional_device_fixture('rest_entry_fade')
+        night=self.optional_device_fixture('rest_entry_ready')
+        self.assertFalse(field_frame_ready(fade))
+        self.assertTrue(field_frame_ready(night))
+        self.assertTrue(field_frame_ready(self.optional_device_fixture('chaos_box_blocks_combat')))
+
+    def test_entry_waits_for_two_ready_observations_without_moving_or_looking(self):
+        fade=self.optional_device_fixture('rest_entry_fade')
+        ready=self.optional_device_fixture('rest_entry_ready')
+        ctx=Mock(settings=Settings(),report=RunReport())
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._snapshot=Mock(side_effect=[(ready,'field_rest'),(ready,'field_rest')])
+        self.assertEqual(flow._settled_field_entry(fade,'field_rest'),(ready,'field_rest'))
+        self.assertEqual(flow._snapshot.call_count,2)
+        ctx.differential_universe_motion.assert_not_called()
+        ctx.differential_universe_move.assert_not_called()
+        ctx.differential_universe_look.assert_not_called()
+
+    def test_entry_fade_timeout_has_no_camera_or_movement_input(self):
+        fade=self.optional_device_fixture('rest_entry_fade')
+        ctx=Mock(settings=Settings(),report=RunReport())
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._snapshot=Mock(return_value=(fade,'field_rest'))
+        with self.assertRaisesRegex(AutomationError,'仍在淡入'):
+            flow._settled_field_entry(fade,'field_rest')
+        self.assertEqual(flow._snapshot.call_count,8)
+        ctx.differential_universe_motion.assert_not_called()
+        ctx.differential_universe_move.assert_not_called()
+        ctx.differential_universe_look.assert_not_called()
+
+    def test_entry_wait_returns_an_actual_overlay_change(self):
+        fade=self.optional_device_fixture('rest_entry_fade')
+        reward=Scene([t('选择祝福')])
+        ctx=Mock(settings=Settings(),report=RunReport())
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._snapshot=Mock(return_value=(reward,'blessing_choice'))
+        self.assertEqual(flow._settled_field_entry(fade,'field_rest'),(reward,'blessing_choice'))
+        ctx.differential_universe_motion.assert_not_called()
+
+    def test_continuous_camera_search_stops_on_a_learned_gate_bearing(self):
+        from autohsr.du_navigation import FieldMotionWatch
+        page=self.optional_device_fixture('rest_entry_ready')
+        vision=Mock()
+        watch=FieldMotionWatch(page,vision,profile='seek')
+        target=Token('Target',.9,(.4,.2,.5,.5))
+        with patch('autohsr.du_navigation.random_gate',return_value=None), \
+             patch('autohsr.du_navigation.navigation_targets',return_value=[target]):
+            self.assertEqual(watch(page.image),'gate_landmark')
+        vision.read.assert_not_called()
+
+    def test_exit_camera_search_does_not_block_on_enemy_bar_ocr(self):
+        from autohsr.du_navigation import FieldMotionWatch
+        page=self.optional_device_fixture('rest_entry_ready')
+        vision=Mock()
+        watch=FieldMotionWatch(page,vision,profile='seek_gate')
+        with patch('autohsr.du_navigation.random_gate',return_value=None), \
+             patch('autohsr.du_navigation.navigation_targets',return_value=[]):
+            self.assertIsNone(watch(page.image))
+        vision.read.assert_not_called()
+
     def test_recruitment_header_with_blank_cards_waits_for_observed_titles(self):
         import json
         from pathlib import Path
@@ -1606,8 +1668,7 @@ class DuRuntimeTests(unittest.TestCase):
         page=Scene([t('(4/13) 第一位面-首领')],np.zeros((540,960,3),np.uint8))
         enemy=Token('Enemy',.95,(.43,.25,.57,.50))
         ctx=Mock(settings=Settings(),report=RunReport())
-        ctx.differential_universe_motion.return_value=page
-        ctx.differential_universe_look.side_effect=RuntimeError('stationary search')
+        ctx.differential_universe_motion.side_effect=[page,page,page,RuntimeError('stationary search')]
         flow=DifferentialUniverseWorkflow(ctx,1)
         flow._field_attack_target=Mock(return_value=(t('差分宇宙基础攻击',.88,.85),'field_attack'))
         flow._snapshot=Mock(return_value=(page,'field_combat'))
@@ -1615,8 +1676,11 @@ class DuRuntimeTests(unittest.TestCase):
              patch('autohsr.du_navigation.attack_reticle',return_value=None):
             with self.assertRaisesRegex(RuntimeError,'stationary search'):
                 flow._field_visual(page)
-        self.assertEqual([c.args[2] for c in ctx.differential_universe_motion.call_args_list],[3000,600,600])
-        self.assertTrue(all(c.kwargs['profile']=='engage' for c in ctx.differential_universe_motion.call_args_list))
+        moves=ctx.differential_universe_motion.call_args_list
+        self.assertEqual([c.args[2] for c in moves[:3]],[3000,600,600])
+        self.assertTrue(all(c.kwargs['profile']=='engage' for c in moves[:3]))
+        self.assertEqual(moves[-1].args[1:],('scan_right',8000))
+        self.assertEqual(moves[-1].kwargs,{'profile':'seek'})
         ctx.differential_universe_attack.assert_not_called()
         ctx.differential_universe_move.assert_not_called()
 
@@ -2029,6 +2093,7 @@ class DuRuntimeTests(unittest.TestCase):
         page=Scene([t('(7/13) 第二位面-战斗')],np.zeros((540,960,3),np.uint8))
         flow._field_attack_target=Mock(return_value=(t('差分宇宙基础攻击',.88,.85),'field_attack'))
         context.differential_universe_look.return_value=page
+        context.differential_universe_motion.return_value=page
         flow._observe=Mock(return_value='field_combat')
         flow._snapshot=Mock(return_value=(page,'field_combat'))
         flow._wait_known=Mock(side_effect=lambda p,k,label,**kw:(p,k))
@@ -2037,7 +2102,9 @@ class DuRuntimeTests(unittest.TestCase):
              patch('autohsr.du_navigation.attack_reticle',return_value=None):
             with self.assertRaisesRegex(AutomationError,'原地镜头搜索达到上限'):
                 flow._field_visual(page)
-        context.differential_universe_motion.assert_not_called()
+        self.assertEqual(len(context.differential_universe_motion.call_args_list),2)
+        self.assertTrue(all(c.args[1:] == ('scan_right',8000) and c.kwargs=={'profile':'seek'}
+                            for c in context.differential_universe_motion.call_args_list))
         context.differential_universe_attack.assert_not_called()
 
     def test_home_links_and_mode_names_do_not_become_shop_pages(self):

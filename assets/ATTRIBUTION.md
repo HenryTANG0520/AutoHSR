@@ -495,3 +495,12 @@ an optional chaos medicine box obstructing the entrance path. Identifiers are
 masked; the sidecar retains source/fixture hashes and non-identifier OCR. It
 tests shared bounded avoidance and early re-reading of unknown F prompts,
 without authorizing the box's negative-curio exchange. Artwork is HoYoverse's.
+
+`du_runtime/rest_entry_fade.png` and `rest_entry_ready.png` are masked native
+rest-room entrance captures before and after the same fade. They test waiting
+for the fixed HUD to recover without rejecting a fully loaded night scene.
+`du_runtime/rewards_home_intro.png` is a masked native home entrance frame
+whose reward panels are still sliding in from offscreen. It tests withholding
+the no-rewards conclusion until all four anchors are complete and stable.
+Their sidecars retain hashes and non-identifier OCR; these are local
+regression examples, not independent completion evidence. Artwork is HoYoverse's.

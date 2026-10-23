@@ -23,6 +23,52 @@ def badge(image,x,y,white=True):
 
 
 class DuRewardTests(unittest.TestCase):
+    @staticmethod
+    def ready_home():
+        import json
+        from pathlib import Path
+        root=Path(__file__).parent/'fixtures/du_runtime'
+        row=next(v for v in json.loads((root/'reward_pages.json').read_text('utf8')) if v['kind']=='home')
+        return Scene([Token(v['text'],v['score'],tuple(v['box'])) for v in row['tokens']],
+                     cv2.imread(str(root/row['file'])))
+
+    def test_home_intro_requires_all_four_reward_entries_fully_in_frame(self):
+        from autohsr.du_rewards import home_signature
+        from autohsr.tests.test_du_team import fixture
+        self.assertIsNone(home_signature(fixture('rewards_home_intro')))
+        self.assertIsNotNone(home_signature(self.ready_home()))
+
+    def test_home_intro_waits_for_two_stable_complete_frames_without_input(self):
+        from autohsr.du_rewards import settled_home
+        from autohsr.tests.test_du_team import fixture
+        ready=self.ready_home();ctx=Mock()
+        ctx.snapshot.side_effect=[ready,ready]
+        self.assertIs(settled_home(SimpleNamespace(ctx=ctx),fixture('rewards_home_intro')),ready)
+        self.assertEqual(ctx.snapshot.call_count,2)
+        ctx.click.assert_not_called();ctx.key.assert_not_called()
+
+    def test_moving_home_panels_need_another_complete_observation(self):
+        from autohsr.du_rewards import settled_home
+        ready=self.ready_home()
+        moving=Scene([Token(v.text,v.score,tuple(x+.02 if i in (0,2) else x for i,x in enumerate(v.box)))
+                      if v.text=='可能性画廊' else v for v in ready.tokens],ready.image)
+        ctx=Mock();ctx.snapshot.side_effect=[moving,ready,ready]
+        self.assertIs(settled_home(SimpleNamespace(ctx=ctx),ready),ready)
+        self.assertEqual(ctx.snapshot.call_count,3)
+
+    def test_incomplete_home_never_reports_no_rewards_or_clicks(self):
+        from autohsr.tests.test_du_team import fixture
+        ready=self.ready_home()
+        partial=Scene([v for v in ready.tokens if v.text!='稳态数组'],fixture('rewards_home_intro').image)
+        ctx=Mock();ctx.snapshot.return_value=partial
+        flow=SimpleNamespace(ctx=ctx,settings=Settings(differential_universe_rewards=True),
+                             report={},_persist_ledger=Mock())
+        with self.assertRaisesRegex(AutomationError,'主页菜单仍在入场动画'):
+            collect(flow,partial)
+        self.assertEqual(ctx.snapshot.call_count,8)
+        self.assertEqual(flow.report['reward_collection']['status'],'failed')
+        ctx.click.assert_not_called();ctx.key.assert_not_called()
+
     def test_offscreen_gallery_notification_pans_toward_hidden_category(self):
         from autohsr.du_rewards import gallery_pan_plan, gallery_targets, collect_gallery,guard_pan
         from autohsr.tests.test_du_team import fixture
@@ -90,8 +136,10 @@ class DuRewardTests(unittest.TestCase):
         steady=Scene([t('稳态数组',.1,.05),t('测试',.4,.1),t('难题',.58,.1)])
         pages=iter([fit,steady_home,steady,fit_home,fit,cleared])
         def wait(predicate,**kwargs):
-            page=next(pages);self.assertTrue(predicate(page),kwargs.get('description'));return page
-        ctx=Mock();ctx.wait.side_effect=wait
+            page=next(pages);self.assertTrue(predicate(page),kwargs.get('description'))
+            ctx.snapshot.return_value=page
+            return page
+        ctx=Mock();ctx.wait.side_effect=wait;ctx.snapshot.return_value=both_home
         flow=SimpleNamespace(ctx=ctx,settings=Settings(differential_universe_rewards=True),
                              report={},_persist_ledger=Mock())
         def claimed(workflow,page,report,*args):
@@ -108,10 +156,11 @@ class DuRewardTests(unittest.TestCase):
     def test_reward_revisit_without_new_receipt_stops_and_clears_old_complete_status(self):
         image=np.zeros((720,1280,3),np.uint8);badge(image,.974,.43)
         hub=Scene([t('差分宇宙',.1,.05),t('乐园漫记',.1,.11),
-                   t('开始游戏',.82,.90),t('拟合等级',.94,.45)],image)
+                   t('开始游戏',.82,.90),t('拟合等级',.94,.45),t('月下奇谭',.86,.32),
+                   t('可能性画廊',.77,.60),t('稳态数组',.94,.60)],image)
         fit=Scene([t('差分宇宙',.1,.05),t('675/800',.5,.51),
                    t('64',.42,.835),t('65',.50,.835),t('66',.58,.835)])
-        ctx=Mock();ctx.wait.side_effect=[fit,hub]
+        ctx=Mock();ctx.wait.side_effect=[fit,hub];ctx.snapshot.return_value=hub
         report={'claims':[],'visits':[],'status':'complete','home_evidence':'old home'}
         flow=SimpleNamespace(ctx=ctx,settings=Settings(differential_universe_rewards=True),
                              report={'reward_collection':report},_persist_ledger=Mock())
@@ -225,8 +274,10 @@ class DuRewardTests(unittest.TestCase):
 
     def test_unknown_home_notification_is_not_reported_as_all_claimed(self):
         image=np.zeros((720,1280,3),np.uint8);badge(image,.14,.32)
-        page=Scene([t('差分宇宙',.1,.05),t('乐园漫记',.1,.11),t('开始游戏',.82,.90)],image)
+        page=Scene([t('差分宇宙',.1,.05),t('乐园漫记',.1,.11),t('开始游戏',.82,.90),
+                    t('拟合等级',.94,.45),t('月下奇谭',.86,.32),t('可能性画廊',.77,.60),t('稳态数组',.94,.60)],image)
         flow=SimpleNamespace(settings=Settings(differential_universe_rewards=True),ctx=Mock(),report={},_persist_ledger=Mock())
+        flow.ctx.snapshot.return_value=page
         with self.assertRaisesRegex(AutomationError,'未报告全部领完'):
             collect(flow,page)
         self.assertEqual(flow.report['reward_collection']['status'],'unhandled_notification')

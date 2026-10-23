@@ -24,6 +24,15 @@ def optional_device_prompt(scene, *, forge_console_used=False):
     return prompts[0] if len(prompts)==1 and interaction_hint(scene.image,threshold=.85) else None
 
 
+def field_frame_ready(scene):
+    """Entrance fades dim the fixed white HUD too; a night scene does not."""
+    if scene.image is None:
+        return False
+    import numpy as np
+    letters=FieldMotionWatch._letters(FieldMotionWatch._header(scene.image))
+    return np.count_nonzero(letters)>=60
+
+
 class BackgroundProgress:
     """Detect a blocked translation using tracked world points, excluding HUD/avatar."""
     def __init__(self, seconds=2.0):
@@ -724,7 +733,7 @@ class FieldMotionWatch:
             # near a card. Keep this held-input loop purely visual; after it
             # stops for size/alignment/loss, the caller reads the live F label.
             return None
-        gate=random_gate(page,fast=True) if self.watch_gate and self.profile in ("gate","seek") else None
+        gate=random_gate(page,fast=True) if self.watch_gate and self.profile in ("gate","seek","seek_gate") else None
         if self.profile=="forward":
             from .du_detector import forward_barrier
             if interaction_hint(image):
@@ -752,9 +761,11 @@ class FieldMotionWatch:
                 self.missing_gate=0
                 if abs(gate.center[0]-.5)>.06:
                     return "gate_alignment"
-        elif self.profile=="seek":
-            if gate is not None:
+        elif self.profile in ("seek","seek_gate"):
+            if gate is not None or navigation_targets(page,enemies=False):
                 return "gate_landmark"
+            if self.profile=='seek_gate':
+                return None
             h,w=image.shape[:2]
             enemy=self.vision.read(image[:round(.10*h),round(.38*w):round(.64*w)])
             import re

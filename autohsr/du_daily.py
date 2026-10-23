@@ -182,7 +182,7 @@ def after_win(flow,scene,kind,*,root=None,now=None):
     if not getattr(flow.settings,'differential_universe_daily',False):
         return scene,kind
     from .config import ROOT
-    from .du_rewards import home
+    from .du_rewards import home,settled_home
     from .differential_universe import classify_page
     from .workflows import DailyWorkflow
     completed=(flow.report.get('run_results') or [{}])[-1]
@@ -193,6 +193,7 @@ def after_win(flow,scene,kind,*,root=None,now=None):
         scene,kind=flow._collect_rewards(scene,kind,'daily_interlude_home')
     if not home(scene):
         raise AutomationError('通关后日常须从已核实的差分宇宙主页开始。')
+    scene=settled_home(flow,scene)
     journal=DayJournal(root or ROOT/'runs',account_key(scene),game_day(now))
     run_id=(flow.report.get('run_results') or [{}])[-1].get('run_id')
     if not journal.begin(run_id):
