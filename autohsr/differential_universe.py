@@ -1327,8 +1327,10 @@ class DifferentialUniverseWorkflow:
             # The pink gate anchors the room's forward heading. Enemies can
             # stand off to the side while the entrance already faces the group.
             goal=min(locked or gates or enemies,key=lambda t:abs(t.center[0]-.5),default=None)
+            if goal is not None:
+                sweeps=0
             goal_height=goal.box[3]-goal.box[1] if goal is not None else 0
-            heading_tolerance=.055 if goal is not None and goal.text=='Enemy' else (.025 if goal_height>.5 else .055)
+            heading_tolerance=.055 if goal is not None and goal.text=='Enemy' else (.025 if cleared or field_kind!='field_combat' or goal_height>.5 else .055)
             attack=self._field_attack_target(scene) if field_kind=="field_combat" and not cleared else None
             reticle=attack_reticle(scene) if field_kind=='field_combat' and not cleared else None
             if reticle is not None:
@@ -1493,7 +1495,7 @@ class DifferentialUniverseWorkflow:
                     if goal.text=='Enemy':
                         aligned_enemy_steps=2
                     scene=self.ctx.differential_universe_motion(scene,"w",duration,
-                        profile="engage" if field_kind=='field_combat' and not cleared else "target")
+                        profile="engage" if field_kind=='field_combat' and not cleared else "exit")
                     label="visual_target_approach"
                     result=getattr(self.ctx,"_du_motion_result",{})
                     if field_kind=='field_combat' and not cleared and isinstance(result,dict):

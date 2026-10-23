@@ -638,13 +638,13 @@ class FieldMotionWatch:
         self.missing_gate=0
         self.header=self._header(scene.image)
         self.header_letters=self._letters(self.header)
-        self.progress=BackgroundProgress() if profile in ("forward","enemy","target","engage","anomaly","occluded_card") else None
+        self.progress=BackgroundProgress() if profile in ("forward","enemy","target","exit","engage","anomaly","occluded_card") else None
         import time
         self.started_at=time.monotonic()
         self.attack_target=None
         self.attack_frame=None
         self.label_approach=profile=='anomaly' and any(t.score==.86 for t in event_targets(scene))
-        targets=(event_targets(scene) or navigation_targets(scene,enemies=False)) if profile=="anomaly" else navigation_targets(scene,enemies=False) if profile=="target" else []
+        targets=(event_targets(scene) or navigation_targets(scene,enemies=False)) if profile=="anomaly" else navigation_targets(scene,enemies=False) if profile in ("target","exit") else []
         self.started_near=any(t.box[3]-t.box[1]>.5 for t in targets)
 
     @staticmethod
@@ -707,7 +707,7 @@ class FieldMotionWatch:
             if interaction_hint(image):
                 return 'interaction_hint'
             return None
-        if self.profile in ("target","anomaly"):
+        if self.profile in ("target","exit","anomaly"):
             from .du_detector import forward_barrier
             if interaction_hint(image):
                 return "interaction_hint"
@@ -725,7 +725,7 @@ class FieldMotionWatch:
             barrier=forward_barrier(image)
             if goal.text=="Target" and barrier is not None and abs(barrier.center[0]-goal.center[0])<.12:
                 return "forward_barrier"
-            if abs(goal.center[0]-.5)>.10:
+            if abs(goal.center[0]-.5)>(.04 if self.profile=='exit' else .10):
                 return "target_alignment"
             if not self.started_near and goal.box[3]-goal.box[1]>.5:
                 return "target_near"

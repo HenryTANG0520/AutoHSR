@@ -191,6 +191,60 @@ class DuRuntimeTests(unittest.TestCase):
             self.assertIsNone(watch(page.image))
         vision.read.assert_not_called()
 
+    def test_cleared_exit_watch_skips_expensive_attack_range_but_keeps_motion_guard(self):
+        from autohsr.du_navigation import FieldMotionWatch
+        page=self.optional_device_fixture('rest_entry_ready')
+        vision=Mock()
+        gate=Token('Target',.9,(.46,.20,.54,.45))
+        with patch('autohsr.du_navigation.navigation_targets',return_value=[gate]), \
+             patch('autohsr.du_navigation.interaction_hint',return_value=False), \
+             patch('autohsr.du_navigation.attack_reticle',side_effect=AssertionError('cleared exit')):
+            watch=FieldMotionWatch(page,vision,profile='exit')
+            self.assertIsNotNone(watch.progress)
+            self.assertIsNone(watch(page.image))
+            watch.progress.update=Mock(return_value='background_stalled')
+            self.assertEqual(watch(page.image),'background_stalled')
+        vision.read.assert_not_called()
+
+    def test_exit_watch_stops_early_for_heading_drift_or_live_f(self):
+        from autohsr.du_navigation import FieldMotionWatch
+        page=self.optional_device_fixture('rest_entry_ready')
+        gate=Token('Target',.9,(.41,.20,.49,.45))
+        with patch('autohsr.du_navigation.navigation_targets',return_value=[gate]), \
+             patch('autohsr.du_navigation.interaction_hint',return_value=False) as hint:
+            watch=FieldMotionWatch(page,Mock(),profile='exit')
+            self.assertEqual(watch(page.image),'target_alignment')
+            hint.return_value=True
+            self.assertEqual(watch(page.image),'interaction_hint')
+
+    def test_cleared_exit_centers_distant_door_before_walking(self):
+        page=self.optional_device_fixture('rest_entry_ready')
+        route=Scene([t('选择下一站'),t('战斗')])
+        gate=Token('Target',.9,(.42,.20,.50,.40))
+        ctx=Mock(settings=Settings(),report=RunReport())
+        ctx.differential_universe_look.return_value=route
+        flow=DifferentialUniverseWorkflow(ctx,1);flow._field_cleared=True
+        flow._observe=Mock(return_value='station_choice')
+        with patch('autohsr.du_navigation.navigation_targets',return_value=[gate]):
+            self.assertEqual(flow._field_visual(page),(route,'station_choice'))
+        ctx.differential_universe_look.assert_called_once()
+        ctx.differential_universe_motion.assert_not_called()
+
+    def test_reacquiring_gate_resets_only_consecutive_search_limit(self):
+        page=self.optional_device_fixture('rest_entry_ready')
+        route=Scene([t('选择下一站'),t('战斗')])
+        gate=Token('Target',.9,(.46,.20,.54,.40))
+        ctx=Mock(settings=Settings(),report=RunReport())
+        ctx.differential_universe_motion.side_effect=[page,page,page,page,page,route]
+        flow=DifferentialUniverseWorkflow(ctx,1);flow._field_cleared=True
+        flow._observe=Mock(side_effect=lambda p,label:'station_choice' if p is route else 'field_combat')
+        flow._wait_known=Mock(side_effect=lambda p,k,label,**kw:(p,k))
+        with patch('autohsr.du_navigation.navigation_targets',side_effect=[[],[gate],[],[gate],[],[gate]]):
+            self.assertEqual(flow._field_visual(page),(route,'station_choice'))
+        self.assertEqual([c.args[1] for c in ctx.differential_universe_motion.call_args_list],
+                         ['scan_right','w','scan_right','w','scan_right','w'])
+        ctx.differential_universe_look.assert_not_called()
+
     def test_recruitment_header_with_blank_cards_waits_for_observed_titles(self):
         import json
         from pathlib import Path
@@ -1422,7 +1476,7 @@ class DuRuntimeTests(unittest.TestCase):
             self.assertEqual(flow._field_visual(initial)[1],'station_choice')
         self.assertEqual([call.args[0] for call in ctx.differential_universe_enter_random_gate.call_args_list],
                          [initial,arrived])
-        ctx.differential_universe_motion.assert_called_once_with(stopped,'w',4000,profile='target')
+        ctx.differential_universe_motion.assert_called_once_with(stopped,'w',4000,profile='exit')
 
     def test_gate_retry_stops_after_two_freshly_verified_prompts(self):
         page=Scene([t('(4/13) 第一位面-首领'),t('随意门',.6,.55)])
