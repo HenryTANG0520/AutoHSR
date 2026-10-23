@@ -22,6 +22,43 @@ def selector(instruction):
 
 
 class StationCardEffectTests(unittest.TestCase):
+    def test_native_entry_curio_lifetime_is_not_the_current_target_count(self):
+        data=json.loads((Path(__file__).parent/'fixtures/du_runtime/entry_trigger_target.json').read_text('utf8'))
+        page=Scene([Token(v['text'],v['score'],tuple(v['box'])) for v in data['tokens']])
+        effect=station_card_effect(page)
+        self.assertEqual((effect.kind,effect.count,effect.entry_triggered,effect.trigger_limit),('beacon',1,True,2))
+        self.assertEqual(classify_page(page),'miracle_target')
+        card=page.find('事件',(.03,.24,.64,.78),exact=True)
+        guard_differential_universe_click(page,card,intent='miracle_target')
+        done=Scene([token('信标已部署',.5,.15),token('点击空白处关闭',.5,.9)])
+        flow=DifferentialUniverseWorkflow(Mock(settings=Settings(),report=RunReport()),1)
+        flow._click=Mock(side_effect=[(page,'miracle_target'),(done,'tutorial_overlay')])
+        flow._snapshot=Mock(return_value=(done,'tutorial_overlay'))
+        self.assertEqual(flow._apply_miracle_target(page),(done,'tutorial_overlay'))
+        self.assertEqual(flow._click.call_count,2)
+
+    def test_entry_and_lifetime_wrappers_preserve_all_supported_inner_effects(self):
+        for body,kind,count in (('指定1个区域，使其等级+3','upgrade',1),
+                                ('指定1个区域，为其附加1个随机信标','beacon',1),
+                                ('指定1个区域，获得2个该区域的复制','copy',1),
+                                ('立即删除2个指定区域','delete',2)):
+            for limit in (1,2,3,20):
+                with self.subTest(body=body,limit=limit):
+                    effect=station_card_effect(selector(f'进入区域后，{body}。效果触发{limit}次后，该奇物损毁'))
+                    self.assertEqual((effect.kind,effect.count,effect.entry_triggered,effect.trigger_limit),
+                                     (kind,count,True,limit))
+        effect=station_card_effect(selector('进入区域后，指定1个区域，使其等级+2'))
+        self.assertTrue(effect.entry_triggered);self.assertEqual(effect.trigger_limit,0)
+
+    def test_entry_wrappers_do_not_hide_costs_unknown_conditions_or_bad_limits(self):
+        valid='进入区域后，指定1个区域，为其附加1个随机信标。效果触发2次后，该奇物损毁'
+        for altered in (valid+'并消耗60星琼','支付60宇宙碎片'+valid,
+                        valid.replace('区域，为其','区域，消耗60宇宙碎片，为其'),
+                        valid.replace('触发2次','触发0次'),valid.replace('触发2次','触发2.5次'),
+                        valid.replace('进入区域后','进入区域前'),valid.replace('后，指定','后，若支付60星琼，指定')):
+            with self.subTest(altered=altered):
+                self.assertIsNone(station_card_effect(selector(altered)))
+
     def test_native_growing_curio_beacon_uses_one_region_selection(self):
         data=json.loads((Path(__file__).parent/'fixtures/du_runtime/growing_beacon_target.json').read_text('utf8'))
         page=Scene([Token(v['text'],v['score'],tuple(v['box'])) for v in data['tokens']])

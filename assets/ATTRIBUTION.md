@@ -517,3 +517,9 @@ selector opened by a growing curio. Its sidecar preserves source/fixture
 hashes and OCR excluding account identifiers. It tests the complete immediate
 random-beacon reward and later count-based upgrade instruction. It is local
 regression evidence, not an independent completion. Artwork is HoYoverse's.
+
+`du_runtime/entry_trigger_target.png` is a masked native station-card selector
+for an enter-region curio with a finite activation lifetime. Source/fixture
+hashes and non-identifier OCR are retained in its sidecar. It tests separating
+the current target count from the later destruction counter, and is a local
+regression sample rather than independent completion evidence.

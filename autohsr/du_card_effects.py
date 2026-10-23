@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass,replace
 
 from .models import Scene, Token, normalize
 
@@ -32,6 +32,8 @@ class CardEffect:
     copies: int = 0
     growth_threshold: int = 0
     growth_name: str = ''
+    entry_triggered: bool = False
+    trigger_limit: int = 0
 
     @property
     def target_labels(self) -> tuple[str, ...]:
@@ -85,6 +87,18 @@ def station_card_effect(scene: Scene) -> CardEffect | None:
     if not scene.has('选择站点卡', (0, 0, .32, .13), exact=True) or not scene.has('抽牌区', exact=True):
         return None
     text = _instruction(scene)
+    entry=text.startswith('进入区域后')
+    if entry:
+        text=text[len('进入区域后'):]
+    limited=re.fullmatch(rf'(.+)效果触发({_NUMBER})次后该奇物损毁',text)
+    limit=_number(limited[2]) if limited else 0
+    if limited:
+        text=limited[1]
+    effect=_parse_instruction(text)
+    return replace(effect,entry_triggered=entry,trigger_limit=limit) if effect is not None else None
+
+
+def _parse_instruction(text: str) -> CardEffect | None:
     growth=re.fullmatch(rf'立即获得({_NUMBER})个随机信标进入区域后若持有的信标数量大于等于({_NUMBER})'
                         r'则升级为【([\u3400-\u9fff·]{1,24}高级)】',text)
     if growth:
