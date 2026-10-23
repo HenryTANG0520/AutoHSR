@@ -542,3 +542,9 @@ gate. Its sidecar preserves source/fixture hashes and non-identifier OCR.
 It tests corrective aiming after a missed initial click and the bounded use
 of a range bearing just verified by the held-input watcher. It is local
 regression evidence, not an independent completion. Artwork is HoYoverse's.
+
+`du_runtime/beacon_reroll_target.png` is a masked native station-card selector
+requiring a card with existing beacons. Its sidecar retains source/fixture
+hashes and OCR excluding the account identifier. It tests the full reroll
+instruction and named beacon descriptions in the selected-card panel. It is
+local regression evidence, not an independent completion.

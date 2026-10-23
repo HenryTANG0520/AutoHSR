@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 
 from .models import AutomationError, Scene, Token, normalize
-from .du_card_effects import station_card_effect
+from .du_card_effects import station_card_effect,preview_beacons
 
 FORBIDDEN = ("跃迁", "抽卡", "商店", "合成", "充值", "购买", "续购", "续费", "订购", "兑换", "强化", "升级", "突破", "晋阶", "叠影", "培养", "养成", "角色", "光锥", "遗器", "背包")
 PHONE_ALLOWED = ("委托", "指南", "星际和平指南", "邮件", "无名勋礼")
@@ -361,6 +361,9 @@ def guard_differential_universe_click(scene: Scene, target: Token | tuple[float,
             valid=text in labels and target.within((.03,.24,.64,.78))
         else:
             valid=text in ("确定","确认") and target.within((.72,.82,.99,.96))
+            effect=station_card_effect(scene)
+            if effect.kind=='reroll_beacons' and not preview_beacons(scene):
+                raise AutomationError('重置信标前未在当前卡片详情中核实已有信标。')
         if not valid:
             raise AutomationError("奇迹站点卡目标或确认按钮未核实。")
         return

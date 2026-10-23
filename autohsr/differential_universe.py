@@ -14,7 +14,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from .models import AutomationError, InputInterrupted, Scene, TaskResult, Token, normalize
-from .du_card_effects import station_card_effect
+from .du_card_effects import station_card_effect,preview_beacons
 from .policy import has_du_field_plane_marker, du_miracle_target_labels, du_miracle_randomize_two, du_event_free_leave,du_event_free_choice,du_flea_market_choice,du_tutorial_close_prompt
 from .workflows import DailyWorkflow
 from .storage import replace_file
@@ -390,14 +390,33 @@ class DifferentialUniverseWorkflow:
         for _ in range(effect.count if deleting else 2 if sequential else 1):
             if deleting:
                 self._check_deadline(started,inactive_before,ROOM_TIMEOUT,'逐张删卡')
-            target=self._find(scene,du_miracle_target_labels(scene),(.03,.24,.64,.78))
-            if target is None:
-                raise AutomationError("奇迹的站点卡目标页没有符合当前效果的可识别卡片。")
-            scene,kind=self._click(scene,target,intent="miracle_target",label="miracle_target_selected")
+            if effect.kind=='reroll_beacons':
+                attempted=[]
+                for attempt in range(20):
+                    labels=effect.target_labels
+                    candidates=sorted((t for t in scene.tokens if t.text in labels and t.within((.03,.24,.64,.78))),
+                        key=lambda t:(labels.index(t.text),t.center[1],t.center[0]))
+                    target=next((t for t in candidates if not any(
+                        abs(t.center[0]-x)<.025 and abs(t.center[1]-y)<.025 for x,y in attempted)),None)
+                    if target is None:
+                        raise AutomationError('未在可见站点卡详情中找到带有信标的目标。')
+                    attempted.append(target.center)
+                    scene,kind=self._click(scene,target,intent='miracle_target',label='miracle_beacon_target_selected')
+                    if kind!='miracle_target' or station_card_effect(scene)!=effect or preview_beacons(scene):
+                        break
+                else:
+                    raise AutomationError('信标目标预览达到上限，停止重复选卡。')
+            else:
+                target=self._find(scene,du_miracle_target_labels(scene),(.03,.24,.64,.78))
+                if target is None:
+                    raise AutomationError("奇迹的站点卡目标页没有符合当前效果的可识别卡片。")
+                scene,kind=self._click(scene,target,intent="miracle_target",label="miracle_target_selected")
             if kind != "miracle_target":
                 return scene,kind
             if station_card_effect(scene) != effect:
                 raise AutomationError("奇迹站点卡选中后指令改变，停止确认。")
+            if effect.kind=='reroll_beacons' and not preview_beacons(scene):
+                raise AutomationError('当前站点卡没有已核实信标，未确认重置。')
             confirm=self._find(scene,("确定","确认"),(.72,.82,.99,.96))
             if confirm is None:
                 raise AutomationError("奇迹站点卡目标选中后没有确认按钮。")

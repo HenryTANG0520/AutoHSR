@@ -45,7 +45,7 @@ class CardEffect:
             return ('冒险','商店','财富','事件','异常','空白','休整','奖励','铸造','战斗','精英','首领')
         if self.kind == 'randomize':
             return ('冒险', '财富', '事件', '异常', '商店', '空白', '休整', '奖励', '铸造', '战斗', '精英', '首领')
-        if self.kind in ('upgrade','copy') or (self.kind == 'beacon' and self.beacons != ('随机',)):
+        if self.kind in ('upgrade','copy','reroll_beacons') or (self.kind == 'beacon' and self.beacons != ('随机',)):
             return ('战斗', '精英', '首领', '事件', '异常', '财富', '冒险', '奖励', '空白', '休整', '铸造', '商店')
         return ('事件', '冒险', '异常', '财富')
 
@@ -99,6 +99,10 @@ def station_card_effect(scene: Scene) -> CardEffect | None:
 
 
 def _parse_instruction(text: str) -> CardEffect | None:
+    reroll=re.fullmatch(rf'指定({_NUMBER})个带有信标的({_REGION_LIST})?区域'
+                        r'使(?:该区域的|其)信标替换为相同数量的随机信标',text)
+    if reroll:
+        return CardEffect('reroll_beacons',1,_regions(reroll[2] or '')) if _number(reroll[1])==1 else None
     growth=re.fullmatch(rf'立即获得({_NUMBER})个随机信标进入区域后若持有的信标数量大于等于({_NUMBER})'
                         r'则升级为【([\u3400-\u9fff·]{1,24}高级)】',text)
     if growth:
@@ -160,3 +164,16 @@ def _parse_instruction(text: str) -> CardEffect | None:
     if not sources and body == '使其变为空白':
         return CardEffect('transform', count, output_regions=('空白',))
     return None
+
+
+def preview_beacons(scene: Scene) -> tuple[str,...]:
+    """Named beacon descriptions in the selected card's right-hand panel."""
+    names=[]
+    for token in scene.tokens:
+        if token.score<.8 or not token.within((.72,.43,.995,.89)):
+            continue
+        text=re.sub(r'\s+','',unicodedata.normalize('NFKC',token.text))
+        match=re.match(r'^([\u3400-\u9fff·]{2,16}):',text)
+        if match:
+            names.append(match[1])
+    return tuple(names)

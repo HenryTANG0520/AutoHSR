@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 from autohsr.config import Settings
 from autohsr.differential_universe import DifferentialUniverseWorkflow, classify_page
-from autohsr.du_card_effects import REGIONS, station_card_effect
+from autohsr.du_card_effects import REGIONS, station_card_effect,preview_beacons
 from autohsr.models import AutomationError, RunReport, Scene, Token, Stopped
 from autohsr.policy import du_miracle_target_labels, guard_differential_universe_click
 
@@ -22,6 +22,63 @@ def selector(instruction):
 
 
 class StationCardEffectTests(unittest.TestCase):
+    def test_native_beacon_reroll_selects_one_card_with_existing_beacons(self):
+        data=json.loads((Path(__file__).parent/'fixtures/du_runtime/beacon_reroll_target.json').read_text('utf8'))
+        page=Scene([Token(v['text'],v['score'],tuple(v['box'])) for v in data['tokens']])
+        effect=station_card_effect(page)
+        self.assertEqual((effect.kind,effect.count,effect.source_regions),('reroll_beacons',1,()))
+        self.assertEqual(classify_page(page),'miracle_target')
+        self.assertEqual(preview_beacons(page),('财富','野性成长'))
+        done=Scene([token('信标已部署',.5,.15),token('点击空白处关闭',.5,.9)])
+        flow=DifferentialUniverseWorkflow(Mock(settings=Settings(),report=RunReport()),1)
+        flow._click=Mock(side_effect=[(page,'miracle_target'),(done,'tutorial_overlay')])
+        flow._snapshot=Mock(return_value=(done,'tutorial_overlay'))
+        self.assertEqual(flow._apply_miracle_target(page),(done,'tutorial_overlay'))
+        self.assertEqual(flow._click.call_count,2)
+        card=flow._click.call_args_list[0].args[1]
+        self.assertEqual(card.text,'战斗')
+        guard_differential_universe_click(page,card,intent='miracle_target')
+        guard_differential_universe_click(page,page.find('确定',exact=True),intent='miracle_target_confirm')
+
+    def test_beacon_reroll_preserves_region_constraints_entry_wrappers_and_lifetime(self):
+        for regions in ('','【战斗】','【事件】或【异常】'):
+            page=selector(f'进入区域后，指定一个带有信标的{regions}区域，使其信标替换为相同数量的随机信标。效果触发3次后，该奇物损毁')
+            effect=station_card_effect(page)
+            self.assertEqual((effect.kind,effect.count,effect.entry_triggered,effect.trigger_limit),
+                             ('reroll_beacons',1,True,3))
+            if regions:
+                self.assertEqual(effect.target_labels,('战斗',) if regions=='【战斗】' else ('事件','异常'))
+
+    def test_beacon_reroll_previews_other_cards_when_first_has_no_named_beacons(self):
+        page=selector('指定1个带有信标的区域，使该区域的信标替换为相同数量的随机信标')
+        page.tokens.append(token('战斗',.25,.48))
+        eligible=Scene(page.tokens+[token('测试信标·甲：进入区域后获得祝福',.83,.55)])
+        done=Scene([token('信标已部署',.5,.15),token('点击空白处关闭',.5,.9)])
+        flow=DifferentialUniverseWorkflow(Mock(settings=Settings(),report=RunReport()),1)
+        flow._click=Mock(side_effect=[(page,'miracle_target'),(eligible,'miracle_target'),(done,'tutorial_overlay')])
+        flow._snapshot=Mock(return_value=(done,'tutorial_overlay'))
+        self.assertEqual(flow._apply_miracle_target(page),(done,'tutorial_overlay'))
+        self.assertEqual([c.args[1].text for c in flow._click.call_args_list],['战斗','铸造','确定'])
+        self.assertEqual(preview_beacons(eligible),('测试信标·甲',))
+
+    def test_beacon_reroll_rejects_missing_precondition_costs_and_unverified_confirmation(self):
+        valid='指定1个带有信标的区域，使该区域的信标替换为相同数量的随机信标'
+        for altered in (valid.replace('带有信标的',''),valid+'并消耗60星琼','花费100宇宙碎片'+valid,
+                        valid.replace('指定1个','指定0个'),valid.replace('指定1个','指定1.5个'),
+                        valid.replace('指定1个','指定2个'),valid.replace('相同数量','3个')):
+            with self.subTest(altered=altered):
+                self.assertIsNone(station_card_effect(selector(altered)))
+        page=selector(valid)
+        page.tokens.append(token('财富：进入区域后获得碎片',.3,.55))
+        self.assertEqual(preview_beacons(page),())
+        with self.assertRaisesRegex(AutomationError,'核实已有信标'):
+            guard_differential_universe_click(page,page.find('确定',exact=True),intent='miracle_target_confirm')
+        flow=DifferentialUniverseWorkflow(Mock(settings=Settings(),report=RunReport()),1)
+        flow._click=Mock(return_value=(page,'miracle_target'))
+        with self.assertRaisesRegex(AutomationError,'找到带有信标的目标'):
+            flow._apply_miracle_target(page)
+        self.assertTrue(all(c.kwargs['intent']=='miracle_target' for c in flow._click.call_args_list))
+
     def test_resumed_entry_trigger_restores_fresh_room_state_only_for_entry_effects(self):
         for entry in (False,True):
             with self.subTest(entry=entry):
