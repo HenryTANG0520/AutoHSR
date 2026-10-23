@@ -7,7 +7,7 @@ from unittest.mock import Mock
 from autohsr.config import Settings
 from autohsr.differential_universe import DifferentialUniverseWorkflow, classify_page
 from autohsr.du_card_effects import REGIONS, station_card_effect
-from autohsr.models import AutomationError, RunReport, Scene, Token
+from autohsr.models import AutomationError, RunReport, Scene, Token, Stopped
 from autohsr.policy import du_miracle_target_labels, guard_differential_universe_click
 
 
@@ -22,6 +22,19 @@ def selector(instruction):
 
 
 class StationCardEffectTests(unittest.TestCase):
+    def test_resumed_entry_trigger_restores_fresh_room_state_only_for_entry_effects(self):
+        for entry in (False,True):
+            with self.subTest(entry=entry):
+                page=selector(('进入区域后，' if entry else '')+'指定1个区域，为其附加1个随机信标')
+                flow=DifferentialUniverseWorkflow(Mock(settings=Settings(),report=RunReport()),1)
+                flow._fresh_field_entry=False
+                flow._field_cleared=True
+                flow._apply_miracle_target=Mock(side_effect=Stopped('selector dispatched'))
+                with self.assertRaisesRegex(Stopped,'selector dispatched'):
+                    flow._progress_run(page,'miracle_target')
+                self.assertEqual(flow._fresh_field_entry,entry)
+                self.assertEqual(flow._field_cleared,not entry)
+
     def test_native_entry_curio_lifetime_is_not_the_current_target_count(self):
         data=json.loads((Path(__file__).parent/'fixtures/du_runtime/entry_trigger_target.json').read_text('utf8'))
         page=Scene([Token(v['text'],v['score'],tuple(v['box'])) for v in data['tokens']])

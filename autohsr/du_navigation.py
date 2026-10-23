@@ -718,7 +718,11 @@ class FieldMotionWatch:
             if barrier is not None and abs(barrier.center[0]-.5)<.15:
                 return 'forward_barrier'
             return None
-        if self.profile=="engage":
+        if self.profile=='seek_attack':
+            from .du_detector import detect_enemies,detect_recovery_enemies
+            if detect_enemies(page) or detect_recovery_enemies(page):
+                return 'enemy_landmark'
+        if self.profile in ("engage","seek_attack"):
             if self._attack_range(page):
                 return "attack_reticle"
             if interaction_hint(image):

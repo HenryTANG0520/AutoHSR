@@ -1323,11 +1323,13 @@ class DuRuntimeTests(unittest.TestCase):
             with self.assertRaises(AutomationError):
                 guard_differential_universe_click(other,ctx.differential_universe_attack.call_args.args[1],intent='field_forward_attack')
 
-    def test_forward_attack_stops_after_two_misses_without_turning_or_walking(self):
+    def test_missed_forward_attack_searches_in_place_once_and_never_keeps_walking(self):
         import numpy as np
         page=Scene([t('(7/13) 第二位面-战斗')],np.zeros((540,960,3),np.uint8))
         ctx=Mock(settings=Settings(),report=RunReport())
         ctx.differential_universe_attack.return_value=page
+        ctx.differential_universe_motion.return_value=page
+        ctx._du_motion_result={'reason':'duration'}
         flow=DifferentialUniverseWorkflow(ctx,1)
         flow._snapshot=Mock(return_value=(page,'field_combat'))
         flow._wait_known=Mock(side_effect=lambda page,kind,label,**kw:(page,kind))
@@ -1337,11 +1339,166 @@ class DuRuntimeTests(unittest.TestCase):
         with patch('autohsr.du_navigation.navigation_targets',return_value=[]), \
              patch('autohsr.du_navigation.random_gate',return_value=None), \
              patch('autohsr.du_navigation.verified_attack_reticle',return_value=None):
-            with self.assertRaisesRegex(AutomationError,'两次接战未进入战斗'):
+            with self.assertRaisesRegex(AutomationError,'仍未重新核实攻击圆环'):
                 flow._field_visual(page,forward_ready=True)
-        self.assertEqual(ctx.differential_universe_attack.call_count,2)
-        ctx.differential_universe_motion.assert_not_called()
+        self.assertEqual(ctx.differential_universe_attack.call_count,1)
+        ctx.differential_universe_motion.assert_called_once_with(page,'scan_right',8000,profile='seek_attack')
+        ctx.differential_universe_move.assert_not_called()
         ctx.differential_universe_look.assert_not_called()
+
+    def test_attack_search_ignores_gate_and_uses_only_live_range_without_motion_stall(self):
+        from autohsr.du_navigation import FieldMotionWatch
+        page=self.optional_device_fixture('side_attack_ring')
+        watch=FieldMotionWatch(page,Mock(),profile='seek_attack')
+        self.assertIsNone(watch.progress)
+        with patch.object(watch,'_attack_range',return_value=True), \
+             patch('autohsr.du_detector.detect_enemies',return_value=[]), \
+             patch('autohsr.du_detector.detect_recovery_enemies',return_value=[]), \
+             patch('autohsr.du_navigation.random_gate',side_effect=AssertionError('gate must not end enemy search')):
+            self.assertEqual(watch(page.image),'attack_reticle')
+        with patch.object(watch,'_attack_range',return_value=False), \
+             patch('autohsr.du_detector.detect_enemies',return_value=[]), \
+             patch('autohsr.du_detector.detect_recovery_enemies',return_value=[]), \
+             patch('autohsr.du_navigation.interaction_hint',return_value=False), \
+             patch('autohsr.du_navigation.random_gate',side_effect=AssertionError('gate must not end enemy search')):
+            self.assertIsNone(watch(page.image))
+        with patch('autohsr.du_detector.detect_enemies',return_value=[Token('Enemy',.9,(.3,.3,.4,.5))]):
+            self.assertEqual(watch(page.image),'enemy_landmark')
+        with patch('autohsr.du_detector.detect_enemies',return_value=[]), \
+             patch('autohsr.du_detector.detect_recovery_enemies',return_value=[Token('Enemy',.9,(.3,.3,.4,.5))]):
+            self.assertEqual(watch(page.image),'enemy_landmark')
+
+    def test_post_miss_search_uses_enemy_bearing_and_reapproaches_before_next_attack(self):
+        import numpy as np
+        image=np.zeros((540,960,3),np.uint8)
+        page=Scene([t('(7/13) 第二位面-战斗')],image)
+        found=Scene(page.tokens,image);centered=Scene(page.tokens,image);near=Scene(page.tokens,image)
+        battle=Scene([t('战斗设置')])
+        ctx=Mock(settings=Settings(),report=RunReport())
+        ctx._du_motion_result={'reason':'duration'}
+        ctx.differential_universe_attack.side_effect=[page,battle]
+        ctx.differential_universe_look.return_value=centered
+        def motion(current,action,duration,**kwargs):
+            if action=='scan_right':
+                ctx._du_motion_result={'reason':'enemy_landmark'}
+                return found
+            self.assertIs(current,centered)
+            ctx._du_motion_result={'reason':'attack_reticle'}
+            return near
+        ctx.differential_universe_motion.side_effect=motion
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._snapshot=Mock(return_value=(page,'field_combat'))
+        flow._wait_known=Mock(side_effect=lambda page,kind,label,**kw:(page,kind))
+        flow._field_attack_target=Mock(return_value=(t('基础攻击'),'field_attack'))
+        flow._choose_attack_character=Mock(side_effect=lambda current:(current,'field_combat'))
+        flow._observe=Mock(side_effect=lambda current,label:'battle' if current is battle else 'field_combat')
+        gate=Token('Target',.9,(.46,.2,.54,.5))
+        def targets(current,**kwargs):
+            enemies=([Token('Enemy',.9,(.70,.3,.80,.6))] if current is found else
+                     [Token('Enemy',.9,(.46,.3,.54,.6))] if current is centered or current is near else [])
+            return [gate]+enemies
+        ring=Token('差分宇宙已锁定敌方目标',.9,(.48,.4,.52,.46))
+        with patch('autohsr.du_navigation.navigation_targets',side_effect=targets), \
+             patch('autohsr.du_navigation.random_gate',return_value=None), \
+             patch('autohsr.du_navigation.verified_attack_reticle',side_effect=lambda current:ring if current is near else None):
+            self.assertEqual(flow._field_visual(page,forward_ready=True),(battle,'battle'))
+        self.assertEqual([(c.args[1],c.kwargs['profile']) for c in ctx.differential_universe_motion.call_args_list],
+                         [('scan_right','seek_attack'),('w','engage')])
+        self.assertEqual(ctx.differential_universe_attack.call_count,2)
+        self.assertIs(ctx.differential_universe_attack.call_args.args[0],near)
+        ctx.differential_universe_move.assert_not_called()
+
+    def test_resumed_uncleared_field_searches_for_enemy_before_any_translation(self):
+        import cv2
+        from pathlib import Path
+        root=Path(__file__).parent/'fixtures/du_runtime'
+        page=Scene([t('(7/13) 第二位面-战斗')],cv2.imread(str(root/'enemy_corner_negative.png')))
+        found=Scene(page.tokens,cv2.imread(str(root/'enemy_pair_front.png')))
+        ctx=Mock(settings=Settings(),report=RunReport())
+        ctx._du_motion_result={'reason':'enemy_landmark'}
+        ctx.differential_universe_motion.return_value=found
+        flow=DifferentialUniverseWorkflow(ctx,1,resume_active=True)
+        flow._observe=Mock(return_value='field_combat')
+        flow._wait_known=Mock(side_effect=lambda page,kind,label,**kw:(page,kind))
+        flow._field_visual=Mock(return_value=(found,'field_combat'))
+        self.assertEqual(flow._field_combat(page),(found,'field_combat'))
+        ctx.differential_universe_motion.assert_called_once_with(page,'scan_right',8000,profile='seek_attack')
+        flow._field_visual.assert_called_once_with(found,range_seen=False,prefer_enemy=True)
+        self.assertFalse(flow._resume_field_needs_target)
+        ctx.differential_universe_move.assert_not_called()
+        ctx.differential_universe_look.assert_not_called()
+
+    def test_missed_attack_uses_just_seen_side_ring_before_second_click(self):
+        import cv2,json
+        from pathlib import Path
+        root=Path(__file__).parent/'fixtures/du_runtime/side_attack_ring'
+        data=json.loads(root.with_suffix('.json').read_text('utf8'))
+        page=Scene([Token(v['text'],v['score'],tuple(v['box'])) for v in data['tokens']],
+                   cv2.imread(str(root.with_suffix('.png'))))
+        battle=Scene([t('战斗设置')])
+        ctx=Mock(settings=Settings(),report=RunReport())
+        # The held-input watcher saw the range marker immediately before this
+        # frame. Simulate a later frame losing the visual candidate.
+        ctx._du_motion_result={'reason':'attack_reticle','attack_target':{
+            'box':[.6416666508,.3907407522,.6760416627,.4518518448],'score':.65625}}
+        ctx.differential_universe_attack.side_effect=[page,battle]
+        ctx.differential_universe_look.return_value=page
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._snapshot=Mock(return_value=(page,'field_combat'))
+        flow._wait_known=Mock(side_effect=lambda page,kind,label,**kw:(page,kind))
+        flow._field_attack_target=Mock(return_value=None)
+        flow._choose_attack_character=Mock(return_value=(page,'field_combat'))
+        flow._observe=Mock(side_effect=lambda current,label:'battle' if current is battle else 'field_combat')
+        from autohsr.du_navigation import verified_attack_reticle
+        native_ring=verified_attack_reticle(page)
+        self.assertIsNotNone(native_ring)
+        self.assertGreater(native_ring.center[0],.75)
+        with patch('autohsr.du_navigation.navigation_targets',return_value=[]), \
+             patch('autohsr.du_navigation.random_gate',return_value=None), \
+             patch('autohsr.du_navigation.verified_attack_reticle',return_value=None):
+            self.assertEqual(flow._field_visual(page,range_seen=True),(battle,'battle'))
+        actions=[c[0] for c in ctx.mock_calls if c[0] in
+                 ('differential_universe_attack','differential_universe_look')]
+        self.assertEqual(actions,['differential_universe_attack','differential_universe_look',
+                                  'differential_universe_attack'])
+        self.assertGreater(ctx.differential_universe_look.call_args.args[1],0)
+        self.assertLessEqual(ctx.differential_universe_look.call_args.args[1],.12)
+        ctx.differential_universe_motion.assert_not_called()
+        ctx.differential_universe_move.assert_not_called()
+
+    def test_missed_attack_rechecks_live_side_ring_and_bounds_camera_correction(self):
+        import numpy as np
+        for corrected in (True,False):
+            with self.subTest(corrected=corrected):
+                page=Scene([t('(7/13) 第二位面-战斗')],np.zeros((540,960,3),np.uint8))
+                battle=Scene([t('战斗设置')])
+                ring=Token('差分宇宙已锁定敌方目标',.9,(.76,.4,.80,.46))
+                centered=Token(ring.text,.9,(.48,.4,.52,.46))
+                ctx=Mock(settings=Settings(),report=RunReport())
+                ctx.differential_universe_attack.side_effect=[page,battle]
+                ctx.differential_universe_look.return_value=page
+                flow=DifferentialUniverseWorkflow(ctx,1)
+                flow._snapshot=Mock(return_value=(page,'field_combat'))
+                flow._wait_known=Mock(side_effect=lambda page,kind,label,**kw:(page,kind))
+                flow._field_attack_target=Mock(return_value=(t('基础攻击'),'field_attack'))
+                flow._choose_attack_character=Mock(return_value=(page,'field_combat'))
+                flow._observe=Mock(side_effect=lambda current,label:'battle' if current is battle else 'field_combat')
+                def current_ring(current):
+                    return centered if corrected and ctx.differential_universe_look.called else ring
+                with patch('autohsr.du_navigation.navigation_targets',return_value=[]), \
+                     patch('autohsr.du_navigation.random_gate',return_value=None), \
+                     patch('autohsr.du_navigation.verified_attack_reticle',side_effect=current_ring):
+                    if corrected:
+                        self.assertEqual(flow._field_visual(page),(battle,'battle'))
+                        self.assertEqual(ctx.differential_universe_attack.call_count,2)
+                        self.assertEqual(ctx.differential_universe_look.call_count,1)
+                    else:
+                        with self.assertRaisesRegex(AutomationError,'校正两次'):
+                            flow._field_visual(page)
+                        self.assertEqual(ctx.differential_universe_attack.call_count,1)
+                        self.assertEqual(ctx.differential_universe_look.call_count,2)
+                ctx.differential_universe_motion.assert_not_called()
+                ctx.differential_universe_move.assert_not_called()
 
     def test_stalled_fresh_probe_does_not_authorize_forward_attack(self):
         import numpy as np
@@ -1656,7 +1813,7 @@ class DuRuntimeTests(unittest.TestCase):
         ctx.differential_universe_motion.assert_not_called()
         ctx.differential_universe_move.assert_not_called()
         self.assertEqual(ctx.differential_universe_attack.call_count,2)
-        ctx.differential_universe_look.assert_not_called()
+        ctx.differential_universe_look.assert_called_once_with(page,-.12,0,220)
 
     def test_centered_pink_gate_keeps_heading_even_with_sideways_enemy(self):
         import numpy as np

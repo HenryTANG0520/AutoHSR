@@ -518,8 +518,27 @@ hashes and OCR excluding account identifiers. It tests the complete immediate
 random-beacon reward and later count-based upgrade instruction. It is local
 regression evidence, not an independent completion. Artwork is HoYoverse's.
 
+`du_enemies_recovery.onnx` is a YOLO11n fit derived from the existing
+seven-appearance checkpoint, adding three reviewed positive frames, three
+negative frames, and 240 generated training scenes from the same local trial.
+The existing validation/test split is retained. It is limited to recovery
+after an initial missed attack or explicit resumed-field recovery; the
+existing runtime models remain unchanged.
+Training uses the existing isolated PyTorch/Ultralytics environment and the
+same AGPL-3.0 model license. `enemy_pair_front.png`, `enemy_yellow_side.png`,
+and `enemy_corner_negative.png` are masked training-frame replays with source
+hashes and reviewed boxes in sidecars, not independent accuracy samples.
+Game artwork remains the property of HoYoverse.
+
 `du_runtime/entry_trigger_target.png` is a masked native station-card selector
 for an enter-region curio with a finite activation lifetime. Source/fixture
 hashes and non-identifier OCR are retained in its sidecar. It tests separating
 the current target count from the later destruction counter, and is a local
 regression sample rather than independent completion evidence.
+
+`du_runtime/side_attack_ring.png` is a masked native combat-room frame with
+a genuine range marker on a side enemy while the avatar faces the locked
+gate. Its sidecar preserves source/fixture hashes and non-identifier OCR.
+It tests corrective aiming after a missed initial click and the bounded use
+of a range bearing just verified by the held-input watcher. It is local
+regression evidence, not an independent completion. Artwork is HoYoverse's.

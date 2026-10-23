@@ -1,0 +1,50 @@
+{
+  "architecture": "YOLO11n",
+  "classes": [
+    "Enemy"
+  ],
+  "input_size": 640,
+  "threshold": 0.7,
+  "runtime": "ONNX Runtime CPU",
+  "sha256": "00e0925a1260125192cbcc3990462ed89a476d9e1cc22f81ed1e9c95f903b2ac",
+  "updated": "2026-10-24",
+  "license": "AGPL-3.0; see LICENSE.du_target.txt",
+  "intended_use": "After an initial basic attack fails, or explicit resumed-field recovery; existing main/fallback models remain unchanged.",
+  "appearances": [
+    "Observed purple floating monster",
+    "Observed yellow armored humanoid"
+  ],
+  "training": {
+    "initialization": "Seven-family last.pt checkpoint",
+    "epochs": 20,
+    "added_native_positive_frames": 3,
+    "added_native_negative_frames": 3,
+    "added_generated_training_scenes": 240,
+    "split": "New native and synthetic samples only added to training; previous validation/test unchanged."
+  },
+  "cpu_calibration": {
+    "tp": 8,
+    "fp": 0,
+    "fn": 0,
+    "images": 14
+  },
+  "held_out": {
+    "tp": 4,
+    "fp": 1,
+    "fn": 3,
+    "images": 19
+  },
+  "median_ms": 20.69820000178879,
+  "new_training_frame_replay": {
+    "tp": 4,
+    "fp": 0,
+    "fn": 1,
+    "images": 6,
+    "note": "One party-HUD-occluded edge enemy missed; same training frames, not independent accuracy evidence."
+  },
+  "limitations": [
+    "A coarse bearing only; never authorizes attack, character switching or room completion.",
+    "Strict original test localization regressed, so the previous runtime models are retained and this fit is limited to recovery.",
+    "Small same-trial training set; unseen monsters, occlusion and visual effects remain unverified."
+  ]
+}

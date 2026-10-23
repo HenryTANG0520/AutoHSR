@@ -258,6 +258,7 @@ class DifferentialUniverseWorkflow:
         self._pages = 0
         self._action_no = 0
         self._fresh_field_entry = False
+        self._resume_field_needs_target=resume_active
         self._field_cleared = False
         self._forge_console_used = False
         self._combat_chest_attempts = 0
@@ -1193,6 +1194,20 @@ class DifferentialUniverseWorkflow:
             from .du_navigation import navigation_targets,verified_attack_reticle as attack_reticle
             range_seen=False
             forward_ready=False
+            resume_search=self._resume_field_needs_target and not fresh_entry and not self._field_cleared
+            self._resume_field_needs_target=False
+            if resume_search and attack_reticle(scene) is None:
+                scene=self.ctx.differential_universe_motion(scene,'scan_right',8000,profile='seek_attack')
+                kind=self._observe(scene,'resumed_enemy_reacquired')
+                scene,kind=self._wait_known(scene,kind,'resumed_enemy_reacquired')
+                if kind!='field_combat':
+                    return scene,kind
+                result=getattr(self.ctx,'_du_motion_result',{})
+                reason=result.get('reason') if isinstance(result,dict) else None
+                range_seen=reason=='attack_reticle'
+                if not range_seen and reason!='enemy_landmark' and attack_reticle(scene) is None:
+                    raise AutomationError('接续战斗现场原地搜索后仍未找到怪物，停止并保留位置。')
+                return self._field_visual(scene,range_seen=range_seen,prefer_enemy=True)
             if fresh_entry and attack_reticle(scene) is None:
                 # A newly confirmed station restores the game's forward-facing
                 # entrance camera. Let spawn effects settle before one bounded
@@ -1273,16 +1288,17 @@ class DifferentialUniverseWorkflow:
                 return scene,kind
         raise AutomationError("位面目标直行接近达到上限，仍未核实交互或接战；停止并保留进度。")
 
-    def _field_visual(self, scene, *, field_kind="field_combat",range_seen=False,forward_ready=False):
+    def _field_visual(self, scene, *, field_kind="field_combat",range_seen=False,forward_ready=False,prefer_enemy=False):
         from .du_navigation import navigation_targets,verified_attack_reticle as attack_reticle,random_gate,optional_device_prompt,interaction_hint
-        from .du_detector import forward_barrier
+        from .du_detector import forward_barrier,detect_recovery_enemies
         started,inactive_before=time.monotonic(),self._inactive()
-        scans=attacks=recoveries=sweeps=0
+        scans=attacks=recoveries=sweeps=attack_aims=attack_searches=0
         close_backoffs=side_routes=0
         side_route_forward=False
         aligned_enemy_steps=0
         ring_waits=0
         element_checked=False
+        last_range_bearing=None
         portal_attempts=0
         device_detours=unread_interaction_checks=0
         cleared=self._field_cleared
@@ -1322,12 +1338,15 @@ class DifferentialUniverseWorkflow:
             if cleared:
                 self._field_cleared=True
             targets=navigation_targets(scene,enemies=field_kind=='field_combat' and not cleared)
+            if (attacks or prefer_enemy) and field_kind=='field_combat' and not cleared and not any(t.text=='Enemy' for t in targets):
+                targets=detect_recovery_enemies(scene)+targets
             enemies=[t for t in targets if t.text=="Enemy"]
             locked=[t for t in targets if t.text=="GateLocked"]
             gates=[t for t in targets if t.text=="Target"] if not locked else []
             # The pink gate anchors the room's forward heading. Enemies can
             # stand off to the side while the entrance already faces the group.
-            goal=min(locked or gates or enemies,key=lambda t:abs(t.center[0]-.5),default=None)
+            candidates=(enemies or locked or gates) if attacks or prefer_enemy else (locked or gates or enemies)
+            goal=min(candidates,key=lambda t:abs(t.center[0]-.5),default=None)
             if goal is not None:
                 sweeps=0
             goal_height=goal.box[3]-goal.box[1] if goal is not None else 0
@@ -1336,6 +1355,7 @@ class DifferentialUniverseWorkflow:
             reticle=attack_reticle(scene) if field_kind=='field_combat' and not cleared else None
             if reticle is not None:
                 range_seen=True
+                last_range_bearing=reticle
             attack_ready=range_seen or forward_ready
             self.report.setdefault('navigation_observations',[]).append({
                 'run':self.report['current_run'],'page':self._pages,'field_kind':field_kind,
@@ -1397,16 +1417,57 @@ class DifferentialUniverseWorkflow:
                         recoveries+=1
                     continue
             if attack is not None:
-                # The actual range reticle already identifies the game's
-                # selected target. Turning again can change that selection.
+                if attacks>=2:
+                    raise AutomationError("可见敌人两次接战未进入战斗，停止保留进度。")
+                # Keep the requested straight approach and first click. If it
+                # misses, a side range ring supplies a bounded corrective
+                # bearing; repeating the same door-facing swing cannot help.
+                bearing=reticle
+                if attacks and bearing is None and not attack_aims and range_seen:
+                    bearing=last_range_bearing
+                    result=getattr(self.ctx,'_du_motion_result',{})
+                    observed=result.get('attack_target') if isinstance(result,dict) else None
+                    box=observed.get('box') if isinstance(observed,dict) else None
+                    if (bearing is None and isinstance(result,dict) and result.get('reason')=='attack_reticle'
+                            and isinstance(box,(list,tuple)) and len(box)==4):
+                        bearing=Token('已观测攻击圆环',float(observed.get('score',0)),tuple(box))
+                if attacks and bearing is not None and abs(bearing.center[0]-.5)>.12:
+                    if attack_aims>=2:
+                        raise AutomationError('接战校正两次后目标仍偏离正前方，停止重复空挥。')
+                    delta=max(-.12,min(.12,(bearing.center[0]-.5)*.65))
+                    scene=self.ctx.differential_universe_look(scene,delta,0,220)
+                    attack_aims+=1
+                    element_checked=False
+                    kind=self._observe(scene,'missed_attack_ring_aligned')
+                    scene,kind=self._wait_known(scene,kind,'missed_attack_ring_aligned')
+                    if kind!=field_kind:
+                        return scene,kind
+                    continue
+                if attacks and bearing is None and not range_seen and not attack_aims:
+                    if attack_searches:
+                        raise AutomationError('首击未接战，原地搜索后仍未重新核实攻击圆环，停止前进。')
+                    attack_searches+=1
+                    scene=self.ctx.differential_universe_motion(scene,'scan_right',8000,profile='seek_attack')
+                    kind=self._observe(scene,'missed_attack_stationary_search')
+                    scene,kind=self._wait_known(scene,kind,'missed_attack_stationary_search')
+                    if kind!=field_kind:
+                        return scene,kind
+                    result=getattr(self.ctx,'_du_motion_result',{})
+                    forward_ready=False
+                    range_seen=isinstance(result,dict) and result.get('reason')=='attack_reticle'
+                    enemy_found=(isinstance(result,dict) and result.get('reason')=='enemy_landmark'
+                                 and (any(t.text=='Enemy' for t in navigation_targets(scene))
+                                      or bool(detect_recovery_enemies(scene))))
+                    if not range_seen and attack_reticle(scene) is None and not enemy_found:
+                        raise AutomationError('首击未接战，原地搜索后仍未重新核实攻击圆环，停止前进。')
+                    continue
+                # The first click retains the game's selected range target.
                 if not element_checked:
                     scene,kind=self._choose_attack_character(scene)
                     element_checked=True
                     if kind!=field_kind:
                         return scene,kind
                     continue
-                if attacks>=2:
-                    raise AutomationError("可见敌人两次接战未进入战斗，停止保留进度。")
                 scene=self.ctx.differential_universe_attack(scene,*attack)
                 attacks+=1
                 kind=self._observe(scene,"visual_enemy_attacked")
@@ -1990,6 +2051,10 @@ class DifferentialUniverseWorkflow:
                         continue
                     raise AutomationError(f"{kind}页面没有识别到免费可选项或安全离开按钮。")
                 if kind == "miracle_target":
+                    effect=station_card_effect(scene)
+                    if effect is not None and effect.entry_triggered:
+                        self._fresh_field_entry=True
+                        self._field_cleared=False
                     scene,kind=self._apply_miracle_target(scene)
                     continue
                 if kind == "area_choice":

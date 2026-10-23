@@ -10,6 +10,19 @@ from autohsr.models import Scene
 
 
 class DuDetectorTests(unittest.TestCase):
+    def test_recovery_model_supplies_side_enemy_bearings_and_rejects_corner_avatar(self):
+        import cv2,json
+        from autohsr.du_detector import detect_recovery_enemies
+        from tools.evaluate_du_detector import overlap
+        root=Path(__file__).parent/'fixtures/du_runtime'
+        for name in ('enemy_pair_front','enemy_yellow_side','enemy_corner_negative'):
+            with self.subTest(name=name):
+                expected=json.loads((root/f'{name}.json').read_text('utf8'))['boxes']
+                found=detect_recovery_enemies(Scene([],cv2.imread(str(root/f'{name}.png'))))
+                self.assertEqual(len(found),len(expected))
+                for box in expected:
+                    self.assertTrue(any(overlap(t.box,box['xyxy'])>=.5 for t in found))
+
     def test_two_card_room_and_edge_on_green_card_keep_their_bearings(self):
         import cv2,json
         from autohsr.du_detector import detect_cards

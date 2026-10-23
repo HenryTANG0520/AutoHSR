@@ -77,6 +77,12 @@ def detect_enemies(scene,threshold=.70):
     return None if primary is None else found
 
 
+def detect_recovery_enemies(scene,threshold=.70):
+    """Additional bearings for missed-attack or explicit resumed-field recovery."""
+    found=_detect(scene,RESOURCE_ROOT/'assets/models/du_enemies_recovery.onnx',threshold,('Enemy',))
+    return _usable_enemies(found or [])
+
+
 def _usable_enemies(found):
     return [t for t in found if t.within((.04,.06,.95,.90))
         # A small lower-centre box wholly inside the avatar is not a usable
