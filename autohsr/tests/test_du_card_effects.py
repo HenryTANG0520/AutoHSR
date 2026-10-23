@@ -22,6 +22,39 @@ def selector(instruction):
 
 
 class StationCardEffectTests(unittest.TestCase):
+    def test_native_growing_curio_beacon_uses_one_region_selection(self):
+        data=json.loads((Path(__file__).parent/'fixtures/du_runtime/growing_beacon_target.json').read_text('utf8'))
+        page=Scene([Token(v['text'],v['score'],tuple(v['box'])) for v in data['tokens']])
+        effect=station_card_effect(page)
+        self.assertEqual((effect.kind,effect.count,effect.reward_count,effect.growth_threshold),
+                         ('growing_beacon',1,1,10))
+        self.assertEqual(effect.growth_name,'武装考古铲高级')
+        self.assertEqual(classify_page(page),'miracle_target')
+        card=page.find('战斗',(.03,.24,.64,.78),exact=True)
+        guard_differential_universe_click(page,card,intent='miracle_target')
+        done=Scene([token('信标已部署',.5,.15),token('点击空白处关闭',.5,.9)])
+        flow=DifferentialUniverseWorkflow(Mock(settings=Settings(),report=RunReport()),1)
+        flow._click=Mock(side_effect=[(page,'miracle_target'),(done,'tutorial_overlay')])
+        flow._snapshot=Mock(return_value=(done,'tutorial_overlay'))
+        self.assertEqual(flow._apply_miracle_target(page),(done,'tutorial_overlay'))
+        self.assertEqual(flow._click.call_count,2)
+
+    def test_growing_beacon_quantities_thresholds_and_names_are_data_not_click_counts(self):
+        for quantity,threshold,name in ((1,10,'武装考古铲'),(2,12,'示例成长奇物'),(3,20,'测试装置')):
+            instruction=f'立即获得{quantity}个随机信标。进入区域后，若持有的信标数量大于等于{threshold}，则升级为【{name}（高级）】'
+            page=selector(instruction)
+            effect=station_card_effect(page)
+            self.assertEqual((effect.count,effect.reward_count,effect.growth_threshold,effect.growth_name),
+                             (1,quantity,threshold,name+'高级'))
+            self.assertEqual(effect.target_labels,REGIONS)
+            guard_differential_universe_click(page,page.find('铸造',exact=True),intent='miracle_target')
+        valid='立即获得1个随机信标。进入区域后，若持有的信标数量大于等于10，则升级为【武装考古铲（高级）】'
+        for altered in ('支付60宇宙碎片'+valid,valid+'并消耗60星琼',valid.replace('获得1个','获得0个'),
+                        valid.replace('获得1个','获得1.5个'),valid.replace('等于10','等于0'),
+                        valid.replace('随机信标','随机负面信标')):
+            with self.subTest(altered=altered):
+                self.assertIsNone(station_card_effect(selector(altered)))
+
     def test_native_snow_owl_optimization_reuses_single_loss_receipt(self):
         data=json.loads((Path(__file__).parent/'fixtures/du_runtime/snow_owl_optimization.json').read_text('utf8'))
         page=Scene([Token(v['text'],v['score'],tuple(v['box'])) for v in data['tokens']])

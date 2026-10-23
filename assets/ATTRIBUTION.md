@@ -511,3 +511,9 @@ fixture hashes and non-identifier OCR. It tests matching a weak learned card
 body to the title above it without lowering the normal detector threshold or
 authorizing F from a title. It is a local regression example, not independent
 completion evidence. Game artwork remains HoYoverse's.
+
+`du_runtime/growing_beacon_target.png` is a masked native station-card
+selector opened by a growing curio. Its sidecar preserves source/fixture
+hashes and OCR excluding account identifiers. It tests the complete immediate
+random-beacon reward and later count-based upgrade instruction. It is local
+regression evidence, not an independent completion. Artwork is HoYoverse's.

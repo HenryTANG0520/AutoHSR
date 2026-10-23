@@ -30,11 +30,15 @@ class CardEffect:
     reward_count: int = 0
     reward_star_range: tuple[int, ...] = ()
     copies: int = 0
+    growth_threshold: int = 0
+    growth_name: str = ''
 
     @property
     def target_labels(self) -> tuple[str, ...]:
         if self.source_regions:
             return self.source_regions
+        if self.kind=='growing_beacon':
+            return REGIONS
         if self.kind == 'delete':
             return ('冒险','商店','财富','事件','异常','空白','休整','奖励','铸造','战斗','精英','首领')
         if self.kind == 'randomize':
@@ -81,6 +85,11 @@ def station_card_effect(scene: Scene) -> CardEffect | None:
     if not scene.has('选择站点卡', (0, 0, .32, .13), exact=True) or not scene.has('抽牌区', exact=True):
         return None
     text = _instruction(scene)
+    growth=re.fullmatch(rf'立即获得({_NUMBER})个随机信标进入区域后若持有的信标数量大于等于({_NUMBER})'
+                        r'则升级为【([\u3400-\u9fff·]{1,24}高级)】',text)
+    if growth:
+        return CardEffect('growing_beacon',1,beacons=('随机',),reward_kind='beacons',
+            reward_count=_number(growth[1]),growth_threshold=_number(growth[2]),growth_name=growth[3])
     deletion=re.fullmatch(rf'立即删除({_NUMBER})个指定区域',text)
     if deletion:
         return CardEffect('delete',_number(deletion[1]))
