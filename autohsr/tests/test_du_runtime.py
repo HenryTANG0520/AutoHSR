@@ -2433,6 +2433,28 @@ class DuRuntimeTests(unittest.TestCase):
         with self.assertRaises(AutomationError):
             guard_differential_universe_click(page,t('差分宇宙',.22,.44),intent='du_guide_select')
 
+    def test_capped_guide_details_are_shared_by_wait_and_click_guard(self):
+        from autohsr.tests.test_du_team import fixture
+        from autohsr.policy import du_guide_details
+        page=fixture('guide_du_capped')
+        self.assertTrue(du_guide_details(page))
+        target=page.find('前往参与',exact=True)
+        guard_differential_universe_click(page,target,intent='du_guide_enter')
+        context=Mock(settings=Settings(),report=Mock(differential_universe={}))
+        flow=DifferentialUniverseWorkflow(context,1)
+        done=Scene([])
+        flow._click=Mock(side_effect=[(page,'guide'),(done,'home')])
+        def wait(predicate,**kwargs):
+            self.assertTrue(predicate(page))
+            return page
+        context.wait.side_effect=wait
+        self.assertEqual(flow._guide_entry(page),(done,'home'))
+        for text in ('乐园漫记','80','已满级','奖励预览'):
+            missing=Scene([v for v in page.tokens if v.text!=text])
+            self.assertFalse(du_guide_details(missing),text)
+            with self.assertRaises(AutomationError):
+                guard_differential_universe_click(missing,target,intent='du_guide_enter')
+
     def test_active_mode_is_not_repeatedly_started(self):
         context=Mock(settings=Settings(),report=Mock(differential_universe={}))
         flow=DifferentialUniverseWorkflow(context,1)

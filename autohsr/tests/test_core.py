@@ -1788,6 +1788,20 @@ class LoginSupplyTests(unittest.TestCase):
 
 
 class PersistentAssignmentTests(unittest.TestCase):
+    def test_opening_animation_does_not_lock_in_legacy_assignment_handling(self) -> None:
+        from unittest.mock import patch
+        from autohsr.tests.test_du_team import fixture
+        ready=fixture('assignments_after_claim')
+        opening=Scene([t for t in ready.tokens if t.text!='4/4'],ready.image)
+        self.assertFalse(DailyWorkflow._persistent_assignments(opening))
+        self.assertTrue(DailyWorkflow._persistent_assignments(ready))
+        context=FakeContext([ready]);flow=DailyWorkflow(context)
+        with patch.object(flow,'_snapshot',side_effect=[opening,ready]):
+            result=flow.assignments()
+        self.assertEqual(result.status,'ok')
+        self.assertIn('4/4',result.detail)
+        self.assertEqual(context.clicks,[])
+
     def test_four_active_assignments_without_rewards_needs_no_input(self) -> None:
         for scene in (assignments_scene(settled=True), assignments_scene(claim="disabled")):
             with self.subTest(visible_claim=scene.has("领取奖励", exact=True)):
@@ -2147,6 +2161,24 @@ class StaminaBoundaryTests(unittest.TestCase):
 
 
 class GuideTargetTests(unittest.TestCase):
+    def test_survival_icon_remains_locatable_beneath_new_notification_badge(self) -> None:
+        from pathlib import Path
+        from autohsr.tests.test_du_team import fixture
+        from autohsr.vision import Vision
+        import numpy as np
+        page=fixture('daily_survival_badge')
+        vision=Vision.__new__(Vision)
+        path=Path(__file__).resolve().parents[2]/'assets/templates/survival_tab_base.png'
+        match=vision.template(page,path,(.15,.14,.55,.25),.94)
+        self.assertIsNotNone(match)
+        self.assertAlmostEqual(match[0],.251,places=2)
+        self.assertIsNone(vision.template(Scene(page.tokens,np.zeros_like(page.image)),path,(.15,.14,.55,.25),.94))
+        ready=survival_guide([])
+        context=FakeContext([page,ready])
+        context.template_matches['survival_tab_base']=[match]
+        self.assertIs(DailyWorkflow(context)._open_guide('生存索引'),ready)
+        self.assertEqual(context.clicks,[match[:2]])
+
     def test_chosen_guide_row_carries_map_evidence_into_details_that_omit_it(self) -> None:
         guide = survival_guide([("边缘通路", 0.36), ("城郊雪原", 0.60)])
         details = calyx_scene(location=None)

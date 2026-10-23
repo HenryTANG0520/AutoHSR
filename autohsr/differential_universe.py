@@ -577,8 +577,8 @@ class DifferentialUniverseWorkflow:
         if target is None:
             raise AutomationError("指南旷宇纷争页未识别到差分宇宙分类。")
         scene,kind=self._click(scene,target,intent="du_guide_select",label="guide_du_selected")
-        scene=self.ctx.wait(lambda s:s.has("乐园漫记",(.36,.26,.88,.80)) and
-                            s.has("拟合等级",(.36,.26,.88,.80)),timeout=20,description="差分宇宙指南详情")
+        from .policy import du_guide_details
+        scene=self.ctx.wait(du_guide_details,timeout=20,description="差分宇宙指南详情")
         target=scene.find("前往参与",(.70,.75,.88,.87),exact=True)
         if target is None:
             raise AutomationError("差分宇宙指南详情未识别到前往参与按钮。")
@@ -587,9 +587,10 @@ class DifferentialUniverseWorkflow:
     def _open_differential_universe(self, scene: Scene, kind: str) -> tuple[Scene, str]:
         from .du_rewards import page_kind as reward_page_kind,collect as collect_rewards
         if (self.settings.differential_universe_rewards and reward_page_kind(scene)
-                in ('gallery_home','gallery_category','gallery_milestones')):
+                in ('gallery_home','gallery_category','gallery_milestones',
+                    'fit_rewards','moon_rewards','steady_rewards')):
             scene=collect_rewards(self,scene)
-            return scene,self._observe(scene,'interrupted_gallery_rewards_completed')
+            return scene,self._observe(scene,'interrupted_rewards_completed')
         if kind == "rules_modal":
             self._action_no += 1
             self.report["actions"].append({"index": self._action_no, "run": 0,

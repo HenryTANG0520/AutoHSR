@@ -30,6 +30,11 @@ copies of upstream `raw.png` assets. Their coordinates and scale use the upstrea
 | `phone_assignments.png` | [phone_menu/phone_menu_item_03_assignments/raw.png](https://github.com/OneDragon-Anything/StarRailOneDragon/blob/1ffd7e082c38bcdb559d2c0a194191ae21514ef0/assets/template/phone_menu/phone_menu_item_03_assignments/raw.png) |
 | `phone_battlepass.png` | [phone_menu/phone_menu_item_08_nameless_honor/raw.png](https://github.com/OneDragon-Anything/StarRailOneDragon/blob/1ffd7e082c38bcdb559d2c0a194191ae21514ef0/assets/template/phone_menu/phone_menu_item_08_nameless_honor/raw.png) |
 
+`templates/survival_tab_base.png` is a 2026-10-24 derivative of the above
+`survival_tab.png`, cropped at `(5, 30, 65, 66)` (right/bottom exclusive).
+It excludes the upper notification badge while retaining the original 1920px
+baseline. Source hash and crop are recorded in `survival_tab_base.json`.
+
 ## StarRailCopilot
 
 Source: [LmeSzinc/StarRailCopilot](https://github.com/LmeSzinc/StarRailCopilot)

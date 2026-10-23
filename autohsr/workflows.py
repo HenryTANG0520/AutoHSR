@@ -241,6 +241,10 @@ class DailyWorkflow:
         if target is None:
             icon_name = "daily_tab" if name == "每日实训" else "survival_tab"
             target = self._icon(scene, icon_name, TABS)
+            if target is None and name == "生存索引":
+                # The upper notification badge may cover the full icon. Its
+                # lower arc is stable, still inside the same observed tab.
+                target = self._icon(scene, "survival_tab_base", TABS, threshold=.94)
         if target is None:
             raise AutomationError(f"指南已打开，但未识别到{name}页签；需要采集对应图标模板。")
         self._click(scene, target)
@@ -333,6 +337,9 @@ class DailyWorkflow:
                 continue
             if not scene.has("委托", TITLE):
                 return self._result("assignments", "partial", "委托奖励弹窗的关闭按钮未识别，已停止。", scene)
+            # The title can appear before the count and hourly panel slide in.
+            # Re-evaluate the complete current page after a claim or animation.
+            persistent = persistent or self._persistent_assignments(scene)
             if persistent:
                 if self._assignment_settled(scene):
                     current, total = self._assignment_count(scene)

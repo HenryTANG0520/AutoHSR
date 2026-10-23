@@ -39,7 +39,7 @@ class DailyInterludeTests(unittest.TestCase):
             self.assertEqual(after_win(flow,scene,'home',root=directory,
                 now=datetime(2026,10,24,4,0,tzinfo=CHINA)),(scene,'home'))
             journal.assert_called_once_with(directory,account_key(scene),'2026-10-24')
-            journal.return_value.begin.assert_called_once_with('verified-run')
+            journal.return_value.begin.assert_called_once_with('verified-run',resume_free=True)
         flow.ctx.key.assert_not_called()
 
     def test_daily_start_requires_a_real_iso_date_and_explicit_cli_daily_flag(self):
@@ -105,6 +105,29 @@ class DailyInterludeTests(unittest.TestCase):
             marker.begin('prior');marker.save(status='complete')
             self.assertEqual(after_win(flow,scene,'home',root=directory,now=now),(scene,'home'))
             flow.ctx.key.assert_not_called()
+
+    def test_only_failed_free_phase_can_restart_and_retains_prior_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker=DayJournal(directory,'account','2026-10-24');marker.begin('first')
+            marker.save(status='failed',error='free page not ready')
+            resumed=DayJournal(directory,'account','2026-10-24')
+            self.assertTrue(resumed.begin('same-win',resume_free=True))
+            self.assertEqual(resumed.data['free_restarts'],1)
+            self.assertEqual(resumed.data['free_restart_history'][0]['error'],'free page not ready')
+            for attempt in range(2):
+                resumed.save(status='failed')
+                if attempt==0:
+                    self.assertTrue(resumed.begin('same-win',resume_free=True))
+                else:
+                    with self.assertRaisesRegex(AutomationError,'中断记录'):
+                        resumed.begin('same-win',resume_free=True)
+        for field,value in [('batches',[{'status':'started'}]),('initial_stamina',0),
+                            ('initial_immersifiers',0),('planned_challenges',0),('phase','farming')]:
+            with self.subTest(field=field),tempfile.TemporaryDirectory() as directory:
+                marker=DayJournal(directory,'account','2026-10-24');marker.begin('first')
+                marker.save(status='failed',**{field:value})
+                with self.assertRaisesRegex(AutomationError,'中断记录'):
+                    marker.begin('same-win',resume_free=True)
 
     def test_farming_freezes_initial_resources_and_splits_over_240_into_unique_bills(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -172,10 +195,13 @@ class DailyInterludeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             flow=self.flow();now=datetime(2026,10,23,9,tzinfo=CHINA)
             daily=self.free_context(Path(directory)/'free')
+            def started_farm(flow,journal,*args):
+                journal.save(phase='farming',initial_stamina=40,initial_immersifiers=0,planned_challenges=1)
+                raise AutomationError('receipt missing')
             with patch('autohsr.du_daily._context',return_value=daily), \
                  patch('autohsr.workflows.DailyWorkflow',return_value=Mock()), \
                  patch('autohsr.du_daily._free_task'), \
-                 patch('autohsr.du_daily._farm',side_effect=AutomationError('receipt missing')) as farm:
+                 patch('autohsr.du_daily._farm',side_effect=started_farm) as farm:
                 with self.assertRaisesRegex(AutomationError,'receipt missing'):
                     after_win(flow,page(),'home',root=directory,now=now)
                 with self.assertRaisesRegex(AutomationError,'中断记录'):

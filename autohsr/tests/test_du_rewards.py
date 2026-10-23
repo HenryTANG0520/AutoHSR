@@ -401,3 +401,15 @@ class DuRewardTests(unittest.TestCase):
                         [int(kind==v) for v in ('fit_rewards','moon_rewards','steady_rewards')])
                 ctx.click.assert_not_called();ctx.key.assert_called_once_with('esc')
                 self.assertEqual(flow.report['reward_collection']['status'],'complete')
+
+    def test_normal_du_entry_routes_open_fitting_rewards_through_collector(self):
+        from autohsr.differential_universe import DifferentialUniverseWorkflow
+        from autohsr.models import RunReport
+        from autohsr.tests.test_du_team import fixture
+        page=fixture('fit_level_cap_claimed');ready=self.ready_home()
+        ctx=SimpleNamespace(settings=Settings(differential_universe_rewards=True),report=RunReport())
+        flow=DifferentialUniverseWorkflow(ctx)
+        flow._observe=Mock(return_value='home')
+        with patch('autohsr.du_rewards.collect',return_value=ready) as collector:
+            self.assertEqual(flow._open_differential_universe(page,'unknown'),(ready,'home'))
+        collector.assert_called_once_with(flow,page)

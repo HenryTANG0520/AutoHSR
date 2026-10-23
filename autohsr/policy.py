@@ -11,6 +11,18 @@ PHONE_ALLOWED = ("委托", "指南", "星际和平指南", "邮件", "无名勋�
 FORBIDDEN_ACTIONS = ("抽卡", "购买", "续购", "续费", "订购", "支付", "付款", "充值", "兑换", "强化", "升级", "突破", "晋阶", "叠影", "培养", "养成", "合成", "使用燃料", "使用星琼")
 
 
+def du_guide_details(scene):
+    if not (scene.has('星际和平指南',(0,0,.32,.13))
+            and scene.has('乐园漫记',(.36,.26,.88,.80))):
+        return False
+    if scene.has('拟合等级',(.36,.26,.88,.80)):
+        return True
+    levels=[t for t in scene.tokens if t.within((.41,.42,.53,.55))
+            and re.fullmatch(r'[1-9]\d{0,2}',normalize(t.text))]
+    return (len(levels)==1 and scene.has('已满级',(.39,.56,.56,.65),exact=True)
+            and scene.has('奖励预览',(.55,.57,.68,.67),exact=True))
+
+
 def has_du_field_plane_marker(text: str) -> bool:
     """Accept a known plane label or a narrowly corroborated OCR omission.
 
@@ -387,8 +399,7 @@ def guard_differential_universe_click(scene: Scene, target: Token | tuple[float,
                    and scene.has(("旷宇纷争","寰宇纷争"),(0,0,.32,.13)))
         else:
             valid=(text==normalize("前往参与") and target.within((.70,.75,.88,.87))
-                   and scene.has("乐园漫记",(.36,.26,.88,.80))
-                   and scene.has("拟合等级",(.36,.26,.88,.80)))
+                   and du_guide_details(scene))
         if not valid:
             raise AutomationError("差分宇宙指南入口的类别、位置或详情未核实。")
         return

@@ -1,0 +1,12 @@
+{
+  "source": "survival_tab.png",
+  "source_sha256": "da3ad3a18083366ac835df39aaf7bd01903440803edfa5510f247b0f3e88ef92",
+  "crop": [
+    5,
+    30,
+    65,
+    66
+  ],
+  "purpose": "Stable lower icon, excluding the upper notification badge",
+  "baseline_width": 1920
+}

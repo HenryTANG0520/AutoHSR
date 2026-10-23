@@ -41,7 +41,7 @@ class DayJournal:
         self.key,self.day=key,day
         self.data={}
 
-    def begin(self,run_id):
+    def begin(self,run_id,*,resume_free=False):
         self.folder.mkdir(parents=True,exist_ok=True)
         self.data=dict(version=1,account_key=self.key,game_day=self.day,status='started',
                        phase='before_daily',du_run_id=run_id,batches=[],free_tasks=[])
@@ -60,6 +60,19 @@ class DayJournal:
                 raise AutomationError('当日通关后日常记录与账号或游戏日不一致。')
             if self.data.get('status')=='complete':
                 return False
+            restarts=self.data.get('free_restarts',0)
+            if (resume_free and self.data.get('status')=='failed'
+                    and self.data.get('phase')=='before_daily' and self.data.get('batches')==[]
+                    and not any(k in self.data for k in
+                        ('initial_stamina','initial_immersifiers','planned_challenges'))
+                    and type(restarts) is int and 0<=restarts<2):
+                # No resource plan or battle intent has existed. Only free,
+                # current-page claims can be revisited; retain every failure.
+                history=self.data.setdefault('free_restart_history',[])
+                history.append(dict(du_run_id=self.data.get('du_run_id'),error=self.data.get('error')))
+                self.data.pop('error',None)
+                self.save(status='started',du_run_id=run_id,free_restarts=restarts+1)
+                return True
             raise AutomationError('当日通关后日常已有中断记录，须核实原结算；未重复消耗资源。')
         return True
 
@@ -205,7 +218,7 @@ def after_win(flow,scene,kind,*,root=None,now=None):
     scene=settled_home(flow,scene)
     journal=DayJournal(root or ROOT/'runs',account_key(scene),day)
     run_id=(flow.report.get('run_results') or [{}])[-1].get('run_id')
-    if not journal.begin(run_id):
+    if not journal.begin(run_id,resume_free=True):
         flow.ctx.log('当前账号本游戏日的通关后日常已完成，继续差分宇宙。')
         return scene,kind
     entry=dict(game_day=journal.day,marker=str(journal.path),status='started')
@@ -215,7 +228,9 @@ def after_win(flow,scene,kind,*,root=None,now=None):
         target_location='位面饰品',challenge_count=None,rounds=6,stamina_limit=240,
         use_support=False,assignments=True,battle=True,allow_stamina_spend=True,daily=True,
         mail=True,battlepass=True,auto_launch=False,differential_universe_daily=False)
-    daily=_context(flow,journal.folder/'free-rewards',settings,journal.day)
+    restart=journal.data.get('free_restarts',0)
+    free_folder='free-rewards' if not restart else f'free-rewards-retry-{restart:02d}'
+    daily=_context(flow,journal.folder/free_folder,settings,journal.day)
     workflow=DailyWorkflow(daily)
     try:
         flow.ctx.key('esc')
