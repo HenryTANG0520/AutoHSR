@@ -1,0 +1,22 @@
+{
+  "source": "D:\\Projects\\AutoHSR\\runs\\20261023_102332_461563\\104306_526517_du_01_481_anomaly_target_aligned.png",
+  "source_sha256": "0e797b43ad5534471fc759285116786feba236e22170e58b5f091c2e50041416",
+  "fixture_sha256": "5210936ba963e2a3affdee6271a8db93bb2139a700ccb5b6980dcf7019b14115",
+  "size": [
+    1920,
+    1080
+  ],
+  "masked": "bottom identifier strip",
+  "role": "native training/calibration regression, not held out",
+  "boxes": [
+    {
+      "label": "Card",
+      "xyxy": [
+        0.604,
+        0.211,
+        0.648,
+        0.48
+      ]
+    }
+  ]
+}

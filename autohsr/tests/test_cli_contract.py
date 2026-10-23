@@ -10,6 +10,28 @@ from autohsr.__main__ import main
 
 
 class CliContractTests(unittest.TestCase):
+    def test_ten_du_runs_and_optional_flags_are_transient_and_mode_scoped(self):
+        with tempfile.TemporaryDirectory() as folder:
+            config=Path(folder)/'config.json'
+            Settings().save(config)
+            original=config.read_bytes()
+            with patch('autohsr.app.Runner') as runner,redirect_stdout(io.StringIO()),redirect_stderr(io.StringIO()):
+                runner.return_value.run.return_value={'status':'success'}
+                self.assertEqual(main(['--differential-universe','--du-runs','10','--du-team','哈哈哈哈','--du-mode','periodic','--du-save','--du-rewards','--config',str(config)]),0)
+                settings=runner.call_args.args[0]
+                self.assertEqual(settings.differential_universe_runs,10)
+                self.assertTrue(settings.differential_universe_save)
+                self.assertTrue(settings.differential_universe_rewards)
+                self.assertEqual(settings.differential_universe_team,'哈哈哈哈')
+                self.assertEqual(settings.differential_universe_mode,'periodic')
+            self.assertEqual(config.read_bytes(),original)
+            with patch('autohsr.gui.main') as gui,redirect_stderr(io.StringIO()):
+                self.assertEqual(main(['--du-save']),2)
+                self.assertEqual(main(['--du-rewards']),2)
+                self.assertEqual(main(['--du-team','哈哈哈哈']),2)
+                self.assertEqual(main(['--du-mode','periodic']),2)
+            gui.assert_not_called()
+
     def test_reward_only_is_an_in_memory_nonbattle_run(self):
         with tempfile.TemporaryDirectory() as folder:
             config = Path(folder) / 'config.json'

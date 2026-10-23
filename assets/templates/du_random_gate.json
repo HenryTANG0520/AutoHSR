@@ -1,0 +1,16 @@
+{
+  "source": "runs\\20261020_195641_837483\\195805_602596_du_01_039_field_search_for_enemy_bar.png",
+  "source_sha256": "3eb2a4d476e2535569d896b38ed96bb2afea936d8252d0c22afef2c6a119a120",
+  "source_size": [
+    3840,
+    2160
+  ],
+  "normalized_box": [
+    0.467,
+    0.235,
+    0.52,
+    0.284
+  ],
+  "baseline_width": 1920,
+  "feature": "Eyes and nose; exclude top/bottom which leave the camera view near the door"
+}

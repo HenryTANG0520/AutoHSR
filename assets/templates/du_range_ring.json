@@ -1,0 +1,16 @@
+{
+  "source_sha256": "3eae17295c647ad6f1519864b5a82641271cb2ed696aac0b5ebd7079a84ff64a",
+  "baseline": [
+    960,
+    540
+  ],
+  "source_rect_at_baseline": [
+    413,
+    189,
+    454,
+    230
+  ],
+  "feature": "clip(2 * (red - max(blue,green)), 0, 255)",
+  "threshold": 0.82,
+  "note": "Dim hollow attack ring; six nearby frames exceed threshold, and the previously packaged background fixtures stay below it. Local calibration only."
+}

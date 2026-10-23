@@ -1,0 +1,48 @@
+{
+  "sha256": "41a45187973def834db153a07d300923c93aa1c26c07d798025c51d8bdaa8695",
+  "bytes": 10564807,
+  "classes": [
+    "Card"
+  ],
+  "input_size": 640,
+  "confidence": 0.8,
+  "license": "AGPL-3.0",
+  "weights_origin": "Official Ultralytics YOLO11n, locally fine-tuned.",
+  "train_images": 802,
+  "train_native_images": 26,
+  "train_synthetic_images": 776,
+  "val_native_images": 4,
+  "test_native_images": 8,
+  "validation_limit": "New room views are training/calibration, not held-out evidence. Original val/test groups unchanged; regression checks retain brush/advertisement negatives and blue cards. Ten independent DU runs remain unproven.",
+  "local_manifest_sha256": "a8a031557a46c6afe822b8f27e3923758b2c6a929c60f38362d25f37aeb37587",
+  "training_env": "torch 2.6.0+cu126, ultralytics 8.3.228; isolated environment, NVIDIA RTX 4090",
+  "epochs_completed": 12,
+  "fine_tuned_from": "Previous local cards-v2 best checkpoint; four reviewed two-card/edge-on views and 48 brightness variants added. Original held-out groups unchanged.",
+  "date": "2026-10-23",
+  "split_counts": {
+    "train": 802,
+    "test": 8,
+    "val": 4
+  },
+  "prior_model_sha256": "abf8c0ada1ee83b58a13036dc61991de38c1049be9debc28ae921aae4cd7a255",
+  "onnx_cpu_evaluation": {
+    "counts": {
+      "val": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0,
+        "images": 4
+      },
+      "test": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "images": 8
+      }
+    },
+    "threshold": 0.8,
+    "median_ms": 21.18270000210032
+  },
+  "selected_checkpoint": "last",
+  "selected_epoch": 12
+}

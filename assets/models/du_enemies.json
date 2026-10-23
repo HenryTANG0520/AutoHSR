@@ -1,0 +1,76 @@
+{
+  "architecture": "YOLO11n",
+  "classes": [
+    "Enemy"
+  ],
+  "input_size": 640,
+  "runtime": "ONNX Runtime CPU",
+  "threshold": 0.7,
+  "sha256": "c0bf359a2ce1d71948cbfb75f3ef6850c7f042122a6f80fa3965ee9af9405b80",
+  "license": "AGPL-3.0; see LICENSE.du_target.txt",
+  "base_weights": "Official Ultralytics yolo11n.pt; SHA256 0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1",
+  "training": {
+    "native_positive_frames": 31,
+    "native_negative_frames": 41,
+    "generated_training_scenes": 1480,
+    "epochs": 25,
+    "checkpoint": "last; all eight calibration boxes retained, six of seven test boxes matched",
+    "environment": "torch 2.6.0+cu126; ultralytics 8.3.228; NVIDIA RTX 4090",
+    "initialization": "Previous six-family last.pt checkpoint, then combined family training",
+    "requested_epochs": 25,
+    "native_training_positive_frames": 16,
+    "native_training_negative_frames": 23
+  },
+  "cpu_calibration": {
+    "tp": 8,
+    "fp": 0,
+    "fn": 0,
+    "images": 14,
+    "median_ms": 22.059950002585538,
+    "note": "Nearby same-trial captures from seven appearances; not independent runs."
+  },
+  "held_out": {
+    "tp": 6,
+    "fp": 0,
+    "fn": 1,
+    "images": 19,
+    "note": "Strict 0.5 IoU, nearby same-run samples only; one of seven enemy boxes missed, twelve negative views had no detections."
+  },
+  "limitations": [
+    "Only the seven listed observed appearances are represented; not a general HSR monster detector.",
+    "Native calibration images are nearby views from the same trials, not independent accuracy evidence.",
+    "Avatar/HUD occlusion and bright spawn effects remain incompletely covered; the preceding fit supplements missing bearings.",
+    "A detection supplies a coarse bearing only; the live attack reticle must authorize attack.",
+    "New cleared-room street scenery can produce false enemy bearings; retained room-clear state and verified awake exits take priority over model output.",
+    "Raw images, reviewed annotations, generated scenes and checkpoints remain under ignored runs/."
+  ],
+  "updated": "2026-10-22",
+  "families": [
+    "Aurumaton / 金人司阍",
+    "Senior Staff: Team Leader / 资深员工·组长",
+    "正阳狮鹫",
+    "金血忆灵·裁定",
+    "乐变化天人",
+    "承露天人",
+    "波涛夫人 (name verified from the native enemy bar)"
+  ],
+  "fallback": {
+    "file": "du_enemies_fallback.onnx",
+    "sha256": "ad9afb4bacc796c18e50c7f012d6eaa450923b910fa5abc55ccc7d96310166f9",
+    "when": "Only when primary has no usable bearing"
+  },
+  "runtime_calibration": {
+    "tp": 8,
+    "fp": 0,
+    "fn": 0,
+    "images": 14,
+    "median_ms": 37.56285000054049
+  },
+  "runtime_held_out": {
+    "tp": 6,
+    "fp": 0,
+    "fn": 1,
+    "images": 19,
+    "note": "Nearby same-run calibration only; six of seven enemy boxes match, bright celestial spawn missed; twelve negative views empty."
+  }
+}

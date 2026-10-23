@@ -93,7 +93,8 @@ class DailyWorkflow:
     def _in_battle(self, scene: Scene) -> bool:
         if scene.has(("战斗失败", "挑战成功", "退出关卡", "再来一次", "撤退", "战斗设置")):
             return True
-        return self._icon(scene, "battle_pause", (0.93, 0, 1, 0.12)) is not None
+        return (self._icon(scene, "battle_pause", (0.93, 0, 1, 0.12)) is not None or
+                self._icon(scene, "du_battle_pause", (.95,0,1,.10)) is not None)
 
     @staticmethod
     def _supply_overlay(scene: Scene) -> bool:
@@ -835,7 +836,8 @@ class DailyWorkflow:
             return "off", off
         anchor = self._icon(scene, "auto_anchor", roi, threshold=0.82)
         if anchor is None or scene.image is None:
-            return None, None
+            from .du_navigation import auto_state
+            return auto_state(scene)
         # The auto control has a lit rectangular frame when active. Evaluate
         # that frame only after matching the icon, never its position alone.
         import cv2
@@ -885,7 +887,7 @@ class DailyWorkflow:
                 return scene
             if self._enable_auto(scene):
                 unknown_auto = 0.0
-            elif self._icon(scene, "battle_pause", (0.93, 0, 1, 0.12)) is not None:
+            elif self._in_battle(scene):
                 unknown_auto += 2
                 if unknown_auto >= 30:
                     raise AutomationError("无法核实自动战斗开关状态，已停止自动输入；请查看本次战斗截图。")
@@ -896,9 +898,14 @@ class DailyWorkflow:
         raise AutomationError("等待战斗超时；未确认挑战成功，已停止后续挑战。")
 
     def _enter_planar_battle(self):
-        from .planar_entry import field_ready, require_field
-        ready = lambda s: field_ready(s) or self._icon(s,"battle_pause",(.93,0,1,.12)) is not None or self._settlement(s)
+        from .planar_entry import field_ready, require_field, incomplete_team
+        ready = lambda s: field_ready(s) or self._in_battle(s) or self._settlement(s) or incomplete_team(s)
         scene = self._wait(ready,timeout=60,description="等待饰品首领现场或战斗")
+        if incomplete_team(scene):
+            self.ctx.evidence(scene,'planar_incomplete_team')
+            self._click(scene,scene.find('取消',(.28,.58,.49,.67),exact=True))
+            self._wait(self._team_page,description='取消空位队伍出战')
+            raise AutomationError('饰品提取队伍有空位，已取消出战；请补齐队伍后继续。')
         for attempt in range(4):
             if not field_ready(scene):
                 return
@@ -916,7 +923,7 @@ class DailyWorkflow:
             for _ in range(5):
                 self.ctx.sleep(1)
                 scene = self._snapshot()
-                if self._icon(scene,"battle_pause",(.93,0,1,.12)) is not None or self._settlement(scene):
+                if self._in_battle(scene) or self._settlement(scene):
                     self.ctx.evidence(scene,"planar_battle_entered")
                     return
                 if not field_ready(scene):

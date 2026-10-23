@@ -7,6 +7,8 @@ dungeons.local.json
 build/
 dist/
 *.spec
+Ultralytics/
+/yolo11n.pt
 
 # Local diagnostics and editor files
 test-config.json
@@ -16,3 +18,4 @@ test-config.json
 !.env.example
 .vscode/
 .idea/
+next-session-context-*.txt

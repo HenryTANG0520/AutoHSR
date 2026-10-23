@@ -1,0 +1,31 @@
+{
+  "source": "D:\\Projects\\AutoHSR\\runs\\20261023_102332_461563\\104135_955865_du_01_441_station_confirmed_transition.png",
+  "source_sha256": "75f0ff5663bdfa84eaa676735ca98dd7ae7ab3d4bf9971e406d46e2acbc5c8ae",
+  "fixture_sha256": "433f1de33a4e74feccee22be1de455b82f44705883e31cc35f7b852019b2dba0",
+  "size": [
+    1920,
+    1080
+  ],
+  "masked": "bottom identifier strip",
+  "role": "native training/calibration regression, not held out",
+  "boxes": [
+    {
+      "label": "Card",
+      "xyxy": [
+        0.319,
+        0.246,
+        0.4,
+        0.435
+      ]
+    },
+    {
+      "label": "Card",
+      "xyxy": [
+        0.608,
+        0.246,
+        0.69,
+        0.437
+      ]
+    }
+  ]
+}

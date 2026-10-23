@@ -1,0 +1,16 @@
+{
+  "source_sha256": "47b612e6f3b367f088fd8933f7adaf93d41564bea1617a131b01f2186254656e",
+  "boxes": [
+    {
+      "label": 0,
+      "xyxy": [
+        0.443,
+        0.268,
+        0.535,
+        0.433
+      ]
+    }
+  ],
+  "split": "test",
+  "masked_identifiers": true
+}

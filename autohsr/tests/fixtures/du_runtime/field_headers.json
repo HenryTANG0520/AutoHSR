@@ -1,0 +1,44 @@
+[
+  {
+    "file": "header_0.png",
+    "source": "runs\\20261020_220805_445147\\220830_972270_du_before_move_w_600ms.png",
+    "sha256": "5ea7eb428c7d74443cd120c1d801bc850c776e156b77315a64c552fdf894c71b",
+    "stop": false
+  },
+  {
+    "file": "header_1.png",
+    "source": "runs\\20261020_220805_445147\\220835_189971_du_after_move_w_600ms.png",
+    "sha256": "4e2a5eb37a92db64d633ff8ba2b299ff4edaf432862ddc8d9f2099c0d4362501",
+    "stop": false
+  },
+  {
+    "file": "header_2.png",
+    "source": "runs\\20261020_220805_445147\\221015_089871_du_after_look_+0.18_+0.00.png",
+    "sha256": "98ed23c4b09978e38c0a32ce4fe82a5dadca7a7bd4288f23628b87b6f16fb18c",
+    "stop": false
+  },
+  {
+    "file": "header_3.png",
+    "source": "runs\\20261020_220805_445147\\220936_094137_du_01_029_blessing_choice_selected.png",
+    "sha256": "366d5f1ede54ae73aa838255ee61fced882c5cfdc10bebc20beff09b6d35ef9b",
+    "stop": true
+  },
+  {
+    "file": "header_4.png",
+    "source": "runs\\20261020_220805_445147\\221941_006293_failure.png",
+    "sha256": "9b5de4aa4d1b645f2cc29b827699dabe823cd029f654f4390de45162e2569eed",
+    "stop": true
+  },
+  {
+    "file": "header_5.png",
+    "source": "runs\\20261020_223509_214036\\223513_238065_du_after_continuous_scan_right_10000ms.png",
+    "sha256": "f245bf93adce8d1ab718e8572ee43f4e3a335ed45ad17597bb81fa4866e7f70c",
+    "stop": false
+  },
+  {
+    "file": "header_6.png",
+    "source": "runs\\20261020_223509_214036\\223528_593954_du_after_continuous_w_1800ms.png",
+    "sha256": "e31ff8f077c937a0b91349c8864d248b0ae0848fd7e30aa47186dd91469c8d3c",
+    "stop": false
+  }
+]

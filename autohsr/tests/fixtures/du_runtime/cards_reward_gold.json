@@ -1,0 +1,14 @@
+{
+  "source_sha256": "d0e5c5c873153d5e73873b33c2e4a71fe396f1351c176a83271d5deac30bab1b",
+  "masked": true,
+  "expected_centers": [
+    [
+      0.378,
+      0.283
+    ],
+    [
+      0.579,
+      0.267
+    ]
+  ]
+}

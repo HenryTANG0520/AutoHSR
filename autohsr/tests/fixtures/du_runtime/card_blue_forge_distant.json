@@ -1,0 +1,17 @@
+{
+  "source_sha256": "7fb52cb40e043290098fb5872ad6a2020114387ff08d5000b9797afdbe2a9d8b",
+  "sha256": "d6b671f32fe53c74a2544a49391ecbff3fe56adf895b438718770c39919e34d9",
+  "boxes": [
+    {
+      "label": 0,
+      "xyxy": [
+        0.35,
+        0.246,
+        0.413,
+        0.388
+      ]
+    }
+  ],
+  "account_identifier_masked": true,
+  "purpose": "Local card calibration regression; not independent accuracy evidence."
+}

@@ -1,0 +1,20 @@
+{
+  "source": "runs\\20261020_173848_774067\\173906_489998_catalogue_calyx_golden_00.png",
+  "sha256": "03d183451056cbe7174c844c51fcad82bc1307c410debe22eeec815b0cf13da2",
+  "box": [
+    0.295,
+    0.171,
+    0.32260416666666664,
+    0.20803703703703705
+  ],
+  "baseline_width": 1920,
+  "derived_template_sha256": "4d63b11d293dcb85ac500f284b61aa205f249438bd932563100723bfabbcfab9",
+  "stable_crop_pixels": [
+    0,
+    0,
+    53,
+    40
+  ],
+  "template_sha256": "23d7a8dfeaa835949d6bc4e405e360719cc5da05c9d59b1358fa232fcd963264",
+  "note": "Exclude notification badge and lower edge occluded by guide content panel; verify parent guide and tab ROI."
+}

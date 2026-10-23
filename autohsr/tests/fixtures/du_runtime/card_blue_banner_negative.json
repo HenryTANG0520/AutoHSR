@@ -1,0 +1,7 @@
+{
+  "source_sha256": "ab4214c2fe7827d7e781fc1c611de2faccc35ea1ce5c15700c64bdf8ff28da3a",
+  "sha256": "ab4214c2fe7827d7e781fc1c611de2faccc35ea1ce5c15700c64bdf8ff28da3a",
+  "boxes": [],
+  "account_identifier_masked": true,
+  "purpose": "Local card calibration regression; not independent accuracy evidence."
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "file": "event_next_normal.png",
+    "source": "runs\\check_20261020_230123\\screen.png",
+    "sha256": "94df437fba365963d7227ea31405e770a1847667af24102a152d3e95ddabed34",
+    "rect": [
+      1560,
+      710,
+      1595,
+      745
+    ],
+    "baseline": [
+      1920,
+      1080
+    ]
+  },
+  {
+    "file": "event_next_hover.png",
+    "source": "runs\\20261020_230431_360662\\230449_228045_failure.png",
+    "sha256": "c2ad3246bdb78dad0e72cf69178871705c94677adf8545862e70874c6b6b0d3d",
+    "rect": [
+      1560,
+      710,
+      1595,
+      745
+    ],
+    "baseline": [
+      1920,
+      1080
+    ]
+  }
+]

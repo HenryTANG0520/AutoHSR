@@ -3,6 +3,13 @@ import re
 from .models import AutomationError, normalize
 
 
+def incomplete_team(scene):
+    return (scene.has('提示',(.25,.30,.75,.45),exact=True) and
+            scene.has('当前编队中仍有角色位空缺，是否继续出战？',(.25,.43,.75,.55),exact=True) and
+            scene.has('取消',(.28,.58,.49,.67),exact=True) and
+            scene.has('确认',(.51,.58,.72,.67),exact=True))
+
+
 def field_ready(scene):
     return (scene.has("差分宇宙",(0,.0,.25,.10))
             and scene.has("状态效果",(.85,.17,1,.30),exact=True)

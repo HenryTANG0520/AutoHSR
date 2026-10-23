@@ -1,0 +1,38 @@
+[
+  {
+    "file": "gate_distant.png",
+    "present": true,
+    "x": 0.497,
+    "source": "runs\\20261020_200113_302988\\200154_864261_du_01_020_field_search_for_enemy_bar.png",
+    "sha256": "42f3a376f809077b949a0fca43b57588c7e71cc6b79d0ab641072e105a107117"
+  },
+  {
+    "file": "gate_near.png",
+    "present": true,
+    "x": 0.614,
+    "source": "runs\\20261020_200730_153159\\200732_126710_du_00_001_initial.png",
+    "sha256": "ecff15dd6304a4edd3f3d4b01c244747a739f2d87971f8b7f43b0e743cdddd94"
+  },
+  {
+    "file": "gate_city_negative.png",
+    "present": false,
+    "x": null,
+    "source": "runs\\20261020_200113_302988\\200208_408557_du_01_026_field_camera_sweep.png",
+    "sha256": "82ba50af09eea24f7b27f54b2a8b9fd7b5171e440c9261def51d50df1d4215ba"
+  },
+  {
+    "file": "gate_perspective.png",
+    "present": true,
+    "x": 0.583,
+    "source": "runs\\20261020_205503_150885\\205638_363598_du_01_025_field_search_w.png",
+    "sha256": "10afcac8ab000d07f97fa85acd210e9d3397a77c78453a476e96a08ac0a017e7"
+  },
+  {
+    "file": "gate_back.png",
+    "present": true,
+    "x": 0.594,
+    "back": true,
+    "source": "runs\\20261020_210539_938029\\210600_066733_du_01_006_field_camera_sweep.png",
+    "sha256": "f38814667b9a30fc85d896b8bd92bf39ec9d8c0a727820570f3b61ae59a2646a"
+  }
+]

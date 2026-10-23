@@ -70,7 +70,9 @@ try {
     }
     $taskDocsDirectory = Join-Path $taskOutputDirectory 'docs'
     New-Item -ItemType Directory -Path $taskDocsDirectory -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\daily-dungeons.md') -Destination $taskDocsDirectory -Force
+    foreach ($taskModeDocument in @('daily-dungeons.md','differential-universe.md')) {
+        Copy-Item -LiteralPath (Join-Path $projectRoot ('docs\' + $taskModeDocument)) -Destination $taskDocsDirectory -Force
+    }
     Write-Host "Build complete: $(Join-Path $taskOutputDirectory 'AutoHSR.exe')"
 } finally {
     if ($taskBackupDirectory) {

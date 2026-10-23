@@ -1,0 +1,194 @@
+[
+  {
+    "file": "attack_ring_0.png",
+    "present": true,
+    "source": "runs\\20261020_234140_435906\\234142_604710_du_00_001_initial.png",
+    "source_sha256": "a922a85a8688af6de10f0ffb071fc47f64c822a3be00eb039419879acfabef6a"
+  },
+  {
+    "file": "attack_ring_1.png",
+    "present": true,
+    "source": "runs\\20261020_234140_435906\\234221_114097_du_before_field_basic_attack.png",
+    "source_sha256": "c5fab9c6d27278990e389d1f25b18258d35442fd4fcd31597fbdbd155bd738d7"
+  },
+  {
+    "file": "attack_ring_2.png",
+    "present": false,
+    "source": "runs\\20261021_000900_531096\\000902_690424_du_00_001_initial.png",
+    "source_sha256": "0e4eb0102aba5de2f9936297aa79c8ca6fc55a298536d133b534901d701dd73a"
+  },
+  {
+    "file": "attack_ring_3.png",
+    "present": false,
+    "source": "runs\\20261021_000900_531096\\000936_687361_du_before_field_basic_attack.png",
+    "source_sha256": "dec552e2a702a2b7f4afed7aa77dcd4009c53bcec68c81c2e14f4264a433c739"
+  },
+  {
+    "file": "attack_ring_4.png",
+    "present": false,
+    "source": "runs\\20261021_000900_531096\\001011_714105_du_before_field_basic_attack.png",
+    "source_sha256": "b9ce27863ec5b5d430c2cabd56bceb78fc1d210bb478ee533be7beab04fcad4a"
+  },
+  {
+    "file": "attack_ring_5.png",
+    "present": false,
+    "source": "runs\\20261021_113734_459493\\113829_783748_du_before_field_basic_attack.png",
+    "source_sha256": "ee046d1f8cffb287ba30120cf40f224e51a46e62f431c95942d5004785d3e9cf",
+    "masked": "bottom account identifier strip; resized to 960x540"
+  },
+  {
+    "file": "attack_ring_6.png",
+    "present": false,
+    "source": "runs\\20261021_113734_459493\\114120_532780_du_before_field_basic_attack.png",
+    "source_sha256": "9f4aa536789ab56e1bef132e18e26646e3a94f8fa145f7526d48b6cc8ec89fce",
+    "masked": "bottom account identifier strip; resized to 960x540"
+  },
+  {
+    "file": "attack_ring_7.png",
+    "present": false,
+    "source": "runs\\20261021_113734_459493\\114132_700588_du_before_field_basic_attack.png",
+    "source_sha256": "4904c523ca69d2028ac1bbb9df17b659e45d00b1be621b5f45cb07494a895f59",
+    "masked": "bottom account identifier strip; resized to 960x540"
+  },
+  {
+    "file": "attack_ring_8.png",
+    "present": true,
+    "source": "runs\\20261021_113734_459493\\113855_014664_du_before_field_basic_attack.png",
+    "source_sha256": "daf3ffc05f797b0972737e444dc3cf04e59baabaca816d0592417e258c454500",
+    "masked": "bottom account identifier strip; resized to 960x540"
+  },
+  {
+    "file": "attack_ring_9.png",
+    "present": false,
+    "source": "runs\\20261021_115047_748464\\115053_502655_du_before_field_basic_attack.png",
+    "source_sha256": "5e52e6d02fc0b5b0eddb5e9d8ff199e74a89d08ea65c79f4a1eab6f00506b0c8",
+    "masked": "bottom identifier strip; 960x540"
+  },
+  {
+    "file": "attack_ring_10.png",
+    "present": false,
+    "source": "runs\\20261021_115047_748464\\115105_364129_du_before_field_basic_attack.png",
+    "source_sha256": "0ead434715138ef32c730d21e7dd059390226463564759dbfa54d1a3777b2b96",
+    "masked": "bottom identifier strip; 960x540"
+  },
+  {
+    "file": "attack_ring_11.png",
+    "present": true,
+    "source": "runs\\20261022_013251_153370\\013344_101965_du_01_015_attack_character_checked.png",
+    "source_sha256": "a65731189760454f016485e9dc526dcc5cf889bf7fb7a9f4a097e47cee2c56b9",
+    "masked": "bottom account identifier strip; 960x540"
+  },
+  {
+    "file": "attack_ring_12.png",
+    "present": true,
+    "source": "D:\\Projects\\AutoHSR\\runs\\20261022_052800_621253\\053441_745597_du_01_148_fresh_station_forward_probe.png",
+    "source_sha256": "4fc116349c2b0780ea89278b94586d3c641127b316eb45ac49665825927a5e60"
+  },
+  {
+    "file": "attack_ring_13.png",
+    "present": true,
+    "source": "D:\\Projects\\AutoHSR\\runs\\20261022_052800_621253\\053443_212574_du_01_149_visual_range_lock_recheck.png",
+    "source_sha256": "dcb4dbcf3b476c18cfbd052284c3eef350d27908090081a5190789a967ea94b2"
+  },
+  {
+    "file": "attack_ring_14.png",
+    "present": true,
+    "source": "D:\\Projects\\AutoHSR\\runs\\20261022_052800_621253\\053444_708120_du_01_150_visual_range_lock_recheck.png",
+    "source_sha256": "d649a34250083d9619555ab97da9678173adc2c8b9d7a77ea7ed6fc8a3c278c4"
+  },
+  {
+    "file": "attack_ring_15.png",
+    "present": true,
+    "source_sha256": "6e41d893603032676bf5c892da82fc6066bfbed2fffc276721ec0d8bf9951819",
+    "masked_identifiers": true,
+    "description": "Native wave-elite ring inside a larger bright eye rim."
+  },
+  {
+    "file": "attack_ring_16.png",
+    "present": true,
+    "source_sha256": "9deff1a73e444e7ce41cc1e073b9ee31e9a44c70389f499d7df7e5eda27540f0",
+    "masked_identifiers": true,
+    "description": "Native wave-elite ring inside a larger bright eye rim."
+  },
+  {
+    "file": "attack_ring_17.png",
+    "present": true,
+    "source_sha256": "773d348a2899296e3d045e6fa737a9f0bb82a979be05d6f867d508d0d9c8a132",
+    "masked_identifiers": true,
+    "description": "Native wave-elite ring inside a larger bright eye rim."
+  },
+  {
+    "file": "attack_ring_18.png",
+    "present": true,
+    "source": "runs\\20261022_091051_833250\\091925_901733_du_01_192_fresh_station_forward_probe.png",
+    "source_sha256": "3eae17295c647ad6f1519864b5a82641271cb2ed696aac0b5ebd7079a84ff64a",
+    "masked": "bottom account identifier strip; resized to 960x540"
+  },
+  {
+    "file": "attack_ring_19.png",
+    "present": true,
+    "source": "runs\\20261022_091051_833250\\091932_558925_du_01_195_visual_range_lock_stationary_search.png",
+    "source_sha256": "b5b5773b5a8aa6a40acea52380e932a5e4342e1183d8df7604cfee5483392310",
+    "masked": "bottom account identifier strip; resized to 960x540"
+  },
+  {
+    "file": "attack_ring_20.png",
+    "present": true,
+    "source": "runs\\20261022_091051_833250\\091939_894124_du_01_198_visual_range_lock_stationary_search.png",
+    "source_sha256": "c7f2ba7e2a51142820fe1c9c5dd81a160738e94383bce4bc7b7179032a52a0f8",
+    "masked": "bottom account identifier strip; resized to 960x540"
+  },
+  {
+    "file": "attack_ring_21.png",
+    "present": false,
+    "source": "runs\\20261022_103954_692870\\104310_754772_du_01_076_fresh_station_entry_settled.png",
+    "source_sha256": "4412e7750520e6491604e73ebe8187204d61b3f786f0937a77de8520966eb0bb",
+    "masked": "bottom account identifier strip; resized to 960x540",
+    "description": "Distant orange numeral balloon with a live enemy bar; not an attack range marker."
+  },
+  {
+    "file": "attack_ring_22.png",
+    "present": false,
+    "source": "runs\\20261022_151724_869765\\152656_872441_du_01_220_fresh_station_entry_settled.png",
+    "source_sha256": "37d021e34a05882410bd88337fcb1efd045dc3d3b6cf25de3823df011ab6b404",
+    "masked_identifiers": true,
+    "sha256": "4cec85ebddf9ffc93ebda5aa7566487d2f8349412cb5769a4a1c2bd5529aaa01",
+    "description": "Door-link neon streak with a live enemy bar, not a UI circle."
+  },
+  {
+    "file": "attack_ring_23.png",
+    "present": false,
+    "source": "runs\\20261022_151724_869765\\152707_972752_du_01_224_visual_range_lock_stationary_search.png",
+    "source_sha256": "e22c014777f3d87ed3b8561fd8e6f1975a60d8a4d32a5d829b0ce87e146a3fde",
+    "masked_identifiers": true,
+    "sha256": "b24290f006186fb7d95338b9a04f6dc60ad2f2838f8e1f7a34d95a364bf051fa",
+    "description": "Orange companion hat and bright pink prop, not attack range."
+  },
+  {
+    "file": "attack_ring_24.png",
+    "present": false,
+    "source": "runs\\20261022_151724_869765\\152714_565541_du_01_227_visual_range_lock_recheck.png",
+    "source_sha256": "f3a6a82466b62e1241df533876a3e0597786e8fbe2f72cf6778f9107e11702a0",
+    "masked_identifiers": true,
+    "sha256": "febcd73be3deb1c639e48374ba39b158898de6e395cd9987e4e89554fd854337",
+    "description": "Companion hat in a nearby animation pose, not attack range."
+  },
+  {
+    "file": "attack_ring_25.png",
+    "present": true,
+    "source": "runs\\20261022_151724_869765\\152719_099392_du_01_229_visual_attack_response.png",
+    "source_sha256": "559d672a56cbad110e327293efc7564575af3ec6011c888fbdbe79c51753b528",
+    "masked_identifiers": true,
+    "sha256": "8b193ea27e0380b228ab1460bd90930716cb5c57ebd634b669023a3d368def58",
+    "description": "Real red attack UI ring on right-hand enemy; companion is also visible."
+  },
+  {
+    "file": "attack_ring_26.png",
+    "present": true,
+    "source": "runs\\20261022_155506_156175\\160350_228571_du_01_217_visual_range_lock_stationary_search.png",
+    "source_sha256": "e9ac20bb289bd04535b5fc97cce275dd01fa6364ac2e106b267e85c6467513dd",
+    "sha256": "c7dfc3099be983dfc31ffc4da5c3ca3b34af6fa14cc0f95fbb47e904fbe77d13",
+    "masked_identifiers": true,
+    "description": "Real attack ring at x0.93 near party sidebar, after a genuine range lock."
+  }
+]

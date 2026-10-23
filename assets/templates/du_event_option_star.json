@@ -1,0 +1,14 @@
+{
+  "source_sha256": "1508b384507d5420c012d36d86229e6a9270614d8bd6d1ade7d9b4f07469f4ab",
+  "baseline": [
+    1920,
+    1080
+  ],
+  "source_rect": [
+    2714,
+    606,
+    2770,
+    662
+  ],
+  "description": "Selectable DU event option star; no text required."
+}

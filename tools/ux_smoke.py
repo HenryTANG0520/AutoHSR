@@ -277,17 +277,24 @@ def main():
                 layout(root)
                 ImageGrab.grab(window=root.winfo_id()).save(OUT / 'currency-readonly-result.png')
                 ui._show_page('differential_universe')
+                check('du_optional_saving_and_rewards_default_off',not ui.du_save.get() and not ui.du_rewards.get())
+                check('du_defaults_to_periodic_named_preset',ui.du_mode.get()=='周期演算' and ui.du_team.get()=='哈哈哈哈')
                 check('differential_universe_has_parallel_sidebar_and_action',
                     ui.nav_buttons['differential_universe'].cget('text') == '差分宇宙' and
                     ui.start_button.cget('text') == '开始 3 局自动演算' and
                     str(ui.start_button.cget('state')) == 'normal' and str(ui.reward_button.cget('state')) == 'disabled')
-                ui.differential_universe_runs.set('2')
+                ui.differential_universe_runs.set('10')
+                ui.du_save.set(True)
+                ui.du_rewards.set(True)
                 ui.start_button.invoke()
                 pump(root, lambda: ui.runner is not None)
                 du_runner = FakeRunner.instances[-1]
                 check('differential_universe_is_independent_and_uses_unsaved_run_count',
                     du_runner.kwargs['operation'] == 'differential_universe' and
-                    du_runner.settings.differential_universe_runs == 2 and
+                    du_runner.settings.differential_universe_runs == 10 and
+                    du_runner.settings.differential_universe_mode == 'periodic' and
+                    du_runner.settings.differential_universe_team == '哈哈哈哈' and
+                    du_runner.settings.differential_universe_save and du_runner.settings.differential_universe_rewards and
                     not any(getattr(du_runner.settings, name) for name in ui.tasks) and
                     not du_runner.settings.auto_launch and config.read_bytes() == original)
                 check('differential_universe_busy_locks_controls',
@@ -295,8 +302,27 @@ def main():
                 du_runner.release.set()
                 pump(root, lambda: not ui.busy)
                 check('differential_universe_report_is_separate_and_does_not_save',
-                    '2/2 局' in ui.summary.get() and '每日刷本预算未使用' in ui.summary.get() and
+                    '10/10 局' in ui.summary.get() and '每日刷本预算未使用' in ui.summary.get() and
                     config.read_bytes() == original)
+                ui.differential_universe_runs.set('1')
+                ui.du_save.set(False)
+                ui.du_rewards.set(False)
+                ui.du_resume_active.set(True)
+                ui.du_resume_mode.set('周期难度 5')
+                ui.start_button.invoke()
+                pump(root,lambda:ui.runner is not None)
+                du_resume_runner=FakeRunner.instances[-1]
+                check('differential_universe_gui_passes_explicit_resume_context',
+                    du_resume_runner.kwargs.get('du_resume_active') is True and
+                    du_resume_runner.kwargs.get('du_periodic_rank')==5 and
+                    du_resume_runner.kwargs.get('du_runs')==1 and
+                    str(ui.du_resume_combo.cget('state'))=='disabled')
+                du_resume_runner.release.set()
+                pump(root,lambda:not ui.busy)
+                check('differential_universe_resume_does_not_save_daily_settings',
+                    config.read_bytes()==original and str(ui.du_resume_combo.cget('state'))=='readonly')
+                ui.du_resume_active.set(False)
+                ui.du_resume_mode.set('常规演算')
                 fake.Runner = LateFinishRunner
                 try:
                     ui._currency_wars()

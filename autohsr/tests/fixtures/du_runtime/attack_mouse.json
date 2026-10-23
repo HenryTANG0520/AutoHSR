@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "samples": [
+    {
+      "file": "attack_mouse_1.png",
+      "source": "20261020_192645_659119\\192731_022925_failure.png",
+      "source_sha256": "fd37cf531e707e587f3402677908089ffb9b64a7d1458014177fe34e1ef1ff4e",
+      "size": [
+        3840,
+        2160
+      ],
+      "rect": [
+        3372,
+        1782,
+        3460,
+        1873
+      ]
+    },
+    {
+      "file": "attack_mouse_2.png",
+      "source": "20261020_192936_612947\\193027_126672_failure.png",
+      "source_sha256": "b8ef30ab07577990d36416367b834a4b06ad8382be2f658215ce1907a8def4a4",
+      "size": [
+        3840,
+        2160
+      ],
+      "rect": [
+        3372,
+        1782,
+        3460,
+        1873
+      ]
+    },
+    {
+      "file": "attack_mouse_3.png",
+      "source": "20261020_193201_384010\\193250_702214_failure.png",
+      "source_sha256": "e9f782503080c6a8c9ec59a57d0e3d7d0c895fd26e6e71771b58f066cd621e88",
+      "size": [
+        3840,
+        2160
+      ],
+      "rect": [
+        3372,
+        1782,
+        3460,
+        1873
+      ]
+    },
+    {
+      "file": "attack_mouse_4.png",
+      "source": "20261020_193747_493228\\193857_640915_failure.png",
+      "source_sha256": "35528bb217621b905e398fb2df351d62a19c7c0bdb7bb240849d3dbf70dfc793",
+      "size": [
+        3840,
+        2160
+      ],
+      "rect": [
+        3372,
+        1782,
+        3460,
+        1873
+      ]
+    }
+  ]
+}

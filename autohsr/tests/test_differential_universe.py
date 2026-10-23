@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock,patch
 
 from autohsr.config import Settings
 from autohsr.differential_universe import DifferentialUniverseWorkflow, classify_page
@@ -22,16 +22,30 @@ def scene(*labels):
 
 
 class DifferentialUniverseTests(unittest.TestCase):
+    def test_station_description_victory_wording_is_not_a_result_page(self):
+        page = Scene([
+            Token("差分宇宙", .99, (.05,.03,.15,.055)),
+            Token("选择下一站", .99, (.05,.055,.17,.09)),
+            Token("强敌：区域内的敌人获得强化，战斗胜利后选择祝福时，升级所有祝福", .99, (.38,.16,.91,.20)),
+            Token("战斗", .99, (.53,.68,.57,.74)),
+            Token("确定", .99, (.58,.87,.64,.92)),
+        ])
+        self.assertEqual(classify_page(page), "station_choice")
+        self.assertEqual(classify_page(scene("战斗胜利", "继续")), "node_victory")
+        page.tokens[2]=Token("在这个区域中可以进行方程重置、祝福强化，还可以购买祝福",.99,(.1,.21,.36,.26))
+        page.tokens[3]=Token("休整",.99,(.53,.68,.57,.74))
+        self.assertEqual(classify_page(page), "station_choice")
+
     def test_settings_bound_automatic_runs_without_daily_battle_validation(self):
-        settings = Settings(target_location="", differential_universe_runs=3)
+        settings = Settings(target_location="", differential_universe_runs=10)
         settings.validate("differential_universe")
-        for value in (0, 4, True, 1.5):
+        for value in (0, 11, True, 1.5):
             with self.subTest(value=value):
                 with self.assertRaises(ValueError):
                     Settings(differential_universe_runs=value).validate("differential_universe")
 
     def test_runner_rejects_out_of_range_run_count(self):
-        for value in (0, 4, True):
+        for value in (0, 11, True):
             with self.subTest(value=value):
                 with self.assertRaises(ValueError):
                     Runner(Settings(), operation="differential_universe", du_runs=value)
@@ -118,7 +132,7 @@ class DifferentialUniverseTests(unittest.TestCase):
         target = Token("异常", .99, (.49, .70, .55, .74))
         guard_differential_universe_click(page, target, intent="station_select")
         with self.assertRaises(AutomationError):
-            guard_differential_universe_click(page, Token("铸造", .99, (.68, .70, .76, .74)),
+            guard_differential_universe_click(page, Token("铸造", .99, (.74, .70, .82, .74)),
                                                intent="station_select")
         guard_differential_universe_click(page, Token("确定", .99, (.60, .89, .67, .92)),
                                           intent="station_confirm")
@@ -231,17 +245,20 @@ class DifferentialUniverseTests(unittest.TestCase):
             (enemy, "field_enemy_attack"), (centered_enemy, "field_enemy_attack"),
             (centered_enemy, "field_enemy_attack"), (centered_enemy, "field_enemy_attack")])
         workflow._click = Mock(return_value=(scene("挑战成功"), "node_victory"))
-        workflow._observe = Mock(return_value="field_combat")
+        workflow._observe = Mock(side_effect=["field_combat","node_victory"])
         context.differential_universe_move.return_value = current
+        context.differential_universe_motion.return_value = current
+        context.differential_universe_attack.return_value=scene("挑战成功")
         workflow._find = Mock(return_value=Token("随意门", .99, (.45, .45, .52, .5)))
 
         result, kind = workflow._field_combat(current)
 
         self.assertEqual(kind, "node_victory")
-        workflow._click.assert_called_once_with(
-            current, centered_enemy, intent="field_enemy_attack", label="field_attack")
+        workflow._click.assert_not_called()
+        context.differential_universe_attack.assert_called_once_with(current,centered_enemy,"field_enemy_attack")
         self.assertEqual([call.args[1:] for call in context.differential_universe_move.call_args_list],
-                         [("a", 600), ("w", 600), ("w", 600)])
+                         [])
+        context.differential_universe_motion.assert_called_once_with(current,"w",1200,profile="enemy")
         workflow._find.assert_not_called()
 
     def test_labeled_enemy_blocks_gate_exit_when_target_template_misses(self):
@@ -255,13 +272,16 @@ class DifferentialUniverseTests(unittest.TestCase):
         workflow._observe = Mock(return_value="field_combat")
         context.differential_universe_look.return_value = current
         context.differential_universe_move.return_value = current
+        context.differential_universe_motion.return_value = current
 
-        with self.assertRaisesRegex(AutomationError, "十次有界探索移动"):
+        with self.assertRaisesRegex(AutomationError, "直行接近达到上限"):
             workflow._field_combat(current)
 
         context.differential_universe_enter_random_gate.assert_not_called()
-        self.assertEqual(context.differential_universe_look.call_count, 3)
-        self.assertEqual(context.differential_universe_move.call_count, 10)
+        context.differential_universe_look.assert_not_called()
+        context.differential_universe_move.assert_not_called()
+        self.assertEqual(context.differential_universe_motion.call_count, 8)
+        self.assertTrue(all(c.args[1:]==("w",3000) for c in context.differential_universe_motion.call_args_list))
 
     def test_field_without_visible_enemy_uses_only_bounded_search_inputs(self):
         context = Mock()
@@ -274,11 +294,13 @@ class DifferentialUniverseTests(unittest.TestCase):
         workflow._observe = Mock(return_value="field_combat")
         context.differential_universe_look.return_value = current
         context.differential_universe_move.return_value = current
-        with self.assertRaisesRegex(AutomationError, "十次有界探索移动"):
+        context.differential_universe_motion.return_value = current
+        with self.assertRaisesRegex(AutomationError, "直行接近达到上限"):
             workflow._field_combat(current)
         workflow._click.assert_not_called()
-        self.assertEqual(context.differential_universe_look.call_count, 3)
-        self.assertEqual(context.differential_universe_move.call_count, 10)
+        context.differential_universe_look.assert_not_called()
+        context.differential_universe_move.assert_not_called()
+        self.assertEqual(context.differential_universe_motion.call_count, 8)
 
     def test_lowest_difficulty_is_clicked_by_template_and_requires_ocr_confirmation(self):
         context = Mock()
@@ -307,13 +329,39 @@ class DifferentialUniverseTests(unittest.TestCase):
         with self.assertRaises(AutomationError):
             guard_click(menu, target)
 
-    def test_workflow_never_uses_periodic_mode_from_mode_select(self):
+    def test_normal_rank_one_starts_without_star_rank_tab(self):
+        page=Scene([Token('差分宇宙',.99,(.04,.03,.15,.06)),
+                    Token('常规演算',.99,(.04,.06,.15,.09)),
+                    Token('差分宇宙：乐园漫记 | 难度 I',.99,(.58,.12,.80,.15)),
+                    Token('启动「差分宇宙」',.99,(.79,.88,.96,.92))])
+        self.assertEqual(classify_page(page),'difficulty_setup')
+        context=Mock(settings=Settings(differential_universe_mode='normal'))
+        context.report=Mock(differential_universe={})
+        flow=DifferentialUniverseWorkflow(context,1)
+        flow._select_preset_team=Mock(return_value=(page,'difficulty_setup'))
+        flow._click=Mock(return_value=(scene('选择面具'),'mask_choice'))
+        result=flow._prepare_and_start(page,'difficulty_setup')
+        self.assertEqual(result[1],'mask_choice')
+        self.assertEqual(flow.report['mode'],'常规演算')
+        self.assertTrue(flow.report['difficulty_selection']['verified'])
+        self.assertEqual(flow._click.call_args.args[1].text,'启动「差分宇宙」')
+        warning=Scene([Token('均衡等级大幅超过当前难度，无法获得解锁材料、拟合值和积分',.99,(.31,.475,.69,.505)),
+                       Token('取消',.99,(.38,.60,.42,.64)),Token('确认',.99,(.59,.60,.63,.64))])
+        self.assertEqual(classify_page(warning),'low_rank_warning')
+        guard_differential_universe_click(warning,warning.tokens[-1],intent='du_low_rank_confirm')
+        with self.assertRaises(AutomationError):
+            guard_differential_universe_click(page,warning.tokens[-1],intent='du_low_rank_confirm')
+        flow._click=Mock(side_effect=[(warning,'low_rank_warning'),(scene('选择面具'),'mask_choice')])
+        self.assertEqual(flow._prepare_and_start(page,'difficulty_setup')[1],'mask_choice')
+        self.assertEqual(flow._click.call_args.kwargs['intent'],'du_low_rank_confirm')
+
+    def test_periodic_is_the_default_mode(self):
         context = Mock()
         context.settings = Settings()
         context.report = Mock(differential_universe={})
         workflow = DifferentialUniverseWorkflow(context, 1)
-        self.assertEqual(workflow.report["mode"], "拓星模式 / 常规演算")
-        self.assertNotIn("周期演算", " ".join(workflow.report["actions"]))
+        self.assertEqual(workflow.report["mode"], "周期演算")
+        self.assertEqual(context.settings.differential_universe_team,'哈哈哈哈')
 
     def test_explicit_resume_adopts_only_a_recognized_active_page(self):
         context = Mock()
@@ -338,6 +386,25 @@ class DifferentialUniverseTests(unittest.TestCase):
         self.assertFalse(workflow.report["run_results"][0]["counted"])
         self.assertTrue(workflow.report["run_results"][1]["counted"])
         self.assertEqual(workflow._progress_run.call_count, 2)
+
+    def test_new_run_preserves_initial_heading_through_mask_overlay(self):
+        ctx=Mock(settings=Settings(),report=Mock(differential_universe={}))
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._field_cleared=True
+        home=scene('差分宇宙','乐园漫记','开始游戏')
+        flow._snapshot=Mock(return_value=(home,'home'))
+        flow._open_differential_universe=Mock(return_value=(home,'home'))
+        def prepare(page,kind):
+            flow.report['difficulty_selection']={'requested_rank':5,'displayed_rank_after':5,'verified':True}
+            return scene('选择面具'),'mask_choice'
+        flow._prepare_and_start=Mock(side_effect=prepare)
+        def progress(page,kind):
+            self.assertTrue(flow._fresh_field_entry)
+            self.assertFalse(flow._field_cleared)
+            self.assertEqual(kind,'mask_choice')
+            return home,'home',True
+        flow._progress_run=Mock(side_effect=progress)
+        self.assertEqual(flow.run().status,'ok')
 
     def test_explicit_resume_stops_on_unrecognized_page(self):
         context = Mock()
@@ -366,6 +433,34 @@ class DifferentialUniverseTests(unittest.TestCase):
         self.assertEqual(workflow.report["run_results"][0]["status"], "completed")
         self.assertTrue(workflow.report["run_results"][0]["counted"])
         workflow._progress_run.assert_called_once()
+
+    def test_resumed_periodic_collects_rewards_when_enabled_before_finishing(self):
+        ctx=Mock(settings=Settings(differential_universe_rewards=True),report=Mock(differential_universe={}))
+        flow=DifferentialUniverseWorkflow(ctx,1,resume_active=True,periodic_rank=5)
+        active=scene('差分宇宙','选择一张面具','欢愉假面')
+        home=scene('差分宇宙','乐园漫记','开始游戏')
+        flow._snapshot=Mock(return_value=(active,'mask_choice'))
+        flow._progress_run=Mock(return_value=(home,'home',True))
+        flow._collect_rewards=Mock(return_value=(home,'home'))
+        flow._prepare_and_start=Mock(side_effect=AssertionError('no new run'))
+        self.assertEqual(flow.run().status,'ok')
+        flow._collect_rewards.assert_called_once_with(home,'home','rewards_after_resumed_run')
+        flow._prepare_and_start.assert_not_called()
+
+    def test_rewards_return_from_mode_menu_but_never_leave_a_live_field(self):
+        ctx=Mock(settings=Settings(),report=Mock(differential_universe={}))
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        menu=scene('差分宇宙','模式选择','常规演算','周期演算')
+        home=scene('差分宇宙','乐园漫记','开始游戏')
+        ctx.wait.return_value=home
+        with patch('autohsr.du_rewards.collect',return_value=home) as collect:
+            self.assertEqual(flow._collect_rewards(menu,'mode_select','collected')[1],'home')
+            ctx.key.assert_called_once_with('esc')
+            collect.assert_called_once_with(flow,home)
+        ctx.key.reset_mock()
+        with self.assertRaises(AutomationError):
+            flow._collect_rewards(scene('(6/13) 第二位面-战斗'),'field_combat','collected')
+        ctx.key.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -32,6 +32,10 @@ class Settings:
     battle_timeout: int = 900
     ocr_confidence: float = 0.65
     differential_universe_runs: int = 3
+    differential_universe_save: bool = False
+    differential_universe_rewards: bool = False
+    differential_universe_team: str = "哈哈哈哈"
+    differential_universe_mode: str = "periodic"
 
     def validate(self, operation: str = "daily") -> None:
         if not isinstance(self.game_path, str) or not self.game_path.lower().endswith("starrail.exe"):
@@ -54,7 +58,7 @@ class Settings:
                     raise ValueError(f"{category.label}本次挑战次数应为 1～{count_limit(category)}。")
                 if self.challenge_count * category.cost > self.stamina_limit:
                     raise ValueError("所选次数的预计消耗超过本次开拓力上限，请减少次数或调整上限。")
-        for name in ("use_support", "assignments", "battle", "allow_stamina_spend", "daily", "mail", "battlepass", "auto_launch"):
+        for name in ("use_support", "assignments", "battle", "allow_stamina_spend", "daily", "mail", "battlepass", "auto_launch", "differential_universe_save", "differential_universe_rewards"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} 必须是布尔值。")
         for name in ("action_delay", "battle_timeout", "ocr_confidence"):
@@ -65,8 +69,14 @@ class Settings:
             raise ValueError("等待时间、战斗超时或 OCR 阈值超出允许范围。")
         if (isinstance(self.differential_universe_runs, bool) or
                 not isinstance(self.differential_universe_runs, int) or
-                not 1 <= self.differential_universe_runs <= 3):
-            raise ValueError("差分宇宙本次自动演算局数应为 1～3 局。")
+                not 1 <= self.differential_universe_runs <= 10):
+            raise ValueError("差分宇宙本次自动演算局数应为 1～10 局。")
+        if (not isinstance(self.differential_universe_team, str)
+                or not self.differential_universe_team.strip()
+                or len(self.differential_universe_team)>32):
+            raise ValueError("请填写 1～32 字的差分宇宙预设编队名称。")
+        if self.differential_universe_mode not in ('periodic','normal'):
+            raise ValueError("差分宇宙模式必须是 periodic 或 normal。")
 
     def save(self, path: Path = CONFIG_PATH) -> None:
         self.validate("save")

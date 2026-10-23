@@ -117,3 +117,341 @@ hint beside the field normal-attack control, resized to the 1920px template
 baseline. Its JSON sidecar records the source hash and rectangle. It is used
 only after this run has started planar extraction and reserved its cost; it
 does not enable general Differential Universe movement or gameplay.
+
+`du_guide_tab.png` is a crop of the 4.6 guide's 旷宇纷争 tab from the local
+2026-10-20 catalogue capture. `du_attack_mouse.png` derives from the existing
+mouse-hint crop with an alpha mask excluding the changing 3-D background;
+its JSON sidecar records that derivation. `autohsr/tests/fixtures/du_runtime/`
+contains four tiny mouse-hint crops and source hashes, without account data.
+
+`du_random_gate.png` contains the eyes and nose of the pink 随意门 observed
+in the same local client. Its source hash and crop rectangle are recorded in
+the adjacent JSON. The `du_runtime/gate_*.png` fixtures preserve distant and
+near views plus a neon-building negative, resized and blanked outside their
+field regions to exclude account identifiers. Their provenance is recorded
+in `gate_samples.json`. These landmarks authorize bounded navigation only;
+interaction still requires the live OCR 随意门 prompt.
+
+`du_battle_pause.png` and `du_auto_anchor.png` are tightly bounded control
+glyphs from the local 4.6 Differential Universe battle. Their sidecars record
+source hashes and rectangles. `du_runtime/battle_controls_*.png` contains only
+the corresponding toolbar region; `battle_controls.json` records provenance.
+The grayscale off-state test is a derived color-classification test, not a
+claim that an actual off-state was captured.
+
+`du_difficulty_i_idle.png` isolates the difficulty I glyph from a local setup
+page. `du_event_next.png` is the small gold dialogue continuation arrow
+from the event page. Their JSON sidecars record source hashes and crop rectangles.
+`du_runtime/event_next_*.png` preserves normal and hover states; its JSON manifest
+records provenance. Matching excludes the cursor-covered bottom-right quadrant. `du_runtime/header_*.png` contains only the top-left field HUD
+strip or the corresponding reward-page region; `field_headers.json` records
+provenance. These crops contain no account identifiers or player names.
+
+
+`du_station_combat.png` is the battle station's sword glyph from the local
+4.6 client; its JSON sidecar records the source hash and crop rectangle.
+`du_runtime/attack_ring_*.png` keeps only the world region needed to distinguish
+an attack-range reticle from open gate eyes and the character's floating emoji.
+All HUD/account regions are blanked; `attack_rings.json` records source hashes.
+
+`models/du_target.onnx` is a locally trained YOLO11n derivative from the official
+Ultralytics pretrained asset. It is distributed under AGPL-3.0 with its license,
+hash, evaluation limits and training provenance in `models/`. Training imagery
+remains local under ignored `runs/`; training images have identifiers masked.
+
+`du_interaction_f.png`, `du_card_crest.png` and `du_boss_head.png` are local
+2026-10-21 crops of the F interaction hint, world event-card ornament, and visible
+boss upper body. Their JSON sidecars identify source hashes and crop rectangles.
+They supply stop signals or bearings; they never establish a cleared room or
+authorize an attack without its actual range reticle. `visual_targets.json`
+records the masked card, interaction and detector regression fixtures.
+
+`du_runtime/rewards_*.png` are local 2026-10-21 reward-page regression frames,
+scaled with the bottom account identifier strip blanked. `reward_pages.json`
+records source hashes and OCR metadata. The unearned-avatar negative fixture
+ensures future red artwork is not treated as a notification or a received reward.
+`du_cassette_zero.png` and `du_runtime/moon_balance_zero.png` preserve only the
+numeric cassette-balance region; their sidecars record crop provenance. The zero
+glyph is a fallback when OCR omits zero and never authorizes a paid unlock.
+
+`du_runtime/blessing_missing_title.png` is a native-resolution title-strip crop
+for a two-character blessing missed by full-screen OCR. Its JSON sidecar records
+the source hash and crop. No account or player identifiers are included.
+
+`du_runtime/card_distant.png` is a masked 960px world-card frame from the local
+2026-10-21 client. Its provenance sidecar records the source hash; the sample
+regresses a distant 70px-high card excluded by the former strict size threshold.
+
+`du_runtime/card_avatar_occlusion.png` preserves the partial purple card frame,
+pale face and nearby pink gate used to distinguish the card from the gate while
+it overlaps the avatar. Its provenance sidecar records the local source hash;
+account and player-name regions are masked.
+
+`du_runtime/gate_sleep_far.png` and `gate_sleep_near.png` are masked local
+2026-10-21 frames. `sleep_gate_states.json` records source hashes. They regress
+the closed-eye/front-versus-back ambiguity at far and near distances; far
+anti-aliased eyelids require native-resolution inspection before back matching.
+
+`du_runtime/card_cyan_frame.png` is the masked local abnormal-event card
+「归来的岁阳」 with its bright cyan frame, pale eye and purple ornament.
+Its sidecar records the source hash. This card does not have dark frame rails.
+
+`du_runtime/cards_reward_gold.png` is a masked local reward-region scene with a
+warm purple/gold card, a gold card and a locked pink gate. The sidecar records
+the source hash and positive centers; the pink gate is a negative target.
+
+`models/du_cards.onnx` is a locally trained YOLO11n Card-only derivative, under
+the same included AGPL-3.0 terms. `models/du_cards.json` and the model README record
+its hash, training provenance and limited native evaluation. Its raw training
+captures and generated scenes remain under ignored runs/ with identifiers masked.
+`du_runtime/cards_poster_negative.png` is a masked held-out facade-view regression;
+its sidecar records provenance. The learned card model must reject that artwork.
+
+`du_runtime/attack_ring_5.png` through `attack_ring_8.png` are masked, resized
+local 2026-10-21 field captures. Their source hashes are in `attack_rings.json`.
+They distinguish a real attack glow from blonde hair and orange shop numerals.
+`attack_ring_9.png` and `attack_ring_10.png` also reject sleeping-door gold trim.
+
+`templates/du_aurumaton_roof.png` is an observed boss-roof crop used only for a
+coarse approach bearing. Its sidecar and `du_runtime/boss_aurumaton.json` record
+source hashes. Two masked field frames test the bearing at different headings;
+the roof never establishes attack range.
+
+`templates/du_aurumaton_side.png` adds an observed side chest crop with a source
+hash in its sidecar. `du_runtime/boss_aurumaton_2.png` is a masked native frame.
+`models/du_enemies.onnx` is a locally trained, Enemy-only YOLO11n derivative
+under the included AGPL-3.0 terms. Its sidecar records the small local dataset,
+CPU checkpoint selection, missed occlusion sample and scope limitation.
+
+`du_runtime/preset_list.png`, `preset_enabled.png` and `periodic_setup.png`
+are masked, resized local 2026-10-21 client captures. Their JSON sidecars retain
+OCR boxes and source hashes to verify named preset activation and mode isolation.
+
+The 2026-10-22 `du_enemies.onnx` update adds the observed Senior Staff: Team
+Leader family, retaining Aurumaton training examples. Its sidecar records the
+combined fit and strict CPU evaluation. `du_runtime/boss_ipc_front.png`,
+`boss_ipc_clear.png` and `boss_ipc_occluded.png` are masked local field frames;
+their sidecars contain reviewed boxes and source hashes. The included AGPL-3.0
+terms also apply to the updated Ultralytics derivative.
+
+`du_runtime/blessing_discard.png` is a masked 2026-10-22 native one-star
+blessing trade page. The sidecar preserves its source hash and OCR boxes.
+
+The further 2026-10-22 enemy model update adds the observed 正阳狮鹫 appearance.
+`du_runtime/boss_griffin_clear.png`, `boss_griffin_center.png` and
+`boss_griffin_occluded.png` are masked local field captures. Their sidecars
+preserve source hashes and reviewed bounding boxes. Training and calibration
+remain local; included AGPL-3.0 terms apply to this derivative.
+
+`du_runtime/attack_ring_11.png` preserves a genuine, dimly filled range ring
+near the left edge after a party switch. `attack_rings.json` records provenance.
+`du_runtime/enemy_avatar_negative.png` preserves a central avatar in front of a
+wall; the sidecar records its source hash. Identifiers are masked in both.
+
+`du_runtime/gate_rest_distant.png` is a masked local rest-area capture where
+the learned door score dips below its normal threshold. Its source hash is in
+the sidecar; a spatially matching eye feature corroborates the lower-score box.
+
+The fourth enemy model fit adds 金血忆灵·裁定 and retains earlier families.
+`du_runtime/boss_arbiter_clear.png`, `boss_arbiter_center.png` and
+`boss_arbiter_occluded.png` are masked local captures with reviewed-box sidecars
+and source hashes. The progress-banner sample checks bearing only; its imperfect
+full-body box remains a strict evaluation miss. Included AGPL-3.0 terms apply.
+
+The fifth enemy fit adds 乐变化天人. Masked local `du_runtime/enemy_celestial_clear.png`,
+`enemy_celestial_center.png` and `enemy_celestial_spawn.png` have reviewed-box
+sidecars with source hashes. The bright spawn frame remains a known detector
+miss; it is not counted as a successful localization. AGPL-3.0 terms apply.
+
+The sixth enemy fit adds 承露天人. Masked local `du_runtime/enemy_dew_clear.png`,
+`enemy_dew_center.png` and `enemy_dew_front.png` have reviewed-box sidecars and
+source hashes. `models/du_enemies_fallback.onnx` retains the preceding five-
+appearance fit solely for missing primary bearings. Both model sidecars retain
+their hashes, provenance, limitations and included AGPL-3.0 terms.
+
+`du_runtime/gate_awake_ornament.png` is a masked local capture of a cleared
+boss room, with an awake exit and distant scenery that the enemy model can
+misidentify. Its sidecar records the source hash. It tests exit-state priority.
+
+`du_runtime/attack_ring_mouse_animation.png` is a masked local field capture
+with a genuine attack ring and enemy information bar while the mouse-hint
+template is changing. The sidecar preserves source hash and masked OCR tokens.
+
+`du_runtime/attack_ring_12.png` through `attack_ring_14.png` preserve three
+masked native frames of the 乐变化天人 range ring with weak circle-edge votes.
+Their source hashes are recorded in `attack_rings.json`.
+
+`du_runtime/blessing_title_variant_0.png` and `blessing_title_variant_1.png`
+are masked local captures of unchanged blessing cards during reversible previews.
+They exercise a two-character title whose first character varies in OCR.
+
+`du_runtime/gallery_home.png`, `gallery_category.png` and `gallery_milestones.png`
+are masked local captures of earned gallery reward navigation. Their sidecars
+retain source hashes and OCR tokens.
+
+`du_runtime/companion_ring_candidate.png` is a masked native entrance frame.
+Its companion's expression meets the low-level circle appearance checks but
+lacks an enemy information bar, so it must not suppress the forward approach.
+Its sidecar records the source hash and OCR tokens.
+
+The seventh enemy fit adds the observed winged elite 波涛夫人, subsequently
+identified from the native enemy bar. `du_runtime/enemy_winged_front.png`, `enemy_winged_center.png`,
+`enemy_winged_side.png` and `enemy_winged_hud.png` are masked local captures with
+reviewed boxes and source hashes. Nearby samples only establish local calibration;
+the included AGPL-3.0 terms apply to the model.
+
+`du_runtime/world_card_title_130.png` and `world_card_title_131.png` are masked
+native reward-room entrance frames. Their OCR sidecars retain source hashes.
+They distinguish the fixed 奖励 progress header from the world-card title
+商店街一番战, which also supplies a coarse approach bearing.
+
+`templates/du_event_option_star.png` is a local native crop of the selectable
+event-row star at a 1920x1080 baseline. Its sidecar records the source hash and
+crop. `du_runtime/event_star_choices.png` is a masked native 神秘链接 choice
+screen with three stars and OCR tokens; its sidecar records the source hash.
+
+`du_runtime/attack_ring_15.png` through `attack_ring_17.png` are masked native
+波涛夫人 frames where the attack ring lies inside a larger bright eye rim.
+Their source hashes and expected presence are recorded in `attack_rings.json`.
+
+`du_runtime/beacon_close_variant.png` is a masked native deployed-beacon
+overlay where OCR reads 白 as 日 in the bottom close hint. Its sidecar
+retains the source hash and OCR tokens for the observed regression.
+
+`du_runtime/station_transform.png` is a masked native station-card target
+selector for the observed combat-to-event/anomaly transformation. Its sidecar
+records the source hash and OCR tokens.
+
+`templates/du_range_ring.png` is a local crop of the native hollow attack
+marker, represented as red excess for shape matching. Its sidecar records the
+source hash, baseline crop and calibration limit. Masked native nearby views
+`du_runtime/attack_ring_18.png` through `attack_ring_20.png` retain source
+hashes in `attack_rings.json`.
+
+`du_runtime/blessing_title_glow_0.png` and `blessing_title_glow_1.png`
+are masked native previews of unchanged blessing titles with different card
+glow and short-name OCR. Their sidecars record the source hashes.
+
+`du_runtime/attack_ring_21.png` is a masked native negative containing an
+orange numeral balloon and a real distant enemy bar. Its source hash and
+negative expectation are recorded in `attack_rings.json`.
+
+`du_runtime/station_beacon_target.png` is a masked native single-card beacon
+selector. Its sidecar records the source hash and OCR tokens; the instruction
+also names an automatically removed region that is not the selected target.
+
+`du_runtime/gate_awake_partial_hud.png` and `gate_awake_partial_side.png`
+are masked native awake doors with one complete eye visible. The masked
+`gate_banner_negative.png` is the nearby blue banner used as a negative.
+Their sidecars record source hashes.
+
+`du_runtime/gate_back_near_clipped.png` is a masked native near-door back
+view, with its upper panel clipped by the screen. Its sidecar records the
+source hash.
+
+`du_runtime/forge_interaction.png` and `forge_console_menu.png` are masked
+native views of the named F prompt and weighted-curio assembly menu. Their
+sidecars record source hashes and OCR tokens.
+
+`du_runtime/card_blue_forge_distant.png` and `card_blue_forge_close.png`
+are masked maintenance-card calibration views. `card_blue_banner_negative.png`
+and `card_boss_console_negative.png` are masked non-card views. Their sidecars
+record source hashes and the local calibration limit. The card model was
+incrementally fitted on separately grouped training views and train-only
+composites; raw images and PyTorch checkpoints remain under ignored `runs/`.
+
+`templates/du_guide_tab.png` retains the stable planet glyph, excluding its
+notification badge and the lower edge covered by the guide's content panel.
+Its sidecar records the source and derived crop. The masked native
+`du_runtime/guide_universe_tab_clear.png` verifies entry with no notification.
+
+`du_runtime/card_edge_world_title.png` is a masked native edge-on card with
+a readable floating region qualifier. Its sidecar retains OCR and source hashes;
+the caption supplies a bearing and does not authorize F.
+
+`du_runtime/curio_plane_description.png` is a masked native curio selection
+whose descriptive prose mentions planes. Its sidecar retains OCR and source
+hashes; only the actual field progress header blocks reward selection.
+
+`du_runtime/equation_queue_24.png` and `equation_queue_27.png` are masked
+consecutive equation-expansion overlays. Their distinct names identify progress
+even when the shared overlay heading stays unchanged; sidecars retain source
+hashes and OCR tokens.
+
+`du_runtime/attack_ring_22.png` through `attack_ring_25.png` are masked native
+door-link streaks, companion hats and a genuine attack UI ring. Their source
+hashes and positive/negative labels are recorded in `attack_rings.json`.
+
+`du_runtime/attack_ring_26.png` is a masked native genuine range marker near
+the party sidebar. Its source hash and positive label are in the same manifest.
+
+`du_runtime/reward_chest_interaction.png` is a masked native free rich-loot
+chest F prompt. Its sidecar records OCR and source hashes.
+
+`du_runtime/random_two_{target,remaining,loss,gain}.png` are masked native
+screens from the free two-card same-level random conversion. They document
+the unchanged second instruction and separate one-card loss/gain receipts.
+Sidecars retain OCR tokens and source hashes.
+
+`du_blessing_recommended.png` is cropped from the user's supplied green
+blessing recommendation icon. Its metadata retains the source hash and crop.
+`du_runtime/blessing_recommended_{right,two,none}.png` are masked native
+three-card selections with one, two and zero marked cards, covering gray,
+blue and gold cards. Sidecars record marked columns, OCR and source hashes.
+
+`du_runtime/late_gate_interaction.png` is a masked native awake-gate F prompt
+which appeared on the last observation of a timed navigation attempt. Its
+sidecar retains OCR and source hashes.
+
+`du_runtime/any_region_beacon.png` is a masked native free single-beacon
+selector using the written quantity “一个” and no source-region restriction.
+Its sidecar records OCR and source hashes.
+
+`du_runtime/forge_plus_three.png` is a masked native free single-card forge
+upgrade selector with a +3 level effect. Its sidecar retains OCR and source
+hashes.
+
+`du_runtime/awake_gate_with_poster.png` is a masked native reward-room capture
+resized to 1920×1080. The distant street poster is a known false Card detection;
+the awake gate must retain navigation priority. Its sidecar records source and
+fixture hashes and dimensions. Game artwork remains the property of HoYoverse.
+
+`du_runtime/any_region_upgrade.png` is a masked native single-card +2 upgrade
+selector without a source-region restriction. Its sidecar retains native OCR
+and source/fixture hashes; the right-hand card preview is level 3.
+
+`du_runtime/upgrade_negative_beacon.png` is a masked native single-card upgrade
+selector combining a +2 level bonus with a random negative beacon. Its sidecar
+retains native OCR and source/fixture hashes.
+
+`du_runtime/pink_brush_false_gate.png`, `brush_and_cafe_sign.png`, and
+`card_with_advertisement.png` are masked native cafeteria captures used to
+regress decorative brushes, wall advertisements, and the actual TV event card.
+Their sidecars retain hashes. They are from the incremental training episode
+and are calibration/regression examples, not held-out accuracy evidence.
+# Additional local calibration, 2026-10-23
+
+The existing AGPL-3.0 YOLO11n door derivative was fine-tuned on three locally
+reviewed console-occluded door screenshots and 36 brightness variants. Raw
+captures, labels and checkpoints remain local under ignored `runs/`. The
+packaged model retains the license and upstream provenance in its metadata.
+
+`two_cards_at_entry.png`, `card_green_edge_on.png`, and
+`card_green_edge_on_pitched.png` are masked local native room captures.
+The green event card remains an interaction target when viewed edge-on;
+sidecars record reviewed boxes and hashes. These are incremental training and
+regression samples, not independent held-out evaluation images.
+
+The card derivative was incrementally fine-tuned on these four native views
+and 48 brightness variants, retaining the earlier training corpus and original
+held-out split. The packaged last checkpoint retains AGPL-3.0 licensing;
+model hashes and CPU ONNX evaluation are recorded in `assets/models/du_cards.json`.
+
+`du_runtime/snow_owl_recruitment.png` is a masked native Snow Owl mask
+recruitment screen. Its sidecar retains observed OCR and source/fixture hashes.
+
+`du_runtime/snow_owl_optimization.png` is a masked native Snow Owl station-card
+optimization selector, with the same observed OCR/hash provenance convention.
+
+`du_runtime/snow_owl_recruitment_loading.png` captures the native recruitment
+animation before the three region titles appear, with identifiers masked.

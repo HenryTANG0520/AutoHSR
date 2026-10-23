@@ -1,0 +1,53 @@
+{
+  "architecture": "YOLO11n",
+  "classes": [
+    "Enemy"
+  ],
+  "input_size": 640,
+  "runtime": "ONNX Runtime CPU",
+  "threshold": 0.7,
+  "sha256": "ad9afb4bacc796c18e50c7f012d6eaa450923b910fa5abc55ccc7d96310166f9",
+  "license": "AGPL-3.0; see LICENSE.du_target.txt",
+  "base_weights": "Official Ultralytics yolo11n.pt; SHA256 0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1",
+  "training": {
+    "native_positive_frames": 12,
+    "native_negative_frames": 19,
+    "generated_training_scenes": 1080,
+    "epochs": 22,
+    "checkpoint": "best; checked through the actual square-input CPU path",
+    "environment": "torch 2.6.0+cu126; ultralytics 8.3.228; NVIDIA RTX 4090",
+    "initialization": "Previous four-family last.pt checkpoint, then combined family training",
+    "requested_epochs": 25
+  },
+  "cpu_calibration": {
+    "tp": 6,
+    "fp": 0,
+    "fn": 0,
+    "images": 10,
+    "median_ms": 20.884449999357457,
+    "note": "Nearby same-trial captures from five families; not independent runs."
+  },
+  "held_out": {
+    "tp": 3,
+    "fp": 1,
+    "fn": 2,
+    "images": 15,
+    "note": "Strict 0.5 IoU matching; includes avatar/HUD occlusion and ten background negatives. Nearby same-trial captures are calibration, not independent accuracy evidence."
+  },
+  "limitations": [
+    "Only the five listed observed enemy appearances are represented; not a general HSR monster detector.",
+    "Native calibration images are nearby views from the same trials, not independent accuracy evidence.",
+    "Progress-banner occlusion gives an inaccurate final-boss box; bright spawn effects hide the new celestial appearance in a held-out frame.",
+    "A detection supplies a coarse bearing only; the live attack reticle must authorize attack.",
+    "Raw images, reviewed annotations, generated scenes and checkpoints remain under ignored runs/."
+  ],
+  "updated": "2026-10-22",
+  "families": [
+    "Aurumaton / 金人司阍",
+    "Senior Staff: Team Leader / 资深员工·组长",
+    "正阳狮鹫",
+    "金血忆灵·裁定",
+    "乐变化天人"
+  ],
+  "role": "Preceding five-appearance fit; used only if the primary yields no usable enemy bearing."
+}

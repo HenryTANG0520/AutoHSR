@@ -38,7 +38,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rounds", type=int, help="命令行模式：每次挑战轮数，1～6")
     parser.add_argument("--category", help="副本分类：calyx_golden/calyx_crimson/stagnant_shadow/cavern/echo_of_war/planar")
     parser.add_argument("--count", type=int, help="本次完成的挑战次数；达到次数即停止，仍受开拓力上限约束")
-    parser.add_argument("--du-runs", type=int, help="差分宇宙局数，1～3；仅配合 --differential-universe")
+    parser.add_argument("--du-runs", type=int, help="差分宇宙局数，1～10；仅配合 --differential-universe")
+    parser.add_argument("--du-team", help="每次开局从预设编队选择此名称；默认哈哈哈哈")
+    parser.add_argument("--du-mode", choices=('periodic','normal'), help="演算模式；默认 periodic 周期演算")
+    parser.add_argument("--du-save", action="store_true", help="通关后保存为 AutoHSR 编号存档；默认不保存")
+    parser.add_argument("--du-rewards", action="store_true", help="运行前后检查并领取差分宇宙红点奖励；默认关闭")
     parser.add_argument("--resume-active-du", action="store_true",
                         help="仅在屏幕已识别到差分宇宙运行页面时接续当前局；不会启动新档")
     parser.add_argument("--du-periodic-rank", type=int,
@@ -54,6 +58,18 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.du_runs is not None and not args.differential_universe:
         print(_json({"error": "--du-runs 仅用于 --differential-universe。"}), file=sys.stderr)
+        return 2
+    if args.du_save and not args.differential_universe:
+        print(_json({"error": "--du-save 仅用于 --differential-universe。"}), file=sys.stderr)
+        return 2
+    if args.du_team is not None and not args.differential_universe:
+        print(_json({"error": "--du-team 仅用于 --differential-universe。"}), file=sys.stderr)
+        return 2
+    if args.du_mode is not None and not args.differential_universe:
+        print(_json({"error": "--du-mode 仅用于 --differential-universe。"}), file=sys.stderr)
+        return 2
+    if args.du_rewards and not args.differential_universe:
+        print(_json({"error": "--du-rewards 仅用于 --differential-universe。"}), file=sys.stderr)
         return 2
     if args.resume_active_du and not args.differential_universe:
         print(_json({"error": "--resume-active-du 仅用于 --differential-universe。"}), file=sys.stderr)
@@ -97,6 +113,14 @@ def main(argv: list[str] | None = None) -> int:
                 setattr(settings, field, value)
         if args.du_runs is not None:
             settings.differential_universe_runs = args.du_runs
+        if args.du_team is not None:
+            settings.differential_universe_team = args.du_team.strip()
+        if args.du_mode is not None:
+            settings.differential_universe_mode = args.du_mode
+        if args.du_save:
+            settings.differential_universe_save = True
+        if args.du_rewards:
+            settings.differential_universe_rewards = True
         if args.scan_dungeons:
             settings.dungeon_category = args.category or "auto"
         if args.reward_only:

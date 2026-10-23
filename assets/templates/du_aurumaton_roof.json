@@ -1,0 +1,11 @@
+{
+  "source_sha256": "51b227191ce65dcf2d4f429f9db51bb9ad5ae1d51832a5d9b42485dc2bddb41d",
+  "roi": [
+    0.423,
+    0.197,
+    0.517,
+    0.259
+  ],
+  "baseline_width": 960,
+  "description": "Observed Aurumaton boss head roof; bearing only, never attack range"
+}

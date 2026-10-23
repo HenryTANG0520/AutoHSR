@@ -1,0 +1,14 @@
+{
+  "source_sha256": "7dbf20cea28c7130933b64b8cc90d48984e0b08cf00edbf30ca466445ab4b820",
+  "sha256": "996bf809f081bb9c9a8df6feb09272003e3f05793c1343659efff78314c860f3",
+  "masked_identifiers": true,
+  "source_resolution": [
+    3840,
+    2160
+  ],
+  "fixture_resolution": [
+    1920,
+    1080
+  ],
+  "description": "Actual cleared reward room: awake gate on right, distant street poster misdetected as Card in center. Gate must retain navigation priority."
+}

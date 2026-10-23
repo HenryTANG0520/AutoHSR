@@ -1,0 +1,15 @@
+{
+  "source": "runs\\20261020_201914_186379\\202114_853291_du_01_043_field_combat_transition.png",
+  "source_sha256": "610b1be3c6c07189d4b897a39ca608696a0e06556991f8b86ebe903b0ded65d2",
+  "source_size": [
+    3840,
+    2160
+  ],
+  "normalized_box": [
+    0.906,
+    0.029,
+    0.927,
+    0.058
+  ],
+  "baseline_width": 1920
+}

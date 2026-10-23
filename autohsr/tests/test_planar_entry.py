@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 from autohsr.config import Settings
 from autohsr.models import AutomationError, Scene, RunReport
-from autohsr.planar_entry import field_ready
+from autohsr.planar_entry import field_ready,incomplete_team
 from autohsr.workflows import DailyWorkflow
 from autohsr.tests.test_core import FakeContext, token
 
@@ -16,6 +16,27 @@ def field():
 
 
 class PlanarEntryTests(unittest.TestCase):
+    def test_current_battle_pause_glyph_can_confirm_planar_entry(self):
+        scene=Scene([])
+        ctx=FakeContext([scene],Settings(dungeon_category='planar'))
+        ctx.planar_approach=Mock()
+        ctx.template_matches={'du_battle_pause':[(.97,.045,.99)]}
+        DailyWorkflow(ctx)._enter_planar_battle()
+        ctx.planar_approach.assert_not_called()
+        self.assertEqual(ctx.clicks,[])
+
+    def test_empty_party_confirmation_is_cancelled_without_attacking(self):
+        popup=Scene([token('提示',.5,.38),token('当前编队中仍有角色位空缺，是否继续出战？',.5,.49),
+                     token('取消',.4,.62),token('确认',.62,.62)])
+        setup=Scene([token('位面饰品提取',.12,.05),token('开始挑战',.87,.91),token('下载角色',.35,.69)])
+        self.assertTrue(incomplete_team(popup))
+        ctx=FakeContext([popup,setup],Settings(dungeon_category='planar'))
+        ctx.planar_approach=Mock()
+        with self.assertRaisesRegex(AutomationError,'队伍有空位'):
+            DailyWorkflow(ctx)._enter_planar_battle()
+        self.assertEqual(ctx.clicks,['取消'])
+        ctx.planar_approach.assert_not_called()
+
     def test_unrelated_du_plane_or_missing_boss_header_never_allows_approach(self):
         self.assertTrue(field_ready(field()))
         for label in ("第一位面","位面地图","开始挑战","挑战成功"):

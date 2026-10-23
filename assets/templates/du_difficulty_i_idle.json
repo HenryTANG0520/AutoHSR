@@ -1,0 +1,15 @@
+{
+  "source": "runs\\20261020_215546_958518\\215555_589760_du_01_difficulty_before.png",
+  "source_sha256": "c919f14a376d037a9bd1b8992bcfff8245b0f052d52a1cb59c152907e4a28d4d",
+  "baseline": [
+    1920,
+    1080
+  ],
+  "rect": [
+    118,
+    164,
+    135,
+    192
+  ],
+  "description": "Lowest difficulty I glyph, grayscale crop independent of the animated green background."
+}

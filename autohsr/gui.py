@@ -162,6 +162,15 @@ class AutoHSRWindow:
         self.form_variables.extend((self.action_delay, self.battle_timeout, self.ocr_confidence))
         self.differential_universe_runs = tk.StringVar(value=str(self.settings.differential_universe_runs))
         self.form_variables.append(self.differential_universe_runs)
+        self.du_team = tk.StringVar(value=self.settings.differential_universe_team)
+        self.du_mode = tk.StringVar(value='周期演算' if self.settings.differential_universe_mode=='periodic' else '常规演算')
+        self.form_variables.extend((self.du_team,self.du_mode))
+        self.du_resume_active = tk.BooleanVar(value=False)
+        self.du_save = tk.BooleanVar(value=self.settings.differential_universe_save)
+        self.form_variables.append(self.du_save)
+        self.du_rewards = tk.BooleanVar(value=self.settings.differential_universe_rewards)
+        self.form_variables.append(self.du_rewards)
+        self.du_resume_mode = tk.StringVar(value="常规演算")
         self.detect_title = tk.StringVar(value="尚未检测游戏窗口")
         self.detect_size = tk.StringVar(value="客户区尺寸：—")
         self.detect_permission = tk.StringVar(value="助手管理员权限：—")
@@ -255,7 +264,7 @@ class AutoHSRWindow:
         state = "disabled" if self.busy else "normal"
         for control in self.setting_controls:
             control.configure(state=state)
-        for name in ('currency_source_combo','currency_zone_combo','currency_level_combo','du_runs_combo'):
+        for name in ('currency_source_combo','currency_zone_combo','currency_level_combo','du_runs_combo','du_resume_combo'):
             if hasattr(self,name):
                 getattr(self,name).configure(state='disabled' if self.busy else 'readonly')
         allowed = self.settings.allow_stamina_spend
@@ -323,11 +332,19 @@ class AutoHSRWindow:
             elif not save and operation == "differential_universe":
                 values.update(auto_launch=False, assignments=False, battle=False, daily=False, mail=False, battlepass=False,
                               differential_universe_runs=int(self.differential_universe_runs.get()),
+                              differential_universe_team=self.du_team.get().strip(),
+                              differential_universe_mode='periodic' if self.du_mode.get()=='周期演算' else 'normal',
+                              differential_universe_save=self.du_save.get(),
+                              differential_universe_rewards=self.du_rewards.get(),
                               action_delay=float(self.action_delay.get()), battle_timeout=int(self.battle_timeout.get()),
                               ocr_confidence=float(self.ocr_confidence.get()))
             elif save or operation not in ("check", "launch"):
                 values.update(auto_launch=self.auto_launch.get(),
                               differential_universe_runs=int(self.differential_universe_runs.get()),
+                              differential_universe_team=self.du_team.get().strip(),
+                              differential_universe_mode='periodic' if self.du_mode.get()=='周期演算' else 'normal',
+                              differential_universe_save=self.du_save.get(),
+                              differential_universe_rewards=self.du_rewards.get(),
                               **{name: variable.get() if name != "battle" or self.settings.allow_stamina_spend else False for name, variable in self.tasks.items()})
                 if operation == "reward_only":
                     values.update(assignments=False, battle=False, daily=True, mail=False, battlepass=False)
@@ -451,6 +468,16 @@ class AutoHSRWindow:
         settings = self._read_settings(operation=operation)
         if settings is None:
             return
+        du_options={}
+        if differential_universe:
+            resume=self.du_resume_active.get()
+            mode=self.du_resume_mode.get()
+            rank=int(mode.split()[-1]) if resume and mode.startswith("周期难度 ") else None
+            if rank is not None and settings.differential_universe_runs != 1:
+                messagebox.showerror("接续局数", "周期演算接续仅完成当前 1 局，请将局数设为 1。", parent=self.root)
+                return
+            du_options=dict(du_runs=settings.differential_universe_runs,
+                            du_resume_active=resume,du_periodic_rank=rank)
         from .recovery import recovery_state, reward_only_settings
         new_battle_run = False
         if reward_only:
@@ -475,7 +502,7 @@ class AutoHSRWindow:
         self.active_operation = operation
         deployment_label=f"备战{currency_source_slot}→空"+('前台' if currency_zone=='front' else '后台')
         self.plan.set("货币战争 · 整局验证 · 超频A0" if flow_test and currency_start_from_lobby else ("货币战争 · 连续流程验证"+(f" · 升级至Lv{currency_target_level}" if currency_target_level else " · 不购买经验")) if flow_test else "货币战争 · 当前节点战斗验证" if node_test else f"货币战争 · 单次{deployment_label}部署" if deploy_test else "货币战争 · 单次前台3→1拖动验证" if drag_test else "货币战争 · 只读识别 · 自动玩法未开放" if currency_wars else
-                      f"差分宇宙 · 乐园漫记 · {settings.differential_universe_runs} 局自动演算 · 不消耗每日刷本预算" if differential_universe else
+                      f"差分宇宙 · {self.du_mode.get()} · {settings.differential_universe_runs} 局 · 预设编队 {settings.differential_universe_team} · 不消耗每日刷本预算" if differential_universe else
                       "仅补领奖 · 不刷本 · 不执行附加任务 · 本次不保存" if reward_only else
                       ("自动启动游戏" if settings.auto_launch else "使用已打开的游戏") +
                       (f" · {settings.target_name} / {settings.target_location} · {settings.challenge_count} 次 · 开拓力上限 {settings.stamina_limit}" if settings.battle else " · 不刷本"))
@@ -521,7 +548,7 @@ class AutoHSRWindow:
             try:
                 from .app import Runner
                 runner = Runner(settings, send, new_battle_run=new_battle_run, operation=operation,
-                    **(dict(du_runs=settings.differential_universe_runs) if differential_universe else {}),
+                    **du_options,
                     **(dict(currency_control_probe=True) if currency_control_probe else {}),
                     **(dict(currency_timeout_probe=True) if currency_timeout_probe else {}),
                     **(dict(currency_source_slot=currency_source_slot,currency_zone=currency_zone) if deploy_test else {}),

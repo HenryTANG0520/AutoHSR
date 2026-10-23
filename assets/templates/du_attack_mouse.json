@@ -1,0 +1,13 @@
+{
+  "source": "runs\\check_20261020_181721\\screen.png",
+  "sha256": "cc6c05a423f5bfdbd383e3b137d13fca3bff4a6499c5a2399d048cf02c79ba7e",
+  "box": [
+    0.882,
+    0.829,
+    0.898,
+    0.861
+  ],
+  "baseline_width": 1920,
+  "derived_from": "assets\\templates\\planar_attack_mouse.png",
+  "mask": "Mouse outline convex hull; scene background excluded"
+}

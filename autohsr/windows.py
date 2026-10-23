@@ -233,7 +233,7 @@ class GameWindow:
 
     @staticmethod
     def emergency_pressed() -> bool:
-        return bool(user32.GetAsyncKeyState(0x79) & 0x8000)  # F10
+        return bool(user32.GetAsyncKeyState(0x79) & 0x8001)  # F10, including a brief tap
 
     def send(self, events: list[INPUT], expected: Geometry | None = None) -> None:
         self.guard(expected)
@@ -284,7 +284,8 @@ class GameWindow:
         self.send([INPUT(type=0, mi=MOUSEINPUT(round((px-vx)*65535/(vw-1)), round((py-vy)*65535/(vh-1)), 0, 0xC001, 0, 0))], expected)
 
     def key(self, name: str) -> None:
-        vk = {"esc": 0x1B, "f": 0x46, "f1": 0x70, "f2": 0x71, "f4": 0x73, "v": 0x56, "space": 0x20}.get(name.casefold())
+        vk = {"esc": 0x1B, "f": 0x46, "f1": 0x70, "f2": 0x71, "f4": 0x73, "v": 0x56, "space": 0x20,
+              "1": 0x31, "2": 0x32, "3": 0x33, "4": 0x34}.get(name.casefold())
         if vk is None:
             raise ValueError(f"Unsupported key: {name}")
         scan = user32.MapVirtualKeyW(vk, 0)
@@ -294,6 +295,30 @@ class GameWindow:
         finally:
             release = INPUT(type=1, ki=KEYBDINPUT(0, scan, 0xA, 0, 0))
             user32.SendInput(1, C.byref(release), C.sizeof(INPUT))
+
+    def type_du_save_name(self, name: str, expected: Geometry, *, checkpoint):
+        """Replace the focused archive-name field with a generated ASCII name."""
+        import re
+        if re.fullmatch(r'AutoHSR(?: - |-)\d{1,6}',name) is None:
+            raise AutomationError('无效的自动存档名。')
+        ctrl_down=INPUT(type=1,ki=KEYBDINPUT(0x11,0,0,0,0))
+        ctrl_up=INPUT(type=1,ki=KEYBDINPUT(0x11,0,2,0,0))
+        a_down=INPUT(type=1,ki=KEYBDINPUT(0x41,0,0,0,0))
+        a_up=INPUT(type=1,ki=KEYBDINPUT(0x41,0,2,0,0))
+        checkpoint()
+        try:
+            self.send([ctrl_down,a_down],expected)
+            time.sleep(.08)
+        finally:
+            releases=(INPUT*2)(a_up,ctrl_up)
+            if user32.SendInput(2,releases,C.sizeof(INPUT))!=2:
+                raise AutomationError('存档名全选按键释放失败。')
+        for char in name:
+            checkpoint()
+            down=INPUT(type=1,ki=KEYBDINPUT(0,ord(char),4,0,0))
+            up=INPUT(type=1,ki=KEYBDINPUT(0,ord(char),6,0,0))
+            self.send([down,up],expected)
+            time.sleep(.025)
 
     def key_hold(self, name: str, duration_ms: int, expected: Geometry, *, checkpoint=lambda: None) -> None:
         """Hold one field-navigation key for a bounded interval, then always release it."""
@@ -317,32 +342,130 @@ class GameWindow:
             if user32.SendInput(1, C.byref(up), C.sizeof(INPUT)) != 1:
                 raise AutomationError("差分宇宙移动键释放失败；请检查游戏窗口输入状态。")
 
+    def field_attack(self, expected: Geometry, *, checkpoint=lambda: None):
+        """Attack without pointer motion: moving the cursor rotates the field camera."""
+        checkpoint()
+        down=INPUT(type=0,mi=MOUSEINPUT(0,0,0,0x0002,0,0))
+        up=INPUT(type=0,mi=MOUSEINPUT(0,0,0,0x0004,0,0))
+        try:
+            self.send([down],expected)
+            for _ in range(4):
+                checkpoint()
+                time.sleep(.02)
+        finally:
+            if user32.SendInput(1,C.byref(up),C.sizeof(INPUT))!=1:
+                raise AutomationError("差分宇宙攻击鼠标键释放失败。")
+
+    def dialogue_burst(self, expected: Geometry, *, checkpoint, observe):
+        """Skip narration rapidly, with a fresh visual check before each click."""
+        started=time.monotonic()
+        count=0
+        reason="limit"
+        while count<12 and time.monotonic()-started<4:
+            checkpoint()
+            point=observe()
+            if point is None:
+                reason="arrow_hidden"
+                break
+            checkpoint()
+            if time.monotonic()-started>=4:
+                reason="deadline"
+                break
+            self.click_held(point[0],point[1],expected,checkpoint=checkpoint)
+            count+=1
+        return {"clicks":count,"reason":reason,"elapsed_ms":round((time.monotonic()-started)*1000)}
+
+    def field_motion(self, action: str, duration_ms: int, expected: Geometry,
+                     *, checkpoint, observe):
+        """Keep input moving while the caller observes frames independently.
+
+        The input worker owns its key, deadline and focus checks. A slow OCR
+        callback cannot extend the hold or delay releasing it after F9/F10.
+        No new input is emitted after this method returns or raises.
+        """
+        import threading
+        if action not in ("w","a","s","d","scan_right"):
+            raise AutomationError("连续探索只支持 W/A/S/D 或向右搜索镜头。")
+        limit=12000 if action=="scan_right" else 8000
+        if type(duration_ms) is not int or not 100<=duration_ms<=limit:
+            raise AutomationError("连续探索输入时长超出当前动作上限。")
+        cancel,finished=threading.Event(),threading.Event()
+        errors=[]
+        result={"reason":"duration","frames":0}
+        started=time.monotonic()
+
+        def drive():
+            release=None
+            try:
+                checkpoint()
+                if action!="scan_right":
+                    scan=user32.MapVirtualKeyW(ord(action.upper()),0)
+                    release=INPUT(type=1,ki=KEYBDINPUT(0,scan,0xA,0,0))
+                    self.send([INPUT(type=1,ki=KEYBDINPUT(0,scan,0x8,0,0))],expected)
+                previous=0
+                while not cancel.is_set():
+                    checkpoint()
+                    elapsed=time.monotonic()-started
+                    if elapsed*1000>=duration_ms:
+                        break
+                    if action=="scan_right":
+                        total=round(expected.width*.3*elapsed)
+                        if total!=previous:
+                            self.send([INPUT(type=0,mi=MOUSEINPUT(total-previous,0,0,1,0,0))],expected)
+                            previous=total
+                    cancel.wait(.02)
+            except BaseException as error:
+                errors.append(error)
+            finally:
+                result["input_elapsed_ms"]=round((time.monotonic()-started)*1000)
+                if release is not None:
+                    try:
+                        if user32.SendInput(1,C.byref(release),C.sizeof(INPUT))!=1:
+                            raise AutomationError("连续探索移动键释放失败。")
+                    except BaseException as error:
+                        errors.append(error)
+                finished.set()
+
+        worker=threading.Thread(target=drive,name="AutoHSR-field-input",daemon=True)
+        worker.start()
+        try:
+            while not finished.wait(.06):
+                checkpoint()
+                reason=observe()
+                result["frames"]+=1
+                if reason:
+                    result["reason"]=str(reason)
+                    break
+        finally:
+            cancel.set()
+            worker.join()
+        if errors:
+            raise errors[-1]
+        result["elapsed_ms"]=round((time.monotonic()-started)*1000)
+        return result
+
     def look(self, delta_x: float, delta_y: float, duration_ms: int, expected: Geometry,
              *, checkpoint=lambda: None) -> None:
-        """Rotate the field camera with a right-button drag; this does not attack or interact."""
+        """Rotate the free field camera using relative mouse motion."""
         import math
-        if any(type(v) not in (int, float) or not math.isfinite(v) for v in (delta_x, delta_y)):
+        from numbers import Real
+        if any(isinstance(v,bool) or not isinstance(v,Real) or not math.isfinite(v) for v in (delta_x, delta_y)):
             raise AutomationError("镜头转动幅度无效。")
+        delta_x,delta_y=float(delta_x),float(delta_y)
         if (abs(delta_x) > 0.18 or abs(delta_y) > 0.12 or (delta_x == 0 and delta_y == 0)
                 or type(duration_ms) is not int or not 100 <= duration_ms <= 800):
             raise AutomationError("镜头转动须在单次安全幅度内。")
-        start = (0.5, 0.5)
-        end = (start[0] + delta_x, start[1] + delta_y)
         checkpoint()
-        self.move(*start, expected)
-        right_down = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, 0x0008, 0, 0))
-        right_up = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, 0x0010, 0, 0))
         steps = max(8, round(duration_ms / 25))
-        try:
-            self.send([right_down], expected)
-            for step in range(1, steps + 1):
-                checkpoint()
-                fraction = step / steps
-                self.move(start[0] + delta_x * fraction, start[1] + delta_y * fraction, expected)
-                time.sleep(duration_ms / 1000 / steps)
-        finally:
-            if user32.SendInput(1, C.byref(right_up), C.sizeof(INPUT)) != 1:
-                raise AutomationError("镜头鼠标键释放失败；请检查游戏窗口输入状态。")
+        previous_x = previous_y = 0
+        for step in range(1, steps + 1):
+            checkpoint()
+            fraction = step / steps
+            x=round(delta_x*expected.width*fraction)
+            y=round(delta_y*expected.height*fraction)
+            self.send([INPUT(type=0,mi=MOUSEINPUT(x-previous_x,y-previous_y,0,0x0001,0,0))],expected)
+            previous_x,previous_y=x,y
+            time.sleep(duration_ms / 1000 / steps)
 
     def drag(self, start: tuple[float, float], end: tuple[float, float], expected: Geometry,
              *, checkpoint=lambda: None, waypoints=()) -> None:

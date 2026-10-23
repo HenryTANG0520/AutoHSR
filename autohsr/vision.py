@@ -32,7 +32,7 @@ class Vision:
         """Optional local UI anchor matching, resized to the 1080p baseline."""
         import cv2
         import numpy as np
-        template = cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_COLOR)
+        template = cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_UNCHANGED)
         if template is None:
             raise AutomationError(f"无法读取图像模板：{path}")
         height, width = scene.image.shape[:2]
@@ -42,7 +42,12 @@ class Vision:
         template = cv2.resize(template, None, fx=ratio, fy=ratio)
         if template.shape[0] > patch.shape[0] or template.shape[1] > patch.shape[1]:
             return None
-        scores = cv2.matchTemplate(patch, template, cv2.TM_CCOEFF_NORMED)
+        if template.ndim==3 and template.shape[2]==4:
+            mask=template[:,:,3]
+            scores=cv2.matchTemplate(patch,template[:,:,:3],cv2.TM_CCORR_NORMED,mask=mask)
+            scores=np.nan_to_num(scores,nan=-1,posinf=-1,neginf=-1)
+        else:
+            scores = cv2.matchTemplate(patch, template, cv2.TM_CCOEFF_NORMED)
         _, confidence, _, point = cv2.minMaxLoc(scores)
         if confidence < threshold:
             return None
@@ -51,6 +56,56 @@ class Vision:
     def read_number(self,image):
         """Recognize one tightly bounded numeric field without text detection."""
         return self._read_field(image,r'[0-9]{1,2}')
+
+    def refine_du_field_header(self,scene):
+        """Read the fixed live-field header when full-frame detection misses it."""
+        from .policy import has_du_field_plane_marker
+        if scene.image is None or has_du_field_plane_marker(scene.text):
+            return
+        height,width=scene.image.shape[:2]
+        box=(.015,.012,.17,.04)
+        patch=scene.image[round(box[1]*height):round(box[3]*height),
+                          round(box[0]*width):round(box[2]*width)]
+        field=self._read_field(patch,r'.*(?:[1-9]|1[0-3])/13[)）]?第[一二三四五六1-6]位面[-—]?(?:战斗|精英|首领|异常|休整|奖励|事件|商店|财富|空白|铸造|冒险|奇遇[-—]?奇物合成).*')
+        if field:
+            scene.tokens.append(Token(field.text,field.score,box))
+
+    def refine_du_reward_balance(self,scene):
+        from .du_rewards import page_kind,moon_balance
+        if scene.image is None or page_kind(scene)!='moon_rewards' or moon_balance(scene) is not None:
+            return
+        h,w=scene.image.shape[:2]
+        box=(.885,.039,.925,.080)
+        patch=scene.image[round(box[1]*h):round(box[3]*h),round(box[0]*w):round(box[2]*w)]
+        field=self._read_field(patch,r'\d{1,5}')
+        if field:
+            scene.tokens.append(Token(field.text,field.score,box))
+        else:
+            # RapidOCR reads this lone zero with low confidence. An exact
+            # observed glyph is sufficient only for zero (never to unlock).
+            template=Path(__file__).resolve().parents[1]/'assets/templates/du_cassette_zero.png'
+            match=self.template(scene,template,box,threshold=.94)
+            if match:
+                scene.tokens.append(Token('0',match[2],box))
+
+    def refine_du_blessing_names(self,scene):
+        """Retry missing card titles at native resolution, without body text."""
+        import re
+        if scene.image is None or not scene.has('选择祝福',(0,0,.32,.13),exact=True):
+            return
+        h,w=scene.image.shape[:2]
+        for left,right in ((.14,.36),(.39,.61),(.64,.87)):
+            roi=(left,.445,right,.495)
+            if any(t.within(roi) and re.search(r'[\u3400-\u9fff]',t.text) for t in scene.tokens):
+                continue
+            patch=scene.image[round(roi[1]*h):round(roi[3]*h),round(left*w):round(right*w)]
+            local=self.read(patch)
+            for token in local.tokens:
+                if re.search(r'[\u3400-\u9fff]',token.text):
+                    a,b,c,d=token.box
+                    scene.tokens.append(Token(token.text,token.score,
+                        (left+a*(right-left),roi[1]+b*(roi[3]-roi[1]),
+                         left+c*(right-left),roi[1]+d*(roi[3]-roi[1]))))
 
     def refine_planar_support(self, scene):
         if scene.image is None or getattr(scene, "_planar_badges_read", False):

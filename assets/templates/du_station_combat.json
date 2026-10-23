@@ -1,0 +1,15 @@
+{
+  "source": "runs\\20261020_232248_971075\\232311_942561_failure.png",
+  "sha256": "5c0a6bde445f785bbf684dcb34fb3522a7024272dec4950030954eafcc3c8e8d",
+  "baseline": [
+    1920,
+    1080
+  ],
+  "rect": [
+    883,
+    516,
+    1008,
+    649
+  ],
+  "description": "Combat station card sword icon, above the animated label area."
+}

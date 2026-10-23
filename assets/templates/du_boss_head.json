@@ -1,0 +1,14 @@
+{
+  "source_sha256": "591e2ed042949183e5f4e6672189359e617de875f55a7fd877ad3ef5dce371e5",
+  "resized_source": [
+    1920,
+    1080
+  ],
+  "crop_xyxy": [
+    905,
+    246,
+    1032,
+    382
+  ],
+  "purpose": "Coarse visible boss bearing; never an attack-range or battle-completion signal"
+}

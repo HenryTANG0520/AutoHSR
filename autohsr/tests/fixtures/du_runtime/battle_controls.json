@@ -1,0 +1,34 @@
+[
+  {
+    "file": "battle_controls_1.png",
+    "rect": [
+      1632,
+      0,
+      1920,
+      108
+    ],
+    "size": [
+      1920,
+      1080
+    ],
+    "source": "runs\\20261020_201914_186379\\202114_853291_du_01_043_field_combat_transition.png",
+    "sha256": "610b1be3c6c07189d4b897a39ca608696a0e06556991f8b86ebe903b0ded65d2",
+    "auto": "on"
+  },
+  {
+    "file": "battle_controls_2.png",
+    "rect": [
+      1632,
+      0,
+      1920,
+      108
+    ],
+    "size": [
+      1920,
+      1080
+    ],
+    "source": "runs\\20261020_201914_186379\\202124_806947_du_01_049_field_combat_transition.png",
+    "sha256": "63c33c535db295d9bf6890de6e4634c5e98581ae348aef665c8b0e0c17e5bdc2",
+    "auto": "on"
+  }
+]

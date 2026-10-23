@@ -1,0 +1,15 @@
+{
+  "source_sha256": "2bac86583f925e2d2fdf0fbc446216efddd29f97d687b0b5516152d20218ef3f",
+  "source_size": [
+    3840,
+    2160
+  ],
+  "crop_xyxy": [
+    2156,
+    1192,
+    2230,
+    1266
+  ],
+  "baseline_width": 1920,
+  "purpose": "Stop movement on the live F hint; never authorizes interaction alone"
+}

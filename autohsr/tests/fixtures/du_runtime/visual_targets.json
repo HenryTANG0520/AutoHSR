@@ -1,0 +1,54 @@
+[
+  {
+    "file": "event_card_front.png",
+    "kind": "card",
+    "source_sha256": "03d2558fcd43cca87f0d5e81b49dd44acee27e1e86a3581859356ec736a66c8d",
+    "blanked": "left/right HUD and bottom identifier"
+  },
+  {
+    "file": "event_card_back.png",
+    "kind": "card",
+    "source_sha256": "75d255e2fb7baa85ebfdac0f3e0ad5f5e7eb8740f912d68c6727ddd0760eada5",
+    "blanked": "left/right HUD and bottom identifier"
+  },
+  {
+    "file": "interaction_hint.png",
+    "kind": "F hint",
+    "source_sha256": "2bac86583f925e2d2fdf0fbc446216efddd29f97d687b0b5516152d20218ef3f",
+    "kept_roi": [
+      490,
+      240,
+      610,
+      360
+    ]
+  },
+  {
+    "file": "detector_220.png",
+    "kind": "door",
+    "source_sha256": "9afaaab459bdce9fe50ee3f69b67c6da023523c1f10407b5750e4513b9c88112",
+    "blanked": "bottom identifier"
+  },
+  {
+    "file": "detector_223.png",
+    "kind": "negative",
+    "source_sha256": "0b092f5a91a7bf23487d7aef458036d2844b708692bf39a21ebe25ac468ddfda",
+    "blanked": "bottom identifier"
+  },
+  {
+    "file": "detector_230.png",
+    "kind": "door",
+    "source_sha256": "aad796dcacdaa2965f58e1da7fa273dee3876c9f567d1066de46d42aed212cf1",
+    "blanked": "bottom identifier"
+  },
+  {
+    "file": "gold_blessing_stars.png",
+    "source_sha256": "d6feada667d6da62182462ce45d345c60462d9ada6eb23cb12f67be04a877156",
+    "kind": "three gold star rows",
+    "kept_roi": [
+      0,
+      524,
+      1920,
+      589
+    ]
+  }
+]

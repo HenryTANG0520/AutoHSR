@@ -1,0 +1,7 @@
+{
+  "source_sha256": "83f4daad4457e3ce82f8a8f35ee6c20e88eae2955a78b8f1dcae732560b0ae98",
+  "sha256": "38cee9b5c5a190f797750678e20ebf907d76a664bd1777308461b201084abfaa",
+  "masked_identifiers": true,
+  "native_page_index": 48,
+  "calibration": "Same captured episode used for incremental training; regression, not held-out evaluation."
+}

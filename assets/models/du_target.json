@@ -1,0 +1,64 @@
+{
+  "classes": [
+    "Target"
+  ],
+  "sha256": "72052c39825ad5beb6743d400871e54593df3cad8b52d9b7f965b9e682aa6373",
+  "bytes": 10774817,
+  "base_model": "Ultralytics YOLO11n",
+  "base_source": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.pt",
+  "license": "AGPL-3.0",
+  "date": "2026-10-23",
+  "split_counts": {
+    "train": 367,
+    "val": 33,
+    "test": 12
+  },
+  "validation_metrics": {
+    "metrics/precision(B)": 0.99724,
+    "metrics/recall(B)": 1.0,
+    "metrics/mAP50(B)": 0.995,
+    "metrics/mAP50-95(B)": 0.71948
+  },
+  "onnx_cpu_evaluation": {
+    "counts": {
+      "val": {
+        "tp": 31,
+        "fp": 0,
+        "fn": 0,
+        "images": 33
+      },
+      "test": {
+        "tp": 6,
+        "fp": 0,
+        "fn": 0,
+        "images": 12
+      }
+    },
+    "threshold": 0.55,
+    "median_ms": 55.65504998958204
+  },
+  "limitations": [
+    "Small locally reviewed dataset; not a universal navigation guarantee.",
+    "Two close test panels localized the correct door but covered only part of the annotated box (IoU < 0.5).",
+    "Target means pink door, whether sleeping, awake, or viewed from behind. It never authorizes F or skipping combat.",
+    "No learned enemy or card class is enabled."
+  ],
+  "training_environment": {
+    "torch": "2.6.0+cu126",
+    "ultralytics": "8.3.228",
+    "input_size": 960,
+    "opset": 17,
+    "runtime": "ONNX Runtime CPU"
+  },
+  "train_images": 367,
+  "train_native_images": 235,
+  "train_synthetic_images": 132,
+  "epochs_completed": 8,
+  "best_epoch": 2,
+  "local_manifest_sha256": "ff3533ad5b1735889719da100f5d62ec485b6af0e40b1e5ea44bae58b9f76765",
+  "prior_model_sha256": "8f8e7198e80b4e27ca56be68b898a96a70320807b2858095eab0f52bfe0450ac",
+  "fine_tuned_from": "Prior local last checkpoint; three reviewed console-occluded doors plus 36 brightness variants, retaining old splits and brush negatives.",
+  "validation_limit": "Original validation/test groups unchanged. New console-occlusion views are training/calibration only; ten independent DU successes remain unproven.",
+  "selected_checkpoint": "last",
+  "selected_epoch": 8
+}

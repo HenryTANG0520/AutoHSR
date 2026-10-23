@@ -11,7 +11,7 @@ import time
 from datetime import datetime
 
 from .config import ROOT, RESOURCE_ROOT, Settings
-from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, RunReport, Scene, Stopped, TaskResult, Token
+from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, RunReport, Scene, Stopped, TaskResult, Token, normalize
 from .vision import Vision, save_scene
 from .ocr_isolation import IsolatedVision
 from .windows import find_game, is_admin, is_elevated, launch
@@ -79,6 +79,11 @@ class Context:
             try:
                 image, geometry = self.window.capture()
                 scene = self.vision.read(image, geometry)
+                if self.report.operation == "differential_universe":
+                    self.vision.refine_du_field_header(scene)
+                    self.vision.refine_du_blessing_names(scene)
+                    if self.settings.differential_universe_rewards:
+                        self.vision.refine_du_reward_balance(scene)
                 scene.captured_at = captured_at
                 self.checkpoint()
                 if capture_epoch != self.runner.input_epoch:
@@ -112,6 +117,18 @@ class Context:
             raise AutomationError("识别画面已经过期，请重新识别后操作。")
         from .policy import guard_click, guard_differential_universe_click, replenishment_dialog
         if self.report.operation == "differential_universe":
+            if du_intent=='blessing_discard_prompt_confirm':
+                from .policy import du_blessing_discard_prompt
+                expected=(self.report.differential_universe.get('reward_decisions') or [{}])[-1]
+                if not expected.get('discard') or expected.get('selected')!=du_blessing_discard_prompt(scene):
+                    raise AutomationError('舍弃确认框与本次预览选中的祝福不一致，未确认。')
+            if du_intent.startswith('du_team_'):
+                from .du_team import guard_click as guard_team_click
+                guard_team_click(scene,target,du_intent,self.settings.differential_universe_team)
+            if du_intent=='du_mode_select':
+                expected='周期演算' if self.settings.differential_universe_mode=='periodic' else '常规演算'
+                if normalize(target.text)!=normalize(expected):
+                    raise AutomationError('演算入口与配置模式不一致，未选择。')
             guard_differential_universe_click(scene, target, intent=du_intent)
         else:
             guard_click(scene, target, allow_differential_universe=self.report.operation == "differential_universe")
@@ -210,6 +227,9 @@ class Context:
             "run_results": du.get("run_results", []),
             "actions": du.get("actions", []),
             "page_history": du.get("page_history", []),
+            "team_selections": du.get("team_selections", []),
+            "reward_collection": du.get("reward_collection"),
+            "navigation_observations": du.get('navigation_observations',[]),
         }
         import uuid
         temp = ledger.with_suffix(f".{uuid.uuid4().hex}.tmp")
@@ -220,15 +240,14 @@ class Context:
         except OSError as error:
             raise AutomationError(f"差分宇宙证据台账无法落盘，已禁止后续操作：{error}") from error
 
-    def _du_field_input(self, scene: Scene, action: str, perform):
+    def _du_observed_input(self, scene: Scene, action: str, perform, *, guard):
         if self.report.operation != "differential_universe":
             raise AutomationError("位面探索输入只用于差分宇宙。")
         self.checkpoint()
         if (self.scene_epoch != self.runner.input_epoch or scene is not self.last_scene
                 or not 0 <= time.monotonic() - scene.captured_at <= 8):
             raise InputInterrupted("位面探索目标画面已过期，须重新识别后再操作。")
-        from .policy import guard_differential_universe_field_input
-        guard_differential_universe_field_input(scene, action=action)
+        guard(scene)
         before = self.evidence(scene, "du_before_" + action)
         record = {"action": action, "status": "requested", "before": str(before),
                   "before_text": scene.text, "run": self.report.differential_universe.get("current_run", 0),
@@ -237,7 +256,9 @@ class Context:
         self._persist_du_ledger()
         self.last_scene = None
         try:
-            perform()
+            input_result=perform()
+            if isinstance(input_result,dict):
+                record["input_result"]=input_result
         except FocusLost:
             self._focus_interrupted()
         after = self._snapshot_after_du_input(timeout=20)
@@ -247,24 +268,160 @@ class Context:
         self._persist_du_ledger()
         return after
 
+    def _du_field_input(self, scene: Scene, action: str, perform):
+        from .policy import guard_differential_universe_field_input
+        return self._du_observed_input(scene,action,perform,
+            guard=lambda page:guard_differential_universe_field_input(page,action=action))
+
+    def differential_universe_close_team(self, scene: Scene):
+        from .du_team import enabled
+        def guard(page):
+            if not enabled(page,self.settings.differential_universe_team):
+                raise AutomationError('指定预设编队未启用，未关闭选角。')
+        return self._du_observed_input(scene,'preset_team_close',
+            lambda:self.window.key('esc'),guard=guard)
+
+    def differential_universe_close_forge(self, scene: Scene):
+        from .policy import du_forge_console_menu
+        def guard(page):
+            if not du_forge_console_menu(page):
+                raise AutomationError('未核实造物调试台装配菜单，未关闭。')
+        return self._du_observed_input(scene,'forge_console_close',
+            lambda:self.window.key('esc'),guard=guard)
+
+    def differential_universe_dialogue(self, scene: Scene, target: Token):
+        import cv2
+        from .du_navigation import event_next
+        from .policy import guard_differential_universe_click
+        def header(image):
+            h,w=image.shape[:2]
+            return cv2.cvtColor(cv2.resize(image[round(.025*h):round(.10*h),round(.02*w):round(.12*w)],
+                                          (200,85)),cv2.COLOR_BGR2GRAY)
+        reference=header(scene.image)
+        check=self._du_held_checkpoint(scene)
+        def observe():
+            pixels,geometry=self.window.capture()
+            check()
+            if geometry!=scene.geometry:
+                raise InputInterrupted("对话连点期间窗口位置或大小改变。")
+            score=float(cv2.matchTemplate(header(pixels),reference,cv2.TM_CCOEFF_NORMED)[0,0])
+            if score<.90:
+                return None
+            match=event_next(Scene([],image=pixels))
+            return match[:2] if match is not None else None
+        return self._du_observed_input(scene,"event_dialogue_burst",
+            lambda:self.window.dialogue_burst(scene.geometry,checkpoint=check,observe=observe),
+            guard=lambda page:guard_differential_universe_click(page,target,intent="event_advance"))
+
     def differential_universe_move(self, scene: Scene, direction: str, duration_ms: int):
         if direction.casefold() not in ("w", "a", "s", "d"):
             raise AutomationError("差分宇宙移动方向只允许 W/A/S/D。")
+        self._du_background_progress=None
         return self._du_field_input(
             scene, f"move_{direction.casefold()}_{duration_ms}ms",
-            lambda: self.window.key_hold(direction, duration_ms, scene.geometry, checkpoint=self.checkpoint))
+            lambda: self.window.key_hold(direction, duration_ms, scene.geometry,
+                                         checkpoint=self._du_held_checkpoint(scene)))
+
+    def differential_universe_motion(self, scene: Scene, action: str, duration_ms: int,
+                                     *, profile="forward", watch_gate=True):
+        from .du_navigation import FieldMotionWatch
+        watch=FieldMotionWatch(scene,self.vision,profile=profile,watch_gate=watch_gate)
+        # Keep the two-second world-motion observation across short near-door
+        # steps. A camera adjustment or explicit recovery move resets it.
+        if watch.progress is not None:
+            progress=getattr(self,"_du_background_progress",None)
+            if progress is None:
+                self._du_background_progress=watch.progress
+            else:
+                watch.progress=progress
+        check=self._du_held_checkpoint(scene)
+        frames=[]
+        next_frame=0
+        frame_id=datetime.now().strftime("%H%M%S_%f")
+        def observe():
+            nonlocal next_frame
+            image,geometry=self.window.capture()
+            check()
+            if geometry!=scene.geometry:
+                raise InputInterrupted("连续探索期间窗口位置或大小改变。")
+            if action=="scan_right" and time.monotonic()>=next_frame:
+                import cv2
+                root=Path(self.report.run_dir)/"continuous-navigation"
+                root.mkdir(exist_ok=True)
+                sample=cv2.resize(image,(960,round(image.shape[0]*960/image.shape[1])))
+                sample[-20:]=0  # Exclude the account identifier from scan samples.
+                path=root/f"{frame_id}_{len(frames):02d}.png"
+                cv2.imencode(".png",sample)[1].tofile(str(path))
+                frames.append(str(path))
+                next_frame=time.monotonic()+1
+            return watch(image)
+        def perform():
+            result=self.window.field_motion(action,duration_ms,scene.geometry,
+                                            checkpoint=check,observe=observe)
+            result["scan_samples"]=frames
+            if result.get('reason')=='attack_reticle' and watch.attack_target is not None:
+                result['attack_target']={'box':list(watch.attack_target.box),
+                                         'score':float(watch.attack_target.score)}
+                import cv2
+                root=Path(self.report.run_dir)/'continuous-navigation'
+                root.mkdir(exist_ok=True)
+                sample=cv2.resize(watch.attack_frame,(960,round(watch.attack_frame.shape[0]*960/watch.attack_frame.shape[1])))
+                sample[round(.963*sample.shape[0]):]=0
+                path=root/f'{frame_id}_attack_range.png'
+                cv2.imencode('.png',sample)[1].tofile(str(path))
+                result['attack_evidence']=str(path)
+            self._du_motion_result=result
+            return result
+        return self._du_field_input(scene,f"continuous_{action}_{duration_ms}ms",perform)
+
+    def _du_held_checkpoint(self, scene):
+        epoch = self.scene_epoch
+        def check():
+            if self.runner._stop.is_set():
+                raise Stopped("任务已停止。")
+            if self.runner._pause.is_set() or self.runner.input_epoch != epoch:
+                raise InputInterrupted("差分宇宙探索输入已中断，恢复后需重新识别。")
+            self.window.guard(scene.geometry)
+        return check
 
     def differential_universe_look(self, scene: Scene, delta_x: float, delta_y: float = 0,
                                    duration_ms: int = 250):
+        self._du_background_progress=None
         label = f"look_{delta_x:+.2f}_{delta_y:+.2f}"
         return self._du_field_input(
             scene, label,
-            lambda: self.window.look(delta_x, delta_y, duration_ms, scene.geometry, checkpoint=self.checkpoint))
+            lambda: self.window.look(delta_x, delta_y, duration_ms, scene.geometry,
+                                     checkpoint=self._du_held_checkpoint(scene)))
 
     def differential_universe_enter_random_gate(self, scene: Scene, target: Token):
         from .policy import guard_differential_universe_portal
         guard_differential_universe_portal(scene, target)
         return self._du_field_input(scene, "enter_random_gate_f", lambda: self.window.key("f"))
+
+    def differential_universe_switch_character(self,scene: Scene,slot: int):
+        from .du_navigation import attack_reticle
+        if type(slot) is not int or slot not in (1,2,3,4):
+            raise AutomationError("接战切换只允许当前队伍的 1–4 号角色。")
+        if not scene.has("等级",(.38,.01,.64,.10)) or attack_reticle(scene) is None:
+            raise AutomationError("未核实敌人信息条与攻击圆环，未切换接战角色。")
+        return self._du_field_input(scene,f"switch_party_{slot}",lambda:self.window.key(str(slot)))
+
+    def differential_universe_save_name(self,scene: Scene,name: str):
+        from .du_saves import guard_name
+        if not self.settings.differential_universe_save:
+            raise AutomationError('保存通关存档开关未打开。')
+        return self._du_observed_input(scene,'save_archive_name',
+            lambda:self.window.type_du_save_name(name,scene.geometry,checkpoint=self._du_held_checkpoint(scene)),
+            guard=lambda page:guard_name(page,name))
+
+    def differential_universe_attack(self, scene, target, intent):
+        from .policy import guard_differential_universe_click
+        guard_differential_universe_click(scene,target,intent=intent)
+        if (intent not in ('field_ring_attack','field_forward_attack')
+                and self.template(scene,"du_attack_mouse",(.878,.825,.901,.867),threshold=.88) is None):
+            raise AutomationError("未核实当前位面的普通攻击鼠标图标，未攻击。")
+        return self._du_field_input(scene,"field_basic_attack",
+            lambda:self.window.field_attack(scene.geometry,checkpoint=self._du_held_checkpoint(scene)))
 
     def differential_universe_interact(self, scene: Scene, target: Token):
         from .policy import guard_differential_universe_field_interact
@@ -928,8 +1085,8 @@ class Runner:
         self.report.operation = operation
         self.battle_budget = None
         self.du_runs = settings.differential_universe_runs if du_runs is None else du_runs
-        if isinstance(self.du_runs, bool) or not isinstance(self.du_runs, int) or not 1 <= self.du_runs <= 3:
-            raise ValueError("差分宇宙局数必须是 1～3 的整数。")
+        if isinstance(self.du_runs, bool) or not isinstance(self.du_runs, int) or not 1 <= self.du_runs <= 10:
+            raise ValueError("差分宇宙局数必须是 1～10 的整数。")
         if type(du_resume_active) is not bool or (du_resume_active and operation != "differential_universe"):
             raise ValueError("接续差分宇宙仅适用于差分宇宙操作，且必须为布尔值。")
         if (du_periodic_rank is not None and
@@ -938,6 +1095,8 @@ class Runner:
             raise ValueError("周期演算接续难度必须是 1～10 的整数，且仅适用于差分宇宙操作。")
         if du_periodic_rank is not None and not du_resume_active:
             raise ValueError("周期演算接续难度只可配合 --resume-active-du。")
+        if du_periodic_rank is not None and self.du_runs != 1:
+            raise ValueError("周期演算接续仅完成当前 1 局。")
         self.du_resume_active = du_resume_active
         self.du_periodic_rank = du_periodic_rank
 
@@ -1094,12 +1253,21 @@ class Runner:
         from .windows import user32
         previous = False
         while not self._monitor_end.wait(0.05):
-            if (self._window.emergency_pressed() if self._window is not None else bool(user32.GetAsyncKeyState(0x79) & 0x8000)):
+            if (self._window.emergency_pressed() if self._window is not None else bool(user32.GetAsyncKeyState(0x79) & 0x8001)):
                 self.stop()
             current = bool(user32.GetAsyncKeyState(0x78) & 0x8000)
             if self._window is not None and current and not previous and user32.GetForegroundWindow() == self._window.hwnd:
                 self.toggle_pause()
             previous = current
+
+    def _arm_hotkeys(self):
+        from .windows import user32
+        # A newly started process can inherit the low-bit history of the F10
+        # used to stop the preceding run. Clear that history before arming;
+        # a key that is still held must stop this run immediately.
+        if user32.GetAsyncKeyState(0x79) & 0x8000:
+            self.stop()
+            self._control_checkpoint()
 
     def run(self) -> RunReport:
         from .workflows import DailyWorkflow
@@ -1135,6 +1303,7 @@ class Runner:
                 self.battle_budget = BattleBudget(ROOT / "runs", self.settings, self.report)
                 self.battle_budget.begin(new_run=self.new_battle_run)
             self.checkpoint()
+            self._arm_hotkeys()
             monitor = threading.Thread(target=self._hotkeys, name="AutoHSR-hotkeys", daemon=True)
             monitor.start()
             monitor_started = True

@@ -1,0 +1,17 @@
+[
+  {
+    "file": "boss_aurumaton_0.png",
+    "source_sha256": "51b227191ce65dcf2d4f429f9db51bb9ad5ae1d51832a5d9b42485dc2bddb41d",
+    "expected_x": 0.47
+  },
+  {
+    "file": "boss_aurumaton_1.png",
+    "source_sha256": "c235908e5c9a57b0f3cd33eb9378077221fabedad97b16b9002efb7142ac7bd4",
+    "expected_x": 0.356
+  },
+  {
+    "file": "boss_aurumaton_2.png",
+    "source_sha256": "b89114ce3ab7ab684a627e46d40b8e04ee995237221c64c09700e8664fee1287",
+    "expected_x": 0.731
+  }
+]

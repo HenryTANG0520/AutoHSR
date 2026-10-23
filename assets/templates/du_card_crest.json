@@ -1,0 +1,14 @@
+{
+  "source_sha256": "75d255e2fb7baa85ebfdac0f3e0ad5f5e7eb8740f912d68c6727ddd0760eada5",
+  "resized_source": [
+    1920,
+    1080
+  ],
+  "crop_xyxy": [
+    1044,
+    189,
+    1086,
+    222
+  ],
+  "purpose": "World event card back crest bearing only"
+}

@@ -1,0 +1,11 @@
+{
+  "source_sha256": "b89114ce3ab7ab684a627e46d40b8e04ee995237221c64c09700e8664fee1287",
+  "roi": [
+    0.692,
+    0.201,
+    0.77,
+    0.335
+  ],
+  "baseline_width": 960,
+  "purpose": "Observed side chest; bearing only"
+}

@@ -1,0 +1,15 @@
+{
+  "source": "runs\\check_20261020_230123\\screen.png",
+  "sha256": "94df437fba365963d7227ea31405e770a1847667af24102a152d3e95ddabed34",
+  "baseline": [
+    1920,
+    1080
+  ],
+  "rect": [
+    1560,
+    710,
+    1595,
+    745
+  ],
+  "description": "Gold event dialogue continuation arrow, before choice buttons appear."
+}

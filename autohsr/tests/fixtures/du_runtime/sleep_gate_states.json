@@ -1,0 +1,12 @@
+[
+  {
+    "file": "gate_sleep_far.png",
+    "source_sha256": "cb34d2f6ff99475bf150f9a9ce38b5e126b0d39b3f733d1c065c3470f950d310",
+    "expected": "sleeping"
+  },
+  {
+    "file": "gate_sleep_near.png",
+    "source_sha256": "59be24a0c64d7df9c04cba4bc72334ae5f491a4e9e16153741280df126296f51",
+    "expected": "sleeping"
+  }
+]
