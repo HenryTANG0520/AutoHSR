@@ -358,3 +358,46 @@ class DuRewardTests(unittest.TestCase):
             guard_click(Scene([],image),dot,'du_reward_dot')
         page.tokens[1]=t('425/800',.7,.1)
         self.assertIsNone(page_kind(page))
+
+    def test_capped_fit_requires_max_label_level_and_matching_final_tier(self):
+        from autohsr.tests.test_du_team import fixture
+        page=fixture('fit_level_cap')
+        self.assertEqual(page_kind(page),'fit_rewards')
+        self.assertEqual(len(red_dots(page,(0,.67,1,.87))),2)
+        for dot in red_dots(page,(0,.67,1,.87)):
+            guard_click(page,dot,'du_reward_dot')
+        claimed=fixture('fit_level_cap_claimed')
+        self.assertEqual(page_kind(claimed),'fit_rewards')
+        self.assertEqual(red_dots(claimed,(0,.67,1,.87)),[])
+        for cap in (80,120):
+            with self.subTest(cap=cap):
+                tokens=[t('差分宇宙',.1,.05),t(str(cap),.5,.405),t('已满级',.5,.51)]
+                tokens.extend(t(str(cap-2+i),.4+i*.1,.835) for i in range(3))
+                tokens.append(t('下次扩充',.87,.825))
+                self.assertEqual(page_kind(Scene(tokens)),'fit_rewards')
+                self.assertIsNone(page_kind(Scene([v for v in tokens if v.text!='已满级'])))
+                self.assertIsNone(page_kind(Scene([t('已满级',.7,.1) if v.text=='已满级' else v for v in tokens])))
+                self.assertIsNone(page_kind(Scene([t(str(cap+1),.5,.405) if v is tokens[1] else v for v in tokens])))
+                self.assertIsNone(page_kind(Scene(tokens[:-1])))
+
+    def test_known_reward_subpage_resumes_without_reopening_or_starting_trial(self):
+        from autohsr.tests.test_du_team import fixture
+        pages={'fit_rewards':fixture('fit_level_cap'),
+               'moon_rewards':Scene([t('月下奇谭',.27,.17),t('道具一览',.2,.61),
+                    t('所有道具均已获得',.74,.68)]),
+               'steady_rewards':Scene([t('稳态数组',.1,.05),t('测试',.4,.1),t('难题',.58,.1)])}
+        ready=self.ready_home();clear=Scene(ready.tokens,np.zeros_like(ready.image))
+        for kind,page in pages.items():
+            with self.subTest(kind=kind):
+                self.assertEqual(page_kind(page),kind)
+                ctx=Mock();ctx.wait.return_value=clear;ctx.snapshot.return_value=clear
+                flow=SimpleNamespace(ctx=ctx,settings=Settings(differential_universe_rewards=True),
+                                     report={},_persist_ledger=Mock())
+                with patch('autohsr.du_rewards.collect_fit',return_value=page) as fit, \
+                     patch('autohsr.du_rewards.collect_moon',return_value=page) as moon, \
+                     patch('autohsr.du_rewards.collect_steady',return_value=page) as steady:
+                    self.assertIs(collect(flow,page),clear)
+                    self.assertEqual([fit.call_count,moon.call_count,steady.call_count],
+                        [int(kind==v) for v in ('fit_rewards','moon_rewards','steady_rewards')])
+                ctx.click.assert_not_called();ctx.key.assert_called_once_with('esc')
+                self.assertEqual(flow.report['reward_collection']['status'],'complete')

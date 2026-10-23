@@ -152,7 +152,17 @@ def page_kind(scene):
         and re.fullmatch(r'\d{1,5}/[1-9]\d{2,4}',normalize(t.text))]
     tiers=[t for t in scene.tokens if t.within((0,.80,1,.87))
            and re.fullmatch(r'[1-9]\d{0,2}',normalize(t.text))]
-    if len(xp)==1 and len(tiers)>=3:
+    levels=[int(normalize(t.text)) for t in scene.tokens if t.within((.40,.33,.60,.46))
+            and re.fullmatch(r'[1-9]\d{0,2}',normalize(t.text))]
+    # At the level cap the same XP panel reads "已满级" instead of N/M.
+    # Correlate it with the central level and final visible tier, rather than
+    # hard-coding today's cap or accepting an unrelated max-level label.
+    capped=(scene.has('已满级',(.40,.46,.60,.56),exact=True) and len(levels)==1
+            and scene.has('下次扩充',(.75,.77,.96,.89),exact=True)
+            and bool(tiers) and levels[0]==max(int(normalize(t.text)) for t in tiers))
+    # Claimed tiers darken and may stop producing OCR tokens. The capped
+    # screen retains its central level, cap label, final tier and expansion.
+    if (len(xp)==1 and len(tiers)>=3) or capped:
         return 'fit_rewards'
     return None
 
@@ -292,10 +302,25 @@ def collect(workflow,scene):
 
 def _collect(workflow,scene,report):
     ctx=workflow.ctx
-    if page_kind(scene) in ('gallery_home','gallery_category','gallery_milestones'):
+    initial=page_kind(scene)
+    if initial in ('gallery_home','gallery_category','gallery_milestones'):
         scene=collect_gallery(workflow,scene,report)
         ctx.key('esc')
         scene=ctx.wait(home,timeout=20,description='画廊断点领奖后返回主页')
+    elif initial in ('fit_rewards','moon_rewards','steady_rewards'):
+        # A failed page wait may leave a fully loaded reward page open. Resume
+        # its currently visible claim controls, then verify the home again.
+        label={'fit_rewards':'拟合等级','moon_rewards':'月下奇谭','steady_rewards':'稳态数组'}[initial]
+        report['visits'].append(label)
+        workflow._persist_ledger()
+        if initial=='fit_rewards':
+            scene=collect_fit(workflow,scene,report,label)
+        elif initial=='moon_rewards':
+            scene=collect_moon(workflow,scene,report)
+        else:
+            scene=collect_steady(workflow,scene,report)
+        ctx.key('esc')
+        scene=ctx.wait(home,timeout=20,description='断点领奖后返回差分宇宙主页')
     if not home(scene):
         raise AutomationError('红点领奖须从差分宇宙主页开始。')
     visited={}
