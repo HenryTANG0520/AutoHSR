@@ -44,6 +44,7 @@ def limit_batch(workflow, scene, remaining):
                   tokens + min(remaining, available) // 40)
     if desired <= 0:
         return scene, 0
+    hover_rechecked=False
     for _ in range(12):
         count = workflow._round_count(scene)
         if not preparation(scene) or count is None:
@@ -60,8 +61,22 @@ def limit_batch(workflow, scene, remaining):
         if target is None:
             target = workflow._icon(scene, 'count_plus' if plus else 'count_minus', roi)
         if target is None:
+            move=getattr(workflow.ctx,'move',None)
+            if scene.image is not None and not hover_rechecked and callable(move):
+                # A previous click leaves the cursor over a highlighted button.
+                # Clear only menu hover, then re-observe; never click a guessed
+                # increment/decrement location when its icon is missing.
+                move(scene,(.70,.68))
+                workflow.ctx.sleep(.15)
+                scene=workflow._snapshot()
+                hover_rechecked=True
+                continue
+            evidence=getattr(workflow.ctx,'evidence',None)
+            if evidence is not None:
+                evidence(scene,'planar_count_button_unverified')
             raise AutomationError('未核实饰品提取次数按钮，未开始挑战。')
         workflow._click(scene, target)
+        hover_rechecked=False
         expected = count + (1 if plus else -1)
         scene = workflow._wait(lambda s: preparation(s) and workflow._round_count(s) == expected,
                                timeout=12, description='核实饰品提取挑战次数变化')

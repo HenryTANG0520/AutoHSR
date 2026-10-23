@@ -65,6 +65,32 @@ class PlanarResourceTests(unittest.TestCase):
                         with self.assertRaises(AutomationError):
                             payment(self.workflow(page),page)
 
+    def test_count_button_hover_is_cleared_once_then_fresh_icon_is_required(self):
+        from autohsr.tests.test_core import FakeContext
+        from autohsr.models import Token
+        hover=fixture('planar_two_stamina')
+        normal=Scene(hover.tokens,hover.image)
+        final=Scene([Token(t.text.replace('挑战次数2','挑战次数3').replace('×80','×120'),t.score,t.box)
+                     for t in normal.tokens],normal.image)
+        class Context(FakeContext):
+            def move(self,scene,point):
+                super().move(scene,point)
+                self._advance()
+        for found in (True,False):
+            with self.subTest(found=found):
+                context=Context([hover,normal,final],Settings(dungeon_category='planar',challenge_count=3,rounds=3))
+                context.planar_payment=Mock(return_value=dict(stamina=120,immersifiers=0))
+                flow=DailyWorkflow(context)
+                flow._icon=Mock(side_effect=[None,(.96,.83) if found else None])
+                if found:
+                    self.assertEqual(limit_batch(flow,hover,120),(final,120))
+                    self.assertEqual(context.clicks,[(.96,.83)])
+                else:
+                    with self.assertRaisesRegex(AutomationError,'次数按钮'):
+                        limit_batch(flow,hover,120)
+                    self.assertEqual(context.clicks,[])
+                self.assertEqual(context.moves,[(.70,.68)])
+
     def test_dim_auto_is_observation_only_instead_of_a_toggle(self):
         import cv2
         for name in ('planar_disabled_auto', 'planar_disabled_stage'):
