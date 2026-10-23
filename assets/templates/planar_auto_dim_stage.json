@@ -1,0 +1,15 @@
+{
+  "source": "runs/20261023_174543_271368/174746_412136_battle_failure.png",
+  "source_sha256": "917356d2fe19925f556d3ee901fe545833678edcb3d0d43ad1c99fa5c8304bf4",
+  "source_size": [
+    3840,
+    2160
+  ],
+  "normalized_box": [
+    0.906,
+    0.029,
+    0.927,
+    0.058
+  ],
+  "baseline_width": 1920
+}

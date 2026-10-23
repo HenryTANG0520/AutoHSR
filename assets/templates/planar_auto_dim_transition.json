@@ -1,0 +1,15 @@
+{
+  "source": "runs/20261023_131704_947726/131751_836730_planar_battle_entered.png",
+  "source_sha256": "98cbde21ad0ff30c9d7372e08123400b4336ea917d30a0a321f3b498d9a2df4a",
+  "source_size": [
+    3840,
+    2160
+  ],
+  "normalized_box": [
+    0.906,
+    0.029,
+    0.927,
+    0.058
+  ],
+  "baseline_width": 1920
+}

@@ -23,6 +23,56 @@ def badge(image,x,y,white=True):
 
 
 class DuRewardTests(unittest.TestCase):
+    def test_offscreen_gallery_notification_pans_toward_hidden_category(self):
+        from autohsr.du_rewards import gallery_pan_plan, gallery_targets, collect_gallery,guard_pan
+        from autohsr.tests.test_du_team import fixture
+        page=fixture('gallery_offscreen_notification')
+        self.assertEqual(page_kind(page),'gallery_home')
+        self.assertEqual(gallery_targets(page),[])
+        plan=gallery_pan_plan(page)
+        self.assertEqual(plan,((.80,.65),(.35,.65)))
+        guard_pan(page,*plan)
+        cleared=Scene(page.tokens,np.zeros_like(page.image))
+        self.assertIsNone(gallery_pan_plan(cleared))
+        with self.assertRaises(AutomationError):
+            guard_pan(Scene([]),*plan)
+        with self.assertRaises(AutomationError):
+            guard_pan(page,(.8,.65),(.35,.20))
+        left=Scene(page.tokens,np.zeros_like(page.image));badge(left.image,.025,.26)
+        self.assertEqual(gallery_pan_plan(left),tuple(reversed(plan)))
+        # A translated category label is the evidence that the viewport moved.
+        moved=Scene([Token(v.text,v.score,(v.box[0]-.10,v.box[1],v.box[2]-.10,v.box[3]))
+                     if v.text=='方程' else v for v in page.tokens],cleared.image)
+        ctx=Mock()
+        def wait(predicate,**kwargs):
+            self.assertFalse(predicate(page))
+            self.assertTrue(predicate(moved))
+            return moved
+        ctx.wait.side_effect=wait
+        self.assertIs(collect_gallery(SimpleNamespace(ctx=ctx),page,{'claims':[]}),moved)
+        self.assertEqual(ctx.drag.call_args.kwargs['du_intent'],'du_reward_gallery_pan')
+        ctx.click.assert_not_called()
+
+    def test_all_surveyed_gallery_tabs_and_icon_only_claimed_rows(self):
+        from autohsr.tests.test_du_team import fixture
+        from autohsr.du_rewards import gallery_milestone_rows
+        for name in ('blessing','curio','equation','weighted','event'):
+            with self.subTest(category=name):
+                self.assertEqual(page_kind(fixture('gallery_'+name+'_category')),'gallery_category')
+        for name in ('blessing','curio','equation','miracle','event'):
+            with self.subTest(milestones=name):
+                page=fixture('gallery_'+name+'_milestones')
+                self.assertEqual(page_kind(page),'gallery_milestones')
+                self.assertEqual(len(gallery_milestone_rows(page)),5)
+        after=fixture('gallery_event_after_claim')
+        self.assertEqual(page_kind(after),'gallery_milestones')
+        self.assertEqual([v.text for _,v in gallery_milestone_rows(after)].count('已领取'),4)
+        for name in ('blessing','curio','equation'):
+            self.assertEqual([v.text for _,v in gallery_milestone_rows(fixture('gallery_'+name+'_milestones'))],['已领取']*5)
+        # Row labels alone cannot authorize a claim on a different page.
+        blank=Scene(after.tokens,np.zeros_like(after.image))
+        self.assertIsNone(page_kind(blank))
+
     def test_rewards_revisit_fitting_after_another_category_unlocks_new_tier(self):
         import json
         from pathlib import Path
@@ -119,7 +169,7 @@ class DuRewardTests(unittest.TestCase):
         with self.assertRaises(AutomationError):
             guard_click(milestones,milestones.tokens[-1],'du_reward_gallery_claim')
         overlay=Scene([t('获得物品',.5,.15),t('点击空白处关闭',.5,.8)])
-        claimed=Scene([token for token in milestones.tokens if token is not claim])
+        claimed=Scene([token for token in milestones.tokens if token is not claim]+[t('已领取',.74,.326)])
         unmarked=Scene(category.tokens,np.zeros_like(image))
         cleared=Scene(root.tokens,np.zeros_like(image))
         pages=iter([category,milestones,overlay,claimed,unmarked,cleared])
@@ -143,9 +193,9 @@ class DuRewardTests(unittest.TestCase):
     def test_optional_gallery_collection_resumes_visible_reward_modal(self):
         claim=t('领取',.74,.326)
         modal=Scene([t('并奇迹返现',.27,.235),t('累计解锁数量达到',.28,.30),
-                     t('累计解锁数量达到',.28,.40),claim])
+                     t('累计解锁数量达到',.28,.40),t('进行中',.74,.425),claim])
         overlay=Scene([t('获得物品',.5,.15),t('点击空白处关闭',.5,.8)])
-        claimed=Scene(modal.tokens[:-1])
+        claimed=Scene(modal.tokens[:-1]+[t('已领取',.74,.326)])
         category=Scene([t('惊世奇迹',.08,.05),t('惊世奇迹一览[42/200]',.20,.135),
                         t('奖励进度3/5',.16,.915)])
         gallery=Scene([t('可能性画廊',.08,.05),t('奖励领取进度77%',.77,.06),

@@ -57,6 +57,34 @@ class Vision:
         """Recognize one tightly bounded numeric field without text detection."""
         return self._read_field(image,r'[0-9]{1,2}')
 
+    def planar_payment(self, scene):
+        from .config import RESOURCE_ROOT
+        from .models import normalize
+        from .planar_team import preparation
+        import re
+        if not preparation(scene) or scene.image is None:
+            raise AutomationError('未核实饰品提取价格所在页面。')
+        h, w = scene.image.shape[:2]
+        import cv2
+        # Match at the template's native baseline; upscaling a small currency
+        # glyph to 4K loses detail and differs from the game's own rendering.
+        matched_scene = Scene(scene.tokens, cv2.resize(scene.image, (1920, round(h*1920/w))))
+        prices = dict(stamina=0, immersifiers=0)
+        for key, name in (('stamina', 'planar_stamina_cost'), ('immersifiers', 'planar_immersifier_cost')):
+            match = self.template(matched_scene, RESOURCE_ROOT/'assets/templates'/(name+'.png'), (.73,.88,.84,.95), .90)
+            if match is None and key == 'stamina':
+                match = self.template(matched_scene, RESOURCE_ROOT/'assets/templates/planar_stamina_cost_single.png', (.73,.88,.84,.95), .90)
+            if match is None:
+                continue
+            x, y, _ = match
+            patch = scene.image[round((y-.017)*h):round((y+.017)*h), round((x+.010)*w):round((x+.032)*w)]
+            number = self._read_field(patch, r'[×xX*]?\s*\d{1,3}')
+            value = re.fullmatch(r'[×x*]?(\d{1,3})', normalize(number.text)) if number else None
+            if value is None:
+                raise AutomationError('饰品提取资源图标旁的价格无法读取。')
+            prices[key] = int(value.group(1))
+        return prices
+
     def refine_du_field_header(self,scene):
         """Read the fixed live-field header when full-frame detection misses it."""
         from .policy import has_du_field_plane_marker

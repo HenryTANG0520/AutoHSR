@@ -116,6 +116,27 @@ class HeldClickTests(unittest.TestCase):
 
 
 class DragContextTests(unittest.TestCase):
+    def test_du_pan_requires_reward_opt_in_current_gallery_and_exact_horizontal_route(self):
+        from autohsr.tests.test_du_team import fixture
+        from autohsr.du_rewards import gallery_pan_plan
+        ctx,runner,window=self.context()
+        runner.report.operation='differential_universe'
+        page=fixture('gallery_offscreen_notification')
+        page.geometry=ctx.last_scene.geometry
+        page.captured_at=time.monotonic()
+        ctx.last_scene=page
+        plan=gallery_pan_plan(page)
+        with self.assertRaises(AutomationError):
+            ctx.drag(page,*plan,du_intent='du_reward_gallery_pan')
+        runner.settings.differential_universe_rewards=True
+        with self.assertRaises(AutomationError):
+            ctx.drag(page,*plan)
+        with self.assertRaises(AutomationError):
+            ctx.drag(page,plan[0],(.35,.20),du_intent='du_reward_gallery_pan')
+        window.drag.assert_not_called()
+        ctx.drag(page,*plan,du_intent='du_reward_gallery_pan')
+        window.drag.assert_called_once()
+
     def test_successful_drag_moves_pointer_off_the_feedback_portrait(self):
         ctx,runner,window=self.context()
         before=ctx.last_scene

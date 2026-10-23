@@ -23,9 +23,13 @@ def recovery_state(runs: Path) -> dict:
                     or type(data.get("pending")) is not int or data["pending"] < 0
                     or type(data.get("limit")) is not int or not 10 <= data["limit"] <= 240
                     or data["spent"] + data["pending"] > data["limit"]
+                    or any(type(data.get(k, 0)) is not int or not 0 <= data.get(k, 0) <= 12
+                           for k in ('immersifiers_spent', 'immersifiers_pending'))
+                    or data.get('immersifiers_spent', 0) + data.get('immersifiers_pending', 0) > 12
                     or data.get("status") not in ("active", "success", "partial", "failed", "stopped")):
                 raise ValueError("invalid battle journal")
-            return {**data, "blocked": data["pending"] > 0 or (data["status"] != "success" and data["spent"] > 0),
+            return {**data, "blocked": data["pending"] > 0 or data.get('immersifiers_pending', 0) > 0
+                    or (data["status"] != "success" and (data["spent"] > 0 or data.get('immersifiers_spent', 0) > 0)),
                     "source": str(path), "corrupt": False}
         except (OSError, ValueError, TypeError):
             return dict(blocked=True, corrupt=True, spent=0, pending=0, source=str(path),
@@ -62,7 +66,9 @@ class BattleBudget:
                     run_dir=self.report.run_dir, updated_at=datetime.now().astimezone().isoformat(),
                     target=self.settings.target_name, location=self.settings.target_location)
         data.update(category=self.settings.dungeon_category, requested=self.report.battle_requested,
-                    completed=self.report.battle_completed)
+                    completed=self.report.battle_completed,
+                    immersifiers_spent=self.report.immersifiers_spent,
+                    immersifiers_pending=self.report.immersifiers_pending)
         temp = self.path.with_suffix(".tmp")
         temp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         temp.replace(self.path)
@@ -80,19 +86,29 @@ class BattleBudget:
         self._write()
         self.active = True
 
-    def reserve(self, cost: int):
-        if (not self.active or type(cost) is not int or cost <= 0 or cost % 10
-                or self.report.stamina_pending or self.report.stamina_spent + cost > self.settings.stamina_limit):
+    def reserve(self, cost: int, *, immersifiers=0):
+        if (not self.active or type(cost) is not int or cost < 0 or cost % 10
+                or type(immersifiers) is not int or not 0 <= immersifiers <= 12
+                or cost + immersifiers <= 0
+                or (immersifiers and self.settings.dungeon_category != 'planar')
+                or self.report.stamina_pending or self.report.immersifiers_pending
+                or self.report.immersifiers_spent + immersifiers > 12
+                or self.report.stamina_spent + cost > self.settings.stamina_limit):
             raise AutomationError("挑战预算无法核实，禁止再次开始挑战。")
         self.report.stamina_pending = cost
+        self.report.immersifiers_pending = immersifiers
         # Must complete before any Start Challenge input; an I/O failure stops.
         self._write()
 
-    def confirm(self, cost: int):
-        if not self.active or self.report.stamina_pending != cost or cost <= 0:
+    def confirm(self, cost: int, *, immersifiers=0):
+        if (not self.active or type(cost) is not int or type(immersifiers) is not int
+                or self.report.stamina_pending != cost or cost < 0
+                or self.report.immersifiers_pending != immersifiers or cost + immersifiers <= 0):
             raise AutomationError("本次结算没有唯一待核对消耗，禁止重复记账。")
         self.report.stamina_spent += cost
         self.report.stamina_pending = 0
+        self.report.immersifiers_spent += immersifiers
+        self.report.immersifiers_pending = 0
         self._write()
 
     def finish(self):

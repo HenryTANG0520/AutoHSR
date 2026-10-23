@@ -8,6 +8,36 @@ HOME_LABELS=('拟合等级','月下奇谭','稳态数组','可能性画廊')
 GALLERY_LABELS=('祝福','奇物','惊世奇迹','方程','加权奇物','事件')
 
 
+def gallery_milestone_rows(scene):
+    """Match the shared requirement/status row, including icon-only receipts."""
+    requirements=sorted((t for t in scene.tokens if t.within((.21,.27,.40,.79))
+                         and normalize(t.text)=='累计解锁数量达到'),key=lambda t:t.center[1])
+    if len(requirements)<2:
+        return []
+    baseline=None
+    if scene.image is not None:
+        import cv2
+        from .vision import Vision
+        from .config import RESOURCE_ROOT
+        h,w=scene.image.shape[:2]
+        baseline=type(scene)(scene.tokens,cv2.resize(scene.image,(1920,round(h*1920/w))))
+    rows=[]
+    for row in requirements:
+        y=row.center[1]
+        statuses=[t for t in scene.tokens if t.within((.68,y,.79,min(.80,y+.09)))
+                  and normalize(t.text) in ('领取','已领取','进行中')]
+        status=statuses[0] if len(statuses)==1 else None
+        if status is None and baseline is not None:
+            match=Vision.__new__(Vision).template(baseline,
+                RESOURCE_ROOT/'assets/templates/du_gallery_claimed.png',(.69,y,.78,min(.81,y+.09)),.94)
+            if match is not None:
+                x,sy,score=match
+                status=Token('已领取',score,(x-.015,sy-.025,x+.015,sy+.025))
+        if status is not None:
+            rows.append((row,status))
+    return rows
+
+
 def home(scene):
     return (scene.has('差分宇宙',(0,0,.32,.13)) and scene.has('乐园漫记',(0,0,.32,.20))
             and scene.has('开始游戏',(.65,.80,1,1),exact=True))
@@ -68,13 +98,16 @@ def page_kind(scene):
         return 'gallery_home'
     progress=[t for t in scene.tokens if t.within((.06,.87,.26,.96))
               and re.fullmatch(r'奖励进度\d+/\d+',normalize(t.text))]
-    if (scene.has(GALLERY_LABELS,(0,0,.32,.13),exact=True) and progress
-            and scene.has('一览',(.05,.10,.72,.18))):
+    if scene.has(GALLERY_LABELS,(0,0,.32,.13),exact=True) and len(progress)==1:
         return 'gallery_category'
-    if (scene.has(('奇迹返现','并奇迹返现'),(.20,.20,.42,.27),exact=True)
-            and len([t for t in scene.tokens if t.within((.21,.27,.40,.79))
-                     and normalize(t.text)=='累计解锁数量达到'])>=2):
+    if len(gallery_milestone_rows(scene))>=2:
         return 'gallery_milestones'
+    # Weighted curios are a collection-only tab; the live client has no
+    # reward-progress button here. Recognize it without inventing a reward.
+    if (scene.has('加权奇物',(0,0,.32,.13),exact=True) and any(
+            re.fullmatch(r'加权奇物\[\d+/\d+\]',normalize(t.text))
+            for t in scene.tokens if t.within((.06,.10,.40,.20)))):
+        return 'gallery_category'
     if (scene.has('月下奇谭',(.18,.14,.40,.20)) and scene.has('道具一览',(.12,.58,.30,.65),exact=True)
             and scene.has(('使用卡带获取下一道具','所有道具均已获得'),(.62,.64,.86,.73),exact=True)):
         return 'moon_rewards'
@@ -115,6 +148,34 @@ def gallery_progress_target(scene):
         return None
     return next((t for t in scene.tokens if t.within((.06,.87,.26,.96))
         and re.fullmatch(r'奖励进度\d+/\d+',normalize(t.text))),None)
+
+
+def gallery_pan_plan(scene,direction=None):
+    """Pan opposite to the offscreen reward pointer; never click decorative arrows."""
+    if page_kind(scene)!='gallery_home':
+        return None
+    if direction is None:
+        if gallery_targets(scene):
+            return None
+        directions={('right' if t.center[0]>.95 else 'left') for t in red_dots(scene)
+                    if (t.center[0]>.95 or t.center[0]<.05) and .20<t.center[1]<.32}
+        if len(directions)!=1:
+            return None
+        direction=directions.pop()
+    if direction not in ('left','right'):
+        return None
+    start,end=(.80,.65),(.35,.65)
+    return (start,end) if direction=='right' else (end,start)
+
+
+def gallery_signature(scene):
+    return tuple(sorted((normalize(t.text),round(t.center[0],2)) for t in scene.tokens
+                        if normalize(t.text) in GALLERY_LABELS and t.within((0,.30,1,.88))))
+
+
+def guard_pan(scene,start,end):
+    if (start,end) not in (gallery_pan_plan(scene,'left'),gallery_pan_plan(scene,'right')):
+        raise AutomationError('画廊平移仅允许在已识别的画廊主页内水平拖动。')
 
 
 def moon_balance(scene):
@@ -258,12 +319,23 @@ def _collect(workflow,scene,report):
 def collect_gallery(workflow,scene,report):
     ctx=workflow.ctx
     visited=set()
+    page_turns={}
     for _ in range(240):
         kind=page_kind(scene)
         if kind=='gallery_home':
             targets=gallery_targets(scene)
             if not targets:
                 if red_dots(scene):
+                    plan=gallery_pan_plan(scene)
+                    signature=gallery_signature(scene)
+                    if plan is not None and page_turns.get(signature,0)<2 and sum(page_turns.values())<12:
+                        page_turns[signature]=page_turns.get(signature,0)+1
+                        ctx.drag(scene,*plan,du_intent='du_reward_gallery_pan')
+                        scene=ctx.wait(lambda page:page_kind(page)=='gallery_category' or
+                            (page_kind(page)=='gallery_home' and
+                             (bool(gallery_targets(page)) or gallery_signature(page)!=signature)),
+                            timeout=20,description='核实画廊翻页后完整可见的红点分类')
+                        continue
                     raise AutomationError('可能性画廊仍有未绑定分类的红点，未报告全部领取。')
                 return scene
             target=next((t for t in targets if t.text not in visited),None)

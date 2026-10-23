@@ -130,6 +130,11 @@ class Context:
                 if normalize(target.text)!=normalize(expected):
                     raise AutomationError('演算入口与配置模式不一致，未选择。')
             guard_differential_universe_click(scene, target, intent=du_intent)
+        elif du_intent.startswith('planar_team_'):
+            if self.report.operation != 'daily' or self.settings.dungeon_category != 'planar':
+                raise AutomationError('饰品提取预设选角仅用于该副本日常流程。')
+            from .planar_team import guard_click as guard_planar_team_click
+            guard_planar_team_click(scene, target, du_intent, self.settings.differential_universe_team)
         else:
             guard_click(scene, target, allow_differential_universe=self.report.operation == "differential_universe")
         coordinates = target.center if isinstance(target, Token) else target
@@ -470,12 +475,18 @@ class Context:
             raise InputInterrupted("支援槽位细读前画面已失效。")
         return self.vision.planar_friend_slot(scene,badge)
 
+    def planar_payment(self, scene):
+        self.checkpoint()
+        if scene is not self.last_scene or self.scene_epoch != self.runner.input_epoch:
+            raise InputInterrupted('饰品价格细读前画面已失效。')
+        return self.vision.planar_payment(scene)
+
     def planar_approach(self, scene):
         from .planar_entry import require_field
         self._require_gameplay_input()
         self.checkpoint()
         if (self.report.operation != "daily" or self.settings.dungeon_category != "planar"
-                or self.report.stamina_pending <= 0 or scene is not self.last_scene
+                or self.report.stamina_pending + self.report.immersifiers_pending <= 0 or scene is not self.last_scene
                 or self.scene_epoch != self.runner.input_epoch or time.monotonic()-scene.captured_at > 8):
             raise AutomationError("饰品提取接战缺少本次开始挑战与待核对预算，未移动。")
         require_field(scene)
@@ -530,9 +541,14 @@ class Context:
             self._focus_interrupted()
         self._scroll_anchor = (point, scene.geometry, self.scene_epoch)
 
-    def drag(self, scene: Scene, start: tuple[float, float], end: tuple[float, float]):
+    def drag(self, scene: Scene, start: tuple[float, float], end: tuple[float, float], *, du_intent=None):
         if self.report.operation == "differential_universe":
-            raise AutomationError("差分宇宙自动流程禁止拖动。")
+            if du_intent!='du_reward_gallery_pan' or not self.settings.differential_universe_rewards:
+                raise AutomationError("差分宇宙仅允许已开启领奖时的画廊平移。")
+            from .du_rewards import guard_pan
+            guard_pan(scene,start,end)
+        elif du_intent is not None:
+            raise AutomationError("画廊平移意图不适用于当前运行类型。")
         route=()
         if self.report.operation=='currency_wars_flow_test' and self._currency_position_request is not None:
             requested_scene,field,profile=self._currency_position_request
@@ -1245,7 +1261,7 @@ class Runner:
                 return action()
             except InputInterrupted:
                 self.checkpoint()
-                if name == "battle" and self.report.stamina_pending:
+                if name == "battle" and (self.report.stamina_pending or self.report.immersifiers_pending):
                     raise AutomationError("挑战输入已中断且消耗待核对；保留本轮预算，不重复开始挑战。")
                 self.log("已丢弃暂停前的目标，按当前画面重新核实未完成步骤。")
 

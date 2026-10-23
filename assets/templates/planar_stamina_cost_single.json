@@ -1,0 +1,15 @@
+{
+  "source": "runs/20261023_131034_121126/131105_334560_pearl_planar_preparation_only.png",
+  "source_sha256": "586ea9bb3ad9f31747f3199406c64ade3bc4265cdfeeb66dc9fa85d4040ef367",
+  "source_size": [
+    3840,
+    2160
+  ],
+  "normalized_box": [
+    0.756,
+    0.894,
+    0.773,
+    0.928
+  ],
+  "baseline_width": 1920
+}

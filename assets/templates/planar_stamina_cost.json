@@ -1,0 +1,15 @@
+{
+  "source": "runs/check_20261023_172437/screen.png",
+  "source_sha256": "59da9ee06aafd295e43470dfa8be96d0b69cada9cc9d54ffd00700359d2f9582",
+  "source_size": [
+    3840,
+    2160
+  ],
+  "normalized_box": [
+    0.794,
+    0.894,
+    0.811,
+    0.928
+  ],
+  "baseline_width": 1920
+}

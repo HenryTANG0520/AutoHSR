@@ -455,3 +455,25 @@ optimization selector, with the same observed OCR/hash provenance convention.
 
 `du_runtime/snow_owl_recruitment_loading.png` captures the native recruitment
 animation before the three region titles appear, with identifiers masked.
+
+## Planar preparation and gallery controls, 2026-10-23
+
+`planar_preparation`, `planar_preset_list`, `planar_preset_enabled`,
+`planar_mixed_payment`, `planar_disabled_auto`, and `planar_disabled_stage`
+under `autohsr/tests/fixtures/du_runtime/` are masked native client captures
+for named presets, separate stamina/immersifier prices, and disabled battle
+controls. Their JSON sidecars retain source/fixture hashes and observed OCR.
+
+The `gallery_*` fixtures added with this update cover the offscreen reward
+pointer, five reward-category views, the collection-only weighted-curio view,
+and five corresponding milestone dialogs, including icon-only claimed rows.
+Account identifiers are masked and omitted from sidecar OCR. These captures
+are regression examples, not independent completion evidence.
+
+`count_plus`, `planar_stamina_cost`, `planar_stamina_cost_single`,
+`planar_immersifier_cost`, `planar_auto_dim`, `planar_auto_dim_transition`,
+`planar_auto_dim_stage`, and `du_gallery_claimed` in `assets/templates/`
+are small native UI crops. Their sidecars retain source hashes, original
+dimensions, normalized crop bounds, and the 1920-pixel matching baseline.
+Raw captures stay in ignored local `runs/`. All game artwork belongs to
+HoYoverse and is included solely for client UI recognition and regression.

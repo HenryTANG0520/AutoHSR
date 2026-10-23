@@ -503,6 +503,9 @@ class DailyWorkflow:
 
     def _limit_batch(self, scene: Scene, remaining: int) -> tuple[Scene, int]:
         category = category_for(self.settings)
+        if category.key == 'planar' and scene.image is not None:
+            from .planar_resources import limit_batch
+            return limit_batch(self, scene, remaining)
         unit = category.cost
         desired = min(remaining, min(self.settings.rounds, category.batch) * unit)
         if category.weekly_limit and getattr(self, "_weekly_rewards", None) is not None:
@@ -531,6 +534,8 @@ class DailyWorkflow:
                 return scene, cost
             if cost < desired:
                 plus = scene.find(("+", "＋"), (0.93, 0.74, 0.99, 0.85), exact=True)
+                if plus is None:
+                    plus = self._icon(scene, 'count_plus', (0.93, 0.74, 0.99, 0.85))
                 if plus is None:
                     self.ctx.log(f"未确认增加次数按钮，按已核实{rounds}轮、{cost}开拓力挑战。")
                     return scene, cost
@@ -837,7 +842,16 @@ class DailyWorkflow:
         anchor = self._icon(scene, "auto_anchor", roi, threshold=0.82)
         if anchor is None or scene.image is None:
             from .du_navigation import auto_state
-            return auto_state(scene)
+            state, target = auto_state(scene)
+            if state is None and scene.image is not None and self._in_battle(scene):
+                import cv2
+                h, w = scene.image.shape[:2]
+                baseline = Scene(scene.tokens, cv2.resize(scene.image, (1920, round(h*1920/w))))
+                for name in ('planar_auto_dim', 'planar_auto_dim_transition', 'planar_auto_dim_stage'):
+                    dim = self._icon(baseline, name, (.88, 0, .95, .10), threshold=.92)
+                    if dim is not None:
+                        return 'disabled', dim
+            return state, target
         # The auto control has a lit rectangular frame when active. Evaluate
         # that frame only after matching the icon, never its position alone.
         import cv2
@@ -886,6 +900,10 @@ class DailyWorkflow:
             if self._insufficient(scene):
                 return scene
             if self._enable_auto(scene):
+                unknown_auto = 0.0
+            elif self._auto_state(scene)[0] == 'disabled':
+                # The battle owns this control during phase/ultimate animations.
+                # Keep observing within battle_timeout without clicking a dim button.
                 unknown_auto = 0.0
             elif self._in_battle(scene):
                 unknown_auto += 2
@@ -975,7 +993,7 @@ class DailyWorkflow:
             requested = min(requested or category.weekly_limit, category.weekly_limit)
         self.ctx.report.battle_requested = requested
         completed = self.ctx.report.battle_completed
-        while (self.ctx.report.stamina_spent + category.cost <= self.settings.stamina_limit
+        while ((category.key=='planar' or self.ctx.report.stamina_spent + category.cost <= self.settings.stamina_limit)
                and (requested is None or completed < requested)):
             scene = self._open_calyx()
             scene = self._disable_quick_refill(scene)
@@ -985,7 +1003,12 @@ class DailyWorkflow:
             scene, cost = self._limit_batch(scene, remaining)
             if cost == 0:
                 return self._result("battle", "partial", f"可用开拓力不足{category.cost}，停止刷本；已完成{completed}次，确认消耗{self.ctx.report.stamina_spent}。", scene)
-            self.ctx.log(f"挑战前复核：消耗{cost}，轮数{self._round_count(scene)}，可用开拓力{self._available(scene)}。")
+            if category.key == 'planar' and scene.image is not None:
+                from .planar_resources import payment
+                stamina, immersifiers = payment(self, scene)
+                self.ctx.log(f'挑战前复核：{stamina}开拓力＋{immersifiers}沉浸器，{self._round_count(scene)}次。')
+            else:
+                self.ctx.log(f"挑战前复核：消耗{cost}，轮数{self._round_count(scene)}，可用开拓力{self._available(scene)}。")
             if category.key != "planar":
                 challenge = scene.find("挑战", BOTTOM, exact=True)
                 if challenge is None:
@@ -997,6 +1020,9 @@ class DailyWorkflow:
                 return self._result("battle", "partial", f"开拓力不足，已取消补充；已确认消耗{self.ctx.report.stamina_spent}。", scene)
             if scene.has(("阵亡", "无法挑战")):
                 return self._result("battle", "partial", "存在阵亡角色或无法挑战提示，需要手动调整队伍。", scene)
+            if category.key == 'planar':
+                from .planar_team import select as select_planar_team
+                scene = select_planar_team(self, scene)
             if self.settings.use_support:
                 scene = self._support(scene)
             if category.key == "planar":
@@ -1008,8 +1034,15 @@ class DailyWorkflow:
             if start is None or not self._team_page(scene):
                 raise AutomationError("未验证队伍页与开始挑战按钮。")
             budget = getattr(self.ctx, "battle_budget", None)
+            paid_stamina, paid_immersifiers = cost, 0
+            if category.key == 'planar' and scene.image is not None:
+                from .planar_resources import payment
+                paid_stamina, paid_immersifiers = payment(self, scene, expected_count=cost//category.cost)
             if budget is not None:
-                budget.reserve(cost)
+                if paid_immersifiers:
+                    budget.reserve(paid_stamina, immersifiers=paid_immersifiers)
+                else:
+                    budget.reserve(paid_stamina)
             self._click(scene, start)
             if category.key == "planar":
                 self._enter_planar_battle()
@@ -1031,9 +1064,13 @@ class DailyWorkflow:
             completed += cost // category.cost
             self.ctx.report.battle_completed = completed
             if budget is not None:
-                budget.confirm(cost)
+                if paid_immersifiers:
+                    budget.confirm(paid_stamina, immersifiers=paid_immersifiers)
+                else:
+                    budget.confirm(paid_stamina)
             else:
-                self.ctx.report.stamina_spent += cost
+                self.ctx.report.stamina_spent += paid_stamina
+                self.ctx.report.immersifiers_spent += paid_immersifiers
             self.ctx.evidence(scene, f"battle_success_{completed}")
             self.ctx.log(f"挑战成功，累计确认消耗{self.ctx.report.stamina_spent}开拓力。")
             self._exit_result(scene)

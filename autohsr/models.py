@@ -101,9 +101,12 @@ class RunReport:
     budget_scope: str = "run"
     stamina_limit: int = 0
     stamina_pending: int = 0
+    immersifiers_spent: int = 0
+    immersifiers_pending: int = 0
     battle_completed: int = 0
     battle_requested: int | None = None
     dungeon_catalogue: dict = field(default_factory=dict)
+    team_selections: list[dict] = field(default_factory=list)
     failure_task: str = ""
     error: str = ""
     safe_next: str = ""
