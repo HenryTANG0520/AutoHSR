@@ -36,6 +36,7 @@ class Settings:
     differential_universe_save: bool = False
     differential_universe_rewards: bool = False
     differential_universe_daily: bool = False
+    differential_universe_daily_from: str = ""
     differential_universe_team: str = "哈哈哈哈"
     differential_universe_mode: str = "periodic"
 
@@ -79,6 +80,17 @@ class Settings:
             raise ValueError("请填写 1～32 字的差分宇宙预设编队名称。")
         if self.differential_universe_mode not in ('periodic','normal'):
             raise ValueError("差分宇宙模式必须是 periodic 或 normal。")
+        start_day=self.differential_universe_daily_from
+        if not isinstance(start_day,str):
+            raise ValueError('通关后日常起始游戏日须为 YYYY-MM-DD 或留空。')
+        if start_day:
+            from datetime import date
+            try:
+                valid=date.fromisoformat(start_day).isoformat()==start_day
+            except ValueError:
+                valid=False
+            if not valid:
+                raise ValueError('通关后日常起始游戏日须为 YYYY-MM-DD 或留空。')
 
     def save(self, path: Path = CONFIG_PATH) -> None:
         self.validate("save")

@@ -44,6 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--du-save", action="store_true", help="通关后保存为 AutoHSR 编号存档；默认不保存")
     parser.add_argument("--du-rewards", action="store_true", help="运行前后检查并领取差分宇宙红点奖励；默认关闭")
     parser.add_argument("--du-daily", action="store_true", help="每天首次通关后领奖并刷浴火钢心位面饰品；不补充资源，默认关闭")
+    parser.add_argument("--du-daily-from", help="通关后日常起始游戏日 YYYY-MM-DD；仅配合 --du-daily，凌晨4点换日")
     parser.add_argument("--resume-active-du", action="store_true",
                         help="仅在屏幕已识别到差分宇宙运行页面时接续当前局；不会启动新档")
     parser.add_argument("--du-periodic-rank", type=int,
@@ -74,6 +75,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.du_daily and not args.differential_universe:
         print(_json({"error": "--du-daily 仅用于 --differential-universe。"}), file=sys.stderr)
+        return 2
+    if args.du_daily_from is not None and not args.du_daily:
+        print(_json({"error": "--du-daily-from 仅配合 --du-daily 使用。"}), file=sys.stderr)
         return 2
     if args.resume_active_du and not args.differential_universe:
         print(_json({"error": "--resume-active-du 仅用于 --differential-universe。"}), file=sys.stderr)
@@ -127,6 +131,8 @@ def main(argv: list[str] | None = None) -> int:
             settings.differential_universe_rewards = True
         if args.du_daily:
             settings.differential_universe_daily = True
+        if args.du_daily_from is not None:
+            settings.differential_universe_daily_from = args.du_daily_from
         if args.scan_dungeons:
             settings.dungeon_category = args.category or "auto"
         if args.reward_only:

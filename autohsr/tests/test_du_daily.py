@@ -19,6 +19,41 @@ def page():
 
 
 class DailyInterludeTests(unittest.TestCase):
+    def test_start_game_day_defers_without_claims_input_or_a_false_complete_marker(self):
+        flow=self.flow();flow.settings.differential_universe_daily_from='2026-10-24'
+        with tempfile.TemporaryDirectory() as directory,patch('autohsr.du_daily.DayJournal') as journal:
+            scene=page()
+            self.assertEqual(after_win(flow,scene,'home',root=directory,
+                now=datetime(2026,10,24,3,59,tzinfo=CHINA)),(scene,'home'))
+            self.assertEqual(flow.report['daily_interludes'][-1]['status'],'before_start_day')
+            self.assertEqual(flow.report['daily_interludes'][-1]['game_day'],'2026-10-23')
+            journal.assert_not_called()
+            self.assertEqual(list(Path(directory).iterdir()),[])
+        flow.ctx.key.assert_not_called();flow.ctx.click.assert_not_called()
+
+    def test_start_game_day_activates_at_four_and_uses_the_normal_daily_marker(self):
+        flow=self.flow();flow.settings.differential_universe_daily_from='2026-10-24'
+        scene=page()
+        with tempfile.TemporaryDirectory() as directory,patch('autohsr.du_daily.DayJournal') as journal:
+            journal.return_value.begin.return_value=False
+            self.assertEqual(after_win(flow,scene,'home',root=directory,
+                now=datetime(2026,10,24,4,0,tzinfo=CHINA)),(scene,'home'))
+            journal.assert_called_once_with(directory,account_key(scene),'2026-10-24')
+            journal.return_value.begin.assert_called_once_with('verified-run')
+        flow.ctx.key.assert_not_called()
+
+    def test_daily_start_requires_a_real_iso_date_and_explicit_cli_daily_flag(self):
+        from autohsr.__main__ import main
+        from contextlib import redirect_stderr
+        import io
+        for value in ('2026-02-30','20261024','2026-1-2',None,42):
+            with self.subTest(value=value),self.assertRaises(ValueError):
+                Settings(differential_universe_daily_from=value).validate('differential_universe')
+        Settings(differential_universe_daily_from='2026-10-24').validate('differential_universe')
+        with redirect_stderr(io.StringIO()),patch('autohsr.config.Settings.load') as load:
+            self.assertEqual(main(['--differential-universe','--du-daily-from','2026-10-24']),2)
+        load.assert_not_called()
+
     def flow(self):
         return SimpleNamespace(settings=Settings(differential_universe_daily=True),
             ctx=Mock(),_persist_ledger=Mock(),_open_differential_universe=Mock(return_value=(page(),'home')),

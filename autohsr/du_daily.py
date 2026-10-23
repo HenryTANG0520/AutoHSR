@@ -190,12 +190,20 @@ def after_win(flow,scene,kind,*,root=None,now=None):
     if (completed.get('status') not in ('completed','returned_uncounted')
             or not completed.get('victory_evidence') or not completed.get('return_evidence')):
         raise AutomationError('没有本局已核实胜利和返回的证据，未开启通关后日常。')
+    day=game_day(now)
+    start_day=getattr(flow.settings,'differential_universe_daily_from','')
+    if start_day and day<start_day:
+        flow.report.setdefault('daily_interludes',[]).append(dict(game_day=day,
+            status='before_start_day',start_day=start_day))
+        flow._persist_ledger()
+        flow.ctx.log(f'通关后日常从游戏日{start_day}开始；本游戏日跳过。')
+        return scene,kind
     if not home(scene):
         scene,kind=flow._collect_rewards(scene,kind,'daily_interlude_home')
     if not home(scene):
         raise AutomationError('通关后日常须从已核实的差分宇宙主页开始。')
     scene=settled_home(flow,scene)
-    journal=DayJournal(root or ROOT/'runs',account_key(scene),game_day(now))
+    journal=DayJournal(root or ROOT/'runs',account_key(scene),day)
     run_id=(flow.report.get('run_results') or [{}])[-1].get('run_id')
     if not journal.begin(run_id):
         flow.ctx.log('当前账号本游戏日的通关后日常已完成，继续差分宇宙。')
