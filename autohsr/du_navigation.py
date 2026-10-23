@@ -6,16 +6,22 @@ from .models import Scene, Token, normalize
 
 
 def optional_device_prompt(scene, *, forge_console_used=False):
-    """A known optional machine authorizes only moving away, never pressing F."""
+    """An optional machine prompt authorizes only moving away, never F."""
+    import re
     from .policy import has_du_field_plane_marker
     if scene.image is None or not has_du_field_plane_marker(normalize(scene.text)):
         return None
-    labels=['造物调试台'] if forge_console_used else []
     header=normalize('\n'.join(t.text for t in scene.tokens if t.within((0,0,.40,.12))))
-    if '位面-财富' in header or '位面—财富' in header:
-        labels.append('游玩「超级排排乐」')
-    prompt=scene.find(tuple(labels),(.60,.45,.85,.70),exact=True) if labels else None
-    return prompt if prompt is not None and interaction_hint(scene.image,threshold=.85) else None
+    wealth='位面-财富' in header or '位面—财富' in header
+    prompts=[]
+    for token in scene.tokens:
+        if not token.within((.60,.45,.85,.70)):
+            continue
+        label=normalize(token.text)
+        if ((forge_console_used and label=='造物调试台') or
+                (wealth and re.fullmatch(r'游玩[「『“"]([^」』”"]{1,32})[」』”"]',label))):
+            prompts.append(token)
+    return prompts[0] if len(prompts)==1 and interaction_hint(scene.image,threshold=.85) else None
 
 
 class BackgroundProgress:

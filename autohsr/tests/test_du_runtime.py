@@ -33,9 +33,16 @@ class DuRuntimeTests(unittest.TestCase):
         self.assertEqual(target.text,'游玩「超级排排乐」')
         with self.assertRaises(AutomationError):
             guard_differential_universe_field_interact(page,target)
-        for text in ('游玩「未知游戏」','购买「超级排排乐」','超级排排乐'):
+        for text in ('游玩「另一款游戏」','游玩『新的小游戏』','游玩“新的小游戏”'):
+            changed=Scene([Token(text,v.score,v.box) if v==target else v for v in page.tokens],page.image)
+            self.assertEqual(optional_device_prompt(changed).text,text)
+            with self.assertRaises(AutomationError):
+                guard_differential_universe_field_interact(changed,optional_device_prompt(changed))
+        for text in ('启动「未知装置」','购买「超级排排乐」','超级排排乐','游玩「」','游玩「超级排排乐」消耗20'):
             changed=Scene([Token(text,v.score,v.box) if v==target else v for v in page.tokens],page.image)
             self.assertIsNone(optional_device_prompt(changed))
+        ambiguous=Scene([*page.tokens,Token('游玩「另一款游戏」',.99,(.60,.60,.80,.63))],page.image)
+        self.assertIsNone(optional_device_prompt(ambiguous))
         wrong_place=Scene([Token(target.text,target.score,(.20,.20,.45,.25)) if v==target else v
                            for v in page.tokens],page.image)
         self.assertIsNone(optional_device_prompt(wrong_place))
