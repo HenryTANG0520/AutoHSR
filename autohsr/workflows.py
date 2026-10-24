@@ -209,7 +209,7 @@ class DailyWorkflow:
             if self._in_battle(scene):
                 raise AutomationError("当前在战斗或结算界面，无法安全返回手机菜单。")
             known_page = scene.has(
-                ("委托", "星际和平指南", "每日实训", "生存索引", "邮件", "无名勋礼", "角色", "队伍", "背包", "拟造花萼",
+                ("委托", "星际和平指南", "每日实训", "生存索引", "邮件", "邮箱", "无名勋礼", "角色", "队伍", "背包", "拟造花萼",
                  "凝滞虚影", "侵蚀隧洞", "历战余响", "饰品提取", "支援列表"),
                 TITLE,
             )
@@ -221,9 +221,12 @@ class DailyWorkflow:
             scene = self._press("esc")
         raise AutomationError("五次返回后仍未识别到手机菜单，已停止导航。")
 
-    def _open_phone_item(self, labels, title: str, icon_name: str | None = None) -> Scene:
+    def _open_phone_item(self, labels, title: str | tuple[str,...], icon_name: str | None = None) -> Scene:
         scene = self.ensure_main()
         target = scene.find(labels, (0.55, 0.25, 1, 1), exact=True)
+        if target is None and icon_name=='phone_mail':
+            from .free_rewards import mail_entry
+            target=mail_entry(scene)
         if target is None and icon_name:
             target = self._icon(scene, icon_name, (0.55, 0.2, 1, 1))
         if target is None:
@@ -1177,37 +1180,83 @@ class DailyWorkflow:
         return self._result("daily", "partial", "已识别500活跃，但五档奖励的领取状态尚未核实；请采集奖励礼盒和完成图标模板。", scene)
 
     def mail(self) -> TaskResult:
-        scene = self._open_phone_item("邮件", "邮件", "phone_mail")
-        claim = scene.find("全部领取", BOTTOM, exact=True)
+        from .free_rewards import mailbox,mail_claimed,claim_enabled,reward_overlay
+        scene=self._snapshot()
+        if not mailbox(scene):
+            scene = self._open_phone_item(("邮件","邮箱"), ("邮件","邮箱"), "phone_mail")
+        scene=self._wait(mailbox,description='确认邮箱已加载')
+        claim = scene.find("全部领取", (.12,.83,.35,.97), exact=True)
         if claim is None:
             if scene.has(("暂无邮件", "无可领取附件", "没有可领取的奖励")):
                 return self._result("mail", "ok", "邮件没有可领取的附件。", scene)
             return self._result("mail", "partial", "未识别到全部领取按钮或无附件状态。", scene)
-        after = self._click(scene, claim)
-        after = self._dismiss_reward(after)
-        if after.has(("暂无邮件", "无可领取附件", "没有可领取的奖励", "附件已领取")):
-            return self._result("mail", "ok", "已核实邮件附件领取状态。", after)
+        enabled=claim_enabled(scene,claim)
+        if enabled is False or mail_claimed(scene):
+            return self._result('mail','ok','已复核邮箱全部领取按钮为禁用状态，无可领取附件。',scene)
+        if enabled is not True:
+            return self._result('mail','partial','邮箱全部领取按钮的可用状态尚未核实。',scene)
+        self._click(scene, claim)
+        after=self._wait(reward_overlay,description='核实邮件附件奖励展示')
+        self.ctx.evidence(after,'mail_reward_verified')
+        after=self._wait(lambda s:reward_overlay(s) and s.has(
+            ('点击空白处关闭','点击任意位置关闭','点击空白处继续'),exact=True),description='等待邮件奖励关闭提示')
+        self._dismiss_reward(after)
+        after=self._wait(mailbox,description='返回邮箱复核附件')
+        claim=after.find('全部领取',(.12,.83,.35,.97),exact=True)
+        if mail_claimed(after):
+            return self._result("mail", "ok", "已核实邮件附件奖励展示及全部领取按钮禁用。", after)
         return self._result("mail", "partial", "已点击邮件全部领取，但尚未核实全部附件领取状态。", after)
 
     def battlepass(self) -> TaskResult:
-        scene = self._open_phone_item("无名勋礼", "无名勋礼")
-        if scene.has("开启无名勋礼"):
-            return self._result("battlepass", "partial", "无名勋礼尚未开启，需要手动确认。", scene)
-        claimed = 0
-        for _ in range(6):
-            scene = self._snapshot()
-            if scene.has(("解锁无名客的荣勋", "购买", "支付", "选择奖励")):
-                return self._result("battlepass", "partial", "勋礼出现购买或奖励选择界面，已停止。", scene)
-            dismissed = self._dismiss_reward(scene)
-            if dismissed is not scene:
-                continue
-            target = scene.find("一键领取", BOTTOM, exact=True)
-            if target is None:
-                if claimed and scene.has(("全部已领取", "无可领取奖励")):
-                    return self._result("battlepass", "ok", "已核实当前勋礼页奖励领取完成。", scene)
-                return self._result("battlepass", "partial", "未识别到勋礼可领取按钮或全部领取状态。", scene)
-            after = self._click(scene, target)
-            if normalize(after.text) == normalize(scene.text):
-                return self._result("battlepass", "partial", "勋礼领取后画面没有确认变化，已停止重复点击。", after)
-            claimed += 1
-        return self._result("battlepass", "partial", "勋礼领取达到重试上限，尚未确认全部完成。", scene)
+        from .free_rewards import (battlepass_page,battlepass_modal,battlepass_tab,
+            task_category,battlepass_progress,battlepass_settled,claim_enabled,reward_overlay)
+        scene=self._snapshot()
+        if battlepass_page(scene) is None:
+            if battlepass_modal(scene):
+                return self._result('battlepass','partial','勋礼出现购买或奖励选择弹窗，已停止。',scene)
+            scene=self._open_phone_item('无名勋礼','无名勋礼')
+        scene=self._wait(lambda s:battlepass_page(s) is not None,description='确认勋礼页面已加载')
+        for kind in ('tasks','rewards'):
+            if battlepass_page(scene)!=kind:
+                target=battlepass_tab(scene,kind)
+                if target is None:
+                    return self._result('battlepass','partial','未核实勋礼任务或奖励页签图标。',scene)
+                self._click(scene,target)
+                scene=self._wait(lambda s:battlepass_page(s)==kind,description='切换勋礼'+kind)
+            categories=('本周任务','本期任务') if kind=='tasks' else (None,)
+            for category in categories:
+                if category and not task_category(scene,category):
+                    target=scene.find(category,(.07,.31,.20,.74),exact=True)
+                    if target is None:
+                        return self._result('battlepass','partial','未识别勋礼任务分类。',scene)
+                    self._click(scene,target)
+                    scene=self._wait(lambda s:task_category(s,category),description='确认'+category+'已加载')
+                target=scene.find('一键领取',(.60,.79,.98,.91),exact=True)
+                if target is not None:
+                    if battlepass_modal(scene) or claim_enabled(scene,target) is not True:
+                        return self._result('battlepass','partial','勋礼免费领取控件或当前弹窗尚未核实。',scene)
+                    before=battlepass_progress(scene)
+                    if kind=='tasks' and before is None:
+                        return self._result('battlepass','partial','勋礼当前等级与经验尚未核实。',scene)
+                    self.ctx.evidence(scene,'battlepass_'+kind+'_before_claim')
+                    self._click(scene,target)
+                    if kind=='tasks':
+                        scene=self._wait(lambda s:battlepass_settled(s,kind)
+                            and battlepass_progress(s) is not None
+                            and battlepass_progress(s)[:2]>before[:2],description='核实勋礼任务经验到账')
+                    else:
+                        scene=self._wait(reward_overlay,description='核实勋礼免费奖励展示')
+                        self.ctx.evidence(scene,'battlepass_reward_verified')
+                        scene=self._wait(lambda s:reward_overlay(s) and s.has(
+                            ('点击空白处关闭','点击任意位置关闭','点击空白处继续'),exact=True),description='等待勋礼奖励关闭提示')
+                        self._dismiss_reward(scene)
+                        scene=self._wait(lambda s:battlepass_settled(s,kind),description='复核勋礼等级奖励已领取')
+                else:
+                    # Observe again: tab switching briefly hides every row and
+                    # action, which is not evidence of completed claims.
+                    self._pause()
+                    scene=self._snapshot()
+                    if not battlepass_settled(scene,kind) or (category and not task_category(scene,category)):
+                        return self._result('battlepass','partial','勋礼当前分类尚未核实无可领取项。',scene)
+                self.ctx.evidence(scene,'battlepass_'+(category or kind)+'_verified')
+        return self._result('battlepass','ok','已复核本周、本期任务与免费等级奖励领取状态。',scene)

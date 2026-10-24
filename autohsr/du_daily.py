@@ -70,7 +70,66 @@ class DayJournal:
                 return False
         return True
 
-    def begin(self,run_id,*,resume_free=False,resume_unstarted=False):
+    def _settled_farming(self):
+        """Only already reconciled original plans may resume free claims."""
+        from .recovery import recovery_state
+        batches=self.data.get('batches')
+        stamina,tokens,planned=(self.data.get(k) for k in
+            ('initial_stamina','initial_immersifiers','planned_challenges'))
+        if (self.data.get('phase')!='free_rewards_after' or not isinstance(batches,list)
+                or type(stamina) is not int or not 0<=stamina<=300
+                or type(tokens) is not int or not 0<=tokens<=12
+                or type(planned) is not int or planned!=stamina//40+tokens
+                or self.data.get('farming_status') not in ('complete','insufficient_resources')):
+            return False
+        completed=0
+        for index,record in enumerate(batches,1):
+            folder=self.folder/f'batch-{index:02d}'
+            path=folder/'report.json'
+            if (not isinstance(record,dict) or record.get('batch')!=index
+                    or record.get('report')!=str(path) or not path.is_file()
+                    or not (folder/'battle-session.json').is_file()):
+                return False
+            state=recovery_state(folder)
+            try:
+                report=json.loads(path.read_text('utf8'))
+            except (OSError,ValueError):
+                return False
+            requested=record.get('requested')
+            if (state.get('corrupt') or state.get('blocked')
+                    or state.get('category')!='planar' or state.get('target')!='浴火钢心'
+                    or state.get('location')!='位面饰品'
+                    or type(requested) is not int or not 1<=requested<=6
+                    or state.get('requested')!=requested
+                    or any(type(state.get(k)) is not int or state[k]<0 for k in
+                           ('spent','pending','completed','immersifiers_spent','immersifiers_pending'))
+                    or state['pending'] or state['immersifiers_pending']):
+                return False
+            fields=(('stamina_spent','spent'),('stamina_pending','pending'),
+                    ('battle_completed','completed'),('immersifiers_spent','immersifiers_spent'),
+                    ('immersifiers_pending','immersifiers_pending'))
+            if (not isinstance(report,dict) or report.get('battle_requested')!=requested
+                    or report.get('status')!=state.get('status')
+                    or any(type(report.get(a)) is not int or report[a]!=state[b] for a,b in fields)):
+                return False
+            if record.get('status')=='failed':
+                if (state['status']!='failed' or any(state[k] for k in
+                        ('spent','completed','immersifiers_spent'))):
+                    return False
+            elif record.get('status')=='complete':
+                if (state['status']!='success' or state['completed']!=requested
+                        or state['spent']+state['immersifiers_spent']*40!=requested*40
+                        or record.get('completed')!=requested
+                        or record.get('stamina_spent')!=state['spent']
+                        or record.get('immersifiers_spent')!=state['immersifiers_spent']
+                        or not list(folder.glob(f'*_battle_success_{requested}.png'))):
+                    return False
+                completed+=requested
+            else:
+                return False
+        return completed==planned and bool(batches)==bool(planned)
+
+    def begin(self,run_id,*,resume_free=False,resume_unstarted=False,resume_after=False):
         self.folder.mkdir(parents=True,exist_ok=True)
         self.data=dict(version=1,account_key=self.key,game_day=self.day,status='started',
                        phase='before_daily',du_run_id=run_id,batches=[],free_tasks=[])
@@ -89,6 +148,14 @@ class DayJournal:
                 raise AutomationError('当日通关后日常记录与账号或游戏日不一致。')
             if self.data.get('status')=='complete':
                 return False
+            restarts=self.data.get('after_restarts',0)
+            if (resume_after and self.data.get('status')=='failed'
+                    and type(restarts) is int and 0<=restarts<2 and self._settled_farming()):
+                self.data.setdefault('after_restart_history',[]).append(dict(
+                    du_run_id=self.data.get('du_run_id'),error=self.data.get('error')))
+                self.data.pop('error',None)
+                self.save(status='started',du_run_id=run_id,after_restarts=restarts+1)
+                return True
             restarts=self.data.get('free_restarts',0)
             if (resume_free and self.data.get('status')=='failed'
                     and self.data.get('phase')=='before_daily' and self.data.get('batches')==[]
@@ -264,7 +331,7 @@ def after_win(flow,scene,kind,*,root=None,now=None):
     scene=settled_home(flow,scene)
     journal=DayJournal(root or ROOT/'runs',account_key(scene),day)
     run_id=(flow.report.get('run_results') or [{}])[-1].get('run_id')
-    if not journal.begin(run_id,resume_free=True,resume_unstarted=True):
+    if not journal.begin(run_id,resume_free=True,resume_unstarted=True,resume_after=True):
         flow.ctx.log('当前账号本游戏日的通关后日常已完成，继续差分宇宙。')
         return scene,kind
     entry=dict(game_day=journal.day,marker=str(journal.path),status='started')
@@ -276,14 +343,20 @@ def after_win(flow,scene,kind,*,root=None,now=None):
         mail=True,battlepass=True,auto_launch=False,differential_universe_daily=False)
     restart=journal.data.get('free_restarts',0)+journal.data.get('resource_restarts',0)
     free_folder='free-rewards' if not restart else f'free-rewards-retry-{restart:02d}'
+    after_restart=journal.data.get('after_restarts',0)
+    if after_restart:
+        free_folder=f'free-rewards-after-{after_restart:02d}'
     daily=_context(flow,journal.folder/free_folder,settings,journal.day)
     workflow=DailyWorkflow(daily)
     try:
         flow.ctx.key('esc')
         daily.wait(lambda p:workflow._world(p) or workflow._phone(p),timeout=20,description='返回大世界处理当日日常')
-        _free_task(journal,workflow,'assignments')
-        _free_task(journal,workflow,'daily',allow_incomplete_activity=True)
-        _farm(flow,journal,workflow,settings)
+        if journal.data.get('phase')!='free_rewards_after':
+            _free_task(journal,workflow,'assignments')
+            _free_task(journal,workflow,'daily',allow_incomplete_activity=True)
+            _farm(flow,journal,workflow,settings)
+        else:
+            flow.ctx.log('原定刷本批次已结算，仅补领免费奖励；不重新规划或消耗资源。')
         for name in ('daily','mail','battlepass'):
             _free_task(journal,workflow,name)
         report_path=_save_report(daily,'success')

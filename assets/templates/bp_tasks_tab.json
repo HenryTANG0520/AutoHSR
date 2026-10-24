@@ -1,0 +1,11 @@
+{
+  "source_sha256": "40c19086581e7a113a08e14750acacc4bedff7b58790a59a427d4f4b6345cc39",
+  "crop": [
+    943,
+    42,
+    977,
+    86
+  ],
+  "baseline_width": 1920,
+  "purpose": "Verified free-reward navigation glyph, excluding notification badge"
+}

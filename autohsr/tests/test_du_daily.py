@@ -19,6 +19,61 @@ def page():
 
 
 class DailyInterludeTests(unittest.TestCase):
+    def completed_marker(self,directory):
+        from autohsr.recovery import BattleBudget
+        marker=DayJournal(directory,account_key(page()),'2026-10-24');marker.begin('win')
+        folder=marker.folder/'batch-01'
+        report=RunReport(run_dir=str(folder),battle_requested=3,status='success')
+        settings=Settings(dungeon_category='planar',target_name='浴火钢心',target_location='位面饰品',
+                          stamina_limit=120,challenge_count=3)
+        budget=BattleBudget(folder,settings,report);budget.begin();budget.reserve(120)
+        report.battle_completed=3;budget.confirm(120);budget.finish()
+        path=folder/'report.json';path.write_text(json.dumps(report.to_dict()),encoding='utf8')
+        (folder/'120000_battle_success_3.png').write_bytes(b'receipt fixture')
+        marker.save(status='failed',phase='free_rewards_after',farming_status='complete',
+                    initial_stamina=155,initial_immersifiers=0,planned_challenges=3,error='mail icon',
+                    batches=[dict(batch=1,requested=3,status='complete',completed=3,
+                                  stamina_spent=120,immersifiers_spent=0,report=str(path))])
+        return marker
+
+    def test_paid_completed_plan_resumes_only_free_steps_and_preserves_bill(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker=self.completed_marker(directory)
+            bill=marker.folder/'batch-01/battle-session.json';original=bill.read_bytes()
+            self.assertTrue(marker.begin('win',resume_after=True))
+            self.assertEqual(marker.data['phase'],'free_rewards_after')
+            self.assertEqual(marker.data['planned_challenges'],3)
+            self.assertEqual(marker.data['after_restart_history'][0]['error'],'mail icon')
+            self.assertEqual(bill.read_bytes(),original)
+            marker.save(status='failed')
+            flow=self.flow();daily=self.free_context(Path(directory)/'free-after')
+            with patch('autohsr.du_daily._context',return_value=daily), \
+                 patch('autohsr.workflows.DailyWorkflow',return_value=Mock()), \
+                 patch('autohsr.du_daily._free_task') as free, \
+                 patch('autohsr.du_daily._farm') as farm, \
+                 patch('autohsr.differential_universe.classify_page',return_value='phone'):
+                after_win(flow,page(),'home',root=directory,now=datetime(2026,10,24,9,tzinfo=CHINA))
+                farm.assert_not_called()
+                self.assertEqual([call.args[2] for call in free.call_args_list],['daily','mail','battlepass'])
+            self.assertEqual(bill.read_bytes(),original)
+
+    def test_free_after_resume_requires_reconciled_reports_bills_and_original_counts(self):
+        for field,value in [('pending',40),('immersifiers_pending',1),('completed',2),('spent',80),
+                            ('status','failed'),('target','other')]:
+            with self.subTest(field=field),tempfile.TemporaryDirectory() as directory:
+                marker=self.completed_marker(directory)
+                bill=marker.folder/'batch-01/battle-session.json';data=json.loads(bill.read_text('utf8'))
+                data[field]=value;bill.write_text(json.dumps(data),encoding='utf8')
+                with self.assertRaisesRegex(AutomationError,'中断记录'):marker.begin('win',resume_after=True)
+        for field,value in [('planned_challenges',4),('initial_stamina',200),('batches',[]),('phase','farming')]:
+            with self.subTest(field=field),tempfile.TemporaryDirectory() as directory:
+                marker=self.completed_marker(directory);marker.save(**{field:value})
+                with self.assertRaisesRegex(AutomationError,'中断记录'):marker.begin('win',resume_after=True)
+        with tempfile.TemporaryDirectory() as directory:
+            marker=self.completed_marker(directory)
+            (marker.folder/'batch-01/120000_battle_success_3.png').unlink()
+            with self.assertRaises(AutomationError):marker.begin('win',resume_after=True)
+
     def unstarted_marker(self,directory):
         from autohsr.recovery import BattleBudget
         marker=DayJournal(directory,account_key(page()),'2026-10-24');marker.begin('win')
@@ -112,7 +167,7 @@ class DailyInterludeTests(unittest.TestCase):
             self.assertEqual(after_win(flow,scene,'home',root=directory,
                 now=datetime(2026,10,24,4,0,tzinfo=CHINA)),(scene,'home'))
             journal.assert_called_once_with(directory,account_key(scene),'2026-10-24')
-            journal.return_value.begin.assert_called_once_with('verified-run',resume_free=True,resume_unstarted=True)
+            journal.return_value.begin.assert_called_once_with('verified-run',resume_free=True,resume_unstarted=True,resume_after=True)
         flow.ctx.key.assert_not_called()
 
     def test_daily_start_requires_a_real_iso_date_and_explicit_cli_daily_flag(self):

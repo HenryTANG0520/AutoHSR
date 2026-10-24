@@ -73,6 +73,8 @@ def guard_click(scene: Scene, target: Token | tuple[float, float], *, allow_diff
     point = target.center if isinstance(target, Token) else target
     if isinstance(target, Token):
         text = normalize(target.text)
+        if scene.has('无名勋礼',(0,0,.32,.13),exact=True) and text.startswith('解锁无名客'):
+            raise AutomationError('无名勋礼只允许领取已有免费奖励。')
         if any(text == normalize(word) or text.startswith(normalize(word)) for word in FORBIDDEN) or any(normalize(word) in text for word in FORBIDDEN_ACTIONS):
             raise AutomationError(f"用户禁项：禁止操作“{target.text}”。")
     phone = scene.has("开拓等级", (0.55, 0.05, 0.99, 0.35))
@@ -84,7 +86,11 @@ def guard_click(scene: Scene, target: Token | tuple[float, float], *, allow_diff
                         (allow_differential_universe and normalize(t.text) == normalize("差分宇宙")))
                    and abs(t.center[0] - point[0]) < 0.035
                    and -0.09 < point[1] - t.center[1] < 0.025]
-        if not matches:
+        from .free_rewards import mail_entry
+        envelope=mail_entry(scene)
+        verified_mail=(envelope is not None and isinstance(target,Token)
+                       and target==envelope)
+        if not matches and not verified_mail:
             raise AutomationError("手机菜单只允许进入委托、指南、邮件和无名勋礼。")
     # A forbidden page can be closed, but never operated. This also protects
     # runs started while the user happens to have a training screen open.

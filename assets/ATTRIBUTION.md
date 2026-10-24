@@ -566,3 +566,14 @@ optical-flow continuity of an already detected gate through avatar occlusion.
 Their sidecars retain source/fixture hashes and the original detected box.
 They are local regression views, not independent accuracy or completion
 evidence. Game artwork remains the property of HoYoverse.
+
+`phone_mail_body.png`, `mail_disabled_arrow.png`, `bp_tasks_tab.png`, and
+`bp_rewards_tab.png` are narrow crops of locally observed 4.6 UI frames.
+Their sidecars record source hashes, exact crops, and the 1920-pixel baseline;
+notification badges are excluded from navigation glyphs. The masked native
+`du_runtime/phone_mail_icon`, `mail_claimable`, `mail_claimed`, and `bp_*`
+fixtures test free-claim controls, tabs, XP feedback, and notification state.
+Account identifiers, phone profile details, and unnecessary mail content are
+masked; sidecars retain hashes and non-identifier OCR. These are local
+regression samples, not independent automation-success evidence. Game artwork
+remains the property of HoYoverse.
