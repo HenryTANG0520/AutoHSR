@@ -73,6 +73,9 @@ def classify_page(scene: Scene, context=None) -> str:
     from .policy import du_forge_console_menu
     if du_forge_console_menu(scene):
         return 'forge_console'
+    from .policy import du_last_area_confirm
+    if du_last_area_confirm(scene) is not None:
+        return 'last_area_confirm'
     if scene.has("星际和平指南",(0,0,.32,.13)):
         return "guide"
     from .policy import du_blessing_discard_prompt
@@ -949,6 +952,18 @@ class DifferentialUniverseWorkflow:
         if target is None:
             raise AutomationError('区域抽取页未识别到完整且可核对的候选区域。')
         return scene,target
+
+    def _confirm_last_area(self,scene):
+        from .policy import du_last_area_confirm
+        target=du_last_area_confirm(scene)
+        if target is None:
+            raise AutomationError('最后一次区域选择提示已改变，未确认。')
+        scene,kind=self._click(scene,target,intent='last_area_confirm',label='last_area_confirmed')
+        if kind=='last_area_confirm':
+            scene=self.ctx.wait(lambda page:classify_page(page,self.ctx)!='last_area_confirm',
+                timeout=15,description='最后一次区域选择确认反馈')
+            kind=self._observe(scene,'last_area_confirmation_settled')
+        return self._wait_known(scene,kind,'last_area_confirmation')
 
     @staticmethod
     def _field_interaction_target(scene: Scene) -> Token | None:
@@ -2177,6 +2192,9 @@ class DifferentialUniverseWorkflow:
                         if kind == "station_choice":
                             raise AutomationError("确认站点卡后页面没有前进；已停止重复点击。")
                     continue
+                if kind == 'last_area_confirm':
+                    scene,kind=self._confirm_last_area(scene)
+                    continue
                 if kind in ("home", "mode_select", "periodic_setup"):
                     if victory_seen:
                         return scene, kind, True
@@ -2287,6 +2305,7 @@ class DifferentialUniverseWorkflow:
         resumable.add("field_event")
         resumable.add('login_supply')
         resumable.add('forge_console')
+        resumable.add('last_area_confirm')
         if self.resume_active and kind in resumable:
             resumed_no = len(self.report["run_results"]) + 1
             resumed_id = "resumed-" + uuid.uuid4().hex

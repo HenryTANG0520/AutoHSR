@@ -11,6 +11,19 @@ PHONE_ALLOWED = ("委托", "指南", "星际和平指南", "邮件", "无名勋�
 FORBIDDEN_ACTIONS = ("抽卡", "购买", "续购", "续费", "订购", "支付", "付款", "充值", "兑换", "强化", "升级", "突破", "晋阶", "叠影", "培养", "养成", "合成", "使用燃料", "使用星琼")
 
 
+def du_last_area_confirm(scene: Scene) -> Token | None:
+    """Identify the final route warning independently of the cards behind it."""
+    body = ''.join(t.text for t in scene.tokens if t.within((.26,.43,.74,.55)))
+    expected = '本次为最后一次区域选择阶段，之后将无法再进入储蓄间，是否继续？'
+    modal = ''.join(t.text for t in scene.tokens if t.within((.23,.30,.77,.69)))
+    if (not scene.has('提示',(.42,.34,.58,.42),exact=True)
+            or normalize(body) != normalize(expected)
+            or not scene.has('取消',(.29,.58,.49,.67),exact=True)
+            or any(word in normalize(modal) for word in ('花费','消耗','支付','购买','星琼','燃料'))):
+        return None
+    return scene.find('确认',(.51,.58,.71,.67),exact=True)
+
+
 def du_guide_details(scene):
     if not (scene.has('星际和平指南',(0,0,.32,.13))
             and scene.has('乐园漫记',(.36,.26,.88,.80))):
@@ -271,6 +284,10 @@ def guard_differential_universe_click(scene: Scene, target: Token | tuple[float,
         raise AutomationError("差分宇宙只允许点击 OCR 明确识别的按钮；坐标点击未授权。")
     if replenishment_dialog(scene):
         raise AutomationError("检测到开拓力补充界面，差分宇宙流程已停止。")
+    if intent=='last_area_confirm':
+        if target != du_last_area_confirm(scene):
+            raise AutomationError('未核实最后一次区域选择提示及确认按钮，未点击。')
+        return
     if intent=='du_tutorial_close':
         if target!=du_tutorial_close_prompt(scene):
             raise AutomationError('未核实说明页的当前关闭提示，未点击。')

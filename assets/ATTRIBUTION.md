@@ -585,3 +585,9 @@ Account identifiers, phone profile details, and unnecessary mail content are
 masked; sidecars retain hashes and non-identifier OCR. These are local
 regression samples, not independent automation-success evidence. Game artwork
 remains the property of HoYoverse.
+
+`du_runtime/last_area_confirm` is a locally captured final-route warning from
+the 4.6 client, resized to the 1920-pixel baseline with the bottom identifier
+strip masked. Its sidecar records the source hash and non-identifier OCR.
+It verifies modal priority and one-shot confirmation feedback; it is not
+independent completion evidence. Game artwork remains the property of HoYoverse.
