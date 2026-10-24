@@ -9,9 +9,53 @@ from autohsr.policy import guard_differential_universe_field_interact
 
 class OptionalExitTests(unittest.TestCase):
     @staticmethod
-    def native():
+    def native(name='forge_beside_awake_exit'):
         from autohsr.tests.test_du_runtime import DuRuntimeTests
-        return DuRuntimeTests.optional_device_fixture('forge_beside_awake_exit')
+        return DuRuntimeTests.optional_device_fixture(name)
+
+    def test_rest_devices_with_awake_exit_are_passed_without_lateral_movement(self):
+        for name,label in (('rest_revival_awake_exit','复活装置'),('rest_forge_awake_exit','造物调试台')):
+            with self.subTest(name=name):
+                page=self.native(name);target=optional_device_prompt(page)
+                self.assertEqual(target.text,label)
+                self.assertEqual(random_gate(page,fast=True).text,'差分宇宙随意门外观')
+                clear=Scene([page.tokens[0]],page.image)
+                ctx=Mock(settings=Settings(),report=RunReport())
+                ctx.differential_universe_move.return_value=clear
+                flow=DifferentialUniverseWorkflow(ctx,1)
+                flow._observe=Mock(return_value='field_rest')
+                self.assertEqual(flow._avoid_optional_device(page,'field_rest',target),(clear,'field_rest'))
+                ctx.differential_universe_move.assert_called_once_with(page,'w',650)
+                ctx.differential_universe_interact.assert_not_called()
+
+    def test_rest_device_still_in_range_has_a_finite_forward_budget(self):
+        page=self.native('rest_forge_awake_exit');ctx=Mock(settings=Settings(),report=RunReport())
+        ctx.differential_universe_move.return_value=page
+        flow=DifferentialUniverseWorkflow(ctx,1);flow._observe=Mock(return_value='field_rest')
+        flow._avoid_optional_device(page,'field_rest',optional_device_prompt(page))
+        self.assertEqual([c.args[1:] for c in ctx.differential_universe_move.call_args_list],[('w',650),('w',650)])
+        ctx.differential_universe_interact.assert_not_called()
+
+    def test_rest_forward_pass_needs_a_current_centred_awake_face(self):
+        page=self.native('rest_revival_awake_exit');device=optional_device_prompt(page)
+        for face in (None,Token('差分宇宙睡眼门',.95,(.47,.23,.53,.30)),
+                     Token('差分宇宙随意门外观',.95,(.70,.23,.76,.30))):
+            ctx=Mock(settings=Settings(),report=RunReport());ctx.differential_universe_move.return_value=page
+            flow=DifferentialUniverseWorkflow(ctx,1);flow._observe=Mock(return_value='field_rest')
+            with patch('autohsr.du_navigation.random_gate',return_value=face):
+                flow._avoid_optional_device(page,'field_rest',device)
+            self.assertEqual([c.args[1:] for c in ctx.differential_universe_move.call_args_list],
+                             [('s',500),('d',650),('w',700)])
+
+    def test_unused_forge_remains_required_in_forge_rooms_and_is_not_opened_in_rest(self):
+        page=self.native('rest_forge_awake_exit');target=optional_device_prompt(page)
+        with self.assertRaises(AutomationError):
+            guard_differential_universe_field_interact(page,target)
+        forge=Scene([Token(t.text.replace('休整','铸造'),t.score,t.box) for t in page.tokens],page.image)
+        self.assertIsNone(optional_device_prompt(forge))
+        self.assertEqual(optional_device_prompt(forge,forge_console_used=True).text,'造物调试台')
+        blank=Scene([Token(t.text.replace('休整','空白'),t.score,t.box) for t in page.tokens],page.image)
+        self.assertEqual(optional_device_prompt(blank).text,'造物调试台')
 
     def test_live_combat_forge_is_an_optional_device_before_it_has_been_opened(self):
         page=self.native()

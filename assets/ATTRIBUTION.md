@@ -554,6 +554,12 @@ phase with a red centre and no white core. The 1920-pixel copy masks bottom
 identifiers; its sidecar retains source hashes and non-identifier OCR. Game
 artwork remains the property of HoYoverse.
 
+`du_runtime/rest_revival_awake_exit` and `rest_forge_awake_exit` are locally
+observed rest-room prompts with a visibly awake exit. Their 1920-pixel copies
+mask identifiers and retain source hashes and non-identifier OCR. They verify
+bounded travel past optional devices, never device use. Game artwork remains
+the property of HoYoverse.
+
 `du_runtime/coin_counter_prompt` and `coin_counter_menu` are locally observed
 4.6 wealth-room frames. The menu was opened manually for inspection without
 executing a trade. The 1920-pixel copies mask bottom identifiers; sidecars

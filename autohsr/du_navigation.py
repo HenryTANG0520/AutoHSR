@@ -14,16 +14,17 @@ def optional_device_prompt(scene, *, forge_console_used=False):
     header=normalize('\n'.join(t.text for t in scene.tokens if t.within((0,0,.40,.12))))
     wealth='位面-财富' in header or '位面—财富' in header
     combat=bool(re.search(r'位面[-—]?(?:战斗|精英|首领)',header))
+    rest=bool(re.search(r'位面[-—]?(?:休整|空白)',header))
     prompts=[]
     for token in scene.tokens:
         if not token.within((.60,.45,.85,.70)):
             continue
         label=normalize(token.text)
-        if (label in ('混沌药箱','复活装置') or ((forge_console_used or combat) and label=='造物调试台') or
+        if (label in ('混沌药箱','复活装置') or ((forge_console_used or combat or rest) and label=='造物调试台') or
                 label=='乐园币柜台' or
                 (wealth and re.fullmatch(r'游玩[「『“"]([^」』”"]{1,32})[」』”"]',label))):
             prompts.append(token)
-        elif combat and label!='随意门':
+        elif (combat or rest) and label!='随意门':
             # A new optional device name need not block a completed room.
             # Require its same world label off the centred, visibly awake
             # exit route. This authorizes bounded travel only, never F.

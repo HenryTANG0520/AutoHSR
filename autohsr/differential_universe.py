@@ -1809,10 +1809,11 @@ class DifferentialUniverseWorkflow:
     def _avoid_optional_device(self,scene,field_kind,device):
         from .du_navigation import random_gate,optional_device_prompt,verified_attack_reticle
         world=scene.find((device.text,),(.08,.10,.90,.49),exact=True)
-        awake=random_gate(scene,fast=True) if field_kind=='field_combat' and self._field_cleared else None
+        rest=field_kind in ('field_rest','field_blank')
+        awake=random_gate(scene,fast=True) if rest or (field_kind=='field_combat' and self._field_cleared) else None
         pass_side=(awake is not None and awake.text=='差分宇宙随意门外观'
-                   and abs(awake.center[0]-.5)<.08 and world is not None
-                   and abs(world.center[0]-.5)>.18)
+                   and abs(awake.center[0]-.5)<.08
+                   and (rest or (world is not None and abs(world.center[0]-.5)>.18)))
         # Cabinet world labels provide the side actually occupied by the
         # machine, independently of the fixed F prompt on the right HUD.
         side='a'
