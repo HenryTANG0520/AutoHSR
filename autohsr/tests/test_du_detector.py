@@ -53,6 +53,18 @@ class DuDetectorTests(unittest.TestCase):
                 for box in expected:
                     self.assertTrue(any(overlap(t.box,box['xyxy'])>=.5 for t in found))
 
+    def test_close_winged_training_replay_supplies_a_bearing_after_device_occlusion(self):
+        import cv2,json
+        from autohsr.du_detector import detect_recovery_enemies
+        from tools.evaluate_du_detector import overlap
+        root=Path(__file__).parent/'fixtures/du_runtime'
+        for i in range(3):
+            name=f'enemy_close_winged_{i}'
+            expected=json.loads((root/f'{name}.json').read_text('utf8'))['boxes'][0]['xyxy']
+            found=detect_recovery_enemies(Scene([],cv2.imread(str(root/f'{name}.png'))))
+            self.assertEqual(len(found),1)
+            self.assertGreaterEqual(overlap(found[0].box,expected),.5)
+
     def test_two_card_room_and_edge_on_green_card_keep_their_bearings(self):
         import cv2,json
         from autohsr.du_detector import detect_cards

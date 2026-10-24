@@ -98,3 +98,13 @@ The model supplies a bearing; the live range reticle still authorizes attack.
 The former red-silhouette fallback was removed because it matched shop signs.
 `du_enemies.json` records provenance, SHA-256 and limitations. The included
 AGPL-3.0 terms apply to this Ultralytics derivative as well.
+
+The recovery-only enemy model was incrementally fitted on three reviewed close
+and side 金血忆灵·翼 captures and 160 training-only generated scenes on
+2026-10-24, keeping previous validation/test groups. After 12 epochs the best
+checkpoint retains calibration TP8/FP0/FN0 and yields test TP5/FP0/FN2 at
+threshold 0.70 (median CPU 21.36ms). All three new training frames replay with
+a usable bearing; this is calibration, not independent accuracy evidence.
+This model is used after failed attacks, explicit resumed recovery or verified
+optional-device detours. It supplies no attack-range or room-completion proof.
+The main and fallback enemy models remain unchanged.

@@ -81,5 +81,54 @@ class CoinCounterTests(unittest.TestCase):
             flow._field_visual=Mock(return_value=(done,'battle'))
             self.assertEqual(flow._field_combat(page,fresh_entry=fresh),(done,'battle'))
             self.assertFalse(flow._resume_field_needs_target)
-            flow._field_visual.assert_called_once_with(page)
+            flow._field_visual.assert_called_once_with(page,prefer_enemy=True)
             ctx.differential_universe_motion.assert_not_called()
+
+    def test_optional_revival_device_requires_its_live_f_prompt_and_does_not_interact(self):
+        from autohsr.tests.test_du_runtime import DuRuntimeTests
+        page=DuRuntimeTests.optional_device_fixture('revival_device_blocks_combat')
+        target=optional_device_prompt(page)
+        self.assertEqual(target.text,'复活装置')
+        with self.assertRaises(AutomationError):guard_differential_universe_field_interact(page,target)
+        with patch('autohsr.du_navigation.interaction_hint',return_value=False):
+            self.assertIsNone(optional_device_prompt(page))
+
+    def test_counter_detour_uses_world_label_position_rather_than_fixed_right_f_caption(self):
+        page=self.fixture('combat');device=optional_device_prompt(page)
+        for world_x,side in ((.44,'d'),(.70,'a')):
+            changed=Scene([Token(t.text,t.score,(world_x-.03,.38,world_x+.03,.41))
+                           if t.text=='乐园币柜台' and t.within((.08,.10,.90,.49)) else t
+                           for t in page.tokens],page.image)
+            ctx=Mock(settings=Settings(),report=RunReport())
+            ctx.differential_universe_move.return_value=changed
+            flow=DifferentialUniverseWorkflow(ctx,1);flow._observe=Mock(return_value='field_combat')
+            self.assertEqual(flow._avoid_optional_device(changed,'field_combat',device),(changed,'field_combat'))
+            self.assertEqual([c.args[1:] for c in ctx.differential_universe_move.call_args_list],
+                             [('s',500),(side,650),('w',700)])
+            ctx.differential_universe_interact.assert_not_called()
+
+    def test_enemy_bearing_has_priority_over_gate_anchor_after_a_device_detour(self):
+        page=self.fixture('combat');clear=Scene([page.tokens[0]],page.image);done=Scene([])
+        device=optional_device_prompt(page)
+        ctx=Mock(settings=Settings(),report=RunReport());ctx.differential_universe_look.return_value=done
+        flow=DifferentialUniverseWorkflow(ctx,1);flow._combat_chest=Mock(return_value=None)
+        flow._avoid_optional_device=Mock(return_value=(clear,'field_combat'))
+        flow._observe=Mock(return_value='battle')
+        enemy=Token('Enemy',.9,(.64,.15,.78,.53));gate=Token('Target',.9,(.48,.2,.52,.5))
+        with patch('autohsr.du_navigation.optional_device_prompt',side_effect=[device,None]), \
+             patch('autohsr.du_navigation.interaction_hint',return_value=False), \
+             patch('autohsr.du_navigation.random_gate',return_value=None), \
+             patch('autohsr.du_navigation.navigation_targets',return_value=[gate]), \
+             patch('autohsr.du_detector.detect_recovery_enemies',return_value=[enemy]):
+            self.assertEqual(flow._field_visual(page),(done,'battle'))
+        ctx.differential_universe_look.assert_called_once_with(clear,.12,0,220)
+        ctx.differential_universe_motion.assert_not_called()
+
+    def test_detour_stops_when_the_enemy_becomes_attackable_without_a_blocking_device(self):
+        page=self.fixture('combat');device=optional_device_prompt(page)
+        ready=Scene([t for t in page.tokens if t.text!='乐园币柜台'],page.image)
+        ctx=Mock(settings=Settings(),report=RunReport());ctx.differential_universe_move.return_value=ready
+        flow=DifferentialUniverseWorkflow(ctx,1);flow._observe=Mock(return_value='field_combat')
+        self.assertEqual(flow._avoid_optional_device(page,'field_combat',device),(ready,'field_combat'))
+        ctx.differential_universe_move.assert_called_once_with(page,'s',500)
+        ctx.differential_universe_attack.assert_not_called()

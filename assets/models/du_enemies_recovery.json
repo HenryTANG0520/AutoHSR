@@ -6,13 +6,14 @@
   "input_size": 640,
   "threshold": 0.7,
   "runtime": "ONNX Runtime CPU",
-  "sha256": "00e0925a1260125192cbcc3990462ed89a476d9e1cc22f81ed1e9c95f903b2ac",
+  "sha256": "9173affc581a6a884e6723265f4332a99962c91085818dbe1aa31ff7a145252a",
   "updated": "2026-10-24",
   "license": "AGPL-3.0; see LICENSE.du_target.txt",
-  "intended_use": "After an initial basic attack fails, or explicit resumed-field recovery; existing main/fallback models remain unchanged.",
+  "intended_use": "After a failed initial attack, explicit resumed-field recovery, or a verified optional-device detour; main/fallback models unchanged.",
   "appearances": [
     "Observed purple floating monster",
-    "Observed yellow armored humanoid"
+    "Observed yellow armored humanoid",
+    "金血忆灵·翼 close and side views"
   ],
   "training": {
     "initialization": "Seven-family last.pt checkpoint",
@@ -29,12 +30,12 @@
     "images": 14
   },
   "held_out": {
-    "tp": 4,
-    "fp": 1,
-    "fn": 3,
+    "tp": 5,
+    "fp": 0,
+    "fn": 2,
     "images": 19
   },
-  "median_ms": 20.69820000178879,
+  "median_ms": 21.361250008339994,
   "new_training_frame_replay": {
     "tp": 4,
     "fp": 0,
@@ -44,7 +45,22 @@
   },
   "limitations": [
     "A coarse bearing only; never authorizes attack, character switching or room completion.",
-    "Strict original test localization regressed, so the previous runtime models are retained and this fit is limited to recovery.",
-    "Small same-trial training set; unseen monsters, occlusion and visual effects remain unverified."
-  ]
+    "Recovery-only fit; previous main/fallback runtime models retained.",
+    "Small same-trial additions; unseen monsters, occlusion and effects remain unverified."
+  ],
+  "incremental_training": {
+    "initialization": "Previous recovery last.pt",
+    "epochs": 12,
+    "selected": "best",
+    "added_native_positive_frames": 3,
+    "added_generated_training_scenes": 160,
+    "split": "Training-only additions; original validation/test groups unchanged."
+  },
+  "close_winged_training_frame_replay": {
+    "tp": 3,
+    "fp": 0,
+    "fn": 0,
+    "images": 3,
+    "note": "Same training captures; not independent accuracy evidence."
+  }
 }
