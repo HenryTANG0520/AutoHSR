@@ -103,9 +103,9 @@ def classify_page(scene: Scene, context=None) -> str:
     if (scene.has("下载角色",(0,0,.32,.13))
             and all(s in text for s in ("角色列表","预设编队"))):
         return "team_selection"
-    if (scene.has("丢弃奇物",(0,0,.32,.13))
-            and re.search(r"(?:需|须)舍弃1次奇物",text)):
-        return "curio_discard"
+    if scene.has('丢弃奇物',(0,0,.32,.13),exact=True):
+        from .policy import du_curio_discard_page
+        return 'curio_discard' if du_curio_discard_page(scene) else 'unknown'
     if (scene.has('丢弃祝福',(0,0,.32,.13),exact=True) and scene.has('请舍弃祝福')
             and scene.has('丢弃',(.56,.78,.99,.98),exact=True)):
         return 'blessing_discard'
@@ -779,6 +779,9 @@ class DifferentialUniverseWorkflow:
                 if kind=="blessing_choice":
                     from .du_strategy import blessing_score
                     return max(names,key=lambda t:blessing_score(scene,t)[0])
+                if kind=='curio_discard':
+                    return max(names,key=lambda t:(scene.has('已损毁',
+                        (t.center[0]-.11,.70,t.center[0]+.11,.80),exact=True),-t.center[0]))
                 if kind=='miracle_choice':
                     # Prefer a free effect which resolves without choosing a
                     # shop card. Combat/elite buffs then suit the route plan.
@@ -2136,6 +2139,10 @@ class DifferentialUniverseWorkflow:
                     scene,kind=self._click(scene,target,intent="curio_discard_select",label="curio_discard_selected")
                     if kind != "curio_discard":
                         continue
+                    if scene.image is not None:
+                        from .du_strategy import curio_card_selected
+                        if not curio_card_selected(scene,target):
+                            raise AutomationError('奇物舍弃候选点击后未核实其选中边框，未丢弃。')
                     confirm=self._find(scene,("丢弃","丢弃·"),(.78,.85,.99,.96))
                     if confirm is None:
                         raise AutomationError("强制舍弃奇物选中后未识别到丢弃按钮。")

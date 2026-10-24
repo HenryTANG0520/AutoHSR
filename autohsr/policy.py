@@ -181,6 +181,13 @@ def du_coin_counter_menu(scene: Scene) -> bool:
             and scene.has('出售乐园币',(.58,.52,.95,.67),exact=True))
 
 
+def du_curio_discard_page(scene: Scene) -> bool:
+    return (scene.has('丢弃奇物',(0,0,.32,.13),exact=True)
+            and (re.search(r'(?:需|须)舍弃1次奇物',normalize(scene.text)) is not None
+                 or scene.has('请舍弃奇物',(.30,.10,.70,.20),exact=True))
+            and scene.has(('丢弃','丢弃·'),(.78,.85,.99,.96),exact=True))
+
+
 def guard_differential_universe_field_interact(scene: Scene, target: Token) -> None:
     """Allow F only for a visible, non-spending anomaly interaction prompt."""
     context = normalize(scene.text)
@@ -399,12 +406,11 @@ def guard_differential_universe_click(scene: Scene, target: Token | tuple[float,
             raise AutomationError("战斗站点卡图标或当前选择页未核实。")
         return
     if intent in ("curio_discard_select","curio_discard_confirm"):
-        context=normalize(scene.text)
-        if (not scene.has("丢弃奇物",(0,0,.32,.13))
-                or not re.search(r"(?:需|须)舍弃1次奇物",context)):
+        if not du_curio_discard_page(scene):
             raise AutomationError("未核实当前局内强制舍弃奇物页面。")
         if intent == "curio_discard_select":
-            valid=bool(re.search(r"[\u3400-\u9fff]{2}",target.text)) and target.within((.14,.35,.87,.54))
+            valid=(bool(re.search(r"[\u3400-\u9fff]{2}",target.text)) and target.within((.14,.35,.87,.54))
+                   and scene.has(target.text,(.14,.35,.87,.54),exact=True))
         else:
             valid=text in ("丢弃","丢弃·") and target.within((.78,.85,.99,.96))
         if not valid:

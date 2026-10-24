@@ -37,6 +37,23 @@ def blessing_columns(scene):
     return default
 
 
+def curio_card_selected(scene,target):
+    """Verify both white vertical borders of the just-selected curio card."""
+    if scene.image is None:
+        return False
+    import cv2
+    import numpy as np
+    image=cv2.resize(scene.image,(960,540));h,w=image.shape[:2]
+    x=target.center[0]
+    for edge in (x-.105,x+.105):
+        patch=image[round(.28*h):round(.75*h),round((edge-.014)*w):round((edge+.014)*w)]
+        hsv=cv2.cvtColor(patch,cv2.COLOR_BGR2HSV)
+        white=(hsv[:,:,1]<40)&(hsv[:,:,2]>220)
+        if not white.size or float(np.mean(white,axis=0).max())<.60:
+            return False
+    return True
+
+
 def same_blessing_titles(before,after):
     """Corroborate short OCR variations with every visible card's glyph row."""
     if before.image is None or after.image is None:
