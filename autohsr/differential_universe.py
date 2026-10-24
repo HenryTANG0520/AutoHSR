@@ -1812,8 +1812,8 @@ class DifferentialUniverseWorkflow:
         rest=field_kind in ('field_rest','field_blank')
         awake=random_gate(scene,fast=True) if rest or (field_kind=='field_combat' and self._field_cleared) else None
         pass_side=(awake is not None and awake.text=='差分宇宙随意门外观'
-                   and abs(awake.center[0]-.5)<.08
-                   and (rest or (world is not None and abs(world.center[0]-.5)>.18)))
+                   and (rest or (abs(awake.center[0]-.5)<.08
+                                 and world is not None and abs(world.center[0]-.5)>.18)))
         # Cabinet world labels provide the side actually occupied by the
         # machine, independently of the fixed F prompt on the right HUD.
         side='a'
@@ -1831,6 +1831,21 @@ class DifferentialUniverseWorkflow:
                 'before':str(self.ctx.evidence(scene,'optional_device_before_detour'))}
         self.report.setdefault('device_detours',[]).append(record)
         self._persist_ledger()
+        if rest and pass_side:
+            for aim in range(3):
+                if awake is None or awake.text!='差分宇宙随意门外观':
+                    raise AutomationError('休整出口门脸失去核实，停止设备旁移动。')
+                error=awake.center[0]-.5
+                if abs(error)<=.025:
+                    break
+                if aim==2:
+                    raise AutomationError('休整出口两次对准后仍未居中，停止设备旁移动。')
+                scene=self.ctx.differential_universe_look(scene,max(-.12,min(.12,error*.65)),0,220)
+                kind=self._observe(scene,'optional_device_exit_aligned')
+                scene,kind=self._wait_known(scene,kind,'optional_device_exit_aligned')
+                if kind!=field_kind:
+                    return scene,kind
+                awake=random_gate(scene,fast=True)
         compact=device.text in ('乐园币柜台','复活装置')
         route=(('w',650),('w',650)) if pass_side else (
             ('s',500),(side,650 if compact else 1100),('w',700 if compact else 1100))

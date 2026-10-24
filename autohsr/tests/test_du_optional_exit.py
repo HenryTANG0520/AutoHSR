@@ -24,28 +24,52 @@ class OptionalExitTests(unittest.TestCase):
                 ctx.differential_universe_move.return_value=clear
                 flow=DifferentialUniverseWorkflow(ctx,1)
                 flow._observe=Mock(return_value='field_rest')
-                self.assertEqual(flow._avoid_optional_device(page,'field_rest',target),(clear,'field_rest'))
-                ctx.differential_universe_move.assert_called_once_with(page,'w',650)
+                face=random_gate(page,fast=True)
+                aligned=Scene(page.tokens,page.image.copy())
+                ctx.differential_universe_look.return_value=aligned
+                centred=Token('差分宇宙随意门外观',.95,(.47,.23,.53,.30))
+                with patch('autohsr.du_navigation.random_gate',side_effect=lambda p,**kw:centred if p is aligned else face):
+                    self.assertEqual(flow._avoid_optional_device(page,'field_rest',target),(clear,'field_rest'))
+                if abs(face.center[0]-.5)>.025:
+                    ctx.differential_universe_look.assert_called_once()
+                    ctx.differential_universe_move.assert_called_once_with(aligned,'w',650)
+                else:
+                    ctx.differential_universe_look.assert_not_called()
+                    ctx.differential_universe_move.assert_called_once_with(page,'w',650)
                 ctx.differential_universe_interact.assert_not_called()
 
     def test_rest_device_still_in_range_has_a_finite_forward_budget(self):
         page=self.native('rest_forge_awake_exit');ctx=Mock(settings=Settings(),report=RunReport())
         ctx.differential_universe_move.return_value=page
         flow=DifferentialUniverseWorkflow(ctx,1);flow._observe=Mock(return_value='field_rest')
-        flow._avoid_optional_device(page,'field_rest',optional_device_prompt(page))
+        with patch('autohsr.du_navigation.random_gate',return_value=Token('差分宇宙随意门外观',.95,(.47,.23,.53,.30))):
+            flow._avoid_optional_device(page,'field_rest',optional_device_prompt(page))
         self.assertEqual([c.args[1:] for c in ctx.differential_universe_move.call_args_list],[('w',650),('w',650)])
         ctx.differential_universe_interact.assert_not_called()
 
     def test_rest_forward_pass_needs_a_current_centred_awake_face(self):
         page=self.native('rest_revival_awake_exit');device=optional_device_prompt(page)
-        for face in (None,Token('差分宇宙睡眼门',.95,(.47,.23,.53,.30)),
-                     Token('差分宇宙随意门外观',.95,(.70,.23,.76,.30))):
+        for face in (None,Token('差分宇宙睡眼门',.95,(.47,.23,.53,.30))):
             ctx=Mock(settings=Settings(),report=RunReport());ctx.differential_universe_move.return_value=page
             flow=DifferentialUniverseWorkflow(ctx,1);flow._observe=Mock(return_value='field_rest')
             with patch('autohsr.du_navigation.random_gate',return_value=face):
                 flow._avoid_optional_device(page,'field_rest',device)
             self.assertEqual([c.args[1:] for c in ctx.differential_universe_move.call_args_list],
                              [('s',500),('d',650),('w',700)])
+
+    def test_rest_alignment_is_bounded_and_missing_face_prevents_forward_input(self):
+        page=self.native('rest_forge_awake_exit');device=optional_device_prompt(page)
+        off=Token('差分宇宙随意门外观',.95,(.70,.23,.76,.30))
+        for lost in (False,True):
+            ctx=Mock(settings=Settings(),report=RunReport())
+            ctx.differential_universe_look.return_value=page
+            flow=DifferentialUniverseWorkflow(ctx,1);flow._observe=Mock(return_value='field_rest')
+            faces=[off,None] if lost else [off,off,off]
+            with patch('autohsr.du_navigation.random_gate',side_effect=faces), \
+                 self.assertRaisesRegex(AutomationError,'休整出口'):
+                flow._avoid_optional_device(page,'field_rest',device)
+            self.assertEqual(ctx.differential_universe_look.call_count,1 if lost else 2)
+            ctx.differential_universe_move.assert_not_called()
 
     def test_unused_forge_remains_required_in_forge_rooms_and_is_not_opened_in_rest(self):
         page=self.native('rest_forge_awake_exit');target=optional_device_prompt(page)
