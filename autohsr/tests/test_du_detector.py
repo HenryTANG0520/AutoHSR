@@ -10,6 +10,19 @@ from autohsr.models import Scene
 
 
 class DuDetectorTests(unittest.TestCase):
+    def test_night_exit_training_replay_retains_bearing_through_avatar_occlusion(self):
+        from autohsr.tests.test_du_team import fixture
+        from tools.evaluate_du_detector import overlap
+        import json
+        root=Path(__file__).parent/'fixtures/du_runtime'
+        for name in ('night_exit_reference','night_exit_occluded','night_exit_return_view'):
+            with self.subTest(name=name):
+                expected=json.loads((root/(name+'.json')).read_text('utf8'))['box']
+                found=detect(fixture(name))
+                self.assertEqual(len(found),1)
+                self.assertEqual(found[0].text,'Target')
+                self.assertGreaterEqual(overlap(found[0].box,expected),.5)
+
     def test_clipped_enemy_boxes_do_not_supply_bearings_or_reappear_in_exit_navigation(self):
         from autohsr.du_detector import detect_enemies
         from autohsr.du_navigation import navigation_targets

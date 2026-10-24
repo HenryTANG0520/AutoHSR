@@ -164,6 +164,14 @@ Ultralytics pretrained asset. It is distributed under AGPL-3.0 with its license,
 hash, evaluation limits and training provenance in `models/`. Training imagery
 remains local under ignored `runs/`; training images have identifiers masked.
 
+The 2026-10-24 gate fit retains the preceding split and negative examples and
+adds three reviewed night exits with avatar occlusion plus 36 brightness
+variants, all in training. The three masked `du_runtime/night_exit_*.png`
+fixtures retain source hashes, reviewed boxes, and non-identifier OCR. They
+are training replays, not held-out accuracy or independent-run evidence.
+The runtime threshold remains 0.55; metadata records the selected checkpoint
+and unchanged held-out CPU evaluation. The model remains AGPL-3.0.
+
 `du_interaction_f.png`, `du_card_crest.png` and `du_boss_head.png` are local
 2026-10-21 crops of the F interaction hint, world event-card ornament, and visible
 boss upper body. Their JSON sidecars identify source hashes and crop rectangles.

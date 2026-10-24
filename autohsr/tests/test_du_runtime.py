@@ -16,6 +16,79 @@ def t(text,x=.1,y=.05):
 
 
 class DuRuntimeTests(unittest.TestCase):
+    def exit_occlusion_flow(self):
+        import numpy as np
+        page=Scene([t('(5/13) 第二位面-战斗')],np.zeros((540,960,3),np.uint8))
+        hidden=Scene(page.tokens,page.image.copy())
+        done=Scene([t('选择下一站'),t('战斗')])
+        gate=Token('Target',.87,(.50,.28,.56,.445))
+        awake=Token('差分宇宙随意门外观',.93,gate.box)
+        ctx=Mock(settings=Settings(),report=RunReport())
+        ctx._du_motion_result={'reason':'duration'}
+        ctx.differential_universe_look.return_value=hidden
+        flow=DifferentialUniverseWorkflow(ctx,1);flow._field_cleared=True
+        flow._combat_chest=Mock(return_value=None)
+        flow._inactive=Mock(return_value=0);flow._check_deadline=Mock()
+        flow._observe=Mock(side_effect=lambda p,*a:'station_choice' if p is done else 'field_combat')
+        flow._wait_known=Mock(side_effect=lambda p,k,*a,**kw:(p,k))
+        return flow,ctx,page,hidden,done,gate,awake
+
+    def test_just_centred_awake_exit_can_bridge_two_short_detector_dropouts(self):
+        flow,ctx,page,hidden,done,gate,awake=self.exit_occlusion_flow()
+        ctx.differential_universe_motion.side_effect=[hidden,done]
+        with patch('autohsr.du_navigation.navigation_targets',side_effect=[[gate],[],[]]), \
+             patch('autohsr.du_navigation.random_gate',return_value=awake), \
+             patch('autohsr.du_navigation.interaction_hint',return_value=False):
+            self.assertEqual(flow._field_visual(page)[1],'station_choice')
+        self.assertEqual(ctx.differential_universe_motion.call_count,2)
+        for call in ctx.differential_universe_motion.call_args_list:
+            self.assertEqual(call.args[1:],('w',600));self.assertEqual(call.kwargs,{'profile':'occluded_card'})
+        ctx.differential_universe_move.assert_not_called()
+
+    def test_resumed_combat_checks_visible_awake_exit_before_any_enemy_search(self):
+        flow,ctx,page,hidden,done,gate,awake=self.exit_occlusion_flow()
+        flow._field_cleared=False;flow._resume_field_needs_target=True
+        flow._field_visual=Mock(return_value=(done,'station_choice'))
+        with patch('autohsr.du_navigation.random_gate',return_value=awake):
+            self.assertEqual(flow._field_combat(page),(done,'station_choice'))
+        self.assertTrue(flow._field_cleared)
+        flow._field_visual.assert_called_once_with(page)
+        ctx.differential_universe_motion.assert_not_called()
+
+    def test_exit_continuity_expires_and_requires_a_confirmed_awake_face(self):
+        for expired in (False,True):
+            with self.subTest(expired=expired):
+                flow,ctx,page,hidden,done,gate,awake=self.exit_occlusion_flow()
+                face=awake if expired else Token('差分宇宙睡眼门',.94,gate.box)
+                ctx.differential_universe_motion.return_value=done
+                with patch('autohsr.du_navigation.navigation_targets',side_effect=[[gate],[]]), \
+                     patch('autohsr.du_navigation.random_gate',return_value=face), \
+                     patch('autohsr.du_navigation.interaction_hint',return_value=False), \
+                     patch('autohsr.differential_universe.time.monotonic',side_effect=[0,0,13] if expired else [0]):
+                    self.assertEqual(flow._field_visual(page)[1],'station_choice')
+                ctx.differential_universe_motion.assert_called_once_with(hidden,'scan_right',8000,profile='seek_gate')
+
+    def test_exit_occlusion_budget_does_not_reset_when_target_stays_missing(self):
+        flow,ctx,page,hidden,done,gate,awake=self.exit_occlusion_flow()
+        ctx.differential_universe_motion.side_effect=[hidden,hidden,done]
+        with patch('autohsr.du_navigation.navigation_targets',side_effect=[[gate],[],[],[]]), \
+             patch('autohsr.du_navigation.random_gate',return_value=awake), \
+             patch('autohsr.du_navigation.interaction_hint',return_value=False):
+            self.assertEqual(flow._field_visual(page)[1],'station_choice')
+        calls=ctx.differential_universe_motion.call_args_list
+        self.assertEqual([c.args[1:3] for c in calls],[('w',600),('w',600),('scan_right',8000)])
+
+    def test_exit_occlusion_stops_immediately_on_live_barrier_or_stall(self):
+        for reason in ('background_stalled','forward_barrier'):
+            with self.subTest(reason=reason):
+                flow,ctx,page,hidden,done,gate,awake=self.exit_occlusion_flow()
+                ctx._du_motion_result={'reason':reason};ctx.differential_universe_motion.return_value=hidden
+                with patch('autohsr.du_navigation.navigation_targets',side_effect=[[gate],[]]), \
+                     patch('autohsr.du_navigation.random_gate',return_value=awake), \
+                     patch('autohsr.du_navigation.interaction_hint',return_value=False):
+                    with self.assertRaisesRegex(AutomationError,'边界或停滞'):flow._field_visual(page)
+                self.assertEqual(ctx.differential_universe_motion.call_count,1)
+
     @staticmethod
     def optional_device_fixture(name='optional_device_blocks_gate'):
         import cv2,json

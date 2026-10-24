@@ -2,22 +2,22 @@
   "classes": [
     "Target"
   ],
-  "sha256": "72052c39825ad5beb6743d400871e54593df3cad8b52d9b7f965b9e682aa6373",
-  "bytes": 10774817,
+  "sha256": "c8e1ae03e4d2de585ab851669a494def344d26231614dfd111cbfc801b4d5b3a",
+  "bytes": 10774814,
   "base_model": "Ultralytics YOLO11n",
   "base_source": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.pt",
   "license": "AGPL-3.0",
-  "date": "2026-10-23",
+  "date": "2026-10-24",
   "split_counts": {
-    "train": 367,
+    "train": 406,
     "val": 33,
     "test": 12
   },
   "validation_metrics": {
-    "metrics/precision(B)": 0.99724,
+    "metrics/precision(B)": 0.99709,
     "metrics/recall(B)": 1.0,
     "metrics/mAP50(B)": 0.995,
-    "metrics/mAP50-95(B)": 0.71948
+    "metrics/mAP50-95(B)": 0.72564
   },
   "onnx_cpu_evaluation": {
     "counts": {
@@ -35,7 +35,7 @@
       }
     },
     "threshold": 0.55,
-    "median_ms": 55.65504998958204
+    "median_ms": 50.5327999999281
   },
   "limitations": [
     "Small locally reviewed dataset; not a universal navigation guarantee.",
@@ -50,15 +50,15 @@
     "opset": 17,
     "runtime": "ONNX Runtime CPU"
   },
-  "train_images": 367,
-  "train_native_images": 235,
-  "train_synthetic_images": 132,
-  "epochs_completed": 8,
-  "best_epoch": 2,
-  "local_manifest_sha256": "ff3533ad5b1735889719da100f5d62ec485b6af0e40b1e5ea44bae58b9f76765",
-  "prior_model_sha256": "8f8e7198e80b4e27ca56be68b898a96a70320807b2858095eab0f52bfe0450ac",
-  "fine_tuned_from": "Prior local last checkpoint; three reviewed console-occluded doors plus 36 brightness variants, retaining old splits and brush negatives.",
-  "validation_limit": "Original validation/test groups unchanged. New console-occlusion views are training/calibration only; ten independent DU successes remain unproven.",
-  "selected_checkpoint": "last",
+  "train_images": 406,
+  "train_native_images": 238,
+  "train_synthetic_images": 168,
+  "epochs_completed": 12,
+  "best_epoch": 8,
+  "local_manifest_sha256": "da7b9079227aecc143bc92846d7bd017b573b85f28b3ced51a27434579feffb7",
+  "prior_model_sha256": "72052c39825ad5beb6743d400871e54593df3cad8b52d9b7f965b9e682aa6373",
+  "fine_tuned_from": "Prior local checkpoint; three reviewed night exits with avatar occlusion plus 36 brightness variants, retaining prior splits and negatives.",
+  "validation_limit": "Original validation/test groups unchanged. New night-exit views are training/calibration only. Six independent periodic wins are verified; the ten-win target remains incomplete.",
+  "selected_checkpoint": "best",
   "selected_epoch": 8
 }

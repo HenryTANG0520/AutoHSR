@@ -1222,11 +1222,16 @@ class DifferentialUniverseWorkflow:
         if chest is not None:
             return chest
         if scene.image is not None:
-            from .du_navigation import navigation_targets,verified_attack_reticle as attack_reticle
+            from .du_navigation import navigation_targets,random_gate,verified_attack_reticle as attack_reticle
             range_seen=False
             forward_ready=False
             resume_search=self._resume_field_needs_target and not fresh_entry and not self._field_cleared
             self._resume_field_needs_target=False
+            if resume_search:
+                face=random_gate(scene,fast=True)
+                if face is not None and face.text=='差分宇宙随意门外观':
+                    self._field_cleared=True
+                    return self._field_visual(scene)
             if resume_search and attack_reticle(scene) is None:
                 scene=self.ctx.differential_universe_motion(scene,'scan_right',8000,profile='seek_attack')
                 kind=self._observe(scene,'resumed_enemy_reacquired')
@@ -1341,6 +1346,8 @@ class DifferentialUniverseWorkflow:
         close_backoffs=side_routes=0
         side_route_forward=False
         aligned_enemy_steps=0
+        aligned_exit_steps=0
+        aligned_exit_until=0
         ring_waits=0
         element_checked=False
         last_range_bearing=None
@@ -1399,6 +1406,7 @@ class DifferentialUniverseWorkflow:
             goal=min(candidates,key=lambda t:abs(t.center[0]-.5),default=None)
             if goal is not None:
                 sweeps=0
+                aligned_exit_steps=0
             goal_height=goal.box[3]-goal.box[1] if goal is not None else 0
             heading_tolerance=.055 if goal is not None and goal.text=='Enemy' else (.025 if cleared or field_kind!='field_combat' or goal_height>.5 else .055)
             attack=self._field_attack_target(scene) if field_kind=="field_combat" and not cleared else None
@@ -1416,6 +1424,22 @@ class DifferentialUniverseWorkflow:
                 # for one left click. A switch/glow must not trigger camera
                 # searches that turn the character away from an in-range foe.
                 attack=(Token('差分宇宙直行接战',.99,(.48,.45,.52,.49)),'field_forward_attack')
+            if (goal is None and cleared and aligned_exit_steps>0
+                    and time.monotonic()<=aligned_exit_until):
+                # Reuse the bounded continuity already used by card rooms:
+                # a just-confirmed awake door can disappear behind the avatar
+                # when centred. Keep that heading for at most two short steps,
+                # with live HUD/F/barrier/stall checks, before searching again.
+                aligned_exit_steps-=1
+                scene=self.ctx.differential_universe_motion(scene,'w',600,profile='occluded_card')
+                result=getattr(self.ctx,'_du_motion_result',{})
+                if isinstance(result,dict) and result.get('reason') in ('background_stalled','forward_barrier'):
+                    raise AutomationError('已对正出口的短时接近遇到边界或停滞，停止并保留位置。')
+                kind=self._observe(scene,'visual_awake_exit_occlusion_approach')
+                scene,kind=self._wait_known(scene,kind,'visual_awake_exit_occlusion_approach')
+                if kind!=field_kind:
+                    return scene,kind
+                continue
             if goal is None and aligned_enemy_steps>0 and reticle is None and not attack_ready:
                 # Centering can hide the enemy or its pink-door anchor behind
                 # the avatar. Retain only that just-verified combat heading.
@@ -1584,6 +1608,11 @@ class DifferentialUniverseWorkflow:
                 label="visual_stationary_search"
             elif abs(goal.center[0]-.5)>heading_tolerance:
                 delta=max(-.12,min(.12,(goal.center[0]-.5)*.65))
+                if (cleared and goal.text=='Target' and abs(goal.center[0]-.5-1.6*delta)<.05):
+                    exit_face=random_gate(scene,fast=True)
+                    if exit_face is not None and exit_face.text=='差分宇宙随意门外观':
+                        aligned_exit_steps=2
+                        aligned_exit_until=time.monotonic()+12
                 if field_kind=='field_combat' and not cleared and abs(goal.center[0]-.5-1.6*delta)<.07:
                     aligned_enemy_steps=2
                 scene=self.ctx.differential_universe_look(scene,delta,0,220)
