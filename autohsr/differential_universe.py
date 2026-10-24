@@ -1276,7 +1276,12 @@ class DifferentialUniverseWorkflow:
         if chest is not None:
             return chest
         if scene.image is not None:
-            from .du_navigation import navigation_targets,random_gate,verified_attack_reticle as attack_reticle
+            from .du_navigation import navigation_targets,random_gate,verified_attack_reticle as attack_reticle,optional_device_prompt
+            if optional_device_prompt(scene,forge_console_used=self._forge_console_used) is not None:
+                # A visible machine can block a monster's attack ring. Clear
+                # that obstruction before entry probes or resumed searches.
+                self._resume_field_needs_target=False
+                return self._field_visual(scene)
             range_seen=False
             forward_ready=False
             resume_search=self._resume_field_needs_target and not fresh_entry and not self._field_cleared
@@ -2090,8 +2095,10 @@ class DifferentialUniverseWorkflow:
                     continue
                 if kind=='coin_counter':
                     scene=self.ctx.differential_universe_close_coin_counter(scene)
-                    scene=self.ctx.wait(lambda page:classify_page(page,self.ctx)=='field_wealth',
-                        timeout=15,description='关闭乐园币柜台返回财富区域')
+                    fields=('field_combat','field_anomaly','field_reward','field_event',
+                            'field_forge','field_shop','field_wealth','field_adventure')
+                    scene=self.ctx.wait(lambda page:classify_page(page,self.ctx) in fields,
+                        timeout=15,description='关闭乐园币柜台返回当前位面')
                     kind=self._observe(scene,'coin_counter_left')
                     continue
                 if kind == "curio_discard":

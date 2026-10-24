@@ -19,7 +19,7 @@ def optional_device_prompt(scene, *, forge_console_used=False):
             continue
         label=normalize(token.text)
         if (label=='混沌药箱' or (forge_console_used and label=='造物调试台') or
-                (wealth and label=='乐园币柜台') or
+                label=='乐园币柜台' or
                 (wealth and re.fullmatch(r'游玩[「『“"]([^」』”"]{1,32})[」』”"]',label))):
             prompts.append(token)
     return prompts[0] if len(prompts)==1 and interaction_hint(scene.image,threshold=.85) else None
