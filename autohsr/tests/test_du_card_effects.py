@@ -331,8 +331,30 @@ class StationCardEffectTests(unittest.TestCase):
                     self.assertEqual((effect.level_delta,effect.beacon_polarity),(delta,polarity))
                     self.assertEqual(effect.target_labels[0],'战斗')
         text='指定1个区域，使其等级+2，但为其附加1个随机负面信标'
-        for altered in (text+'并消耗60星琼',text.replace('附加1个','附加2个'),text.replace('信标','奇物')):
+        for altered in (text+'并消耗60星琼',text.replace('附加1个','附加0个'),text.replace('信标','奇物')):
             self.assertIsNone(station_card_effect(selector(altered)))
+
+    def test_beacon_quantity_is_data_independent_of_single_target_and_upgrade_bonus(self):
+        for count in (1,2,3,4,20):
+            for names in ('随机','随机正面','随机负面','【基石】','【奇物扑满】或【祝福扑满】'):
+                for prefix in ('为其附加','使其等级+3，但为其附加'):
+                    with self.subTest(count=count,names=names,prefix=prefix):
+                        page=selector(f'指定1个区域，{prefix}{count}个{names}信标')
+                        effect=station_card_effect(page)
+                        self.assertEqual((effect.count,effect.beacon_count),(1,count))
+                        self.assertEqual(effect.level_delta,3 if prefix.startswith('使其') else 0)
+        for quantity in ('0','-1','1.5'):
+            self.assertIsNone(station_card_effect(selector(f'指定1个区域，为其附加{quantity}个随机信标')))
+
+    def test_changed_beacon_quantity_after_selecting_card_stops_confirmation(self):
+        page=selector('指定1个区域，为其附加2个随机信标')
+        page.tokens.append(token('事件',.3,.5))
+        changed=selector('指定1个区域，为其附加3个随机信标')
+        flow=DifferentialUniverseWorkflow(Mock(settings=Settings(),report=RunReport()),1)
+        flow._click=Mock(return_value=(changed,'miracle_target'))
+        with self.assertRaisesRegex(AutomationError,'选中后指令改变'):
+            flow._apply_miracle_target(page)
+        self.assertEqual(flow._click.call_count,1)
 
     def test_beacon_polarity_change_after_selection_stops_confirmation(self):
         text='指定1个区域，使其等级+2，但为其附加1个随机负面信标'
@@ -470,6 +492,22 @@ class StationCardEffectTests(unittest.TestCase):
 
     def test_beacon_quantity_is_distinct_from_card_level_increment(self):
         for count in (2, 3):
-            self.assertIsNone(station_card_effect(selector(f'指定1个【铸造】区域，为其附加{count}个【基石】信标')))
+            effect=station_card_effect(selector(f'指定1个【铸造】区域，为其附加{count}个【基石】信标'))
+            self.assertEqual((effect.count,effect.beacon_count,effect.level_delta),(1,count,0))
+
+    def test_native_two_random_beacons_selects_and_confirms_one_card(self):
+        from autohsr.tests.test_du_runtime import DuRuntimeTests
+        page=DuRuntimeTests.optional_device_fixture('two_random_beacons')
+        effect=station_card_effect(page)
+        self.assertEqual((effect.kind,effect.count,effect.beacon_count),('beacon',1,2))
+        self.assertEqual(classify_page(page),'miracle_target')
+        card=page.find('事件',(.03,.24,.64,.78),exact=True)
+        guard_differential_universe_click(page,card,intent='miracle_target')
+        done=Scene([token('信标已部署',.5,.15),token('点击空白处关闭',.5,.9)])
+        flow=DifferentialUniverseWorkflow(Mock(settings=Settings(),report=RunReport()),1)
+        flow._click=Mock(side_effect=[(page,'miracle_target'),(done,'tutorial_overlay')])
+        flow._snapshot=Mock(return_value=(done,'tutorial_overlay'))
+        self.assertEqual(flow._apply_miracle_target(page),(done,'tutorial_overlay'))
+        self.assertEqual(flow._click.call_count,2)
         effect=station_card_effect(selector('指定一个区域，为其附加【基石】信标'))
         self.assertEqual((effect.kind, effect.level_delta, effect.target_labels[0]), ('beacon', 0, '战斗'))

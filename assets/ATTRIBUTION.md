@@ -605,3 +605,9 @@ The 1920-pixel copies mask bottom identifiers; sidecars retain source hashes
 and non-identifier OCR. They verify an observed reward-count bound and
 receipt-content changes, not the number of independently earned rewards.
 Game artwork remains the property of HoYoverse.
+
+`du_runtime/two_random_beacons` is a locally captured 4.6 station-card
+instruction, resized to 1920 pixels with the bottom identifier strip masked.
+Its sidecar retains the source hash and non-identifier OCR. It verifies one
+target card with two automatically attached beacons, not two selections.
+Game artwork remains the property of HoYoverse.

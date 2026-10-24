@@ -1119,7 +1119,7 @@ class DuRuntimeTests(unittest.TestCase):
         guard_differential_universe_click(page,page.find('确定',exact=True),intent='miracle_target_confirm')
         with self.assertRaises(AutomationError):
             guard_differential_universe_click(page,t('精英',.15,.38),intent='miracle_target')
-        for old,new in (('指定1个','指定2个'),('附加1个','附加2个'),('信标','奇物'),
+        for old,new in (('指定1个','指定2个'),('附加1个','附加0个'),('信标','奇物'),
                         ('指定1个','支付60星琼指定1个')):
             altered=Scene([Token(v.text.replace(old,new),v.score,v.box) for v in page.tokens])
             self.assertEqual(du_miracle_target_labels(altered),())

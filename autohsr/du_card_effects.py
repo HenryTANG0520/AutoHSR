@@ -24,6 +24,7 @@ class CardEffect:
     level_delta: int = 0
     output_regions: tuple[str, ...] = ()
     beacons: tuple[str, ...] = ()
+    beacon_count: int = 0
     removed_region: str = ''
     beacon_polarity: str = ''
     reward_kind: str = ''
@@ -59,9 +60,8 @@ def _regions(value: str) -> tuple[str, ...]:
 
 
 def _beacon_details(quantity: str | None, names: str) -> dict | None:
-    if _number(quantity or '1') != 1:
-        return None
     return {'beacons': _regions(names) or ('随机',),
+            'beacon_count': _number(quantity or '1'),
             'beacon_polarity': names[2:] if names.startswith('随机') else ''}
 
 
@@ -144,7 +144,7 @@ def _parse_instruction(text: str) -> CardEffect | None:
             return CardEffect('beacon', count, sources, removed_region=beacon[3] or '', **details)
     beacon_after = re.fullmatch(r'为其附加信标(【[\u3400-\u9fff]{1,12}】)',body)
     if beacon_after:
-        return CardEffect('beacon', count, sources, beacons=_regions(beacon_after[1]))
+        return CardEffect('beacon', count, sources, beacons=_regions(beacon_after[1]),beacon_count=1)
     blank = re.fullmatch(r'使其变为【空白】区域然后获得(.+)',body)
     if not sources and blank:
         reward=blank[1]
