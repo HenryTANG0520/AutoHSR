@@ -155,8 +155,9 @@ class Vision:
         import re
         if scene.image is None or not scene.has('选择祝福',(0,0,.32,.13),exact=True):
             return
+        from .du_strategy import blessing_columns
         h,w=scene.image.shape[:2]
-        for left,right in ((.14,.36),(.39,.61),(.64,.87)):
+        for left,right in blessing_columns(scene):
             roi=(left,.445,right,.495)
             if any(t.within(roi) and re.search(r'[\u3400-\u9fff]',t.text) for t in scene.tokens):
                 continue

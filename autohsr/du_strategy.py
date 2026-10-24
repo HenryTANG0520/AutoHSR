@@ -5,16 +5,52 @@ from .config import RESOURCE_ROOT
 from .models import normalize
 
 
+def blessing_columns(scene):
+    """Infer the centred one/two/three-card layout from visible card frames.
+
+    Missing OCR alone must not turn a sliding three-card page into two choices.
+    Fewer cards require matching frame geometry, with no title outside it.
+    """
+    default=((.14,.36),(.39,.61),(.64,.87))
+    if scene.image is None:
+        return default
+    import cv2
+    gray=cv2.cvtColor(cv2.resize(scene.image,(960,540)),cv2.COLOR_BGR2GRAY)
+    contours,_=cv2.findContours(cv2.Canny(gray,35,100),cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+    centers=[]
+    for contour in contours:
+        x,y,w,h=cv2.boundingRect(contour)
+        if not (150<w<250 and 260<h<350 and 92<y<157):
+            continue
+        center=(x+w/2)/960
+        if not any(abs(center-old)<.025 for old in centers):
+            centers.append(center)
+    for count in (1,2):
+        expected=[.5+(i-(count-1)/2)*.25 for i in range(count)]
+        if (len(centers)!=count or not all(any(abs(x-c)<.025 for c in centers) for x in expected)):
+            continue
+        columns=tuple((x-.11,x+.11) for x in expected)
+        titles=[t for t in scene.tokens if t.within((.10,.445,.90,.495))
+                and re.search(r'[\u3400-\u9fff]',t.text)]
+        if all(any(t.within((a,.445,b,.495)) for a,b in columns) for t in titles):
+            return columns
+    return default
+
+
 def same_blessing_titles(before,after):
-    """Corroborate short OCR name variations with all three visible glyph rows."""
+    """Corroborate short OCR variations with every visible card's glyph row."""
     if before.image is None or after.image is None:
         return False
     import cv2
     import numpy as np
     if before.image.shape!=after.image.shape:
         return False
+    columns=blessing_columns(before)
+    if columns!=blessing_columns(after):
+        return False
     h,w=before.image.shape[:2]
-    for x in (.25,.5,.755):
+    for left,right in columns:
+        x=(left+right)/2
         edges=[]
         for page in (before,after):
             patch=page.image[round(.45*h):round(.495*h),round((x-.095)*w):round((x+.095)*w)]

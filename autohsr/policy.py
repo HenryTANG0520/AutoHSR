@@ -352,9 +352,9 @@ def guard_differential_universe_click(scene: Scene, target: Token | tuple[float,
             raise AutomationError('祝福舍弃确认框未核实，未确认。')
         return
     if intent in ('blessing_discard_select','blessing_discard_confirm'):
-        from .du_strategy import rarity
+        from .du_strategy import rarity,blessing_columns
         valid=(scene.has('丢弃祝福',(0,0,.32,.13),exact=True) and scene.has('请舍弃祝福')
-               and all(rarity(scene,x)==1 for x in (.25,.5,.75)))
+               and all(rarity(scene,(a+b)/2)==1 for a,b in blessing_columns(scene)))
         if intent=='blessing_discard_select':
             valid=valid and text=='祝福候选卡片' and target.within((.14,.28,.87,.36))
         else:

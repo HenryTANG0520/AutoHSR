@@ -816,15 +816,15 @@ class DifferentialUniverseWorkflow:
     def _select_blessing(self, scene, *, discard=False):
         """Compare reversible card previews, keeping the pointer off their titles."""
         from difflib import SequenceMatcher
-        from .du_strategy import blessing_score,blessing_discard_score,same_blessing_titles
+        from .du_strategy import blessing_score,blessing_discard_score,same_blessing_titles,blessing_columns
         expected='blessing_discard' if discard else 'blessing_choice'
         intent='blessing_discard_select' if discard else 'choice'
-        columns=((.14,.36),(.39,.61),(.64,.87))
         def title(page,left,right):
             names=[t for t in page.tokens if t.within((left,.35,right,.54))
                    and re.search(r"[\u3400-\u9fff]",t.text)]
             return min(names,key=lambda t:t.center[1]) if names else None
         scene=self._settle_blessing_titles(scene,kind=expected)
+        columns=blessing_columns(scene)
         identity=self._choice_identity(scene,expected)
         ranked=[]
         selected=None
@@ -841,7 +841,7 @@ class DifferentialUniverseWorkflow:
             fresh_identity=self._choice_identity(scene,kind)
             equivalent=(len(identity)==len(fresh_identity) and all(
                 SequenceMatcher(None,old,new).ratio()>=.66 for old,new in zip(identity,fresh_identity)))
-            equivalent=equivalent or (len(identity)==len(fresh_identity)==3
+            equivalent=equivalent or (len(identity)==len(fresh_identity)==len(columns)
                                       and same_blessing_titles(before,scene))
             if kind!=expected or not equivalent:
                 raise AutomationError("祝福预览未保持同一组选项，未确认奖励。")
@@ -863,7 +863,7 @@ class DifferentialUniverseWorkflow:
             fresh_identity=self._choice_identity(scene,kind)
             equivalent=(len(identity)==len(fresh_identity) and all(
                 SequenceMatcher(None,old,new).ratio()>=.66 for old,new in zip(identity,fresh_identity)))
-            equivalent=equivalent or (len(identity)==len(fresh_identity)==3
+            equivalent=equivalent or (len(identity)==len(fresh_identity)==len(columns)
                                       and same_blessing_titles(before,scene))
             if kind!=expected or not equivalent:
                 raise AutomationError("最佳祝福选中后页面改变，未重复确认。")
@@ -874,27 +874,34 @@ class DifferentialUniverseWorkflow:
         return scene,expected
 
     def _settle_blessing_titles(self, scene, *, kind='blessing_choice'):
-        # The heading appears before the three cards finish sliding in. Even
-        # three OCR fragments can look like valid titles during that animation.
+        # The heading appears before cards finish sliding in. Require stable
+        # titles in every geometrically verified slot, regardless of count.
+        from .du_strategy import blessing_columns
         expected=kind
         previous=self._choice_identity(scene,expected)
+        previous_columns=blessing_columns(scene)
         started,inactive_before=time.monotonic(),self._inactive()
         while True:
-            self._check_deadline(started,inactive_before,15,"祝福三列标题加载")
+            self._check_deadline(started,inactive_before,15,"祝福候选标题加载")
             self.ctx.sleep(.5)
             scene,kind=self._snapshot("blessing_titles_settled")
             if kind!=expected:
                 raise AutomationError("祝福卡牌加载时页面改变，未选择奖励。")
             current=self._choice_identity(scene,kind)
-            if len(current)==3 and current==previous:
+            columns=blessing_columns(scene)
+            if len(current)==len(columns) and current==previous and columns==previous_columns:
                 return scene
             previous=current
+            previous_columns=columns
 
     @staticmethod
     def _choice_identity(scene: Scene, kind: str) -> tuple[str, ...]:
         if kind in ("blessing_choice","blessing_discard","equation_choice","curio_choice","miracle_choice"):
             names=[]
-            for left,right in ((.14,.36),(.39,.61),(.64,.87)):
+            from .du_strategy import blessing_columns
+            columns=(blessing_columns(scene) if kind.startswith('blessing_') else
+                     ((.14,.36),(.39,.61),(.64,.87)))
+            for left,right in columns:
                 tokens=[t for t in scene.tokens if t.within((left,.35,right,.54))
                         and re.search(r"[\u3400-\u9fff]",t.text)]
                 if tokens:
