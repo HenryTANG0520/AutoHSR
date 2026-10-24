@@ -543,6 +543,12 @@ and `enemy_corner_negative.png` are masked training-frame replays with source
 hashes and reviewed boxes in sidecars, not independent accuracy samples.
 Game artwork remains the property of HoYoverse.
 
+`du_runtime/event_f_blue_background` is a locally observed field interaction
+with a blue event card. Its 1920-pixel copy masks the identifier strip and
+retains source hashes and non-identifier OCR. It verifies the circular F key
+independently of the scenery outside the button. Game artwork remains the
+property of HoYoverse.
+
 `du_runtime/coin_counter_prompt` and `coin_counter_menu` are locally observed
 4.6 wealth-room frames. The menu was opened manually for inspection without
 executing a trade. The 1920-pixel copies mask bottom identifiers; sidecars

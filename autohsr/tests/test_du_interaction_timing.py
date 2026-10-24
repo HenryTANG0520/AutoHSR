@@ -15,6 +15,47 @@ def field(caption='事件'):
 
 
 class DuInteractionTimingTests(unittest.TestCase):
+    @staticmethod
+    def native_prompt():
+        import cv2,json
+        from pathlib import Path
+        path=Path(__file__).parent/'fixtures/du_runtime/event_f_blue_background'
+        data=json.loads(path.with_suffix('.json').read_text('utf8'))
+        return Scene([Token(v['text'],v['score'],tuple(v['box'])) for v in data['tokens']],
+                     cv2.imread(str(path.with_suffix('.png'))))
+
+    def test_native_blue_card_f_is_recognized_at_supported_resolutions(self):
+        import cv2
+        from autohsr.du_navigation import interaction_hint
+        page=self.native_prompt()
+        for width in (960,1280,1920,3840):
+            with self.subTest(width=width):
+                image=cv2.resize(page.image,(width,round(page.image.shape[0]*width/page.image.shape[1])))
+                self.assertTrue(interaction_hint(image))
+        self.assertEqual(DifferentialUniverseWorkflow._field_interaction_target(page).text,'事件')
+
+    def test_button_background_changes_do_not_change_f_identity(self):
+        from autohsr.du_navigation import interaction_hint
+        page=self.native_prompt()
+        yy,xx=np.ogrid[:page.image.shape[0],:page.image.shape[1]]
+        square=(abs(xx-1096)<=21)&(abs(yy-614)<=21)
+        outside=square&((xx-1096)**2+(yy-614)**2>17**2)
+        for bgr in ((30,30,180),(220,170,40),(0,0,0)):
+            image=page.image.copy();image[outside]=bgr
+            self.assertTrue(interaction_hint(image))
+
+    def test_missing_button_or_wrong_key_color_does_not_authorize_f(self):
+        import cv2
+        from autohsr.du_navigation import interaction_hint
+        page=self.native_prompt()
+        missing=page.image.copy();missing[590:640,1070:1124]=0
+        self.assertFalse(interaction_hint(missing))
+        wrong=page.image.copy()
+        region=wrong[590:640,1070:1124]
+        hsv=cv2.cvtColor(region,cv2.COLOR_BGR2HSV)
+        region[(hsv[:,:,1]>60)&(hsv[:,:,2]>110)]=(230,230,230)
+        self.assertFalse(interaction_hint(wrong))
+
     def flow(self):
         ctx=Mock(settings=Settings(),report=RunReport())
         flow=DifferentialUniverseWorkflow(ctx,1)

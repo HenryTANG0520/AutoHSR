@@ -411,13 +411,27 @@ def _interaction_hint_template():
 def interaction_hint(image,*,threshold=.90):
     """A cheap stop signal; the caller must subsequently OCR the interaction."""
     import cv2
+    import numpy as np
     h,w=image.shape[:2]
     sample=cv2.resize(image,(960,round(h*960/w)))
-    patch=cv2.cvtColor(sample[round(.45*sample.shape[0]):round(.66*sample.shape[0]),
-                                     round(.52*960):round(.62*960)],cv2.COLOR_BGR2GRAY)
+    color=sample[round(.45*sample.shape[0]):round(.66*sample.shape[0]),
+                 round(.52*960):round(.62*960)]
+    patch=cv2.cvtColor(color,cv2.COLOR_BGR2GRAY)
     template=cv2.resize(_interaction_hint_template(),None,fx=.5,fy=.5)
-    _,score,_,_=cv2.minMaxLoc(cv2.matchTemplate(patch,template,cv2.TM_CCOEFF_NORMED))
-    return score>=threshold
+    # The square template includes pink scenery outside the circular key.
+    # Mask that background so blue cards or animation cannot lower its score.
+    mask=np.zeros(template.shape,np.uint8)
+    center=(template.shape[1]//2,template.shape[0]//2)
+    cv2.circle(mask,center,min(template.shape)//2-2,255,-1)
+    scores=cv2.matchTemplate(patch,template,cv2.TM_CCOEFF_NORMED,mask=mask)
+    scores=np.nan_to_num(scores,nan=-1,posinf=-1,neginf=-1)
+    _,score,_,(x,y)=cv2.minMaxLoc(scores)
+    if score<threshold:
+        return False
+    hsv=cv2.cvtColor(color[y:y+template.shape[0],x:x+template.shape[1]],cv2.COLOR_BGR2HSV)
+    disc=mask>0
+    gold=(hsv[:,:,0]>=12)&(hsv[:,:,0]<=45)&(hsv[:,:,1]>=60)&(hsv[:,:,2]>=110)
+    return bool(gold[disc].mean()>=.07 and (hsv[:,:,2][disc]<100).mean()>=.40)
 
 
 def _pink_gate(image):
