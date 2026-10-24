@@ -1470,15 +1470,34 @@ class DuRuntimeTests(unittest.TestCase):
             enemies=([Token('Enemy',.9,(.70,.3,.80,.6))] if current is found else
                      [Token('Enemy',.9,(.46,.3,.54,.6))] if current is centered or current is near else [])
             return [gate]+enemies
-        ring=Token('差分宇宙已锁定敌方目标',.9,(.48,.4,.52,.46))
         with patch('autohsr.du_navigation.navigation_targets',side_effect=targets), \
              patch('autohsr.du_navigation.random_gate',return_value=None), \
-             patch('autohsr.du_navigation.verified_attack_reticle',side_effect=lambda current:ring if current is near else None):
+             patch('autohsr.du_navigation.verified_attack_reticle',return_value=None):
             self.assertEqual(flow._field_visual(page,forward_ready=True),(battle,'battle'))
         self.assertEqual([(c.args[1],c.kwargs['profile']) for c in ctx.differential_universe_motion.call_args_list],
                          [('scan_right','seek_attack'),('w','engage')])
         self.assertEqual(ctx.differential_universe_attack.call_count,2)
         self.assertIs(ctx.differential_universe_attack.call_args.args[0],near)
+        ctx.differential_universe_move.assert_not_called()
+
+    def test_stationary_attack_search_keeps_its_range_result_when_next_frame_loses_the_ring(self):
+        import numpy as np
+        page=Scene([t('(7/13) 第二位面-战斗')],np.zeros((540,960,3),np.uint8))
+        near=Scene(page.tokens,page.image);battle=Scene([t('战斗设置')])
+        ctx=Mock(settings=Settings(),report=RunReport())
+        ctx._du_motion_result={'reason':'attack_reticle'}
+        ctx.differential_universe_motion.return_value=near
+        ctx.differential_universe_attack.return_value=battle
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._field_attack_target=Mock(return_value=None)
+        flow._choose_attack_character=Mock(return_value=(near,'field_combat'))
+        flow._observe=Mock(side_effect=lambda current,*a:'battle' if current is battle else 'field_combat')
+        with patch('autohsr.du_navigation.navigation_targets',return_value=[]), \
+             patch('autohsr.du_navigation.random_gate',return_value=None), \
+             patch('autohsr.du_navigation.verified_attack_reticle',return_value=None):
+            self.assertEqual(flow._field_visual(page,prefer_enemy=True),(battle,'battle'))
+        ctx.differential_universe_motion.assert_called_once_with(page,'scan_right',8000,profile='seek_attack')
+        ctx.differential_universe_attack.assert_called_once()
         ctx.differential_universe_move.assert_not_called()
 
     def test_resumed_uncleared_field_searches_for_enemy_before_any_translation(self):

@@ -1554,6 +1554,7 @@ class DifferentialUniverseWorkflow:
                     result=getattr(self.ctx,"_du_motion_result",{})
                     if label=="visual_enemy_range_approach" and isinstance(result,dict):
                         forward_ready=result.get('reason') in ('duration','attack_reticle')
+                        range_seen=range_seen or result.get('reason')=='attack_reticle'
                     if label=="visual_enemy_range_approach" and isinstance(result,dict) and result.get("reason")=="background_stalled":
                         if recoveries>=2:
                             raise AutomationError("接近敌人时两次脱困无效，已停止顶墙。")
@@ -1712,6 +1713,7 @@ class DifferentialUniverseWorkflow:
                     result=getattr(self.ctx,"_du_motion_result",{})
                     if field_kind=='field_combat' and not cleared and isinstance(result,dict):
                         forward_ready=result.get('reason') in ('duration','attack_reticle')
+                        range_seen=range_seen or result.get('reason')=='attack_reticle'
                     if isinstance(result,dict) and result.get("reason")=="background_stalled":
                         if recoveries>=2:
                             raise AutomationError("两次脱困后背景仍无位移，停止顶墙并保留位置。")
@@ -1722,6 +1724,9 @@ class DifferentialUniverseWorkflow:
             scene,kind=self._wait_known(scene,kind,label)
             if kind!=field_kind:
                 return scene,kind
+            if label=='visual_stationary_search' and field_kind=='field_combat' and not cleared:
+                result=getattr(self.ctx,'_du_motion_result',{})
+                range_seen=range_seen or (isinstance(result,dict) and result.get('reason')=='attack_reticle')
         raise AutomationError("视觉导航达到步骤上限，停止并保留进度。")
 
     def _choose_attack_character(self,scene):
