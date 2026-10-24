@@ -342,6 +342,21 @@ class GameWindow:
             if user32.SendInput(1, C.byref(up), C.sizeof(INPUT)) != 1:
                 raise AutomationError("差分宇宙移动键释放失败；请检查游戏窗口输入状态。")
 
+    def field_interact(self, expected: Geometry, *, checkpoint=lambda: None):
+        """Send one settled field interaction, releasing F even on interruption."""
+        checkpoint()
+        scan=user32.MapVirtualKeyW(0x46,0)
+        down=INPUT(type=1,ki=KEYBDINPUT(0,scan,0x8,0,0))
+        up=INPUT(type=1,ki=KEYBDINPUT(0,scan,0xA,0,0))
+        try:
+            self.send([down],expected)
+            for _ in range(9):
+                checkpoint()
+                time.sleep(.02)
+        finally:
+            if user32.SendInput(1,C.byref(up),C.sizeof(INPUT))!=1:
+                raise AutomationError("差分宇宙交互键释放失败。")
+
     def field_attack(self, expected: Geometry, *, checkpoint=lambda: None):
         """Attack without pointer motion: moving the cursor rotates the field camera."""
         checkpoint()

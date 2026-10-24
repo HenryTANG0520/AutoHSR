@@ -523,7 +523,7 @@ class DuRuntimeTests(unittest.TestCase):
         import numpy as np
         image=np.zeros((540,960,3),np.uint8)
         field=Scene([t('(5/13) 第二位面-事件')],image)
-        reached=Scene(field.tokens+[t('调查',.6,.6)],image)
+        reached=Scene(field.tokens+[t('调查',.6,.6)],image.copy())
         event=Scene([t('事件')])
         portal=Scene(field.tokens+[t('随意门',.5,.55)],image)
         done=Scene([t('选择下一站')])
@@ -536,7 +536,9 @@ class DuRuntimeTests(unittest.TestCase):
         flow=DifferentialUniverseWorkflow(ctx,1)
         flow._field_interaction_target=Mock(side_effect=lambda p: reached.tokens[-1] if p is reached else None)
         flow._observe=Mock(side_effect=lambda p,*a: 'event' if p is event else 'station_choice' if p is done else 'field_event')
+        flow._snapshot=Mock(return_value=(reached,'field_event'))
         with patch('autohsr.du_navigation.random_gate',return_value=sleeping), \
+             patch('autohsr.du_navigation.interaction_hint',side_effect=lambda img,**kw:img is reached.image), \
              patch('autohsr.du_navigation.event_targets') as targets:
             for remaining in (3,2,1):
                 targets.return_value=[Token('Card',.95-i*.01,(.45+i*.1,.2,.55+i*.1,.6)) for i in range(remaining)]
@@ -810,6 +812,7 @@ class DuRuntimeTests(unittest.TestCase):
         flow=DifferentialUniverseWorkflow(ctx,1)
         flow._observe=Mock(return_value='tutorial_overlay')
         flow._wait_known=Mock(side_effect=lambda page,kind,label,**kw:(page,kind))
+        flow._snapshot=Mock(return_value=(page,'field_reward'))
         self.assertEqual(flow._field_anomaly_visual(page,field_kind='field_reward'),(reward,'tutorial_overlay'))
         ctx.differential_universe_interact.assert_called_once_with(page,target)
         ctx.differential_universe_motion.assert_not_called()
@@ -1046,7 +1049,8 @@ class DuRuntimeTests(unittest.TestCase):
         ctx.differential_universe_interact.return_value=event
         flow=DifferentialUniverseWorkflow(ctx,1)
         flow._observe=Mock(return_value='event')
-        with self.assertRaises(Stopped):
+        flow._snapshot=Mock(return_value=(field,'field_forge'))
+        with patch('autohsr.du_navigation.interaction_hint',return_value=True), self.assertRaises(Stopped):
             flow._progress_run(field,'field_forge')
         ctx.differential_universe_interact.assert_called_once_with(field,field.tokens[-1])
         ctx.differential_universe_enter_random_gate.assert_not_called()
@@ -1255,16 +1259,18 @@ class DuRuntimeTests(unittest.TestCase):
         header=t('(6/13) 第二位面-异常')
         image=np.zeros((540,960,3),np.uint8)
         initial=Scene([header,t('事件',.60,.55)],image)
-        stopped=Scene([header],image)
+        stopped=Scene([header],image.copy())
         fresh=Scene([header,t('事件',.61,.54)],image)
         event=Scene([t('差分宇宙'),t('事件')])
         ctx=Mock(settings=Settings(),report=RunReport())
         ctx.differential_universe_interact.side_effect=[stopped,event]
         ctx.differential_universe_move.return_value=fresh
         flow=DifferentialUniverseWorkflow(ctx,1)
-        flow._snapshot=Mock(return_value=(stopped,'field_anomaly'))
+        flow._snapshot=Mock(side_effect=[(initial,'field_anomaly')]+[(stopped,'field_anomaly')]*4+
+                            [(fresh,'field_anomaly')])
         flow._observe=Mock(side_effect=lambda page,label:'event' if page is event else 'field_anomaly')
-        with patch('autohsr.du_navigation.event_targets',return_value=[]):
+        with patch('autohsr.du_navigation.event_targets',return_value=[]), \
+             patch('autohsr.du_navigation.interaction_hint',side_effect=lambda img,**kw:img is not stopped.image):
             self.assertEqual(flow._field_anomaly_visual(initial),(event,'event'))
         self.assertEqual([c.args[0] for c in ctx.differential_universe_interact.call_args_list],[initial,fresh])
         ctx.differential_universe_move.assert_called_once_with(stopped,'s',650)
@@ -1278,7 +1284,8 @@ class DuRuntimeTests(unittest.TestCase):
         flow=DifferentialUniverseWorkflow(ctx,1)
         flow._snapshot=Mock(return_value=(page,'field_anomaly'))
         flow._observe=Mock(return_value='field_anomaly')
-        with self.assertRaisesRegex(AutomationError,'三次实时交互提示'):
+        with patch('autohsr.du_navigation.interaction_hint',return_value=True), \
+             self.assertRaisesRegex(AutomationError,'三次实时交互提示'):
             flow._field_anomaly_visual(page)
         self.assertEqual(ctx.differential_universe_interact.call_count,3)
         ctx.differential_universe_move.assert_not_called()

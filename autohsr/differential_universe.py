@@ -1870,6 +1870,26 @@ class DifferentialUniverseWorkflow:
                 prompt=None
             portal=self._find(scene,("随意门",),(.25,.30,.78,.75))
             if prompt is not None or portal is not None:
+                if prompt is not None and scene.image is not None:
+                    # A moving approach can expose F before the avatar has
+                    # stopped. Recheck the same live caption after releasing
+                    # movement, without spending an input attempt on a hint
+                    # that disappeared or changed while settling.
+                    previous=prompt
+                    self.ctx.sleep(.25)
+                    scene,kind=self._snapshot('anomaly_interaction_ready')
+                    scene,kind=self._wait_known(scene,kind,'anomaly_interaction_ready')
+                    if kind!=field_kind:
+                        return scene,kind
+                    prompt=self._field_interaction_target(scene)
+                    if (prompt is None or normalize(prompt.text)!=normalize(previous.text)
+                            or max(abs(a-b) for a,b in zip(prompt.center,previous.center))>.06
+                            or not interaction_hint(scene.image,threshold=.85)):
+                        unread_interaction_checks+=1
+                        if unread_interaction_checks>=3:
+                            raise AutomationError('交互提示未稳定，停止并保留当前位置，未重放旧 F。')
+                        continue
+                    unread_interaction_checks=0
                 if interactions>=3:
                     raise AutomationError('三次实时交互提示操作后仍未离开场景，停止并保留位置。')
                 interactions+=1
@@ -1877,7 +1897,7 @@ class DifferentialUniverseWorkflow:
                        else self.ctx.differential_universe_enter_random_gate(scene,portal))
                 kind=self._observe(scene,"anomaly_visual_interaction")
                 scene,kind=self._wait_known(scene,kind,"anomaly_visual_interaction")
-                for _ in range(2):
+                for _ in range(4):
                     if kind!=field_kind:
                         return scene,kind
                     self.ctx.sleep(.35)

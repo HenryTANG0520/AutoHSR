@@ -454,7 +454,8 @@ class Context:
     def differential_universe_interact(self, scene: Scene, target: Token):
         from .policy import guard_differential_universe_field_interact
         guard_differential_universe_field_interact(scene, target)
-        return self._du_field_input(scene, "anomaly_interact_f", lambda: self.window.key("f"))
+        return self._du_field_input(scene,"anomaly_interact_f",
+            lambda:self.window.field_interact(scene.geometry,checkpoint=self._du_held_checkpoint(scene)))
 
     def wait(self, predicate, timeout=30, description="界面") -> Scene:
         elapsed = 0.0
