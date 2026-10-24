@@ -190,5 +190,13 @@
     "sha256": "c7dfc3099be983dfc31ffc4da5c3ca3b34af6fa14cc0f95fbb47e904fbe77d13",
     "masked_identifiers": true,
     "description": "Real attack ring at x0.93 near party sidebar, after a genuine range lock."
+  },
+  {
+    "file": "red_tinted_attack_circle.png",
+    "present": true,
+    "source_sha256": "69ac31330b96c8ac595e12e17a1a82c3f3d9e43631938e252e6ea9c0b1b55125",
+    "sha256": "4cfba0d2e0076cac7b6c740737cfd733a250a55f5d19b43539c1725e6711ae51",
+    "masked_identifiers": true,
+    "description": "Saturated red attack circle on the right enemy, without a white core."
   }
 ]

@@ -589,14 +589,18 @@ def attack_reticle(scene):
         # and a distinct bright core; hair, trim and shop digits lack that mix.
         filled=glow>.55 and hot>.01
         pulsing=glow>.25 and hot>.04 and best>.60
+        # A saturated red phase has no nearly-white core. Only accept it on
+        # the stronger grayscale edge pass, with a denser warm arc and a
+        # stricter outer UI-shape match than the ordinary glowing phases.
+        red_tinted=(not weak_edge and not red_edge and hot<=.01 and glow>.60 and best>.70)
         if weak_edge and not (best>.65 and glow>.65 and hot>.10):
             continue
         # Warning artwork can put white lettering inside a red circle. The
         # real range marker has a small bright core, not a broad white centre.
         if red_edge and (best<.50 or not filled or hot>=.20):
             continue
-        if (best>=.42 and yellow<.35 and dark<.65 and (filled or pulsing)
-                and _range_ring_shape(excess,x,y,r)>=.58):
+        if (best>=.42 and yellow<.35 and dark<.65 and (filled or pulsing or red_tinted)
+                and _range_ring_shape(excess,x,y,r)>=(.65 if red_tinted else .58)):
             return Token("差分宇宙已锁定敌方目标",best,
                          tuple(float(v) for v in ((x-r)/w,(y-r)/h,(x+r)/w,(y+r)/h)))
     # Some monsters show a dim hollow marker rather than a bright filled

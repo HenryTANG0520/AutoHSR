@@ -549,6 +549,11 @@ retains source hashes and non-identifier OCR. It verifies the circular F key
 independently of the scenery outside the button. Game artwork remains the
 property of HoYoverse.
 
+`du_runtime/red_tinted_attack_circle` is a locally observed attack-range UI
+phase with a red centre and no white core. The 1920-pixel copy masks bottom
+identifiers; its sidecar retains source hashes and non-identifier OCR. Game
+artwork remains the property of HoYoverse.
+
 `du_runtime/coin_counter_prompt` and `coin_counter_menu` are locally observed
 4.6 wealth-room frames. The menu was opened manually for inspection without
 executing a trade. The 1920-pixel copies mask bottom identifiers; sidecars
