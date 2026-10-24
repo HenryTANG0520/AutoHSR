@@ -543,6 +543,13 @@ and `enemy_corner_negative.png` are masked training-frame replays with source
 hashes and reviewed boxes in sidecars, not independent accuracy samples.
 Game artwork remains the property of HoYoverse.
 
+`du_runtime/coin_counter_prompt` and `coin_counter_menu` are locally observed
+4.6 wealth-room frames. The menu was opened manually for inspection without
+executing a trade. The 1920-pixel copies mask bottom identifiers; sidecars
+retain source hashes and non-identifier OCR. They verify an optional-device
+detour and an Escape-only menu close, not transaction behavior or independent
+completion. Game artwork remains the property of HoYoverse.
+
 `du_runtime/entry_trigger_target.png` is a masked native station-card selector
 for an enter-region curio with a finite activation lifetime. Source/fixture
 hashes and non-identifier OCR are retained in its sidecar. It tests separating

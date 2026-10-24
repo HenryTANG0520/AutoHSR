@@ -73,6 +73,9 @@ def classify_page(scene: Scene, context=None) -> str:
     from .policy import du_forge_console_menu
     if du_forge_console_menu(scene):
         return 'forge_console'
+    from .policy import du_coin_counter_menu
+    if du_coin_counter_menu(scene):
+        return 'coin_counter'
     from .policy import du_last_area_confirm
     if du_last_area_confirm(scene) is not None:
         return 'last_area_confirm'
@@ -2085,6 +2088,12 @@ class DifferentialUniverseWorkflow:
                     kind=self._observe(scene,'forge_console_left')
                     scene,kind=self._wait_known(scene,kind,'forge_console_left')
                     continue
+                if kind=='coin_counter':
+                    scene=self.ctx.differential_universe_close_coin_counter(scene)
+                    scene=self.ctx.wait(lambda page:classify_page(page,self.ctx)=='field_wealth',
+                        timeout=15,description='关闭乐园币柜台返回财富区域')
+                    kind=self._observe(scene,'coin_counter_left')
+                    continue
                 if kind == "curio_discard":
                     target=self._choice_target(scene,kind)
                     if target is None:
@@ -2346,6 +2355,7 @@ class DifferentialUniverseWorkflow:
         resumable.add("field_event")
         resumable.add('login_supply')
         resumable.add('forge_console')
+        resumable.add('coin_counter')
         resumable.add('last_area_confirm')
         resumable.update(('adventure_challenge','adventure_result'))
         if self.resume_active and kind in resumable:

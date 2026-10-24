@@ -305,6 +305,14 @@ class Context:
         return self._du_observed_input(scene,'forge_console_close',
             lambda:self.window.key('esc'),guard=guard)
 
+    def differential_universe_close_coin_counter(self, scene: Scene):
+        from .policy import du_coin_counter_menu
+        def guard(page):
+            if not du_coin_counter_menu(page):
+                raise AutomationError('未核实乐园币柜台交易菜单，未关闭。')
+        return self._du_observed_input(scene,'coin_counter_close',
+            lambda:self.window.key('esc'),guard=guard)
+
     def differential_universe_dialogue(self, scene: Scene, target: Token):
         import cv2
         from .du_navigation import event_next

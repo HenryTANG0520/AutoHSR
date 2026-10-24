@@ -175,6 +175,12 @@ def du_forge_console_menu(scene: Scene) -> bool:
             and scene.has('装配或调整加权奇物',(.58,.43,.95,.70),exact=True))
 
 
+def du_coin_counter_menu(scene: Scene) -> bool:
+    return (scene.has('乐园币柜台',(0,0,.32,.13),exact=True)
+            and scene.has('购买乐园币',(.58,.30,.95,.48),exact=True)
+            and scene.has('出售乐园币',(.58,.52,.95,.67),exact=True))
+
+
 def guard_differential_universe_field_interact(scene: Scene, target: Token) -> None:
     """Allow F only for a visible, non-spending anomaly interaction prompt."""
     context = normalize(scene.text)
