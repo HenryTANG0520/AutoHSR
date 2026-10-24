@@ -1290,8 +1290,11 @@ class DifferentialUniverseWorkflow:
             if optional_device_prompt(scene,forge_console_used=self._forge_console_used) is not None:
                 # A visible machine can block a monster's attack ring. Clear
                 # that obstruction before entry probes or resumed searches.
+                face=random_gate(scene,fast=True)
+                if face is not None and face.text=='差分宇宙随意门外观':
+                    self._field_cleared=True
                 self._resume_field_needs_target=False
-                return self._field_visual(scene,prefer_enemy=True)
+                return self._field_visual(scene,prefer_enemy=not self._field_cleared)
             range_seen=False
             forward_ready=False
             resume_search=self._resume_field_needs_target and not fresh_entry and not self._field_cleared
@@ -1430,6 +1433,10 @@ class DifferentialUniverseWorkflow:
                 chest=self._combat_chest(scene)
                 if chest is not None:
                     return chest
+            face=random_gate(scene,fast=True) if field_kind=='field_combat' and not cleared else None
+            cleared=cleared or (face is not None and face.text=='差分宇宙随意门外观')
+            if cleared:
+                self._field_cleared=True
             device=optional_device_prompt(scene,forge_console_used=self._forge_console_used)
             if device is not None:
                 if device_detours:
@@ -1455,10 +1462,6 @@ class DifferentialUniverseWorkflow:
                     return scene,kind
                 continue
             unread_interaction_checks=0
-            face=random_gate(scene,fast=True) if field_kind=='field_combat' and not cleared else None
-            cleared=cleared or (face is not None and face.text=='差分宇宙随意门外观')
-            if cleared:
-                self._field_cleared=True
             targets=navigation_targets(scene,enemies=field_kind=='field_combat' and not cleared)
             if field_kind=='field_combat' and not cleared and not any(t.text in ('Target','GateLocked') for t in targets):
                 from .du_tracking import recent_gate
@@ -1804,35 +1807,43 @@ class DifferentialUniverseWorkflow:
         raise AutomationError("异常区域直行接近达到上限，仍无可见交互提示；停止并保留进度。")
 
     def _avoid_optional_device(self,scene,field_kind,device):
+        from .du_navigation import random_gate,optional_device_prompt,verified_attack_reticle
+        world=scene.find((device.text,),(.08,.10,.90,.49),exact=True)
+        awake=random_gate(scene,fast=True) if field_kind=='field_combat' and self._field_cleared else None
+        pass_side=(awake is not None and awake.text=='差分宇宙随意门外观'
+                   and abs(awake.center[0]-.5)<.08 and world is not None
+                   and abs(world.center[0]-.5)>.18)
         # Cabinet world labels provide the side actually occupied by the
         # machine, independently of the fixed F prompt on the right HUD.
         side='a'
         if device.text=='乐园币柜台':
-            world=scene.find((device.text,),(.08,.10,.90,.49),exact=True)
             if world is not None and world.center[0]<.5:
                 side='d'
         elif device.text=='复活装置':
             # Revival stations line the left edge in the observed boss room;
             # keep the bounded escape toward its open combat floor.
             side='d'
-        self.ctx.log('已识别可选设备挡路，后退并有限绕行，再重新定位目标。')
+        self.ctx.log('出口已苏醒且设备在路线侧方，保持朝向短直行离开交互范围。' if pass_side else
+                     '已识别可选设备挡路，后退并有限绕行，再重新定位目标。')
         record={'run':self.report['current_run'],'device':device.text,
-                'side':side,
+                'side':'forward' if pass_side else side,
                 'before':str(self.ctx.evidence(scene,'optional_device_before_detour'))}
         self.report.setdefault('device_detours',[]).append(record)
         self._persist_ledger()
         compact=device.text in ('乐园币柜台','复活装置')
-        route=(('s',500),(side,650 if compact else 1100),('w',700 if compact else 1100))
+        route=(('w',650),('w',650)) if pass_side else (
+            ('s',500),(side,650 if compact else 1100),('w',700 if compact else 1100))
         for direction,duration in route:
             scene=self.ctx.differential_universe_move(scene,direction,duration)
             kind=self._observe(scene,'optional_device_detour_'+direction)
             scene,kind=self._wait_known(scene,kind,'optional_device_detour_'+direction)
             if kind!=field_kind:
                 return scene,kind
+            prompt=optional_device_prompt(scene,forge_console_used=self._forge_console_used)
+            if pass_side and prompt is None:
+                break
             if field_kind=='field_combat':
-                from .du_navigation import optional_device_prompt,verified_attack_reticle
-                if (verified_attack_reticle(scene) is not None
-                        and optional_device_prompt(scene,forge_console_used=self._forge_console_used) is None):
+                if verified_attack_reticle(scene) is not None and prompt is None:
                     break
         record['after']=str(self.ctx.evidence(scene,'optional_device_after_detour'))
         self._persist_ledger()
