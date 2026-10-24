@@ -150,8 +150,18 @@ DU_CHEST_INTERACTIONS=('战利品','丰厚战利品','贵重战利品')
 DU_NAMED_FIELD_INTERACTIONS=('造物调试台','维护市容（区域）',*DU_CHEST_INTERACTIONS)
 
 
+def du_adventure_field(scene: Scene) -> bool:
+    header=''.join(t.text for t in scene.tokens if t.within((0,0,.32,.065)))
+    return has_du_field_plane_marker(header) and bool(re.search(r'位面[-—]?冒险',normalize(header)))
+
+
+def du_hanu_adventure(scene: Scene) -> bool:
+    return du_adventure_field(scene) and scene.has('哈努兄弟',(.24,.07,.80,.55),exact=True)
+
+
 def du_named_field_interaction(scene: Scene) -> Token | None:
-    target=scene.find(DU_NAMED_FIELD_INTERACTIONS,(.60,.45,.85,.70),exact=True)
+    names=DU_NAMED_FIELD_INTERACTIONS+(('开始挑战',) if du_hanu_adventure(scene) else ())
+    target=scene.find(names,(.60,.45,.85,.70),exact=True)
     if target is not None and scene.image is not None:
         from .du_navigation import interaction_hint
         if interaction_hint(scene.image,threshold=.85):
@@ -170,7 +180,8 @@ def guard_differential_universe_field_interact(scene: Scene, target: Token) -> N
     context = normalize(scene.text)
     label = normalize(target.text)
     safe_prompts = tuple(map(normalize, ("交互", "调查", "触碰", "阅读", "对话", "启动", "开启", "拾取", "领取",
-                                        "卡牌", "区域卡", "查看卡牌", "交互卡牌", "卡牌交互", "事件",*DU_NAMED_FIELD_INTERACTIONS)))
+                                        "卡牌", "区域卡", "查看卡牌", "交互卡牌", "卡牌交互", "事件",*DU_NAMED_FIELD_INTERACTIONS,
+                                        *(('开始挑战',) if du_hanu_adventure(scene) else ()))))
     combat_chest=('战斗' in context and label in DU_CHEST_INTERACTIONS
                   and target==du_named_field_interaction(scene))
     if (not has_du_field_plane_marker(context) or not (any(s in context for s in ('异常','奖励','事件','铸造','商店','财富','冒险')) or du_encounter_field(scene) or combat_chest)
@@ -178,7 +189,7 @@ def guard_differential_universe_field_interact(scene: Scene, target: Token) -> N
             or not target.within((0.18, 0.18, 0.86, 0.86))
             or any(normalize(term) in label for term in ("购买", "兑换", "消耗", "碎片", "燃料", "星琼"))):
         raise AutomationError("异常区域的免费交互提示或目标位置未确认，未按 F。")
-    if label in tuple(map(normalize,DU_NAMED_FIELD_INTERACTIONS)) and target!=du_named_field_interaction(scene):
+    if label in tuple(map(normalize,(*DU_NAMED_FIELD_INTERACTIONS,'开始挑战'))) and target!=du_named_field_interaction(scene):
         raise AutomationError('未核实名称交互的实时F提示，未交互。')
     if any(normalize(term) in context for term in ("位面地图", "探索进度", "区域待选择",
                                                     "补充开拓力", "使用燃料", "使用星琼")):
@@ -287,6 +298,11 @@ def guard_differential_universe_click(scene: Scene, target: Token | tuple[float,
     if intent=='last_area_confirm':
         if target != du_last_area_confirm(scene):
             raise AutomationError('未核实最后一次区域选择提示及确认按钮，未点击。')
+        return
+    if intent=='adventure_result_exit':
+        from .du_adventure import hanu_result_exit
+        if target != hanu_result_exit(scene):
+            raise AutomationError('未核实哈努冒险的拍摄结束及退出按钮，未点击。')
         return
     if intent=='du_tutorial_close':
         if target!=du_tutorial_close_prompt(scene):

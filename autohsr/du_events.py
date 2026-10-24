@@ -96,3 +96,18 @@ def guard(scene,target,intent):
     expected=action(scene)
     if expected is None or expected!=(target,intent):
         raise AutomationError('未核实当前事件选项星标、保守选择或相邻确认按钮，未提交。')
+
+
+def reward_bundle_size(scene,target,intent):
+    """An explicitly confirmed N-reward option bounds identical receipt closes."""
+    if intent!='event_star_confirm' or action(scene)!=(target,intent):
+        return 0
+    star=preferred_option(scene)
+    if star is None:
+        return 0
+    body=description(scene,star,option_stars(scene))
+    match=re.match(r'获得(?:(\d+)-)?(\d+)次随机奖励',body)
+    if match is None:
+        return 0
+    low=int(match[1] or match[2]);high=int(match[2])
+    return high if 0<=low<=high<=20 else 0

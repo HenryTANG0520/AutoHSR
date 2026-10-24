@@ -591,3 +591,17 @@ the 4.6 client, resized to the 1920-pixel baseline with the bottom identifier
 strip masked. Its sidecar records the source hash and non-identifier OCR.
 It verifies modal priority and one-shot confirmation feedback; it is not
 independent completion evidence. Game artwork remains the property of HoYoverse.
+
+`du_runtime/adventure_hanu_*` are locally captured 4.6 adventure-room frames
+with the bottom identifier strip masked at the 1920-pixel baseline. Their
+source hashes and non-identifier OCR verify the floating NPC name separately
+from the live interaction prompt, countdown, score HUD, and result exit.
+These are regression samples, not independent completion evidence. Game
+artwork remains the property of HoYoverse.
+
+`du_runtime/event_five_reward_confirm` and `reward_items_fifty` /
+`reward_items_twenty` are locally observed 4.6 event and item-receipt frames.
+The 1920-pixel copies mask bottom identifiers; sidecars retain source hashes
+and non-identifier OCR. They verify an observed reward-count bound and
+receipt-content changes, not the number of independently earned rewards.
+Game artwork remains the property of HoYoverse.

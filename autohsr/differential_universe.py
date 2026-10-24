@@ -76,6 +76,11 @@ def classify_page(scene: Scene, context=None) -> str:
     from .policy import du_last_area_confirm
     if du_last_area_confirm(scene) is not None:
         return 'last_area_confirm'
+    from .du_adventure import hanu_challenge,hanu_result_exit
+    if hanu_result_exit(scene) is not None:
+        return 'adventure_result'
+    if hanu_challenge(scene):
+        return 'adventure_challenge'
     if scene.has("星际和平指南",(0,0,.32,.13)):
         return "guide"
     from .policy import du_blessing_discard_prompt
@@ -265,6 +270,7 @@ class DifferentialUniverseWorkflow:
         self._field_cleared = False
         self._forge_console_used = False
         self._combat_chest_attempts = 0
+        self._reward_overlay_budget = 0
         self.report["timeouts"] = dict(room_seconds=ROOM_TIMEOUT,run_seconds=RUN_TIMEOUT)
         run_dir=getattr(context.report,"run_dir",None)
         if isinstance(run_dir,(str,Path)) and run_dir:
@@ -371,6 +377,11 @@ class DifferentialUniverseWorkflow:
                        and re.fullmatch(r'[\u3400-\u9fff·：:]{2,20}',normalize(token.text))]
                 if len(names)==1:
                     detail=normalize(names[0].text)
+            if name=='获得物品':
+                contents=[token for token in page.tokens if token.within((.15,.35,.85,.72))]
+                if (any(re.fullmatch(r'[1-9]\d{0,8}',normalize(t.text)) for t in contents)
+                        and any(re.search(r'[\u3400-\u9fff]{2,}',t.text) for t in contents)):
+                    detail=tuple(normalize(t.text) for t in sorted(contents,key=lambda t:(t.center[1],t.center[0])))
             return (name,detail) if name is not None else None
         original_heading=heading(scene)
         def next_overlay(page):
@@ -380,10 +391,12 @@ class DifferentialUniverseWorkflow:
             return (original_heading is None or current[0]!=original_heading[0]
                     or (current[1] is not None and original_heading[1] is not None
                         and current[1]!=original_heading[1]))
-        for _ in range(3):
+        attempts=max(3,self._reward_overlay_budget)
+        for _ in range(attempts):
             target=du_tutorial_close_prompt(scene)
             if target is None:
                 raise AutomationError('教学说明页没有识别到关闭提示，未点击。')
+            self._reward_overlay_budget=max(0,self._reward_overlay_budget-1)
             scene,kind=self._click(scene,target,intent='du_tutorial_close',label='tutorial_closed')
             if kind!='tutorial_overlay' or next_overlay(scene):
                 return scene,kind
@@ -392,7 +405,8 @@ class DifferentialUniverseWorkflow:
             scene,kind=self._wait_known(scene,kind,'tutorial_close_recheck')
             if kind!='tutorial_overlay' or next_overlay(scene):
                 return scene,kind
-        raise AutomationError('说明页三次实时关闭提示点击均未生效，停止并保留证据。')
+        count='三' if attempts==3 else str(attempts)
+        raise AutomationError(f'说明页{count}次实时关闭提示点击均未生效，停止并保留证据。')
 
     def _apply_miracle_target(self, scene: Scene) -> tuple[Scene, str]:
         effect=station_card_effect(scene)
@@ -965,6 +979,25 @@ class DifferentialUniverseWorkflow:
             kind=self._observe(scene,'last_area_confirmation_settled')
         return self._wait_known(scene,kind,'last_area_confirmation')
 
+    def _finish_adventure(self,scene,kind):
+        from .du_adventure import hanu_result_exit
+        if kind=='adventure_challenge':
+            self.ctx.log('哈努冒险已开始，限时等待两波拍摄自然结束后核实退出。')
+            scene=self.ctx.wait(lambda page:classify_page(page,self.ctx)
+                not in ('adventure_challenge','unknown'),timeout=150,description='哈努冒险拍摄结束')
+            kind=self._observe(scene,'adventure_challenge_finished')
+        if kind!='adventure_result':
+            return scene,kind
+        target=hanu_result_exit(scene)
+        if target is None:
+            raise AutomationError('哈努冒险结算页面已改变，未退出。')
+        scene,kind=self._click(scene,target,intent='adventure_result_exit',label='adventure_result_left')
+        if kind=='adventure_result':
+            scene=self.ctx.wait(lambda page:classify_page(page,self.ctx)!='adventure_result',
+                timeout=15,description='哈努冒险退出反馈')
+            kind=self._observe(scene,'adventure_result_settled')
+        return self._wait_known(scene,kind,'adventure_return')
+
     @staticmethod
     def _field_interaction_target(scene: Scene) -> Token | None:
         from .policy import du_named_field_interaction
@@ -1200,6 +1233,9 @@ class DifferentialUniverseWorkflow:
                         'strategy':'conservative','star_y':action[0].center[1],
                         'star_score':action[0].score,'description':body})
                     self.ctx.log('事件星标选择：'+(body or '效果文字未读出，按上方选项继续'))
+                if action[1]=='event_star_confirm':
+                    from .du_events import reward_bundle_size
+                    self._reward_overlay_budget=3*reward_bundle_size(scene,*action)
                 scene,kind=self._click(scene,action[0],intent=action[1],label=action[1])
             if kind!="event":
                 return scene,kind
@@ -2027,6 +2063,8 @@ class DifferentialUniverseWorkflow:
                 self.ctx.checkpoint()
                 self._check_deadline(started,inactive_before,RUN_TIMEOUT,"单局演算")
                 kind = classify_page(scene, self.ctx)
+                if kind.startswith('field_'):
+                    self._reward_overlay_budget=0
                 if kind == "unknown":
                     scene, kind = self._wait_known(scene, kind, "run")
                 if kind == "blocked":
@@ -2195,6 +2233,9 @@ class DifferentialUniverseWorkflow:
                 if kind == 'last_area_confirm':
                     scene,kind=self._confirm_last_area(scene)
                     continue
+                if kind in ('adventure_challenge','adventure_result'):
+                    scene,kind=self._finish_adventure(scene,kind)
+                    continue
                 if kind in ("home", "mode_select", "periodic_setup"):
                     if victory_seen:
                         return scene, kind, True
@@ -2306,6 +2347,7 @@ class DifferentialUniverseWorkflow:
         resumable.add('login_supply')
         resumable.add('forge_console')
         resumable.add('last_area_confirm')
+        resumable.update(('adventure_challenge','adventure_result'))
         if self.resume_active and kind in resumable:
             resumed_no = len(self.report["run_results"]) + 1
             resumed_id = "resumed-" + uuid.uuid4().hex

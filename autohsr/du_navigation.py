@@ -341,6 +341,14 @@ def event_targets(scene):
     header=''.join(t.text for t in scene.tokens if t.within((0,0,.32,.065)))
     if not has_du_field_plane_marker(header):
         return learned or []
+    from .policy import du_adventure_field
+    if du_adventure_field(scene):
+        npc=scene.find('哈努兄弟',(.24,.07,.80,.55),exact=True)
+        if npc is not None and npc.score>=.90:
+            x,y=npc.center
+            # A floating NPC name supplies bearing only. F still requires
+            # the separate live prompt and interaction glyph near the player.
+            return [Token('Card',.86,(x-.04,y+.04,x+.04,min(.90,y+.16)))]
     title=scene.find(('商店街一番战','维护市容（区域）'),(.20,.07,.80,.55),exact=True)
     if title is None:
         # Region cards can be almost edge-on while their floating caption is
