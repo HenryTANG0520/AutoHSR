@@ -39,13 +39,43 @@ class OptionalExitTests(unittest.TestCase):
                 ctx.differential_universe_interact.assert_not_called()
 
     def test_rest_device_still_in_range_has_a_finite_forward_budget(self):
+        import cv2,numpy as np
         page=self.native('rest_forge_awake_exit');ctx=Mock(settings=Settings(),report=RunReport())
-        ctx.differential_universe_move.return_value=page
+        height,width=page.image.shape[:2]
+        moved=[]
+        for distance in (12,24):
+            image=cv2.warpAffine(page.image,np.float32([[1,0,distance],[0,1,0]]),(width,height))
+            image[:round(.12*height)]=page.image[:round(.12*height)]
+            image[:,:round(.25*width)]=page.image[:,:round(.25*width)]
+            y1,y2,x1,x2=round(.45*height),round(.70*height),round(.52*width),round(.85*width)
+            image[y1:y2,x1:x2]=page.image[y1:y2,x1:x2]
+            moved.append(Scene(page.tokens,image))
+        ctx.differential_universe_move.side_effect=moved
         flow=DifferentialUniverseWorkflow(ctx,1);flow._observe=Mock(return_value='field_rest')
         with patch('autohsr.du_navigation.random_gate',return_value=Token('差分宇宙随意门外观',.95,(.47,.23,.53,.30))):
             flow._avoid_optional_device(page,'field_rest',optional_device_prompt(page))
         self.assertEqual([c.args[1:] for c in ctx.differential_universe_move.call_args_list],[('w',650),('w',650)])
         ctx.differential_universe_interact.assert_not_called()
+
+    def test_measured_rest_stall_earns_only_one_bounded_fallback_detour(self):
+        page=self.native('rest_revival_awake_exit');ctx=Mock(settings=Settings(),report=RunReport())
+        ctx.differential_universe_move.return_value=page
+        flow=DifferentialUniverseWorkflow(ctx,1);flow._observe=Mock(return_value='field_rest')
+        flow._avoid_optional_device(page,'field_rest',optional_device_prompt(page))
+        self.assertEqual([c.args[1:] for c in ctx.differential_universe_move.call_args_list],
+                         [('w',650),('s',500),('d',650),('w',700)])
+        self.assertTrue(flow.report['device_detours'][-1]['forward_stalled'])
+        ctx.differential_universe_interact.assert_not_called()
+
+    def test_stall_fallback_stops_immediately_when_field_changes(self):
+        page=self.native('rest_revival_awake_exit');done=Scene([])
+        ctx=Mock(settings=Settings(),report=RunReport())
+        ctx.differential_universe_move.side_effect=[page,done]
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        flow._observe=Mock(side_effect=lambda p,*a:'station_choice' if p is done else 'field_rest')
+        flow._wait_known=Mock(side_effect=lambda p,k,*a,**kw:(p,k))
+        self.assertEqual(flow._avoid_optional_device(page,'field_rest',optional_device_prompt(page)),(done,'station_choice'))
+        self.assertEqual([c.args[1:] for c in ctx.differential_universe_move.call_args_list],[('w',650),('s',500)])
 
     def test_rest_forward_pass_needs_a_current_centred_awake_face(self):
         page=self.native('rest_revival_awake_exit');device=optional_device_prompt(page)

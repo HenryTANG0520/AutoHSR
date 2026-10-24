@@ -1847,20 +1847,40 @@ class DifferentialUniverseWorkflow:
                     return scene,kind
                 awake=random_gate(scene,fast=True)
         compact=device.text in ('乐园币柜台','复活装置')
-        route=(('w',650),('w',650)) if pass_side else (
-            ('s',500),(side,650 if compact else 1100),('w',700 if compact else 1100))
-        for direction,duration in route:
-            scene=self.ctx.differential_universe_move(scene,direction,duration)
-            kind=self._observe(scene,'optional_device_detour_'+direction)
-            scene,kind=self._wait_known(scene,kind,'optional_device_detour_'+direction)
-            if kind!=field_kind:
-                return scene,kind
-            prompt=optional_device_prompt(scene,forge_console_used=self._forge_console_used)
-            if pass_side and prompt is None:
-                break
-            if field_kind=='field_combat':
-                if verified_attack_reticle(scene) is not None and prompt is None:
+        detour=(('s',500),(side,650 if compact else 1100),('w',700 if compact else 1100))
+        route=(('w',650),('w',650)) if pass_side else detour
+        progress=None
+        if rest and pass_side:
+            from .du_navigation import BackgroundProgress
+            progress=BackgroundProgress(seconds=0)
+            progress.update(scene.image,time.monotonic())
+        for phase in range(2):
+            stalled=False
+            for direction,duration in route:
+                scene=self.ctx.differential_universe_move(scene,direction,duration)
+                kind=self._observe(scene,'optional_device_detour_'+direction)
+                scene,kind=self._wait_known(scene,kind,'optional_device_detour_'+direction)
+                if kind!=field_kind:
+                    return scene,kind
+                prompt=optional_device_prompt(scene,forge_console_used=self._forge_console_used)
+                if pass_side and prompt is None:
                     break
+                if progress is not None and progress.update(scene.image,time.monotonic())=='background_stalled':
+                    stalled=True
+                    break
+                if field_kind=='field_combat':
+                    if verified_attack_reticle(scene) is not None and prompt is None:
+                        break
+            if not stalled:
+                break
+            # A nearby key caption can persist during real travel. Only a
+            # measured blocked translation earns one fallback detour; never
+            # repeat it merely because the optional F prompt is still visible.
+            self.ctx.log('设备旁短直行无背景位移，执行一次有限退让后重新定位出口。')
+            record['forward_stalled']=True
+            record['fallback_side']=side
+            self._persist_ledger()
+            route,pass_side,progress=detour,False,None
         record['after']=str(self.ctx.evidence(scene,'optional_device_after_detour'))
         self._persist_ledger()
         return scene,kind
