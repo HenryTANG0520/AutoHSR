@@ -15,6 +15,7 @@ def _json(value: Any) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw_args = list(sys.argv[1:] if argv is None else argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     if hasattr(sys.stderr, "reconfigure"):
@@ -29,6 +30,11 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--run", action="store_true", help="按配置执行每日任务；F10 紧急停止")
     mode.add_argument("--differential-universe", action="store_true", help="自动演算差分宇宙；不消耗每日刷本预算")
     mode.add_argument("--self-test", action="store_true", help="运行离线单元测试（仅源码版，不操作游戏）")
+    mode.add_argument("--admin-launch", choices=("status", "enable", "disable"),
+                      help="查询、启用或移除当前账户及本目录的管理员免重复确认启动；不启动游戏")
+    mode.add_argument("--no-admin-launch", action="store_true", help="跳过管理员启动入口，仅打开当前权限的 GUI 以排查或移除授权")
+    mode.add_argument("--admin-task", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--admin-owner", help=argparse.SUPPRESS)
     parser.add_argument("--config", type=Path, default=CONFIG_PATH, help="配置 JSON 路径")
     parser.add_argument("--replay-ocr", action="store_true", help="仅配合 --currency-wars-replay，对样本 PNG 重新执行隔离 OCR")
     parser.add_argument("--game-path", help="命令行模式：StarRail.exe 路径")
@@ -51,7 +57,20 @@ def main(argv: list[str] | None = None) -> int:
                         help="接续当前用户已启动的周期演算时提供页面已选难度（1～10）；会将该局计入请求局数")
     parser.add_argument("--reward-only", action="store_true", help="本次仅验证并补领每日实训；不刷本，不保存配置")
     parser.add_argument("--new-battle-run", action="store_true", help="明确开始新的刷本预算；先人工核对上次已确认及待核对消耗")
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw_args)
+    if args.admin_owner is not None and args.admin_launch not in ("enable", "disable"):
+        parser.error("--admin-owner 仅用于管理员授权操作。")
+    if args.admin_task and raw_args != ["--admin-task"]:
+        parser.error("管理员启动任务只能打开固定的默认 GUI。")
+    if args.admin_launch:
+        try:
+            from .admin_launch import configure, status, status_text
+            data = status() if args.admin_launch == "status" else configure(args.admin_launch, expected_sid=args.admin_owner)
+            print(_json(dict(**data, message=status_text(data))))
+            return 0
+        except Exception as error:
+            print(_json({"error": str(error)}), file=sys.stderr)
+            return 2
     if args.replay_ocr and args.currency_wars_replay is None:
         print(_json({"error": "--replay-ocr 仅用于 --currency-wars-replay。"}), file=sys.stderr)
         return 2
@@ -110,8 +129,27 @@ def main(argv: list[str] | None = None) -> int:
         result = unittest.TextTestRunner(verbosity=2).run(tests)
         return 0 if result.wasSuccessful() else 1
     if not any((args.check, args.scan_dungeons, args.launch, args.run, args.currency_wars_check, args.differential_universe)):
+        from .admin_launch import AdminLaunchError, handoff, is_admin
+        try:
+            if args.admin_task and not is_admin():
+                raise AdminLaunchError("管理员启动任务未获得管理员权限，未打开任务界面。")
+            if not args.admin_task and not args.no_admin_launch and args.config.resolve() == CONFIG_PATH.resolve():
+                if handoff():
+                    return 0
+        except Exception as error:
+            # A failed or unknown handoff must not open a second controller.
+            if sys.stderr is not None:
+                print(_json({"error": str(error)}), file=sys.stderr)
+            else:
+                import tkinter as tk
+                from tkinter import messagebox
+                root = tk.Tk()
+                root.withdraw()
+                messagebox.showerror("管理员启动未完成", str(error), parent=root)
+                root.destroy()
+            return 2
         from .gui import main as gui_main
-        gui_main(args.config)
+        gui_main(args.config, admin_task=True) if args.admin_task else gui_main(args.config)
         return 0
     try:
         settings = Settings.load(args.config)

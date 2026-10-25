@@ -325,8 +325,20 @@ def build_window(ui, task_names, server_names):
         field = ttk.Entry(timing, textvariable=variable, width=10)
         field.grid(row=row, column=1, sticky="w", pady=d(6))
         ui.setting_controls.append(field)
-    ttk.Label(settings, text="配置位置：" + str(ui.config_path), style="Hint.TLabel", wraplength=d(850)).grid(row=3, column=0, sticky="w", pady=d(10))
-    ttk.Label(settings, text="未知页面会停止；不购买、不补充体力、不使用稀有补充道具。", style="Hint.TLabel").grid(row=4, column=0, sticky="w")
+    if hsr:
+        admin = card(settings, 3)
+        ttk.Label(admin, text="管理员免重复确认启动", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(admin, textvariable=ui.admin_launch_status, style="CardHint.TLabel", wraplength=d(810)).pack(anchor="w", pady=(d(4), 0))
+        admin_actions = ttk.Frame(admin, style="Card.TFrame")
+        admin_actions.pack(anchor="w", pady=d(5))
+        for label, action in (("启用（首次授权）", "enable"), ("移除授权", "disable"), ("刷新状态", "status")):
+            button = ttk.Button(admin_actions, text=label, command=lambda key=action: ui._admin_operation(key))
+            button.pack(side="left", padx=(0, d(8)))
+            ui.setting_controls.append(button)
+        ttk.Label(admin, text="仅当前账户和本目录；首次需系统授权，以后正常打开助手即可。移动目录后重新启用。",
+                  style="CardHint.TLabel", wraplength=d(810)).pack(anchor="w")
+    ttk.Label(settings, text="配置位置：" + str(ui.config_path), style="Hint.TLabel", wraplength=d(850)).grid(row=4, column=0, sticky="w", pady=d(6))
+    ttk.Label(settings, text="未知页面会停止；不购买、不补充体力、不使用稀有补充道具。", style="Hint.TLabel").grid(row=5, column=0, sticky="w")
     footer = ttk.Frame(root, padding=(d(18), d(9)))
     footer.grid(row=1, column=0, sticky="ew")
     footer.columnconfigure(0, weight=1)

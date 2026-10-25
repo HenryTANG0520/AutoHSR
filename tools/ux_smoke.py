@@ -162,6 +162,38 @@ def main():
                 layout(root)
                 check('persistent_controls_' + key, all(w.winfo_ismapped() for w in (ui.start_button, ui.pause_button, ui.stop_button)))
                 ImageGrab.grab(window=root.winfo_id()).save(OUT / ('page-' + key + '.png'))
+            if PACKAGE == 'autohsr':
+                from autohsr.admin_launch import AdminLaunchError
+                enabled = dict(exists=True, valid=True, enabled=True, account_is_admin=True)
+                disabled = dict(exists=False, valid=False, enabled=False, account_is_admin=True)
+                with patch('autohsr.admin_launch.configure', return_value=enabled) as configure:
+                    ui._admin_operation('enable')
+                    pump(root, lambda: not ui.busy)
+                    check('admin_enable_verified_without_saving_game_config',
+                          '已启用' in ui.admin_launch_status.get() and config.read_bytes() == original)
+                    configure.assert_called_once_with('enable')
+                with patch('autohsr.admin_launch.configure', side_effect=AdminLaunchError('已取消 Windows 管理员授权')):
+                    ui._admin_operation('enable')
+                    pump(root, lambda: not ui.busy)
+                    check('admin_cancel_displays_actual_result', '已取消' in ui.admin_launch_status.get() and not ui.dirty)
+                with patch('autohsr.admin_launch.configure', return_value=disabled):
+                    ui._admin_operation('disable')
+                    pump(root, lambda: not ui.busy)
+                    check('admin_removal_is_independent_of_game_settings',
+                          '未启用' in ui.admin_launch_status.get() and config.read_bytes() == original)
+                admin_release = threading.Event()
+                def admin_status():
+                    admin_release.wait(3)
+                    return disabled
+                with patch('autohsr.admin_launch.status', side_effect=admin_status):
+                    ui._admin_operation('status')
+                    check('admin_pending_locks_game_and_authorization_controls',
+                          ui.busy and all(str(w.cget('state')) == 'disabled' for w in ui.setting_controls))
+                    ui._start()
+                    check('admin_pending_prevents_concurrent_game_start', not FakeRunner.instances)
+                    admin_release.set()
+                    pump(root, lambda: not ui.busy)
+                check('admin_actions_leave_game_config_unchanged', not ui.dirty and config.read_bytes() == original)
             ui._show_page('home')
             for value in ui.tasks.values():
                 value.set(False)

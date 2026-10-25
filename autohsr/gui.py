@@ -178,6 +178,7 @@ class AutoHSRWindow:
         self.detect_title = tk.StringVar(value="尚未检测游戏窗口")
         self.detect_size = tk.StringVar(value="客户区尺寸：—")
         self.detect_permission = tk.StringVar(value="助手管理员权限：—")
+        self.admin_launch_status = tk.StringVar(value="尚未查询 · 点击“刷新状态”核对 Windows 授权")
         self.currency_status = tk.StringVar(value="已采集 4.6 教程与经济规则；提供只读识别、部署和节点验证，完整自动对局仍待验证。")
         self.currency_observation = tk.StringVar(value="尚无本次识别证据。报告与截图可从底部入口查看。")
         self.currency_source_slot = tk.StringVar(value='3')
@@ -406,6 +407,22 @@ class AutoHSRWindow:
 
     def _launch(self) -> None:
         self._operation("launch")
+
+    def _admin_operation(self, action: str) -> None:
+        if self.busy or self.closing or (self.worker is not None and self.worker.is_alive()):
+            return
+        self._set_busy(True)
+        self.admin_launch_status.set("正在查询……" if action == "status" else "等待 Windows 授权及结果核实……")
+
+        def work() -> None:
+            try:
+                from .admin_launch import configure, status, status_text
+                data = status() if action == "status" else configure(action)
+                self.emit(dict(type="admin_launch_result", message=status_text(data), action=action))
+            except Exception as error:
+                self.emit(dict(type="admin_launch_result", message=str(error), error=True, action=action))
+        self.worker = threading.Thread(target=work, name="autohsr-admin-launch", daemon=True)
+        self.worker.start()
 
     def _operation(self, action: str) -> None:
         if self.busy or self.closing or (self.worker is not None and self.worker.is_alive()):
@@ -862,7 +879,7 @@ class AutoHSRWindow:
             for _ in range(100):
                 event = self.events.get_nowait()
                 kind = event_kind(event)
-                if (kind in ("finished", "checked", "launched", "cancelled", "operation_error", "run_error")
+                if (kind in ("finished", "checked", "launched", "cancelled", "operation_error", "run_error", "admin_launch_result")
                         and self.worker is not None and self.worker.is_alive()):
                     # Keep settings and new-run actions locked until the worker
                     # has actually exited, including the small emit/return gap.
@@ -901,6 +918,10 @@ class AutoHSRWindow:
                     self._set_busy(False)
                     self.status.set("● 启动请求已发送")
                     self._log(event.get("message") or "启动请求已发送。请完成登录。")
+                elif kind == "admin_launch_result":
+                    self._set_busy(False)
+                    self.admin_launch_status.set(event["message"])
+                    self._log("管理员启动：" + event["message"], "warning" if event.get("error") else "info")
                 elif kind in ("operation_error", "run_error"):
                     self.runner = None
                     if kind == "run_error":
@@ -939,9 +960,14 @@ class AutoHSRWindow:
             self.root.destroy()
 
 
-def main(config_path: Path = CONFIG_PATH) -> None:
+def main(config_path: Path = CONFIG_PATH, *, admin_task: bool = False) -> None:
     # Establish DPI awareness before Tk creates a window.
     from . import windows  # noqa: F401
-    root = tk.Tk()
-    AutoHSRWindow(root, config_path)
-    root.mainloop()
+    from contextlib import nullcontext
+    from .admin_launch import TaskSession
+    with TaskSession() if admin_task else nullcontext() as session:
+        root = tk.Tk()
+        ui = AutoHSRWindow(root, config_path)
+        if session is not None:
+            session.attach(root, lambda: ui._restore() if not ui.busy or ui.paused else None)
+        root.mainloop()

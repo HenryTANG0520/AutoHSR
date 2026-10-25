@@ -36,7 +36,7 @@ def inspect_game(settings: Settings) -> dict:
                   administrator=is_admin(), game_elevated=is_elevated(window.hwnd), ocr_text=scene.text, screenshot=str(screenshot))
     from .ux import input_readiness
     result["input_ready"] = input_readiness(result["administrator"], result["game_elevated"])
-    result["input_hint"] = ("游戏以管理员运行，需用现有管理员启动器重开助手。" if result["input_ready"] is False else
+    result["input_hint"] = ("游戏以管理员运行，请在设置启用管理员免重复确认启动后重开助手，或用管理员启动器。" if result["input_ready"] is False else
                             "游戏进程权限未能读取，输入条件尚未核实。" if result["input_ready"] is None else "权限匹配，输入效果仍未实测。")
     (output / "check.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
@@ -1390,7 +1390,7 @@ class Runner:
                 self._prepare_daily_game()
             self._window = self._window or find_game(self.settings.game_path)
             if self.report.operation != "currency_wars" and is_elevated(self._window.hwnd) is True and not is_admin():
-                raise AutomationError("游戏以管理员运行，请使用现有 Start-AutoHSR-Admin.cmd 重开助手。")
+                raise AutomationError("游戏以管理员运行，请在设置启用管理员免重复确认启动后重开助手，或使用 Start-AutoHSR-Admin.cmd。")
             self._window.focus()
             if self.settings.overlay_logs:
                 from .overlay import OverlayService

@@ -34,7 +34,7 @@ AutoHSR使用本地Python流程、OCR、图像规则和ONNX检测模型决策；
 - 使用可截图的前台游戏窗口，运行期间不移动或缩放窗口，不同时操作鼠标键盘。
 - 提前处理密码、扫码、验证码、协议和客户端更新；助手只处理已有登录状态下的进入流程。
 - 目标副本已解锁，队伍能完成挑战，游戏内自动战斗已解锁；饰品提取需要已有可用差分存档。
-- 游戏与助手权限匹配；游戏以管理员运行时，使用已有的`Start-AutoHSR-Admin.cmd`启动助手。
+- 游戏与助手权限匹配；游戏以管理员运行时，可在设置启用“管理员免重复确认启动”，或使用`Start-AutoHSR-Admin.cmd`进行单次管理员启动。
 
 本项目为非官方社区工具，与游戏开发商、发行商无关联。使用前请自行了解游戏服务条款与自动化工具限制。
 
@@ -62,6 +62,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 ```
 
 执行策略参数只作用于当前PowerShell进程；脚本不安装系统级Python，不修改用户或机器执行策略。直接依赖为RapidOCR/ONNX Runtime、MSS、Pillow；图像处理还使用依赖链中的OpenCV和NumPy。训练工具使用独立环境，日常运行不导入PyTorch或Ultralytics。
+
+### 管理员免重复确认启动
+
+默认未启用。在“设置 → 管理员免重复确认启动”点击“启用（首次授权）”，首次接受Windows管理员确认；若助手已经是管理员进程，则直接登记。操作后重新读取系统任务，状态显示“已启用”才算完成。取消授权或系统拒绝时显示实际结果，不保存游戏配置。
+
+以后从普通`Start-AutoHSR.cmd`、打包EXE或无参数的源码入口启动，自动进入管理员界面，无需每次确认。重复打开会唤起已有的任务界面；正在执行游戏任务时不抢前台。旧`Start-AutoHSR-Admin.cmd`仍是每次请求授权的手动入口，启用新功能后使用普通入口即可。
+
+该功能通过Windows任务计划程序登记`AutoHSR-Admin-v1-…`，仅绑定**当前管理员账户和本软件目录**；无定时、登录或开机触发器，不保存密码。任务只打开默认GUI，不直接运行游戏任务，也不接收调用方追加的游戏参数。普通账户、组织策略限制及任务计划程序不可用时会报明原因。系统授权状态由任务本身决定，不是`config.json`里的布尔开关。
+
+源码与EXE目录分别授权；更新原路径的EXE保留授权，移动目录或更换账户需要在新位置重新启用，移动前可在旧位置“移除授权”。该授权允许固定路径中的AutoHSR以管理员运行，应将程序放在可信、非公共可写的目录中。移除后下次恢复普通启动，不强制关闭已打开的助手。显式`--config`使用其他配置及`--run`等任务CLI不会自动提权；排查入口故障可用`--no-admin-launch`打开设置后刷新、重新启用或移除。
 
 ### GUI操作顺序
 
@@ -329,11 +339,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 .\.venv\Scripts\python.exe -m autohsr --currency-wars-replay "路径\样本.sample.json"
 # 离线单测
 .\.venv\Scripts\python.exe -m autohsr --self-test
+# 查询、启用、移除本目录的管理员启动授权；不访问游戏
+.\.venv\Scripts\python.exe -m autohsr --admin-launch status
+.\.venv\Scripts\python.exe -m autohsr --admin-launch enable
+.\.venv\Scripts\python.exe -m autohsr --admin-launch disable
+# 跳过管理员入口，打开设置排查；打包版也可使用此参数
+.\.venv\Scripts\python.exe -m autohsr --no-admin-launch
 ```
 
 `--config`指定配置，`--game-path`覆盖路径；`--target/--location/--category/--count/--stamina/--rounds`覆盖副本。差分用`--du-save/--du-rewards/--du-daily`开启可选项，`--du-daily-from YYYY-MM-DD`限起始日，仅用于差分入口。完整参数看`python -m autohsr --help`。
 
-打包EXE无终端控制台，CLI后读EXE同目录`runs/`；终端JSON用源码命令。通常退出码0成功、1未完整成功、2参数或配置错，键盘中断130。
+打包EXE无终端控制台，游戏任务CLI后读EXE同目录`runs/`；终端JSON用源码命令。管理员授权CLI不创建游戏报告，打包版在设置里“刷新状态”核实结果。通常退出码0成功、1未完整成功、2参数或配置错，键盘中断130。
 
 辅助`python -m autohsr.audio`默认只读播放设备。明确要求静音时用`--mute --record-dir <新目录>`保存原状态、静音、复读核验；不启动游戏、不改麦克风、不解除静音，也不是默认每日步骤。
 
@@ -357,6 +373,8 @@ git diff --check
 ```
 
 单测不操作游戏，GUI检查用临时配置/假后端，字幕检查用独立模拟窗口验证焦点、穿透、截图排除，均不等于实机流程。2026-10-25已有 **884项单测、62项GUI检查通过**，当天6次浴火钢心实际240体力；合成和最后领奖经修复接续完成500与五档奖励。
+
+2026-10-26管理员启动更新通过 **903项单测、68项GUI检查**。源码与重建EXE各完成两次普通权限入口到管理员GUI的独立启动，并验证重复打开复用界面；没有启动游戏任务。需要管理员权限的集成检查可显式运行`python tools/admin_launch_smoke.py`，打包版加`--package dist/AutoHSR/AutoHSR.exe`；默认移除本次新增测试授权，只有显式`--keep-enabled`才保留。详情见 [验证记录](VALIDATION.md)。
 
 训练、评估用`tools/train_du_detector.py`、`tools/evaluate_du_detector.py`独立环境。保留训练/验证/测试划分，训练变体、同场景回放不能充作独立准确率或通关证据。
 
@@ -404,7 +422,8 @@ CURRENCY_WARS*.md                      货币战争历史与攻略
 | 改源码行为没变 | 启动器优先EXE，明确用源码或重建 |
 | 在其他菜单 | 每日从已识别菜单逐层返回，未知弹窗先核对 |
 | 失焦后停住 | 等待前台，将游戏切回，不并发另一套控制 |
-| 输入被拒绝 | 检查权限匹配，使用已有管理员启动器 |
+| 输入被拒绝 | 检查权限匹配；设置启用管理员免重复确认并正常重开，或使用管理员启动器 |
+| 管理员入口失效 | 用`--no-admin-launch`打开设置刷新、重新启用或移除；移动前先移除旧目录授权 |
 | 黑屏/尺寸不对 | 检查窗口模式、HDR/滤镜、尺寸和屏幕边界 |
 | 有体力仍停止 | 查次数、预算、实际价格、周余量、待核对账单，不盲目重建预算 |
 | 500却未成功 | 检查五档及其他开启任务，各项验证独立 |
