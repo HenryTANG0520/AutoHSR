@@ -258,6 +258,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 
 `currency_wars_*.py`按页面、阵容、位置、经济、商店、装备、奖励、节点、流程拆分。商店评分/购买有离线原型，连续流程主要收起商店，不代表完整运营实机通过。开发对局有SSS，但含人工和修复接续，**无完整独立自动整局证据**。见 [开发记录](CURRENCY_WARS.md)、[攻略整理](CURRENCY_WARS_GUIDE.md)。
 
+后续方向为标准博弈优先、默认离线策略、可选大模型API辅助，详见 [策略调研与双路线方案](docs/currency-wars-strategy-research.md)。该方案包含跨平台资料、视频核验边界和分阶段验收；新的策略引擎与API尚未实现，不改变当前运行方式。
+
 ## 日志、报告与恢复
 
 ### BetterGI风格前台字幕
