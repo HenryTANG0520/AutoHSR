@@ -120,9 +120,12 @@ def build_window(ui, task_names, server_names):
     entry.grid(row=1, column=1, sticky="ew", pady=d(8))
     browse = ttk.Button(game, text="浏览…", command=ui._choose_game)
     browse.grid(row=1, column=2, padx=(d(8), 0))
-    auto = ttk.Checkbutton(game, text="开始每日前自动启动游戏", variable=ui.auto_launch, style="Card.TCheckbutton")
+    auto = (ttk.Label(game, text="开始每日时自动检查游戏：未启动则启动，已运行则切到前台，并从当前菜单返回主界面。", style="CardHint.TLabel", wraplength=d(830))
+            if hsr else ttk.Checkbutton(game, text="开始每日前自动启动游戏", variable=ui.auto_launch, style="Card.TCheckbutton"))
     auto.grid(row=2, column=0, columnspan=3, sticky="w")
-    ui.setting_controls.extend((entry, browse, auto))
+    ui.setting_controls.extend((entry, browse))
+    if not hsr:
+        ui.setting_controls.append(auto)
     ttk.Label(game, textvariable=ui.readiness, style="CardHint.TLabel", wraplength=d(830)).grid(row=3, column=0, columnspan=3, sticky="w", pady=(d(5), 0))
     ttk.Label(game, textvariable=ui.plan, style="CardHint.TLabel", wraplength=d(830)).grid(row=4, column=0, columnspan=3, sticky="w", pady=(d(7), 0))
     if hsr:
@@ -306,9 +309,15 @@ def build_window(ui, task_names, server_names):
         ui.close_game_control = ttk.Checkbutton(display, text="每日确认完成后关闭游戏", variable=ui.close_game_on_success, style="Card.TCheckbutton")
         ui.close_game_control.pack(anchor="w")
         ttk.Label(display, text="默认关闭；400活跃、四档奖励及已选收尾全部核实后正常退出。", style="CardHint.TLabel").pack(anchor="w", padx=d(23))
-        ui.overlay_control = ttk.Checkbutton(display, text="在游戏左侧显示覆盖日志", variable=ui.overlay_logs, style="Card.TCheckbutton")
-        ui.overlay_control.pack(anchor="w", pady=(d(10), 0))
-        ui.setting_controls.extend((ui.close_game_control, ui.overlay_control))
+        ui.setting_controls.append(ui.close_game_control)
+    ui.overlay_control = ttk.Checkbutton(display, text="在游戏前台显示日志字幕", variable=ui.overlay_logs, style="Card.TCheckbutton")
+    ui.overlay_control.pack(anchor="w", pady=(d(10), 0))
+    ui.setting_controls.append(ui.overlay_control)
+    if hsr:
+        ttk.Label(display, text="默认开启；字幕不抢焦点、鼠标穿透，并从游戏识别截图中排除。", style="CardHint.TLabel").pack(anchor="w", padx=d(23))
+        synthesis = ttk.Checkbutton(display, text="实训不足500活跃且有合成任务时，仅合成1个奇巧零食", variable=ui.daily_synthesis, style="Card.TCheckbutton")
+        synthesis.pack(anchor='w', pady=(d(8), 0))
+        ui.setting_controls.append(synthesis)
     timing = card(settings, 2)
     fields = (("操作间隔（秒）", ui.action_delay), ("战斗超时（秒）", ui.battle_timeout), ("OCR阈值", ui.ocr_confidence)) if hsr else (("操作间隔（秒）", ui.action_delay), ("界面超时（秒）", ui.transition_timeout), ("OCR阈值", ui.ocr_confidence))
     for row, (label, variable) in enumerate(fields):

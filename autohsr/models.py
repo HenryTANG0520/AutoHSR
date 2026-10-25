@@ -91,6 +91,7 @@ class RunReport:
     results: list[TaskResult] = field(default_factory=list)
     stamina_spent: int = 0
     daily_verified: bool = False
+    daily_synthesis: dict = field(default_factory=dict)
     engagement: int | None = None
     run_dir: str = ""
     operation: str = "daily"

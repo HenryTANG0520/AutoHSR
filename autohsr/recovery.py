@@ -11,7 +11,8 @@ from .storage import replace_file
 
 
 def reward_only_settings(settings):
-    return replace(settings, assignments=False, battle=False, daily=True, mail=False, battlepass=False)
+    return replace(settings, assignments=False, battle=False, daily=True, mail=False, battlepass=False,
+                   daily_synthesis=False)
 
 
 def recovery_state(runs: Path) -> dict:

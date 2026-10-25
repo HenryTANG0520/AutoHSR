@@ -140,11 +140,13 @@ class AutoHSRWindow:
         self.battle_cost = tk.StringVar()
         self.use_support = tk.BooleanVar(value=self.settings.use_support)
         self.auto_launch = tk.BooleanVar(value=self.settings.auto_launch)
+        self.overlay_logs = tk.BooleanVar(value=self.settings.overlay_logs)
+        self.daily_synthesis = tk.BooleanVar(value=self.settings.daily_synthesis)
         self.tasks = {name: tk.BooleanVar(value=getattr(self.settings, name)) for name in TASK_NAMES}
         if not self.settings.allow_stamina_spend:
             self.tasks["battle"].set(False)
         self.form_variables = [self.game_path, self.target_name, self.target_location, self.stamina_limit,
-                               self.rounds, self.dungeon_category, self.challenge_count, self.use_support, self.auto_launch, *self.tasks.values()]
+                               self.rounds, self.dungeon_category, self.challenge_count, self.use_support, self.auto_launch, self.overlay_logs, self.daily_synthesis, *self.tasks.values()]
         self.status = tk.StringVar(value="● 准备就绪")
         self.save_status = tk.StringVar()
         self.summary = tk.StringVar(value="请选择任务并检测窗口；运行结果会保留在这里。")
@@ -251,7 +253,7 @@ class AutoHSRWindow:
         from .dungeon_ui import refresh_count
         refresh_count(self)
         battle = f" · {self.target_name.get()} / {self.target_location.get() or '地点待填写'} · {self.challenge_count.get()} 次 · 开拓力上限 {self.stamina_limit.get()}" if self.tasks["battle"].get() else " · 不刷本"
-        self.plan.set(("自动启动游戏" if self.auto_launch.get() else "使用已打开的游戏") + battle + "\n" + "、".join(selected))
+        self.plan.set("自动检查游戏并返回主界面" + battle + "\n" + "、".join(selected))
         self._refresh_controls()
 
     def _refresh_recovery(self):
@@ -324,7 +326,8 @@ class AutoHSRWindow:
 
     def _read_settings(self, save=False, operation="daily") -> Settings | None:
         try:
-            values = dict(game_path=self.game_path.get().strip())
+            values = dict(game_path=self.game_path.get().strip(), overlay_logs=self.overlay_logs.get(),
+                          daily_synthesis=self.daily_synthesis.get())
             if not save and operation == "dungeon_catalogue":
                 values.update(auto_launch=False, assignments=False, battle=False, daily=False, mail=False, battlepass=False,
                               dungeon_category="auto", ocr_confidence=float(self.ocr_confidence.get()))
@@ -508,7 +511,7 @@ class AutoHSRWindow:
         self.plan.set("货币战争 · 整局验证 · 超频A0" if flow_test and currency_start_from_lobby else ("货币战争 · 连续流程验证"+(f" · 升级至Lv{currency_target_level}" if currency_target_level else " · 不购买经验")) if flow_test else "货币战争 · 当前节点战斗验证" if node_test else f"货币战争 · 单次{deployment_label}部署" if deploy_test else "货币战争 · 单次前台3→1拖动验证" if drag_test else "货币战争 · 只读识别 · 自动玩法未开放" if currency_wars else
                       f"差分宇宙 · {self.du_mode.get()} · {settings.differential_universe_runs} 局 · 预设编队 {settings.differential_universe_team} · 不消耗每日刷本预算" if differential_universe else
                       "仅补领奖 · 不刷本 · 不执行附加任务 · 本次不保存" if reward_only else
-                      ("自动启动游戏" if settings.auto_launch else "使用已打开的游戏") +
+                      "自动检查游戏并返回主界面" +
                       (f" · {settings.target_name} / {settings.target_location} · {settings.challenge_count} 次 · 开拓力上限 {settings.stamina_limit}" if settings.battle else " · 不刷本"))
         if catalogue:
             self.plan.set("采集生存索引副本目录 · 不开始挑战 · 不消耗资源")

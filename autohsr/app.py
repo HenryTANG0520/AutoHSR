@@ -95,6 +95,8 @@ class Context:
                     self.vision.refine_du_blessing_names(scene)
                     if self.settings.differential_universe_rewards:
                         self.vision.refine_du_reward_balance(scene)
+                elif self.report.operation == 'daily' and self.settings.daily_synthesis:
+                    self.vision.refine_daily_synthesis(scene)
                 scene.captured_at = captured_at
                 self.checkpoint()
                 if capture_epoch != self.runner.input_epoch:
@@ -141,6 +143,11 @@ class Context:
                 if normalize(target.text)!=normalize(expected):
                     raise AutomationError('演算入口与配置模式不一致，未选择。')
             guard_differential_universe_click(scene, target, intent=du_intent)
+        elif du_intent.startswith('daily_synthesis_'):
+            if self.report.operation != 'daily' or not self.settings.daily_synthesis:
+                raise AutomationError('日常合成仅用于已开启的每日实训补足步骤。')
+            from .daily_synthesis import guard_click as guard_synthesis_click
+            guard_synthesis_click(scene, target, du_intent, self.report.daily_synthesis)
         elif du_intent.startswith('planar_team_'):
             if self.report.operation != 'daily' or self.settings.dungeon_category != 'planar':
                 raise AutomationError('饰品提取预设选角仅用于该副本日常流程。')
@@ -1098,7 +1105,8 @@ class Runner:
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False):
         self.settings = settings
-        self.emit = emit or (lambda event: None)
+        self._emit = emit or (lambda event: None)
+        self._overlay = None
         self.report = RunReport()
         self._stop = threading.Event()
         self._pause = threading.Event()
@@ -1179,6 +1187,11 @@ class Runner:
         self.report.status = "success" if all(r.status == "ok" for r in self.report.results) else "partial"
         if self.settings.daily and not self.report.daily_verified:
             self.report.status = "partial"
+
+    def emit(self, event):
+        if self._overlay is not None:
+            self._overlay.publish(event)
+        self._emit(event)
 
     def log(self, message: str, level="info"):
         if self._logger:
@@ -1276,8 +1289,32 @@ class Runner:
 
     def checkpoint(self):
         self._control_checkpoint()
+        if self._overlay is not None:
+            for message, level in self._overlay.drain_notices():
+                self.log(message, level)
         if self._window is not None:
             self.wait_for_focus()
+
+    def _prepare_daily_game(self):
+        """Check first; launch only when absent, then focus once at startup."""
+        self.log('检查游戏是否已启动。')
+        try:
+            self._window = find_game(self.settings.game_path)
+            self.log('游戏已运行，准备置于前台并返回主界面。')
+            return
+        except AutomationError:
+            pass
+        self.log(launch_game(self.settings))
+        self.log('等待游戏窗口出现；使用已有登录状态进入游戏。')
+        for _ in range(120):
+            self.checkpoint()
+            try:
+                self._window = find_game(self.settings.game_path)
+                return
+            except AutomationError:
+                if self._stop.wait(1):
+                    raise Stopped('任务已停止。')
+        raise AutomationError('启动后120秒仍未找到游戏窗口，已停止。')
 
     def _resume_step(self, action, name):
         while True:
@@ -1287,6 +1324,8 @@ class Runner:
                 self.checkpoint()
                 if name == "battle" and (self.report.stamina_pending or self.report.immersifiers_pending):
                     raise AutomationError("挑战输入已中断且消耗待核对；保留本轮预算，不重复开始挑战。")
+                if name == 'daily' and self.report.daily_synthesis.get('status') == 'pending':
+                    raise AutomationError('日常合成输入已中断，保留待核对记录，不重复合成。')
                 self.log("已丢弃暂停前的目标，按当前画面重新核实未完成步骤。")
 
     def _hotkeys(self):
@@ -1347,21 +1386,19 @@ class Runner:
             monitor = threading.Thread(target=self._hotkeys, name="AutoHSR-hotkeys", daemon=True)
             monitor.start()
             monitor_started = True
-            if not catalogue and not currency_wars and not differential_universe and self.settings.auto_launch:
-                self.log(launch_game(self.settings))
-                self.log("等待游戏窗口；首次登录/更新请手动完成。")
-                for _ in range(120):
-                    self.checkpoint()
-                    try:
-                        self._window = find_game(self.settings.game_path)
-                        break
-                    except AutomationError:
-                        if self._stop.wait(1):
-                            raise Stopped("任务已停止。")
+            if not catalogue and not currency_wars and not differential_universe:
+                self._prepare_daily_game()
             self._window = self._window or find_game(self.settings.game_path)
             if self.report.operation != "currency_wars" and is_elevated(self._window.hwnd) is True and not is_admin():
                 raise AutomationError("游戏以管理员运行，请使用现有 Start-AutoHSR-Admin.cmd 重开助手。")
             self._window.focus()
+            if self.settings.overlay_logs:
+                from .overlay import OverlayService
+                self._overlay = OverlayService()
+                try:
+                    self._overlay.start(self._window.hwnd)
+                except Exception as error:
+                    self.log(f'前台日志字幕启动失败，文件日志继续保留：{error}', 'warning')
             self.log("正在加载中文 OCR 模型。F9 暂停/继续，F10 紧急停止。")
             vision = (IsolatedVision(self.settings.ocr_confidence, checkpoint=self._control_checkpoint,
                                       inactive=lambda: self.inactive_duration,
@@ -1390,6 +1427,16 @@ class Runner:
                 workflow = DailyWorkflow(context)
                 initial = context.snapshot()
                 context.evidence(initial, "start")
+                if self.report.operation == 'daily' and self.settings.daily and self.settings.daily_synthesis:
+                    from .daily_synthesis import resume_pending
+                    try:
+                        from .du_daily import account_key
+                        account_key(initial)
+                    except AutomationError:
+                        pass  # Login pages have no account identity or craft to resume.
+                    else:
+                        if resume_pending(workflow, initial):
+                            initial = context.snapshot()
                 # Planar extraction has a uniquely named existing-save setup
                 # page, including its resource price. Reuse that verified page
                 # when no preceding assignment task needs the phone menu.
@@ -1421,6 +1468,12 @@ class Runner:
                     self.log(f"失败截图未保存：{evidence_error}", "warning")
             self.report.results.append(TaskResult("run", "failed", str(error)))
         finally:
+            if self._overlay is not None:
+                try:
+                    self._overlay.close()
+                except Exception as error:
+                    self.log(f'日志字幕关闭失败：{error}', 'warning')
+                self._overlay = None
             self._monitor_end.set()
             if monitor_started:
                 monitor.join(timeout=1)

@@ -28,7 +28,9 @@ class Settings:
     daily: bool = True
     mail: bool = False
     battlepass: bool = False
-    auto_launch: bool = False
+    auto_launch: bool = True  # Legacy field; daily startup now always checks/launches.
+    overlay_logs: bool = True
+    daily_synthesis: bool = True
     action_delay: float = 1.0
     battle_timeout: int = 900
     ocr_confidence: float = 0.65
@@ -61,7 +63,7 @@ class Settings:
                     raise ValueError(f"{category.label}本次挑战次数应为 1～{count_limit(category)}。")
                 if self.challenge_count * category.cost > self.stamina_limit:
                     raise ValueError("所选次数的预计消耗超过本次开拓力上限，请减少次数或调整上限。")
-        for name in ("use_support", "assignments", "battle", "allow_stamina_spend", "daily", "mail", "battlepass", "auto_launch", "differential_universe_save", "differential_universe_rewards", "differential_universe_daily"):
+        for name in ("use_support", "assignments", "battle", "allow_stamina_spend", "daily", "mail", "battlepass", "auto_launch", "overlay_logs", "daily_synthesis", "differential_universe_save", "differential_universe_rewards", "differential_universe_daily"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} 必须是布尔值。")
         for name in ("action_delay", "battle_timeout", "ocr_confidence"):

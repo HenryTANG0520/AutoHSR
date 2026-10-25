@@ -1,0 +1,15 @@
+{
+  "source": "user-provided clean snack icon 2026-10-25",
+  "source_sha256": "8a18c491a6672c937cdc203b14f97661852080c161bb5bf1b4bdadb2a015c4a7",
+  "crop": [
+    25,
+    28,
+    196,
+    202
+  ],
+  "baseline_size": [
+    86,
+    87
+  ],
+  "usage": "select recipe only; exact title, single quantity and material balances independently checked"
+}

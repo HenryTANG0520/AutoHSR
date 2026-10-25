@@ -82,6 +82,23 @@ reference for the screenshot, recognition, and simulated-input architecture.
 No BetterGI game-specific templates or trained game-specific models are copied
 into this resource directory.
 
+The foreground log layout introduced on 2026-10-25 also references BetterGI's
+[`MaskWindowConfig.cs`](https://github.com/babalae/better-genshin-impact/blob/4d42b8bac7f7665254593f70b97b19a9e09b8586/BetterGenshinImpact/Core/Config/MaskWindowConfig.cs)
+and [`MaskWindow.xaml`](https://github.com/babalae/better-genshin-impact/blob/4d42b8bac7f7665254593f70b97b19a9e09b8586/BetterGenshinImpact/View/MaskWindow.xaml):
+transparent lower-left status/log regions at the 1920×1080 baseline, timestamps,
+severity labels, light gray text and a dark shadow. Rendering and game-capture
+exclusion are implemented locally in `autohsr/overlay_native.py`.
+The display-event queue and acceptance harness were adapted from Henry's
+AutoZZZ project, also GPL-3.0-only; no BetterGI executable, artwork or model is
+bundled for this display.
+
+`templates/daily_synthesis_snack.png` was cropped on 2026-10-25 from the user's
+clean snack-icon screenshot at `(25, 28, 196, 202)` and resized to 86×87 for recipe
+selection. It excludes inventory counts and account identifiers. The source
+hash and transform are in `daily_synthesis_snack.json`; game artwork belongs
+to its rights holder. Recipe text, single-item quantity, ingredient balances,
+daily task and post-craft inventory are checked independently of this image.
+
 ## Differential Universe local samples
 
 The following recognition templates were cropped locally on 2026-10-18 from

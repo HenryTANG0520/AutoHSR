@@ -28,6 +28,7 @@ class DailyWorkflow:
         self._calyx_location: str | None = None
         self._login_supply_claimed = False
         self._login_supply_closed = False
+        self._daily_synthesis_attempted = False
 
     def _snapshot(self) -> Scene:
         self.ctx.checkpoint()
@@ -87,7 +88,18 @@ class DailyWorkflow:
         return DailyWorkflow._guide(scene) and scene.has(name, TITLE)
 
     @staticmethod
+    def _navigation_page(scene: Scene) -> bool:
+        # A mode's own “开始游戏” is navigation, never the account login screen.
+        return scene.has(
+            ("委托", "星际和平指南", "每日实训", "生存索引", "邮件", "邮箱", "无名勋礼",
+             "角色", "队伍", "背包", "拟造花萼", "凝滞虚影", "侵蚀隧洞", "历战余响",
+             "饰品提取", "支援列表", "差分宇宙", "模拟宇宙", "货币战争", "逐光捡金",
+             "活动", "任务", "地图", "成就", "智库", "好友", "短信", "合成"), TITLE)
+
+    @staticmethod
     def _login(scene: Scene) -> bool:
+        if DailyWorkflow._navigation_page(scene):
+            return False
         return scene.has(("点击进入", "开始游戏", "账号登录", "扫码登录", "验证码", "用户协议", "资源下载"))
 
     def _in_battle(self, scene: Scene) -> bool:
@@ -135,7 +147,7 @@ class DailyWorkflow:
     def _world(self, scene: Scene) -> bool:
         # A smooth modal background can correlate with the small world icon.
         # Recognized login/reward overlays always take precedence over it.
-        if (self._login(scene) or self._supply_overlay(scene) or self._login_reward_overlay(scene)
+        if (self._navigation_page(scene) or self._login(scene) or self._supply_overlay(scene) or self._login_reward_overlay(scene)
                 or scene.has(("点击空白处关闭", "点击任意位置关闭", "点击空白处继续"),
                              (0.25, 0.65, 0.75, 0.97), exact=True)):
             return False
@@ -196,8 +208,8 @@ class DailyWorkflow:
                     raise AutomationError("游戏需要手动完成账号登录、验证或更新。")
                 self._click(scene, enter)
                 scene = self._wait(lambda s: self._supply_overlay(s) or self._login_reward_overlay(s)
-                                   or self._world(s) or self._phone(s),
-                                   timeout=120, description="等待进入游戏场景或已有登录奖励")
+                                   or self._world(s) or self._phone(s) or self._navigation_page(s),
+                                   timeout=120, description="进入游戏场景、菜单或已有登录奖励")
                 scene = self._settle_login_overlays(scene)
                 if self._phone(scene):
                     return scene
@@ -208,16 +220,14 @@ class DailyWorkflow:
                 continue
             if self._in_battle(scene):
                 raise AutomationError("当前在战斗或结算界面，无法安全返回手机菜单。")
-            known_page = scene.has(
-                ("委托", "星际和平指南", "每日实训", "生存索引", "邮件", "邮箱", "无名勋礼", "角色", "队伍", "背包", "拟造花萼",
-                 "凝滞虚影", "侵蚀隧洞", "历战余响", "饰品提取", "支援列表"),
-                TITLE,
-            )
+            known_page = self._navigation_page(scene)
             if not known_page and not self._world(scene):
                 self.ctx.evidence(scene, "unknown_navigation")
                 raise AutomationError("无法确认当前页面；请打开手机菜单，或采集大世界角色图标模板。")
             if _ == 5:
                 break
+            if known_page:
+                self.ctx.log("当前处于游戏菜单，按 Esc 返回主界面后继续日常。")
             scene = self._press("esc")
         raise AutomationError("五次返回后仍未识别到手机菜单，已停止导航。")
 
@@ -1155,6 +1165,13 @@ class DailyWorkflow:
         activity = self._activity(scene)
         self.ctx.report.engagement = activity
         if activity != 500:
+            if (self.settings.daily_synthesis and self.ctx.report.operation == 'daily'
+                    and type(activity) is int and activity < 500 and not self._daily_synthesis_attempted):
+                from .daily_synthesis import task_target, complete_once
+                if task_target(scene) is not None:
+                    self._daily_synthesis_attempted = True
+                    complete_once(self, scene)
+                    return self.daily()
             detail = "未能识别当前实训活跃值" if activity is None else f"实训活跃值为{activity}/500"
             return self._result("daily", "partial", f"{detail}，尚未确认每日任务完成。", scene)
         for _ in range(6):

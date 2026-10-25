@@ -63,6 +63,30 @@ class Vision:
         """Recognize one tightly bounded numeric field without text detection."""
         return self._read_field(image,r'[0-9]{1,2}')
 
+    def refine_daily_synthesis(self, scene):
+        from .daily_synthesis import selected, quantity
+        if scene.image is None or not selected(scene) or quantity(scene) is not None:
+            return
+        if not scene.has('合成数量', (.56, .75, .64, .80)):
+            return
+        h, w = scene.image.shape[:2]
+        box = (.637, .766, .660, .799)
+        import cv2
+        fields = []
+        # A lone thin “1” is unstable on the animated purple background.
+        # Native and thresholded crops must agree whenever both are readable.
+        for region in (box, (.640, .772, .655, .797)):
+            patch = scene.image[round(region[1]*h):round(region[3]*h), round(region[0]*w):round(region[2]*w)]
+            gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
+            binary = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)[1]
+            for sample in (patch, binary):
+                field = self._read_field(sample, r'\s*[1-9]\d{0,3}\s*')
+                if field is not None:
+                    fields.append(field)
+        if fields and len({field.text.strip() for field in fields}) == 1:
+            field = max(fields, key=lambda item: item.score)
+            scene.tokens.append(Token(field.text.strip(), field.score, box))
+
     def planar_payment(self, scene):
         from .config import RESOURCE_ROOT
         from .models import normalize
