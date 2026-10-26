@@ -268,6 +268,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 
 “配置标准A8-40（不开局）”和CLI `python -m autohsr --currency-wars-configure`进一步打开标准职级列表，只选择实际可见且朝40靠近的数字行。完整页面锚点确认标准A8，数字、蓝色选中背景、白色字形共同确认已选子档；每次选择都重新截图核验，不能将可见数字当成已选。整图漏读时，隔离OCR子进程用原图和二值图各做一次局部数字识别，两次一致才补字段，仍核对高亮，不降低全局阈值。已分段实机配置到40，报告为`rank_verified=true/rank=8/wealth=40`；不点击开始对局，不计通关，EXE尚未重建。
 
+“标准开发：新开A8-40”与CLI `python -m autohsr --currency-wars-standard`在核实配置后提交一次新对局，记录首领预览、位面转换与当前局面。`--resume-active-currency`或“接续已记录A8-40开发局”只接续已核实开始且上步无待核对动作的记录。`runs/currency-standard-session.json`原子保存对局标识和逐步pending/verified/unknown；Context输入前回读核对已落盘意图、动作、输入代次和新鲜画面。旧只读、准备及超频入口不能发送标准开局；已有对局记录阻止再次开局。当前实机已到投资环境，完整阵容采集和策略执行仍在开发，开发接续不计十场验收。
+
 独立离线/API决策命令：
 
 ```powershell

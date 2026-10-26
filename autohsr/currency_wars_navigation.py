@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .currency_wars import CurrencyWarsWorkflow, TASK, observe
-from .currency_wars_prepare import prepare, trusted
+from .currency_wars_prepare import PREPARATION_OPERATIONS, prepare, trusted
 from .models import AutomationError, EmptyCapture, TaskResult, Token, normalize
 from .storage import replace_file
 from .workflows import DailyWorkflow
@@ -123,7 +123,7 @@ def standard_selected(scene, confidence=.65):
 
 
 def locate(c):
-    if c.report.operation != 'currency_wars_prepare' or not c.runner.currency_locate:
+    if c.report.operation not in PREPARATION_OPERATIONS or not c.runner.currency_locate:
         raise AutomationError('定位入口需要显式的货币战争导航操作。')
     result = prepare(c)
     bootstrap = c.report.currency_wars

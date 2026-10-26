@@ -216,6 +216,13 @@ def build_window(ui, task_names, server_names):
         configure_button = ttk.Button(locate_row, text='配置标准A8-40（不开局）', command=ui._currency_configure)
         configure_button.pack(side='left', padx=(d(8),0))
         ui.setting_controls.append(configure_button)
+        standard_row = ttk.Frame(readiness, style='Card.TFrame')
+        standard_row.pack(anchor='w', pady=(d(6),0))
+        for label, command in (('标准开发：新开A8-40', ui._currency_standard),
+                               ('接续已记录A8-40开发局', ui._currency_resume)):
+            button = ttk.Button(standard_row, text=label, command=command)
+            button.pack(side='left', padx=(0,d(8)))
+            ui.setting_controls.append(button)
         placement_row=ttk.Frame(readiness,style='Card.TFrame')
         placement_row.pack(anchor='w',pady=(d(6),0))
         ttk.Label(placement_row,text='部署来源：备战区').pack(side='left')

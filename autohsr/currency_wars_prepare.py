@@ -12,6 +12,8 @@ from .models import AutomationError, EmptyCapture, Scene, TaskResult, Token, nor
 from .storage import replace_file
 from .workflows import DailyWorkflow
 
+PREPARATION_OPERATIONS = ('currency_wars_prepare', 'currency_wars_standard')
+
 
 def trusted(scene, confidence=.65):
     tokens = [t for t in scene.tokens if math.isfinite(t.score) and confidence <= t.score <= 1
@@ -70,7 +72,7 @@ def ready_kind(scene, context):
 
 def prepare(c):
     """A dedicated formal operation. The ordinary read-only entry cannot call it."""
-    if c.report.operation != 'currency_wars_prepare':
+    if c.report.operation not in PREPARATION_OPERATIONS:
         raise AutomationError('游戏启动准备需要独立的货币战争准备入口。')
     data = dict(mode='startup_prepare', actions=[], game_ready=False, completion_verified=False,
                 action_status='observing', screenshot='')

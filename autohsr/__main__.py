@@ -27,6 +27,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--currency-wars-prepare", action="store_true", help="启动或复用游戏，进入已有登录及主界面；不开始对局")
     mode.add_argument("--currency-wars-locate", action="store_true", help="启动准备并通过指南定位货币战争标准模式；不开始对局")
     mode.add_argument("--currency-wars-configure", action="store_true", help="定位标准博弈并配置A8财富造物主40；不开始对局")
+    mode.add_argument("--currency-wars-standard", action="store_true", help="标准A8-40开发：核实配置后新开局；未知页面停下留证")
     mode.add_argument("--check", action="store_true", help="检测窗口和 OCR，输出 JSON；不操作游戏")
     mode.add_argument("--scan-dungeons", action="store_true", help="采集生存索引全部副本入口；不开始挑战或消耗资源")
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
@@ -60,7 +61,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="接续当前用户已启动的周期演算时提供页面已选难度（1～10）；会将该局计入请求局数")
     parser.add_argument("--reward-only", action="store_true", help="本次仅验证并补领每日实训；不刷本，不保存配置")
     parser.add_argument("--new-battle-run", action="store_true", help="明确开始新的刷本预算；先人工核对上次已确认及待核对消耗")
+    parser.add_argument("--resume-active-currency", action="store_true", help="仅配合标准开发入口，接续有记录且已核实开始的货币战争")
     args = parser.parse_args(raw_args)
+    if args.resume_active_currency and not args.currency_wars_standard:
+        parser.error('--resume-active-currency 仅用于 --currency-wars-standard。')
     if args.admin_owner is not None and args.admin_launch not in ("enable", "disable"):
         parser.error("--admin-owner 仅用于管理员授权操作。")
     if args.admin_task and raw_args != ["--admin-task"]:
@@ -131,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
         tests = unittest.defaultTestLoader.discover(str(test_path))
         result = unittest.TextTestRunner(verbosity=2).run(tests)
         return 0 if result.wasSuccessful() else 1
-    if not any((args.check, args.scan_dungeons, args.launch, args.run, args.currency_wars_check, args.currency_wars_prepare, args.currency_wars_locate, args.currency_wars_configure, args.differential_universe)):
+    if not any((args.check, args.scan_dungeons, args.launch, args.run, args.currency_wars_check, args.currency_wars_prepare, args.currency_wars_locate, args.currency_wars_configure, args.currency_wars_standard, args.differential_universe)):
         from .admin_launch import AdminLaunchError, handoff, is_admin
         try:
             if args.admin_task and not is_admin():
@@ -179,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.reward_only:
             from .recovery import reward_only_settings
             settings = reward_only_settings(settings)
-        settings.validate("check" if args.check or args.scan_dungeons else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure else "differential_universe" if args.differential_universe else "daily")
+        settings.validate("check" if args.check or args.scan_dungeons else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or args.currency_wars_standard else "differential_universe" if args.differential_universe else "daily")
         from .app import Runner, inspect_game, launch_game
         if args.check:
             print(_json(inspect_game(settings)))
@@ -192,9 +196,10 @@ def main(argv: list[str] | None = None) -> int:
             if kind != "finished":
                 print(json.dumps(event, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
         runner = Runner(settings, emit, new_battle_run=args.new_battle_run,
-                        operation="dungeon_catalogue" if args.scan_dungeons else "currency_wars_prepare" if args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure else "currency_wars" if args.currency_wars_check else "differential_universe" if args.differential_universe else "reward_only" if args.reward_only else "daily",
+                        operation="dungeon_catalogue" if args.scan_dungeons else "currency_wars_standard" if args.currency_wars_standard else "currency_wars_prepare" if args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure else "currency_wars" if args.currency_wars_check else "differential_universe" if args.differential_universe else "reward_only" if args.reward_only else "daily",
                         **(dict(currency_locate=True) if args.currency_wars_locate or args.currency_wars_configure else {}),
                         **(dict(currency_configure=True) if args.currency_wars_configure else {}),
+                        **(dict(currency_resume=args.resume_active_currency) if args.currency_wars_standard else {}),
                         **(dict(du_runs=settings.differential_universe_runs,
                                 du_resume_active=args.resume_active_du,
                                 du_periodic_rank=args.du_periodic_rank) if args.differential_universe else {}))

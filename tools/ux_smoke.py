@@ -83,6 +83,9 @@ class FakeRunner:
             report = dict(status='stopped' if self.stopped else 'partial', operation=self.kwargs['operation'],
                 results=[], currency_wars=dict(mode_text_visible=True, gameplay_enabled=False, completion_verified=False),
                 error='离线模拟：真实规则尚未核实', safe_next='人工采集教程后校准')
+            if self.kwargs['operation'] == 'currency_wars_standard':
+                report['currency_wars'].update(mode='standard_development', start_verified=True,
+                                              action_status='needs_observation', rank=8, wealth=40)
             if self.kwargs['operation'] == 'currency_wars_drag_test':
                 report['currency_wars'].update(mode='single_drag_test', action_status='verified', before='fake-before.png', after='fake-after.png')
             if self.kwargs['operation'] == 'currency_wars_deploy_test':
@@ -307,6 +310,20 @@ def main():
                     '标准A8财富造物主40已核实' in ui.currency_observation.get() and
                     '未开始新对局' in ui.currency_observation.get() and
                     '玩法未完成' in ui.summary.get() and config.read_bytes() == original)
+                for resume in (False, True):
+                    (ui._currency_resume if resume else ui._currency_standard)()
+                    pump(root, lambda: ui.runner is not None)
+                    standard_runner = FakeRunner.instances[-1]
+                    check('currency_standard_resume_scope' if resume else 'currency_standard_start_scope',
+                        standard_runner.kwargs['operation'] == 'currency_wars_standard' and
+                        standard_runner.kwargs.get('currency_resume') is resume and
+                        ui.current_task.get() == '标准A8-40开发' and
+                        all(str(w.cget('state')) == 'disabled' for w in ui.setting_controls))
+                    standard_runner.release.set()
+                    pump(root, lambda: not ui.busy)
+                    check('currency_standard_resume_is_not_acceptance' if resume else 'currency_standard_start_is_not_acceptance',
+                        '已核实开局' in ui.currency_observation.get() and '整局未完成' in ui.currency_observation.get() and
+                        '标准开发结束' in ui.summary.get() and config.read_bytes() == original)
                 ui.currency_drag_button.invoke()
                 pump(root, lambda: ui.runner is not None)
                 drag_runner = FakeRunner.instances[-1]

@@ -122,7 +122,8 @@ class Context:
             raise AutomationError("货币战争当前仅允许只读识别，禁止发送游戏输入。")
 
     def currency_prepare_click(self, scene, intent, target):
-        if self.report.operation != 'currency_wars_prepare':
+        from .currency_wars_prepare import PREPARATION_OPERATIONS
+        if self.report.operation not in PREPARATION_OPERATIONS:
             raise AutomationError('当前任务不允许货币战争启动准备输入。')
         from .currency_wars import CurrencyWarsWorkflow
         from .currency_wars_prepare import click_target
@@ -138,7 +139,8 @@ class Context:
         self.sleep(self.settings.action_delay)
 
     def currency_prepare_back(self, scene):
-        if self.report.operation != 'currency_wars_prepare':
+        from .currency_wars_prepare import PREPARATION_OPERATIONS
+        if self.report.operation not in PREPARATION_OPERATIONS:
             raise AutomationError('当前任务不允许启动准备返回。')
         from .currency_wars import CurrencyWarsWorkflow
         from .currency_wars_prepare import key_allowed
@@ -157,7 +159,8 @@ class Context:
         self.sleep(self.settings.action_delay)
 
     def currency_navigation_input(self, scene, choice):
-        if self.report.operation != 'currency_wars_prepare' or not self.runner.currency_locate:
+        from .currency_wars_prepare import PREPARATION_OPERATIONS
+        if self.report.operation not in PREPARATION_OPERATIONS or not self.runner.currency_locate:
             raise AutomationError('当前任务未请求货币战争入口导航。')
         from .currency_wars import CurrencyWarsWorkflow
         from .currency_wars_navigation import next_action
@@ -171,6 +174,33 @@ class Context:
                 self.window.key(choice.key)
             else:
                 self.window.click(*choice.target.center, scene.geometry)
+        except FocusLost:
+            self._focus_interrupted()
+        self.sleep(self.settings.action_delay)
+
+    def currency_standard_input(self, scene, choice):
+        if self.report.operation != 'currency_wars_standard':
+            raise AutomationError('当前任务不允许标准博弈开发输入。')
+        from .currency_wars import CurrencyWarsWorkflow
+        from .currency_wars_standard_flow import next_action
+        self.checkpoint()
+        guard = CurrencyWarsWorkflow(self)
+        guard._require_current_scene(scene)
+        store = getattr(self, 'currency_standard_session', None)
+        if store is None:
+            raise AutomationError('缺少本次标准对局的记录。')
+        data = store.require_pending(choice.intent, self.runner.input_epoch)
+        if choice.intent == 'start_standard_a8_40':
+            if data['status'] != 'start_pending' or len(data['actions']) != 1:
+                raise AutomationError('标准开局已有提交记录，未重复开始。')
+        elif data['status'] != 'active':
+            raise AutomationError('尚未核实标准对局已开始。')
+        if next_action(scene, self.settings.ocr_confidence) != choice:
+            raise AutomationError('标准开发动作与当前页面不符。')
+        guard._require_current_scene(scene)
+        self.last_scene, self._scroll_anchor = None, None
+        try:
+            self.window.click(*choice.target.center, scene.geometry)
         except FocusLost:
             self._focus_interrupted()
         self.sleep(self.settings.action_delay)
@@ -1158,7 +1188,7 @@ class Runner:
                  du_runs=None, du_resume_active=False, du_periodic_rank=None,
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
-                 currency_configure=False):
+                 currency_configure=False, currency_resume=False):
         self.settings = settings
         self._emit = emit or (lambda event: None)
         self._overlay = None
@@ -1172,13 +1202,19 @@ class Runner:
         self.input_epoch = 0
         self.inactive_duration = 0.0
         self.new_battle_run = new_battle_run
-        if type(currency_locate) is not bool or currency_locate and operation != 'currency_wars_prepare':
+        preparation_operations = ('currency_wars_prepare', 'currency_wars_standard')
+        if type(currency_locate) is not bool or currency_locate and operation not in preparation_operations:
             raise ValueError('货币战争入口导航仅允许独立准备操作。')
         self.currency_locate = currency_locate
         if (type(currency_configure) is not bool or currency_configure and
-                (operation != 'currency_wars_prepare' or not currency_locate)):
+                (operation not in preparation_operations or not currency_locate)):
             raise ValueError('标准A8-40配置仅允许独立入口导航操作。')
         self.currency_configure = currency_configure
+        if type(currency_resume) is not bool or currency_resume and operation != 'currency_wars_standard':
+            raise ValueError('接续标准对局只适用于标准开发入口。')
+        self.currency_resume = currency_resume
+        if operation == 'currency_wars_standard':
+            self.currency_locate = self.currency_configure = True
         self.currency_source_slot,self.currency_zone = currency_source_slot,currency_zone
         if type(currency_target_level) is not int or not 0<=currency_target_level<=10:
             raise ValueError('货币战争目标等级必须为0到10的整数。')
@@ -1264,8 +1300,11 @@ class Runner:
         from .currency_wars import CurrencyWarsWorkflow, SAFE_NEXT, TASK
         self.report.failure_task = TASK
         self.report.safe_next = SAFE_NEXT
-        self.emit(dict(type="task", task=TASK, status="running", detail="启动准备：进入游戏，不开始对局" if self.report.operation == 'currency_wars_prepare' else "连续战斗与结算推进验证" if self.report.operation == "currency_wars_flow_test" else "当前节点战斗验证" if self.report.operation == "currency_wars_node_test" else "单次部署验证" if self.report.operation == "currency_wars_deploy_test" else "单次前台拖动验证" if self.report.operation == "currency_wars_drag_test" else "只读识别与证据保存"))
-        if self.report.operation == 'currency_wars_prepare':
+        self.emit(dict(type="task", task=TASK, status="running", detail="标准A8-40开发：核实开局与当前局面" if self.report.operation == 'currency_wars_standard' else "启动准备：进入游戏，不开始对局" if self.report.operation == 'currency_wars_prepare' else "连续战斗与结算推进验证" if self.report.operation == "currency_wars_flow_test" else "当前节点战斗验证" if self.report.operation == "currency_wars_node_test" else "单次部署验证" if self.report.operation == "currency_wars_deploy_test" else "单次前台拖动验证" if self.report.operation == "currency_wars_drag_test" else "只读识别与证据保存"))
+        if self.report.operation == 'currency_wars_standard':
+            from .currency_wars_standard_flow import run_standard
+            result = run_standard(context)
+        elif self.report.operation == 'currency_wars_prepare':
             if self.currency_locate:
                 from .currency_wars_navigation import locate
                 result = locate(context)
@@ -1440,10 +1479,10 @@ class Runner:
         try:
             if not mutex or already_running:
                 raise AutomationError("另一个 AutoHSR 任务正在运行，请先停止后重试。")
-            currency_wars = self.report.operation in ("currency_wars", "currency_wars_prepare", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test")
+            currency_wars = self.report.operation in ("currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test")
             differential_universe = self.report.operation == "differential_universe"
             catalogue = self.report.operation == "dungeon_catalogue"
-            if self.report.operation not in ("daily", "reward_only", "currency_wars", "currency_wars_prepare", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
+            if self.report.operation not in ("daily", "reward_only", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
                 raise AutomationError("未知运行类型，未访问游戏。")
             self.settings.validate("check" if catalogue else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "daily")
             if not catalogue and not currency_wars and not differential_universe and self.settings.battle and self.settings.allow_stamina_spend:
@@ -1455,7 +1494,7 @@ class Runner:
             monitor = threading.Thread(target=self._hotkeys, name="AutoHSR-hotkeys", daemon=True)
             monitor.start()
             monitor_started = True
-            if (not catalogue and not currency_wars and not differential_universe) or self.report.operation == 'currency_wars_prepare':
+            if (not catalogue and not currency_wars and not differential_universe) or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard'):
                 self._prepare_daily_game()
             self._window = self._window or find_game(self.settings.game_path)
             if self.report.operation != "currency_wars" and is_elevated(self._window.hwnd) is True and not is_admin():

@@ -468,6 +468,12 @@ class AutoHSRWindow:
     def _currency_configure(self):
         self._start(currency_wars=True, currency_prepare=True, currency_locate=True, currency_configure=True)
 
+    def _currency_standard(self):
+        self._start(currency_wars=True, currency_standard=True)
+
+    def _currency_resume(self):
+        self._start(currency_wars=True, currency_standard=True, currency_resume=True)
+
     def _currency_control_probe(self):
         self._start(currency_wars=True, currency_control_probe=True)
 
@@ -494,13 +500,13 @@ class AutoHSRWindow:
     def _start(self, reward_only=False, *, catalogue=False, currency_wars=False, differential_universe=False, drag_test=False, deploy_test=False, node_test=False, flow_test=False,
                currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                currency_control_probe=False,currency_timeout_probe=False,currency_prepare=False,currency_locate=False,
-               currency_configure=False) -> None:
+               currency_configure=False,currency_standard=False,currency_resume=False) -> None:
         if self.busy or self.closing or (self.worker is not None and self.worker.is_alive()):
             return
         currency_locate = currency_locate or currency_configure
         currency_prepare = currency_prepare or currency_locate
-        currency_wars = currency_wars or currency_prepare or drag_test or deploy_test or node_test or flow_test
-        operation = "dungeon_catalogue" if catalogue else "currency_wars_prepare" if currency_prepare else "currency_wars_flow_test" if flow_test else "currency_wars_node_test" if node_test else "currency_wars_deploy_test" if deploy_test else "currency_wars_drag_test" if drag_test else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "reward_only" if reward_only else "daily"
+        currency_wars = currency_wars or currency_standard or currency_prepare or drag_test or deploy_test or node_test or flow_test
+        operation = "dungeon_catalogue" if catalogue else "currency_wars_standard" if currency_standard else "currency_wars_prepare" if currency_prepare else "currency_wars_flow_test" if flow_test else "currency_wars_node_test" if node_test else "currency_wars_deploy_test" if deploy_test else "currency_wars_drag_test" if drag_test else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "reward_only" if reward_only else "daily"
         settings = self._read_settings(operation=operation)
         if settings is None:
             return
@@ -547,6 +553,8 @@ class AutoHSRWindow:
         if currency_prepare:
             self.plan.set('货币战争 · 配置标准A8-40 · 不开始对局' if currency_configure else
                           '货币战争 · 指南定位标准模式 · 不开始对局' if currency_locate else '货币战争 · 启动准备 · 不开始对局')
+        if currency_standard:
+            self.plan.set('货币战争 · 标准A8-40开发 · ' + ('接续已记录对局' if currency_resume else '核实难度后新开对局'))
         self._has_run = True
         self.paused = self.stopping = False
         self.focus_waiting = False
@@ -565,6 +573,10 @@ class AutoHSRWindow:
             self.currency_status.set("正在推进已校准战斗、选择、编队、奖励及装备；未知反馈停下留证。F9 暂停，F10 停止。" if flow_test else "正在验证当前节点出战与结算。F9 暂停，F10 停止。" if node_test else f"正在部署：{deployment_label}。F9 暂停，F10 停止。" if deploy_test else "正在验证一次前台3→1拖动。F9 暂停，F10 停止。" if drag_test else "正在只读识别，自动玩法保持关闭。F9 暂停，F10 停止。")
             self.currency_observation.set("正在生成本次证据；上次截图与报告保留在运行日志中。")
             self.last_screenshot = None
+            if currency_standard:
+                self.current_task.set('标准A8-40开发')
+                self.currency_status.set('正在接续已记录标准对局，未知反馈停下留证。' if currency_resume else
+                                         '正在核实标准A8-40并新开开发对局；尚未完成整局验收。')
             if currency_prepare:
                 self.current_task.set('货币战争启动准备')
                 self.currency_status.set('正在定位并配置标准A8财富造物主40；不开始对局。' if currency_configure else
@@ -580,7 +592,7 @@ class AutoHSRWindow:
             enabled = getattr(settings, name)
             detail = "开拓力刷本未授权" if name == "battle" and not settings.allow_stamina_spend else ("" if enabled else "未勾选")
             self.table.item(name, values=(label, "等待" if enabled else "跳过", detail), tags=() if enabled else ("skipped",))
-        self._log("开始货币战争启动准备，不开始对局。" if currency_prepare else "开始差分宇宙自动演算。助手将最小化，让游戏保持前台。" if differential_universe else "开始货币战争流程推进验证。" if flow_test else "开始货币战争当前节点战斗验证。" if node_test else "开始货币战争单次部署验证。" if deploy_test else "开始货币战争单次拖动验证。" if drag_test else "开始货币战争只读识别。" if currency_wars else "开始执行每日任务。助手将最小化，让游戏保持前台。")
+        self._log("开始标准A8-40开发；未知页面和反馈停下留证。" if currency_standard else "开始货币战争启动准备，不开始对局。" if currency_prepare else "开始差分宇宙自动演算。助手将最小化，让游戏保持前台。" if differential_universe else "开始货币战争流程推进验证。" if flow_test else "开始货币战争当前节点战斗验证。" if node_test else "开始货币战争单次部署验证。" if deploy_test else "开始货币战争单次拖动验证。" if drag_test else "开始货币战争只读识别。" if currency_wars else "开始执行每日任务。助手将最小化，让游戏保持前台。")
         self.root.iconify()
 
         def work() -> None:
@@ -595,6 +607,7 @@ class AutoHSRWindow:
                     **du_options,
                     **(dict(currency_locate=True) if currency_locate else {}),
                     **(dict(currency_configure=True) if currency_configure else {}),
+                    **(dict(currency_resume=currency_resume) if currency_standard else {}),
                     **(dict(currency_control_probe=True) if currency_control_probe else {}),
                     **(dict(currency_timeout_probe=True) if currency_timeout_probe else {}),
                     **(dict(currency_source_slot=currency_source_slot,currency_zone=currency_zone) if deploy_test else {}),
@@ -687,7 +700,7 @@ class AutoHSRWindow:
         status, detail = str(event.get("status", "pending")), str(event.get("detail", ""))
         if task == "currency_wars":
             self.currency_status.set(detail)
-            self.current_task.set("货币战争启动准备" if self.active_operation == 'currency_wars_prepare' else "货币战争连续流程验证" if self.active_operation == "currency_wars_flow_test" else "货币战争节点战斗验证" if self.active_operation == "currency_wars_node_test" else "货币战争部署验证" if self.active_operation == "currency_wars_deploy_test" else "货币战争拖动验证" if self.active_operation == "currency_wars_drag_test" else "货币战争只读识别")
+            self.current_task.set("标准A8-40开发" if self.active_operation == 'currency_wars_standard' else "货币战争启动准备" if self.active_operation == 'currency_wars_prepare' else "货币战争连续流程验证" if self.active_operation == "currency_wars_flow_test" else "货币战争节点战斗验证" if self.active_operation == "currency_wars_node_test" else "货币战争部署验证" if self.active_operation == "currency_wars_deploy_test" else "货币战争拖动验证" if self.active_operation == "currency_wars_drag_test" else "货币战争只读识别")
         if task in TASK_NAMES:
             tag = "success" if status in ("success", "ok", "completed", "done") else status
             self.table.item(task, values=(TASK_NAMES[task], STATUS_NAMES.get(status, status), detail), tags=(tag,))
@@ -699,6 +712,14 @@ class AutoHSRWindow:
 
     def _currency_observed(self, data: dict) -> None:
         from .currency_wars_pages import PAGE_LABELS
+        if data.get('mode') == 'standard_development':
+            self.currency_observation.set(
+                f"标准A8-40开发：{'已核实开局' if data.get('start_verified') else '开局待核实'} · {data.get('action_status', '观察中')}；整局未完成。"
+                + (f"\n{data['reason']}" if data.get('reason') else '')
+                + f"\n截图：{data.get('screenshot') or '未保存'}")
+            if data.get('screenshot'):
+                self.last_screenshot = Path(data['screenshot'])
+            return
         if data.get('mode') == 'entry_navigation':
             ready = ('标准A8财富造物主40已核实' if data.get('rank_verified') else
                      '标准模式已定位' if data.get('entry_ready') else data.get('action_status', '待处理'))
@@ -809,6 +830,7 @@ class AutoHSRWindow:
             self.summary.set(f"副本完成 {report.get('battle_completed', 0)} / {report['battle_requested']} 次 · " + self.summary.get())
         if currency:
             outcome = ("已停止" if status == "stopped" else "运行失败" if status == "failed" else
+                       "标准开发结束" if report.get('operation', self.active_operation) == 'currency_wars_standard' else
                        "启动准备结束" if report.get('operation', self.active_operation) == 'currency_wars_prepare' else
                        "只读识别结束" if report.get('operation', self.active_operation) == 'currency_wars' else
                        "连续流程验证结束" if report.get('operation', self.active_operation) == 'currency_wars_flow_test' else "单步验证结束")
