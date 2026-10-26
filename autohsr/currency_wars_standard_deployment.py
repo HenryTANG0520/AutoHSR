@@ -56,7 +56,7 @@ def standard_deployment(scene, session, confidence=.65):
     # unknown moves and paid intents still block, and no journal is rewritten.
     prior = session
     actions = session.get('actions',[])
-    if actions and actions[-1].get('action')=='deploy_standard_owned' and actions[-1].get('status')=='pending':
+    if actions and actions[-1].get('action') in ('deploy_standard_owned','start_standard_node') and actions[-1].get('status')=='pending':
         prior = dict(session,actions=actions[:-1])
     snapshot = collected_snapshot(scene,prior,collection.get('input_epoch',-1),'standard_deployment',confidence)
     if (snapshot.page != 'preparation' or snapshot.mode != 'standard' or snapshot.rank != 8

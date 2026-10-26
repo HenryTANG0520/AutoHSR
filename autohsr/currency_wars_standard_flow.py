@@ -72,7 +72,17 @@ def next_action(scene, confidence=.65, *, session=None):
                 from .currency_wars_standard_deployment import standard_deployment, POLICY
                 deployment = standard_deployment(scene,session or {},confidence)
                 if deployment is None:
-                    raise AutomationError('标准阵容已满员，下一步需核实节点出战及结算。')
+                    attempt = (session or {}).get('node_attempt',{})
+                    actions = (session or {}).get('actions',[])
+                    own_pending = bool(actions and actions[-1].get('action')=='start_standard_node'
+                                       and actions[-1].get('status')=='pending'
+                                       and attempt.get('start_action_id')==actions[-1].get('id')
+                                       and attempt.get('status')=='start_pending')
+                    if attempt.get('node')==state.node and not own_pending:
+                        raise AutomationError('本节点已有出战提交，未重复出战。')
+                    from .currency_wars_node import start_target
+                    return StandardAction('start_standard_node','standard_node_entered',start_target(scene,confidence),
+                                          payload=(state.node,state.gold,state.hp,state.level))
                 plan,unit,score,payload = deployment
                 return StandardAction('deploy_standard_owned','standard_owned_deployed',plan,
                                       details=(unit.name,unit.star,unit.tier,plan.zone,score,POLICY),payload=payload)
@@ -102,6 +112,9 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None):
+    if choice.expected == 'standard_node_entered':
+        from .currency_wars_standard_node import entry_feedback
+        return entry_feedback(scene,choice.payload[0],confidence)
     if choice.expected == 'standard_owned_deployed':
         from .currency_wars_standard_deployment import deployment_feedback
         return bool(before is not None and deployment_feedback(before,scene,choice.target,confidence)['status']=='verified')
@@ -194,6 +207,12 @@ def run_standard(c):
             store.data['collection'] = collection
             store.persist()
         kind = observe(scene,c.settings.ocr_confidence).page_kind
+        if kind in ('battle','node_result'):
+            from .currency_wars_standard_node import observe_started_node
+            scene, verified = observe_started_node(c,store,scene)
+            if not verified:
+                break
+            kind = observe(scene,c.settings.ocr_confidence).page_kind
         if kind == 'preparation':
             from .currency_wars_collector import first_unit_probe
             try:
@@ -256,6 +275,10 @@ def run_standard(c):
         if choice.payload:
             action['target'] = list(choice.payload)
             store.persist()
+        if choice.intent == 'start_standard_node':
+            store.data['node_attempt'] = dict(node=choice.payload[0],start_action_id=action['id'],
+                                              status='start_pending',node_verified=False,battle_observed=False)
+            store.persist()
         c.report.currency_wars = store.data
         c.log('标准A8-40开发：' + choice.intent)
         c.currency_standard_input(scene, choice)
@@ -279,6 +302,8 @@ def run_standard(c):
                         store.data['start_verified'] = True
                     if choice.intent.startswith('confirm_standard_environment_'):
                         store.data['environment'] = action['decision']
+                    if choice.intent == 'start_standard_node':
+                        store.data['node_attempt']['status']='observing'
                     if choice.intent == 'inspect_standard_unit':
                         store.data['inspecting'] = dict(zone=choice.payload[0],slot=choice.payload[1],
                                                         node=choice.payload[2],signature=choice.payload[3],

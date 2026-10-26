@@ -1,5 +1,9 @@
 # AutoHSR
 
+> **本项目已于2026年10月26日停止开发。** 不再继续功能迭代、问题修复或后续验收。仓库保留现有源码、未完成的开发快照和历史记录供参考，未完成事项不视为已交付。
+
+停更时货币战争标准A8-40无人接管整局验收为 **0/10**。最后的节点出战与观察代码属于未完成实验：已进入1-1战斗，但节点OCR误识别导致观察中止，尚未修复或验收。详细状态见[停更记录](docs/currency-wars-validation.md#停止开发记录)。
+
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-blue)](#运行条件)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)](#安装与启动)

@@ -149,7 +149,7 @@ def session_snapshot(snapshot, session, epoch, source):
     # financial actions must carry their own settlement before setting clear.
     free = ('start_standard_a8_40','advance_standard_preview','advance_standard_plane',
             'collect_standard_loot','inspect_standard_unit','close_standard_unit','open_standard_shop',
-            'close_standard_shop','deploy_standard_owned')
+            'close_standard_shop','deploy_standard_owned','start_standard_node')
     if identity and all(a['status']=='verified' and (a['action'] in free or
             re.fullmatch(r'(?:select|confirm)_standard_environment_[0-2]',a['action']))
            for a in session['actions']):
