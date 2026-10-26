@@ -158,6 +158,24 @@ class StandardFlowTests(unittest.TestCase):
             c.snapshot.assert_not_called()
             c.currency_standard_input.assert_not_called()
 
+    def test_loot_resume_requires_two_consistent_disappearance_frames(self):
+        from autohsr.tests.test_currency_wars_loot import reward, TARGET
+        before, after = reward(), reward(False)
+        with tempfile.TemporaryDirectory() as folder:
+            store = self.store(folder)
+            store.data.update(status='active', start_verified=True)
+            store.persist()
+            c = self.context(folder, [before, after, after], resume=True)
+            with patch('autohsr.currency_wars_node.loot_centers', side_effect=lambda s:(TARGET,) if s is before else ()), \
+                 patch('autohsr.currency_wars_loot.loot_centers', side_effect=lambda s:(TARGET,) if s is before else ()), \
+                 patch('autohsr.currency_wars_replay.save_sample'):
+                run_standard(c)
+            c.currency_standard_input.assert_called_once()
+            action = c.report.currency_wars['actions'][0]
+            self.assertEqual(action['action'], 'collect_standard_loot')
+            self.assertEqual(action['status'], 'verified')
+            self.assertEqual(action['target'], list(TARGET))
+
     def test_cli_new_start_and_resume_do_not_save_daily_settings(self):
         from autohsr.__main__ import main
         with tempfile.TemporaryDirectory() as folder:
