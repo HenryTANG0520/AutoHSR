@@ -35,6 +35,12 @@ def next_action(scene, confidence=.65, *, session=None):
     if kind == 'plane_map':
         return StandardAction('advance_standard_plane', 'environment',
                               unique(clean, '点击空白处继续', (.43, .86, .57, .93)))
+    if kind == 'shop':
+        from .currency_wars_standard_market import close_standard_shop
+        target = close_standard_shop(scene,session or {},confidence)
+        before = session['pre_shop_snapshot']
+        return StandardAction('close_standard_shop','standard_shop_closed',target,
+                              payload=tuple(before[k] for k in ('node','gold','hp','level')))
     if kind == 'environment':
         if scene.image is None:
             raise AutomationError('环境选择缺少当前图像，未发送输入。')
@@ -62,6 +68,14 @@ def next_action(scene, confidence=.65, *, session=None):
             from .currency_wars_standard_market import open_standard_shop
             from .currency_wars_match import read_match
             state = read_match(scene,confidence)
+            if state.node in (session or {}).get('shop_observed_nodes',[]):
+                from .currency_wars_standard_deployment import standard_deployment, POLICY
+                deployment = standard_deployment(scene,session or {},confidence)
+                if deployment is None:
+                    raise AutomationError('标准阵容已满员，下一步需核实节点出战及结算。')
+                plan,unit,score,payload = deployment
+                return StandardAction('deploy_standard_owned','standard_owned_deployed',plan,
+                                      details=(unit.name,unit.star,unit.tier,plan.zone,score,POLICY),payload=payload)
             target = open_standard_shop(scene,session or {},confidence)
             return StandardAction('open_standard_shop','standard_shop_observe',target,
                                   payload=(state.node,state.gold,state.hp,state.level))
@@ -88,6 +102,14 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None):
+    if choice.expected == 'standard_owned_deployed':
+        from .currency_wars_standard_deployment import deployment_feedback
+        return bool(before is not None and deployment_feedback(before,scene,choice.target,confidence)['status']=='verified')
+    if choice.expected == 'standard_shop_closed':
+        from .currency_wars_match import read_match
+        state = read_match(scene,confidence)
+        return bool(state and state.page=='preparation'
+                    and (state.node,state.gold,state.hp,state.level)==choice.payload)
     if choice.expected == 'standard_shop_observe':
         from .currency_wars_match import read_match
         state = read_match(scene,confidence)
@@ -222,7 +244,11 @@ def run_standard(c):
             store.persist()
         action = store.pending(choice.intent, c.runner.input_epoch,
                                evidence(c, scene, 'currency_standard_'+choice.intent), choice.expected)
-        if choice.details:
+        if choice.intent == 'deploy_standard_owned':
+            action['decision'] = dict(name=choice.details[0],star=choice.details[1],tier=choice.details[2],
+                                      zone=choice.details[3],score=choice.details[4],policy=choice.details[5])
+            store.persist()
+        elif choice.details:
             action['decision'] = dict(name=choice.details[0], kind=choice.details[1], effect=choice.details[2],
                                       parameters=dict(choice.details[3]), score=choice.details[4],
                                       reason=choice.details[5], policy=choice.details[6])
@@ -244,7 +270,7 @@ def run_standard(c):
                 guard._require_current_scene(after)
                 ready = transition_ready(choice, after, c.settings.ocr_confidence, before=scene)
                 stable = stable+1 if ready else 0
-                required = 2 if choice.expected == 'loot_collected' else 1
+                required = 2 if choice.expected in ('loot_collected','standard_owned_deployed') else 1
                 if stable >= required:
                     action.update(status='verified', after=evidence(c, after, 'currency_standard_after_'+choice.intent))
                     store.data.update(action_status='transition_verified', screenshot=action['after'])
@@ -257,8 +283,16 @@ def run_standard(c):
                         store.data['inspecting'] = dict(zone=choice.payload[0],slot=choice.payload[1],
                                                         node=choice.payload[2],signature=choice.payload[3],
                                                         before=action['before'],after=action['after'])
-                    elif choice.intent not in ('close_standard_unit','open_standard_shop'):
+                    elif choice.intent == 'deploy_standard_owned':
+                        from .currency_wars_standard_deployment import transfer_collection, deployment_feedback
+                        action['feedback'] = deployment_feedback(scene,after,choice.target,c.settings.ocr_confidence)
+                        transfer_collection(store.data,scene,after,choice.target,action['after'],c.settings.ocr_confidence)
+                    elif choice.intent not in ('close_standard_unit','open_standard_shop','close_standard_shop'):
                         store.data.pop('collection',None)
+                    if choice.intent == 'close_standard_shop':
+                        nodes = store.data.setdefault('shop_observed_nodes',[])
+                        if choice.payload[0] not in nodes:
+                            nodes.append(choice.payload[0])
                     store.persist()
                     scene = after
                     break

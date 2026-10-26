@@ -148,7 +148,8 @@ def session_snapshot(snapshot, session, epoch, source):
     # Only the currently supported free actions exist in this flow. Future
     # financial actions must carry their own settlement before setting clear.
     free = ('start_standard_a8_40','advance_standard_preview','advance_standard_plane',
-            'collect_standard_loot','inspect_standard_unit','close_standard_unit','open_standard_shop')
+            'collect_standard_loot','inspect_standard_unit','close_standard_unit','open_standard_shop',
+            'close_standard_shop','deploy_standard_owned')
     if identity and all(a['status']=='verified' and (a['action'] in free or
             re.fullmatch(r'(?:select|confirm)_standard_environment_[0-2]',a['action']))
            for a in session['actions']):
@@ -179,6 +180,8 @@ def collected_snapshot(scene, session, epoch, source, confidence=.65):
     except AutomationError:
         return snapshot
     if collection.get('input_epoch') != epoch or not collection.get('complete'):
+        return snapshot
+    if set(collection.get('units',{})) != {cell.zone+':'+str(cell.slot) for cell in cells if cell.state=='occupied'}:
         return snapshot
     units = []
     for cell in cells:

@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from autohsr.currency_wars_standard_market import open_standard_shop
+from autohsr.currency_wars_standard_market import open_standard_shop, close_standard_shop
 from autohsr.currency_wars_standard_flow import next_action, transition_ready
 from autohsr.models import AutomationError, Scene, Token
 from autohsr.currency_wars_match import read_match, supplement_shop_fields, verify_purchase, MatchState
@@ -55,6 +55,26 @@ class StandardMarketTests(unittest.TestCase):
         for node,gold,hp,level in (('1-2',5,80,3),('1-1',4,80,3),('1-1',5,79,3),('1-1',5,80,4)):
             with patch('autohsr.currency_wars_match.read_match',return_value=SimpleNamespace(page='shop',node=node,gold=gold,hp=hp,level=level)):
                 self.assertFalse(transition_ready(action,self.frame()))
+
+    def test_close_requires_matching_verified_open_and_fully_visible_board_feedback(self):
+        from autohsr.currency_wars_standard_flow import StandardAction
+        self.state.page='shop'
+        self.state.hp=None
+        session=self.session()
+        session.update(pre_shop_snapshot=dict(node='1-1',gold=5,hp=80,level=3),
+                       actions=[dict(action='open_standard_shop',status='verified')])
+        scene=Scene([Token('收起',.99,(.83,.89,.87,.93))])
+        self.assertEqual(close_standard_shop(scene,session).text,'收起')
+        session['actions'].append(dict(action='close_standard_shop',status='pending'))
+        self.assertEqual(close_standard_shop(scene,session).text,'收起')
+        session['actions'].pop()
+        choice=StandardAction('close_standard_shop','standard_shop_closed',scene.tokens[0],payload=('1-1',5,80,3))
+        for hp,expected in ((None,False),(79,False),(80,True)):
+            with patch('autohsr.currency_wars_match.read_match',return_value=MatchState('preparation',node='1-1',gold=5,hp=hp,level=3)):
+                self.assertEqual(transition_ready(choice,scene),expected)
+        session['actions'][-1]['status']='unknown'
+        with self.assertRaises(AutomationError):
+            close_standard_shop(scene,session)
 
 
 class ShopFieldsTests(unittest.TestCase):

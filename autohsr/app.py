@@ -200,7 +200,14 @@ class Context:
             raise AutomationError('尚未核实标准对局已开始。')
         if next_action(scene, self.settings.ocr_confidence,session=store.data) != choice:
             raise AutomationError('标准开发动作与当前页面不符。')
+        if choice.payload and data['actions'][-1].get('target') != list(choice.payload):
+            raise AutomationError('标准动作目标与落盘记录不一致。')
         guard._require_current_scene(scene)
+        if choice.intent == 'deploy_standard_owned':
+            plan = choice.target
+            route = ((plan.start[0],.735),(plan.end[0],.735)) if plan.zone=='back' else ()
+            self._dispatch_drag(scene,plan.start,plan.end,route=route)
+            return
         self.last_scene, self._scroll_anchor = None, None
         try:
             self.window.click(*choice.target.center, scene.geometry)
@@ -706,6 +713,10 @@ class Context:
             require_distinct_front_pair(scene, self.settings.ocr_confidence)
         else:
             self._require_gameplay_input()
+        self._dispatch_drag(scene,start,end,route=route)
+
+    def _dispatch_drag(self, scene, start, end, *, route=()):
+        """Shared release/focus mechanics after a dedicated action gate."""
         self.checkpoint()
         if self.scene_epoch != self.runner.input_epoch:
             raise InputInterrupted("暂停后拖动目标已失效，需要重新识别。")
