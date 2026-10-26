@@ -657,3 +657,5 @@ Game artwork remains the property of HoYoverse.
 `autohsr/tests/fixtures/currency_wars_navigation.json`仅提取用户授权本地开发截图的固定导航文字、置信度与归一化框；元数据保留原样本相对标识与图像SHA-256以便本地核对。字段采用明确白名单，排除UID、昵称、资源库存和原始图像；文本事实用于界面回归。来源客户端4.6.0，日期2026-10-26；没有新增分发游戏图像，旧`du_guide_tab`与`du_interaction_f`继续使用各自既有来源记录。
 
 `autohsr/tests/fixtures/currency_wars_standard_environment.json`来自同日用户授权开发的标准A8-40环境选择页，仅保存卡片与固定UI OCR，排除UID、账号和原始图像。来源相对标识、客户端4.6.0与原图SHA-256保存在元数据；用于完整效果、数值与卡片顺序回归，不将回放当成实时输入授权。
+
+`autohsr/tests/fixtures/currency_wars_standard_shop.json`来自2026-10-26标准商店记录，仅保存商店标题、候选、标价与固定导航OCR，排除UID、玩家头像、余额区域及原始图像。元数据保留本地来源相对标识、日期和原图哈希；藿藿与单数字价采用已核实的局部识别，原始截图保持忽略，不分发游戏整图。

@@ -133,15 +133,46 @@ def supplement_character_tier(scene, reader):
                  scene.image,scene.geometry,scene.captured_at)
 
 
-def collected_snapshot(scene, session, epoch, source, confidence=.65):
-    """Publish completeness only after all current occupied slots were read.
+def session_snapshot(snapshot, session, epoch, source):
+    """Stable session facts need their own sources, not visible roster slots."""
+    from dataclasses import replace
+    from .currency_wars_state import FactEvidence
+    collection = session.get('collection', {})
+    known = {}
+    identity = (session.get('account_key') and session.get('account_verified_run') == collection.get('run_dir')
+                and session.get('account_verified_epoch') == epoch)
+    if identity and snapshot.page != 'unknown' and session.get('status') == 'active' and session.get('start_verified') and session.get('entry',{}).get('rank_verified'):
+        known.update(mode='standard',rank=8,wealth=40)
+    if session.get('environment'):
+        known['environment'] = (session['environment']['name'],)
+    # Only the currently supported free actions exist in this flow. Future
+    # financial actions must carry their own settlement before setting clear.
+    free = ('start_standard_a8_40','advance_standard_preview','advance_standard_plane',
+            'collect_standard_loot','inspect_standard_unit','close_standard_unit','open_standard_shop')
+    if identity and all(a['status']=='verified' and (a['action'] in free or
+            re.fullmatch(r'(?:select|confirm)_standard_environment_[0-2]',a['action']))
+           for a in session['actions']):
+        known['transaction_status'] = 'clear'
+    sources = {}
+    for name in ('mode','rank','wealth'):
+        sources[name] = 'match_entry:'+session.get('match_id','unverified')
+    sources['roster'] = 'collection:'+session.get('match_id','unverified')
+    sources['transaction_status'] = 'session_ledger:'+session.get('match_id','unverified')
+    client = session.get('client',{})
+    if identity and client.get('verified_run') == collection.get('run_dir') and client.get('input_epoch') == epoch:
+        known['game_version'] = client['version']
+        sources['game_version'] = 'launcher_game_version:'+client['sha256']
+        if session.get('rules_version') == client['version'] == '4.6':
+            known['rules_version'] = '4.6'
+            sources['rules_version'] = 'rules:currency_wars_economy:4.6'
+    return replace(snapshot,**known,evidence=snapshot.evidence+tuple(FactEvidence(name,sources.get(name,source),epoch) for name in known))
 
-    Inspections preserve the roster. Any other game action invalidates this
-    collection; a new run/epoch starts a new collection as well.
-    """
+
+def collected_snapshot(scene, session, epoch, source, confidence=.65):
+    """Publish a complete roster only when every current slot is accounted for."""
     from dataclasses import replace
     from .currency_wars_state import snapshot_from_scene, UnitState, FactEvidence
-    snapshot = snapshot_from_scene(scene, epoch, confidence, source)
+    snapshot = session_snapshot(snapshot_from_scene(scene,epoch,confidence,source),session,epoch,source)
     collection = session.get('collection', {})
     try:
         cells = roster_cells(scene,confidence)
@@ -149,14 +180,13 @@ def collected_snapshot(scene, session, epoch, source, confidence=.65):
         return snapshot
     if collection.get('input_epoch') != epoch or not collection.get('complete'):
         return snapshot
-    records = collection.get('units', {})
     units = []
     for cell in cells:
         if cell.state == 'reward':
             return snapshot
         if cell.state != 'occupied':
             continue
-        record = records.get(cell.zone+':'+str(cell.slot))
+        record = collection.get('units',{}).get(cell.zone+':'+str(cell.slot))
         if not record or record.get('signature') != cell.signature or record.get('node') != cell.node:
             return snapshot
         data = dict(record['unit'])
@@ -167,18 +197,7 @@ def collected_snapshot(scene, session, epoch, source, confidence=.65):
         if (unit.zone,unit.slot) != (cell.zone,cell.slot):
             return snapshot
         units.append(unit)
-    known = dict(roster=tuple(units), roster_complete=True, bench_capacity=9,
+    known = dict(roster=tuple(units),roster_complete=True,bench_capacity=9,
                  bench_occupied=sum(unit.zone=='bench' for unit in units))
-    if session.get('status') == 'active' and session.get('start_verified') and session.get('entry',{}).get('rank_verified'):
-        known.update(mode='standard',rank=8,wealth=40)
-    if session.get('environment'):
-        known['environment'] = (session['environment']['name'],)
-    # Only the currently supported free actions exist in this flow. Future
-    # financial actions must carry their own settlement before setting clear.
-    free = ('start_standard_a8_40','advance_standard_preview','advance_standard_plane',
-            'collect_standard_loot','inspect_standard_unit','close_standard_unit')
-    if all(a['status']=='verified' and (a['action'] in free or
-            a['action'].startswith(('select_standard_environment_','confirm_standard_environment_')))
-           for a in session['actions']):
-        known['transaction_status'] = 'clear'
-    return replace(snapshot,**known,evidence=snapshot.evidence+tuple(FactEvidence(name,source,epoch) for name in known))
+    proof = 'collection:'+session.get('match_id','unverified')
+    return replace(snapshot,**known,evidence=snapshot.evidence+tuple(FactEvidence(name,proof,epoch) for name in known))

@@ -29,6 +29,8 @@ def _ocr_job(input_path: str, output_path: str, confidence: float):
         scene = supplement_rank(scene, reader)
         from .currency_wars_collector import supplement_character_tier
         scene = supplement_character_tier(scene, reader)
+        from .currency_wars_match import supplement_shop_fields
+        scene = supplement_shop_fields(scene, reader)
         result = dict(status="ok", tokens=[asdict(token) for token in scene.tokens])
     except Exception as error:
         result = dict(status="error", error=f"{type(error).__name__}: {error}"[:2000])

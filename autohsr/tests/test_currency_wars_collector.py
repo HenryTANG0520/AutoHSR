@@ -85,7 +85,8 @@ class CollectorTests(unittest.TestCase):
         snapshot=StrategySnapshot(page='preparation',node='1-1',capacity=3,
             evidence=(FactEvidence('page','test',0),FactEvidence('node','test',0)))
         session=dict(status='active',start_verified=True,entry=dict(rank_verified=True),actions=[],
-            collection=dict(input_epoch=0,complete=True,units={'bench:1':dict(signature=cell.signature,node='1-1',
+            account_key='a'*64,account_verified_run='test-run',account_verified_epoch=0,
+            collection=dict(run_dir='test-run',input_epoch=0,complete=True,units={'bench:1':dict(signature=cell.signature,node='1-1',
                 unit=asdict(UnitState('砂金','bench',1,2,2)))}))
         with patch('autohsr.currency_wars_state.snapshot_from_scene',return_value=snapshot):
             result=collected_snapshot(state,session,0,'current')
@@ -93,6 +94,13 @@ class CollectorTests(unittest.TestCase):
             self.assertEqual((result.bench_capacity,result.bench_occupied),(9,1))
             self.assertTrue(result.known('mode','rank','wealth','roster'))
             self.assertFalse(result.known('game_version','inventory'))
+            session.update(client=dict(version='4.6',verified_run='test-run',input_epoch=0,
+                                       sha256='b'*64,source='private-install-config'),rules_version='4.6')
+            result=collected_snapshot(state,session,0,'current')
+            self.assertEqual((result.game_version,result.rules_version),('4.6','4.6'))
+            self.assertNotIn('account_key',str(result.public_state()))
+            self.assertNotIn('private-install-config',str(result.public_state()))
+            self.assertNotIn('b'*64,str(result.public_state()))
             for changed in (dict(signature='changed'),dict(node='1-2')):
                 original=dict(session['collection']['units']['bench:1'])
                 session['collection']['units']['bench:1'].update(changed)

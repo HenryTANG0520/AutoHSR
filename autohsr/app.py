@@ -190,6 +190,9 @@ class Context:
         if store is None:
             raise AutomationError('缺少本次标准对局的记录。')
         data = store.require_pending(choice.intent, self.runner.input_epoch)
+        from .currency_wars_identity import account_key
+        if data.get('account_key') != account_key(scene,max(.85,self.settings.ocr_confidence)):
+            raise AutomationError('当前账号与已记录对局不一致，未发送标准动作。')
         if choice.intent == 'start_standard_a8_40':
             if data['status'] != 'start_pending' or len(data['actions']) != 1:
                 raise AutomationError('标准开局已有提交记录，未重复开始。')

@@ -14,7 +14,7 @@ from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.currency_wars_session import StandardSession
 from autohsr.currency_wars_standard_flow import next_action, run_standard
-from autohsr.models import AutomationError, InputInterrupted, RunReport, TaskResult
+from autohsr.models import AutomationError, InputInterrupted, RunReport, TaskResult, Token, normalize
 from autohsr.tests.test_currency_wars_node import screen
 from autohsr.tests.test_currency_wars_standard import rank_page
 
@@ -22,6 +22,7 @@ from autohsr.tests.test_currency_wars_standard import rank_page
 def ready():
     state = rank_page(40, (40, 39, 38))
     state.captured_at = time.monotonic()
+    state.tokens.append(Token('UID:100000000',.99,(.01,.96,.10,.99)))
     return state
 
 
@@ -29,6 +30,9 @@ class StandardFlowTests(unittest.TestCase):
     def store(self, folder):
         store = StandardSession(Path(folder)/'currency-standard-session.json')
         store.begin(Path(folder)/'attempt', dict(rank_verified=True, rank=8, wealth=40))
+        from autohsr.currency_wars_identity import account_key
+        store.data['account_key'] = account_key(ready())
+        store.persist()
         return store
 
     def test_scope_rank_target_and_durable_intent_all_required(self):
@@ -61,6 +65,12 @@ class StandardFlowTests(unittest.TestCase):
             c.checkpoint, c.sleep = Mock(), Mock()
             with self.assertRaises(AutomationError):
                 c.currency_standard_input(state, replace(choice, target=state.tokens[0]))
+            original=list(state.tokens)
+            state.tokens=[t for t in state.tokens if not normalize(t.text).startswith('uid')]
+            state.tokens.append(Token('UID:200000000',.99,(.01,.96,.10,.99)))
+            with self.assertRaises(AutomationError):
+                c.currency_standard_input(state,choice)
+            state.tokens=original
             c.runner.input_epoch += 1
             with self.assertRaises(InputInterrupted):
                 c.currency_standard_input(state, choice)
@@ -104,6 +114,8 @@ class StandardFlowTests(unittest.TestCase):
         pending = list(states)
         def snapshot():
             c.last_scene = pending.pop(0) if pending else c.last_scene
+            c.last_scene.tokens = [t for t in c.last_scene.tokens if not normalize(t.text).startswith('uid')]
+            c.last_scene.tokens.append(Token('UID:100000000',.99,(.01,.96,.10,.99)))
             c.last_scene.captured_at = time.monotonic()
             return c.last_scene
         c.snapshot = snapshot
@@ -176,6 +188,25 @@ class StandardFlowTests(unittest.TestCase):
             self.assertEqual(action['action'], 'collect_standard_loot')
             self.assertEqual(action['status'], 'verified')
             self.assertEqual(action['target'], list(TARGET))
+
+    def test_unknown_readonly_shop_open_can_be_observed_without_resending(self):
+        from autohsr.currency_wars_match import MatchState
+        with tempfile.TemporaryDirectory() as folder:
+            store=self.store(folder)
+            store.data.update(status='active',start_verified=True,
+                              pre_shop_snapshot=dict(node='1-1',gold=5,hp=80,level=3))
+            action=store.pending('open_standard_shop',0,'before.png','standard_shop_observe')
+            action.update(status='unknown',target=['1-1',5,80,3])
+            store.persist()
+            c=self.context(folder,[screen('shop')],resume=True)
+            state=MatchState('shop',node='1-1',gold=5,hp=None,level=3)
+            with patch('autohsr.currency_wars_match.read_match',return_value=state), \
+                 patch('autohsr.currency_wars_replay.save_sample'):
+                run_standard(c)
+            c.currency_standard_input.assert_not_called()
+            saved=c.report.currency_wars['actions'][-1]
+            self.assertEqual((saved['status'],saved['original_status']),('verified','unknown'))
+            self.assertEqual(saved['reconciliation'],'observed_shop_without_input')
 
     def test_cli_new_start_and_resume_do_not_save_daily_settings(self):
         from autohsr.__main__ import main

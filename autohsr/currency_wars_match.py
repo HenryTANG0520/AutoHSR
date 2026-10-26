@@ -9,6 +9,10 @@ from .currency_wars_pages import classify_page,is_bench_full_notice
 from .models import Scene, Token, normalize
 
 
+def unit_name(value):
+    return re.sub(r'lv\.?([0-9]{1,4})',r'Lv.\1',normalize(value))
+
+
 @dataclass(frozen=True)
 class Offer:
     slot: int
@@ -61,10 +65,11 @@ def read_match(scene: Scene, confidence=.65) -> MatchState | None:
     if page == "shop":
         for slot in range(5):
             left = .192 + .14 * slot
-            name = _unique(tokens, (left, .265, left + .115, .305), r"[\u4e00-\u9fff·]{2,16}", lambda m: m[0])
+            name = _unique(tokens, (left, .265, left + .115, .305),
+                           r'(?=.{2,40}$)(?=.*[\u4e00-\u9fff])[\u4e00-\u9fffa-z0-9.]+', lambda m: unit_name(m[0]))
             cost = number((left + .109, .265, left + .125, .305))
             if name:
-                offers.append(Offer(slot, name, cost if cost in (1, 2, 3, 4, 5) else None))
+                offers.append(Offer(slot, name, cost if cost is not None and 0 <= cost <= 99 else None))
         probs = [_unique(tokens, (left, .33, right, .39), r"[■□]?([0-9]{1,3})%", lambda m: int(m[1]))
                  for left, right in ((.49, .55), (.55, .6), (.6, .65), (.65, .69), (.7, .74))]
         if None not in probs and sum(probs) == 100:
@@ -179,6 +184,47 @@ def supplement_numbers(scene: Scene, reader) -> Scene:
         if None not in counts and 0 <= counts[0] <= counts[1] <= 20 and counts[1] > 0:
             tokens.append(Token(f'{counts[0]}/{counts[1]}',min(scores),(.46,.19,.54,.265)))
     return Scene(tokens, scene.image, scene.geometry, scene.captured_at)
+
+
+def supplement_shop_fields(scene, reader):
+    """Direct field OCR, with agreeing variants, without lowering thresholds."""
+    if scene.image is None or classify_page(scene.tokens) != 'shop':
+        return scene
+    import cv2
+    from .currency_wars_deployment import _crop
+    tokens=list(scene.tokens)
+    state=read_match(scene)
+    offers={offer.slot:offer for offer in state.offers}
+    for slot in range(5):
+        left=.192+.14*slot
+        price_roi=(left+.109,.265,left+.125,.305)
+        # Even an unsupported wide price must not be overwritten by a crop
+        # that might see only its last digit.
+        present=any(t.within(price_roi) and re.fullmatch(r'[0-9]{1,4}',normalize(t.text)) for t in scene.tokens)
+        if not present and hasattr(reader,'read_number'):
+            patch=_crop(scene.image,price_roi)
+            gray=cv2.cvtColor(patch,cv2.COLOR_BGR2GRAY)
+            values=[reader.read_number(patch),reader.read_number(cv2.threshold(gray,180,255,cv2.THRESH_BINARY)[1])]
+            if (all(t is not None and .9<=t.score<=1 and re.fullmatch(r'[0-9]{1,2}',t.text) for t in values)
+                    and len({t.text for t in values})==1):
+                tokens.append(Token(values[0].text,min(t.score for t in values),price_roi))
+        if slot not in offers and hasattr(reader,'read_unit_name'):
+            name_roi=(left,.265,left+.10,.305)
+            gray=cv2.cvtColor(_crop(scene.image,name_roi),cv2.COLOR_BGR2GRAY)
+            binary=cv2.threshold(gray,160,255,cv2.THRESH_BINARY)[1]
+            # Crop only the foreground's outer whitespace; this preserves
+            # arbitrary name length rather than assuming two characters.
+            line=binary[round(binary.shape[0]*.08):round(binary.shape[0]*.85)]
+            nonzero=cv2.findNonZero(line)
+            if nonzero is None:
+                continue
+            x,y,w,h=cv2.boundingRect(nonzero)
+            tight=line[max(0,y-2):min(line.shape[0],y+h+2),max(0,x-2):min(line.shape[1],x+w+2)]
+            values=[reader.read_unit_name(binary),reader.read_unit_name(tight)]
+            if (all(t is not None and .9<=t.score<=1 for t in values)
+                    and len({unit_name(t.text) for t in values})==1):
+                tokens.append(Token(values[0].text,min(t.score for t in values),name_roi))
+    return Scene(tokens,scene.image,scene.geometry,scene.captured_at)
 
 
 def verify_purchase(before: MatchState, after: MatchState, offer: Offer) -> str:

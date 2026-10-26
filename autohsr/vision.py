@@ -63,6 +63,9 @@ class Vision:
         """Recognize one tightly bounded numeric field without text detection."""
         return self._read_field(image,r'[0-9]{1,2}')
 
+    def read_unit_name(self,image):
+        return self._read_field(image,r'(?=.{2,40}$)(?=.*[\u4e00-\u9fff])[\u4e00-\u9fffA-Za-z0-9·.]+')
+
     def refine_daily_synthesis(self, scene):
         from .daily_synthesis import selected, quantity
         if scene.image is None or not selected(scene) or quantity(scene) is not None:

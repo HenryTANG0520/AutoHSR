@@ -59,7 +59,12 @@ def next_action(scene, confidence=.65, *, session=None):
         from .currency_wars_collector import first_unit_probe
         probe = first_unit_probe(scene, confidence, (session or {}).get('collection',{}).get('units'))
         if probe is None:
-            raise AutomationError('当前持有阵容已采集，下一步核对商店及策略事实。')
+            from .currency_wars_standard_market import open_standard_shop
+            from .currency_wars_match import read_match
+            state = read_match(scene,confidence)
+            target = open_standard_shop(scene,session or {},confidence)
+            return StandardAction('open_standard_shop','standard_shop_observe',target,
+                                  payload=(state.node,state.gold,state.hp,state.level))
         cell, target = probe
         return StandardAction('inspect_standard_unit', 'character', target,
                               payload=(cell.zone,cell.slot,cell.node,cell.signature))
@@ -83,6 +88,12 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None):
+    if choice.expected == 'standard_shop_observe':
+        from .currency_wars_match import read_match
+        state = read_match(scene,confidence)
+        node,gold,hp,level = choice.payload
+        return bool(state and state.page=='shop' and (state.node,state.gold,state.level)==(node,gold,level)
+                    and state.hp in (None,hp))
     if choice.expected == 'loot_collected':
         from .currency_wars_loot import loot_feedback
         return before is not None and loot_feedback(before, scene, choice.payload, confidence) in ('disappeared','choice_opened')
@@ -113,7 +124,8 @@ def run_standard(c):
     if c.runner.currency_resume:
         if store.data is None or store.data['status'] != 'active':
             raise AutomationError('没有已核实开始且可接续的标准对局；未知开局未重放。')
-        if store.data['actions'] and store.data['actions'][-1]['status'] != 'verified':
+        if (store.data['actions'] and store.data['actions'][-1]['status'] != 'verified'
+                and store.data['actions'][-1]['action'] != 'open_standard_shop'):
             raise AutomationError('上次标准动作尚未核实，先核对反馈，未接续输入。')
         store.data.setdefault('continuations', []).append(str(c.report.run_dir))
         store.persist()
@@ -129,12 +141,44 @@ def run_standard(c):
     for _ in range(40):
         c.checkpoint()
         guard._require_current_scene(scene)
+        if (store.data.get('account_verified_run') != c.report.run_dir or
+                store.data.get('account_verified_epoch') != c.runner.input_epoch):
+            from .currency_wars_identity import bind_account, refresh_client
+            bind_account(store,scene,c.report.run_dir,c.runner.input_epoch,max(.85,c.settings.ocr_confidence))
+            refresh_client(store,getattr(getattr(c,'window',None),'path',None),c.report.run_dir,c.runner.input_epoch)
+            c.log('标准对局来源：账号一致；客户端安装版本' +
+                  store.data.get('client',{}).get('full_version','仍未知') + '。')
+            guard._require_current_scene(scene)
+        if store.data['actions'] and store.data['actions'][-1]['status'] != 'verified':
+            # Only this read-only UI transition may be reconciled here. It
+            # never resends the prior click and cannot settle a paid action.
+            previous = store.data['actions'][-1]
+            payload = tuple(previous.get('target',()))
+            before = store.data.get('pre_shop_snapshot',{})
+            if (previous['action'] != 'open_standard_shop' or previous.get('expected') != 'standard_shop_observe'
+                    or payload != tuple(before.get(name) for name in ('node','gold','hp','level'))
+                    or not transition_ready(StandardAction(previous['action'],previous['expected'],None,payload=payload),
+                                            scene,c.settings.ocr_confidence)):
+                raise AutomationError('上次标准动作尚未核实，未重放输入或继续交易。')
+            previous.update(original_status=previous['status'],status='verified',
+                            reconciliation='observed_shop_without_input',resolved_run=c.report.run_dir,
+                            reconciled_after=evidence(c,scene,'currency_standard_shop_reconciled'))
+            store.data.update(action_status='readonly_reconciled',screenshot=previous['reconciled_after'])
+            store.persist()
+            c.log('已观察核实上次打开标准商店，本次没有重发开店点击。')
         collection = store.data.get('collection',{})
         if collection.get('run_dir') != c.report.run_dir or collection.get('input_epoch') != c.runner.input_epoch:
             collection = dict(run_dir=c.report.run_dir,input_epoch=c.runner.input_epoch,units={},complete=False)
             store.data['collection'] = collection
             store.persist()
         kind = observe(scene,c.settings.ocr_confidence).page_kind
+        if kind == 'preparation':
+            from .currency_wars_collector import first_unit_probe
+            try:
+                collection['complete'] = first_unit_probe(scene,c.settings.ocr_confidence,collection['units']) is None
+            except AutomationError:
+                collection['complete'] = False
+            store.persist()
         if kind == 'character':
             from .currency_wars_collector import owned_profile
             try:
@@ -171,6 +215,11 @@ def run_standard(c):
             break
         if choice.intent == 'start_standard_a8_40' and (store.data['status'] != 'start_pending' or store.data['actions']):
             raise AutomationError('已有标准开局提交，未开始第二个对局。')
+        if choice.intent == 'open_standard_shop':
+            from .currency_wars_collector import collected_snapshot
+            store.data['pre_shop_snapshot'] = asdict(collected_snapshot(scene,store.data,c.runner.input_epoch,
+                                                       'before_standard_shop',c.settings.ocr_confidence))
+            store.persist()
         action = store.pending(choice.intent, c.runner.input_epoch,
                                evidence(c, scene, 'currency_standard_'+choice.intent), choice.expected)
         if choice.details:
@@ -208,7 +257,7 @@ def run_standard(c):
                         store.data['inspecting'] = dict(zone=choice.payload[0],slot=choice.payload[1],
                                                         node=choice.payload[2],signature=choice.payload[3],
                                                         before=action['before'],after=action['after'])
-                    elif choice.intent != 'close_standard_unit':
+                    elif choice.intent not in ('close_standard_unit','open_standard_shop'):
                         store.data.pop('collection',None)
                     store.persist()
                     scene = after
