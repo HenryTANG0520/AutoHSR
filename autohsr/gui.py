@@ -465,6 +465,9 @@ class AutoHSRWindow:
     def _currency_locate(self):
         self._start(currency_wars=True, currency_prepare=True, currency_locate=True)
 
+    def _currency_configure(self):
+        self._start(currency_wars=True, currency_prepare=True, currency_locate=True, currency_configure=True)
+
     def _currency_control_probe(self):
         self._start(currency_wars=True, currency_control_probe=True)
 
@@ -490,9 +493,11 @@ class AutoHSRWindow:
 
     def _start(self, reward_only=False, *, catalogue=False, currency_wars=False, differential_universe=False, drag_test=False, deploy_test=False, node_test=False, flow_test=False,
                currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
-               currency_control_probe=False,currency_timeout_probe=False,currency_prepare=False,currency_locate=False) -> None:
+               currency_control_probe=False,currency_timeout_probe=False,currency_prepare=False,currency_locate=False,
+               currency_configure=False) -> None:
         if self.busy or self.closing or (self.worker is not None and self.worker.is_alive()):
             return
+        currency_locate = currency_locate or currency_configure
         currency_prepare = currency_prepare or currency_locate
         currency_wars = currency_wars or currency_prepare or drag_test or deploy_test or node_test or flow_test
         operation = "dungeon_catalogue" if catalogue else "currency_wars_prepare" if currency_prepare else "currency_wars_flow_test" if flow_test else "currency_wars_node_test" if node_test else "currency_wars_deploy_test" if deploy_test else "currency_wars_drag_test" if drag_test else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "reward_only" if reward_only else "daily"
@@ -540,7 +545,8 @@ class AutoHSRWindow:
         if catalogue:
             self.plan.set("采集生存索引副本目录 · 不开始挑战 · 不消耗资源")
         if currency_prepare:
-            self.plan.set('货币战争 · 指南定位标准模式 · 不开始对局' if currency_locate else '货币战争 · 启动准备 · 不开始对局')
+            self.plan.set('货币战争 · 配置标准A8-40 · 不开始对局' if currency_configure else
+                          '货币战争 · 指南定位标准模式 · 不开始对局' if currency_locate else '货币战争 · 启动准备 · 不开始对局')
         self._has_run = True
         self.paused = self.stopping = False
         self.focus_waiting = False
@@ -561,7 +567,8 @@ class AutoHSRWindow:
             self.last_screenshot = None
             if currency_prepare:
                 self.current_task.set('货币战争启动准备')
-                self.currency_status.set('正在启动准备并通过指南定位标准博弈；不开始对局。' if currency_locate else
+                self.currency_status.set('正在定位并配置标准A8财富造物主40；不开始对局。' if currency_configure else
+                                         '正在启动准备并通过指南定位标准博弈；不开始对局。' if currency_locate else
                                          '正在启动或复用游戏，处理已有登录及免费登录奖励；不开始对局。')
         self.started_at = time.monotonic()
         self._set_busy(True, True)
@@ -587,6 +594,7 @@ class AutoHSRWindow:
                 runner = Runner(settings, send, new_battle_run=new_battle_run, operation=operation,
                     **du_options,
                     **(dict(currency_locate=True) if currency_locate else {}),
+                    **(dict(currency_configure=True) if currency_configure else {}),
                     **(dict(currency_control_probe=True) if currency_control_probe else {}),
                     **(dict(currency_timeout_probe=True) if currency_timeout_probe else {}),
                     **(dict(currency_source_slot=currency_source_slot,currency_zone=currency_zone) if deploy_test else {}),
@@ -692,8 +700,10 @@ class AutoHSRWindow:
     def _currency_observed(self, data: dict) -> None:
         from .currency_wars_pages import PAGE_LABELS
         if data.get('mode') == 'entry_navigation':
+            ready = ('标准A8财富造物主40已核实' if data.get('rank_verified') else
+                     '标准模式已定位' if data.get('entry_ready') else data.get('action_status', '待处理'))
             self.currency_observation.set(
-                f"入口导航：{'标准模式已定位' if data.get('entry_ready') else data.get('action_status', '待处理')}；未开始新对局。"
+                f"入口导航：{ready}；未开始新对局。"
                 + (f"\n{data['reason']}" if data.get('reason') else '')
                 + f"\n截图：{data.get('screenshot') or '未保存'}")
             if data.get('screenshot'):

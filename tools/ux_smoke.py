@@ -97,6 +97,9 @@ class FakeRunner:
                 if self.kwargs.get('currency_locate'):
                     report['currency_wars'].update(mode='entry_navigation', entry_ready=True,
                                                   page_kind='standard_selected', action_status='entry_ready')
+                    if self.kwargs.get('currency_configure'):
+                        report['currency_wars'].update(rank_verified=True, rank=8, wealth=40,
+                                                      page_kind='standard_difficulty', action_status='rank_ready')
             self.emit(dict(type='finished', report=report))
             return report
         task = 'battle' if PACKAGE == 'autohsr' else 'scratch'
@@ -288,6 +291,20 @@ def main():
                 pump(root, lambda: not ui.busy)
                 check('currency_locate_partial_without_daily_spend_or_settings_save',
                     '标准模式已定位' in ui.currency_observation.get() and
+                    '未开始新对局' in ui.currency_observation.get() and
+                    '玩法未完成' in ui.summary.get() and config.read_bytes() == original)
+                ui._currency_configure()
+                pump(root, lambda: ui.runner is not None)
+                configure_runner = FakeRunner.instances[-1]
+                check('currency_configure_is_explicit_without_starting_match',
+                    configure_runner.kwargs['operation'] == 'currency_wars_prepare' and
+                    configure_runner.kwargs.get('currency_locate') is True and
+                    configure_runner.kwargs.get('currency_configure') is True and
+                    '配置标准A8-40' in ui.plan.get() and not errors)
+                configure_runner.release.set()
+                pump(root, lambda: not ui.busy)
+                check('currency_configure_ready_keeps_match_incomplete',
+                    '标准A8财富造物主40已核实' in ui.currency_observation.get() and
                     '未开始新对局' in ui.currency_observation.get() and
                     '玩法未完成' in ui.summary.get() and config.read_bytes() == original)
                 ui.currency_drag_button.invoke()

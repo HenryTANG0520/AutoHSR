@@ -25,6 +25,8 @@ def _ocr_job(input_path: str, output_path: str, confidence: float):
         scene = reader.read(image)
         from .currency_wars_match import supplement_numbers
         scene = supplement_numbers(scene, reader)
+        from .currency_wars_standard import supplement_rank
+        scene = supplement_rank(scene, reader)
         result = dict(status="ok", tokens=[asdict(token) for token in scene.tokens])
     except Exception as error:
         result = dict(status="error", error=f"{type(error).__name__}: {error}"[:2000])

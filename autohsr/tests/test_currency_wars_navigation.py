@@ -58,7 +58,8 @@ def points_rewards():
 
 class NavigationTests(unittest.TestCase):
     def context(self):
-        return SimpleNamespace(settings=Settings(), template=Mock(return_value=None))
+        return SimpleNamespace(settings=Settings(), template=Mock(return_value=None),
+                               runner=SimpleNamespace(currency_configure=False))
 
     def test_redacted_real_navigation_anchors_and_missing_anchor_counterexamples(self):
         fixtures = json.loads((Path(__file__).parent/'fixtures/currency_wars_navigation.json').read_text(encoding='utf-8'))
@@ -106,6 +107,8 @@ class NavigationTests(unittest.TestCase):
         self.assertEqual(next_action(mode(False), c).intent, 'select_standard')
         only_title = scene(('标准博弈', (.31, .13, .39, .17)))
         self.assertFalse(standard_selected(only_title))
+        c.runner.currency_configure = True
+        self.assertEqual(next_action(mode(), c).intent, 'open_standard_difficulty')
 
     def test_decorative_quotes_and_noninteractive_notice_do_not_create_extra_clicks(self):
         c, state = self.context(), lobby()
@@ -145,6 +148,8 @@ class NavigationTests(unittest.TestCase):
                 context.window.click.assert_not_called()
         with self.assertRaises(ValueError):
             Runner(Settings(), operation='daily', currency_locate=True)
+        with self.assertRaises(ValueError):
+            Runner(Settings(), operation='currency_wars_prepare', currency_configure=True)
 
     def test_epoch_or_forged_target_discards_input(self):
         state = menu()
@@ -221,6 +226,18 @@ class NavigationTests(unittest.TestCase):
                 self.assertEqual(runner.call_args.kwargs['operation'], 'currency_wars_prepare')
                 self.assertTrue(runner.call_args.kwargs['currency_locate'])
             self.assertEqual(config.read_bytes(), before)
+
+    def test_configure_cli_is_explicit_separate_from_locate(self):
+        from autohsr.__main__ import main
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory)/'config.json'
+            Settings().save(config)
+            with patch('autohsr.app.Runner') as runner, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                runner.return_value.run.return_value = {'status': 'partial'}
+                self.assertEqual(main(['--currency-wars-configure', '--config', str(config)]), 1)
+                self.assertEqual(runner.call_args.kwargs['operation'], 'currency_wars_prepare')
+                self.assertTrue(runner.call_args.kwargs['currency_locate'])
+                self.assertTrue(runner.call_args.kwargs['currency_configure'])
 
 
 if __name__ == '__main__':

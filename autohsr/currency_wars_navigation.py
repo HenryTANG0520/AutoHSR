@@ -34,6 +34,9 @@ def unique(scene, labels, roi):
 
 def page_kind(scene, confidence=.65):
     scene = trusted(scene, confidence)
+    from .currency_wars_standard import difficulty_page
+    if difficulty_page(scene, confidence):
+        return 'standard_difficulty'
     if (scene.has('积分奖励', (.02, .28, .15, .35), exact=True)
             and scene.has('规则说明', (.78, .28, .9, .35), exact=True)
             and scene.has('当前积分', (.05, .63, .2, .70), exact=True)):
@@ -96,9 +99,19 @@ def next_action(scene, context):
                                 unique(clean, '开始货币战争', (.65, .84, .99, .96)))
     if kind == 'mode_select':
         if standard_selected(scene, confidence):
+            if getattr(context.runner, 'currency_configure', False):
+                return NavigationAction('open_standard_difficulty', ('standard_difficulty',),
+                                        unique(clean, '进入标准博弈', (.75, .85, .96, .94)))
             return None
         return NavigationAction('select_standard', ('standard_selected',),
                                 unique(clean, '标准博弈', (0, .16, .2, .27)))
+    if kind == 'standard_difficulty' and getattr(context.runner, 'currency_configure', False):
+        from .currency_wars_standard import rank_target
+        choice = rank_target(scene, confidence)
+        if choice is None:
+            return None
+        value, target = choice
+        return NavigationAction('select_rank_' + str(value), ('rank_' + str(value),), target)
     raise AutomationError('尚未校准当前导航页面：' + kind)
 
 
@@ -133,10 +146,22 @@ def locate(c):
     used = set()
     persist()
     scene = c.snapshot()
-    for _ in range(16):
+    for _ in range(24):
         c.checkpoint()
         guard._require_current_scene(scene)
-        if standard_selected(scene, c.settings.ocr_confidence):
+        if getattr(c.runner, 'currency_configure', False) and page_kind(scene, c.settings.ocr_confidence) == 'standard_difficulty':
+            from .currency_wars_standard import selected_rank
+            try:
+                rank = selected_rank(scene, c.settings.ocr_confidence)
+            except AutomationError:
+                rank = None
+            if rank == 40:
+                data.update(entry_ready=True, rank_verified=True, rank=8, wealth=40,
+                            page_kind='standard_difficulty', action_status='rank_ready',
+                            screenshot=evidence(scene, 'currency_rank_40_ready'))
+                persist()
+                break
+        if standard_selected(scene, c.settings.ocr_confidence) and not getattr(c.runner, 'currency_configure', False):
             data.update(entry_ready=True, page_kind='standard_selected', action_status='entry_ready',
                         screenshot=evidence(scene, 'currency_navigation_ready'))
             persist()
@@ -170,7 +195,14 @@ def locate(c):
             if after is not None:
                 guard._require_current_scene(after)
                 kind = page_kind(after, c.settings.ocr_confidence)
-                if kind in choice.expected or ('standard_selected' in choice.expected and
+                rank_ready = False
+                if choice.expected[0].startswith('rank_') and kind == 'standard_difficulty':
+                    from .currency_wars_standard import selected_rank
+                    try:
+                        rank_ready = selected_rank(after, c.settings.ocr_confidence) == int(choice.expected[0][5:])
+                    except AutomationError:
+                        pass
+                if rank_ready or kind in choice.expected or ('standard_selected' in choice.expected and
                                                standard_selected(after, c.settings.ocr_confidence)):
                     action.update(status='verified', after=evidence(after, 'currency_navigation_after_' + choice.intent))
                     data.update(action_status='transition_verified', screenshot=action['after'])
@@ -195,5 +227,6 @@ def locate(c):
         persist()
     c.runner.emit(dict(type=TASK, data=data))
     c.report.safe_next = '核对标准博弈难度与A8-40控制；本次未提交新对局。'
-    return TaskResult(TASK, 'partial', '已定位标准博弈配置，未开始对局。' if data['entry_ready'] else
+    return TaskResult(TASK, 'partial', '已核实标准A8财富造物主40，未开始对局。' if data.get('rank_verified') else
+                      '已定位标准博弈配置，未开始对局。' if data['entry_ready'] else
                       data.get('reason', '导航未完成，已留证。'))

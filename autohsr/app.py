@@ -1157,7 +1157,8 @@ class Runner:
     def __init__(self, settings: Settings, emit=None, *, new_battle_run=False, operation="daily",
                  du_runs=None, du_resume_active=False, du_periodic_rank=None,
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
-                 currency_control_probe=False, currency_timeout_probe=False, currency_locate=False):
+                 currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
+                 currency_configure=False):
         self.settings = settings
         self._emit = emit or (lambda event: None)
         self._overlay = None
@@ -1174,6 +1175,10 @@ class Runner:
         if type(currency_locate) is not bool or currency_locate and operation != 'currency_wars_prepare':
             raise ValueError('货币战争入口导航仅允许独立准备操作。')
         self.currency_locate = currency_locate
+        if (type(currency_configure) is not bool or currency_configure and
+                (operation != 'currency_wars_prepare' or not currency_locate)):
+            raise ValueError('标准A8-40配置仅允许独立入口导航操作。')
+        self.currency_configure = currency_configure
         self.currency_source_slot,self.currency_zone = currency_source_slot,currency_zone
         if type(currency_target_level) is not int or not 0<=currency_target_level<=10:
             raise ValueError('货币战争目标等级必须为0到10的整数。')
