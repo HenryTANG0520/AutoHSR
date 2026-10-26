@@ -52,6 +52,11 @@ def key_allowed(scene, confidence=.65):
 
 
 def ready_kind(scene, context):
+    if getattr(context.runner, 'currency_locate', False):
+        from .currency_wars_navigation import page_kind
+        navigation = page_kind(scene, context.settings.ocr_confidence)
+        if navigation != 'unknown':
+            return navigation
     page = observe(scene, context.settings.ocr_confidence).page_kind
     if page != 'unknown':
         return page

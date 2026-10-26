@@ -25,6 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--currency-wars-replay", type=Path, help="离线回放 .sample.json；不访问游戏或加载每日配置")
     mode.add_argument("--currency-wars-check", action="store_true", help="货币战争只读识别与证据保存；自动玩法尚未开放")
     mode.add_argument("--currency-wars-prepare", action="store_true", help="启动或复用游戏，进入已有登录及主界面；不开始对局")
+    mode.add_argument("--currency-wars-locate", action="store_true", help="启动准备并通过指南定位货币战争标准模式；不开始对局")
     mode.add_argument("--check", action="store_true", help="检测窗口和 OCR，输出 JSON；不操作游戏")
     mode.add_argument("--scan-dungeons", action="store_true", help="采集生存索引全部副本入口；不开始挑战或消耗资源")
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
@@ -129,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
         tests = unittest.defaultTestLoader.discover(str(test_path))
         result = unittest.TextTestRunner(verbosity=2).run(tests)
         return 0 if result.wasSuccessful() else 1
-    if not any((args.check, args.scan_dungeons, args.launch, args.run, args.currency_wars_check, args.currency_wars_prepare, args.differential_universe)):
+    if not any((args.check, args.scan_dungeons, args.launch, args.run, args.currency_wars_check, args.currency_wars_prepare, args.currency_wars_locate, args.differential_universe)):
         from .admin_launch import AdminLaunchError, handoff, is_admin
         try:
             if args.admin_task and not is_admin():
@@ -177,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.reward_only:
             from .recovery import reward_only_settings
             settings = reward_only_settings(settings)
-        settings.validate("check" if args.check or args.scan_dungeons else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare else "differential_universe" if args.differential_universe else "daily")
+        settings.validate("check" if args.check or args.scan_dungeons else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate else "differential_universe" if args.differential_universe else "daily")
         from .app import Runner, inspect_game, launch_game
         if args.check:
             print(_json(inspect_game(settings)))
@@ -190,7 +191,8 @@ def main(argv: list[str] | None = None) -> int:
             if kind != "finished":
                 print(json.dumps(event, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
         runner = Runner(settings, emit, new_battle_run=args.new_battle_run,
-                        operation="dungeon_catalogue" if args.scan_dungeons else "currency_wars_prepare" if args.currency_wars_prepare else "currency_wars" if args.currency_wars_check else "differential_universe" if args.differential_universe else "reward_only" if args.reward_only else "daily",
+                        operation="dungeon_catalogue" if args.scan_dungeons else "currency_wars_prepare" if args.currency_wars_prepare or args.currency_wars_locate else "currency_wars" if args.currency_wars_check else "differential_universe" if args.differential_universe else "reward_only" if args.reward_only else "daily",
+                        **(dict(currency_locate=True) if args.currency_wars_locate else {}),
                         **(dict(du_runs=settings.differential_universe_runs,
                                 du_resume_active=args.resume_active_du,
                                 du_periodic_rank=args.du_periodic_rank) if args.differential_universe else {}))

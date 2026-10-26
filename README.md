@@ -242,7 +242,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 
 ## 货币战争实验如何实现
 
-按用户要求暂停开发，保留独立页面与实验入口，不因打开助手自动继续对局；报告与每日预算独立。
+开发已按用户要求恢复，目标为标准博弈A8财富造物主40无人接管通关10场。保留独立页面与显式实验入口，不因打开助手自动继续对局；报告与每日预算独立。
 
 | 能力 | 机制与验证 |
 | --- | --- |
@@ -263,6 +263,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 `--currency-wars-check`会将`strategy_snapshot`、`strategy_candidates`和`strategy_decision`写入报告，模式、余额或阵容不明时要求补充观察，不因此开启输入或调用API。独立决策命令如下：
 
 货币战争页另有“启动准备：进入游戏（不开局）”，CLI为`python -m autohsr --currency-wars-prepare`。它先检查并按需启动游戏，只点击已核实的“点击进入”、已有免费登录补给和关闭提示；从已核实大世界打开手机菜单，已有货币战争页面则保留。密码、验证、协议、下载和未知转换停止，不创建对局、不消费局内金币或每日体力。准备完成以`game_ready=true`记录；整局仍未完成，所以报告保持partial、CLI退出码1。当前实机是分段进入、领奖与打开手机菜单，尚未一遍覆盖未启动至最终入口。
+
+“指南定位：标准模式（不开局）”和CLI `python -m autohsr --currency-wars-locate`在准备后继续打开手机指南、玩法页签及货币战争详情，再进入玩法主页和模式选择。使用右侧“零和博弈/晋升等级/奖励预览”核对详情，左侧分类名称不代替选中证明；识别按钮装饰引号，不把“积分线已更新”信息横幅当按钮。每步先落盘pending，看到目标页才记verified；未知保留截图和回放、不反复点击。专用输入会重新核对当前画面与输入代次，普通只读及旧超频实验不能借用。到标准模式配置页以`entry_ready`记录，尚不提交“进入标准博弈”或“开始对局”；实际验证进度见[验收记录](docs/currency-wars-validation.md)。
 
 ```powershell
 # 读取本地统一局面；默认为离线，不访问游戏。

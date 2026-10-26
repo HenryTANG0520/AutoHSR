@@ -652,3 +652,6 @@ instruction, resized to 1920 pixels with the bottom identifier strip masked.
 Its sidecar retains the source hash and non-identifier OCR. It verifies one
 target card with two automatically attached beacons, not two selections.
 Game artwork remains the property of HoYoverse.
+# 2026-10-26 货币战争导航OCR回归
+
+`autohsr/tests/fixtures/currency_wars_navigation.json`仅提取用户授权本地开发截图的固定导航文字、置信度与归一化框；元数据保留原样本相对标识与图像SHA-256以便本地核对。字段采用明确白名单，排除UID、昵称、资源库存和原始图像；文本事实用于界面回归。来源客户端4.6.0，日期2026-10-26；没有新增分发游戏图像，旧`du_guide_tab`与`du_interaction_f`继续使用各自既有来源记录。

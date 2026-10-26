@@ -156,6 +156,25 @@ class Context:
             self._focus_interrupted()
         self.sleep(self.settings.action_delay)
 
+    def currency_navigation_input(self, scene, choice):
+        if self.report.operation != 'currency_wars_prepare' or not self.runner.currency_locate:
+            raise AutomationError('当前任务未请求货币战争入口导航。')
+        from .currency_wars import CurrencyWarsWorkflow
+        from .currency_wars_navigation import next_action
+        self.checkpoint()
+        CurrencyWarsWorkflow(self)._require_current_scene(scene)
+        if next_action(scene, self) != choice:
+            raise AutomationError('入口导航目标改变，未发送旧输入。')
+        self.last_scene, self._scroll_anchor = None, None
+        try:
+            if choice.key is not None:
+                self.window.key(choice.key)
+            else:
+                self.window.click(*choice.target.center, scene.geometry)
+        except FocusLost:
+            self._focus_interrupted()
+        self.sleep(self.settings.action_delay)
+
     def click(self, scene: Scene, target: Token | tuple[float, float], *, du_intent="navigation"):
         self._require_gameplay_input()
         self.checkpoint()
@@ -1138,7 +1157,7 @@ class Runner:
     def __init__(self, settings: Settings, emit=None, *, new_battle_run=False, operation="daily",
                  du_runs=None, du_resume_active=False, du_periodic_rank=None,
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
-                 currency_control_probe=False, currency_timeout_probe=False):
+                 currency_control_probe=False, currency_timeout_probe=False, currency_locate=False):
         self.settings = settings
         self._emit = emit or (lambda event: None)
         self._overlay = None
@@ -1152,6 +1171,9 @@ class Runner:
         self.input_epoch = 0
         self.inactive_duration = 0.0
         self.new_battle_run = new_battle_run
+        if type(currency_locate) is not bool or currency_locate and operation != 'currency_wars_prepare':
+            raise ValueError('货币战争入口导航仅允许独立准备操作。')
+        self.currency_locate = currency_locate
         self.currency_source_slot,self.currency_zone = currency_source_slot,currency_zone
         if type(currency_target_level) is not int or not 0<=currency_target_level<=10:
             raise ValueError('货币战争目标等级必须为0到10的整数。')
@@ -1239,8 +1261,12 @@ class Runner:
         self.report.safe_next = SAFE_NEXT
         self.emit(dict(type="task", task=TASK, status="running", detail="启动准备：进入游戏，不开始对局" if self.report.operation == 'currency_wars_prepare' else "连续战斗与结算推进验证" if self.report.operation == "currency_wars_flow_test" else "当前节点战斗验证" if self.report.operation == "currency_wars_node_test" else "单次部署验证" if self.report.operation == "currency_wars_deploy_test" else "单次前台拖动验证" if self.report.operation == "currency_wars_drag_test" else "只读识别与证据保存"))
         if self.report.operation == 'currency_wars_prepare':
-            from .currency_wars_prepare import prepare
-            result = prepare(context)
+            if self.currency_locate:
+                from .currency_wars_navigation import locate
+                result = locate(context)
+            else:
+                from .currency_wars_prepare import prepare
+                result = prepare(context)
         elif self.report.operation == "currency_wars_drag_test":
             from .currency_wars_deployment import test_front_swap
             result = test_front_swap(context)

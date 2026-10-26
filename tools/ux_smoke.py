@@ -94,6 +94,9 @@ class FakeRunner:
             if self.kwargs['operation'] == 'currency_wars_prepare':
                 report['currency_wars'].update(mode='startup_prepare', game_ready=True,
                                               page_kind='phone', action_status='game_ready')
+                if self.kwargs.get('currency_locate'):
+                    report['currency_wars'].update(mode='entry_navigation', entry_ready=True,
+                                                  page_kind='standard_selected', action_status='entry_ready')
             self.emit(dict(type='finished', report=report))
             return report
         task = 'battle' if PACKAGE == 'autohsr' else 'scratch'
@@ -272,6 +275,20 @@ def main():
                 pump(root, lambda: not ui.busy)
                 check('currency_prepare_ready_is_not_a_match_win_or_settings_save',
                     '手机菜单' in ui.currency_observation.get() and '未开始新对局' in ui.currency_observation.get() and
+                    '玩法未完成' in ui.summary.get() and config.read_bytes() == original)
+                ui._currency_locate()
+                pump(root, lambda: ui.runner is not None)
+                locate_runner = FakeRunner.instances[-1]
+                check('currency_locate_explicit_and_locks_controls',
+                    locate_runner.kwargs['operation'] == 'currency_wars_prepare' and
+                    locate_runner.kwargs.get('currency_locate') is True and
+                    '指南定位标准模式' in ui.plan.get() and
+                    all(str(w.cget('state')) == 'disabled' for w in ui.setting_controls))
+                locate_runner.release.set()
+                pump(root, lambda: not ui.busy)
+                check('currency_locate_partial_without_daily_spend_or_settings_save',
+                    '标准模式已定位' in ui.currency_observation.get() and
+                    '未开始新对局' in ui.currency_observation.get() and
                     '玩法未完成' in ui.summary.get() and config.read_bytes() == original)
                 ui.currency_drag_button.invoke()
                 pump(root, lambda: ui.runner is not None)
