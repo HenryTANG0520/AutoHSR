@@ -195,7 +195,7 @@ class Context:
                 raise AutomationError('标准开局已有提交记录，未重复开始。')
         elif data['status'] != 'active':
             raise AutomationError('尚未核实标准对局已开始。')
-        if next_action(scene, self.settings.ocr_confidence) != choice:
+        if next_action(scene, self.settings.ocr_confidence,session=store.data) != choice:
             raise AutomationError('标准开发动作与当前页面不符。')
         guard._require_current_scene(scene)
         self.last_scene, self._scroll_anchor = None, None

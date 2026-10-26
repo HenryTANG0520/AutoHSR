@@ -168,6 +168,7 @@ class StandardFlowTests(unittest.TestCase):
             c = self.context(folder, [before, after, after], resume=True)
             with patch('autohsr.currency_wars_node.loot_centers', side_effect=lambda s:(TARGET,) if s is before else ()), \
                  patch('autohsr.currency_wars_loot.loot_centers', side_effect=lambda s:(TARGET,) if s is before else ()), \
+                 patch('autohsr.currency_wars_collector.first_unit_probe', side_effect=AutomationError('fixture ends after loot')), \
                  patch('autohsr.currency_wars_replay.save_sample'):
                 run_standard(c)
             c.currency_standard_input.assert_called_once()

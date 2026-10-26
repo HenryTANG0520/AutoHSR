@@ -23,7 +23,7 @@ class StandardAction:
     payload: tuple = ()
 
 
-def next_action(scene, confidence=.65):
+def next_action(scene, confidence=.65, *, session=None):
     clean = trusted(scene, confidence)
     if difficulty_page(scene, confidence) and selected_rank(scene, confidence) == 40:
         return StandardAction('start_standard_a8_40', 'boss_preview',
@@ -56,6 +56,22 @@ def next_action(scene, confidence=.65):
             return StandardAction('collect_standard_loot', 'loot_collected',
                                   Token('已核实奖励晶矿', 1., (x-radius,y-radius*16/9,x+radius,y+radius*16/9)),
                                   payload=(x,y,radius))
+        from .currency_wars_collector import first_unit_probe
+        probe = first_unit_probe(scene, confidence, (session or {}).get('collection',{}).get('units'))
+        if probe is None:
+            raise AutomationError('当前持有阵容已采集，下一步核对商店及策略事实。')
+        cell, target = probe
+        return StandardAction('inspect_standard_unit', 'character', target,
+                              payload=(cell.zone,cell.slot,cell.node,cell.signature))
+    if kind == 'character':
+        from .currency_wars_collector import owned_profile
+        profile = owned_profile(scene,(session or {}).get('inspecting'),confidence)
+        key = profile.zone+':'+str(profile.slot)
+        record = (session or {}).get('collection',{}).get('units',{}).get(key)
+        if not record or record.get('unit') != asdict(profile):
+            raise AutomationError('当前角色信息尚未记入本次采集，未关闭面板。')
+        return StandardAction('close_standard_unit','preparation',
+                              Token('关闭已采集角色面板',1.,(.49,.49,.51,.51)))
     raise AutomationError('标准对局当前页面需要局面采集或新动作校准：' + kind)
 
 
@@ -113,16 +129,44 @@ def run_standard(c):
     for _ in range(40):
         c.checkpoint()
         guard._require_current_scene(scene)
+        collection = store.data.get('collection',{})
+        if collection.get('run_dir') != c.report.run_dir or collection.get('input_epoch') != c.runner.input_epoch:
+            collection = dict(run_dir=c.report.run_dir,input_epoch=c.runner.input_epoch,units={},complete=False)
+            store.data['collection'] = collection
+            store.persist()
+        kind = observe(scene,c.settings.ocr_confidence).page_kind
+        if kind == 'character':
+            from .currency_wars_collector import owned_profile
+            try:
+                profile = owned_profile(scene,store.data.get('inspecting'),c.settings.ocr_confidence)
+            except AutomationError:
+                pass  # next_action records the exact missing field below.
+            else:
+                inspecting = store.data['inspecting']
+                collection['units'][profile.zone+':'+str(profile.slot)] = dict(unit=asdict(profile),
+                    signature=inspecting['signature'],node=inspecting['node'],
+                    source=evidence(c,scene,'currency_standard_owned_'+str(profile.slot)))
+                store.persist()
+                c.log(f'阵容采集：{profile.zone}:{profile.slot} {profile.name}，{profile.star}星、{profile.tier}费；已读{len(collection["units"])}张。')
         try:
-            choice = next_action(scene, c.settings.ocr_confidence)
+            choice = next_action(scene, c.settings.ocr_confidence,session=store.data)
         except AutomationError as error:
-            from .currency_wars_state import snapshot_from_scene
-            current = snapshot_from_scene(scene, c.runner.input_epoch, c.settings.ocr_confidence,
-                                          'standard_current')
+            from .currency_wars_collector import collected_snapshot, first_unit_probe
+            if kind == 'preparation':
+                try:
+                    collection['complete'] = first_unit_probe(scene,c.settings.ocr_confidence,collection['units']) is None
+                except AutomationError:
+                    collection['complete'] = False
+            current = collected_snapshot(scene,store.data,c.runner.input_epoch,'standard_current',c.settings.ocr_confidence)
+            from .currency_wars_planner import OfflineProvider, candidates
             store.data.update(action_status='needs_observation', reason=str(error),
                               page_kind=observe(scene, c.settings.ocr_confidence).page_kind,
                               strategy_snapshot=asdict(current),
+                              strategy_candidates=[asdict(candidate) for candidate in candidates(current)],
+                              strategy_decision=asdict(OfflineProvider().decide(current)),
                               screenshot=evidence(c, scene, 'currency_standard_observe'))
+            if current.roster_complete:
+                c.log(f'完整阵容已核实：{len(current.roster)}张角色，备战{current.bench_occupied}/{current.bench_capacity}；缺失事实继续由离线决策要求补充。')
             store.persist()
             break
         if choice.intent == 'start_standard_a8_40' and (store.data['status'] != 'start_pending' or store.data['actions']):
@@ -160,6 +204,12 @@ def run_standard(c):
                         store.data['start_verified'] = True
                     if choice.intent.startswith('confirm_standard_environment_'):
                         store.data['environment'] = action['decision']
+                    if choice.intent == 'inspect_standard_unit':
+                        store.data['inspecting'] = dict(zone=choice.payload[0],slot=choice.payload[1],
+                                                        node=choice.payload[2],signature=choice.payload[3],
+                                                        before=action['before'],after=action['after'])
+                    elif choice.intent != 'close_standard_unit':
+                        store.data.pop('collection',None)
                     store.persist()
                     scene = after
                     break

@@ -97,7 +97,7 @@ def read_character(scene,confidence=.65):
         raise AutomationError('角色信息面板未核实。')
     state=read_match(scene,confidence)
     names=[normalize(t.text) for t in scene.tokens if confidence<=t.score<=1 and
-           t.within((.775,.19,.91,.235)) and re.fullmatch(r'[\u4e00-\u9fff·]{1,12}',normalize(t.text))]
+           t.within((.775,.19,.91,.235)) and re.fullmatch(r'(?=.{1,40}$)(?=.*[\u4e00-\u9fff])[\u4e00-\u9fffa-z0-9.]+',normalize(t.text))]
     modes=[normalize(t.text) for t in scene.tokens if confidence<=t.score<=1 and
            t.within((.78,.22,.90,.28)) and normalize(t.text) in ('前台','后台','前后台','日后台')]
     if not state or not state.node or len(names)!=1 or len(modes)!=1:
