@@ -6,7 +6,7 @@
 
 通过屏幕识别和模拟鼠标键盘输入，完成《崩坏：星穹铁道》日常任务与差分宇宙周期演算的 Windows 桌面助手。当前版本为`0.1.0`，本说明按 **2026-10-26的仓库实现**整理。
 
-AutoHSR使用本地Python流程、OCR、图像规则和ONNX检测模型决策；运行时不依靠大模型聊天决策，不读取游戏进程内存，不注入游戏。基本方式是：**观察画面 → 核实页面与目标 → 执行一个有界动作 → 再次观察并验证结果**。
+AutoHSR默认使用本地Python流程、OCR、图像规则和ONNX检测模型决策，不读取游戏进程内存，不注入游戏。货币战争另有可选API只读决策原型，尚未接入实战动作；每日与差分流程仍完全本地。基本方式是：**观察画面 → 核实页面与目标 → 执行一个有界动作 → 再次观察并验证结果**。
 
 ## 功能与当前状态
 
@@ -23,7 +23,7 @@ AutoHSR使用本地Python流程、OCR、图像规则和ONNX检测模型决策；
 | 差分周期演算 | 指定预设开局，处理站点、战斗、事件与出口 | 累计10次独立周期V通关，最近同一版本连续3局成功 |
 | 差分附加功能 | 存档、红点领奖、首次通关后日常三个开关 | 均默认关闭，边界见下文 |
 | 日志与控制 | BetterGI风格透明字幕，F9暂停/继续，F10停止，保存报告 | 字幕不抢焦点、鼠标穿透，从识别截图排除 |
-| 货币战争 | 只读识别、建议及部署、节点、连续流程实验 | **暂停开发**，无完整独立自动整局通过证据 |
+| 货币战争 | 只读识别、统一局面、离线与可选API建议，既有部署、节点和流程实验 | 开发已恢复，目标标准A8-40十场；当前0/10，尚未完成独立整局 |
 
 十次差分独立成功是累计记录，**不等于十次尝试全部成功或100%成功率**；另有28次分段、接续通关单独记录。证据见 [差分实机验证](docs/du-validation.md)、[日常验证记录](VALIDATION.md)。
 
@@ -258,7 +258,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 
 `currency_wars_*.py`按页面、阵容、位置、经济、商店、装备、奖励、节点、流程拆分。商店评分/购买有离线原型，连续流程主要收起商店，不代表完整运营实机通过。开发对局有SSS，但含人工和修复接续，**无完整独立自动整局证据**。见 [开发记录](CURRENCY_WARS.md)、[攻略整理](CURRENCY_WARS_GUIDE.md)。
 
-后续方向为标准博弈优先、默认离线策略、可选大模型API辅助，详见 [策略调研与双路线方案](docs/currency-wars-strategy-research.md)。该方案包含跨平台资料、视频核验边界和分阶段验收；新的策略引擎与API尚未实现，不改变当前运行方式。
+后续方向为标准博弈优先、默认离线策略、可选大模型API辅助，详见 [策略调研与双路线方案](docs/currency-wars-strategy-research.md)。当前已实现统一状态及两种决策的只读原型；完整阵容采集、标准模式实战接线与A8-40十场验收仍在开发，进展见 [验收与问题记录](docs/currency-wars-validation.md)。
+
+`--currency-wars-check`会将`strategy_snapshot`、`strategy_candidates`和`strategy_decision`写入报告，模式、余额或阵容不明时要求补充观察，不因此开启输入或调用API。独立决策命令如下：
+
+```powershell
+# 读取本地统一局面；默认为离线，不访问游戏。
+.\.venv\Scripts\python.exe -m autohsr.currency_wars_planner --state 局面.json
+# 也可使用正常只读采集保存的.sample.json，不把旧图当成当前画面。
+.\.venv\Scripts\python.exe -m autohsr.currency_wars_planner --sample 路径\画面.sample.json
+# 显式选择API辅助；API密钥从AUTOHSR_LLM_API_KEY环境变量读取。
+.\.venv\Scripts\python.exe -m autohsr.currency_wars_planner --state 局面.json --provider hybrid --base-url https://your-provider.example/v1 --model your-model
+```
+
+统一局面包含事实证据及输入代次，不能把普通截图OCR清单直接当作完整阵容；当前真实画面适配尚不补造这些字段。`--routes`可读取单独的版本化路线文件，不接受旧4.4建议JSON的格式；尚未发布当前标准模式策略包。API缺配置、超时、限流或回答无效时回退；只发送结构化游戏事实，默认无图片，不发送本地证据路径。参数`--token-limit-field max_completion_tokens`可选择该输出限制字段，默认`max_tokens`；供应商兼容性须另行验证。所有输出`executable=false`，GUI尚未开放新引擎的实战运行。
 
 ## 日志、报告与恢复
 
@@ -401,7 +414,7 @@ autohsr/
   daily_synthesis.py / free_rewards.py 合成和免费奖励
   planar_*.py                         饰品编队、资源、接战
   differential_universe.py / du_*.py   差分流程、导航、决策
-  currency_wars*.py                    暂停中的货币战争实验
+  currency_wars*.py                    货币战争识别、决策与动作实验
   recovery.py / storage.py             账单、原子写入
   overlay*.py / audio.py               字幕、显式音频工具
   tests/                              离线回归和脱敏样本

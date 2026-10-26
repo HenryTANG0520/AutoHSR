@@ -100,6 +100,15 @@ class CurrencyWarsWorkflow:
         from .currency_wars_match import read_match
         match = read_match(scene, self.c.settings.ocr_confidence)
         data["match"] = asdict(match) if match is not None else None
+        # Same state model used by offline/API advisers. Read-only inspection
+        # deliberately remains offline even if an API was configured elsewhere.
+        from .currency_wars_state import snapshot_from_scene
+        from .currency_wars_planner import OfflineProvider, candidates
+        strategy_state = snapshot_from_scene(scene, self.c.runner.input_epoch,
+                                             self.c.settings.ocr_confidence, str(screenshot))
+        data['strategy_snapshot'] = asdict(strategy_state)
+        data['strategy_candidates'] = [asdict(choice) for choice in candidates(strategy_state)]
+        data['strategy_decision'] = asdict(OfflineProvider().decide(strategy_state))
         self.c.report.currency_wars = data
         self.c.report.error = BLOCKER
         self.c.report.safe_next = SAFE_NEXT

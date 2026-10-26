@@ -110,6 +110,17 @@ class WorkflowSafetyTests(unittest.TestCase):
             CurrencyWarsWorkflow(context).inspect()
         context.evidence.assert_not_called()
 
+    def test_readonly_report_uses_shared_state_without_guessing_or_api(self):
+        context = self.context(scene())
+        with patch('urllib.request.OpenerDirector.open', side_effect=AssertionError('unexpected network')):
+            CurrencyWarsWorkflow(context).inspect()
+        state = context.report.currency_wars['strategy_snapshot']
+        self.assertIsNone(state['mode'])
+        self.assertFalse(state['roster_complete'])
+        self.assertEqual(state['transaction_status'], 'unknown')
+        self.assertEqual(context.report.currency_wars['strategy_decision']['provider'], 'offline')
+        self.assertFalse(context.report.currency_wars['strategy_decision']['executable'])
+
     def test_pause_invalidates_old_observation_for_fresh_retry(self):
         context = self.context(scene())
         context.runner.input_epoch = 1
