@@ -91,6 +91,9 @@ class FakeRunner:
                 report['currency_wars'].update(mode='single_node_test', origin_node='1-4', node_verified=True)
             if self.kwargs['operation'] == 'currency_wars_flow_test':
                 report['currency_wars'].update(mode='flow_test',actions=[dict(node_verified=True)],action_status='needs_decision')
+            if self.kwargs['operation'] == 'currency_wars_prepare':
+                report['currency_wars'].update(mode='startup_prepare', game_ready=True,
+                                              page_kind='phone', action_status='game_ready')
             self.emit(dict(type='finished', report=report))
             return report
         task = 'battle' if PACKAGE == 'autohsr' else 'scratch'
@@ -258,6 +261,18 @@ def main():
                     ui.currency_review.item('transitions', 'values')[1] == '部分验证' and
                     all(ui.currency_review.item(key, 'values')[1] == '4.6 已采集' for key in ('guide', 'tutorial', 'economy')))
                 check('currency_does_not_save_or_change_daily_draft', config.read_bytes() == original and ui.stamina_limit.get() == 'invalid disabled draft')
+                ui._currency_prepare()
+                pump(root, lambda: ui.runner is not None)
+                prepare_runner = FakeRunner.instances[-1]
+                check('currency_prepare_is_separate_and_locks_controls',
+                    prepare_runner.kwargs['operation'] == 'currency_wars_prepare' and
+                    ui.current_task.get() == '货币战争启动准备' and
+                    all(str(w.cget('state')) == 'disabled' for w in ui.setting_controls) and not errors)
+                prepare_runner.release.set()
+                pump(root, lambda: not ui.busy)
+                check('currency_prepare_ready_is_not_a_match_win_or_settings_save',
+                    '手机菜单' in ui.currency_observation.get() and '未开始新对局' in ui.currency_observation.get() and
+                    '玩法未完成' in ui.summary.get() and config.read_bytes() == original)
                 ui.currency_drag_button.invoke()
                 pump(root, lambda: ui.runner is not None)
                 drag_runner = FakeRunner.instances[-1]

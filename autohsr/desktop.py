@@ -202,7 +202,8 @@ def build_window(ui, task_names, server_names):
         ui.setting_controls.append(ui.currency_match_button)
         control_row = ttk.Frame(readiness, style='Card.TFrame')
         control_row.pack(anchor='w', pady=(d(6),0))
-        for label, command in (('只读控制验收：截图后暂停', ui._currency_control_probe),
+        for label, command in (('启动准备：进入游戏（不开局）', ui._currency_prepare),
+                               ('只读控制验收：截图后暂停', ui._currency_control_probe),
                                ('只读超时验收：0.05秒', ui._currency_timeout_probe)):
             button = ttk.Button(control_row, text=label, command=command)
             button.pack(side='left', padx=(0,d(8)))

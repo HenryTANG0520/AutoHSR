@@ -62,6 +62,14 @@ class IsolatedVision:
             raise ValueError("OCR 超时必须为正数。")
         self.confidence, self.checkpoint, self.inactive, self.timeout = confidence, checkpoint, inactive, timeout
 
+    def template(self, scene, path, roi=(0, 0, 1, 1), threshold=.88):
+        """Pure image matching shares Vision's implementation, never its OCR engine."""
+        from .vision import Vision
+        self.checkpoint()
+        result = Vision.template(self, scene, path, roi, threshold)
+        self.checkpoint()
+        return result
+
     def read(self, image, geometry=None) -> Scene:
         import numpy as np
         self.checkpoint()

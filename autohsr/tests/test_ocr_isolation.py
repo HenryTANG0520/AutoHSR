@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from autohsr.models import AutomationError, Stopped
+from autohsr.models import AutomationError, Stopped, Scene
 from autohsr.ocr_isolation import IsolatedVision, _tokens
 
 
@@ -120,3 +120,19 @@ class IsolatedVisionTests(unittest.TestCase):
         cv2.putText(image, "AutoHSR 123", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3)
         scene = IsolatedVision(timeout=20).read(image)
         self.assertIn("123", scene.text)
+
+    def test_template_matching_does_not_construct_parent_ocr(self):
+        import cv2
+        template = np.random.default_rng(40).integers(0, 255, (12, 16, 3), dtype=np.uint8)
+        image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        image[20:32, 40:56] = template
+        checkpoint = Mock()
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'anchor.png'
+            path.write_bytes(cv2.imencode('.png', template)[1].tobytes())
+            with patch('autohsr.vision.Vision.__init__', side_effect=AssertionError('parent OCR constructed')):
+                result = IsolatedVision(checkpoint=checkpoint).template(Scene([], image=image), path, (0, 0, .1, .1))
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result[0], 48 / 1920)
+        self.assertAlmostEqual(result[1], 26 / 1080)
+        self.assertEqual(checkpoint.call_count, 2)
