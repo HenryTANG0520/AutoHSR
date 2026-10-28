@@ -23,6 +23,17 @@ class StandardAction:
     payload: tuple = ()
 
 
+def _preparation_probe(scene,confidence,known):
+    from .currency_wars_collector import first_unit_probe,roster_cells
+    # A fresh nineteen-cell scan can prove zero owned units. Failure to read
+    # the layout or match the HUD still raises rather than authorizing a shop.
+    if any(c.state=='occupied' for c in roster_cells(scene,confidence)):
+        return first_unit_probe(scene,confidence,known)
+    if known:
+        raise AutomationError('当前空阵容与已采集角色不符，未沿用缓存或自动开店。')
+    return None
+
+
 def next_action(scene, confidence=.65, *, session=None):
     """Re-derive only the exact in-flight proposal; never replay old unknown IO."""
     session = session or {}
@@ -108,12 +119,9 @@ def _next_action(scene, confidence=.65, *, session=None):
                               payload=(expected_board,) if expected_board else ())
     if kind == 'preparation':
         from .currency_wars_node import loot_centers
-        from .currency_wars_collector import first_unit_probe
         if 'strategy' in (session or {}) and (loot_centers(scene) or any(
                 normalize(t.text)=='开启' and t.within((.18,.78,.80,.92)) for t in clean.tokens)):
-            from .currency_wars_collector import roster_cells
-            occupied=any(c.state=='occupied' for c in roster_cells(scene,confidence))
-            probe = first_unit_probe(scene,confidence,session.get('collection',{}).get('units')) if occupied else None
+            probe = _preparation_probe(scene,confidence,session.get('collection',{}).get('units'))
             if probe is not None:
                 cell,target = probe
                 return StandardAction('inspect_standard_unit','character',target,
@@ -128,7 +136,7 @@ def _next_action(scene, confidence=.65, *, session=None):
             return StandardAction('collect_standard_loot', 'loot_collected',
                                   Token('已核实奖励晶矿', 1., (x-radius,y-radius*16/9,x+radius,y+radius*16/9)),
                                   payload=(x,y,radius))
-        probe = first_unit_probe(scene, confidence, (session or {}).get('collection',{}).get('units'))
+        probe = _preparation_probe(scene,confidence,(session or {}).get('collection',{}).get('units'))
         if probe is None:
             from .currency_wars_standard_market import open_standard_shop
             from .currency_wars_match import read_match
@@ -385,9 +393,8 @@ def run_standard(c):
                 break
             kind = observe(scene,c.settings.ocr_confidence).page_kind
         if kind == 'preparation':
-            from .currency_wars_collector import first_unit_probe
             try:
-                collection['complete'] = first_unit_probe(scene,c.settings.ocr_confidence,collection['units']) is None
+                collection['complete'] = _preparation_probe(scene,c.settings.ocr_confidence,collection['units']) is None
             except AutomationError:
                 collection['complete'] = False
             store.persist()
@@ -431,10 +438,10 @@ def run_standard(c):
         try:
             choice = next_action(scene, c.settings.ocr_confidence,session=store.data)
         except AutomationError as error:
-            from .currency_wars_collector import collected_snapshot, first_unit_probe
+            from .currency_wars_collector import collected_snapshot
             if kind == 'preparation':
                 try:
-                    collection['complete'] = first_unit_probe(scene,c.settings.ocr_confidence,collection['units']) is None
+                    collection['complete'] = _preparation_probe(scene,c.settings.ocr_confidence,collection['units']) is None
                 except AutomationError:
                     collection['complete'] = False
             current = collected_snapshot(scene,store.data,c.runner.input_epoch,'standard_current',c.settings.ocr_confidence)

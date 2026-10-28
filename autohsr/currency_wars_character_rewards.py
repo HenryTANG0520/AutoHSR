@@ -4,6 +4,7 @@ March7th references: _check_hiring_book and _check_expert_invitation.
 Pinned provenance and license: assets/upstream/March7thAssistant/source.json.
 """
 from collections import Counter
+from dataclasses import asdict
 import re
 
 from .currency_wars import observe
@@ -83,6 +84,79 @@ def choose(candidates,data,strategy):
         return (-priority-useful-synergy,name)
     if not candidates:raise AutomationError('聘用书候选均明确不可选择，未点击。')
     return min(candidates,key=rank)
+
+
+def _roster(units):
+    """Canonical observed identities include position, cost and actual gear."""
+    from .currency_wars_state import UnitState
+    require_roster(dict(roster_complete=True,roster=units))
+    result=[]
+    for item in units:
+        data=dict(item)
+        for field in ('traits','equipment','eligible_zones'):
+            if data.get(field) is not None:data[field]=tuple(data[field])
+        unit=asdict(UnitState(**data))
+        for field in ('traits','equipment','eligible_zones'):
+            if unit[field] is not None:unit[field]=sorted(unit[field])
+        result.append(unit)
+    if len({(u['zone'],u['slot']) for u in result})!=len(result):
+        raise AutomationError('顾问选择的阵容位置重复，未认定未变化。')
+    return sorted(result,key=lambda u:(u['zone'],u['slot']))
+
+
+def _acceptance(parent):
+    """Only our verified invitation opening can settle an unchanged roster."""
+    source=parent.get('reward_basis',{});target=parent.get('target',[])
+    if (parent.get('status')!='verified' or not parent.get('before') or not parent.get('after')
+            or not source.get('node') or not isinstance(target,(list,tuple))):return None
+    kind=parent.get('action')
+    if kind=='open_standard_bench_reward':
+        if (len(target)!=3 or target[0]!=source['node'] or type(target[1]) is not int or not 1<=target[1]<=9
+                or source.get('cells',{}).get('bench:'+str(target[1]))!=['reward',target[2]]):return None
+    elif kind=='collect_standard_loot':
+        if (len(target)!=3 or any(type(n) not in (int,float) for n in target)
+                or not all(0<n<1 for n in target)):return None
+    else:return None
+    return dict(action_id=parent['id'],action=kind,target=list(target),node=source['node'])
+
+
+def advisor_selection(data,units,scene,actions,confidence=.65):
+    """Selection acceptance is separate from a delivered unit or a shop quote."""
+    if (data.get('page')!=EXPERT or len(data.get('choice',[]))!=11
+            or data['choice'][10] is not None):return None
+    parent=actions[data['origin_action_id']];accepted=_acceptance(parent)
+    if not accepted or accepted['node']!=data['choice'][0]:return None
+    require_roster(parent['reward_basis']['snapshot'])
+    before=_roster(parent['reward_basis']['snapshot']['roster'])
+    after=_roster([asdict(u) for u in units])
+    if before!=after:return None
+    from .currency_wars_collector import roster_cells
+    cells={c.zone+':'+str(c.slot):[c.state,c.signature] for c in roster_cells(scene,confidence)}
+    if accepted['action']=='open_standard_bench_reward':
+        if cells['bench:'+str(accepted['target'][1])][0]!='empty':return None
+    protected={k:v for k,v in parent['reward_basis']['cells'].items() if v[0]=='reward'
+               and k!='bench:'+str(data.get('box_slot'))}
+    if any(cells[k]!=v for k,v in protected.items()):return None
+    return dict(delivery_kind='advisor_selection',advisor_selection_verified=True,roster_unchanged=True,
+                roster_after=after,accepted_selection=accepted,unit_verified=False)
+
+
+def valid_advisor_selection(effect,target,parent):
+    if (len(target)!=11 or target[2]!=EXPERT or target[10] is not None
+            or effect.get('unit_verified') is not False or effect.get('advisor_selection_verified') is not True
+            or effect.get('roster_unchanged') is not True or effect.get('other_roster_verified') is not True
+            or effect.get('advisor_unlock_verified') is True or effect.get('purchase_verified') is True
+            or effect.get('accepted_selection')!=_acceptance(parent)
+            or not effect.get('accepted_selection') or not isinstance(effect.get('roster_after'),list)):
+        return False
+    before=_roster(parent['reward_basis']['snapshot']['roster'])
+    if _roster(effect['roster_after'])!=before:return False
+    selected=[u for u in before if u['name']==target[6]]
+    stars=sorted((u['star'] for u in selected),reverse=True)
+    gear=sorted(item for u in selected for item in u['equipment'])
+    return (effect.get('stars_before')==stars and effect.get('stars_after')==stars
+            and effect.get('tiers_after')==sorted(u['tier'] for u in selected)
+            and effect.get('equipment_before')==gear and effect.get('equipment_after')==gear)
 
 
 def observe_shop(session,scene,action,confidence=.65):

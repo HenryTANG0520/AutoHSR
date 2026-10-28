@@ -349,7 +349,8 @@ def returned(session, choice, scene, confidence=.65):
             advisor_unlock_declared=data['page']=='expert_selection')
     data.update(claim_action_id=action['id'],choice=list(choice.payload),
                 after_board=[state.node,state.gold,state.hp,state.level,list(state.deployment),list(state.experience) if state.experience else None],
-                after_inventory=dict(inventory_counts(inventory(scene,confidence))))
+                after_inventory=dict(inventory_counts(inventory(scene,confidence))),
+                after_reward_items={c.zone+':'+str(c.slot):[c.state,c.signature] for c in roster_cells(scene,confidence) if c.state=='reward'})
     if choice.payload[6]:
         data['status']='unit_verifying'
         session.pop('collection',None)
@@ -357,12 +358,12 @@ def returned(session, choice, scene, confidence=.65):
         _finish(session)
 
 
-def _finish(session, preserve_collection=False):
+def _finish(session, preserve_collection=False, action_status='reward_verified'):
     data = session['reward'];data['status']='verified'
     session['actions'][data['origin_action_id']]['reward_verified']=True
     session['actions'][data['claim_action_id']]['reward_verified']=True
     session.setdefault('reward_history',[]).append(json.loads(json.dumps(data)))
-    session['action_status']='reward_verified'
+    session['action_status']=action_status
     if not preserve_collection:session.pop('collection',None)
     node = data['basis']['node']
     if node in session.get('shop_observed_nodes',[]):session['shop_observed_nodes'].remove(node)
@@ -398,7 +399,9 @@ def board_ready(scene, data, confidence=.65):
     state = read_match(scene,confidence)
     return bool(state and state.page=='preparation' and state.deployment and (state.experience or state.level==10) and
                 [state.node,state.gold,state.hp,state.level,list(state.deployment),list(state.experience) if state.experience else None]==data['after_board']
-                and inventory_counts(inventory(scene,confidence))==Counter(data['after_inventory']))
+                and inventory_counts(inventory(scene,confidence))==Counter(data['after_inventory'])
+                and ('after_reward_items' not in data or data['after_reward_items']=={
+                    c.zone+':'+str(c.slot):[c.state,c.signature] for c in roster_cells(scene,confidence) if c.state=='reward'}))
 
 
 def panel_stale(session):
@@ -413,8 +416,9 @@ def verify_unit(session, scene, epoch, confidence=.65):
     if data.get('status')!='unit_verifying' or not session.get('collection',{}).get('complete'):
         return None
     if not board_ready(scene,data,confidence):
-        return '补给角色核验时状态已变，未重复领取。'
-    snapshot = collected_snapshot(scene,session,epoch,'delivered_supply',confidence)
+        return '奖励角色核验时状态已变，未重复领取。'
+    snapshot = collected_snapshot(scene,session,epoch,'delivered_reward',confidence,
+                                  allow_reward_items='after_reward_items' in data)
     if not snapshot.roster_complete:
         return None
     name = data['choice'][6];before = data['basis']['snapshot'].get('roster',[])
@@ -431,6 +435,16 @@ def verify_unit(session, scene, epoch, confidence=.65):
     gear_after=Counter(item for u in snapshot.roster if u.name==name for item in u.equipment)
     others_old = Counter((u['name'],u['star'],u['tier'],tuple(u.get('equipment') or ())) for u in before if u['name']!=name)
     others_new = Counter((u.name,u.star,u.tier,tuple(u.equipment or ())) for u in snapshot.roster if u.name!=name)
+    if data['page']=='expert_selection' and len(data['choice'])==11 and new==old:
+        from .currency_wars_character_rewards import advisor_selection
+        receipt=advisor_selection(data,snapshot.roster,scene,session['actions'],confidence)
+        if receipt:
+            effect=session['actions'][data['claim_action_id']]['reward_effect']
+            effect.update(receipt,stars_before=old,stars_after=new,other_roster_verified=True,
+                          tiers_after=tiers,equipment_before=sorted(gear_before.elements()),equipment_after=sorted(gear_after.elements()))
+            data.update(delivery_kind='advisor_selection',observed_stars=new,original_stars=old)
+            _finish(session,preserve_collection=True,action_status='advisor_selected')
+            return None
     if (not data['basis']['snapshot'].get('roster_complete') or new<=old or others_old!=others_new
             or expected_tier is not None and any(t!=expected_tier for t in tiers)
             or original_tiers and set(tiers)!=original_tiers or gear_before-gear_after):
@@ -442,6 +456,8 @@ def verify_unit(session, scene, epoch, confidence=.65):
     effect.update(unit_verified=True,stars_before=old,stars_after=new,other_roster_verified=True)
     if len(data['choice'])==11:
         effect.update(tiers_after=tiers,equipment_before=sorted(gear_before.elements()),equipment_after=sorted(gear_after.elements()))
+        effect['delivery_kind']='unit'
+        data['delivery_kind']='unit'
     _finish(session,preserve_collection=True)
     return None
 
@@ -520,6 +536,9 @@ def _valid_effect(action, actions):
             or target[2]=='expert_selection' and before is None):
         return False
     if action.get('reward_verified') is True and target[6]:
+        if effect.get('delivery_kind')=='advisor_selection':
+            from .currency_wars_character_rewards import valid_advisor_selection
+            return valid_advisor_selection(effect,target,parent)
         old,new = effect.get('stars_before'),effect.get('stars_after')
         if (effect.get('unit_verified') is not True or effect.get('other_roster_verified') is not True
                 or not isinstance(old,list) or not isinstance(new,list)

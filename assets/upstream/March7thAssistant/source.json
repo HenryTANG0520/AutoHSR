@@ -97,7 +97,7 @@
     {
       "path": "autohsr/currency_wars_character_rewards.py",
       "reference_functions": ["_check_hiring_book", "_check_expert_invitation"],
-      "kind": "named-core character preferences rewritten around current OCR candidate names and traits, selection count distinct from tier, complete before/after roster and preserved gear; advisor unlock declaration and later priced shop observation are separate facts; no fixed coordinate fallback or upstream cost table; hiring layout remains synthetic pending a real capture"
+      "kind": "named-core character preferences rewritten around current OCR candidate names and traits, selection count distinct from tier, complete before/after roster and preserved gear; accepted advisor selection with an unchanged roster, delivered units and later priced shop observations are separate facts; remaining unopened boxes stay protected throughout recollection; no fixed coordinate fallback or upstream cost table; hiring layout remains synthetic pending a real capture"
     },
     {
       "path": "autohsr/currency_wars_investment_policy.py",
