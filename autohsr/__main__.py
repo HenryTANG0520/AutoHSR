@@ -63,9 +63,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reward-only", action="store_true", help="本次仅验证并补领每日实训；不刷本，不保存配置")
     parser.add_argument("--new-battle-run", action="store_true", help="明确开始新的刷本预算；先人工核对上次已确认及待核对消耗")
     parser.add_argument("--resume-active-currency", action="store_true", help="仅配合标准开发入口，接续有记录且已核实开始的货币战争")
+    parser.add_argument("--currency-strategy", choices=('default','aglaea','seele'),
+                        help="标准开发购买与成长策略；新局默认 default，接续沿用本局记录")
     args = parser.parse_args(raw_args)
     if args.resume_active_currency and not args.currency_wars_standard:
         parser.error('--resume-active-currency 仅用于 --currency-wars-standard。')
+    if args.currency_strategy is not None and not args.currency_wars_standard:
+        parser.error('--currency-strategy 仅用于 --currency-wars-standard。')
     if args.admin_owner is not None and args.admin_launch not in ("enable", "disable"):
         parser.error("--admin-owner 仅用于管理员授权操作。")
     if args.admin_task and raw_args != ["--admin-task"]:
@@ -205,6 +209,7 @@ def main(argv: list[str] | None = None) -> int:
                             **(dict(currency_locate=True) if args.currency_wars_locate or args.currency_wars_configure else {}),
                             **(dict(currency_configure=True) if args.currency_wars_configure else {}),
                             **(dict(currency_resume=args.resume_active_currency) if args.currency_wars_standard else {}),
+                            **(dict(currency_strategy=args.currency_strategy) if args.currency_strategy is not None else {}),
                             **(dict(du_runs=settings.differential_universe_runs,
                                     du_resume_active=args.resume_active_du,
                                     du_periodic_rank=args.du_periodic_rank) if args.differential_universe else {}))

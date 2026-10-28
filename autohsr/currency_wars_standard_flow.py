@@ -40,11 +40,15 @@ def next_action(scene, confidence=.65, *, session=None):
         return StandardAction('advance_standard_plane', 'environment',
                               unique(clean, '点击空白处继续', (.43, .86, .57, .93)))
     if kind == 'shop':
+        from .currency_wars_standard_trading import purchase_action, shop_return_values
+        purchase = purchase_action(scene, session or {}, confidence)
+        if purchase is not None:
+            return purchase
         from .currency_wars_standard_market import close_standard_shop
         target = close_standard_shop(scene,session or {},confidence)
-        before = session['pre_shop_snapshot']
-        return StandardAction('close_standard_shop','standard_shop_closed',target,
-                              payload=tuple(before[k] for k in ('node','gold','hp','level')))
+        payload, purchased = shop_return_values(scene, session, confidence)
+        return StandardAction('close_standard_shop_after_purchase' if purchased else 'close_standard_shop',
+                              'standard_shop_closed', target, payload=payload)
     if kind == 'environment':
         if scene.image is None:
             raise AutomationError('环境选择缺少当前图像，未发送输入。')
@@ -78,6 +82,11 @@ def next_action(scene, confidence=.65, *, session=None):
                 from .currency_wars_standard_deployment import standard_deployment, POLICY
                 deployment = standard_deployment(scene,session or {},confidence)
                 if deployment is None:
+                    if 'strategy' in (session or {}):
+                        from .currency_wars_standard_trading import experience_action
+                        experience = experience_action(scene, session, confidence)
+                        if experience is not None:
+                            return experience
                     attempt = (session or {}).get('node_attempt',{})
                     actions = (session or {}).get('actions',[])
                     own_pending = bool(actions and actions[-1].get('action')=='start_standard_node'
@@ -118,6 +127,10 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None):
+    from .currency_wars_standard_ledger import PAID_ACTIONS
+    if choice.intent in PAID_ACTIONS:
+        from .currency_wars_standard_trading import financial_feedback
+        return before is not None and financial_feedback(choice, before, scene, confidence) is not None
     if choice.expected == 'standard_node_advanced':
         from .currency_wars_standard_progress import advancement_feedback
         return advancement_feedback(scene, choice.payload[0], confidence) is not None
@@ -187,10 +200,17 @@ def run_standard(c):
         if not entry.get('rank_verified'):
             return result
         store.begin(c.report.run_dir, entry)
+    from .currency_wars_standard_policy import STRATEGIES
+    requested_strategy = getattr(c.runner, 'currency_strategy', None)
+    strategy = store.data.get('strategy', requested_strategy or 'default')
+    if strategy not in STRATEGIES or requested_strategy is not None and requested_strategy != strategy:
+        raise AutomationError('本次策略与已记录对局不同，未中途改写策略。')
+    store.data['strategy'] = strategy
+    store.persist()
     c.report.currency_wars = store.data
     guard = CurrencyWarsWorkflow(c)
     scene = c.snapshot()
-    for _ in range(40):
+    for _ in range(512):
         c.checkpoint()
         if store.data['completion_verified']:
             break
@@ -277,14 +297,20 @@ def run_standard(c):
             raise AutomationError('已有标准开局提交，未开始第二个对局。')
         if choice.intent == 'open_standard_shop':
             from .currency_wars_collector import collected_snapshot
+            from .currency_wars_standard_trading import bench_signatures
             store.data['pre_shop_snapshot'] = asdict(collected_snapshot(scene,store.data,c.runner.input_epoch,
                                                        'before_standard_shop',c.settings.ocr_confidence))
+            store.data['pre_shop_bench'] = bench_signatures(scene)
             store.persist()
         action = store.pending(choice.intent, c.runner.input_epoch,
                                evidence(c, scene, 'currency_standard_'+choice.intent), choice.expected)
         if choice.intent == 'deploy_standard_owned':
             action['decision'] = dict(name=choice.details[0],star=choice.details[1],tier=choice.details[2],
                                       zone=choice.details[3],score=choice.details[4],policy=choice.details[5])
+            store.persist()
+        elif choice.intent in ('buy_standard_offer','buy_standard_experience'):
+            action['decision'] = dict(strategy=choice.details[0], score=choice.details[1],
+                                      reasons=list(choice.details[2]), policy=choice.details[3])
             store.persist()
         elif choice.details:
             action['decision'] = dict(name=choice.details[0], kind=choice.details[1], effect=choice.details[2],
@@ -320,10 +346,21 @@ def run_standard(c):
                         raise AutomationError('标准动作反馈账号来源不一致，原意图保留待核对。')
                     ready = transition_ready(choice, after, c.settings.ocr_confidence, before=scene)
                 stable = stable+1 if ready else 0
-                required = 2 if choice.expected in ('loot_collected','standard_owned_deployed') else 1
+                required = 2 if choice.expected in ('loot_collected','standard_owned_deployed',
+                                                    'standard_offer_bought','standard_experience_bought') else 1
                 if stable >= required:
-                    action.update(status='verified', after=evidence(c, after, 'currency_standard_after_'+choice.intent))
+                    after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
+                    if choice.intent in ('buy_standard_offer','buy_standard_experience'):
+                        from .currency_wars_standard_trading import financial_feedback
+                        from .currency_wars_standard_ledger import valid_receipt
+                        receipt = financial_feedback(choice, scene, after, c.settings.ocr_confidence)
+                        if not valid_receipt(dict(action,status='verified',after=after_path,receipt=receipt)):
+                            raise AutomationError('标准交易收据与原意图不符，保留待核对状态。')
+                    action.update(status='verified', after=after_path)
                     store.data.update(action_status='transition_verified', screenshot=action['after'])
+                    if choice.intent in ('buy_standard_offer','buy_standard_experience'):
+                        from .currency_wars_standard_trading import record_financial_feedback
+                        record_financial_feedback(store.data, choice, receipt)
                     if choice.intent == 'start_standard_a8_40':
                         store.data['status'] = 'active'
                         store.data['start_verified'] = True
@@ -340,7 +377,8 @@ def run_standard(c):
                         from .currency_wars_standard_deployment import transfer_collection, deployment_feedback
                         action['feedback'] = deployment_feedback(scene,after,choice.target,c.settings.ocr_confidence)
                         transfer_collection(store.data,scene,after,choice.target,action['after'],c.settings.ocr_confidence)
-                    elif choice.intent not in ('close_standard_unit','open_standard_shop','close_standard_shop'):
+                    elif choice.intent not in ('close_standard_unit','open_standard_shop','close_standard_shop',
+                                                'buy_standard_experience'):
                         store.data.pop('collection',None)
                     if choice.intent == 'close_standard_shop':
                         nodes = store.data.setdefault('shop_observed_nodes',[])

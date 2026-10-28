@@ -6,10 +6,10 @@ from .currency_wars_deployment import plan_bench_deployment, verify_bench_deploy
 from .currency_wars_match import read_match
 from .models import AutomationError
 
-POLICY = 'owned-deployment-v1'
+POLICY = 'owned-deployment-v2'
 
 
-def choose_deployment(snapshot):
+def choose_deployment(snapshot, strategy='default'):
     """Enumerate unique owned teams and legal positions; scores are a baseline."""
     if (not snapshot.roster_complete or snapshot.capacity is None
             or any(u.star is None or u.tier is None or not u.eligible_zones for u in snapshot.roster)):
@@ -26,6 +26,7 @@ def choose_deployment(snapshot):
     if missing > len(bench):
         raise AutomationError('持有的不同角色不足以满员，需另行核实商店策略。')
     best = None
+    from .currency_wars_standard_policy import owned_team_preference
     for selected in combinations(bench, missing):
         team = field+selected
         if len({u.name for u in team}) != len(team):
@@ -38,7 +39,8 @@ def choose_deployment(snapshot):
             strength = sum((10,30,80,160)[u.star-1]+2*u.tier for u in team)
             # Shared tags are only overlap, not a claim that a threshold is active.
             overlap = sum(len(set(a.traits or ()) & set(b.traits or ())) for a,b in combinations(team,2))
-            score = strength+3*overlap+4*bool(back)-4*abs(front-max(1,len(team)//3))
+            preference = sum(owned_team_preference(unit.name,strategy) for unit in team)
+            score = strength+preference+3*overlap+4*bool(back)-4*abs(front-max(1,len(team)//3))
             key = (score, tuple(-u.slot for u in selected), tuple(z == 'back' for z in zones))
             if best is None or key > best[0]:
                 best = (key, selected, zones)
@@ -64,7 +66,7 @@ def standard_deployment(scene, session, confidence=.65):
             or snapshot.transaction_status != 'clear' or snapshot.gold is None or snapshot.hp is None
             or snapshot.hp <= 0 or snapshot.level is None):
         raise AutomationError('标准部署的当前节点、同局来源、版本或余额事实不足。')
-    choice = choose_deployment(snapshot)
+    choice = choose_deployment(snapshot,session.get('strategy','default'))
     if choice is None:
         return None
     unit, zone, score = choice

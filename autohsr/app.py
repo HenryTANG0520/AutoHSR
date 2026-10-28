@@ -1202,7 +1202,7 @@ class Runner:
                  du_runs=None, du_resume_active=False, du_periodic_rank=None,
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
-                 currency_configure=False, currency_resume=False, weekly_plan=None):
+                 currency_configure=False, currency_resume=False, weekly_plan=None, currency_strategy=None):
         from .weekly_plan import WeeklyGuard
         if weekly_plan is not None and (not isinstance(weekly_plan, WeeklyGuard) or operation != "differential_universe"):
             raise ValueError("周常记录核验仅用于计划中的差分宇宙。")
@@ -1231,6 +1231,10 @@ class Runner:
         if type(currency_resume) is not bool or currency_resume and operation != 'currency_wars_standard':
             raise ValueError('接续标准对局只适用于标准开发入口。')
         self.currency_resume = currency_resume
+        from .currency_wars_standard_policy import STRATEGIES
+        if currency_strategy is not None and (operation != 'currency_wars_standard' or currency_strategy not in STRATEGIES):
+            raise ValueError('货币战争策略仅用于标准入口，须为 default、aglaea 或 seele。')
+        self.currency_strategy = currency_strategy
         if operation == 'currency_wars_standard':
             self.currency_locate = self.currency_configure = True
         self.currency_source_slot,self.currency_zone = currency_source_slot,currency_zone

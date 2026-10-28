@@ -145,15 +145,9 @@ def session_snapshot(snapshot, session, epoch, source):
         known.update(mode='standard',rank=8,wealth=40)
     if session.get('environment'):
         known['environment'] = (session['environment']['name'],)
-    # Only the currently supported free actions exist in this flow. Future
-    # financial actions must carry their own settlement before setting clear.
-    free = ('start_standard_a8_40','advance_standard_preview','advance_standard_plane',
-            'collect_standard_loot','inspect_standard_unit','close_standard_unit','open_standard_shop',
-            'close_standard_shop','deploy_standard_owned','start_standard_node')
-    if identity and all(a['status']=='verified' and (a['action'] in free or
-            re.fullmatch(r'(?:select|confirm)_standard_environment_[0-2]',a['action']))
-           for a in session['actions']):
-        known['transaction_status'] = 'clear'
+    from .currency_wars_standard_ledger import ledger_status
+    if identity:
+        known['transaction_status'] = ledger_status(session['actions'])
     sources = {}
     for name in ('mode','rank','wealth'):
         sources[name] = 'match_entry:'+session.get('match_id','unverified')

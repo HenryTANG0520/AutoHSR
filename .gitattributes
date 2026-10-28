@@ -1,0 +1,2 @@
+# Preserve the upstream license bytes recorded in its source manifest.
+assets/upstream/March7thAssistant/LICENSE -text

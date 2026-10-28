@@ -15,10 +15,12 @@ class StandardMarketTests(unittest.TestCase):
     def setUp(self):
         self.state=SimpleNamespace(page='preparation',node='1-1',gold=5,hp=80,level=3)
         self.match=patch('autohsr.currency_wars_standard_market.read_match',return_value=self.state)
+        self.trading_match=patch('autohsr.currency_wars_standard_trading.read_match',side_effect=lambda *args:self.state)
         self.layout=patch('autohsr.currency_wars_standard_market.backend_layout',return_value=(6,[]))
         self.mode=patch('autohsr.currency_wars_market.overclock_board',return_value=False)
-        self.match.start(); self.layout.start(); self.mode.start()
+        self.match.start(); self.layout.start(); self.mode.start(); self.trading_match.start()
         self.addCleanup(self.match.stop);self.addCleanup(self.layout.stop);self.addCleanup(self.mode.stop)
+        self.addCleanup(self.trading_match.stop)
 
     def session(self):
         return dict(status='active',start_verified=True,entry=dict(rank_verified=True),account_key='a'*64,

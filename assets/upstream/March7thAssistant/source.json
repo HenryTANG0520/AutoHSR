@@ -1,0 +1,47 @@
+{
+  "repository": "https://github.com/moesnow/March7thAssistant",
+  "commit": "7cf6c6bed474539485d3b1504077ac352866829f",
+  "retrieved": "2026-10-28",
+  "license": "GNU GPL version 3",
+  "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+  "sources": [
+    {
+      "path": "LICENSE",
+      "git_blob": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7"
+    },
+    {
+      "path": "tasks/weekly/currency_wars.py",
+      "git_blob": "52507ccfa8bf7977f8a8be9eca24050a6c16990d"
+    },
+    {
+      "path": "assets/config/config.example.yaml",
+      "git_blob": "8bd288efd8282a4c45e1ae6a1b915c9bd9c0569e"
+    }
+  ],
+  "adaptations": [
+    {
+      "path": "autohsr/currency_wars_standard_policy.py",
+      "reference_functions": [
+        "buy_aglaea",
+        "buy_seele",
+        "buy_experience"
+      ],
+      "kind": "rewritten policy using observed AutoHSR facts; no upstream IO or fixed fee table"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_trading.py",
+      "reference_functions": [
+        "buy_experience",
+        "check_character_status"
+      ],
+      "kind": "one-input visual-feedback adaptation using AutoHSR Context and session ledger"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_deployment.py",
+      "reference_functions": [
+        "deploy_and_optimize"
+      ],
+      "kind": "existing native vacancy assignment ranks observed owned units with the selected named-core preference"
+    }
+  ]
+}

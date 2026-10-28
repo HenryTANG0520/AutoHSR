@@ -31,15 +31,6 @@ def open_standard_shop(scene, session, confidence=.65):
 
 
 def close_standard_shop(scene, session, confidence=.65):
-    state = read_match(scene,confidence)
-    before = session.get('pre_shop_snapshot',{})
-    actions = session.get('actions',[])
-    if actions and actions[-1].get('action')=='close_standard_shop' and actions[-1].get('status')=='pending':
-        actions = actions[:-1]  # Re-derive the same read-only proposal after its intent was persisted.
-    if (not state or state.page != 'shop' or session.get('status') != 'active'
-            or (state.node,state.gold,state.level) != tuple(before.get(k) for k in ('node','gold','level'))
-            or before.get('hp') is None or state.hp not in (None,before['hp'])
-            or not actions or actions[-1].get('action') != 'open_standard_shop'
-            or actions[-1].get('status') != 'verified'):
-        raise AutomationError('收起标准商店前缺少同节点、余额或已核实开店来源。')
+    from .currency_wars_standard_trading import shop_return_values
+    shop_return_values(scene, session, confidence)
     return unique(trusted(scene,confidence),'收起',(.81,.88,.89,.95))
