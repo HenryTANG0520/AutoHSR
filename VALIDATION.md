@@ -11,6 +11,8 @@
 - **84项既有GUI、55项输入反馈、24项计划检查通过**，`runs/currency-feedback-*_smoke.log`。首次GUI检查仍要求旧重复文案而失败；改为核对具体结果、未开局或整局未完成及未保存设置，不放宽运行门禁。
 - **108个布局场景通过**，`runs/currency-feedback-ui_layout_smoke.log`，覆盖100%、150%、200%、默认和最小尺寸及全部入口、设置、结果、开发分页。
 
+源码`f38a3c9`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，构建日志`runs/currency-feedback-build.log`。以`--no-admin-launch`打开正式桌面，检查首页、旷宇纷争、货币入口和空结果页，确认“详细记录”初始禁用、单一主操作与保存状态，正常关闭退出码0。239份配置及运行证据哈希未变，123个UI素材、3份UI来源清单、23个上游文件匹配；核对记录`runs/currency-feedback-package-verification.json`，备份`build/userdata-currency-feedback-20261029_033526/`。EXE SHA-256为`afeea11d07c8539e7f4426973788678088b1e1fe2a4679d4937eb8a9571b9407`；实际打包窗口截图`runs/currency-feedback-package-result.png`，补给等待截图使用离线模拟报告，二者不混作真实游戏结果。
+
 本轮只使用假后端与助手桌面，没有启动、检测或操作真实游戏。新交付路径、日常周常组合与货币战争完整对局未实机验收；周常及积分奖励的未接入边界、独立通关计数与历史失败记录保持不变。界面仍不能称为整屏逐像素一致，也没有实际玩家学习成本测试。
 
 ## 2026-10-29：旷宇纷争入口与单一主操作
