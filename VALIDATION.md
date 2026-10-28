@@ -10,7 +10,9 @@
 
 - **1086项单元测试通过**，`runs/stage-progress-unit.log`；新增阶段交接先显示日常证据、已写入账单才发布完成数、写入失败与新尝试不误报进度检查。
 - **83项既有假后端GUI检查、24项计划界面检查通过**，`runs/stage-progress-gui.log`、`runs/stage-progress-plan-ui.log`；涵盖三种新局策略及接续沿用、暂停/继续、消耗保留、独立玩法结果隔离、任务详情和计划变更。
-- **84个布局场景通过**，`runs/stage-progress-layout.log`；覆盖100%、150%、200%、默认/最小窗口及运行/暂停状态。已查看`runs/plan-ui/weekly-running.png`与`runs/ui-layout/paused.png`，核对阶段、真实次数、消耗、按钮和缩放排版。
+- **84个布局场景通过**，`runs/stage-progress-layout.log`；覆盖100%、150%、200%、默认/最小窗口及运行/暂停状态。已查看并归档`runs/stage-progress-ui/weekly-running.png`与`runs/stage-progress-ui/paused.png`，核对阶段、真实次数、消耗、按钮和缩放排版。
+
+源码`67696ce`通过`tools/build.ps1`构建，日志`runs/stage-progress-build.log`，周常说明随包分发。新版已更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，以`--no-admin-launch`仅打开桌面并正常关闭，退出码0，截图`runs/stage-progress-package.png`。原239份配置与运行证据SHA-256不变，17个界面素材及3个上游许可/来源文件与源码一致，核对记录`runs/stage-progress-package-verification.json`，备份`build/userdata-stage-20261029_002340/`。EXE SHA-256为`a64afbdc37feaaa778813704883756f82174ee02dbe3dc341064b8ca6a32b2e9`。其他开发任务尚未提交的后端改动没有进入该包。
 
 本次全部使用假后端及独立桌面界面，没有启动、检测或操作真实游戏，没有新增资源消耗或通关计数。日常到周常组合路径、周积分奖励和货币战争完整自动玩法仍未实机验收；这些检查不能替代真实玩家的学习成本与注意力测试。
 
