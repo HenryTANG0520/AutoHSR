@@ -11,6 +11,44 @@ OPERATIONS = {"plan": "日常与周常计划", "daily": "每日", "reward_only":
               "differential_universe": "差分宇宙自动演算"}
 
 
+def planned_battle_metrics(category, count, enabled=True):
+    if not enabled:
+        return None
+    from .dungeons import count_limit
+    try:
+        count = int(count)
+        if not 1 <= count <= count_limit(category):
+            raise ValueError()
+    except (TypeError, ValueError, OverflowError):
+        return "— 次", "次数待填写"
+    prefix = "最多" if category.key == "planar" else "预计"
+    cost = f"{prefix} {count*category.cost} 开拓力"
+    if category.key == "planar":
+        cost += "\n已有沉浸器优先"
+    return f"{count} 次", cost
+
+
+def reported_battle_metrics(report):
+    completed, requested = report.get("battle_completed"), report.get("battle_requested")
+    known_count = type(completed) is int and completed >= 0
+    known_target = type(requested) is int and requested > 0
+    value = (f"{completed}/{requested} 次" if known_count and known_target and completed <= requested else
+             f"{completed} 次" if known_count and requested is None else "— 次")
+    spent = report.get("stamina_spent")
+    pending = any(key in report and (type(report[key]) is not int or report[key] > 0 or report[key] < 0)
+                  for key in ("stamina_pending", "immersifiers_pending"))
+    if pending:
+        return value, "消耗待核对"
+    cost = f"已用 {spent} 开拓力" if type(spent) is int and spent >= 0 else "消耗未记录"
+    if "immersifiers_spent" in report:
+        count = report["immersifiers_spent"]
+        if type(count) is not int or count < 0:
+            cost += "\n沉浸器待核对"
+        elif count:
+            cost += f"\n沉浸器 {count}"
+    return value, cost
+
+
 def input_readiness(helper_admin: bool, game_admin: bool | None) -> bool | None:
     if game_admin is None:
         return None

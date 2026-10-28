@@ -99,7 +99,7 @@ def main():
                 check("daily_proof_and_cost_visible_while_weekly_running", ui.busy and
                       ui.table.item("daily", "values")[1] == "完成" and ui.confirmed_stamina == 120 and
                       str(ui.save_button.cget("state")) == "disabled")
-                check("completed_card_uses_actual_run_counts_and_cost", ui.table.item("battle", "metrics") == ("12/12 次", "已确认 120 开拓力"))
+                check("completed_card_uses_actual_run_counts_and_cost", ui.table.item("battle", "metrics") == ("12/12 次", "已用 120 开拓力"))
                 second.emit(dict(type="universe_progress", requested_runs=2, completed_runs=1))
                 pump(root, lambda: "1/2" in ui.activity.get())
                 ui._restore()

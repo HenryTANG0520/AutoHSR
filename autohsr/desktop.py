@@ -261,29 +261,39 @@ def _footer(ui):
     footer = ttk.Frame(ui.root, style="Footer.TFrame", padding=(d(42), d(7), d(42), d(18)))
     footer.grid(row=2, column=0, sticky="ew")
     footer.columnconfigure(0, weight=1)
-    ui.summary_label = SummaryStrip(footer, s, ui)
-    ui.summary_label.grid(row=0, column=0, columnspan=2, sticky="ew")
-    def summary_visibility(*_):
-        ui.summary_label.grid() if ui.summary_label.message() else ui.summary_label.grid_remove()
-    tokens = [(v, v.trace_add("write", summary_visibility)) for v in (ui.summary, ui.input_error, ui.result_alert)]
-    footer.bind("<Destroy>", lambda e: [v.trace_remove("write", token) for v, token in tokens] if e.widget is footer else None, add="+")
-    summary_visibility()
-    metrics = ttk.Frame(footer, style="Footer.TFrame")
-    metrics.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, d(9)))
-    metrics.columnconfigure(0, weight=1)
-    ui.activity_label = ActivityStrip(metrics, s, ui.activity)
-    ui.activity_label.grid(row=0, column=0, sticky="ew", padx=(0, d(18)))
-    ui.save_label = ttk.Label(metrics, textvariable=ui.save_status, style="Footer.TLabel")
+    feedback = ttk.Frame(footer, style="Footer.TFrame")
+    feedback.grid(row=0, column=0, sticky="ew", padx=(0, d(18)))
+    feedback.columnconfigure(0, weight=1)
+    ui.summary_label = SummaryStrip(feedback, s, ui)
+    ui.summary_label.grid(row=0, column=0, sticky="ew")
+    ui.activity_label = ActivityStrip(feedback, s, ui.activity)
+    ui.activity_label.grid(row=1, column=0, sticky="ew")
+    ui.save_label = ttk.Label(footer, textvariable=ui.save_status, style="Footer.TLabel")
     ui.save_label.grid(row=0, column=1, sticky="e")
+    def refresh_feedback(*_):
+        # The open result owns its outcome. A different report, new error,
+        # or active operation must still have its own visible footer feedback.
+        result = ui.feedback_result
+        deck = ui.mode_decks.get(getattr(ui, "active_page", ""))
+        in_result = bool(result and deck and deck["shown"] == "result" and not ui.busy
+                         and not ui.input_error.get() and ui.active_page == result[0]
+                         and result[1:] == (ui.summary.get(), ui.result_alert.get(), ui.status.get()))
+        has_summary = bool(ui.summary_label.message())
+        ui.summary_label.grid() if has_summary and not in_result else ui.summary_label.grid_remove()
+        ui.activity_label.grid() if not in_result and (ui.busy or not has_summary) else ui.activity_label.grid_remove()
+    ui.refresh_feedback = refresh_feedback
+    tokens = [(v, v.trace_add("write", refresh_feedback)) for v in (ui.summary, ui.input_error, ui.result_alert, ui.activity)]
+    footer.bind("<Destroy>", lambda e: [v.trace_remove("write", token) for v, token in tokens] if e.widget is footer else None, add="+")
+    refresh_feedback()
     left = ttk.Frame(footer, style="Footer.TFrame")
-    left.grid(row=2, column=0, sticky="w")
+    left.grid(row=1, column=0, sticky="w", pady=(d(9), 0))
     ui.save_button = ttk.Button(left, text="保存设置", style="Footer.TButton", command=ui._save_settings)
     ui.reward_button = ttk.Button(left, text="仅补领奖", style="Footer.TButton", command=ui._reward_only)
     for button in (ui.save_button, ui.reward_button):
         button.pack(side="left", padx=(0, d(8)))
     ui.setting_controls.append(ui.save_button)
     right = ttk.Frame(footer, style="Footer.TFrame")
-    right.grid(row=2, column=1, sticky="e")
+    right.grid(row=1, column=1, sticky="e", pady=(d(9), 0))
     ui.pause_button = ttk.Button(right, text="暂停 F9", style="Footer.TButton", command=ui._pause)
     ui.stop_button = ttk.Button(right, text="停止 F10", style="Danger.TButton", command=ui._stop)
     ui.footer_start_button = ttk.Button(right, text="开始计划", style="Accent.TButton", width=16, command=lambda: ui._start(run_plan=True))

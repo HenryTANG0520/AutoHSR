@@ -69,8 +69,9 @@ class Header(Surface):
         p.asset("guide-mark.png",(24,23,62,59),t.GOLD)
         p.text((73,21),"星际和平指南",14,t.GOLD)
         p.text((73,43),self.ui.page_title.get(),17,t.LIGHT)
-        p.text((p.width-295,29),"已确认开拓力  "+self.ui.stamina.get(),14,t.LIGHT)
-        p.text((p.width-142,29),self.ui.elapsed.get(),14,t.LIGHT)
+        if self.ui.stamina.get() != "—":
+            p.text((p.width-295,29),"已用开拓力  "+self.ui.stamina.get(),14,t.LIGHT)
+            p.text((p.width-142,29),self.ui.elapsed.get(),14,t.LIGHT)
         x,y=p.width-33,36
         for sx,sy in ((-1,-1),(-1,1),(1,-1),(1,1)):
             p.line((x+sx*4,y+sy*4,x+sx*13,y+sy*13),t.LIGHT,2)
@@ -261,6 +262,19 @@ class TaskBoard(Surface):
         return {"assignments":"委托设置", "battle":"副本设置", "daily":"实训设置",
                 "mail":"邮件设置", "battlepass":"勋礼设置"}[key]
 
+    def resource_metrics(self, key):
+        if self.records[key]["values"][1] in ("跳过", "未执行"):
+            return None
+        if key == "daily":
+            return ("500", "活跃目标") if self.ui.tasks[key].get() or self.records[key]["has_result"] else None
+        if key != "battle":
+            return None
+        if self.records[key]["has_result"]:
+            return self.records[key]["metrics"] or ("— 次", "等待消耗记录")
+        from .dungeon_ui import selected_category
+        from .ux import planned_battle_metrics
+        return planned_battle_metrics(selected_category(self.ui), self.ui.challenge_count.get(), self.ui.tasks[key].get())
+
     def _target(self,e):
         x,y=e.x/self.scale,e.y/self.scale
         return next((key for key,(x1,y1,x2,y2) in self.hitboxes.items() if x1<=x<=x2 and y1<=y<=y2),None)
@@ -317,29 +331,17 @@ class TaskBoard(Surface):
             p.box((x+1,q(16),x+q(162),q(47)),"#e9dbbd",0,"#d7bd8b")
             p.text((x+q(24),q(20)),state,q(23),"#6b624d")
             p.text((x+q(24),q(80)),p.wrap(TITLES[key],width-q(48),q(25),3),q(25),"#111111")
-            resource_y=q(278)
-            p.box((x+q(15),resource_y,right-q(15),card_bottom-q(17)),"#f4f4f4")
-            if key=="daily":
-                p.asset("activity.png",(x+q(60),q(265),x+q(117),q(351)),"#ad9a70")
-            else:
-                p.asset("stamina.png",(x+q(62),q(288),x+q(108),q(334)))
-            if key=="battle":
-                value=self.ui.challenge_count.get()+" 次" if self.ui.tasks[key].get() else "0 次"
-                from .dungeon_ui import selected_category
-                try:
-                    sub=f"预计 {int(self.ui.challenge_count.get())*selected_category(self.ui).cost} 开拓力" if self.ui.tasks[key].get() else "未启用"
-                except ValueError:
-                    sub="次数待填写"
-                if self.records[key]["metrics"] is not None:
-                    value, sub = self.records[key]["metrics"]
-            elif key=="daily":
-                value="500"
-                sub="活跃目标"
-            else:
-                value="0"
-                sub="开拓力"
-            p.text((x+q(126),q(286)),value,q(32),"#494442")
-            p.text((x+q(126),q(326)),sub,q(16),t.MUTED)
+            metrics = self.resource_metrics(key)
+            if metrics is not None:
+                value, sub = metrics
+                p.box((x+q(15),q(278),right-q(15),card_bottom-q(17)),"#f4f4f4")
+                if key=="daily":
+                    p.asset("activity.png",(x+q(60),q(265),x+q(117),q(351)),"#ad9a70")
+                else:
+                    p.asset("stamina.png",(x+q(62),q(288),x+q(108),q(334)))
+                p.text((x+q(126),q(282)),value,q(30),"#494442")
+                for line, text in enumerate(p.wrap(sub,q(149),q(16),2).splitlines()):
+                    p.text((x+q(126),q(316+18*line)),text,q(16),t.MUTED)
             with p.clip((x,card_bottom,right,bottom),q(7)):
                 p.asset("card-footer.png",(x,card_bottom,right,bottom))
             p.text((x+width/2,q(426)),self.action_label(key),q(25),"#d8ba78","mm")

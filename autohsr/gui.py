@@ -15,7 +15,7 @@ from tkinter.scrolledtext import ScrolledText
 from typing import Any
 
 from .config import CONFIG_PATH, ROOT, Settings, SettingsError
-from .ux import report_context, recovery_text, exit_text, immersifier_text, issue_text, standard_activity, standard_run_verified, universe_result
+from .ux import report_context, recovery_text, exit_text, immersifier_text, issue_text, standard_activity, standard_run_verified, universe_result, planned_battle_metrics, reported_battle_metrics
 from . import theme
 from .currency_feedback import observation as currency_observation_text, result as currency_result
 
@@ -139,13 +139,14 @@ class AutoHSRWindow:
         self.input_error_field = None
         self._input_error_status = None
         self.result_alert = tk.StringVar()
+        self.feedback_result = None
         self.page_title = tk.StringVar(value="每日实训")
         self.current_task = tk.StringVar(value="等待开始")
         self.activity = tk.StringVar(value=self.status.get())
         self.status.trace_add("write", self._refresh_activity)
         self.current_task.trace_add("write", self._refresh_activity)
         self.elapsed = tk.StringVar(value="00:00")
-        self.stamina = tk.StringVar(value="0")
+        self.stamina = tk.StringVar(value="—")
         self.battle_hint = tk.StringVar()
         self.plan = tk.StringVar()
         self.readiness = tk.StringVar(value="窗口：未检测")
@@ -246,10 +247,8 @@ class AutoHSRWindow:
         from .weekly_plan import plan_caption
         count = sum(variable.get() for variable in self.tasks.values())
         from .dungeon_ui import selected_category
-        try:
-            cost = f"{int(self.challenge_count.get())*selected_category(self).cost} 开拓力 · {self.target_name.get()}" if self.tasks["battle"].get() else "不刷本"
-        except ValueError:
-            cost = "次数待填写"
+        metrics = planned_battle_metrics(selected_category(self), self.challenge_count.get(), self.tasks["battle"].get())
+        cost = metrics[1].replace("\n", " · ")+" · "+self.target_name.get() if metrics else "不刷本"
         self.daily_caption.set(f"日常 · {count} 项" + (f" · {cost}" if cost else ""))
         try:
             weekly = self._weekly_values() if self.weekly_enabled.get() else dict(weekly_enabled=False)
@@ -389,6 +388,7 @@ class AutoHSRWindow:
         for button, path, directory in ((self.report_button, self.last_report_file, False), (self.directory_button, self.last_run_dir, True), (self.screenshot_button, self.last_screenshot, False)):
             exists = path is not None and (path.is_dir() if directory else path.is_file())
             button.configure(state="normal" if can_open and exists else "disabled")
+        self.refresh_feedback()
 
     def _preset(self, stamina: int, rounds: int) -> None:
         if self.busy or not self.settings.allow_stamina_spend or not self.tasks["battle"].get():
@@ -907,10 +907,7 @@ class AutoHSRWindow:
         self._finalize_task_rows(str(report.get("status", "partial")))
 
     def _battle_result(self, report):
-        completed, requested, spent = (report.get(name) for name in ("battle_completed", "battle_requested", "stamina_spent"))
-        if (all(type(value) is int for value in (completed, requested, spent))
-                and 0 <= completed <= requested and requested > 0 and spent >= 0):
-            self.table.item("battle", metrics=(f"{completed}/{requested} 次", f"已确认 {spent} 开拓力"))
+        self.table.item("battle", metrics=reported_battle_metrics(report))
 
     def _universe_progress(self, event):
         requested, completed = event.get("requested_runs"), event.get("completed_runs")
@@ -1015,7 +1012,7 @@ class AutoHSRWindow:
         if report.get("operation", self.active_operation) in ("daily", "plan", "reward_only"):
             self._finalize_task_rows(status)
             self._battle_result(report)
-        self._progress(report.get("stamina_spent", 0))
+        self._progress(report.get("stamina_spent"))
         self._freeze_clock()
         daily = "已验证" if report.get("daily_verified", False) else "未验证"
         pending = report.get("stamina_pending", 0)
@@ -1073,6 +1070,9 @@ class AutoHSRWindow:
         elif currency and not standard_completed and status not in ("failed", "stopped"):
             label = self.currency_status.get()
         self.status.set("● "+label)
+        self.feedback_result = (("currency_wars" if currency else "differential_universe"),
+                                self.summary.get(), self.result_alert.get(), self.status.get()) if currency or differential_universe else None
+        self.refresh_feedback()
         self._restore()
 
     def _finalize_task_rows(self, status: str) -> None:
