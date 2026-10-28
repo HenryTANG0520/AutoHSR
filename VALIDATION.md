@@ -9,6 +9,8 @@
 - **30项参考几何和交互检查通过**，`runs/reference-ui.log`、`runs/reference-ui/result.json`。从参考与真实Tk截图独立按像素提取四张完整卡片纸面；参考宽高比中位数0.776，三种缩放及默认/最小尺寸实测约0.78。检查露出的下一张可点击、页头随运行模式变化、费用位置、空提示收起及错误重现、配置不变。首轮检查发现小窗口实际卡数与分页阈值不一致，已修正；多窗口测试须先给当前测试窗焦点，再模拟点击。
 - **84个布局场景通过**，`runs/reference-layout.log`，覆盖100%、150%、200%、默认/最小窗口、页面与运行/暂停。预览`runs/reference-ui/home.png`已查看。
 
+源码`6a28a89`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，只以`--no-admin-launch`打开桌面并正常关闭，退出码0；打包预览`runs/reference-package.png`已查看。239份配置和运行证据哈希不变，17个界面素材及3个上游来源文件一致；核对记录`runs/reference-package-verification.json`，构建日志`runs/reference-build.log`，备份`build/userdata-reference-20261029_015209/`。EXE SHA-256为`fad874044795d96fd193d41983e112b3377f5800205dac03e09cca47dc1c693b`。
+
 参考裁图SHA-256为`a3e584b01eb5103c1f1ed72585d862ebcd1cce1d251b89351008c0696c380bb7`，沿用既有游戏素材的来源与权利说明，没有新增分发图片。局部比例测量不代表全界面逐像素一致，也不是玩家学习成本测试。只运行桌面与假后端，没有启动、检测或操作真实游戏；完整周常组合、货币战争周常与积分领奖的未验证边界继续保留。标准开发风险提示同步当前已合入的刷新与备战出售行为。
 
 ## 2026-10-29：统一表单控件与差分结果
