@@ -100,7 +100,8 @@ class StandardNodeTests(unittest.TestCase):
             choice=next_action(scene,session=session)
             self.assertEqual(choice.intent,'start_standard_node')
             session.update(node_attempt=dict(node='1-1',status='start_pending',start_action_id=0),
-                           actions=[dict(id=0,action='start_standard_node',status='pending')])
+                           actions=[dict(id=0,action='start_standard_node',status='pending',
+                                         expected=choice.expected,target=list(choice.payload))])
             self.assertEqual(next_action(scene,session=session),choice)
             session['actions'][-1]['status']='verified'
             session['node_attempt']['status']='observing'

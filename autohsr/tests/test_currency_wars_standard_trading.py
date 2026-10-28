@@ -74,6 +74,8 @@ def purchased(before, choice):
 def full_board_fixture(gold=25, level=3, experience=(0,6)):
     board,session = frame_and_session()
     records = session['collection']['units']
+    for slot in (4,5):
+        records['bench:'+str(slot)]['unit'].update(name='备战弱角'+str(slot),tier=1,traits=())
     old = [records['bench:'+str(i)] for i in range(1,4)]
     for i in range(1,4):
         _crop(board.image,bench_face(i))[:] = 0
@@ -124,7 +126,7 @@ class StandardTradingTests(unittest.TestCase):
                 self.assertEqual(choice.intent,'buy_standard_offer')
                 self.assertEqual(choice.payload[5:7],('阿格莱雅',price))
                 self.assertEqual(next_action(shop,session=session),choice)
-                session['actions'].append(dict(action=choice.intent,status='pending',target=list(choice.payload)))
+                session['actions'].append(dict(action=choice.intent,status='pending',target=list(choice.payload),expected=choice.expected))
                 self.assertEqual(next_action(shop,session=session),choice)
 
     def test_account_epoch_version_ledger_and_bench_change_block_paid_proposals(self):
@@ -188,7 +190,7 @@ class StandardTradingTests(unittest.TestCase):
         close = next_action(after,session=session)
         self.assertEqual(close.intent,'close_standard_shop_after_purchase')
         self.assertEqual(close.payload[1],24)
-        session['actions'].append(dict(id=2,action=close.intent,status='pending',target=list(close.payload)))
+        session['actions'].append(dict(id=2,action=close.intent,status='pending',target=list(close.payload),expected=close.expected))
         self.assertEqual(next_action(after,session=session),close)
         self.assertEqual(ledger_status(session['actions']),'pending')
 
@@ -232,6 +234,25 @@ class StandardTradingTests(unittest.TestCase):
             c.window.click.assert_called_once()
             with self.assertRaises(AutomationError):run_standard(c)
             c.window.click.assert_called_once()
+
+    def test_experience_flow_rederives_its_own_intent_and_uses_context_once(self):
+        board,session = full_board_fixture(gold=22)
+        first = Scene(list(board.tokens),board.image.copy(),captured_at=time.monotonic())
+        second = Scene(list(board.tokens),board.image.copy(),captured_at=time.monotonic())
+        hud(first,gold=18,xp=(4,6));hud(second,gold=18,xp=(4,6))
+        with tempfile.TemporaryDirectory() as folder:
+            c = self.context(folder,board,session,[board,first,second])
+            def stop_after_purchase():
+                actions = getattr(c,'currency_standard_session',SimpleNamespace(data={})).data.get('actions',[])
+                if actions and actions[-1].get('action')=='buy_standard_experience' and actions[-1].get('status')=='verified':
+                    raise Stopped('experience fixture completed')
+            c.checkpoint = stop_after_purchase
+            with patch('autohsr.currency_wars_replay.save_sample'), self.assertRaises(Stopped):
+                run_standard(c)
+            saved = StandardSession(c.currency_standard_session.path).data
+            c.window.click.assert_called_once()
+            self.assertTrue(valid_receipt(saved['actions'][-1]))
+            self.assertEqual(saved['actions'][-1]['receipt']['gold_after'],18)
 
     def test_pause_wrong_account_and_write_failure_do_not_settle_a_payment(self):
         for case in ('pause','account','write'):
@@ -283,12 +304,12 @@ class StandardTradingTests(unittest.TestCase):
         _,shop,session = purchase_fixture(gold=10)
         close = next_action(shop,session=session)
         self.assertEqual(close.intent,'close_standard_shop')
-        session['actions'].append(dict(action=close.intent,status='pending',target=list(close.payload)))
+        session['actions'].append(dict(action=close.intent,status='pending',target=list(close.payload),expected=close.expected))
         self.assertEqual(next_action(shop,session=session),close)
         board,session = full_board_fixture(gold=0)
         start = next_action(board,session=session)
         self.assertEqual(start.intent,'start_standard_node')
-        session['actions'].append(dict(id=0,action=start.intent,status='pending',target=list(start.payload)))
+        session['actions'].append(dict(id=0,action=start.intent,status='pending',target=list(start.payload),expected=start.expected))
         session['node_attempt'] = dict(node='1-1',status='start_pending',start_action_id=0)
         self.assertEqual(next_action(board,session=session),start)
 

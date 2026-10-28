@@ -24,6 +24,23 @@ class StandardAction:
 
 
 def next_action(scene, confidence=.65, *, session=None):
+    """Re-derive only the exact in-flight proposal; never replay old unknown IO."""
+    session = session or {}
+    actions = session.get('actions', [])
+    pending = actions[-1] if actions and actions[-1].get('status') == 'pending' else None
+    prior = dict(session, actions=actions[:-1], rederiving_action=pending) if pending else session
+    choice = _next_action(scene, confidence, session=prior)
+    if pending and (choice.intent != pending.get('action') or choice.expected != pending.get('expected')
+                    or list(choice.payload) != pending.get('target', [])):
+        raise AutomationError('当前页面推导结果与已落盘意图不同，未替换或重放动作。')
+    return choice
+
+
+def _next_action(scene, confidence=.65, *, session=None):
+    from .currency_wars_standard_exchange import active_action
+    verification = active_action(scene, session or {}, confidence)
+    if verification is not None:
+        return verification
     clean = trusted(scene, confidence)
     if difficulty_page(scene, confidence) and selected_rank(scene, confidence) == 40:
         return StandardAction('start_standard_a8_40', 'boss_preview',
@@ -79,6 +96,11 @@ def next_action(scene, confidence=.65, *, session=None):
             from .currency_wars_match import read_match
             state = read_match(scene,confidence)
             if state.node in (session or {}).get('shop_observed_nodes',[]):
+                if 'strategy' in (session or {}) and state.deployment and state.deployment[0] == state.deployment[1]:
+                    from .currency_wars_standard_exchange import exchange_proposal
+                    exchange = exchange_proposal(scene, session, confidence)
+                    if exchange is not None:
+                        return exchange
                 from .currency_wars_standard_deployment import standard_deployment, POLICY
                 deployment = standard_deployment(scene,session or {},confidence)
                 if deployment is None:
@@ -89,9 +111,10 @@ def next_action(scene, confidence=.65, *, session=None):
                             return experience
                     attempt = (session or {}).get('node_attempt',{})
                     actions = (session or {}).get('actions',[])
-                    own_pending = bool(actions and actions[-1].get('action')=='start_standard_node'
-                                       and actions[-1].get('status')=='pending'
-                                       and attempt.get('start_action_id')==actions[-1].get('id')
+                    inflight = (session or {}).get('rederiving_action') or (actions[-1] if actions else {})
+                    own_pending = bool(inflight.get('action')=='start_standard_node'
+                                       and inflight.get('status')=='pending'
+                                       and attempt.get('start_action_id')==inflight.get('id')
                                        and attempt.get('status')=='start_pending')
                     if attempt.get('node')==state.node and not own_pending:
                         raise AutomationError('本节点已有出战提交，未重复出战。')
@@ -127,6 +150,15 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None):
+    if choice.expected == 'standard_exchange_inspectable':
+        from .currency_wars_standard_exchange import inspectable
+        return before is not None and inspectable(choice, before, scene, confidence)
+    if choice.expected == 'standard_exchange_board':
+        from .currency_wars_match import read_match
+        state = read_match(scene,confidence)
+        return bool(state and state.page == 'preparation'
+                    and (state.node,state.gold,state.hp,state.level) == choice.payload[:4]
+                    and state.deployment == choice.payload[4:6])
     from .currency_wars_standard_ledger import PAID_ACTIONS
     if choice.intent in PAID_ACTIONS:
         from .currency_wars_standard_trading import financial_feedback
@@ -246,7 +278,7 @@ def run_standard(c):
             store.data['collection'] = collection
             store.persist()
         kind = observe(scene,c.settings.ocr_confidence).page_kind
-        if kind in ('battle','node_result','final_victory'):
+        if kind in ('battle','node_result','final_victory') and store.data.get('exchange',{}).get('status','verified') == 'verified':
             from .currency_wars_standard_node import observe_started_node
             scene, verified = observe_started_node(c,store,scene)
             if not verified:
@@ -259,7 +291,8 @@ def run_standard(c):
             except AutomationError:
                 collection['complete'] = False
             store.persist()
-        if kind == 'character':
+        from .currency_wars_standard_exchange import panel_stale, record_profile
+        if kind == 'character' and not panel_stale(store.data):
             from .currency_wars_collector import owned_profile
             try:
                 profile = owned_profile(scene,store.data.get('inspecting'),c.settings.ocr_confidence)
@@ -267,10 +300,14 @@ def run_standard(c):
                 pass  # next_action records the exact missing field below.
             else:
                 inspecting = store.data['inspecting']
+                profile_source = evidence(c,scene,'currency_standard_owned_'+str(profile.slot))
                 collection['units'][profile.zone+':'+str(profile.slot)] = dict(unit=asdict(profile),
                     signature=inspecting['signature'],node=inspecting['node'],
-                    source=evidence(c,scene,'currency_standard_owned_'+str(profile.slot)))
+                    source=profile_source)
+                problem = record_profile(store.data,profile,inspecting,profile_source,c.runner.input_epoch)
                 store.persist()
+                if problem:
+                    raise AutomationError(problem)
                 c.log(f'阵容采集：{profile.zone}:{profile.slot} {profile.name}，{profile.star}星、{profile.tier}费；已读{len(collection["units"])}张。')
         try:
             choice = next_action(scene, c.settings.ocr_confidence,session=store.data)
@@ -312,6 +349,10 @@ def run_standard(c):
             action['decision'] = dict(strategy=choice.details[0], score=choice.details[1],
                                       reasons=list(choice.details[2]), policy=choice.details[3])
             store.persist()
+        elif choice.intent == 'stage_standard_exchange':
+            action['decision'] = dict(source=choice.details[0],target=choice.details[1],
+                                      improvement=choice.details[2],policy=choice.details[3])
+            store.persist()
         elif choice.details:
             action['decision'] = dict(name=choice.details[0], kind=choice.details[1], effect=choice.details[2],
                                       parameters=dict(choice.details[3]), score=choice.details[4],
@@ -319,6 +360,10 @@ def run_standard(c):
             store.persist()
         if choice.payload:
             action['target'] = list(choice.payload)
+            store.persist()
+        if choice.intent in ('stage_standard_exchange','inspect_standard_exchange_unit'):
+            from .currency_wars_standard_exchange import record_intent
+            record_intent(store.data,choice)
             store.persist()
         if choice.intent == 'start_standard_node':
             store.data['node_attempt'] = dict(node=choice.payload[0],start_action_id=action['id'],
@@ -346,7 +391,7 @@ def run_standard(c):
                         raise AutomationError('标准动作反馈账号来源不一致，原意图保留待核对。')
                     ready = transition_ready(choice, after, c.settings.ocr_confidence, before=scene)
                 stable = stable+1 if ready else 0
-                required = 2 if choice.expected in ('loot_collected','standard_owned_deployed',
+                required = 2 if choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable',
                                                     'standard_offer_bought','standard_experience_bought') else 1
                 if stable >= required:
                     after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
@@ -369,10 +414,21 @@ def run_standard(c):
                         store.data.pop('expected_board', None)
                     if choice.intent == 'start_standard_node':
                         store.data['node_attempt']['status']='observing'
-                    if choice.intent == 'inspect_standard_unit':
+                    if choice.intent in ('inspect_standard_unit','inspect_standard_exchange_unit'):
                         store.data['inspecting'] = dict(zone=choice.payload[0],slot=choice.payload[1],
                                                         node=choice.payload[2],signature=choice.payload[3],
+                                                        input_epoch=c.runner.input_epoch,
+                                                        run_dir=c.report.run_dir,
                                                         before=action['before'],after=action['after'])
+                        if choice.intent == 'inspect_standard_exchange_unit':
+                            store.data['inspecting']['exchange_id'] = choice.payload[4]
+                    elif choice.intent == 'stage_standard_exchange':
+                        from .currency_wars_standard_exchange import begin_verification
+                        begin_verification(store.data,choice,scene,after,c.settings.ocr_confidence)
+                        store.data['action_status'] = 'exchange_identity_pending'
+                    elif choice.intent in ('close_standard_exchange_unit','close_standard_exchange_stale_panel'):
+                        from .currency_wars_standard_exchange import after_close
+                        after_close(store.data,choice,after,c.settings.ocr_confidence)
                     elif choice.intent == 'deploy_standard_owned':
                         from .currency_wars_standard_deployment import transfer_collection, deployment_feedback
                         action['feedback'] = deployment_feedback(scene,after,choice.target,c.settings.ocr_confidence)

@@ -203,9 +203,9 @@ class Context:
         if choice.payload and data['actions'][-1].get('target') != list(choice.payload):
             raise AutomationError('标准动作目标与落盘记录不一致。')
         guard._require_current_scene(scene)
-        if choice.intent == 'deploy_standard_owned':
+        if choice.intent in ('deploy_standard_owned','stage_standard_exchange'):
             plan = choice.target
-            route = ((plan.start[0],.735),(plan.end[0],.735)) if plan.zone=='back' else ()
+            route = ((plan.start[0],.735),(plan.end[0],.735)) if plan.zone=='back' or getattr(plan,'source_zone',None)=='back' else ()
             self._dispatch_drag(scene,plan.start,plan.end,route=route)
             return
         self.last_scene, self._scroll_anchor = None, None

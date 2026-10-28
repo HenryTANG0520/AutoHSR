@@ -6,7 +6,23 @@ from .currency_wars_deployment import plan_bench_deployment, verify_bench_deploy
 from .currency_wars_match import read_match
 from .models import AutomationError
 
-POLICY = 'owned-deployment-v2'
+POLICY = 'owned-deployment-v3'
+
+
+def team_score(team, strategy='default', *, zones=None):
+    from .currency_wars_standard_policy import owned_team_preference
+    positions = tuple(zones) if zones is not None else tuple(unit.zone for unit in team)
+    front, back = positions.count('front'), positions.count('back')
+    if not front or front > 4 or back > 6 or len(positions) != len(team):
+        raise AutomationError('阵容需要合法前后台位置与至少一名前台角色。')
+    strength = sum((10,30,80,160)[unit.star-1]+2*unit.tier for unit in team)
+    overlap = sum(len(set(a.traits or ()) & set(b.traits or ())) for a,b in combinations(team,2))
+    preference = sum(owned_team_preference(unit.name,strategy) for unit in team)
+    if strategy == 'seele':
+        preference += sum(25 for unit,zone in zip(team,positions) if unit.name == '希儿' and zone == 'front')
+    if strategy == 'aglaea' and not any(unit.name == '藿藿' for unit in team):
+        preference += sum(10 for unit,zone in zip(team,positions) if unit.name == '风堇' and zone == 'front')
+    return strength+preference+3*overlap+4*bool(back)-4*abs(front-max(1,len(team)//3))
 
 
 def choose_deployment(snapshot, strategy='default'):
@@ -26,7 +42,6 @@ def choose_deployment(snapshot, strategy='default'):
     if missing > len(bench):
         raise AutomationError('持有的不同角色不足以满员，需另行核实商店策略。')
     best = None
-    from .currency_wars_standard_policy import owned_team_preference
     for selected in combinations(bench, missing):
         team = field+selected
         if len({u.name for u in team}) != len(team):
@@ -36,11 +51,7 @@ def choose_deployment(snapshot, strategy='default'):
             front, back = positions.count('front'), positions.count('back')
             if not front or front > 4 or back > 6:
                 continue
-            strength = sum((10,30,80,160)[u.star-1]+2*u.tier for u in team)
-            # Shared tags are only overlap, not a claim that a threshold is active.
-            overlap = sum(len(set(a.traits or ()) & set(b.traits or ())) for a,b in combinations(team,2))
-            preference = sum(owned_team_preference(unit.name,strategy) for unit in team)
-            score = strength+preference+3*overlap+4*bool(back)-4*abs(front-max(1,len(team)//3))
+            score = team_score(team,strategy,zones=positions)
             key = (score, tuple(-u.slot for u in selected), tuple(z == 'back' for z in zones))
             if best is None or key > best[0]:
                 best = (key, selected, zones)

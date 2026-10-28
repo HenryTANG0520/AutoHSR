@@ -42,6 +42,14 @@
         "deploy_and_optimize"
       ],
       "kind": "existing native vacancy assignment ranks observed owned units with the selected named-core preference"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_exchange.py",
+      "reference_functions": [
+        "deploy_and_optimize",
+        "move_character"
+      ],
+      "kind": "native occupied-slot exchanges with two independently inspected identities; returned board alone is not movement proof"
     }
   ]
 }

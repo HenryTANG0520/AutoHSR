@@ -8,6 +8,7 @@ FREE_ACTIONS = frozenset((
     'open_standard_shop', 'close_standard_shop', 'deploy_standard_owned', 'start_standard_node',
     'continue_standard_node', 'advance_standard_next_plane', 'close_standard_arrival_shop',
     'close_standard_shop_after_purchase',
+    'stage_standard_exchange','inspect_standard_exchange_unit','close_standard_exchange_unit','close_standard_exchange_stale_panel',
     'settle_standard_final_victory', 'settle_standard_match_rating',
     'settle_standard_match_summary', 'settle_standard_match_statistics',
 ))
