@@ -168,8 +168,6 @@ def _footer(ui):
     ui.summary_label.grid(row=0, column=0, sticky="ew")
     ui.activity_label = ActivityStrip(feedback, s, ui.activity)
     ui.activity_label.grid(row=1, column=0, sticky="ew")
-    ui.save_label = ttk.Label(footer, textvariable=ui.save_status, style="Footer.TLabel")
-    ui.save_label.grid(row=0, column=1, sticky="e")
     def refresh_feedback(*_):
         # The open result owns its outcome. A different report, new error,
         # or active operation must still have its own visible footer feedback.
@@ -180,7 +178,8 @@ def _footer(ui):
                          and result[1:] == (ui.summary.get(), ui.result_alert.get(), ui.status.get()))
         has_summary = bool(ui.summary_label.message())
         ui.summary_label.grid() if has_summary and not in_result else ui.summary_label.grid_remove()
-        ui.activity_label.grid() if not in_result and (ui.busy or not has_summary) else ui.activity_label.grid_remove()
+        has_activity = ui.busy or ui.activity.get() not in ("", "● 准备就绪")
+        ui.activity_label.grid() if not in_result and has_activity and (ui.busy or not has_summary) else ui.activity_label.grid_remove()
     ui.refresh_feedback = refresh_feedback
     tokens = [(v, v.trace_add("write", refresh_feedback)) for v in (ui.summary, ui.input_error, ui.result_alert, ui.activity)]
     footer.bind("<Destroy>", lambda e: [v.trace_remove("write", token) for v, token in tokens] if e.widget is footer else None, add="+")
@@ -189,8 +188,7 @@ def _footer(ui):
     left.grid(row=1, column=0, sticky="w", pady=(d(9), 0))
     ui.save_button = ttk.Button(left, text="保存设置", style="Footer.TButton", command=ui._save_settings)
     ui.reward_button = ttk.Button(left, text="仅补领奖", style="Footer.TButton", command=ui._reward_only)
-    for button in (ui.save_button, ui.reward_button):
-        button.pack(side="left", padx=(0, d(8)))
+    ui.save_label = ttk.Label(left, textvariable=ui.save_status, style="Footer.TLabel")
     ui.setting_controls.append(ui.save_button)
     right = ttk.Frame(footer, style="Footer.TFrame")
     right.grid(row=1, column=1, sticky="e", pady=(d(9), 0))

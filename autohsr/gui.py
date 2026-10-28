@@ -84,6 +84,7 @@ class AutoHSRWindow:
         except (OSError, ValueError, TypeError) as exc:
             self.settings = Settings()
             config_error = f"无法读取配置，已使用默认值。\n{exc}"
+        self._config_load_failed = bool(config_error)
         root.title("AutoHSR · 星穹铁道每日助手")
         root.geometry("1180x820")
         root.minsize(1100, 760)
@@ -203,6 +204,7 @@ class AutoHSRWindow:
 
     def _show_page(self, name):
         from .desktop import PAGE_TITLES
+        self.save_label.pack_forget()
         if name == "settings" and getattr(self, "active_page", "home") != "settings":
             self.settings_return_page = getattr(self, "active_page", "home")
             self.settings_return_focus = self.root.focus_get()
@@ -339,6 +341,7 @@ class AutoHSRWindow:
     def _form_changed(self, *_: Any) -> None:
         if self._loading:
             return
+        self.save_label.pack_forget()
         if self.input_error_field in INPUT_FIELDS and _ and str(getattr(self, INPUT_FIELDS[self.input_error_field][2])) == str(_[0]):
             self._clear_input_error()
         if not self.settings.allow_stamina_spend and self.tasks["battle"].get():
@@ -346,7 +349,7 @@ class AutoHSRWindow:
         if not self.busy and self._has_run and self._daily_result_signature is not None and self._daily_form_signature() != self._daily_result_signature:
             self._has_run = False
             self._daily_result_signature = None
-        self.save_status.set("未保存" if self.dirty else ("已保存" if self.config_path.exists() else "默认设置"))
+        self.save_status.set("未保存" if self.dirty else ("已保存" if self.config_path.exists() and not self._config_load_failed else "默认设置"))
         self.save_label.configure(foreground="#dcc391" if self.dirty else "#aeb8c7")
         selected = [label for key, label in TASK_NAMES.items() if self.tasks[key].get()]
         from .dungeon_ui import refresh_count
@@ -415,6 +418,19 @@ class AutoHSRWindow:
             self.start_button.configure(text=f"开始演算 · {self.differential_universe_runs.get()} 局")
         self.start_button.configure(state="normal" if not self.busy and (independent_page or self.weekly_enabled.get() or any(v.get() for v in self.tasks.values())) else "disabled")
         self.reward_button.configure(state="normal" if not self.busy and not independent_page else "disabled")
+        daily_page = self.active_page in ("home", "tasks")
+        if daily_page and not self.busy:
+            self.reward_button.pack(side="left", padx=(0, round(8*self.ui_scale)))
+        else:
+            self.reward_button.pack_forget()
+        needs_save = hasattr(self, "_saved_signature") and (self.dirty or self._config_load_failed or not self.config_path.exists())
+        if needs_save and not self.busy:
+            order = dict(before=self.reward_button) if self.reward_button.winfo_manager() else {}
+            self.save_button.pack(side="left", padx=(0, round(8*self.ui_scale)), **order)
+        else:
+            self.save_button.pack_forget()
+        if self.busy:
+            self.save_label.pack_forget()
         can_open = not self.busy or self.paused
         self.details_button.configure(state="normal" if can_open else "disabled")
         for button, path, directory in ((self.report_button, self.last_report_file, False), (self.directory_button, self.last_run_dir, True), (self.screenshot_button, self.last_screenshot, False)):
@@ -546,6 +562,7 @@ class AutoHSRWindow:
             settings.validate("save" if save else operation)
             if save:
                 settings.save(self.config_path)
+                self._config_load_failed = False
                 self.settings = settings
                 self._loading = True
                 self.target_name.set(settings.target_name)
@@ -557,21 +574,29 @@ class AutoHSRWindow:
                 self._loading = False
                 self._form_changed()
             else:
-                self.save_status.set("未保存" if self.dirty else ("已保存" if self.config_path.exists() else "默认设置"))
+                self.save_status.set("未保存" if self.dirty else ("已保存" if self.config_path.exists() and not self._config_load_failed else "默认设置"))
             self._clear_input_error()
             return settings
         except (ValueError, TypeError, OSError, StopIteration) as exc:
             if isinstance(exc, SettingsError) and exc.field in INPUT_FIELDS:
                 self._input_failed(exc)
             else:
-                self.save_status.set("输入未通过检查；配置未改变。")
-                self._log(f"输入未通过检查：{exc}", "error")
-                messagebox.showerror("请检查输入", str(exc), parent=self.root)
+                save_failed = save and isinstance(exc, OSError)
+                title = "保存失败" if save_failed else "请检查输入"
+                self.save_status.set("保存失败 · 配置未改变" if save_failed else "输入未通过检查；配置未改变。")
+                self._show_save_feedback()
+                self._log(f"{title}：{exc}", "error")
+                messagebox.showerror(title, str(exc), parent=self.root)
             return None
 
     def _save_settings(self) -> None:
         if not self.busy and self._read_settings(save=True, operation="save") is not None:
+            self._show_save_feedback()
             self._log("配置已保存。")
+
+    def _show_save_feedback(self) -> None:
+        order = dict(before=self.reward_button) if self.reward_button.winfo_manager() else {}
+        self.save_label.pack(side="left", padx=(0, round(12*self.ui_scale)), **order)
 
     def emit(self, event: dict[str, Any]) -> None:
         self.events.put(event)

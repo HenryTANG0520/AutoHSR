@@ -52,7 +52,7 @@ def main():
                 root.update()
                 check(prefix+"idle_has_no_fake_resource_balance", ui.stamina.get() == "—" and "开拓力" not in drawn_text(ui.header))
                 check(prefix+"free_tasks_have_no_repeated_zero_cost", all(ui.table.resource_metrics(key) is None for key in ("assignments", "mail", "battlepass")))
-                check(prefix+"only_ready_feedback_is_visible", ui.activity_label.winfo_ismapped() and not ui.summary_label.winfo_ismapped())
+                check(prefix+"idle_has_no_redundant_ready_feedback", not ui.activity_label.winfo_ismapped() and not ui.summary_label.winfo_ismapped())
                 check(prefix+"plan_start_remains_one_click", ui.start_button.winfo_ismapped() and ui.start_button.cget("text") == "开始计划")
                 if scale == 1.5:
                     ImageGrab.grab(window=root.winfo_id()).save(OUT/"home.png")
