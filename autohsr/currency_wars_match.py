@@ -46,7 +46,7 @@ def read_match(scene: Scene, confidence=.65, *, include_rewards=False) -> MatchS
               and len(t.box) == 4 and all(math.isfinite(x) and 0 <= x <= 1 for x in t.box)
               and t.box[0] < t.box[2] and t.box[1] < t.box[3]]
     page = classify_page(tokens)
-    reward_pages = ('equipment_selection','advanced_equipment_selection','expert_selection','supply_selection','hiring_selection')
+    reward_pages = ('equipment_selection','advanced_equipment_selection','expert_selection','supply_selection','hiring_selection','token_selection')
     if page not in ("preparation", "shop", "character", "bench_full") and not (include_rewards and page in reward_pages):
         return None
     if page=='bench_full' and classify_page([t for t in tokens if not is_bench_full_notice(t)])!='preparation':

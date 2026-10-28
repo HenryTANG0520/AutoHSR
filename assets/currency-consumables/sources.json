@@ -1,0 +1,155 @@
+{
+  "schema": 1,
+  "game_version_context": "existing local 4.6 calibration; no new live acceptance",
+  "source": "runs/currency-wars-live-20261018-rules/146-boss-ready-loot-cleared.png",
+  "source_sha256": "abdd691289d35630bb669f5f975b8c07cf4a718a8c8910618f1c35d66e2a4ddc",
+  "source_manifest_sha256": "830e7f65c2dd433750ce7340bdf4d9a06825e30959ddc307be305ec1aad9fd62",
+  "items": [
+    {
+      "file": "../templates/currency_wrench2_native_4_6.png",
+      "role": "wrench2 native icon variant; excludes quantity and account information",
+      "crop_xyxy": [
+        2430,
+        168,
+        2505,
+        238
+      ],
+      "transforms": [
+        "crop only; no scaling"
+      ],
+      "sha256": "972f7be347905a04c863d620ac4a875872f5e6a0a9593fb5a18b63901ef371d7"
+    }
+  ],
+  "rights": "Game art belongs to HoYoverse and its rights holders; this source record grants no additional license",
+  "reviewed": "2026-10-29",
+  "calibration": true,
+  "independent_acceptance": false,
+  "model_training": false,
+  "counter_calibration": [
+    {
+      "sample": "runs/currency-wars-live-20261018-rules/141-huohuo-front-deployed.sample.json",
+      "manifest_sha256": "544d35e8548b72d2560821d3e77583c87310ee8ebd0695053a4c55af28525a6a",
+      "image_sha256": "4b252f9fda530962f34e4360f9af88a858a076da5457892f937556340515d2f8",
+      "observed": [
+        {
+          "slot": 12,
+          "name": "stove",
+          "quantity": 1,
+          "quantity_source": "visible_counter"
+        },
+        {
+          "slot": 13,
+          "name": "wrench2",
+          "quantity": "infinite",
+          "quantity_source": "infinity"
+        }
+      ],
+      "number_fields": {
+        "currency_consumable_12": [
+          {
+            "text": "1",
+            "confidence": 0.9536
+          },
+          {
+            "text": "1",
+            "confidence": 0.9897
+          }
+        ]
+      }
+    },
+    {
+      "sample": "runs/currency-wars-live-20261018-rules/146-boss-ready-loot-cleared.sample.json",
+      "manifest_sha256": "830e7f65c2dd433750ce7340bdf4d9a06825e30959ddc307be305ec1aad9fd62",
+      "image_sha256": "abdd691289d35630bb669f5f975b8c07cf4a718a8c8910618f1c35d66e2a4ddc",
+      "observed": [
+        {
+          "slot": 12,
+          "name": "stove",
+          "quantity": 2,
+          "quantity_source": "visible_counter"
+        },
+        {
+          "slot": 13,
+          "name": "wrench2",
+          "quantity": "infinite",
+          "quantity_source": "infinity"
+        }
+      ],
+      "number_fields": {
+        "currency_consumable_12": [
+          {
+            "text": "2",
+            "confidence": 0.9981
+          },
+          {
+            "text": "2",
+            "confidence": 0.9861
+          }
+        ]
+      }
+    },
+    {
+      "sample": "runs/currency-wars-live-20261018-rules/151-investment-applied-preparation.sample.json",
+      "manifest_sha256": "e5f59351b5ffe4ebc2420957460b480316697ddc0742752fa494fa84c004f309",
+      "image_sha256": "3a914b3d173c31e55a3c304e30e61a11e039d2d820110621aea7397ee8047440",
+      "observed": [
+        {
+          "slot": 12,
+          "name": "stove",
+          "quantity": 2,
+          "quantity_source": "visible_counter"
+        },
+        {
+          "slot": 13,
+          "name": "wrench2",
+          "quantity": "infinite",
+          "quantity_source": "infinity"
+        }
+      ],
+      "number_fields": {
+        "currency_consumable_12": [
+          {
+            "text": "2",
+            "confidence": 0.998
+          },
+          {
+            "text": "2",
+            "confidence": 0.9861
+          }
+        ]
+      }
+    }
+  ],
+  "mechanic_evidence": [
+    {
+      "sample": "runs/currency-wars-live-20261018-rules/66-tutorial-remover.sample.json",
+      "manifest_sha256": "b9568833e31cb552c280e01eb8abfb8b2835f16dd26bff9abc39db2f46412674",
+      "image_sha256": "c714bd7bb0a113016a1e59059e390cbc28228262e72ad9b22b51ddfbae59b280",
+      "scope": "equipment removal and redistribution; not a quantity source"
+    },
+    {
+      "sample": "runs/currency-wars-live-20261018-rules/67-tutorial-reforge-1.sample.json",
+      "manifest_sha256": "59183b9df54ccc2ac2d35d01b5ba980bdad574dbccc1d59434200d4061709296",
+      "image_sha256": "f52591b2847d54d35d026c45ac95366066e3412ec2a9e28dd3e1540ecef872f9",
+      "scope": "equipment reforge preserves quality; inventory basic equipment supported"
+    },
+    {
+      "sample": "runs/currency-wars-live-20261018-rules/68-tutorial-reforge-2.sample.json",
+      "manifest_sha256": "8979ef9119bd2db0b8c1ac112de999ffbc902288d45b612c2de4fed7ef1d2fd3",
+      "image_sha256": "907b316f1a07a1541e7d3136a7a7cc42461e7ff442dae20dd35e935eb52445b7",
+      "scope": "role-wide reforge is distinct and remains unsupported"
+    },
+    {
+      "sample": "runs/currency-wars-live-20261018-rules/69-tutorial-duplicator.sample.json",
+      "manifest_sha256": "42a820ee54c17c174211e31c741c26dabf776b329d19fc3dbf4910d2acebfee6",
+      "image_sha256": "649f8b2aa65f62e6c203e03d63f19b6e4cd630e4d7af9f5c971ae5de9c86e913",
+      "scope": "employee projector creates one one-star copy; perfect projector star rule not inferred"
+    },
+    {
+      "sample": "runs/currency-wars-live-20261018-rules/70-tutorial-lucky-token.sample.json",
+      "manifest_sha256": "2ebe09210ef3ef72a7ef531efaac4385fb5b1a761bacb950aedee3beca2b142a",
+      "image_sha256": "96ae4fb733151a0e340f3ae26778a10e92a7092bf90ce799c18b5b410cec420f",
+      "scope": "one advanced item from the target role recommendations; selection is separate from delivery"
+    }
+  ]
+}

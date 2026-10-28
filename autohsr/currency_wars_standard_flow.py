@@ -48,6 +48,9 @@ def next_action(scene, confidence=.65, *, session=None):
 
 
 def _next_action(scene, confidence=.65, *, session=None):
+    from .currency_wars_standard_consumables import active_action as consumable_action
+    consumable=consumable_action(scene,session or {},confidence)
+    if consumable is not None:return consumable
     from .currency_wars_standard_investment import active_action as investment_action
     investment = investment_action(scene,session or {},confidence)
     if investment is not None:return investment
@@ -164,6 +167,9 @@ def _next_action(scene, confidence=.65, *, session=None):
                         equipment = equipment_proposal(scene,session,confidence)
                         if equipment is not None:
                             return equipment
+                        from .currency_wars_standard_consumables import proposal as consumable_proposal
+                        consumable=consumable_proposal(scene,session,confidence)
+                        if consumable is not None:return consumable
                     attempt = (session or {}).get('node_attempt',{})
                     actions = (session or {}).get('actions',[])
                     inflight = (session or {}).get('rederiving_action') or (actions[-1] if actions else {})
@@ -209,6 +215,13 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None, session=None):
+    if choice.expected in ('standard_consumable_applied','standard_consumable_returned'):
+        from .currency_wars_standard_consumables import feedback
+        return before is not None and session is not None and feedback(choice,before,scene,session,confidence)
+    if choice.expected=='standard_consumable_board':
+        from .currency_wars_standard_consumables import board_ready
+        try:return session is not None and board_ready(scene,session['consumable'],confidence)
+        except (AutomationError,KeyError):return False
     if choice.expected in ('standard_stale_unit_board','standard_collected_unit_board'):
         from .currency_wars_standard_collection import board_feedback
         return board_feedback(choice,scene,confidence)
@@ -404,12 +417,19 @@ def run_standard(c):
             store.persist()
             if problem:raise AutomationError(problem)
             if verifying_reward and store.data.get('reward',{}).get('status')=='verified':c.checkpoint()
+            from .currency_wars_standard_consumables import verify as verify_consumable
+            verifying_consumable=store.data.get('consumable',{}).get('status')=='verifying'
+            problem=verify_consumable(store.data,scene,c.runner.input_epoch,c.settings.ocr_confidence)
+            store.persist()
+            if problem:raise AutomationError(problem)
+            if verifying_consumable and store.data.get('consumable',{}).get('status')=='verified':c.checkpoint()
         from .currency_wars_standard_exchange import panel_stale, record_profile
         from .currency_wars_standard_sale import stale as sale_stale
         from .currency_wars_standard_equipment import panel_stale as equipment_stale, record_profile as equipment_profile
         from .currency_wars_standard_rewards import panel_stale as reward_stale
+        from .currency_wars_standard_consumables import panel_stale as consumable_stale
         from .currency_wars_standard_collection import stale as collection_stale,ordinary,profile as current_profile
-        if kind == 'character' and not panel_stale(store.data) and not sale_stale(store.data) and not equipment_stale(store.data) and not reward_stale(store.data) and not collection_stale(store.data):
+        if kind == 'character' and not panel_stale(store.data) and not sale_stale(store.data) and not equipment_stale(store.data) and not reward_stale(store.data) and not consumable_stale(store.data) and not collection_stale(store.data):
             from .currency_wars_collector import owned_profile
             try:
                 profile = (current_profile(scene,store.data,c.settings.ocr_confidence) if ordinary(store.data)
@@ -483,6 +503,9 @@ def run_standard(c):
             action['decision'] = dict(name=choice.details[0],item=choice.details[1],expected=list(choice.details[2]),
                                       reason=choice.details[3],policy=choice.details[4])
             store.persist()
+        elif choice.intent=='stage_standard_consumable':
+            action['decision']=dict(item=choice.details[0],effect=choice.details[1],name=choice.details[2],policy=choice.details[3])
+            store.persist()
         elif choice.intent in ('choose_standard_reward','select_standard_supply','confirm_standard_supply'):
             action['decision'] = dict(name=choice.details[0],item=choice.details[1],unit=choice.details[2],
                                       gold=choice.details[3],policy=choice.details[4])
@@ -512,6 +535,10 @@ def run_standard(c):
             store.persist()
         if choice.intent == 'stage_standard_equipment':
             from .currency_wars_standard_equipment import bind_intent
+            bind_intent(store.data,choice,scene,c.settings.ocr_confidence)
+            store.persist()
+        if choice.intent=='stage_standard_consumable':
+            from .currency_wars_standard_consumables import bind_intent
             bind_intent(store.data,choice,scene,c.settings.ocr_confidence)
             store.persist()
         if choice.intent == 'inspect_standard_equipment_unit':
@@ -558,7 +585,8 @@ def run_standard(c):
                                                     'standard_sale_panel','standard_owned_sold','standard_equipment_inspectable',
                                                     'standard_reward_returned','standard_supply_selected',
                                                     'standard_investment_selected','standard_investment_applied',
-                                                    'standard_stale_unit_board','standard_collected_unit_board') else 1
+                                                    'standard_stale_unit_board','standard_collected_unit_board',
+                                                    'standard_consumable_applied','standard_consumable_returned','standard_consumable_board') else 1
                 if stable >= required:
                     after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
                     if choice.intent in FINANCIAL_ACTIONS:
@@ -580,7 +608,7 @@ def run_standard(c):
                         store.data.pop('expected_board', None)
                     if choice.intent == 'start_standard_node':
                         store.data['node_attempt']['status']='observing'
-                    if choice.intent in ('inspect_standard_unit','inspect_standard_exchange_unit','inspect_standard_equipment_unit','inspect_standard_reward_unit'):
+                    if choice.intent in ('inspect_standard_unit','inspect_standard_exchange_unit','inspect_standard_equipment_unit','inspect_standard_reward_unit','inspect_standard_consumable_unit'):
                         action['inspection_run_dir']=c.report.run_dir
                         store.data['inspecting'] = dict(zone=choice.payload[0],slot=choice.payload[1],
                                                         node=choice.payload[2],signature=choice.payload[3],
@@ -591,6 +619,8 @@ def run_standard(c):
                             store.data['inspecting']['exchange_id'] = choice.payload[4]
                         if choice.intent == 'inspect_standard_equipment_unit':
                             store.data['inspecting']['equipment_id'] = choice.payload[4]
+                        if choice.intent=='inspect_standard_consumable_unit':
+                            store.data['inspecting']['consumable_id']=choice.payload[4]
                     elif choice.intent in ('close_standard_unit','close_standard_stale_unit'):
                         from .currency_wars_standard_collection import closed
                         closed(store.data,choice)
@@ -603,7 +633,7 @@ def run_standard(c):
                         after_close(store.data,choice,after,c.settings.ocr_confidence)
                         if store.data['equipment']['status']=='verified':
                             store.data['action_status'] = 'equipment_verified'
-                    elif choice.intent == 'open_standard_equipment_recommendations':
+                    elif choice.intent in ('open_standard_equipment_recommendations','open_standard_consumable_recommendations'):
                         from .currency_wars_equipment_catalog import recommendation_facts
                         record = store.data['collection']['units'][choice.payload[0]+':'+str(choice.payload[1])]
                         names,recipes = recommendation_facts(after,c.settings.ocr_confidence)
@@ -614,6 +644,13 @@ def run_standard(c):
                         if choice.intent=='close_standard_reward_stale_panel':
                             store.data.pop('inspecting',None)
                             store.data.pop('collection',None)
+                    elif choice.intent in ('stage_standard_consumable','choose_standard_consumable_gear'):
+                        from .currency_wars_standard_consumables import applied
+                        applied(store.data,choice,after,c.settings.ocr_confidence)
+                        store.data['action_status']='consumable_identity_pending'
+                    elif choice.intent in ('close_standard_consumable_unit','close_standard_consumable_stale_panel'):
+                        if choice.intent=='close_standard_consumable_stale_panel':
+                            store.data.pop('inspecting',None);store.data.pop('collection',None)
                     elif choice.intent == 'inspect_standard_sale_unit':
                         store.data['inspecting'] = dict(zone='bench',slot=choice.payload[4],node=choice.payload[0],
                                                         signature=choice.payload[8],input_epoch=c.runner.input_epoch,

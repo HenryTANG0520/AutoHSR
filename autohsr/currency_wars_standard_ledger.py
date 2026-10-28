@@ -14,6 +14,8 @@ FREE_ACTIONS = frozenset((
     'open_standard_bench_reward','select_standard_supply','inspect_standard_reward_unit',
     'select_standard_investment','close_standard_stale_unit',
     'close_standard_reward_unit','close_standard_reward_stale_panel',
+    'inspect_standard_consumable_unit','close_standard_consumable_unit','close_standard_consumable_stale_panel',
+    'open_standard_consumable_recommendations','choose_standard_consumable_gear',
     'stage_standard_exchange','inspect_standard_exchange_unit','close_standard_exchange_unit','close_standard_exchange_stale_panel',
     'settle_standard_final_victory', 'settle_standard_match_rating',
     'settle_standard_match_summary', 'settle_standard_match_statistics',
@@ -109,6 +111,15 @@ def ledger_status(actions, *, investment_projection=None):
             from .currency_wars_standard_investment import valid_effect
             if not valid_effect(action,actions):return 'unknown'
             if action.get('investment_verified') is not True and index!=investment_projection:return 'pending'
+            continue
+        if name=='stage_standard_consumable':
+            from .currency_wars_standard_consumables import valid_effect
+            if not valid_effect(action,actions):return 'unknown'
+            if action.get('consumable_verified') is not True:return 'pending'
+            continue
+        if name=='choose_standard_consumable_gear':
+            from .currency_wars_standard_consumables import valid_selection
+            if not valid_selection(action,actions):return 'unknown'
             continue
         if name in REWARD_CLAIMS:
             from .currency_wars_standard_rewards import valid_effect

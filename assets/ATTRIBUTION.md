@@ -685,4 +685,10 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 
 后端装备阶段从同一固定提交引入18幅`assets/images/share/aglaea/`原始PNG，作者moesnow及其贡献者，遵循所附上游GPL v3；游戏美术与名称仍归其权利人。文件未经裁切、缩放或重编码，逐项原路径、Git blob、SHA-256和字节数见[装备来源清单](upstream/March7thAssistant/equipment/sources.json)，本地标识、用途及原生变体见[装备参考说明](upstream/March7thAssistant/equipment/README.md)。完整上游许可继续保留于[LICENSE](upstream/March7thAssistant/LICENSE)。
 
-这些图用于仓库、角色槽和当前推荐配方的本地识别。已校准14种可穿戴装备；参考图包含的投影仪、令牌、冶金炉和两种扳手尚未接入使用。没有复制上游输入实现，也没有将界面打开、材料消失、合成测试或离线模板回放写作实机穿戴成功；现有UI素材署名和原生4.6装备参考保持不变。
+这些图用于仓库、角色槽和当前推荐配方的本地识别。已校准14种可穿戴装备；六种工具另经专用数量识别与实际效果协议适配，范围见下节。没有复制上游输入实现，也没有将界面打开、材料消失、合成测试或离线模板回放写作实机穿戴成功；现有UI素材署名和原生4.6装备参考保持不变。
+
+## 2026-10-29 货币战争工具原生变体与次数校准
+
+`assets/templates/currency_wrench2_native_4_6.png`从既有本地4.6画面`146-boss-ready-loot-cleared.png`静态裁出75×70金色扳手图标，裁切坐标、原图及原清单SHA-256、输出哈希记录在[消耗品来源清单](currency-consumables/sources.json)。图标排除次数、UID、账号和完整画面；原始截图保持忽略，没有启动游戏取新图。游戏美术归HoYoverse及相应权利人，不纳入原创代码GPL声明，来源不授予额外再许可。
+
+工具初始参考继续使用上一节固定提交的18幅上游原PNG及完整GPL v3许可，没有改写这些字节。六种工具的命名核心优先思路改写为本项目Context、账号／输入代次、库存及完整角色效果核验；上游来源与具体适配文件继续记录于[source.json](upstream/March7thAssistant/source.json)。三份既有画面及五份工具教程仅记录脱离账号的局部事实、原哈希与本地标识；没有分发整图、更新模型或建立独立实机验收集。识别与执行边界见[工具说明](currency-consumables/README.md)。

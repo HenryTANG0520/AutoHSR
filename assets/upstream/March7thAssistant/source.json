@@ -4,7 +4,7 @@
   "retrieved": "2026-10-28",
   "license": "GNU GPL version 3",
   "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json"],
+  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json"],
   "mechanic_references": [
     {
       "url": "https://sr.mihoyo.com/news/162649?nav=home&type=news_all",
@@ -108,6 +108,22 @@
       "path": "autohsr/currency_wars_standard_investment.py",
       "reference_functions": ["check_investment_environment", "check_box"],
       "kind": "verified victory/map/plane origin, fresh selected-card proof and separate confirmation; declared weapon boxes remain a ledger obligation until their type and inventory delivery are independently verified; future experience modifiers require original verified receipts"
+    },
+    {
+      "path": "autohsr/currency_wars_consumables.py",
+      "reference_functions": [
+        "equip_aglaea",
+        "equip_seele"
+      ],
+      "kind": "pinned six tool identities plus separately hashed native gold-wrench variant; fourteen stock locations, independent numeric/infinity evidence, conflicting counters remain unknown"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_consumables.py",
+      "reference_functions": [
+        "equip_aglaea",
+        "equip_seele"
+      ],
+      "kind": "named-core one-input native tool protocol with observed stock delta and independently recollected complete roster: copies/upgrades, equipment removal, basic inventory reforge and separate four-option token selection; durable origins, scoped profile proofs and no unknown replay; no upstream blind retry or fixed first-option fallback"
     }
   ]
 }
