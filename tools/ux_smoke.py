@@ -267,8 +267,7 @@ def main():
                 pump(root, lambda: not ui.busy)
                 check('currency_observation_never_reports_gameplay_complete',
                     '玩法未完成' in ui.summary.get() and '尚未核实' in ui.summary.get() and
-                    ui.currency_review.item('transitions', 'values')[1] == '部分验证' and
-                    all(ui.currency_review.item(key, 'values')[1] == '4.6 已采集' for key in ('guide', 'tutorial', 'economy')))
+                    '玩法未完成' in ui.currency_status.get() and '尚未核实' in ui.currency_status.get())
                 check('currency_does_not_save_or_change_daily_draft', config.read_bytes() == original and ui.stamina_limit.get() == 'invalid disabled draft')
                 ui._currency_prepare()
                 pump(root, lambda: ui.runner is not None)

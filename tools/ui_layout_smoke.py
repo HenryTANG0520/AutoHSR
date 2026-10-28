@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from autohsr import windows  # Establish DPI awareness before Tk; no game access.
 from autohsr.config import Settings
 from autohsr.gui import AutoHSRWindow
+from autohsr import theme
 from PIL import ImageGrab
 
 OUT = Path(__file__).resolve().parents[1] / "runs" / "ui-layout"
@@ -46,6 +47,7 @@ def main():
             root.report_callback_exception = callback_error
             ui = AutoHSRWindow(root, config)
             try:
+                assert theme.FONT == "SDK_SC_Web", "The bundled reference font was not registered"
                 for size in ("default", "minimum"):
                     if size == "minimum":
                         root.geometry("%dx%d" % root.minsize())
@@ -77,6 +79,24 @@ def main():
                 ui._show_page("home")
                 root.update()
                 assert not ui.training_meter.verified
+                ui.table.selected = "battle"
+                ui.table.activate()
+                assert ui.active_page == "tasks"
+                ui.category_buttons["历战余响"].invoke()
+                assert int(ui.challenge_count.get()) <= 3
+                assert "3" in ui.battle_cost.get()
+                ui.busy = True
+                ui._refresh_controls()
+                ui.category_buttons["拟造花萼（金）"].invoke()
+                assert ui.dungeon_category.get() == "历战余响"
+                ui.busy = False
+                ui._refresh_controls()
+                ui._show_page("currency_wars")
+                ui._show_page("home")
+                ui.guide.buttons["universe"].invoke()
+                assert ui.active_page == "currency_wars"
+                ui._show_page("home")
+                interactions.append("task_setup_category_limits_locks_and_universe_return")
                 ui._has_run = True
                 ui._finish(dict(status="partial", daily_verified=True, results=[dict(task="mail", status="partial", detail="入口未识别")]))
                 root.update()
@@ -101,6 +121,16 @@ def main():
                 assert board.selection() == ("battlepass",) and "battlepass" in board.hitboxes
                 board.activate()
                 assert "完整的详细结果：battlepass" in ui.summary.get()
+                root.update()
+                assert ui.summary_dialog.winfo_exists()
+                from tkinter.scrolledtext import ScrolledText
+                def text_widgets(widget):
+                    for child in widget.winfo_children():
+                        if isinstance(child, ScrolledText):
+                            yield child
+                        yield from text_widgets(child)
+                assert any("完整的详细结果：battlepass" in text.get("1.0", "end") for text in text_widgets(ui.summary_dialog))
+                ui.summary_dialog.destroy()
                 board.move(-9)
                 root.update()
                 assert board.selection() == ("assignments",) and "assignments" in board.hitboxes
@@ -108,6 +138,7 @@ def main():
                 # Long reports remain in scrollable outputs, leaving controls reachable.
                 ui.du_observation.set("长结果\n"*200)
                 ui.currency_observation.set("长结果\n"*200)
+                ui.summary.set("明确的错误原因与费用说明\n"*200)
                 for page in ("differential_universe", "currency_wars"):
                     ui._show_page(page)
                     root.update()
@@ -118,7 +149,7 @@ def main():
                 for token in root.tk.splitlist(root.tk.call("after", "info")):
                     root.after_cancel(token)
                 root.destroy()
-    result = dict(game_started=False, config_unchanged=True, layout_cases=len(cases), dpi=[100, 150, 200], interactions=interactions)
+    result = dict(game_started=False, config_unchanged=True, reference_font_loaded=True, layout_cases=len(cases), dpi=[100, 150, 200], interactions=interactions)
     (OUT/"result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False))
 

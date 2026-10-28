@@ -1,0 +1,272 @@
+{
+  "date": "2026-10-28",
+  "assets": {
+    "guide-mark.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        43,
+        42,
+        94,
+        89
+      ],
+      "transform": "static glyph alpha mask; recolored at render time",
+      "sha256": "260b20bc13abd7a7cbc75d286b24b8334b387681d35a8d6d561b23caa22fd0c8",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "tab-daily.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        336,
+        184,
+        393,
+        240
+      ],
+      "transform": "static glyph alpha mask; recolored at render time",
+      "sha256": "9cd93cea5117d22f6be9d0c052ed06f8d07c1957a13c72ff6c77352ae58354fd",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "tab-survival.png": {
+      "source": "local Star Rail 4.6.0 guide reference",
+      "source_sha256": "4481bda9c9d70aed6d33fdf41233dbadaf46e18523df4dfdcbe22d89d1e5a36f",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        454,
+        184,
+        510,
+        240
+      ],
+      "transform": "static glyph alpha mask; recolored at render time",
+      "sha256": "deaa35febb60df24e6ddbbb2f38314da7c803e6f9de07751fa891b803786841c",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "tab-universe.png": {
+      "source": "local Star Rail 4.6.0 universe reference",
+      "source_sha256": "99a0e2106951c5be891d110be91a5f78e987789a65550be7b843bb91e3cf4eac",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        569,
+        186,
+        632,
+        238
+      ],
+      "transform": "static glyph alpha mask; recolored at render time",
+      "sha256": "9348e0f69df982dad76a37ecba7714e9a86a7c1e993e0c6e05f3c296cc70a955",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "tab-records.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        690,
+        187,
+        750,
+        239
+      ],
+      "transform": "static glyph alpha mask; recolored at render time",
+      "sha256": "b18525f452490025421aff6d6097d8f153a65c9924033a834fa061a71828b1ad",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "tab-settings.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        809,
+        184,
+        868,
+        241
+      ],
+      "transform": "static glyph alpha mask; recolored at render time",
+      "sha256": "393804705d9eb953591214fd198a8c3f7c7103b8978e6438e9f7cd86c528db11",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "activity.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        322,
+        268,
+        369,
+        341
+      ],
+      "transform": "static glyph alpha mask; recolored at render time",
+      "sha256": "721c5cb44539b5726ceec314c65cf3652bd7c68bb7531e70ac11b1186c8858af",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "reward-check.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        608,
+        278,
+        669,
+        339
+      ],
+      "transform": "static glyph alpha mask; recolored at render time",
+      "sha256": "7dde6e179ee94fc9f8ef601fc13385e0c3df8de234254ebd326041494997926e",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "guide-seal.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        1614,
+        182,
+        1676,
+        234
+      ],
+      "transform": "static glyph alpha mask; recolored at render time",
+      "sha256": "c81ea50d93c3bb72f39b46554e6cfe0f5734809bb36e2eee73ff218989e9c2e8",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "card-footer.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        278,
+        776,
+        566,
+        880
+      ],
+      "transform": "static footer texture; bright action-label color mask, 2px mask dilation and 5px Telea inpainting; live label rendered separately",
+      "sha256": "38c3e4b8d955346079c5a5ad9165bd9357ddad3f3b1cc9f94f86c28f182d030c",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "paper-pattern.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        236,
+        892,
+        565,
+        964
+      ],
+      "transform": "static paper map texture luminance matte; no labels or counters",
+      "sha256": "a8541be84c7f1938e7f65be3f3372ee1d4f7c12608b5d4e20c201edac357a23a",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "card-watermark.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        317,
+        531,
+        521,
+        668
+      ],
+      "transform": "static watermark luminance matte; text excluded",
+      "sha256": "2fa26a8b0b4bfb824c9bb7834cd816435c0a3fd6a861f740bcbeef291171af59",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "guide-charm-left.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        152,
+        282,
+        267,
+        505
+      ],
+      "transform": "static ornament polygon matte; no account, text or counters",
+      "sha256": "12c6982708ec33272d6f0e848fad22fe3ac522fb718e636fcea39a7af40345a2",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "guide-charm-right.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        1638,
+        650,
+        1814,
+        944
+      ],
+      "transform": "five separate static ornament and stem polygon mattes; account and world excluded",
+      "sha256": "30c6634c5cda7bb6f09537f9d1763462d3d6665cdb29c890aa76372732cbcdaf",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "stamina.png": {
+      "source": "../templates/planar_stamina_cost_single.png",
+      "provenance": "../templates/planar_stamina_cost_single.json",
+      "source_sha256": "3ee8db54f4fc064a55acf753e01606fe3e003c06504f9a823018ab8ccafc2709",
+      "transform": "unmodified static currency icon",
+      "sha256": "3ee8db54f4fc064a55acf753e01606fe3e003c06504f9a823018ab8ccafc2709",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "reward-gift.png": {
+      "source": "../templates/daily_reward.png",
+      "provenance": "../ATTRIBUTION.md#honkai-star-rail---one-dragon",
+      "source_sha256": "f55ad559f04ec6911b4afb724ef62c8158f1876a5d203a13b4805fcd58025d5c",
+      "crop": [
+        18,
+        21,
+        44,
+        52
+      ],
+      "transform": "dark gift glyph alpha matte; notification badge excluded",
+      "sha256": "b3d0b53d3eba182bf9ad15954babe118bdf4a7376bbed27ab38d85dcd3c35a9d",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    "hsr-sc.ttf": {
+      "source": "local Star Rail 4.6.0 SDK_SC_Web font",
+      "transform": "unmodified byte-for-byte copy",
+      "source_sha256": "0d49951c017c299ca9bcb12c6e8283649ec100d34f367f4b567e5ab9a2b6b52e",
+      "sha256": "0d49951c017c299ca9bcb12c6e8283649ec100d34f367f4b567e5ab9a2b6b52e",
+      "rights": "Beijing Hanyi Innovation Technology; original font license and metadata retained"
+    }
+  }
+}

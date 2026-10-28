@@ -2,7 +2,8 @@
 
 AutoHSR is distributed under the GNU General Public License version 3. The full
 license is in [../LICENSE](../LICENSE). The resources below retain their upstream
-license and contributor attribution. They are used as UI recognition references.
+license and contributor attribution. They are used as UI recognition references
+and, where stated below, desktop UI materials.
 Honkai: Star Rail artwork and names belong to their respective rights holders;
 the upstream software licenses do not grant ownership of those game assets.
 
@@ -660,8 +661,14 @@ Game artwork remains the property of HoYoverse.
 
 `autohsr/tests/fixtures/currency_wars_standard_shop.json`来自2026-10-26标准商店记录，仅保存商店标题、候选、标价与固定导航OCR，排除UID、玩家头像、余额区域及原始图像。元数据保留本地来源相对标识、日期和原图哈希；藿藿与单数字价采用已核实的局部识别，原始截图保持忽略，不分发游戏整图。
 
-# 2026-10-28 桌面指南界面
+# 2026-10-28 桌面指南界面（首版）
 
 AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实训”的信息层次和视觉语言（深色外框、浅色内容、金色菱形里程碑、任务条目），以及[AutoZZZ快捷手册界面](https://github.com/HenryTANG0520/AutoZZZ/tree/a137c1eee44ea7429d06d018bd60d47c34bed41a/autozzz)的游戏化任务组织与常驻控制思路。星铁界面的公开参考可见[HoYoLAB社区截图](https://www.hoyolab.com/article/24934874)与[每日实训截图](https://www.pushsquare.com/guides/honkai-star-rail-beginners-tips-tricks-and-how-to-play)。参考日期2026-10-28；仅作设计参考，不代表相应旧版截图中的游戏任务仍是当前规则。
 
-此次没有下载、裁切或分发上述截图，没有新增第三方位图、游戏字体或模型。`autohsr/theme.py`与`autohsr/game_widgets.py`中的书本罗盘标记、星图线、按钮、菱形进度与任务卡均由程序几何绘制，未复制游戏徽标；中文使用Windows系统字体Microsoft YaHei UI，不随程序分发字体文件。新增绘图代码按本仓库GPL-3.0-only声明提供，不主张拥有游戏原有视觉元素或名称。
+首版提交`468dffe`没有下载、裁切或分发上述截图，没有新增第三方位图、游戏字体或模型。其图形由程序绘制，中文使用Windows系统字体Microsoft YaHei UI。该说明仅对应首版历史状态；后续用户要求按实际游戏素材复刻，见下节。
+
+## 2026-10-28 指南实际素材与字体
+
+新增`assets/ui/`中的16个静态图像与1个字体文件，用于桌面指南复刻。源画面为既有简体中文4.6.0实机截图，分别对应每日实训、生存索引与旷宇纷争；没有重新启动游戏取材。源图SHA-256、各静态裁切坐标、透明蒙版变换和输出哈希均记录于[UI sources.json](ui/sources.json)。原始整图、UID和账号信息不随素材提交。两个图标复用既有模板，原来源与许可记录继续保留。
+
+字体为本地客户端附带的`SDK_SC_Web`，原文件名`zh-cn.ttf`，按原始字节复制；保留汉仪版权和许可元数据，不纳入原创代码GPL声明。游戏图像同样归相应游戏权利人；来源事实与署名不构成再许可授权。详情及复现脚本见[UI素材说明](ui/README.md)。代码重绘指南外框、纹样、卡片、进度与按钮，没有迁入AutoZZZ或March7thAssistant的GUI源码。

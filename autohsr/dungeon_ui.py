@@ -22,7 +22,7 @@ def selected_category(ui):
 
 def build_fields(ui, parent):
     reload_catalogue(ui)
-    ttk.Label(parent, text="生存索引 · 目标副本", style="Section.TLabel").pack(anchor="w")
+    ttk.Label(parent, text="目标副本", style="Section.TLabel").pack(anchor="w")
     fields = ttk.Frame(parent, style="Panel.TFrame")
     fields.pack(fill="x", pady=(5, 8))
     fields.columnconfigure(1, weight=1)
@@ -31,9 +31,11 @@ def build_fields(ui, parent):
         ("副本", ui.target_name, "dungeon_name_combo"),
         ("地点", ui.target_location, "dungeon_location_combo"),
     )):
-        ttk.Label(fields, text=label, style="Muted.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 12), pady=3)
+        if row:
+            ttk.Label(fields, text=label, style="Muted.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 12), pady=3)
         control = ttk.Combobox(fields, textvariable=variable, state="readonly" if row == 0 else "normal")
-        control.grid(row=row, column=1, sticky="ew", pady=3)
+        if row:
+            control.grid(row=row, column=1, sticky="ew", pady=3)
         setattr(ui, attribute, control)
         ui.setting_controls.append(control)
         ui.stamina_controls.append(control)
@@ -44,7 +46,7 @@ def build_fields(ui, parent):
     numbers = ttk.Frame(parent, style="Panel.TFrame")
     numbers.pack(fill="x")
     numbers.columnconfigure(1, weight=1)
-    ttk.Label(numbers, text="挑战次数 · 本次总数", style="Muted.TLabel").grid(row=0, column=0, sticky="w", columnspan=5)
+    ttk.Label(numbers, text="挑战次数", style="Muted.TLabel").grid(row=0, column=0, sticky="w", columnspan=5)
     for column, label, delta in ((0, "−", -1), (4, "+", 1)):
         button = ttk.Button(numbers, text=label, width=3, command=lambda step=delta: change_count(ui, step))
         button.grid(row=1, column=column, padx=(0, 6) if column == 0 else (6, 0))
@@ -69,13 +71,13 @@ def build_fields(ui, parent):
     ui.stamina_controls.extend((budget, support))
     presets = ttk.Frame(parent, style="Panel.TFrame")
     presets.pack(fill="x", pady=(6, 0))
-    for label, command in (("测试：1 次", lambda: ui._preset(selected_category(ui).cost, 1)),
-                           ("使用本次上限", lambda: use_budget(ui)),
-                           ("刷新游戏副本", lambda: ui._start(catalogue=True))):
+    for label, command in (("设为 1 次", lambda: ui._preset(selected_category(ui).cost, 1)),
+                           ("填满预算", lambda: use_budget(ui)),
+                           ("刷新副本目录", lambda: ui._start(catalogue=True))):
         button = ttk.Button(presets, text=label, style="Compact.TButton", command=command)
         button.pack(side="left", padx=(0, 7))
         ui.setting_controls.append(button)
-        if label != "刷新游戏副本":
+        if label != "刷新副本目录":
             ui.stamina_controls.append(button)
     wrapped_label(parent, textvariable=ui.battle_hint, style="Warning.TLabel").pack(fill="x", pady=(5, 0))
 

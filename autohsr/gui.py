@@ -84,7 +84,7 @@ class AutoHSRWindow:
         root.bind_all("<F10>", lambda _: self._stop())
         root.after(100, self._drain)
         self._log("准备就绪。选择任务与副本，然后检测窗口。")
-        self._log("仅使用已有开拓力；首次验证建议选择“测试：1次”，核对副本与预计消耗。")
+        self._log("仅使用已有开拓力；首次验证建议选择“设为 1 次”，核对副本与预计消耗。")
         if not self.settings.allow_stamina_spend:
             self._log("开拓力刷本未授权，当前仅收取委托与奖励。", "warning")
         if config_error:
@@ -112,13 +112,14 @@ class AutoHSRWindow:
                                self.rounds, self.dungeon_category, self.challenge_count, self.use_support, self.auto_launch, self.overlay_logs, self.daily_synthesis, *self.tasks.values()]
         self.status = tk.StringVar(value="● 准备就绪")
         self.save_status = tk.StringVar()
-        self.summary = tk.StringVar(value="请选择任务并检测窗口；运行结果会保留在这里。")
+        self.summary = tk.StringVar()
+        self.page_title = tk.StringVar(value="每日实训")
         self.current_task = tk.StringVar(value="等待开始")
         self.elapsed = tk.StringVar(value="00:00")
         self.stamina = tk.StringVar(value="0")
         self.battle_hint = tk.StringVar()
         self.plan = tk.StringVar()
-        self.readiness = tk.StringVar(value="游戏窗口与输入条件：尚未检测")
+        self.readiness = tk.StringVar(value="窗口：未检测")
         self.history_context = tk.StringVar(value="暂无历史运行记录")
         self.recovery_hint = tk.StringVar()
         self.action_delay = tk.StringVar(value=str(self.settings.action_delay))
@@ -141,14 +142,14 @@ class AutoHSRWindow:
         self.detect_title = tk.StringVar(value="尚未检测游戏窗口")
         self.detect_size = tk.StringVar(value="客户区尺寸：—")
         self.detect_permission = tk.StringVar(value="助手管理员权限：—")
-        self.admin_launch_status = tk.StringVar(value="尚未查询 · 点击“刷新状态”核对 Windows 授权")
-        self.currency_status = tk.StringVar(value="已采集 4.6 教程与经济规则；提供只读识别、部署和节点验证，完整自动对局仍待验证。")
-        self.currency_observation = tk.StringVar(value="尚无本次识别证据。报告与截图可从底部入口查看。")
+        self.admin_launch_status = tk.StringVar(value="授权状态：未查询")
+        self.currency_status = tk.StringVar(value="开发中 · 整局未验收")
+        self.currency_observation = tk.StringVar(value="暂无识别记录")
         self.currency_source_slot = tk.StringVar(value='3')
         self.currency_zone = tk.StringVar(value='后台')
         self.currency_target_level = tk.StringVar(value='保持')
-        self.du_status = tk.StringVar(value="当前季节：乐园漫记。操作会记录本次页面文字、动作和前后截图。")
-        self.du_observation = tk.StringVar(value="尚无差分宇宙运行记录。")
+        self.du_status = tk.StringVar(value="乐园漫记")
+        self.du_observation = tk.StringVar(value="暂无演算记录")
         self.training_result = tk.StringVar(value="unknown")
 
     def _build(self):
@@ -156,10 +157,14 @@ class AutoHSRWindow:
         build_window(self, TASK_NAMES, {})
 
     def _show_page(self, name):
+        from .desktop import PAGE_TITLES
         self.active_page = name
+        self.page_title.set(PAGE_TITLES[name])
         for key, page in self.pages.items():
             page.grid() if key == name else page.grid_remove()
-            self.nav_buttons[key].configure(style="Selected.Nav.TButton" if key == name else "Nav.TButton")
+        self.guide.select(name)
+        if name in ("differential_universe", "currency_wars"):
+            self.last_universe_page = name
         if name not in ("logs", "settings"):
             self.action_page = name
         currency = getattr(self, "action_page", "home") == "currency_wars"
@@ -179,7 +184,7 @@ class AutoHSRWindow:
         return text
 
     def _text(self, parent: tk.Widget) -> ScrolledText:
-        return ScrolledText(parent, wrap="char", font=("Microsoft YaHei UI", 9), background=self.INSET,
+        return ScrolledText(parent, wrap="char", font=(theme.FONT, 10), background=self.INSET,
                             foreground=self.TEXT, insertbackground=self.TEXT, relief="flat", borderwidth=0,
                             padx=11, pady=9, height=6, state="disabled")
 
@@ -214,7 +219,7 @@ class AutoHSRWindow:
             return
         if not self.settings.allow_stamina_spend and self.tasks["battle"].get():
             self.tasks["battle"].set(False)
-        self.save_status.set("● 有未保存的修改" if self.dirty else ("配置已保存" if self.config_path.exists() else "默认配置 · 尚未保存"))
+        self.save_status.set("未保存" if self.dirty else ("已保存" if self.config_path.exists() else "默认设置"))
         self.save_label.configure(foreground="#dcc391" if self.dirty else "#aeb8c7")
         selected = [label for key, label in TASK_NAMES.items() if self.tasks[key].get()]
         from .dungeon_ui import refresh_count
@@ -247,13 +252,13 @@ class AutoHSRWindow:
         if not allowed:
             hint = "开拓力刷本未授权，当前仅收取委托与奖励"
         elif not battle_enabled:
-            hint = "未勾选副本挑战，副本设置暂不参与执行。"
+            hint = "副本挑战未启用"
         elif not self.use_support.get():
             hint = "好友支援已关闭；标准每日流程需勾选支援。"
         elif self.dungeon_category.get() == "饰品提取":
             hint = "使用游戏中已有差分存档；仅消耗开拓力，不创建或切换存档。"
         else:
-            hint = "仅用现有开拓力；不会使用燃料或星琼。"
+            hint = "仅用已有开拓力，不补充燃料或星琼。"
         self.battle_hint.set(hint)
         if not self._has_run:
             for name, label in TASK_NAMES.items():
@@ -534,11 +539,11 @@ class AutoHSRWindow:
                               "货币战争部署验证" if deploy_test else "货币战争拖动验证" if drag_test else
                               "货币战争只读识别" if currency_wars else "准备进入游戏")
         if differential_universe:
-            self.du_status.set(f"正在自动演算 {settings.differential_universe_runs} 局。只在识别到当前季节安全选项后推进；未知页面会停下。F9 暂停，F10 停止。")
-            self.du_observation.set("正在保存本次截图、OCR 与动作记录。")
+            self.du_status.set(f"正在演算 · 共 {settings.differential_universe_runs} 局")
+            self.du_observation.set("等待页面识别")
             self.last_screenshot = None
         if currency_wars:
-            self.currency_status.set("正在推进已校准战斗、选择、编队、奖励及装备；未知反馈停下留证。F9 暂停，F10 停止。" if flow_test else "正在验证当前节点出战与结算。F9 暂停，F10 停止。" if node_test else f"正在部署：{deployment_label}。F9 暂停，F10 停止。" if deploy_test else "正在验证一次前台3→1拖动。F9 暂停，F10 停止。" if drag_test else "正在只读识别，自动玩法保持关闭。F9 暂停，F10 停止。")
+            self.currency_status.set("正在推进对局" if flow_test else "正在验证当前节点" if node_test else f"正在部署：{deployment_label}" if deploy_test else "正在验证前台 3→1 拖动" if drag_test else "正在只读识别")
             self.currency_observation.set("正在生成本次证据；上次截图与报告保留在运行日志中。")
             self.last_screenshot = None
             if currency_standard:
@@ -553,7 +558,7 @@ class AutoHSRWindow:
         self.started_at = time.monotonic()
         self._set_busy(True, True)
         self.status.set("● 正在运行")
-        self.summary.set("任务执行中；F9 暂停 / 继续，F10 紧急停止。")
+        self.summary.set("")
         self.output_tabs.select(0)
         self.table.selection_remove(*self.table.selection())
         for name, label in TASK_NAMES.items():
@@ -620,7 +625,7 @@ class AutoHSRWindow:
         self._f9_local_pressed = False
         self.paused = paused
         self.status.set("● 已暂停" if paused else "● 正在运行")
-        self.summary.set("任务已暂停；设置保持锁定。点击“继续”或按 F9 恢复。" if paused else "任务执行中；F9 暂停 / 继续，F10 紧急停止。")
+        self.summary.set("")
         if not paused and self.focus_waiting:
             self.status.set("等待游戏回到前台")
             self.summary.set("输入已暂停；切回游戏后重新识别，F10可停止。")
@@ -751,6 +756,27 @@ class AutoHSRWindow:
         if selected and (not self.running or self.paused):
             label, status, detail = self.table.item(selected[0], "values")
             self.summary.set(f"{label} · {status}：{detail or '暂无详细说明'}")
+            self._show_summary()
+
+    def _show_summary(self) -> None:
+        if not self.summary.get():
+            return
+        previous = getattr(self, "summary_dialog", None)
+        if previous is not None and previous.winfo_exists():
+            previous.destroy()
+        dialog = self.summary_dialog = tk.Toplevel(self.root)
+        dialog.title("运行详情")
+        dialog.transient(self.root)
+        d = lambda value: round(value*self.ui_scale)
+        dialog.geometry(f"{d(680)}x{d(340)}")
+        dialog.minsize(d(400), d(200))
+        dialog.configure(background=theme.CARD)
+        text = self._text(dialog)
+        text.pack(fill="both", expand=True, padx=d(12), pady=d(12))
+        self._replace_text(text, self.summary.get())
+        ttk.Button(dialog, text="关闭", command=dialog.destroy).pack(pady=(0, d(12)))
+        dialog.bind("<Escape>", lambda _: dialog.destroy())
+        text.focus_set()
 
     def _restore(self) -> None:
         if not self.closing:
