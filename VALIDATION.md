@@ -6,10 +6,12 @@
 
 新增两幅静态素材及来源清单，移除整本指南、文字和整个底部HUD区域；被遮挡场景采用邻近颜色插值，不能称为原始景物或整屏像素复现。原图哈希与已有指南素材一致，完整帧不提交，详见[UI素材说明](assets/ui/README.md)。底栏和设置页保留深色，主操作、费用、错误提示与周常启动规则未改。
 
-- **48项场景与交互检查通过**，`runs/guide-backdrop-final-ui.log`及`runs/guide-backdrop-ui/result.json`。覆盖100%、150%、200%、默认／最小／更宽窗口、跨组件背景坐标、周常原生键盘进入、禁用、返回焦点、实时计时复用缓存及空闲不循环重绘。最终徽章居中调整后再次通过；仅使用临时配置，禁止启动Runner。
+- **63项场景与交互检查通过**，`runs/guide-backdrop-resize-guide_backdrop_smoke.log`及`runs/guide-backdrop-ui/result.json`。覆盖100%、150%、200%、默认／最小／更宽／最大化窗口、跨组件背景坐标、书页高度与垂直居中、周常原生键盘进入、禁用、返回焦点、实时计时复用缓存及空闲不循环重绘。仅使用临时配置，禁止启动Runner。
 - **84项GUI、60项首页反馈、72项底栏和123项设置检查通过**，`runs/guide-backdrop-*_smoke.log`及`guide-backdrop-settings.log`。运行、暂停、停止、保存、错误定位、结果状态与隐藏页面恢复均保持。
 - **30项参考几何与交互、108个布局场景及15项布局交互检查通过**，`runs/guide-backdrop-final-reference.log`及`runs/guide-backdrop-ui_layout_smoke.log`。已查看真实GUI生成的`runs/guide-backdrop-ui/home.png`，背景与圆角连续、徽章状态正确；这些证据不证明整个游戏界面的像素相同。
 - **1189项全量单元测试通过**，`runs/guide-backdrop-unit.log`，141.584秒；素材输出哈希、文档链接与`git diff --check`通过。初次空闲重绘检查直接写计时文本，与真实时钟字段冲突而失败；改用正式计时字段后通过，原日志`runs/guide-backdrop-smoke.log`及`guide-backdrop-smoke-diagnostic.log`保留，未修改运行时钟以掩盖测试问题。
+
+首次正式构建`d0dbddf`在最大化时暴露旧布局问题：书页受最大宽度约束，高度却随窗口拉长。现为书页设置默认阅读高度并垂直居中，小窗口仍随可用空间收缩；背景继续铺满窗口。修正后63项场景、108个布局、123项设置、84项GUI及30项参考检查再次通过，日志为`runs/guide-backdrop-resize-*.log`。首次检查记录为`runs/guide-backdrop-package-initial-verification.json`，截图`guide-backdrop-package-initial-maximized.png`保留；原配置和239份运行证据哈希未变。这是离线界面修正，不是新游戏验证。
 
 本次未启动、检测或操作游戏。日常与周常组合实机、周积分奖励、货币战争周常和真实玩家学习／注意力成本仍未验收；历史资源、失败记录和通关计数不变。
 

@@ -155,7 +155,7 @@ class Header(Surface):
 class Guide(Surface):
     """The black guide cover, five icon tabs, light paper and two charms."""
     def __init__(self,parent,scale,ui):
-        super().__init__(parent,scale,scene=True,bg=t.BG)
+        super().__init__(parent,scale,scene=True,bg=t.BG,height=round(715*scale))
         self.ui=ui
         self.content=ttk.Frame(self)
         self.tabs=ttk.Frame(self,style="Rail.TFrame")

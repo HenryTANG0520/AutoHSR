@@ -36,7 +36,7 @@ def build_window(ui, task_names, server_names):
     ui.header = Header(root, s, ui)
     ui.header.grid(row=0, column=0, sticky="ew")
     ui.guide = Guide(root, s, ui)
-    ui.guide.grid(row=1, column=0, sticky="nsew", padx=d(18))
+    ui.guide.grid(row=1, column=0, sticky="ew", padx=d(18))
     def position_guide(event=None):
         if (event is None or event.widget is root) and getattr(ui, "active_page", "home") != "settings":
             ui.guide.grid_configure(padx=max(d(18), round((root.winfo_width()-d(1280))/2)))

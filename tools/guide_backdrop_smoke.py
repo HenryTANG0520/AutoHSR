@@ -42,8 +42,11 @@ def main():
                 root.update()
                 normal = root.geometry().split("+")[0]
                 wider = f"{root.winfo_width()+round(60*scale)}x{root.winfo_height()}"
-                for label, size in (("default", normal), ("minimum", "%dx%d" % root.minsize()), ("wider", wider)):
-                    root.geometry(size)
+                for label, size in (("default", normal), ("minimum", "%dx%d" % root.minsize()), ("wider", wider), ("maximized", None)):
+                    if size:
+                        root.geometry(size)
+                    else:
+                        root.state("zoomed")
                     root.update()
                     actual = ImageGrab.grab(window=root.winfo_id()).convert("RGB")
                     with Image.open(ROOT/"assets/ui/guide/backdrop.png") as source:
@@ -56,8 +59,17 @@ def main():
                     check_layout(root)
                     check(prefix+label+"_layout", True)
                     check(prefix+label+"_daily_primary_is_reachable", ui.start_button.winfo_ismapped() and ui.start_button.cget("text") == "开始计划")
+                    if label == "maximized":
+                        check(prefix+"_maximized_guide_keeps_readable_book_proportions", ui.guide.winfo_height() <= round(716*ui.ui_scale))
+                        _, row_y, _, row_height = root.grid_bbox(0, 1)
+                        check(prefix+"_maximized_guide_is_vertically_centered", abs(ui.guide.winfo_y()-row_y-(row_height-ui.guide.winfo_height())/2) <= 2)
+                        if scale == 1.:
+                            actual.save(OUT/"maximized.png")
                     if scale == 1.5 and label == "default":
                         actual.save(OUT/"home.png")
+                root.state("normal")
+                root.geometry(normal)
+                root.update()
                 ui.weekly_button.state(("disabled",))
                 ui.weekly_button.invoke()
                 root.update()
