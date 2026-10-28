@@ -27,6 +27,7 @@ class SettingsShell(Surface):
         self.watch(ui.stamina, ui.elapsed)
         d = lambda n: round(n*scale)
         self.menu = ttk.Frame(self, style="Footer.TFrame")
+        self.menu.bind("<Configure>", self.redraw, add="+")
         self.content = ttk.Frame(self, style="Footer.TFrame")
         self.content.columnconfigure(0, weight=1)
         self.content.rowconfigure(0, weight=1)
@@ -45,6 +46,7 @@ class SettingsShell(Surface):
                 compound="top", style="Settings.Nav.TButton",
                 command=lambda key=key: self.choose(key))
             button.grid(row=0, column=index, padx=d(8))
+            button.bind("<Map>", self.redraw, add="+")
             button.bind("<Left>", lambda event, index=index: self.move(index, -1))
             button.bind("<Right>", lambda event, index=index: self.move(index, 1))
             self.buttons[key] = button

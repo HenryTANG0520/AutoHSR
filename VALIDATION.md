@@ -11,6 +11,8 @@
 
 首次GUI回归在“货币战争 → 运行记录 → 设置”后持续绘制，进程CPU增长且后续截图未生成。保留有界复现`runs/settings-shell-repro-before.log`：计时器每100毫秒重复写同一个字符串，触发新全屏背景及隐藏页重绘。修复为显示值变化时才更新时间、隐藏Surface不绘制、重新映射时绘制最新状态；修复后同路径复现退出码0，日志`runs/settings-shell-repro.log`，以上最终回归全部通过。初期测试焦点时序错误与返回按钮宽度不足记录分别保存在`settings-shell-initial-ui.log`、`settings-shell-close-layout.log`，未覆盖原失败。
 
+首版`fb57818`构建并打开正式EXE，发现首次进入设置时选中圆环显示、下划线缺失。补充真实画布像素检查后重现失败，日志`runs/settings-shell-first-entry-before.log`；新增分类按钮映射与导航布局事件触发重绘，最终**123项设置检查通过**，`runs/settings-shell-first-entry-final.log`，覆盖三档缩放首次进入后的下划线及原有全部设置路径。首版EXE的配置和运行记录239份哈希未变，已正常关闭；首版核对记录、构建日志及截图保留为`settings-shell-package-initial-verification.json`、`settings-shell-initial-build.log`、`settings-shell-package-initial-weekly.png`，不混作最终版本。
+
 本次未启动、检测或操作真实游戏。日常周常组合实机、周积分奖励、货币战争周常和真实玩家学习／注意力成本仍未验收；历史资源、失败记录和通关计数不变。
 
 ## 2026-10-29：设置行布局与明确开关状态

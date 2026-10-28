@@ -7,12 +7,26 @@ import tkinter as tk
 import types
 from unittest.mock import patch
 
-from PIL import ImageGrab
+from PIL import ImageGrab, ImageTk
 from ux_smoke import ROOT, Settings, Window, module
 from ui_layout_smoke import check_layout
 from home_feedback_smoke import drawn_text
 
 OUT = ROOT/"runs/settings-ui"
+
+
+def selection_marker_visible(shell):
+    button = shell.buttons[shell.section]
+    x = shell.menu.winfo_x()+button.winfo_x()
+    y = shell.menu.winfo_y()+button.winfo_y()+button.winfo_height()
+    width = button.winfo_width()
+    pixels = ImageTk.getimage(shell._photo).convert("RGB")
+    for line in range(y, min(pixels.height, y+round(12*shell.scale))):
+        bright = sum(min(pixels.getpixel((column, line))) > 180
+                     for column in range(x, x+width))
+        if bright > width*.6:
+            return True
+    return False
 
 
 def main():
@@ -53,8 +67,10 @@ def main():
             root.report_callback_exception = lambda kind, value, traceback: (_ for _ in ()).throw(value.with_traceback(traceback))
             ui = Window(root, config)
             try:
+                root.update()
                 ui._show_weekly_plan()
                 root.update()
+                check(f"{scale}_first_entry_has_selected_underline", selection_marker_visible(ui.settings_shell))
                 check(f"{scale}_settings_owns_surface", ui.settings_shell.winfo_ismapped()
                       and not ui.guide.winfo_ismapped() and not ui.header.winfo_ismapped()
                       and ui.settings_shell.plan.winfo_ismapped())
