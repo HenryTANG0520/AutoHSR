@@ -12,6 +12,8 @@
 - **55项输入定位、24项一键计划检查通过**，`runs/form-feedback-input-ui.log`、`runs/form-feedback-plan-ui.log`，确认新控件仍支持错误选中、配置草稿、日常周常交接与忙碌锁定。
 - **84个布局场景通过**，`runs/form-feedback-layout.log`，覆盖100%、150%、200%、默认及最小尺寸、页面与运行状态。已查看生存索引、周常设置和差分部分完成画面，`runs/form-feedback-ui/`保留预览。
 
+源码`a127380`已通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。仅以`--no-admin-launch`打开助手桌面后正常关闭，退出码0；239份配置及运行证据的哈希保持不变，17个UI素材、3个上游来源及许可文件一致。记录为`runs/form-feedback-package-verification.json`，构建日志为`runs/form-feedback-build.log`，数据备份为`build/userdata-form-20261029_012556/`。EXE SHA-256：`0987f82af8a463adbcd0db40f2725fbf2681a75f522b63263706d2203c423cd4`。
+
 本轮基于已提交的`789a3ea`，README同步逐笔刷新的实际离线实现；未纳入另一工作区尚未提交的出售等改动。只验证桌面，没有启动、检测或操作真实游戏。整套UI逐像素一致、实际玩家学习成本、日常周常组合实机、货币战争周常及周积分领奖仍未证明完成；不能用本轮回归代替这些验收。
 
 ## 2026-10-29：输入错误直接定位与失败原因前置
