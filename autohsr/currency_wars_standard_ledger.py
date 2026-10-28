@@ -139,6 +139,11 @@ def ledger_status(actions, *, investment_projection=None):
 
 def _valid_sale_receipt(receipt, target):
     from .currency_wars_standard_sale import board_digest
+    if target[3]==10:
+        if (receipt.get('max_level_verified') is not True or 'experience_before' not in receipt or 'experience_after' not in receipt
+                or receipt['experience_before'] is not None or receipt['experience_after'] is not None):return False
+    elif any(field in receipt for field in ('max_level_verified','experience_before','experience_after')):
+        return False
     if (any(type(receipt.get(k)) is not int for k in ('gold_before','gold_after','refund','slot','star','tier',
                                                     'level_after','hp_after','inspect_action_id'))
             or type(target[4]) is not int or not 1 <= target[4] <= 9

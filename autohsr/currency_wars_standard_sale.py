@@ -12,6 +12,7 @@ from .currency_wars_collector import collected_snapshot, owned_profile, roster_c
 from .currency_wars_deployment import _crop, _similarity, backend_layout
 from .currency_wars_match import read_match
 from .currency_wars_standard_policy import PREFERRED
+from .currency_wars_standard_hud import experience_observed
 from .currency_wars_state import StrategySnapshot
 from .models import AutomationError, Token, normalize
 
@@ -79,7 +80,7 @@ def proposal(scene, session, confidence=.65):
     if (snapshot.page != 'preparation' or snapshot.mode != 'standard' or snapshot.rank != 8 or snapshot.wealth != 40
             or snapshot.game_version != '4.6' or snapshot.rules_version != '4.6'
             or snapshot.transaction_status != 'clear' or not snapshot.node or snapshot.gold is None
-            or snapshot.hp is None or snapshot.hp <= 0 or snapshot.level is None or snapshot.experience is None
+            or snapshot.hp is None or snapshot.hp <= 0 or not experience_observed(scene,snapshot,confidence)
             or backend_layout(scene.image)[0] != 6 or overclock_board(scene)):
         raise AutomationError('出售缺少当前标准局、版本、余额、经验或完整阵容来源。')
     chosen = choose_sale(snapshot,prior.get('strategy','default'))
@@ -109,7 +110,7 @@ def bind_intent(session, choice, scene, confidence=.65):
     session['sale'] = dict(status='inspecting',inspect_action_id=action['id'],inspect_target=list(choice.payload),
                            unit=json.loads(json.dumps(asdict(unit))),snapshot=asdict(snapshot),cells=cells,
                            input_epoch=prior['collection']['input_epoch'],run_dir=prior['collection']['run_dir'],
-                           shape=list(scene.image.shape),reason=choice.details[2][0])
+                           shape=list(scene.image.shape),reason=choice.details[2][0],max_level_verified=snapshot.level==10)
 
 
 def _expected_profile(scene, target, confidence):
@@ -122,6 +123,7 @@ def _expected_profile(scene, target, confidence):
 def panel_feedback(choice, before, after, confidence=.65):
     first,last = read_match(before,confidence),read_match(after,confidence)
     if (not first or not last or first.page != 'preparation' or last.page != 'character'
+            or not experience_observed(before,first,confidence) or not experience_observed(after,last,confidence)
             or (first.node,first.gold,first.hp,first.level) != choice.payload[:4]
             or (last.node,last.level,last.experience,last.deployment) !=
                (first.node,first.level,first.experience,first.deployment)
@@ -206,8 +208,9 @@ def active_action(scene, session, confidence=.65):
         raise AutomationError('查看待整理角色后出现其他输入，未出售。')
     target = sale['inspect_target']
     if ((state.node,state.level,state.experience,state.deployment) !=
-            (target[0],target[3],tuple(sale['snapshot']['experience']),
+            (target[0],target[3],tuple(sale['snapshot']['experience']) if sale['snapshot']['experience'] is not None else None,
              (sum(u['zone'] != 'bench' for u in sale['snapshot']['roster']),sale['snapshot']['capacity']))
+            or not experience_observed(scene,state,confidence) or state.level==10 and sale.get('max_level_verified') is not True
             or state.hp not in (None,target[2]) or scene.image is None or list(scene.image.shape) != sale['shape']):
         raise AutomationError('待整理角色面板的节点、等级或出战人数已变。')
     profile = _expected_profile(scene,target,confidence)
@@ -235,7 +238,8 @@ def sale_feedback(choice, before, after, session, confidence=.65):
         if (not state or state.page != 'preparation' or after.image is None or list(after.image.shape) != sale['shape']
                 or (state.node,state.gold,state.hp,state.level) !=
                    (choice.payload[0],choice.payload[1]+choice.payload[10],choice.payload[2],choice.payload[3])
-                or state.experience != tuple(sale['snapshot']['experience'])
+                or state.experience != (tuple(sale['snapshot']['experience']) if sale['snapshot']['experience'] is not None else None)
+                or not experience_observed(after,state,confidence)
                 or state.deployment != (sum(u['zone'] != 'bench' for u in sale['snapshot']['roster']),sale['snapshot']['capacity'])
                 or backend_layout(after.image)[0] != 6):
             return None
@@ -243,11 +247,14 @@ def sale_feedback(choice, before, after, session, confidence=.65):
         source = 'bench:'+str(choice.payload[4])
         if new[source][0] != 'empty' or any(old[k] != new[k] for k in old if k != source):
             return None
-        return dict(schema=1,currency='match_gold',node=state.node,gold_before=choice.payload[1],gold_after=state.gold,
+        receipt=dict(schema=1,currency='match_gold',node=state.node,gold_before=choice.payload[1],gold_after=state.gold,
                     refund=choice.payload[10],slot=choice.payload[4],name=choice.payload[5],star=choice.payload[6],tier=choice.payload[7],
                     level_after=state.level,hp_after=state.hp,inspect_action_id=choice.payload[11],
                     source_before=choice.payload[8],source_empty=True,board_before=choice.payload[9],board_after=board_digest(new),
                     cells_before=old,cells_after=new)
+        if state.level==10:
+            receipt.update(max_level_verified=True,experience_before=None,experience_after=None)
+        return receipt
     except (AutomationError,ValueError,KeyError,TypeError):
         return None
 
