@@ -63,7 +63,7 @@ def main():
                     check(prefix+label+"_daily_primary_is_reachable", ui.start_button.winfo_ismapped() and ui.start_button.cget("text") == "开始计划")
                     if label == "maximized":
                         check(prefix+"_maximized_guide_keeps_readable_book_proportions", ui.guide.winfo_height() <= round(716*ui.ui_scale))
-                        _, row_y, _, row_height = root.grid_bbox(0, 1)
+                        _, row_y, _, row_height = ui.shell.grid_bbox(0, 1)
                         check(prefix+"_maximized_guide_stays_near_center", abs(ui.guide.winfo_y()-row_y-(row_height-ui.guide.winfo_height())/2) <= row_height*.03+2)
                         if scale == 1.:
                             actual.save(OUT/"maximized.png")

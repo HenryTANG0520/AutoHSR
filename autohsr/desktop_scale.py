@@ -25,6 +25,7 @@ class ResponsiveLayout:
         self.pending = None
         self.resizing = False
         self.size = None
+        self.window_state = self.root.state()
         self.root.bind("<Configure>", self._changed, add="+")
         self.root.bind("<Destroy>", self._destroyed, add="+")
 
@@ -42,7 +43,12 @@ class ResponsiveLayout:
         self.size = size
         if self.pending is not None:
             self.root.after_cancel(self.pending)
-        self.pending = self.root.after(180, self.fit)
+        # Maximize/restore already supplies a settled size; only dragging needs
+        # the debounce delay.
+        state = self.root.state()
+        changed_state = state != self.window_state
+        self.window_state = state
+        self.pending = self.root.after(0 if changed_state else 180, self.fit)
 
     def fit(self):
         """Commit one settled resize; native dialogs and dropdowns keep ownership."""
@@ -64,6 +70,8 @@ class ResponsiveLayout:
             return False
         self.resizing = True
         try:
+            # Let the existing controls occupy the new client before staging.
+            self.root.update_idletasks()
             self._rebuild(scale)
         finally:
             self.resizing = False
@@ -71,7 +79,8 @@ class ResponsiveLayout:
 
     def _rebuild(self, scale):
         ui, root = self.ui, self.root
-        previous = dict(_widgets(root))
+        old_shell = ui.shell
+        previous = dict(_widgets(old_shell))
         paths = {widget: path for path, widget in previous.items()}
         focus = paths.get(focus_widget(root))
         return_focus = paths.get(getattr(ui, "settings_return_focus", None))
@@ -98,17 +107,24 @@ class ResponsiveLayout:
 
         loading = ui._loading
         ui._loading = True
+        # Inactive theme bitmaps must remain alive until the old controls leave.
+        old_images = root._hsr_images
         try:
             # Worker, queue, variables, records on disk and timers retain identity.
-            # Only display objects are replaced, synchronously on the Tk thread.
-            for child in list(root.winfo_children()):
-                if not isinstance(child, tk.Toplevel):
-                    child.destroy()
+            # Stage new display objects below the complete previous shell.
+            from .game_widgets import Surface, SceneButton
+            for widget in previous.values():
+                if isinstance(widget, (Surface, SceneButton)):
+                    widget._suspended = True
+                    if widget._paint_job is not None:
+                        widget.after_cancel(widget._paint_job)
+                        widget._paint_job = None
             ui.setting_controls = []
             ui.stamina_controls = []
             root.tk.call("tk", "scaling", scale*96/72)
             ui._build(scale=scale)
-            current = dict(_widgets(root))
+            root.tk.call("raise", str(old_shell))
+            current = dict(_widgets(ui.shell))
             ui.dungeon_search.set(browser[0])
             ui.dungeon_target_caption.set(browser[1])
             from .dungeon_ui import _show_editor
@@ -150,6 +166,7 @@ class ResponsiveLayout:
                 widget.xview_moveto(xview)
             if focus in current and current[focus].winfo_ismapped():
                 current[focus].focus_set()
-            ui.position_guide()
         finally:
+            old_shell.destroy()
+            old_images.clear()
             ui._loading = loading

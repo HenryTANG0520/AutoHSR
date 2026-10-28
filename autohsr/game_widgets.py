@@ -43,7 +43,7 @@ class Surface(tk.Canvas):
         self.bind("<Destroy>",lambda e:[v.trace_remove("write",token) for v,token in tokens] if e.widget is self else None,add="+")
 
     def redraw(self,_event=None):
-        if self._paint_job is None:
+        if self._paint_job is None and not getattr(self,"_suspended",False):
             self._paint_job=self.after_idle(self._render)
 
     def _render(self):
@@ -59,10 +59,17 @@ class Surface(tk.Canvas):
             scene=t.scene_image(*self._scene_size).crop((x,y,x+w,y+h))
             p.image.paste(scene.resize(p.image.size,Image.Resampling.BILINEAR))
         self.paint(p)
-        self._photo=ImageTk.PhotoImage(p.finish(),master=self)
-        self.delete("art")
-        self.create_image(0,0,image=self._photo,anchor="nw",tags="art")
-        self.tag_lower("art")
+        self._present(p.finish())
+
+    def _present(self, image):
+        photo=ImageTk.PhotoImage(image,master=self)
+        if self.find_withtag("art"):
+            self.itemconfigure("art",image=photo)
+        else:
+            self.create_image(0,0,image=photo,anchor="nw",tags="art")
+            self.tag_lower("art")
+        # Keep the previous bitmap alive until the canvas references its replacement.
+        self._photo=photo
 
 
 class Backdrop(Surface):
@@ -71,6 +78,21 @@ class Backdrop(Surface):
 
     def paint(self,p):
         pass
+
+    def _render(self):
+        self._paint_job=None
+        w,h=self.winfo_width(),self.winfo_height()
+        if w<2 or h<2 or not self.winfo_ismapped():
+            return
+        root=self._scene_root
+        self._scene_size=(root.winfo_width(),root.winfo_height())
+        x,y=self.winfo_rootx()-root.winfo_rootx(),self.winfo_rooty()-root.winfo_rooty()
+        region=(*self._scene_size,x,y,w,h)
+        if region==getattr(self,"_scene_region",None):
+            return
+        # This surface has no vector artwork: use the cached scene at native size.
+        self._present(t.scene_image(*self._scene_size).crop((x,y,x+w,y+h)))
+        self._scene_region=region
 
 
 class SceneButton(ttk.Button):
@@ -113,8 +135,9 @@ class SceneButton(ttk.Button):
         edge=t.GOLD if any(self.instate((state,)) for state in ("active","pressed","focus")) else "#b4b4b4"
         p.box((1,1,p.width-1,p.height-1),color,18,edge,1.4)
         p.box((5,5,p.width-5,p.height-5),color,14,"#d5d5d5")
-        self._photo=ImageTk.PhotoImage(p.finish(),master=self)
-        self.configure(image=self._photo)
+        photo=ImageTk.PhotoImage(p.finish(),master=self)
+        self.configure(image=photo)
+        self._photo=photo
 
 
 def paint_run_metrics(p, ui):

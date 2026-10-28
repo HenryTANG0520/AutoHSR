@@ -171,7 +171,7 @@ class SettingRow(ttk.Frame):
 def build_settings(ui):
     s = ui.ui_scale
     d = lambda n: round(n*s)
-    ui.settings_shell = SettingsShell(ui.root, s, ui)
+    ui.settings_shell = SettingsShell(ui.shell, s, ui)
     page = ui.settings_shell.content
     ui.pages["settings"] = ui.settings_shell
     tabs = ttk.Notebook(page, style="Settings.TNotebook")

@@ -123,8 +123,9 @@ def build_fields(ui, parent):
         clear.grid() if ui.dungeon_search.get() else clear.grid_remove()
         if ui.dungeon_search.get() and not ui.busy:
             show_browser(ui)
-    token = ui.dungeon_search.trace_add("write", search_changed)
-    parent.bind("<Destroy>", lambda event: ui.dungeon_search.trace_remove("write", token) if event.widget is parent else None, add="+")
+    search_variable = ui.dungeon_search
+    token = search_variable.trace_add("write", search_changed)
+    parent.bind("<Destroy>", lambda event: search_variable.trace_remove("write", token) if event.widget is parent else None, add="+")
     search_changed()
 
 

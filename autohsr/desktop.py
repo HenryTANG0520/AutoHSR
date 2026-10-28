@@ -1,6 +1,7 @@
 """The game's guide book, native page hierarchy and concise operational controls."""
 from __future__ import annotations
 
+import tkinter as tk
 from tkinter import ttk
 
 from . import theme as t
@@ -18,17 +19,19 @@ def note(parent, text=None, variable=None, *, row, style="CardHint.TLabel", scal
 
 
 def build_window(ui, task_names, server_names, *, scale=None):
-    root = ui.root
-    ui.ui_scale = scale if scale is not None else max(1., float(root.tk.call("tk", "scaling"))/(96/72))
+    window = ui.root
+    ui.ui_scale = scale if scale is not None else max(1., float(window.tk.call("tk", "scaling"))/(96/72))
     s = ui.ui_scale
     d = lambda n: round(n*s)
-    width, height = min(d(1536), root.winfo_screenwidth()-d(32)), min(d(864), root.winfo_screenheight()-d(55))
+    width, height = min(d(1536), window.winfo_screenwidth()-d(32)), min(d(864), window.winfo_screenheight()-d(55))
     if scale is None:
-        root.geometry(f"{width}x{height}")
-        root.minsize(min(d(1100), width), min(d(800), height))
-    root.title("AutoHSR · 开拓指南")
-    root.configure(bg=t.BG)
-    ui.style = t.apply_theme(root, s)
+        window.geometry(f"{width}x{height}")
+        window.minsize(min(d(1100), width), min(d(800), height))
+    window.title("AutoHSR · 开拓指南")
+    window.configure(bg=t.BG)
+    ui.style = t.apply_theme(window, s)
+    root = ui.shell = tk.Frame(window, bg=t.BG)
+    root.place(x=0, y=0, relwidth=1, relheight=1)
     root.columnconfigure(0, weight=1)
     root.rowconfigure(1, weight=1)
     ui.backdrop = Backdrop(root, s)
@@ -39,9 +42,9 @@ def build_window(ui, task_names, server_names, *, scale=None):
     ui.guide = Guide(root, s, ui)
     ui.guide.grid(row=1, column=0, sticky="ew", padx=d(18))
     def position_guide(event=None):
-        if (event is None or event.widget is root) and getattr(ui, "active_page", "home") != "settings":
-            top_gap = min(d(38), max(0, round((root.winfo_height()-d(800))*38/64)))
-            margin = max(d(18), round((root.winfo_width()-d(1280))/2))
+        if (event is None or event.widget is window) and getattr(ui, "active_page", "home") != "settings":
+            top_gap = min(d(38), max(0, round((window.winfo_height()-d(800))*38/64)))
+            margin = max(d(18), round((window.winfo_width()-d(1280))/2))
             ui.guide.art_left = min(d(8), max(0, margin-d(2)))
             ui.guide.art_right = min(d(44), max(0, margin-d(2)))
             ui.guide.grid_configure(padx=(margin-ui.guide.art_left, margin-ui.guide.art_right), pady=(top_gap, 0))
@@ -49,8 +52,8 @@ def build_window(ui, task_names, server_names, *, scale=None):
             ui.guide.redraw()
     ui.position_guide = position_guide
     if getattr(ui, "_guide_position_binding", None):
-        root.unbind("<Configure>", ui._guide_position_binding)
-    ui._guide_position_binding = root.bind("<Configure>", position_guide, add="+")
+        window.unbind("<Configure>", ui._guide_position_binding)
+    ui._guide_position_binding = window.bind("<Configure>", position_guide, add="+")
     body = ui.guide.content
     body.columnconfigure(0, weight=1)
     body.rowconfigure(0, weight=1)
@@ -170,7 +173,7 @@ def _settings(ui):
 def _footer(ui):
     s = ui.ui_scale
     d = lambda n: round(n*s)
-    footer = ttk.Frame(ui.root, style="Footer.TFrame", padding=(d(42), d(7), d(42), d(18)))
+    footer = ttk.Frame(ui.shell, style="Footer.TFrame", padding=(d(42), d(7), d(42), d(18)))
     footer.grid(row=2, column=0, sticky="ew")
     footer.columnconfigure(0, weight=1)
     feedback = ttk.Frame(footer, style="Footer.TFrame")
