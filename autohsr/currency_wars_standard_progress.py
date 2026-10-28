@@ -110,8 +110,8 @@ def progress_action(scene, session, confidence=.65):
 
 def advancement_feedback(scene, source_node, confidence=.65):
     plane, number = map(int, source_node.split('-'))
-    state = read_match(scene, confidence)
-    if state and state.page in ('preparation', 'shop') and state.node == f'{plane}-{number+1}':
+    state = read_match(scene, confidence,include_rewards=True)
+    if state and state.page in ('preparation', 'shop','supply_selection') and state.node == f'{plane}-{number+1}':
         if state.page == 'preparation' and (state.hp is None or state.hp <= 0):
             return None
         return dict(page_kind=state.page, node=state.node)

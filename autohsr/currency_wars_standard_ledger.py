@@ -11,6 +11,8 @@ FREE_ACTIONS = frozenset((
     'inspect_standard_sale_unit','close_standard_sale_stale_panel',
     'stage_standard_equipment','inspect_standard_equipment_unit','close_standard_equipment_unit',
     'close_standard_equipment_stale_panel','open_standard_equipment_recommendations',
+    'open_standard_bench_reward','select_standard_supply','inspect_standard_reward_unit',
+    'close_standard_reward_unit','close_standard_reward_stale_panel',
     'stage_standard_exchange','inspect_standard_exchange_unit','close_standard_exchange_unit','close_standard_exchange_stale_panel',
     'settle_standard_final_victory', 'settle_standard_match_rating',
     'settle_standard_match_summary', 'settle_standard_match_statistics',
@@ -18,6 +20,7 @@ FREE_ACTIONS = frozenset((
 PAID_ACTIONS = frozenset(('buy_standard_offer', 'buy_standard_experience', 'refresh_standard_shop'))
 CREDIT_ACTIONS = frozenset(('sell_standard_owned',))
 FINANCIAL_ACTIONS = PAID_ACTIONS | CREDIT_ACTIONS
+REWARD_CLAIMS = frozenset(('choose_standard_reward','confirm_standard_supply'))
 
 
 def valid_receipt(action):
@@ -84,6 +87,11 @@ def ledger_status(actions):
         if action.get('status') != 'verified':
             return 'pending' if action.get('status') == 'pending' else 'unknown'
         name = action.get('action', '')
+        if name in REWARD_CLAIMS:
+            from .currency_wars_standard_rewards import valid_effect
+            if not valid_effect(action,actions):return 'unknown'
+            if action.get('reward_verified') is not True:return 'pending'
+            continue
         if name in FINANCIAL_ACTIONS:
             if not valid_receipt(action):
                 return 'unknown'

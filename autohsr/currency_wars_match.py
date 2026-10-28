@@ -41,12 +41,13 @@ def _unique(tokens, roi, pattern, convert):
     return next(iter(values)) if len(values) == 1 else None
 
 
-def read_match(scene: Scene, confidence=.65) -> MatchState | None:
+def read_match(scene: Scene, confidence=.65, *, include_rewards=False) -> MatchState | None:
     tokens = [t for t in scene.tokens if math.isfinite(t.score) and confidence <= t.score <= 1
               and len(t.box) == 4 and all(math.isfinite(x) and 0 <= x <= 1 for x in t.box)
               and t.box[0] < t.box[2] and t.box[1] < t.box[3]]
     page = classify_page(tokens)
-    if page not in ("preparation", "shop", "character", "bench_full"):
+    reward_pages = ('equipment_selection','advanced_equipment_selection','expert_selection','supply_selection')
+    if page not in ("preparation", "shop", "character", "bench_full") and not (include_rewards and page in reward_pages):
         return None
     if page=='bench_full' and classify_page([t for t in tokens if not is_bench_full_notice(t)])!='preparation':
         return None
