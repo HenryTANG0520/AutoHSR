@@ -178,7 +178,8 @@ class Guide(Surface):
                              compound="center" if key in ("logs", "settings") else "none",style="Nav.TButton",command=command)
             button.grid(row=0,column=col,padx=0)
             self.buttons[key]=button
-            Tooltip(button,"旷宇纷争" if key=="universe" else "运行记录" if key=="logs" else label)
+            if key not in ("logs", "settings"):
+                Tooltip(button,"旷宇纷争" if key=="universe" else label)
         self.bind("<Configure>",self._position,add="+")
 
     def select(self,page):

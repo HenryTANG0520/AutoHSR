@@ -123,6 +123,10 @@ def main():
                     root.update()
                     check(f"{scale}_{key}_name_visible_without_hover", button.winfo_ismapped() and
                           button.cget("text") == caption and str(button.cget("compound")) == "center")
+                    button.event_generate("<Enter>")
+                    root.update()
+                    check(f"{scale}_{key}_has_no_duplicate_name_popup", not any(isinstance(child, tk.Toplevel)
+                          for child in button.winfo_children()))
                     root.focus_force()
                     button.focus_set()
                     button.event_generate("<KeyPress-space>")
