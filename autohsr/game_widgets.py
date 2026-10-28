@@ -340,19 +340,35 @@ class PlanRibbon(Surface):
 
 class SummaryStrip(Surface):
     def __init__(self,parent,scale,ui):
-        super().__init__(parent,scale,bg=t.BG,height=round(25*scale))
+        super().__init__(parent,scale,bg=t.BG,height=round(25*scale),takefocus=True)
         self.ui=ui
-        self.watch(ui.summary)
-        self.bind("<Button-1>",lambda _:ui._show_summary())
+        self.watch(ui.summary, ui.input_error, ui.result_alert)
+        self.bind("<Button-1>", self.activate)
+        self.bind("<Return>", self.activate)
+        self.bind("<space>", self.activate)
+        self.bind("<FocusIn>", self.redraw, add="+")
+        self.bind("<FocusOut>", self.redraw, add="+")
+
+    def message(self):
+        return self.ui.input_error.get() or self.ui.result_alert.get() or self.ui.summary.get()
+
+    def activate(self, _=None):
+        if self.ui.input_error.get():
+            self.ui._focus_input_error()
+        else:
+            self.ui._show_summary()
+        return "break"
 
     def paint(self,p):
-        text=self.ui.summary.get()
+        text=self.message()
         if text:
-            p.text((0,4),p.wrap(text,p.width-65,13,1),13,t.LIGHT)
-            p.text((p.width,4),"详情  ›",13,t.GOLD,"rt")
-            self.configure(cursor="hand2")
+            p.text((0,4),p.wrap(text,p.width-65,13,1),13,t.GOLD if self.ui.input_error.get() or self.ui.result_alert.get() else t.LIGHT)
+            p.text((p.width,4),"修改  ›" if self.ui.input_error.get() else "详情  ›",13,t.GOLD,"rt")
+            if self.focus_get() is self:
+                p.line((0,p.height-1,p.width,p.height-1),t.GOLD)
+            self.configure(cursor="hand2", takefocus=True)
         else:
-            self.configure(cursor="")
+            self.configure(cursor="", takefocus=False)
 
 
 class ActivityStrip(Surface):

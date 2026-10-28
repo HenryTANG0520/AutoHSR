@@ -175,6 +175,7 @@ def _settings(ui):
     game = ui.settings_sections["game"]
     ttk.Label(game, text="StarRail.exe", style="Muted.TLabel").grid(row=0, column=0, sticky="w", padx=(0, d(14)))
     entry = ttk.Entry(game, textvariable=ui.game_path, width=15)
+    ui.game_path_entry = entry
     entry.grid(row=0, column=1, sticky="ew")
     browse = ttk.Button(game, text="浏览…", command=ui._choose_game)
     browse.grid(row=0, column=2, padx=(d(10), 0))
@@ -211,11 +212,18 @@ def _settings(ui):
     time_row = ttk.Frame(weekly, style="Card.TFrame")
     time_row.grid(row=3, column=1, columnspan=2, sticky="w")
     field = ttk.Entry(time_row, textvariable=ui.weekly_time, width=15)
+    ui.weekly_time_entry = field
     field.pack(side="left")
     ttk.Label(time_row, text="HH:MM · 北京时间", style="Muted.TLabel").pack(side="left", padx=d(10))
     ui.setting_controls.append(field)
-    for row, text, variable in ((5, "到期后随“开始计划”执行；每周一 04:00 刷新。", None),
-                                (6, None, ui.weekly_boundary)):
+    team_label = ttk.Label(weekly, text="预设编队")
+    team_label.grid(row=5, column=0, sticky="w", pady=d(9))
+    ui.weekly_team_entry = ttk.Entry(weekly, textvariable=ui.du_team, width=15)
+    ui.weekly_team_entry.grid(row=5, column=1, sticky="w")
+    ui.weekly_run_controls += (team_label, ui.weekly_team_entry)
+    ui.setting_controls.append(ui.weekly_team_entry)
+    for row, text, variable in ((6, "到期后随“开始计划”执行；每周一 04:00 刷新。", None),
+                                (7, None, ui.weekly_boundary)):
         label = t.wrapped_label(weekly, text=text, textvariable=variable, style="CardHint.TLabel")
         label.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(d(16), 0))
     run = ui.settings_sections["run"]
@@ -230,6 +238,7 @@ def _settings(ui):
     for row, (label, variable, limits) in enumerate((("操作间隔（秒）", ui.action_delay, "0.3～5"), ("战斗超时（秒）", ui.battle_timeout, "60～3600"), ("OCR 阈值", ui.ocr_confidence, "0.4～0.99"))):
         ttk.Label(recognition, text=label).grid(row=row, column=0, sticky="w", pady=d(12), padx=(0, d(25)))
         field = ttk.Entry(recognition, textvariable=variable, width=10)
+        setattr(ui, ("action_delay_entry", "battle_timeout_entry", "ocr_confidence_entry")[row], field)
         field.grid(row=row, column=1, sticky="w")
         ttk.Label(recognition, text=limits, style="Muted.TLabel").grid(row=row, column=2, sticky="w", padx=d(12))
         ui.setting_controls.append(field)

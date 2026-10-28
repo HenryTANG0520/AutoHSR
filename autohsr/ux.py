@@ -58,3 +58,41 @@ def recovery_text(report: dict) -> str:
 def immersifier_text(report: dict) -> str:
     spent,pending=report.get('immersifiers_spent',0),report.get('immersifiers_pending',0)
     return f' · 沉浸器已确认 {spent}，待核对 {pending}' if spent or pending else ''
+
+
+def issue_text(report: dict) -> str:
+    """The first visible line carries the reason, while full costs stay in details."""
+    error = report.get("error") or next((r.get("detail", "") for r in report.get("results", [])
+        if r.get("status") in ("failed", "partial", "stopped")), "")
+    parts = []
+    if report.get("report_saved") is False:
+        parts.append("报告未保存")
+    for field, name in (("stamina_pending", "开拓力"), ("immersifiers_pending", "沉浸器")):
+        value = report.get(field, 0)
+        if value is None:
+            parts.append(name+"待核对")
+        elif type(value) is int and value > 0:
+            parts.append(f"{value} {name}待核对")
+    if error:
+        parts.append(" ".join(str(error).split()))
+    return " · ".join(parts)
+
+
+def standard_run_verified(data: dict) -> bool:
+    return (data.get("mode") == "standard_development" and data.get("status") == "settled"
+            and data.get("completion_verified") is True and data.get("settlement_verified") is True)
+
+
+def standard_activity(data: dict) -> str:
+    exchange = data.get("exchange") or {}
+    status = data.get("action_status")
+    if exchange.get("status") == "verifying":
+        return "核验换人角色"
+    if exchange.get("status") == "identity_mismatch":
+        return "换人角色不符"
+    if status == "exchange_verified":
+        return "换人已核实" if exchange.get("status") == "verified" else "换人结果待核对"
+    return {"exchange_identity_pending": "核验换人角色", "needs_observation": "等待核实当前画面",
+            "readonly_reconciled": "当前页面已核实", "transition_verified": "页面转换已核实",
+            "unknown": "动作结果待核对", "step_limit": "本次开发步骤已结束",
+            "settled": "本局结算已核实" if standard_run_verified(data) else "结算待核对"}.get(status, "观察当前局面")

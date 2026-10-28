@@ -72,7 +72,8 @@ def main():
                 ui.weekly_runs.set("2")
                 ui.weekly_time.set("24:00")
                 ui.start_button.invoke()
-                check("invalid_time_blocks_start_without_saving", bool(errors) and not FakeRunner.instances and config.read_bytes() == original)
+                check("invalid_time_blocks_start_without_saving", ui.input_error_field == "weekly_time" and
+                      "HH:MM" in ui.input_error.get() and not errors and not FakeRunner.instances and config.read_bytes() == original)
                 ui.weekly_time.set("04:00")
                 root.update()
                 check_layout(root)

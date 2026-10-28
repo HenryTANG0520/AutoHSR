@@ -22,16 +22,17 @@ MODES = {"differential_universe": "差分宇宙", "currency_wars": "货币战争
 
 
 def validate_schedule(settings):
+    from .config import SettingsError
     if type(settings.weekly_enabled) is not bool:
-        raise ValueError("加入周常必须为布尔值。")
+        raise SettingsError("weekly_enabled", "加入周常必须为布尔值。")
     if not isinstance(settings.weekly_mode, str) or settings.weekly_mode not in MODES:
-        raise ValueError("周常玩法请选择差分宇宙或货币战争。")
+        raise SettingsError("weekly_mode", "周常玩法请选择差分宇宙或货币战争。")
     if type(settings.weekly_day) is not int or not 1 <= settings.weekly_day <= 7:
-        raise ValueError("周常星期必须为 1～7。")
+        raise SettingsError("weekly_day", "周常星期必须为 1～7。")
     if not isinstance(settings.weekly_time, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", settings.weekly_time):
-        raise ValueError("周常时间请填写 HH:MM，例如 04:00（北京时间）。")
+        raise SettingsError("weekly_time", "周常时间请填写 HH:MM，例如 04:00（北京时间）。")
     if type(settings.weekly_runs) is not int or not 1 <= settings.weekly_runs <= 10:
-        raise ValueError("周常演算局数应为 1～10。")
+        raise SettingsError("weekly_runs", "周常演算局数应为 1～10。")
 
 
 @dataclass(frozen=True)

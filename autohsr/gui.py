@@ -14,8 +14,8 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 from typing import Any
 
-from .config import CONFIG_PATH, ROOT, Settings
-from .ux import report_context, recovery_text, exit_text,immersifier_text
+from .config import CONFIG_PATH, ROOT, Settings, SettingsError
+from .ux import report_context, recovery_text, exit_text, immersifier_text, issue_text, standard_activity, standard_run_verified
 from . import theme
 
 TASK_NAMES = {
@@ -27,6 +27,25 @@ STATUS_NAMES = {
     "completed": "已完成", "done": "已完成", "failed": "失败", "error": "失败",
     "skipped": "跳过", "stopped": "已停止", "partial": "部分完成",
     "paused": "已暂停", "cancelled": "已停止",
+}
+
+# Backend field -> page, settings section, Tk variable, control, readable name.
+INPUT_FIELDS = {
+    "game_path": ("settings", "game", "game_path", "game_path_entry", "游戏路径"),
+    "target_name": ("tasks", None, "target_name", "dungeon_name_combo", "副本名称"),
+    "target_location": ("tasks", None, "target_location", "dungeon_location_combo", "副本地点"),
+    "stamina_limit": ("tasks", None, "stamina_limit", "stamina_limit_entry", "开拓力上限"),
+    "challenge_count": ("tasks", None, "challenge_count", "challenge_entry", "挑战次数"),
+    "action_delay": ("settings", "recognition", "action_delay", "action_delay_entry", "操作间隔"),
+    "battle_timeout": ("settings", "recognition", "battle_timeout", "battle_timeout_entry", "战斗超时"),
+    "ocr_confidence": ("settings", "recognition", "ocr_confidence", "ocr_confidence_entry", "OCR 阈值"),
+    "differential_universe_runs": ("differential_universe", None, "differential_universe_runs", "du_runs_combo", "演算局数"),
+    "differential_universe_team": ("differential_universe", None, "du_team", "du_team_entry", "预设编队"),
+    "differential_universe_mode": ("differential_universe", None, "du_mode", "du_mode_combo", "演算模式"),
+    "weekly_mode": ("settings", "weekly", "weekly_mode", "weekly_mode_combo", "周常玩法"),
+    "weekly_day": ("settings", "weekly", "weekly_day", "weekly_day_combo", "周常星期"),
+    "weekly_time": ("settings", "weekly", "weekly_time", "weekly_time_entry", "周常时间"),
+    "weekly_runs": ("settings", "weekly", "weekly_runs", "weekly_runs_combo", "周常局数"),
 }
 
 
@@ -114,6 +133,10 @@ class AutoHSRWindow:
         self.status = tk.StringVar(value="● 准备就绪")
         self.save_status = tk.StringVar()
         self.summary = tk.StringVar()
+        self.input_error = tk.StringVar()
+        self.input_error_field = None
+        self._input_error_status = None
+        self.result_alert = tk.StringVar()
         self.page_title = tk.StringVar(value="每日实训")
         self.current_task = tk.StringVar(value="等待开始")
         self.activity = tk.StringVar(value=self.status.get())
@@ -183,6 +206,10 @@ class AutoHSRWindow:
             self.last_universe_page = name
         if name not in ("logs", "settings"):
             self.action_page = name
+        self._configure_primary_action()
+        self._refresh_controls()
+
+    def _configure_primary_action(self):
         currency = getattr(self, "action_page", "home") == "currency_wars"
         differential_universe = getattr(self, "action_page", "home") == "differential_universe"
         self.start_button.configure(
@@ -190,7 +217,6 @@ class AutoHSRWindow:
                  f"开始 {self.differential_universe_runs.get()} 局自动演算" if differential_universe else "开始计划",
             command=self._currency_wars if currency else
                     (lambda: self._start(differential_universe=True)) if differential_universe else (lambda: self._start(run_plan=True)))
-        self._refresh_controls()
 
     def _show_weekly_plan(self):
         self.action_page = "home"
@@ -202,7 +228,7 @@ class AutoHSRWindow:
         return dict(weekly_enabled=self.weekly_enabled.get(),
                     weekly_mode=next(key for key, label in MODES.items() if label == self.weekly_mode.get()),
                     weekly_day=DAYS.index(self.weekly_day.get())+1,
-                    weekly_time=self.weekly_time.get().strip(), weekly_runs=int(self.weekly_runs.get()))
+                    weekly_time=self.weekly_time.get().strip(), weekly_runs=self._number("weekly_runs", int))
 
     def _refresh_plan_caption(self):
         from .weekly_plan import plan_caption
@@ -214,7 +240,8 @@ class AutoHSRWindow:
             cost = "次数待填写"
         self.daily_caption.set(f"日常 · {count} 项" + (f" · {cost}" if cost else ""))
         try:
-            self.weekly_status.set(plan_caption(replace(self.settings, **self._weekly_values())))
+            weekly = self._weekly_values() if self.weekly_enabled.get() else dict(weekly_enabled=False)
+            self.weekly_status.set(plan_caption(replace(self.settings, **weekly)))
         except (ValueError, StopIteration):
             self.weekly_status.set("周常时间或局数待填写")
         self.weekly_boundary.set("周期演算按局数完成；周积分奖励尚未接入。" if self.weekly_mode.get() == "差分宇宙" else
@@ -270,6 +297,8 @@ class AutoHSRWindow:
     def _form_changed(self, *_: Any) -> None:
         if self._loading:
             return
+        if self.input_error_field in INPUT_FIELDS and _ and str(getattr(self, INPUT_FIELDS[self.input_error_field][2])) == str(_[0]):
+            self._clear_input_error()
         if not self.settings.allow_stamina_spend and self.tasks["battle"].get():
             self.tasks["battle"].set(False)
         if not self.busy and self._has_run and self._daily_result_signature is not None and self._daily_form_signature() != self._daily_result_signature:
@@ -362,31 +391,77 @@ class AutoHSRWindow:
         if path:
             self.game_path.set(path)
 
+    def _number(self, field, convert):
+        _, _, variable, _, title = INPUT_FIELDS[field]
+        try:
+            return convert(getattr(self, variable).get())
+        except (ValueError, TypeError, OverflowError) as exc:
+            raise SettingsError(field, title+("请填写整数。" if convert is int else "请填写有效数字。")) from exc
+
+    def _clear_input_error(self):
+        self.input_error.set("")
+        self.input_error_field = None
+        if self._input_error_status is not None and self.status.get() == "● 请检查输入":
+            self.status.set(self._input_error_status)
+        self._input_error_status = None
+
+    def _focus_input_error(self):
+        if self.input_error_field not in INPUT_FIELDS or self.busy:
+            return
+        page, section, _, control, _ = INPUT_FIELDS[self.input_error_field]
+        operation_page = self.action_page
+        if (self.input_error_field == "differential_universe_team" and self.weekly_enabled.get()
+                and self.weekly_mode.get() == "差分宇宙" and operation_page in ("home", "tasks")):
+            page, section, control = "settings", "weekly", "weekly_team_entry"
+        self._show_page(page)
+        if section:
+            self.settings_tabs.select(self.settings_sections[section])
+        self.action_page = operation_page
+        self._configure_primary_action()
+        self._refresh_controls()
+        self._restore()
+        widget = getattr(self, control)
+        def focus():
+            if widget.winfo_exists():
+                widget.focus_set()
+                if hasattr(widget, "selection_range"):
+                    widget.selection_range(0, "end")
+        self.root.after_idle(focus)
+
+    def _input_failed(self, error):
+        self.input_error_field = error.field
+        self.input_error.set(str(error))
+        if self._input_error_status is None:
+            self._input_error_status = self.status.get()
+        self.status.set("● 请检查输入")
+        self._log(str(error), "error")
+        self._focus_input_error()
+
     def _read_settings(self, save=False, operation="daily") -> Settings | None:
         try:
             values = dict(game_path=self.game_path.get().strip(), overlay_logs=self.overlay_logs.get(),
                           daily_synthesis=self.daily_synthesis.get())
             if not save and operation == "dungeon_catalogue":
                 values.update(auto_launch=False, assignments=False, battle=False, daily=False, mail=False, battlepass=False,
-                              dungeon_category="auto", ocr_confidence=float(self.ocr_confidence.get()))
+                              dungeon_category="auto", ocr_confidence=self._number("ocr_confidence", float))
             elif not save and operation.startswith("currency_wars"):
                 values.update(auto_launch=False, assignments=False, battle=False, daily=False, mail=False, battlepass=False,
-                              ocr_confidence=float(self.ocr_confidence.get()))
+                              ocr_confidence=self._number("ocr_confidence", float))
             elif not save and operation == "differential_universe":
                 values.update(auto_launch=False, assignments=False, battle=False, daily=False, mail=False, battlepass=False,
-                              differential_universe_runs=int(self.differential_universe_runs.get()),
+                              differential_universe_runs=self._number("differential_universe_runs", int),
                               differential_universe_team=self.du_team.get().strip(),
                               differential_universe_mode='periodic' if self.du_mode.get()=='周期演算' else 'normal',
                               differential_universe_save=self.du_save.get(),
                               differential_universe_rewards=self.du_rewards.get(),
                               differential_universe_daily=self.du_daily.get(),
-                              action_delay=float(self.action_delay.get()), battle_timeout=int(self.battle_timeout.get()),
-                              ocr_confidence=float(self.ocr_confidence.get()))
+                              action_delay=self._number("action_delay", float), battle_timeout=self._number("battle_timeout", int),
+                              ocr_confidence=self._number("ocr_confidence", float))
             elif save or operation not in ("check", "launch"):
                 values.update(auto_launch=self.auto_launch.get(),
                               **{name: variable.get() if name != "battle" or self.settings.allow_stamina_spend else False for name, variable in self.tasks.items()})
                 if save:
-                    values.update(differential_universe_runs=int(self.differential_universe_runs.get()),
+                    values.update(differential_universe_runs=self._number("differential_universe_runs", int),
                                   differential_universe_team=self.du_team.get().strip(),
                                   differential_universe_mode='periodic' if self.du_mode.get()=='周期演算' else 'normal',
                                   differential_universe_save=self.du_save.get(),
@@ -398,17 +473,21 @@ class AutoHSRWindow:
                     values.update(assignments=False, battle=False, daily=True, mail=False, battlepass=False)
                 if values["battle"] and self.settings.allow_stamina_spend:
                     values.update(target_name=self.target_name.get().strip(), target_location=self.target_location.get().strip(),
-                                  stamina_limit=int(self.stamina_limit.get()), rounds=int(self.rounds.get()), use_support=self.use_support.get())
+                                  stamina_limit=self._number("stamina_limit", int), use_support=self.use_support.get())
                     from .dungeon_ui import selected_category
-                    values.update(dungeon_category=selected_category(self).key, challenge_count=int(self.challenge_count.get()),
-                                  rounds=min(int(self.challenge_count.get()), selected_category(self).batch))
-                values.update(action_delay=float(self.action_delay.get()), battle_timeout=int(self.battle_timeout.get()),
-                              ocr_confidence=float(self.ocr_confidence.get()))
+                    count = self._number("challenge_count", int)
+                    values.update(dungeon_category=selected_category(self).key, challenge_count=count,
+                                  rounds=max(1, min(count, selected_category(self).batch)))
+                values.update(action_delay=self._number("action_delay", float), battle_timeout=self._number("battle_timeout", int),
+                              ocr_confidence=self._number("ocr_confidence", float))
             elif operation == "check":
-                values["ocr_confidence"] = float(self.ocr_confidence.get())
+                values["ocr_confidence"] = self._number("ocr_confidence", float)
             settings = replace(self.settings, **values)
-            if save or operation in ("daily", "plan"):
+            if save:
                 settings = replace(settings, **self._weekly_values())
+            elif operation == "plan":
+                weekly = self._weekly_values() if self.weekly_enabled.get() else dict(weekly_enabled=False)
+                settings = replace(settings, **weekly)
             settings.validate("save" if save else operation)
             if save:
                 settings.save(self.config_path)
@@ -424,11 +503,15 @@ class AutoHSRWindow:
                 self._form_changed()
             else:
                 self.save_status.set("未保存" if self.dirty else ("已保存" if self.config_path.exists() else "默认设置"))
+            self._clear_input_error()
             return settings
         except (ValueError, TypeError, OSError, StopIteration) as exc:
-            self.save_status.set("输入未通过检查；配置未改变。")
-            self._log(f"输入未通过检查：{exc}", "error")
-            messagebox.showerror("请检查输入", str(exc), parent=self.root)
+            if isinstance(exc, SettingsError) and exc.field in INPUT_FIELDS:
+                self._input_failed(exc)
+            else:
+                self.save_status.set("输入未通过检查；配置未改变。")
+                self._log(f"输入未通过检查：{exc}", "error")
+                messagebox.showerror("请检查输入", str(exc), parent=self.root)
             return None
 
     def _save_settings(self) -> None:
@@ -646,6 +729,7 @@ class AutoHSRWindow:
         self._set_busy(True, True)
         self.status.set("● 正在运行")
         self.summary.set("")
+        self.result_alert.set("")
         self.output_tabs.select(0)
         self.table.selection_remove(*self.table.selection())
         if daily_operation:
@@ -812,10 +896,14 @@ class AutoHSRWindow:
     def _currency_observed(self, data: dict) -> None:
         from .currency_wars_pages import PAGE_LABELS
         if data.get('mode') == 'standard_development':
+            activity = standard_activity(data)
+            completion = "开发局胜利及结算已核实，未计独立验收" if standard_run_verified(data) else "整局未完成"
             self.currency_observation.set(
-                f"标准A8-40开发：{'已核实开局' if data.get('start_verified') else '开局待核实'} · {data.get('action_status', '观察中')}；整局未完成。"
+                f"标准A8-40开发：{'已核实开局' if data.get('start_verified') else '开局待核实'} · {activity}；{completion}。"
                 + (f"\n{data['reason']}" if data.get('reason') else '')
                 + f"\n截图：{data.get('screenshot') or '未保存'}")
+            if self.running and self.active_operation == "currency_wars_standard":
+                self.current_task.set(activity)
             if data.get('screenshot'):
                 self.last_screenshot = Path(data['screenshot'])
             return
@@ -935,6 +1023,8 @@ class AutoHSRWindow:
                 self._task(result, log=False)
         status = str(report.get("status", "partial"))
         currency = report.get("operation", self.active_operation).startswith("currency_wars")
+        standard_completed = (report.get("operation", self.active_operation) == "currency_wars_standard"
+                              and standard_run_verified(report.get("currency_wars") or {}))
         differential_universe = report.get("operation", self.active_operation) == "differential_universe"
         if not currency and report.get("daily_verified") is True:
             self._task(dict(task="daily", status="ok", detail="每日实训奖励已核实领取。"), log=False)
@@ -962,7 +1052,8 @@ class AutoHSRWindow:
                        "启动准备结束" if report.get('operation', self.active_operation) == 'currency_wars_prepare' else
                        "只读识别结束" if report.get('operation', self.active_operation) == 'currency_wars' else
                        "连续流程验证结束" if report.get('operation', self.active_operation) == 'currency_wars_flow_test' else "单步验证结束")
-            self.summary.set(f"货币战争 · {outcome} · 玩法未完成 · 自动玩法未开放" + ("\n" + recovery_text(report) if recovery_text(report) else ""))
+            completion = "开发局胜利及结算已核实 · 未计独立验收" if standard_completed else "玩法未完成 · 自动玩法未开放"
+            self.summary.set(f"货币战争 · {outcome} · {completion}" + ("\n" + recovery_text(report) if recovery_text(report) else ""))
             self.currency_status.set(self.summary.get())
             if report.get("currency_wars"):
                 self._currency_observed(report["currency_wars"])
@@ -987,6 +1078,9 @@ class AutoHSRWindow:
             message = weekly.get("message", "周常完成情况未核实")
             self.weekly_status.set(message)
             self.summary.set(self.summary.get()+"\n"+message)
+        self.result_alert.set(issue_text(report))
+        if report.get("report_saved") is False:
+            self.summary.set("报告未保存\n"+self.summary.get())
         self.history_context.set(report_context(report, Path(report["run_dir"]) / "report.json" if report.get("run_dir") else None))
         if report.get("report_saved") is False:
             self.history_context.set("本次报告未写入磁盘 · " + self.history_context.get())
@@ -1001,7 +1095,12 @@ class AutoHSRWindow:
         self._set_busy(False)
         self.focus_waiting = False
         self._refresh_recovery()
-        self.status.set(f"● {'玩法未完成' if currency and status not in ('failed', 'stopped') else STATUS_NAMES.get(status, status)}")
+        label = STATUS_NAMES.get(status, status)
+        if standard_completed and status == "success":
+            label = "开发局结算已核实"
+        elif currency and not standard_completed and status not in ("failed", "stopped"):
+            label = "玩法未完成"
+        self.status.set("● "+label)
         self._restore()
 
     def _finalize_task_rows(self, status: str) -> None:
@@ -1138,6 +1237,7 @@ class AutoHSRWindow:
                     self._set_busy(False)
                     self.status.set("● 执行失败")
                     self.summary.set(str(event.get("message", "未知错误")))
+                    self.result_alert.set(self.summary.get())
                     if kind == "run_error" and self.active_operation.startswith("currency_wars"):
                         self.currency_status.set("只读识别失败：" + self.summary.get())
                         self.currency_observation.set("本次未生成有效观察记录；自动玩法仍未开放。")

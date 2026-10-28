@@ -64,6 +64,7 @@ def build_fields(ui, parent):
     safety.pack(fill="x")
     ttk.Label(safety, text="本次开拓力上限", style="Muted.TLabel").pack(side="left")
     budget = ttk.Spinbox(safety, from_=10, to=240, increment=10, textvariable=ui.stamina_limit, width=6)
+    ui.stamina_limit_entry = budget
     budget.pack(side="left", padx=(10, 20))
     support = ttk.Checkbutton(safety, text="借用好友支援", variable=ui.use_support)
     support.pack(side="left")
