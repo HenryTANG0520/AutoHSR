@@ -10,6 +10,8 @@
 
 首次正式构建`2945e4d`已核对首页、记录和设置，发现可见文字入口仍弹出同名提示，现移除这两条重复提示，保留三个图标入口的名称提示；最终54项参考与入口检查再次通过。首次截图和构建记录以`guide-proportions-package-initial-*`保留，239份配置及运行证据哈希未变。
 
+最终源码`d73b44d`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/guide-proportions-build.log`。以`--no-admin-launch`核对首页、记录、设置及Esc返回原页面，两个文字入口不再出现重复名称浮窗，未点击保存、检测或运行。正常关闭退出码0；239份配置及运行证据哈希未变，125个UI素材、4份清单、23个上游文件逐项一致。截图为`runs/guide-proportions-package-home.png`、`guide-proportions-package-records.png`、`guide-proportions-package-settings.png`、`guide-proportions-package-return.png`；核对记录`runs/guide-proportions-package-verification.json`，备份`build/userdata-guide-proportions-20261029_061945/`。EXE SHA-256为`69d7b7d3d4e5441432508f025a2b4ac2cb0bdce8d9e958b21d6f7f2e1daa63fa`。
+
 未启动、检测或操作真实游戏。整屏逐像素一致、全屏随分辨率等比放大、真实玩家学习／注意力成本，以及日常周常组合实机仍未完成；货币战争周常与周积分领奖的未接入边界保留。
 
 ## 2026-10-29：指南场景与活跃徽章
