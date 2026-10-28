@@ -11,6 +11,8 @@
 - **84项既有GUI、55项输入反馈、45项货币结果、24项计划检查通过**，前三项日志为`runs/home-feedback-*_smoke.log`，计划日志为`runs/quiet-home-plan-ui.log`。运行、保存与日常周常交接逻辑未改。
 - **30项参考几何与交互、108个布局场景通过**，`runs/home-feedback-reference_ui_smoke.log`、`runs/home-feedback-ui_layout_smoke.log`。参考裁图仍为既有无账号图片，SHA-256为`a3e584b01eb5103c1f1ed72585d862ebcd1cce1d251b89351008c0696c380bb7`；初次调用漏传参考路径，补齐参数后通过，调用记录保存在`runs/home-feedback-reference-invocation.log`。
 
+源码`7b7f53e`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志为`runs/home-feedback-build.log`。使用`--no-admin-launch`检查正式首页和一键进入周常设置，未点击运行或检测，正常关闭退出码0；实际截图为`runs/home-feedback-package-home.png`和`home-feedback-package-weekly.png`。239份配置及运行证据哈希未变，123个UI素材、3份来源清单及23个上游文件一致；核对记录`runs/home-feedback-package-verification.json`，备份`build/userdata-home-feedback-20261029_035244/`。EXE SHA-256为`df58e84dbcb1e4eec564aa6206f57e52ae22756a20a190188ac067ab46ed38cb`。
+
 未操作真实游戏，未改变历史资源、通关或失败记录。逐像素一致与真实玩家注意力／学习成本尚未验证，货币战争周常及周积分领奖的未接入边界保留。
 
 ## 2026-10-29：货币战争结果简化与交付状态核对
