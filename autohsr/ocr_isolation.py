@@ -31,7 +31,10 @@ def _ocr_job(input_path: str, output_path: str, confidence: float):
         scene = supplement_character_tier(scene, reader)
         from .currency_wars_match import supplement_shop_fields
         scene = supplement_shop_fields(scene, reader)
-        result = dict(status="ok", tokens=[asdict(token) for token in scene.tokens])
+        from .currency_wars_node_ocr import refine_battle_node
+        scene = refine_battle_node(scene, reader)
+        result = dict(status="ok", tokens=[asdict(token) for token in scene.tokens],
+                      field_reads=field_read_payload(scene))
     except Exception as error:
         result = dict(status="error", error=f"{type(error).__name__}: {error}"[:2000])
     destination = Path(output_path)
@@ -60,6 +63,27 @@ def _tokens(result: dict) -> list[Token]:
             raise AutomationError("独立 OCR 返回了无效置信度或坐标。")
         tokens.append(Token(text, score, tuple(box)))
     return tokens
+
+
+def field_read_payload(scene):
+    return {name: [asdict(token) if token is not None else None for token in variants]
+            for name, variants in scene.field_reads.items()}
+
+
+def _field_reads(result):
+    """Validate optional field evidence from both the child and replay files."""
+    import re
+    entries = result.get('field_reads', {})
+    if not isinstance(entries, dict) or len(entries) > 32:
+        raise AutomationError('独立 OCR 返回的字段读取无效。')
+    fields = {}
+    for name, variants in entries.items():
+        if (not isinstance(name, str) or not re.fullmatch(r'[a-z][a-z0-9_.]{0,79}', name)
+                or not isinstance(variants, list) or not 1 <= len(variants) <= 8):
+            raise AutomationError('独立 OCR 返回的字段名称或读取次数无效。')
+        fields[name] = tuple(None if token is None else _tokens(dict(status='ok', tokens=[token]))[0]
+                             for token in variants)
+    return fields
 
 
 class IsolatedVision:
@@ -103,11 +127,13 @@ class IsolatedVision:
                         if destination.stat().st_size > 2 * 1024 * 1024:
                             raise AutomationError("独立 OCR 结果超过大小限制。")
                         try:
-                            tokens = _tokens(json.loads(destination.read_text(encoding="utf-8")))
+                            result = json.loads(destination.read_text(encoding="utf-8"))
+                            tokens = _tokens(result)
+                            fields = _field_reads(result)
                         except (ValueError, OSError) as error:
                             raise AutomationError(f"独立 OCR 结果无法读取：{error}") from error
                         self.checkpoint()
-                        return Scene(tokens, image, geometry, captured_at)
+                        return Scene(tokens, image, geometry, captured_at, fields)
                     process.join(.05)
             finally:
                 if process is not None:

@@ -10,10 +10,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .models import AutomationError, Scene
-from .ocr_isolation import IsolatedVision, _tokens
+from .ocr_isolation import IsolatedVision, _tokens, _field_reads, field_read_payload
 
 STAGES = ("unclassified", "entry", "guide_before", "guide_after", "tutorial", "economy", "feedback", "recovery", "ending")
-FIELDS = {"schema_version", "origin", "image", "sha256", "recorded_at", "dimensions", "game_version", "language", "stage", "tokens", "expected_mode_text_visible"}
+FIELDS = {"schema_version", "origin", "image", "sha256", "recorded_at", "dimensions", "game_version", "language", "stage", "tokens", "expected_mode_text_visible", "field_reads"}
 
 
 def save_sample(scene: Scene, screenshot: Path, *, origin="unverified_capture", stage="unclassified") -> Path:
@@ -24,6 +24,8 @@ def save_sample(scene: Scene, screenshot: Path, *, origin="unverified_capture", 
                    recorded_at=datetime.now(timezone.utc).isoformat(), dimensions=[width, height],
                    game_version="unverified", language="unverified", stage=stage,
                    tokens=[asdict(token) for token in scene.tokens])
+    if scene.field_reads:
+        payload['field_reads'] = field_read_payload(scene)
     destination = screenshot.with_suffix(".sample.json")
     temporary = destination.with_suffix(".tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
@@ -73,8 +75,9 @@ def load_sample(path: Path) -> tuple[dict, Scene]:
                 raise ValueError("PNG 格式、像素尺寸或尺寸记录无效")
             image = np.asarray(bitmap.convert("RGB"))[:, :, ::-1].copy()
         tokens = _tokens(dict(status="ok", tokens=data.get("tokens")))
+        fields = _field_reads(data)
         # Recorded monotonic timestamps are never accepted as current live frames.
-        return data, Scene(tokens, image=image, captured_at=0)
+        return data, Scene(tokens, image=image, captured_at=0, field_reads=fields)
     except (ValueError, OSError) as error:
         raise AutomationError(f"货币战争样本无效：{error}") from error
 
@@ -88,10 +91,12 @@ def replay_sample(path: Path, *, reocr=False) -> dict:
     decision = decide(observation)
     from .currency_wars_match import read_match
     match = read_match(ocr_scene, .65)
+    from .currency_wars_node import battle_node
     expected = data.get("expected_mode_text_visible")
     return dict(operation="currency_wars_replay", status="replayed", origin=data["origin"], stage=data["stage"],
                 sample=str(Path(path).resolve()), reocr=bool(reocr), game_accessed=False,
                 recorded_mode_text_visible=recorded.mode_text_visible,
                 observation=asdict(observation), decision=asdict(decision),
                 match=asdict(match) if match else None,
+                recorded_battle_node=battle_node(scene), battle_node=battle_node(ocr_scene),
                 expectation_passed=None if expected is None else expected == observation.mode_text_visible)

@@ -34,6 +34,9 @@ class Scene:
     image: object = None
     geometry: object = None
     captured_at: float = 0
+    # Named, bounded field reads retain their raw variants separately from
+    # full-screen OCR. An attempted but unreadable field contains None.
+    field_reads: dict[str, tuple[Token | None, ...]] = field(default_factory=dict)
 
     @property
     def text(self) -> str:

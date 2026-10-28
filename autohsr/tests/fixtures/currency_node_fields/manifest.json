@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "roi": [
+    0.3,
+    0,
+    0.42,
+    0.06
+  ],
+  "cases": [
+    {
+      "image": "calibration_1_1.png",
+      "group": "calibration",
+      "source": "20261026_122119_954604/122259_133583_currency_standard_node_unknown.sample.json",
+      "source_sha256": "7775906a35ae7e637867130ac59bb524626bac4e8e759200aa8b7299d0d8d7b4",
+      "sha256": "de3c2f579e1b8f473a5170be5c89c02f075d8090cb850cdc7f6168277ebf7b77",
+      "dimensions": [
+        3840,
+        2160
+      ],
+      "crop": [
+        1152,
+        0,
+        1613,
+        130
+      ],
+      "game_version": "unverified",
+      "expected": "1-1"
+    },
+    {
+      "image": "neighbor_1_1.png",
+      "group": "neighbor_replay",
+      "source": "20261026_122119_954604/122254_546908_currency_standard_after_start_standard_node.sample.json",
+      "source_sha256": "511a8b42a5dcac6177f2ed5ecb283878024e32e219d78a266ae34cb225a71077",
+      "sha256": "818e39a628040d6a83dd8fe2a0187266815b9ecd4e651c50fd10cd7886f058f3",
+      "dimensions": [
+        3840,
+        2160
+      ],
+      "crop": [
+        1152,
+        0,
+        1613,
+        130
+      ],
+      "game_version": "unverified",
+      "expected": "1-1"
+    },
+    {
+      "image": "node_1_2.png",
+      "group": "prior_run_replay",
+      "source": "currency-wars-live-20261018-rules/127-node-1-2-battle.sample.json",
+      "source_sha256": "9dadb918f446c107a1d32b20dce05939364f656b8aa6fd5c83348d90ba9c5571",
+      "sha256": "5af4a956de0ef9ef03a2f62d75e096c9373a84a8ebff84d0a6a1b2157d130215",
+      "dimensions": [
+        2560,
+        1440
+      ],
+      "crop": [
+        768,
+        0,
+        1075,
+        86
+      ],
+      "game_version": "CNPRODWin4.6.0_D16781997_A16781679_L16781679",
+      "expected": "1-2"
+    },
+    {
+      "image": "node_1_6.png",
+      "group": "prior_run_replay",
+      "source": "currency-wars-live-20261018-rules/147-boss-battle-by-autohsr.sample.json",
+      "source_sha256": "75530c6d04a42f6f615ef5a256e95140176c4e17fcfd8692d3e05925a80337cd",
+      "sha256": "7efd718b62ae86b62ac68abd1110d68e5dcc626d6010a3f39cf2ea99391e853f",
+      "dimensions": [
+        2560,
+        1440
+      ],
+      "crop": [
+        768,
+        0,
+        1075,
+        86
+      ],
+      "game_version": "CNPRODWin4.6.0_D16781997_A16781679_L16781679",
+      "expected": "1-6"
+    },
+    {
+      "image": "node_2_1.png",
+      "group": "prior_run_replay",
+      "source": "currency-wars-live-20261018-rules/156-auto-loot-and-battle-2-1.sample.json",
+      "source_sha256": "6f57b2cddf44472349dc7ebe0a4a64414e77e3da45149ad7c9534f95f0afe1ae",
+      "sha256": "17d8c3e331da395693538cf6fc46b9684ef74c02e6a63ad8ad426690b45b39c4",
+      "dimensions": [
+        2560,
+        1440
+      ],
+      "crop": [
+        768,
+        0,
+        1075,
+        86
+      ],
+      "game_version": "CNPRODWin4.6.0_D16781997_A16781679_L16781679",
+      "expected": "2-1"
+    }
+  ]
+}
