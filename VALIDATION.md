@@ -13,6 +13,8 @@
 
 随后合入主分支装备更新`9a38fa9`，保留两边新增的素材署名；界面区分仓库变化后的“核验角色装备”、实际穿戴与返回均确认后的“装备已核实”及“角色装备不符”，不能把这些状态当作整局完成。同步现有局内交易和装备合成的必要提示。集成后**1151项单元测试、84项假后端GUI及84个布局场景通过**，见`runs/survival-integrated-unit.log`、`runs/survival-integrated-gui.log`、`runs/survival-integrated-layout.log`。
 
+源码`dffe0bb`已通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。以`--no-admin-launch`打开正式打包入口，用Computer Use检查生存索引和分类切换，已选目标、次数、费用与“已保存”状态保持不变，随后正常关闭，退出码0。**239份既有配置与运行证据哈希不变**；121个UI图像／字体、2份UI来源清单、23个上游素材与许可文件均与源码一致。记录为`runs/survival-package-verification.json`，预览为`runs/survival-package.png`、`runs/survival-package-browsing.png`，构建日志为`runs/survival-integrated-build.log`；数据备份位于`build/userdata-survival-20261029_023101/`。EXE SHA-256：`7d1f34c2d955b84758c919a5e0bb3c399fffdad1e323197204dcce90f1830470`。
+
 本轮没有启动、检测或操作真实游戏；完整游戏画面的逐像素一致、实际玩家学习成本、日常与周常组合实机、货币战争周常及周积分领奖仍未证明完成。历史失败、账单和通关计数保持原样。
 
 ## 2026-10-29：按实机指南校准首页比例与横向任务提示
