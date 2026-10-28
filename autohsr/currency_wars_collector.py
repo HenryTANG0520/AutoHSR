@@ -163,7 +163,7 @@ def session_snapshot(snapshot, session, epoch, source):
     return replace(snapshot,**known,evidence=snapshot.evidence+tuple(FactEvidence(name,sources.get(name,source),epoch) for name in known))
 
 
-def collected_snapshot(scene, session, epoch, source, confidence=.65):
+def collected_snapshot(scene, session, epoch, source, confidence=.65, *, allow_reward_items=False):
     """Publish a complete roster only when every current slot is accounted for."""
     from dataclasses import replace
     from .currency_wars_state import snapshot_from_scene, UnitState, FactEvidence
@@ -180,7 +180,8 @@ def collected_snapshot(scene, session, epoch, source, confidence=.65):
     units = []
     for cell in cells:
         if cell.state == 'reward':
-            return snapshot
+            if not allow_reward_items:return snapshot
+            continue  # Explicit origin-only view; ordinary battle/trading stays incomplete.
         if cell.state != 'occupied':
             continue
         record = collection.get('units',{}).get(cell.zone+':'+str(cell.slot))

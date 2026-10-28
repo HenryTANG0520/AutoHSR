@@ -208,6 +208,9 @@ class Context:
             route = ((plan.start[0],.735),(plan.end[0],.735)) if plan.zone=='back' or getattr(plan,'source_zone',None)=='back' else ()
             self._dispatch_drag(scene,plan.start,plan.end,route=route)
             return
+        if choice.intent=='open_standard_bench_reward':
+            self._currency_open_reward_held(scene,choice.payload[1])
+            return
         self.last_scene, self._scroll_anchor = None, None
         try:
             self.window.click(*choice.target.center, scene.geometry)
@@ -1031,6 +1034,10 @@ class Context:
         current,_=open_reward_target(scene,self.settings.ocr_confidence)
         if current!=slot:
             raise AutomationError('备战物品目标已改变。')
+        return self._currency_open_reward_held(scene,slot)
+
+    def _currency_open_reward_held(self,scene,slot):
+        from .currency_wars_deployment import _BENCH_CENTERS
         epoch=self.scene_epoch
         self.last_scene,self._scroll_anchor=None,None
         def held_checkpoint():

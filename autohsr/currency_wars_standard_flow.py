@@ -11,7 +11,7 @@ from .currency_wars_prepare import trusted
 from .currency_wars_session import StandardSession
 from .currency_wars_standard import difficulty_page, selected_rank
 from .models import AutomationError, EmptyCapture, TaskResult
-from .models import Token
+from .models import Token, normalize
 
 
 @dataclass(frozen=True)
@@ -49,6 +49,10 @@ def _next_action(scene, confidence=.65, *, session=None):
     verification = active_action(scene, session or {}, confidence)
     if verification is not None:
         return verification
+    from .currency_wars_standard_rewards import active_action as reward_action
+    reward = reward_action(scene,session or {},confidence)
+    if reward is not None:
+        return reward
     clean = trusted(scene, confidence)
     if difficulty_page(scene, confidence) and selected_rank(scene, confidence) == 40:
         return StandardAction('start_standard_a8_40', 'boss_preview',
@@ -95,13 +99,24 @@ def _next_action(scene, confidence=.65, *, session=None):
                               payload=(expected_board,) if expected_board else ())
     if kind == 'preparation':
         from .currency_wars_node import loot_centers
+        from .currency_wars_collector import first_unit_probe
+        if (session or {}).get('strategy') in ('aglaea','seele') and (loot_centers(scene) or any(
+                normalize(t.text)=='开启' and t.within((.18,.78,.80,.92)) for t in clean.tokens)):
+            probe = first_unit_probe(scene,confidence,session.get('collection',{}).get('units'))
+            if probe is not None:
+                cell,target = probe
+                return StandardAction('inspect_standard_unit','character',target,
+                                      payload=(cell.zone,cell.slot,cell.node,cell.signature))
+        if 'strategy' in (session or {}):
+            from .currency_wars_standard_rewards import open_bench_action
+            opening = open_bench_action(scene,session,confidence)
+            if opening is not None:return opening
         from .currency_wars_loot import loot_target
         if loot_centers(scene):
             x, y, radius = loot_target(scene, confidence)
             return StandardAction('collect_standard_loot', 'loot_collected',
                                   Token('已核实奖励晶矿', 1., (x-radius,y-radius*16/9,x+radius,y+radius*16/9)),
                                   payload=(x,y,radius))
-        from .currency_wars_collector import first_unit_probe
         probe = first_unit_probe(scene, confidence, (session or {}).get('collection',{}).get('units'))
         if probe is None:
             from .currency_wars_standard_market import open_standard_shop
@@ -175,6 +190,18 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None, session=None):
+    if choice.expected=='standard_reward_opened':
+        from .currency_wars_standard_rewards import PAGES
+        from .currency_wars_match import read_match
+        state = read_match(scene,confidence,include_rewards=True)
+        return bool(state and state.page in PAGES-{'supply_selection'} and state.node==choice.payload[0])
+    if choice.expected in ('standard_reward_returned','standard_supply_selected'):
+        from .currency_wars_standard_rewards import feedback
+        return before is not None and session is not None and feedback(choice,before,scene,session,confidence)
+    if choice.expected=='standard_reward_unit_board':
+        from .currency_wars_standard_rewards import board_ready
+        try:return session is not None and board_ready(scene,session['reward'],confidence)
+        except AutomationError:return False
     if choice.expected == 'standard_equipment_inspectable':
         from .currency_wars_standard_equipment import inspectable
         return before is not None and inspectable(choice,before,scene,confidence)
@@ -240,7 +267,13 @@ def transition_ready(choice, scene, confidence=.65, *, before=None, session=None
                     and state.hp in (None,hp))
     if choice.expected == 'loot_collected':
         from .currency_wars_loot import loot_feedback
-        return before is not None and loot_feedback(before, scene, choice.payload, confidence) in ('disappeared','choice_opened')
+        result = loot_feedback(before,scene,choice.payload,confidence) if before is not None else None
+        if result=='choice_opened' and session is not None:
+            from .currency_wars_match import read_match
+            source = session.get('actions',[{}])[-1].get('reward_basis')
+            state = read_match(scene,confidence,include_rewards=True)
+            if source and (not state or state.node!=source['node']):return False
+        return result in ('disappeared','choice_opened')
     if choice.expected.startswith('environment_selected_'):
         from .currency_wars_environment import standard_environment_choice, standard_environment_confirm
         try:
@@ -340,10 +373,17 @@ def run_standard(c):
             except AutomationError:
                 collection['complete'] = False
             store.persist()
+            from .currency_wars_standard_rewards import verify_unit
+            verifying_reward = store.data.get('reward',{}).get('status')=='unit_verifying'
+            problem = verify_unit(store.data,scene,c.runner.input_epoch,c.settings.ocr_confidence)
+            store.persist()
+            if problem:raise AutomationError(problem)
+            if verifying_reward and store.data.get('reward',{}).get('status')=='verified':c.checkpoint()
         from .currency_wars_standard_exchange import panel_stale, record_profile
         from .currency_wars_standard_sale import stale as sale_stale
         from .currency_wars_standard_equipment import panel_stale as equipment_stale, record_profile as equipment_profile
-        if kind == 'character' and not panel_stale(store.data) and not sale_stale(store.data) and not equipment_stale(store.data):
+        from .currency_wars_standard_rewards import panel_stale as reward_stale
+        if kind == 'character' and not panel_stale(store.data) and not sale_stale(store.data) and not equipment_stale(store.data) and not reward_stale(store.data):
             from .currency_wars_collector import owned_profile
             try:
                 profile = owned_profile(scene,store.data.get('inspecting'),c.settings.ocr_confidence)
@@ -411,6 +451,10 @@ def run_standard(c):
             action['decision'] = dict(name=choice.details[0],item=choice.details[1],expected=list(choice.details[2]),
                                       reason=choice.details[3],policy=choice.details[4])
             store.persist()
+        elif choice.intent in ('choose_standard_reward','select_standard_supply','confirm_standard_supply'):
+            action['decision'] = dict(name=choice.details[0],item=choice.details[1],unit=choice.details[2],
+                                      gold=choice.details[3],policy=choice.details[4])
+            store.persist()
         elif choice.details:
             action['decision'] = dict(name=choice.details[0], kind=choice.details[1], effect=choice.details[2],
                                       parameters=dict(choice.details[3]), score=choice.details[4],
@@ -438,6 +482,10 @@ def run_standard(c):
             store.data['node_attempt'] = dict(node=choice.payload[0],start_action_id=action['id'],
                                               status='start_pending',node_verified=False,battle_observed=False)
             store.persist()
+        if choice.intent in ('start_standard_node','collect_standard_loot','open_standard_bench_reward'):
+            from .currency_wars_standard_rewards import bind_source
+            bind_source(store.data,choice,scene,c.settings.ocr_confidence)
+            store.persist()
         c.report.currency_wars = store.data
         c.log('标准A8-40开发：' + choice.intent)
         c.currency_standard_input(scene, choice)
@@ -462,7 +510,8 @@ def run_standard(c):
                 stable = stable+1 if ready else 0
                 required = 2 if choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable',
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
-                                                    'standard_sale_panel','standard_owned_sold','standard_equipment_inspectable') else 1
+                                                    'standard_sale_panel','standard_owned_sold','standard_equipment_inspectable',
+                                                    'standard_reward_returned','standard_supply_selected') else 1
                 if stable >= required:
                     after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
                     if choice.intent in FINANCIAL_ACTIONS:
@@ -484,7 +533,7 @@ def run_standard(c):
                         store.data.pop('expected_board', None)
                     if choice.intent == 'start_standard_node':
                         store.data['node_attempt']['status']='observing'
-                    if choice.intent in ('inspect_standard_unit','inspect_standard_exchange_unit','inspect_standard_equipment_unit'):
+                    if choice.intent in ('inspect_standard_unit','inspect_standard_exchange_unit','inspect_standard_equipment_unit','inspect_standard_reward_unit'):
                         store.data['inspecting'] = dict(zone=choice.payload[0],slot=choice.payload[1],
                                                         node=choice.payload[2],signature=choice.payload[3],
                                                         input_epoch=c.runner.input_epoch,
@@ -510,6 +559,10 @@ def run_standard(c):
                         record['recommendations'] = list(names)
                         record['equipment_recipes'] = list(recipes)
                         record['recommendations_source'] = after_path
+                    elif choice.intent in ('close_standard_reward_unit','close_standard_reward_stale_panel'):
+                        if choice.intent=='close_standard_reward_stale_panel':
+                            store.data.pop('inspecting',None)
+                            store.data.pop('collection',None)
                     elif choice.intent == 'inspect_standard_sale_unit':
                         store.data['inspecting'] = dict(zone='bench',slot=choice.payload[4],node=choice.payload[0],
                                                         signature=choice.payload[8],input_epoch=c.runner.input_epoch,
@@ -537,6 +590,10 @@ def run_standard(c):
                             nodes.append(choice.payload[0])
                     from .currency_wars_standard_progress import progress_verified
                     progress_verified(store.data, choice, after, c.settings.ocr_confidence)
+                    from .currency_wars_standard_rewards import enter, returned
+                    enter(store.data,choice,after,c.settings.ocr_confidence)
+                    if choice.intent in ('choose_standard_reward','confirm_standard_supply'):
+                        returned(store.data,choice,after,c.settings.ocr_confidence)
                     store.persist()
                     scene = after
                     break

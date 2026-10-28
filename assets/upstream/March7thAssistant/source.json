@@ -79,6 +79,11 @@
       "path": "autohsr/currency_wars_standard_equipment.py",
       "reference_functions": ["equip_aglaea", "equip_seele", "equip_weapons", "_equip_single_character"],
       "kind": "core-priority gear and observed-recipe assignment adapted to one durable material input followed by actual worn-result inspection; no blind counters, fallback choice or repeated drag"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_rewards.py",
+      "reference_functions": ["check_box", "_check_equipment_box", "_check_expert_invitation", "check_supply_phase"],
+      "kind": "native typed reward custody, observed cash amount, paired supply selection and separate confirmation; inventory and independently recollected unit delivery verified before clearing the reward ledger"
     }
   ]
 }
