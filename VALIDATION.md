@@ -4,13 +4,15 @@
 
 最大化、还原和调整比例时，新界面在旧界面下面完成布局与绘制，再释放旧控件和图片。旧主按钮不再先销毁；后台线程、计划和状态继续复用。场景背景直接使用已缓存的目标尺寸图片，移除二次放大缩小和重复书页绘制；更新画布图片时先关联新图片，再释放上一张。搜索框销毁时清理自身变量上的回调，避免新旧控件短暂共存时清理错变量。
 
-- **45项过渡检查通过**，`runs/transition-swap-ui.log`、`runs/resize-transition-ui/result.json`。100%、150%、200%下自动响应最大化和还原；在旧控件即将释放的时刻，检查旧主按钮仍完整映射、旧主题图片仍存在、旧界面仍在最上层、新主按钮与书页绘制已就绪，切换后旧控件释放且配置未写入。
+- **45项过渡检查通过**，`runs/transition-swap-ui.log`。100%、150%、200%下自动响应最大化和还原；在旧控件即将释放的时刻，检查旧主按钮仍完整映射、旧主题图片仍存在、旧界面仍在最上层、新主按钮与书页绘制已就绪，切换后旧控件释放且配置未写入。
 - **93项缩放交互检查通过**，`runs/transition-responsive-ui-retry.log`。草稿、当前设置页、编辑位置、搜索、结果、日志、队列、暂停停止、下拉菜单及对话框归属保持，反复切换后图片和根窗口回调数量有界。首次回归暴露的搜索回调清理错误保留在`runs/transition-responsive-ui.log`，修复后重测通过。
 - **156个布局场景、15项布局交互、84项GUI、63项背景和54项参考检查通过**，`runs/transition-ui_layout_smoke.log`、`transition-stage-gui.log`、`transition-guide_backdrop_smoke.log`、`transition-reference.log`。使用假后端与临时配置；本轮未启动、检测或操作游戏。
 
 首次正式构建`30732df`核对首页与最大化时发现：旧控件保留期间，Tk会复用缓存的点数字体，按钮与部分输入文字没有随新界面放大。原截图保留为`runs/transition-package-maximized.png`及`transition-package-maximized-settled.png`；此构建正常关闭，239份用户文件哈希未变。已改为按当前比例提供明确的像素字号，覆盖按钮、设置值、日志、下拉列表与键盘提示。原测试新建Font对象测量，绕过了已有字体缓存；现直接测量控件使用的字体，新回归在恢复旧点数字体时确实失败，见`runs/transition-point-font-regression.log`。修正后的**51项切换与字号检查通过**，`runs/transition-font-swap.log`。
 
 字号修正后，**93项缩放交互、156个布局场景与15项布局交互、123项设置及54项参考检查再次通过**，最终日志为`runs/transition-final-responsive_ui_smoke.log`、`transition-final-ui_layout_smoke.log`、`transition-final-settings_ui_smoke.log`及`transition-final-reference.log`。已查看最终假后端最大化画面，主按钮、周常入口与文字比例完整。
+
+最终源码`56d7d2e`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/transition-final-build.log`。以`--no-admin-launch`检查首页、最大化、周常设置、还原保留设置分类、Esc返回和正常关闭，退出码0；所查看的最大化画面中主按钮、导航及原生文字比例完整。未点击保存、检测或运行；239份配置及运行证据哈希未变，125个UI素材、4份清单、23个上游文件一致。核对记录`runs/transition-final-package-verification.json`，备份`build/userdata-transition-final-20261029_074758/`；EXE SHA-256为`5233ad2ede4d22132fa6240aa9f2df08679337ffa70f070807172126f650f179`。正式截图为`runs/transition-final-package-home.png`、`transition-final-package-maximized.png`、`transition-final-package-weekly.png`、`transition-final-package-restored.png`及`transition-final-package-return.png`，最终离线切换结果与截图归档为`runs/transition-final-resize-ui/`、`runs/transition-final-responsive-ui/`。
 
 先前停绘／画面缓存试验在慢速模拟中仍出现黑边或缺失控件，未采用；原中间帧继续保留。最终实现保留实际控件，不截取桌面或缓存窗口截图。字号修正后的离线自动切换本机计时为1.9～3.2秒，不能宣称即时缩放；上述结构与布局检查也不等于连续画面的无闪烁验收。整屏逐像素一致、真实玩家学习／注意力成本和日常周常组合实机仍未验收，货币战争周常与周积分领奖尚未接入。
 
