@@ -179,6 +179,27 @@ class ReceiptTests(unittest.TestCase):
 
 
 class GuardTests(unittest.TestCase):
+    def test_real_runner_checks_receipt_before_starting_workflow(self):
+        from autohsr.app import Runner
+        from autohsr.models import TaskResult
+        from autohsr.tests.test_runner_recovery import RunnerRecoveryTests
+        for outcome in (False, True, AutomationError("待核对")):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                context, _ = RunnerRecoveryTests.fixture(self, root, Mock())
+                settings = Settings(overlay_logs=False)
+                guard = WeeklyGuard(root/"runs", settings, weekly_slot(settings))
+                options = dict(side_effect=outcome) if isinstance(outcome, Exception) else dict(return_value=outcome)
+                with patch.object(guard, "prepare", **options) as prepare, \
+                        patch.object(Runner, "_prepare_daily_game") as startup, \
+                        patch("autohsr.differential_universe.DifferentialUniverseWorkflow") as workflow:
+                    workflow.return_value.run.return_value = TaskResult("differential_universe", "ok", "模拟返回")
+                    report = Runner(settings, operation="differential_universe", weekly_plan=guard).run()
+                startup.assert_called_once()
+                prepare.assert_called_once_with(context)
+                self.assertEqual(workflow.call_count, 1 if outcome is True else 0)
+                self.assertEqual(report.status, "failed" if isinstance(outcome, Exception) else "success")
+
     def test_account_is_rechecked_after_navigation_before_any_intent(self):
         with tempfile.TemporaryDirectory() as tmp:
             settings = Settings(weekly_enabled=True)

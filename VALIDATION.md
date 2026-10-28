@@ -13,6 +13,8 @@
 - **72个布局场景通过**，`runs/weekly-plan-layout.log`，覆盖100%、150%、200%与默认/最小窗口、全部页面及新增周常设置。界面截图在`runs/plan-ui/`和`runs/ui-layout/`。
 - `tools/build.ps1`工作区构建通过，日志`runs/weekly-plan-build.log`；CLI帮助和`git diff --check`通过。
 
+合入主分支节点修复`7fd5885`后，增加真实Runner调用周常门禁的离线检查，**1063项单元测试、78项假后端GUI检查通过**，见`runs/weekly-plan-integrated-unit.log`、`runs/weekly-plan-integrated-gui.log`。重新通过`tools/build.ps1`构建集成版本，`runs/weekly-plan-integrated-build.log`；已更新原`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，只用`--no-admin-launch`打开桌面核实渲染并正常关闭，退出码0。原打包版**239份配置与运行证据SHA-256全部不变**，17个UI素材与源码一致，记录`runs/weekly-plan-package-verification.json`，备份为`build/userdata-weekly-20261028_234135/`，截图`runs/weekly-plan-package.png`。未把另一开发任务当前未提交的后端代码打入此版本。
+
 本次没有启动、检测或操作真实游戏，没有消耗资源。组合路径未实机验收；差分“本周局数已完成”不代表周积分奖励完成。货币战争周积分与完整自动玩法尚未接入计划，选择它时仅执行日常并保留周常未完成状态。未新增定时器、系统唤醒或管理员任务；旧货币战争独立验收仍为0/10。
 
 ## 2026-10-28：按实际指南素材复刻并精简界面文案

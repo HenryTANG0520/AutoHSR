@@ -8,6 +8,8 @@
 
 重启保留全部历史记录，不把未完成实验视为已交付。2026年10月26日停更时，货币战争标准A8-40无人接管整局验收为 **0/10**；最后的节点出战与观察实验已进入1-1战斗，但节点OCR误识别导致观察中止，尚未修复或验收。旧十场目标和旧开发局不因项目重启自动接续，详细状态见[停更记录](docs/currency-wars-validation.md#停止开发记录)。
 
+10月28日已离线修复节点字段识别并接通标准结算推进；尚未实机验收整局，历史计数不变，详见[货币战争开发记录](docs/currency-wars-development.md)。
+
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-blue)](#运行条件)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)](#安装与启动)
