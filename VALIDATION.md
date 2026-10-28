@@ -13,6 +13,10 @@
 
 本轮还核对源码启动的DPI：实际客户区2305×1297、系统DPI适配已生效，同一窗口经桌面截图工具返回1539×896（含标题栏）。证据`runs/guide-dpi-source.json`、`guide-dpi-source-cua.png`说明该截图经过缩小，不能仅据截图判定程序DPI失效；本次未修改DPI入口。
 
+源码`855dbac`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/responsive-build.log`。以`--no-admin-launch`核对首页、最大化、周常设置、还原保留设置分类、Esc返回及正常关闭，退出码0；未点击保存、检测或运行。239份配置及运行证据哈希未变，125个UI素材、4份清单、23个上游文件一致。核对记录`runs/responsive-package-verification.json`，备份`build/userdata-responsive-20261029_065718/`，EXE SHA-256为`e87cf8e772cf235d729b20ec57f09a21a1bd62fdfff70a1d07ef0b286d980a58`。正式截图为`runs/responsive-package-home.png`、`responsive-package-maximized-settled.png`、`responsive-package-weekly.png`、`responsive-package-restored.png`和`responsive-package-return.png`。
+
+首次最大化捕获了重绘中间帧：页签与主按钮暂未绘出，辅助功能树暂不可用；没有重新发出最大化操作，再次读取同一窗口后全部入口完整。中间帧保留为`runs/responsive-package-maximized.png`，不能用稳定帧宣称无闪烁过渡；缩放过渡仍待优化。
+
 未启动、检测或操作真实游戏。真实玩家的学习／注意力成本、整屏逐像素一致和日常周常组合实机仍未验收；货币战争周常与周积分领奖尚未接入。
 
 ## 2026-10-29：指南比例与可见入口名称
