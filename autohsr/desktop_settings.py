@@ -51,8 +51,7 @@ class SettingsShell(Surface):
             button.bind("<Right>", lambda event, index=index: self.move(index, 1))
             self.buttons[key] = button
         p = t.Painter(d(36), d(36), scale, t.BG)
-        for sx, sy in ((-1, -1), (-1, 1), (1, -1), (1, 1)):
-            p.line((18+sx*4, 18+sy*4, 18+sx*13, 18+sy*13), t.LIGHT, 2)
+        p.asset("guide/close.png", (2, 2, 34, 34))
         self.close_photo = ImageTk.PhotoImage(p.finish(), master=self)
         self.back = ttk.Button(self, text="返回", image=self.close_photo, style="Settings.Close.TButton", command=ui._leave_settings)
         self.bind("<Configure>", self.position, add="+")

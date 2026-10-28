@@ -16,12 +16,15 @@
 | `hsr-sc.ttf` | 客户端`StreamingAssets/MiHoYoSDKRes/HttpServerResources/font/zh-cn.ttf`原样复制，内部家族名`SDK_SC_Web` |
 | `survival/*.png` | 2026-10-20既有生存索引采集记录中的104条目录对应掉落图标或首领徽章，按行核对名称、地点和分类后裁切；不含玩家头像、余额或整图 |
 | `universe/du.png`、`universe/cw.png` | 2026-10-24、26日既有旷宇纷争参考中的静态入口插图；移除原等级、倒计时、赛季、奖励预览及按钮，用运行时计划与动作替代 |
+| `guide/backdrop.png`、`guide/close.png` | 既有每日实训参考的模糊场景与静态关闭符号；背景中的指南、文字和整个底部HUD区域移除，遮挡处用邻近颜色插值 |
 
 [sources.json](sources.json)逐项记录来源、源文件SHA-256、归一化坐标、变换、输出SHA-256及权利信息。没有包含UID、账号指纹、安装绝对路径或完整游戏画面。运行时只加载这些静态资源，不读取游戏安装目录。
 
 生存索引素材单独列在[survival/sources.json](survival/sources.json)，以分类、名称、地点三项绑定，保留原图相对标识、哈希、归一化裁切坐标和输出哈希。使用[prepare_survival_assets.py](../../tools/prepare_survival_assets.py)并提供既有目录采集文件夹可重现；脚本只读取PNG及配套OCR记录，不操作游戏。新目录项没有对应图标时使用通用生存索引标记，不借用其他副本的掉落图。未迁入上游图像库；这批新增游戏美术同样不纳入原创代码的GPL许可。
 
 旷宇纷争素材见[universe/sources.json](universe/sources.json)，记录源图哈希、1920×1080归一化坐标、整块移除范围、中央数字连通域蒙版及输出哈希。[prepare_universe_assets.py](../../tools/prepare_universe_assets.py)接收`--du`和`--cw`两张既有原图，裁出966×639入口；被旧状态遮挡的部分使用OpenCV Telea局部颜色延展，未调用生成模型。这些补全区域并非原始背景像素，仍有纹理差异。插图按比例显示，文字、按钮、禁用和键盘焦点实时绘制；不能称为整屏逐像素相同。完整原图不分发，没有读取当前游戏画面。
+
+指南场景与关闭符号见[guide/sources.json](guide/sources.json)。[prepare_guide_backdrop.py](../../tools/prepare_guide_backdrop.py)仅接受已核对SHA-256的`--daily`原图，移除标题、指南、关闭符号和整个底部HUD，缩小至240×135后插值并在蒙版内侧羽化8像素，蒙版外像素保留；关闭符号另从静态区域提取透明度。被指南遮挡的场景是颜色重建，不是恢复出的原始游戏景物。桌面按比例裁切场景，标题、指南外缘和周常按钮共用根窗口坐标；底栏和设置页保留深色。活跃徽章的四向尖角、点状边缘和内部放射纹由代码按参考重绘，数值与领取状态仍来自本次核实结果。
 
 可用[prepare_guide_assets.py](https://github.com/HenryTANG0520/AutoHSR/blob/main/tools/prepare_guide_assets.py)的`--daily`、`--guide`、`--universe`、`--font`参数提供对应本地原始文件，重新生成素材。字体采用进程私有注册，不安装到Windows字体目录；Pillow绘图也使用同一字体文件。
 

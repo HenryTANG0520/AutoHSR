@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-29",
+  "assets": {
+    "backdrop.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL",
+      "excluded_rectangles": [
+        [
+          22,
+          24,
+          282,
+          120
+        ],
+        [
+          1816,
+          24,
+          1906,
+          114
+        ],
+        [
+          140,
+          140,
+          1826,
+          1008
+        ],
+        [
+          0,
+          1008,
+          1920,
+          1080
+        ]
+      ],
+      "transform": "Visible background retained; foreground mask interpolated at 240x135 with 3px Telea, bicubic upsampled, then feathered 8px inside the padded mask; masked pixels are reconstruction, not original scenery",
+      "sha256": "5084f39af9aab3c8799285e332a72ba03c9e6f0679ae53932093738904fa73e6"
+    },
+    "close.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL",
+      "crop": [
+        1838,
+        43,
+        1884,
+        89
+      ],
+      "transform": "White static glyph extracted by luminance alpha; dark background removed",
+      "sha256": "c42d1b3de850b24453477d391400f1548e6490af08e16b470dbb2e586ded2298"
+    }
+  }
+}

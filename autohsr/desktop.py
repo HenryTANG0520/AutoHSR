@@ -4,7 +4,7 @@ from __future__ import annotations
 from tkinter import ttk
 
 from . import theme as t
-from .game_widgets import ActivityStrip, Guide, Header, SummaryStrip, TaskBoard, TrainingMeter
+from .game_widgets import ActivityStrip, Backdrop, Guide, Header, SummaryStrip, TaskBoard, TrainingMeter
 
 PAGE_TITLES = {"home": "每日实训", "tasks": "生存索引", "differential_universe": "旷宇纷争",
                "currency_wars": "旷宇纷争", "logs": "运行记录", "settings": "设置"}
@@ -30,6 +30,9 @@ def build_window(ui, task_names, server_names):
     ui.style = t.apply_theme(root, s)
     root.columnconfigure(0, weight=1)
     root.rowconfigure(1, weight=1)
+    ui.backdrop = Backdrop(root, s)
+    ui.backdrop.place(x=0, y=0, relwidth=1, relheight=1)
+    root.tk.call("lower", str(ui.backdrop))
     ui.header = Header(root, s, ui)
     ui.header.grid(row=0, column=0, sticky="ew")
     ui.guide = Guide(root, s, ui)

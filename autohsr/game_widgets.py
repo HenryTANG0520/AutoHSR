@@ -4,25 +4,38 @@ from __future__ import annotations
 import math
 import tkinter as tk
 from tkinter import ttk
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
 from . import theme as t
 
 
 class Surface(tk.Canvas):
-    def __init__(self,parent,scale,**kwargs):
+    def __init__(self,parent,scale,*,scene=False,**kwargs):
         kwargs.setdefault("bg",t.PANEL)
         super().__init__(parent,highlightthickness=0,borderwidth=0,**kwargs)
         self.scale=scale
         self._paint_job=None
+        self.scene=scene
+        self._scene_size=None
+        self._scene_binding=None
+        if scene:
+            self._scene_root=self.winfo_toplevel()
+            self._scene_binding=self._scene_root.bind("<Configure>",self._scene_resize,add="+")
         self.bind("<Configure>",self.redraw)
         self.bind("<Map>", self.redraw, add="+")
         self.bind("<Destroy>",self._destroy,add="+")
 
     def _destroy(self,event):
-        if event.widget is self and self._paint_job:
-            self.after_cancel(self._paint_job)
-            self._paint_job=None
+        if event.widget is self:
+            if self._paint_job:
+                self.after_cancel(self._paint_job)
+                self._paint_job=None
+            if self._scene_binding:
+                self._scene_root.unbind("<Configure>",self._scene_binding)
+
+    def _scene_resize(self,event):
+        if event.widget is self._scene_root and (event.width,event.height)!=self._scene_size:
+            self.redraw()
 
     def watch(self,*variables):
         tokens=[(v,v.trace_add("write",lambda *_:self.redraw())) for v in variables]
@@ -38,11 +51,69 @@ class Surface(tk.Canvas):
         if w<2 or h<2 or not self.winfo_ismapped():
             return
         p=t.Painter(w,h,self.scale,self.cget("bg"))
+        if self.scene:
+            root=self._scene_root
+            self._scene_size=(root.winfo_width(),root.winfo_height())
+            x,y=self.winfo_rootx()-root.winfo_rootx(),self.winfo_rooty()-root.winfo_rooty()
+            scene=t.scene_image(*self._scene_size).crop((x,y,x+w,y+h))
+            p.image.paste(scene.resize(p.image.size,Image.Resampling.BILINEAR))
         self.paint(p)
         self._photo=ImageTk.PhotoImage(p.finish(),master=self)
         self.delete("art")
         self.create_image(0,0,image=self._photo,anchor="nw",tags="art")
         self.tag_lower("art")
+
+
+class Backdrop(Surface):
+    def __init__(self,parent,scale,**kwargs):
+        super().__init__(parent,scale,scene=True,bg=t.BG,**kwargs)
+
+    def paint(self,p):
+        pass
+
+
+class SceneButton(ttk.Button):
+    """Native button bindings with scenery composited into the rounded corners."""
+    def __init__(self,parent,scale,**kwargs):
+        self.scale=scale
+        self._paint_job=None
+        self._photo=ImageTk.PhotoImage(Image.new("RGBA",(round(116*scale),round(38*scale)),t.BG),master=parent)
+        style=ttk.Style(parent)
+        style.layout("Scene.Footer.TButton",[("Button.label",{"sticky":"nsew"})])
+        style.configure("Scene.Footer.TButton",padding=0)
+        super().__init__(parent,image=self._photo,compound="center",style="Scene.Footer.TButton",**kwargs)
+        self._scene_root=self.winfo_toplevel()
+        self._scene_size=None
+        self._scene_binding=self._scene_root.bind("<Configure>",Surface._scene_resize.__get__(self),add="+")
+        for event in ("<Configure>","<Map>","<Enter>","<Leave>","<FocusIn>","<FocusOut>","<ButtonPress-1>","<ButtonRelease-1>","<KeyPress-space>","<KeyRelease-space>"):
+            self.bind(event,self.redraw,add="+")
+        self.bind("<Destroy>",Surface._destroy.__get__(self),add="+")
+
+    redraw=Surface.redraw
+
+    def state(self,*args):
+        result=super().state(*args)
+        if args:
+            self.redraw()
+        return result
+
+    def _render(self):
+        self._paint_job=None
+        if not self.winfo_ismapped():
+            return
+        root=self._scene_root
+        self._scene_size=(root.winfo_width(),root.winfo_height())
+        w,h=self.winfo_width(),self.winfo_height()
+        x,y=self.winfo_rootx()-root.winfo_rootx(),self.winfo_rooty()-root.winfo_rooty()
+        p=t.Painter(w,h,self.scale)
+        scene=t.scene_image(*self._scene_size).crop((x,y,x+w,y+h))
+        p.image.paste(scene.resize(p.image.size,Image.Resampling.BILINEAR))
+        color="#d3d3d3" if self.instate(("disabled",)) else t.CARD
+        edge=t.GOLD if any(self.instate((state,)) for state in ("active","pressed","focus")) else "#b4b4b4"
+        p.box((1,1,p.width-1,p.height-1),color,18,edge,1.4)
+        p.box((5,5,p.width-5,p.height-5),color,14,"#d5d5d5")
+        self._photo=ImageTk.PhotoImage(p.finish(),master=self)
+        self.configure(image=self._photo)
 
 
 def paint_run_metrics(p, ui):
@@ -53,15 +124,15 @@ def paint_run_metrics(p, ui):
 
 class Header(Surface):
     def __init__(self,parent,scale,ui):
-        super().__init__(parent,scale,bg=t.BG,height=round(76*scale))
+        super().__init__(parent,scale,scene=True,bg=t.BG,height=round(76*scale))
         self.ui=ui
         self.watch(ui.page_title,ui.stamina,ui.elapsed)
         self.bind("<Button-1>",lambda e:ui._close() if e.x>self.winfo_width()-55*scale else None)
-        self.plan = ttk.Frame(self, style="Footer.TFrame")
+        self.plan = Backdrop(self, scale, width=1, height=1)
         self.plan.columnconfigure(0, weight=1)
         ui.plan_ribbon = PlanRibbon(self.plan, scale, ui, dark=True)
         ui.plan_ribbon.grid(row=0, column=0, sticky="ew")
-        ui.weekly_button = ttk.Button(self.plan, text="周常计划", style="Footer.TButton", command=ui._show_weekly_plan)
+        ui.weekly_button = SceneButton(self.plan, scale, text="周常计划", command=ui._show_weekly_plan)
         ui.weekly_button.grid(row=0, column=1, padx=(round(10*scale), 0))
 
     def position_plan(self):
@@ -78,14 +149,13 @@ class Header(Surface):
         p.text((73,43),self.ui.page_title.get(),17,t.LIGHT)
         paint_run_metrics(p, self.ui)
         x,y=p.width-33,36
-        for sx,sy in ((-1,-1),(-1,1),(1,-1),(1,1)):
-            p.line((x+sx*4,y+sy*4,x+sx*13,y+sy*13),t.LIGHT,2)
+        p.asset("guide/close.png",(x-16,y-16,x+16,y+16))
 
 
 class Guide(Surface):
     """The black guide cover, five icon tabs, light paper and two charms."""
     def __init__(self,parent,scale,ui):
-        super().__init__(parent,scale,bg=t.BG)
+        super().__init__(parent,scale,scene=True,bg=t.BG)
         self.ui=ui
         self.content=ttk.Frame(self)
         self.tabs=ttk.Frame(self,style="Rail.TFrame")
@@ -173,11 +243,24 @@ class TrainingMeter(Surface):
         w=p.width
         p.box((39,12,w-1,98),"#e9e9e9",35,"#f7f7f7",2)
         p.box((78,62,w-1,98),"#e9e9e9")
-        cx,cy,r=54,54,53
-        p.ellipse((cx-r,cy-r,cx+r,cy+r),"#f8f8f5","#d2c9b5")
+        cx,cy=55,55
+        for n in range(96):
+            angle=n*math.tau/96
+            x,y=cx+53*math.cos(angle),cy+53*math.sin(angle)
+            p.ellipse((x-.7,y-.7,x+.7,y+.7),"#c9bfa8")
+        outline=[]
+        for degrees in range(360):
+            # The reference seal has four tips, a gold rim and inner spokes.
+            distance=min(degrees%90,90-degrees%90)
+            radius=49+6*max(0,1-distance/12)
+            angle=math.radians(degrees)
+            outline.extend((cx+radius*math.cos(angle),cy+radius*math.sin(angle)))
+        p.poly(outline,"#c5b99d")
+        p.line((*outline,*outline[:2]),"#f8f8f8",1.6)
+        p.ellipse((cx-46,cy-46,cx+46,cy+46),"#f8f8f6")
         for n in range(72):
-            angle=n*math.pi/36
-            p.line((cx+44*math.cos(angle),cy+44*math.sin(angle),cx+52*math.cos(angle),cy+52*math.sin(angle)),"#c6b994",.55)
+            angle=n*math.tau/72
+            p.line((cx+8*math.cos(angle),cy+8*math.sin(angle),cx+45*math.cos(angle),cy+45*math.sin(angle)),"#d0c8b4",.8)
         p.asset("activity.png",(cx-19,cy-43,cx+19,cy+17),"#ad9a70")
         p.text((cx,cy+23),"500" if self.verified else "—",23,"#101010","mt")
         start,end=120,w-34
@@ -364,7 +447,7 @@ class TaskBoard(Surface):
 
 class PlanRibbon(Surface):
     def __init__(self, parent, scale, ui, *, dark=False):
-        super().__init__(parent, scale, bg=t.BG if dark else t.PANEL, height=round(46*scale))
+        super().__init__(parent, scale, scene=getattr(parent,"scene",False), bg=t.BG if dark else t.PANEL, height=round(46*scale))
         self.ui = ui
         self.dark = dark
         self.watch(ui.daily_caption, ui.weekly_status)

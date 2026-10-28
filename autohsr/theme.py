@@ -6,7 +6,7 @@ from contextlib import contextmanager
 import ctypes
 import sys
 from tkinter import font as tkfont, ttk
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageTk
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps, ImageTk
 
 from .config import RESOURCE_ROOT
 
@@ -48,6 +48,12 @@ def bitmap_font(size):
 def asset(name):
     with Image.open(UI_ASSETS/name) as im:
         return im.convert("RGBA")
+
+
+@lru_cache(maxsize=1)
+def scene_image(width, height):
+    """Share one window-sized scene across adjacent surfaces without seams."""
+    return ImageOps.fit(asset("guide/backdrop.png"), (width, height), Image.Resampling.LANCZOS)
 
 
 class Painter:
