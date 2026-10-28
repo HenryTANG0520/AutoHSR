@@ -29,13 +29,15 @@ def _digest(value):
 def _scope(session, intent):
     from .currency_wars_standard_trading import _prior
     prior = _prior(session,intent)
+    from .currency_wars_standard_investment import reward_scope
+    prior = reward_scope(prior,intent)
     collection,client = prior.get('collection',{}),prior.get('client',{})
     if (prior.get('status')!='active' or not prior.get('start_verified') or not prior.get('entry',{}).get('rank_verified')
             or not prior.get('account_key') or prior.get('account_verified_run')!=collection.get('run_dir')
             or prior.get('account_verified_epoch')!=collection.get('input_epoch')
             or client.get('verified_run')!=collection.get('run_dir') or client.get('input_epoch')!=collection.get('input_epoch')
             or client.get('version')!='4.6' or prior.get('rules_version')!='4.6'
-            or ledger_status(prior.get('actions',[]))!='clear'):
+            or ledger_status(prior.get('actions',[]),investment_projection=prior.get('reward_investment_scope'))!='clear'):
         raise AutomationError('标准奖励缺少同局、账号、版本或已核实动作来源。')
     return prior
 

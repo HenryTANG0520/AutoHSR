@@ -148,6 +148,9 @@ def session_snapshot(snapshot, session, epoch, source):
     from .currency_wars_standard_ledger import ledger_status
     if identity:
         known['transaction_status'] = ledger_status(session['actions'])
+        from .currency_wars_standard_investment import verified_names
+        investments=verified_names(session)
+        if investments:known['investments']=investments
     sources = {}
     for name in ('mode','rank','wealth'):
         sources[name] = 'match_entry:'+session.get('match_id','unverified')

@@ -56,9 +56,10 @@
       "path": "autohsr/currency_wars_standard_refresh.py",
       "reference_functions": [
         "buy_aglaea",
-        "buy_seele"
+        "buy_seele",
+        "check_investment_environment"
       ],
-      "kind": "growth-phase refresh decisions rewritten for observed button prices, per-node limits, one Context click and an immutable five-offer/gold/bench receipt chain"
+      "kind": "growth-phase refresh decisions rewritten for observed button prices, per-node limits, one Context click and an immutable five-offer/gold/bench receipt chain; paid-refresh experience is derived only from a verified investment receipt and actual before/after experience"
     },
     {
       "path": "autohsr/currency_wars_standard_sale.py",
@@ -84,6 +85,16 @@
       "path": "autohsr/currency_wars_standard_rewards.py",
       "reference_functions": ["check_box", "_check_equipment_box", "_check_expert_invitation", "check_supply_phase"],
       "kind": "native typed reward custody, observed cash amount, paired supply selection and separate confirmation; inventory and independently recollected unit delivery verified before clearing the reward ledger"
+    },
+    {
+      "path": "autohsr/currency_wars_investment_policy.py",
+      "reference_functions": ["check_investment_environment"],
+      "kind": "named-core preferences and exclusion list adapted to complete observed card effects, numeric field grammars and one/two/three-card pairing; unknown effects never inherit the upstream first-candidate or collection-badge fallback"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_investment.py",
+      "reference_functions": ["check_investment_environment", "check_box"],
+      "kind": "verified victory/map/plane origin, fresh selected-card proof and separate confirmation; declared weapon boxes remain a ledger obligation until their type and inventory delivery are independently verified; future experience modifiers require original verified receipts"
     }
   ]
 }

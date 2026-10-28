@@ -12,6 +12,7 @@ FREE_ACTIONS = frozenset((
     'stage_standard_equipment','inspect_standard_equipment_unit','close_standard_equipment_unit',
     'close_standard_equipment_stale_panel','open_standard_equipment_recommendations',
     'open_standard_bench_reward','select_standard_supply','inspect_standard_reward_unit',
+    'select_standard_investment',
     'close_standard_reward_unit','close_standard_reward_stale_panel',
     'stage_standard_exchange','inspect_standard_exchange_unit','close_standard_exchange_unit','close_standard_exchange_stale_panel',
     'settle_standard_final_victory', 'settle_standard_match_rating',
@@ -33,7 +34,8 @@ def valid_receipt(action):
             or not isinstance(target[0], str) or not re.fullmatch(r'[1-3]-[1-9][0-9]?', target[0])
             or receipt.get('node') != target[0]):
         return False
-    expected_length = 12 if action['action'] in CREDIT_ACTIONS else 8 if action['action'] == 'buy_standard_offer' else 7
+    expected_length = (12 if action['action'] in CREDIT_ACTIONS else 8 if action['action']=='buy_standard_offer'
+                       else 11 if action['action']=='refresh_standard_shop' and len(target)==11 else 7)
     if (len(target) != expected_length or any(type(value) is not int for value in target[1:4])
             or not 0 <= target[1] <= 99999 or not 0 < target[2] <= 100 or not 1 <= target[3] <= 10):
         return False
@@ -54,12 +56,28 @@ def valid_receipt(action):
                 and re.fullmatch(r'[0-9a-f]{64}', receipt['bench_after']) is not None
                 and receipt['bench_after'] != target[7] and receipt.get('bench_changed') is True)
     if action['action'] == 'refresh_standard_shop':
+        bonus=len(target)==11
+        if not bonus and any(k in receipt for k in ('bonus_xp','bonus_sources','bonus_digest','experience_before','experience_after')):
+            return False
         if (type(target[4]) is not int or not 0 <= target[4] <= 99 or price != target[4]
-                or receipt.get('level_after') != target[3]
-                or any(not isinstance(v,str) or re.fullmatch(r'[0-9a-f]{64}',v) is None for v in target[5:])
+                or not bonus and receipt.get('level_after') != target[3]
+                or any(not isinstance(v,str) or re.fullmatch(r'[0-9a-f]{64}',v) is None for v in target[5:7])
                 or receipt.get('table_before') != target[5] or receipt.get('table_after') == target[5]
                 or receipt.get('bench_before') != target[6] or receipt.get('bench_after') != target[6]):
             return False
+        if bonus:
+            from .currency_wars_standard_refresh import experience_gain
+            if (not target[4] or any(type(v) is not int for v in target[7:10]) or not 1<=target[7]<=99
+                    or not isinstance(target[10],str) or not re.fullmatch('[0-9a-f]{64}',target[10])
+                    or receipt.get('bonus_xp')!=target[7] or receipt.get('bonus_digest')!=target[10]
+                    or not isinstance(receipt.get('bonus_sources'),list) or not receipt['bonus_sources']
+                    or any(type(i) is not int or i<0 for i in receipt['bonus_sources'])
+                    or receipt.get('experience_after') is not None and not isinstance(receipt['experience_after'],(list,tuple))
+                    or receipt.get('experience_before')!=(None if target[3]==10 else list(target[8:10]))
+                    or target[3]==10 and target[8:10] not in ((0,0),[0,0])
+                    or not experience_gain(target[3],tuple(target[8:10]) if target[3]!=10 else None,
+                        receipt.get('level_after'),tuple(receipt['experience_after']) if receipt.get('experience_after') is not None else None,target[7])):
+                return False
         from .currency_wars_standard_refresh import table_digest
         try:
             return (table_digest(receipt.get('offers_before')) == target[5]
@@ -82,11 +100,16 @@ def valid_receipt(action):
     return gained == 4
 
 
-def ledger_status(actions):
+def ledger_status(actions, *, investment_projection=None):
     for index,action in enumerate(actions):
         if action.get('status') != 'verified':
             return 'pending' if action.get('status') == 'pending' else 'unknown'
         name = action.get('action', '')
+        if name=='confirm_standard_investment':
+            from .currency_wars_standard_investment import valid_effect
+            if not valid_effect(action,actions):return 'unknown'
+            if action.get('investment_verified') is not True and index!=investment_projection:return 'pending'
+            continue
         if name in REWARD_CLAIMS:
             from .currency_wars_standard_rewards import valid_effect
             if not valid_effect(action,actions):return 'unknown'
@@ -95,6 +118,9 @@ def ledger_status(actions):
         if name in FINANCIAL_ACTIONS:
             if not valid_receipt(action):
                 return 'unknown'
+            if name=='refresh_standard_shop':
+                from .currency_wars_standard_investment import valid_refresh_bonus
+                if not valid_refresh_bonus(action,actions):return 'unknown'
             if name in CREDIT_ACTIONS:
                 source = action['target'][11]
                 if source != index-1 or source < 0:

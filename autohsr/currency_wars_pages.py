@@ -77,9 +77,7 @@ _MODALS = {
         _Anchor("请选择投资策略", (.44,.07,.56,.11)),
         _Anchor("返回备战界面", (.85,.02,1,.08)),
         _Anchor("图例", (.09,.07,.14,.11)),
-        _Anchor(re.compile(r"刷新次数[0-9]"), (.18,.77,.30,.82)),
-        _Anchor(re.compile(r"刷新次数[0-9]"), (.44,.77,.57,.82)),
-        _Anchor(re.compile(r"刷新次数[0-9]"), (.70,.77,.83,.82)),
+        _Anchor(re.compile(r"刷新次数[0-9]{1,2}"), (.1,.76,.9,.84)),
         _Anchor("确认", (.47,.89,.53,.93)),
     ),
     "equipment_selection": (
@@ -305,10 +303,20 @@ def classify_page(trusted_tokens: list[Token]) -> str:
         if definitions is _PAGES and any(is_bench_full_notice(t) for t in trusted_tokens):
             return "bench_full"
         found = [kind for kind, anchors in definitions.items()
-                 if all(any(anchor.matches(token) for token in trusted_tokens) for anchor in anchors)]
+                 if all(any(anchor.matches(token) for token in trusted_tokens) for anchor in anchors)
+                 and (kind!='investment_selection' or _investment_layout(trusted_tokens))]
         if found:
             return found[0] if len(found) == 1 else "unknown"
     return "unknown"
+
+
+def _investment_layout(tokens):
+    names=sorted((t for t in tokens if t.within((.1,.43,.9,.48))),key=lambda t:t.center[0])
+    counters=[t for t in tokens if t.within((.1,.76,.9,.84)) and normalize(t.text).startswith('刷新次数')]
+    return bool(1<=len(names)<=3 and len({normalize(t.text) for t in names})==len(names)
+        and len(counters)==len(names) and all(names[i].center[0]-names[i-1].center[0]>=.2 for i in range(1,len(names)))
+        and all(sum(t.within((name.center[0]-.12,.76,name.center[0]+.12,.84))
+            and re.fullmatch('刷新次数[0-9]{1,2}',normalize(t.text)) is not None for t in counters)==1 for name in names))
 
 
 def is_bench_full_notice(token):

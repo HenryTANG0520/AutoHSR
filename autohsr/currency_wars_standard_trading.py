@@ -177,7 +177,7 @@ def financial_feedback(choice, before, after, confidence=.65, *, session=None):
         return sale_feedback(choice,before,after,session,confidence)
     if choice.intent == 'refresh_standard_shop':
         from .currency_wars_standard_refresh import refresh_feedback
-        return refresh_feedback(choice,before,after,confidence)
+        return refresh_feedback(choice,before,after,confidence,session=session)
     first, last = read_match(before, confidence), read_match(after, confidence)
     if (first is None or last is None or first.node != last.node or first.node != choice.payload[0]
             or first.gold != choice.payload[1] or first.level != choice.payload[3]
@@ -253,13 +253,21 @@ def shop_return_values(scene, session, confidence=.65):
     previous = actions[-1] if actions else {}
     purchased = previous.get('action') == 'buy_standard_offer'
     refreshed = previous.get('action') == 'refresh_standard_shop'
+    bonus=previous.get('receipt',{}).get('bonus_xp',0) if refreshed else 0
+    level=previous.get('receipt',{}).get('level_after') if bonus else before.get('level')
     gold = previous.get('receipt', {}).get('gold_after') if purchased else _shop_balance(dict(session,actions=actions),before)[0]
     if (not state or state.page != 'shop' or session.get('status') != 'active'
             or before.get('hp') is None or state.hp not in (None,before['hp'])
-            or (state.node,state.gold,state.level) != (before.get('node'),gold,before.get('level'))
+            or (state.node,state.gold,state.level) != (before.get('node'),gold,level)
             or previous.get('status') != 'verified'
             or (purchased and not valid_receipt(previous))
             or (refreshed and (not valid_receipt(previous) or bench_signatures(scene) != session.get('pre_shop_bench')))
             or (not purchased and not refreshed and previous.get('action') != 'open_standard_shop')):
         raise AutomationError('收起标准商店前缺少同节点、余额或已核实交易来源。')
-    return (state.node,state.gold,before['hp'],state.level), purchased
+    payload=(state.node,state.gold,before['hp'],state.level)
+    if bonus:
+        expected=previous['receipt'].get('experience_after')
+        if (list(state.experience) if state.experience else None)!=expected:
+            raise AutomationError('刷新赠经验后的当前读数与收据不同。')
+        payload+=state.experience or (0,0)
+    return payload,purchased

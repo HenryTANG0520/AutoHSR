@@ -37,6 +37,9 @@ def next_action(scene, confidence=.65, *, session=None):
 
 
 def _next_action(scene, confidence=.65, *, session=None):
+    from .currency_wars_standard_investment import active_action as investment_action
+    investment = investment_action(scene,session or {},confidence)
+    if investment is not None:return investment
     from .currency_wars_standard_equipment import active_action as equipment_action
     equipment = equipment_action(scene,session or {},confidence)
     if equipment is not None:
@@ -70,6 +73,12 @@ def _next_action(scene, confidence=.65, *, session=None):
                               unique(clean, '点击空白处继续', (.43, .86, .57, .93)))
     if kind == 'shop':
         from .currency_wars_standard_trading import purchase_action, shop_return_values
+        from .currency_wars_standard_market import close_standard_shop
+        last=(session or {}).get('actions',[])
+        last=last[-1] if last else {}
+        if last.get('action')=='refresh_standard_shop' and last.get('receipt',{}).get('bonus_xp',0)>0:
+            payload,_=shop_return_values(scene,session,confidence)
+            return StandardAction('close_standard_shop','standard_shop_closed',close_standard_shop(scene,session,confidence),payload=payload)
         purchase = purchase_action(scene, session or {}, confidence)
         if purchase is not None:
             return purchase
@@ -190,6 +199,9 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None, session=None):
+    if choice.expected in ('standard_investment_selected','standard_investment_applied'):
+        from .currency_wars_standard_investment import feedback
+        return session is not None and feedback(choice,scene,session,confidence)
     if choice.expected=='standard_reward_opened':
         from .currency_wars_standard_rewards import PAGES
         from .currency_wars_match import read_match
@@ -258,7 +270,8 @@ def transition_ready(choice, scene, confidence=.65, *, before=None, session=None
         from .currency_wars_match import read_match
         state = read_match(scene,confidence)
         return bool(state and state.page=='preparation'
-                    and (state.node,state.gold,state.hp,state.level)==choice.payload)
+                    and (state.node,state.gold,state.hp,state.level)==choice.payload[:4]
+                    and (len(choice.payload)==4 or (state.experience or (0,0))==choice.payload[4:6]))
     if choice.expected == 'standard_shop_observe':
         from .currency_wars_match import read_match
         state = read_match(scene,confidence)
@@ -403,6 +416,10 @@ def run_standard(c):
                 if problem:
                     raise AutomationError(problem)
                 c.log(f'阵容采集：{profile.zone}:{profile.slot} {profile.name}，{profile.star}星、{profile.tier}费；已读{len(collection["units"])}张。')
+        from .currency_wars_standard_investment import enter as investment_enter
+        if kind=='investment_selection' and (not store.data.get('investment') or store.data['investment'].get('status')=='verified'):
+            investment_enter(store.data,scene,c.settings.ocr_confidence)
+            store.persist()
         try:
             choice = next_action(scene, c.settings.ocr_confidence,session=store.data)
         except AutomationError as error:
@@ -455,6 +472,11 @@ def run_standard(c):
             action['decision'] = dict(name=choice.details[0],item=choice.details[1],unit=choice.details[2],
                                       gold=choice.details[3],policy=choice.details[4])
             store.persist()
+        elif choice.intent in ('select_standard_investment','confirm_standard_investment'):
+            action['decision']=dict(name=choice.details[0],kind=choice.details[1],parameters=dict(choice.details[2]),policy=choice.details[3])
+            from .currency_wars_standard_investment import bind_selection
+            bind_selection(store.data,choice,scene,c.runner.input_epoch,c.report.run_dir,c.settings.ocr_confidence)
+            store.persist()
         elif choice.details:
             action['decision'] = dict(name=choice.details[0], kind=choice.details[1], effect=choice.details[2],
                                       parameters=dict(choice.details[3]), score=choice.details[4],
@@ -485,6 +507,8 @@ def run_standard(c):
         if choice.intent in ('start_standard_node','collect_standard_loot','open_standard_bench_reward'):
             from .currency_wars_standard_rewards import bind_source
             bind_source(store.data,choice,scene,c.settings.ocr_confidence)
+            from .currency_wars_standard_investment import bind_reward
+            bind_reward(store.data,choice)
             store.persist()
         c.report.currency_wars = store.data
         c.log('标准A8-40开发：' + choice.intent)
@@ -511,7 +535,8 @@ def run_standard(c):
                 required = 2 if choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable',
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
                                                     'standard_sale_panel','standard_owned_sold','standard_equipment_inspectable',
-                                                    'standard_reward_returned','standard_supply_selected') else 1
+                                                    'standard_reward_returned','standard_supply_selected',
+                                                    'standard_investment_selected','standard_investment_applied') else 1
                 if stable >= required:
                     after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
                     if choice.intent in FINANCIAL_ACTIONS:
@@ -586,14 +611,20 @@ def run_standard(c):
                         store.data.pop('collection',None)
                     if choice.intent == 'close_standard_shop':
                         nodes = store.data.setdefault('shop_observed_nodes',[])
-                        if choice.payload[0] not in nodes:
+                        if len(choice.payload)==6 and choice.payload[0] in nodes:
+                            nodes.remove(choice.payload[0])
+                        elif len(choice.payload)==4 and choice.payload[0] not in nodes:
                             nodes.append(choice.payload[0])
                     from .currency_wars_standard_progress import progress_verified
                     progress_verified(store.data, choice, after, c.settings.ocr_confidence)
+                    from .currency_wars_standard_investment import enter as investment_enter, confirmed, reward_completed
+                    investment_enter(store.data,after,c.settings.ocr_confidence)
+                    if choice.intent=='confirm_standard_investment':confirmed(store.data,choice,after,c.settings.ocr_confidence)
                     from .currency_wars_standard_rewards import enter, returned
                     enter(store.data,choice,after,c.settings.ocr_confidence)
                     if choice.intent in ('choose_standard_reward','confirm_standard_supply'):
                         returned(store.data,choice,after,c.settings.ocr_confidence)
+                        reward_completed(store.data)
                     store.persist()
                     scene = after
                     break
