@@ -11,6 +11,8 @@
 - **84项既有GUI、55项输入反馈、42项表单反馈、24项计划检查通过**，日志在`runs/universe-*_smoke.log`。真实Runner均替换为假后端，表单结果检查同步打开新的结果页。
 - **1151项全量单元测试通过**，`runs/universe-unit.log`，未启动真实游戏；文档相对链接及`git diff --check`通过。
 
+源码`66f88a8`通过`tools/build.ps1`构建，日志`runs/universe-build.log`。已更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，以`--no-admin-launch`实际打开首页、差分入口、演算设置、结果与货币入口，确认启动动作位置和配置状态，正常关闭退出码0。239份配置及运行证据哈希未变，123个UI素材、3份UI清单、23个上游文件均匹配；核对记录`runs/universe-package-verification.json`，备份`build/userdata-universe-20261029_031334/`。EXE SHA-256为`31ca4fca66eef5c2c970f6e817eeac22462b8c47b9d8ba085e9befaf0f6c4cd9`；实际窗口截图为`runs/universe-package-du.png`、`runs/universe-package-cw.png`和`runs/universe-package-settings.png`。打包未纳入另一任务尚未提交的补给后端改动，未点击运行、检测或开发操作。
+
 正常开始仍自动最小化以让游戏获得前台；假后端运行态检查恢复助手后再验证暂停和停止显示。旧布局检查曾把独立提示窗的屏幕坐标当作按钮内部坐标；已将独立窗口排除在父控件边界检查之外，不放宽正常控件裁切约束。日常周常组合、周积分奖励、货币战争整局和真实玩家学习成本未由这些桌面回归证明，历史实机计数不变。
 
 ## 2026-10-29：生存索引行式选择与计划草稿隔离
