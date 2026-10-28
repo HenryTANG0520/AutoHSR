@@ -210,20 +210,20 @@ class NativeEquipmentTests(unittest.TestCase):
         board,session = fixture('default',())
         role = session['collection']['units']['front:2']['unit']
         detail = panel(role);opened = recommend(detail)
-        session['inspecting'] = dict(zone='front',slot=2,node='1-1',signature=session['collection']['units']['front:2']['signature'])
-        session['actions'] = [dict(id=0,action='inspect_standard_unit',status='verified',input_epoch=0,before='board.png',after='panel.png')]
+        session['collection']['units'].pop('front:2')
+        session['actions'] = []
         with tempfile.TemporaryDirectory() as folder:
-            c = trading_helpers.StandardTradingTests().context(folder,board,session,[detail,opened,board])
+            c = trading_helpers.StandardTradingTests().context(folder,board,session,[board,detail,opened,board,board])
             def stop_closed():
                 store = getattr(c,'currency_standard_session',None)
-                if store and store.data['actions'][-1]['action']=='close_standard_unit' and store.data['actions'][-1]['status']=='verified':
+                if store and store.data['actions'] and store.data['actions'][-1]['action']=='close_standard_unit' and store.data['actions'][-1]['status']=='verified':
                     raise Stopped('recommendation fixture complete')
             c.checkpoint = stop_closed
             with patch('autohsr.currency_wars_replay.save_sample'),self.assertRaises(Stopped):run_standard(c)
             saved = StandardSession(c.currency_standard_session.path).data
             self.assertEqual(saved['collection']['units']['front:2']['recommendations'],['hard_armor'])
             self.assertEqual(saved['collection']['units']['front:2']['equipment_recipes'],[dict(product='hard_armor',components=['armor','armor'])])
-            self.assertEqual(c.window.click.call_count,2)
+            self.assertEqual(c.window.click.call_count,3)
 
     def test_unknown_drag_feedback_is_retained_and_never_replayed(self):
         board,session = fixture('aglaea',('boots',))

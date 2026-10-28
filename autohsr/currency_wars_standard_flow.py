@@ -176,8 +176,9 @@ def _next_action(scene, confidence=.65, *, session=None):
         return StandardAction('inspect_standard_unit', 'character', target,
                               payload=(cell.zone,cell.slot,cell.node,cell.signature))
     if kind == 'character':
-        from .currency_wars_collector import owned_profile
-        profile = owned_profile(scene,(session or {}).get('inspecting'),confidence)
+        from .currency_wars_standard_collection import stale,close_action,profile as current_profile,close_current
+        if stale(session or {}):return close_action(scene,session or {},confidence)
+        profile = current_profile(scene,session,confidence)
         key = profile.zone+':'+str(profile.slot)
         record = (session or {}).get('collection',{}).get('units',{}).get(key)
         if not record or record.get('unit') != asdict(profile):
@@ -186,8 +187,7 @@ def _next_action(scene, confidence=.65, *, session=None):
             return StandardAction('open_standard_equipment_recommendations','standard_equipment_recommendations',
                                   unique(clean,'装备推荐',(.72,.70,.85,.80)),
                                   payload=(profile.zone,profile.slot,profile.name,record['signature']))
-        return StandardAction('close_standard_unit','preparation',
-                              Token('关闭已采集角色面板',1.,(.49,.49,.51,.51)))
+        return close_current(scene,session,confidence)
     raise AutomationError('标准对局当前页面需要局面采集或新动作校准：' + kind)
 
 
@@ -199,6 +199,9 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None, session=None):
+    if choice.expected in ('standard_stale_unit_board','standard_collected_unit_board'):
+        from .currency_wars_standard_collection import board_feedback
+        return board_feedback(choice,scene,confidence)
     if choice.expected in ('standard_investment_selected','standard_investment_applied'):
         from .currency_wars_standard_investment import feedback
         return session is not None and feedback(choice,scene,session,confidence)
@@ -396,10 +399,12 @@ def run_standard(c):
         from .currency_wars_standard_sale import stale as sale_stale
         from .currency_wars_standard_equipment import panel_stale as equipment_stale, record_profile as equipment_profile
         from .currency_wars_standard_rewards import panel_stale as reward_stale
-        if kind == 'character' and not panel_stale(store.data) and not sale_stale(store.data) and not equipment_stale(store.data) and not reward_stale(store.data):
+        from .currency_wars_standard_collection import stale as collection_stale,ordinary,profile as current_profile
+        if kind == 'character' and not panel_stale(store.data) and not sale_stale(store.data) and not equipment_stale(store.data) and not reward_stale(store.data) and not collection_stale(store.data):
             from .currency_wars_collector import owned_profile
             try:
-                profile = owned_profile(scene,store.data.get('inspecting'),c.settings.ocr_confidence)
+                profile = (current_profile(scene,store.data,c.settings.ocr_confidence) if ordinary(store.data)
+                    else owned_profile(scene,store.data.get('inspecting'),c.settings.ocr_confidence))
             except AutomationError:
                 pass  # next_action records the exact missing field below.
             else:
@@ -409,7 +414,8 @@ def run_standard(c):
                 previous = previous if previous.get('signature')==inspecting['signature'] else {}
                 collection['units'][profile.zone+':'+str(profile.slot)] = dict(previous,unit=asdict(profile),
                     signature=inspecting['signature'],node=inspecting['node'],
-                    source=profile_source)
+                    source=profile_source,input_epoch=c.runner.input_epoch,run_dir=c.report.run_dir,
+                    inspection_action_id=inspecting.get('inspection_action_id'))
                 problem = record_profile(store.data,profile,inspecting,profile_source,c.runner.input_epoch)
                 problem = problem or equipment_profile(store.data,profile,inspecting,profile_source,c.runner.input_epoch)
                 store.persist()
@@ -510,6 +516,10 @@ def run_standard(c):
             from .currency_wars_standard_investment import bind_reward
             bind_reward(store.data,choice)
             store.persist()
+        if choice.intent=='close_standard_stale_unit':
+            from .currency_wars_standard_collection import bind_close
+            bind_close(store.data,choice)
+            store.persist()
         c.report.currency_wars = store.data
         c.log('标准A8-40开发：' + choice.intent)
         c.currency_standard_input(scene, choice)
@@ -536,7 +546,8 @@ def run_standard(c):
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
                                                     'standard_sale_panel','standard_owned_sold','standard_equipment_inspectable',
                                                     'standard_reward_returned','standard_supply_selected',
-                                                    'standard_investment_selected','standard_investment_applied') else 1
+                                                    'standard_investment_selected','standard_investment_applied',
+                                                    'standard_stale_unit_board','standard_collected_unit_board') else 1
                 if stable >= required:
                     after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
                     if choice.intent in FINANCIAL_ACTIONS:
@@ -559,15 +570,19 @@ def run_standard(c):
                     if choice.intent == 'start_standard_node':
                         store.data['node_attempt']['status']='observing'
                     if choice.intent in ('inspect_standard_unit','inspect_standard_exchange_unit','inspect_standard_equipment_unit','inspect_standard_reward_unit'):
+                        action['inspection_run_dir']=c.report.run_dir
                         store.data['inspecting'] = dict(zone=choice.payload[0],slot=choice.payload[1],
                                                         node=choice.payload[2],signature=choice.payload[3],
                                                         input_epoch=c.runner.input_epoch,
                                                         run_dir=c.report.run_dir,
-                                                        before=action['before'],after=action['after'])
+                                                        before=action['before'],after=action['after'],inspection_action_id=action['id'])
                         if choice.intent == 'inspect_standard_exchange_unit':
                             store.data['inspecting']['exchange_id'] = choice.payload[4]
                         if choice.intent == 'inspect_standard_equipment_unit':
                             store.data['inspecting']['equipment_id'] = choice.payload[4]
+                    elif choice.intent in ('close_standard_unit','close_standard_stale_unit'):
+                        from .currency_wars_standard_collection import closed
+                        closed(store.data,choice)
                     elif choice.intent == 'stage_standard_equipment':
                         from .currency_wars_standard_equipment import begin_verification
                         begin_verification(store.data,choice,scene,after,c.settings.ocr_confidence)

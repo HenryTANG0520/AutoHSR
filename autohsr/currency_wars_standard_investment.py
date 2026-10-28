@@ -190,7 +190,7 @@ def reward_scope(session, intent):
     """Project one validated gift obligation only for its typed reward protocol."""
     data=session.get('investment',{})
     if data.get('status')!='reward_verifying':return dict(session,reward_investment_scope=None)
-    if intent not in ('open_standard_bench_reward','choose_standard_reward'):
+    if intent not in ('open_standard_bench_reward','choose_standard_reward','close_standard_stale_unit'):
         raise AutomationError('投资策略赠品未核实，当前动作不能借用领取范围。')
     claim=_claim(session)
     from .currency_wars_standard_ledger import ledger_status
