@@ -25,10 +25,27 @@ def paper_rectangles(image):
             if s[4] > 20000 and s[2] > 150 and s[3] > 220 and .6 < s[2]/s[3] < 1.]
 
 
+def panel_origin_and_width(image):
+    """Find the first broad neutral paper row, excluding tabs and hanging art."""
+    pixels = np.asarray(image.convert("RGB")).astype("int16")
+    mask = ((pixels.min(2) >= 210) & (pixels.max(2) <= 235) &
+            (pixels.max(2)-pixels.min(2) < 5))
+    rows = np.flatnonzero(mask.sum(1) > image.width*.7)
+    assert rows.size, "No broad paper panel found"
+    y = int(rows[0])
+    columns = np.flatnonzero(mask[y])
+    return [int(columns[0]), y, int(columns[-1]-columns[0]+1)]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--reference", type=Path, required=True)
-    reference = parser.parse_args().reference
+    parser.add_argument("--scene-reference", type=Path, help="Account-free full-width guide crop; retain original screen coordinates")
+    args = parser.parse_args()
+    reference = args.reference
+    scene_reference = Image.open(args.scene_reference) if args.scene_reference else None
+    scene_cards = sorted(paper_rectangles(scene_reference)) if scene_reference else None
+    scene_panel = panel_origin_and_width(scene_reference) if scene_reference else None
     source_rectangles = paper_rectangles(Image.open(reference))
     assert len(source_rectangles) == 4, source_rectangles
     ratio = statistics.median(w/h for _, _, w, h in source_rectangles)
@@ -56,6 +73,14 @@ def main():
                     rectangles = paper_rectangles(screenshot)
                     check(f"{scale}_{size}_reference_card_proportion", len(rectangles) >= 3 and
                           all(abs(w/h-ratio) < .015 for _, _, w, h in rectangles))
+                    if scene_reference and size == "default":
+                        factor = screenshot.width/scene_reference.width
+                        tolerance = 4*ui.ui_scale
+                        check(f"{scale}_reference_panel_position", all(abs(a-b*factor) <= tolerance
+                              for a,b in zip(panel_origin_and_width(screenshot), scene_panel)))
+                        check(f"{scale}_reference_card_positions_and_sizes", len(rectangles) == len(scene_cards) and
+                              all(abs(a-b*factor) <= tolerance for actual,expected in zip(sorted(rectangles),scene_cards)
+                                  for a,b in zip(actual,expected)))
                     check_layout(root)
                     cases.append(dict(scale=scale, size=size, paper_rectangles=rectangles))
                     if scale == 1.5 and size == "default":
@@ -92,6 +117,19 @@ def main():
                 check(f"{scale}_cost_precedes_truncatable_target", ui.daily_caption.get().index("240 开拓力")
                       < ui.daily_caption.get().index("长副本名称"))
                 check(f"{scale}_config_unchanged", config.read_bytes() == original)
+                for key, caption in (("logs", "记录"), ("settings", "设置")):
+                    button = ui.nav_buttons[key]
+                    ui._show_page("home")
+                    root.update()
+                    check(f"{scale}_{key}_name_visible_without_hover", button.winfo_ismapped() and
+                          button.cget("text") == caption and str(button.cget("compound")) == "center")
+                    root.focus_force()
+                    button.focus_set()
+                    button.event_generate("<KeyPress-space>")
+                    button.event_generate("<KeyRelease-space>")
+                    root.update()
+                    check(f"{scale}_{key}_named_button_opens_expected_page", ui.active_page == key and
+                          ui.start_button.cget("text") == "开始计划")
             finally:
                 ui.closing = True
                 for token in root.tk.splitlist(root.tk.call("after", "info")):
@@ -99,6 +137,8 @@ def main():
                         root.after_cancel(token)
                 root.destroy()
     result = dict(reference_sha256=hashlib.sha256(reference.read_bytes()).hexdigest(),
+                  scene_reference_sha256=hashlib.sha256(args.scene_reference.read_bytes()).hexdigest() if scene_reference else None,
+                  scene_reference_cards=scene_cards, scene_reference_panel=scene_panel,
                   reference_paper_rectangles=source_rectangles, reference_ratio=ratio,
                   cases=cases, checks=checks, count=len(checks), game_started=False)
     (OUT/"result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), "utf-8")

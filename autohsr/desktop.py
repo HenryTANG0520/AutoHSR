@@ -39,7 +39,13 @@ def build_window(ui, task_names, server_names):
     ui.guide.grid(row=1, column=0, sticky="ew", padx=d(18))
     def position_guide(event=None):
         if (event is None or event.widget is root) and getattr(ui, "active_page", "home") != "settings":
-            ui.guide.grid_configure(padx=max(d(18), round((root.winfo_width()-d(1280))/2)))
+            top_gap = min(d(38), max(0, round((root.winfo_height()-d(800))*38/64)))
+            margin = max(d(18), round((root.winfo_width()-d(1280))/2))
+            ui.guide.art_left = min(d(8), max(0, margin-d(2)))
+            ui.guide.art_right = min(d(44), max(0, margin-d(2)))
+            ui.guide.grid_configure(padx=(margin-ui.guide.art_left, margin-ui.guide.art_right), pady=(top_gap, 0))
+            ui.guide._position()
+            ui.guide.redraw()
     ui.position_guide = position_guide
     root.bind("<Configure>", position_guide, add="+")
     body = ui.guide.content
@@ -69,7 +75,7 @@ def _home(ui, names):
     d = lambda n: round(n*s)
     page = ui.pages["home"]
     ui.training_meter = TrainingMeter(page, s, ui.training_result)
-    ui.training_meter.grid(row=0, column=0, sticky="ew", pady=(0, d(10)))
+    ui.training_meter.grid(row=0, column=0, sticky="ew", pady=(0, d(4)))
     ui.table = TaskBoard(page, s, ui, names)
     ui.table.grid(row=1, column=0, sticky="nsew")
     page.rowconfigure(1, weight=1, minsize=d(250))

@@ -60,11 +60,12 @@ class Painter:
     def __init__(self, width, height, scale, background=PANEL):
         self.factor = scale*2
         self.width, self.height = width/scale, height/scale
+        self.origin = (0, 0)
         self.image = Image.new("RGBA", (width*2, height*2), background or (0,0,0,0))
         self.draw = ImageDraw.Draw(self.image)
 
     def coords(self, values):
-        return tuple(round(v*self.factor) for v in values)
+        return tuple(round((v+self.origin[index % 2])*self.factor) for index,v in enumerate(values))
 
     @contextmanager
     def clip(self, rect, radius=0):
@@ -319,8 +320,8 @@ def apply_theme(root, scale):
         ("Selected.Nav.TButton",PANEL,TEXT,True,False,RAIL),("Option.TButton",CARD,TEXT,False,True,PANEL),
         ("Selected.Option.TButton",RAIL,GOLD,False,True,PANEL)):
         _button(root,style,scale,name,fill,ink,tab=tab,option=option,background=background)
-    style.configure("Nav.TButton",padding=(d(22),d(7)))
-    style.configure("Selected.Nav.TButton",padding=(d(22),d(7)))
+    style.configure("Nav.TButton",padding=(d(19),d(6)),font=(FONT,14))
+    style.configure("Selected.Nav.TButton",padding=(d(24),d(6)),font=(FONT,14))
     style.configure("Option.TButton",anchor="w",padding=(d(22),d(17)),font=(FONT,13))
     style.configure("Selected.Option.TButton",anchor="w",padding=(d(22),d(17)),font=(FONT,13))
     style.configure("Compact.TButton",padding=(d(6),d(4)))

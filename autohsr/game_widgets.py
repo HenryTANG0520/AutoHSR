@@ -153,29 +153,32 @@ class Header(Surface):
 
 
 class Guide(Surface):
-    """The black guide cover, five icon tabs, light paper and two charms."""
+    """The game guide, named app utilities, light paper and two charms."""
     def __init__(self,parent,scale,ui):
-        super().__init__(parent,scale,scene=True,bg=t.BG,height=round(715*scale))
+        super().__init__(parent,scale,scene=True,bg=t.BG,height=round(678*scale))
         self.ui=ui
+        self.art_left=self.art_right=0
         self.content=ttk.Frame(self)
         self.tabs=ttk.Frame(self,style="Rail.TFrame")
         self.buttons={}
         self.photos={}
         definitions=(("home","每日实训","tab-daily.png"),("tasks","生存索引","tab-survival.png"),
-                     ("universe","差分宇宙 / 货币战争","tab-universe.png"),("logs","运行记录","tab-records.png"),
+                     ("universe","差分宇宙 / 货币战争","tab-universe.png"),("logs","记录","tab-records.png"),
                      ("settings","设置","tab-settings.png"))
         for col,(key,label,filename) in enumerate(definitions):
             for selected in (False,True):
                 p=t.Painter(round(42*scale),round(42*scale),scale,t.PANEL if selected else t.RAIL)
-                if selected:
+                if selected and key not in ("logs", "settings"):
                     p.glow((21,21),10,(96,181,237,155),7)
-                p.asset(filename,(1,1,41,41),"#111111" if selected else "#b6b6b6")
+                if key not in ("logs", "settings"):
+                    p.asset(filename,(1,1,41,41),"#111111" if selected else "#b6b6b6")
                 self.photos[key,selected]=ImageTk.PhotoImage(p.finish(),master=self)
             command=lambda key=key:ui._show_page(getattr(ui,"last_universe_page","differential_universe") if key=="universe" else key)
-            button=ttk.Button(self.tabs,text=label,image=self.photos[key,False],style="Nav.TButton",command=command)
+            button=ttk.Button(self.tabs,text=label,image=self.photos[key,False],
+                             compound="center" if key in ("logs", "settings") else "none",style="Nav.TButton",command=command)
             button.grid(row=0,column=col,padx=0)
             self.buttons[key]=button
-            Tooltip(button,"旷宇纷争" if key=="universe" else label)
+            Tooltip(button,"旷宇纷争" if key=="universe" else "运行记录" if key=="logs" else label)
         self.bind("<Configure>",self._position,add="+")
 
     def select(self,page):
@@ -185,26 +188,30 @@ class Guide(Surface):
 
     def _position(self,_event=None):
         d=lambda n:round(n*self.scale)
-        w,h=self.winfo_width(),self.winfo_height()
-        self.tabs.place(x=d(97),y=d(24))
-        self.content.place(x=d(77),y=d(108),width=max(1,w-d(151)),height=max(1,h-d(148)))
+        w,h=self.winfo_width()-self.art_left-self.art_right,self.winfo_height()
+        self.tabs.place(x=self.art_left+d(110),y=d(24))
+        self.content.place(x=self.art_left+d(90),y=d(90),width=max(1,w-d(173)),height=max(1,h-d(130)))
 
     def paint(self,p):
-        w,h=p.width,p.height
-        p.box((38,12,w-38,h-12),"#101111",25,"#3a3a3c",2)
-        p.box((51,25,w-51,h-25),t.PANEL,16)
-        p.box((51,25,w-51,91),"#252525",15)
-        p.box((51,53,w-51,91),"#252525")
-        p.box((51,91,w-51,111),t.PANEL)
+        left,right=self.art_left/self.scale,self.art_right/self.scale
+        w,h=p.width-left-right,p.height
+        p.origin=(left,0)
+        p.box((47,12,w-38,h-9),"#101111",25,"#3a3a3c",2)
+        p.box((60,25,w-51,h-20),t.PANEL,16)
+        p.box((60,25,w-51,88),"#252525",15)
+        p.box((60,53,w-51,88),"#252525")
+        p.box((60,88,w-51,111),t.PANEL)
         # The static paper pattern is isolated from the reference's live text.
-        with p.clip((51,91,w-51,h-25),16):
-            p.asset("paper-pattern.png",(51,h-99,380,h-25))
-            p.line((w-185,92,w-260,h-25),"#d1cec3")
+        with p.clip((60,88,w-51,h-20),16):
+            p.asset("paper-pattern.png",(60,h-78,323,h-20))
+            p.line((w-185,92,w-260,h-20),"#d1cec3")
         p.box((w-159,42,w-51,66),"#222222",12,"#6f654a")
         p.ellipse((w-150,52,w-147,55),t.GOLD)
         p.asset("guide-seal.png",(w-119,32,w-70,73),t.GOLD)
-        p.asset("guide-charm-left.png",(1,114,83,273))
-        p.asset("guide-charm-right.png",(w-112,h-255,w+1,h-66))
+        p.asset("guide-charm-left.png",(-6,112,86,290))
+        charm_width=113+28*min(1,right/44)
+        edge=w+min(43,right)
+        p.asset("guide-charm-right.png",(edge-charm_width,h-37-charm_width*294/176,edge,h-37))
 
 
 class Tooltip:
@@ -391,7 +398,7 @@ class TaskBoard(Surface):
         self.hitboxes={}
         # Reference card: 290 x 480, a 372px paper section and 45px gaps.
         # Keep that aspect when space changes, and expose the next card's edge.
-        width=min((w-10)/(self.visible_count*335/290+40/290), (h-32)*290/480)
+        width=min(w/(self.visible_count*335/290+40/290), (h-32)*290/480)
         unit=width/290
         q=lambda value:value*unit
         gap=q(45)
