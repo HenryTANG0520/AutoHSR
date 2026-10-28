@@ -13,6 +13,10 @@
 
 新增检查的首次脚本误用Home键选择列表首项，改为原生上下键后修正；测试结束时批量取消所有组件回调造成重复清理，改为完成待绘制内容并只取消根窗口轮询。两份原失败日志为`runs/settings-ui-initial.log`、`settings-ui-cleanup.log`，未改运行代码以掩盖错误。
 
+初次打包检查了首页、五个设置分类和下拉打开／Escape收起，配置未改；截图发现管理员页双按钮撑宽值列，已缩小设置专用按钮内边距。最终**81项设置检查再次通过**，`runs/settings-final-ui.log`，已查看管理员最小窗口，未改游戏输入或流程代码。
+
+最终源码`5987f74`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/settings-build.log`。以`--no-admin-launch`打开正式程序，复核周常入口和管理员按钮列后正常关闭，退出码0；截图为`runs/settings-package-weekly.png`和`settings-package-admin.png`。239份配置及运行证据哈希未变，123个UI素材、3份清单、23个上游文件一致；核对记录`runs/settings-package-verification.json`，备份`build/userdata-settings-20261029_041708/`。EXE SHA-256为`0fb7259cc63b9d8376dc8df44949cf977cd28586a2c9724808a040479d6179ab`。初次构建、核对与截图以`settings-initial-build`、`settings-package-initial-*`保留，未混作最终版本。
+
 本次未启动、检测或操作真实游戏。日常周常组合实机、周积分奖励、货币战争周常和真实玩家学习／注意力成本仍未验收；历史资源、失败记录和通关计数不变。
 
 ## 2026-10-29：首页费用语义与结果去重
