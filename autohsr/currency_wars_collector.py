@@ -93,7 +93,7 @@ def character_stars(scene):
 
 def owned_profile(scene, inspecting, confidence=.65):
     from .currency_wars_roster import read_character
-    from .currency_wars_equipment import equipment_slots
+    from .currency_wars_equipment_catalog import slots as equipment_slots
     from .currency_wars_state import UnitState
     profile = read_character(scene, confidence)
     if (not inspecting or profile.node != inspecting.get('node')
@@ -107,7 +107,7 @@ def owned_profile(scene, inspecting, confidence=.65):
     traits = tuple(dict.fromkeys(normalize(t.text) for t in sorted(clean.tokens,key=lambda t:t.center[0])
                                 if t.within((.72,.27,.98,.315)) and re.fullmatch(r'[\u4e00-\u9fff]{1,12}',normalize(t.text))))
     slots = equipment_slots(scene,confidence)
-    equipment = () if slots == ('empty',)*3 else None
+    equipment = tuple(item for item in slots if item != 'empty') if 'other' not in slots else None
     name = re.sub(r'lv\.?([0-9]{1,4})', r'Lv.\1', profile.name)
     return UnitState(name, inspecting['zone'], inspecting['slot'], star=character_stars(scene),
                      tier=int(tiers[0].text), traits=traits or None, equipment=equipment,

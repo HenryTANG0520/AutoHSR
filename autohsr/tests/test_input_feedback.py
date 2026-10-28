@@ -56,6 +56,21 @@ class InputFeedbackTests(unittest.TestCase):
             self.assertFalse(standard_run_verified(pending))
             self.assertEqual(standard_activity(pending), "结算待核对")
 
+    def test_inventory_change_is_not_equipment_completion(self):
+        data = dict(action_status="transition_verified", equipment=dict(status="verifying"),
+                    actions=[dict(status="verified", equipment_verified=False)])
+        self.assertEqual(standard_activity(data), "核验角色装备")
+        data["equipment"]["status"] = "equipment_mismatch"
+        self.assertEqual(standard_activity(data), "角色装备不符")
+        self.assertFalse(standard_run_verified(data))
+
+    def test_equipment_feedback_requires_completed_equipment_state(self):
+        data = dict(action_status="equipment_verified", equipment=dict(status="verified"))
+        self.assertEqual(standard_activity(data), "装备已核实")
+        self.assertFalse(standard_run_verified(data))
+        data["equipment"] = {}
+        self.assertEqual(standard_activity(data), "装备结果待核对")
+
 
 if __name__ == "__main__":
     unittest.main()

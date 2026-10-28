@@ -154,14 +154,22 @@ def standard_run_verified(data: dict) -> bool:
 
 def standard_activity(data: dict) -> str:
     exchange = data.get("exchange") or {}
+    equipment = data.get("equipment") or {}
     status = data.get("action_status")
+    if equipment.get("status") == "verifying":
+        return "核验角色装备"
+    if equipment.get("status") == "equipment_mismatch":
+        return "角色装备不符"
+    if status == "equipment_verified":
+        return "装备已核实" if equipment.get("status") == "verified" else "装备结果待核对"
     if exchange.get("status") == "verifying":
         return "核验换人角色"
     if exchange.get("status") == "identity_mismatch":
         return "换人角色不符"
     if status == "exchange_verified":
         return "换人已核实" if exchange.get("status") == "verified" else "换人结果待核对"
-    return {"exchange_identity_pending": "核验换人角色", "needs_observation": "等待核实当前画面",
+    return {"exchange_identity_pending": "核验换人角色", "equipment_identity_pending": "核验角色装备",
+            "needs_observation": "等待核实当前画面",
             "readonly_reconciled": "当前页面已核实", "transition_verified": "页面转换已核实",
             "unknown": "动作结果待核对", "step_limit": "本次开发步骤已结束",
             "settled": "本局结算已核实" if standard_run_verified(data) else "结算待核对"}.get(status, "观察当前局面")
