@@ -12,6 +12,8 @@
 - **55项输入/错误反馈、24项计划、84项既有假后端GUI检查通过**，日志分别为`runs/input-feedback-ui.log`、`runs/input-feedback-plan-ui.log`、`runs/input-feedback-integrated-gui.log`。检查定位、选中、修正后保留启动操作、共用编队、禁用周常草稿、显式保存、配置未写入、旧错误清除及开发结果保留；没有使用游戏输入后端。
 - **84个布局场景通过**，`runs/input-feedback-layout.log`，覆盖100%、150%、200%及默认/最小窗口。已查看输入错误与部分完成画面，归档于`runs/input-feedback-ui/`。
 
+源码`ed46417`通过`tools/build.ps1`构建，日志`runs/input-feedback-build.log`；已更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，以`--no-admin-launch`仅打开桌面并正常关闭，退出码0。239份配置与运行证据哈希不变，17个界面素材及3个上游来源/许可文件一致。核对记录`runs/input-feedback-package-verification.json`，备份`build/userdata-input-20261029_010023/`，EXE SHA-256为`81ee084372a9c12767c80244e2e3ca8e364b536f9368d2637fe281b9fe6ea5cd`；首次打包的记录另存`runs/input-feedback-initial-package-verification.json`。未打入另一任务尚未提交的后端改动。
+
 本轮只验证桌面与配置反馈，没有启动或操作真实游戏。日常周常组合、周积分奖励及货币战争完整自动玩法的未验证边界继续保留，未改变历史通关计数。
 
 ## 2026-10-29：直接显示执行阶段并保留单项结果
