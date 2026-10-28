@@ -109,9 +109,11 @@ def _next_action(scene, confidence=.65, *, session=None):
     if kind == 'preparation':
         from .currency_wars_node import loot_centers
         from .currency_wars_collector import first_unit_probe
-        if (session or {}).get('strategy') in ('aglaea','seele') and (loot_centers(scene) or any(
+        if 'strategy' in (session or {}) and (loot_centers(scene) or any(
                 normalize(t.text)=='开启' and t.within((.18,.78,.80,.92)) for t in clean.tokens)):
-            probe = first_unit_probe(scene,confidence,session.get('collection',{}).get('units'))
+            from .currency_wars_collector import roster_cells
+            occupied=any(c.state=='occupied' for c in roster_cells(scene,confidence))
+            probe = first_unit_probe(scene,confidence,session.get('collection',{}).get('units')) if occupied else None
             if probe is not None:
                 cell,target = probe
                 return StandardAction('inspect_standard_unit','character',target,
@@ -477,6 +479,8 @@ def run_standard(c):
         elif choice.intent in ('choose_standard_reward','select_standard_supply','confirm_standard_supply'):
             action['decision'] = dict(name=choice.details[0],item=choice.details[1],unit=choice.details[2],
                                       gold=choice.details[3],policy=choice.details[4])
+            if len(choice.payload)==11:
+                action['decision'].update(selection_count=choice.payload[9],expected_tier=choice.payload[10])
             store.persist()
         elif choice.intent in ('select_standard_investment','confirm_standard_investment'):
             action['decision']=dict(name=choice.details[0],kind=choice.details[1],parameters=dict(choice.details[2]),policy=choice.details[3])
@@ -640,6 +644,8 @@ def run_standard(c):
                     if choice.intent in ('choose_standard_reward','confirm_standard_supply'):
                         returned(store.data,choice,after,c.settings.ocr_confidence)
                         reward_completed(store.data)
+                    from .currency_wars_character_rewards import observe_shop
+                    observe_shop(store.data,after,action,c.settings.ocr_confidence)
                     store.persist()
                     scene = after
                     break

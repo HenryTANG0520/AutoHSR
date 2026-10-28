@@ -39,6 +39,7 @@ PAGE_LABELS = {
     "equipment_selection": "简易武装箱装备选择",
     "advanced_equipment_selection": "进阶武装箱装备选择",
     "expert_selection": "专家邀请函选择",
+    "hiring_selection": "聘用书选择",
     "bench_full": "备战席已满，等待整理",
     "plane_map": "位面进度地图",
     "investment_selection": "投资策略选择",
@@ -95,7 +96,11 @@ _MODALS = {
     "expert_selection": (
         _Anchor("专家邀请函", (.49, .03, .59, .08)),
         _Anchor("请选择1个专家顾问，该角色在选择后同步加入商店", (.40, .07, .68, .11)),
-        _Anchor("现金为王", (.75, .33, .83, .38)),
+        _Anchor("现金为王", (.14, .33, .9, .39)),
+    ),
+    "hiring_selection": (
+        _Anchor(re.compile(r'(?:[1-5]费)?聘用书'), (.3,.02,.7,.10)),
+        _Anchor(re.compile(r'请选择1(?:个|名)(?:角色)?'), (.3,.06,.75,.13)),
     ),
     "equipment_info": (
         _Anchor("简易装备", (.75, .15, .9, .21)),

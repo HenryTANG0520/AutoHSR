@@ -46,7 +46,7 @@ def read_match(scene: Scene, confidence=.65, *, include_rewards=False) -> MatchS
               and len(t.box) == 4 and all(math.isfinite(x) and 0 <= x <= 1 for x in t.box)
               and t.box[0] < t.box[2] and t.box[1] < t.box[3]]
     page = classify_page(tokens)
-    reward_pages = ('equipment_selection','advanced_equipment_selection','expert_selection','supply_selection')
+    reward_pages = ('equipment_selection','advanced_equipment_selection','expert_selection','supply_selection','hiring_selection')
     if page not in ("preparation", "shop", "character", "bench_full") and not (include_rewards and page in reward_pages):
         return None
     if page=='bench_full' and classify_page([t for t in tokens if not is_bench_full_notice(t)])!='preparation':
@@ -103,7 +103,13 @@ def supplement_numbers(scene: Scene, reader) -> Scene:
     height, width = scene.image.shape[:2]
     tokens = list(scene.tokens)
     if page=='expert_selection':
-        roi=(.828,.25,.849,.292)
+        cash=[t for t in scene.tokens if t.score>=.65 and normalize(t.text)=='现金为王' and t.within((.14,.33,.9,.39))]
+        if len(cash)!=1:return scene
+        # Anchor the amount to this card's text; four/five-card layouts need
+        # different positions. Preserve any conflicting full-screen reading.
+        right=cash[0].box[2]
+        roi=(right+.019,.25,right+.04,.292)
+        if not 0<=roi[0]<roi[2]<=1:return scene
         x1,y1,x2,y2=roi
         patch=cv2.resize(scene.image[round(y1*height):round(y2*height),round(x1*width):round(x2*width)],None,fx=3,fy=3)
         parts=reader.read(patch).tokens

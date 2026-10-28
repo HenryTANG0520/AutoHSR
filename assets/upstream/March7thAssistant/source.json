@@ -5,6 +5,14 @@
   "license": "GNU GPL version 3",
   "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
   "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json"],
+  "mechanic_references": [
+    {
+      "url": "https://sr.mihoyo.com/news/162649?nav=home&type=news_all",
+      "title": "Currency Wars V4.0 expansion: expert advisors",
+      "reviewed": "2026-10-29",
+      "scope": "advisor unlock and later shop availability are distinct from an actual purchase; old costs, rank caps and balance values are not reused"
+    }
+  ],
   "sources": [
     {
       "path": "LICENSE",
@@ -83,8 +91,13 @@
     },
     {
       "path": "autohsr/currency_wars_standard_rewards.py",
-      "reference_functions": ["check_box", "_check_equipment_box", "_check_expert_invitation", "check_supply_phase"],
+      "reference_functions": ["check_box", "_check_equipment_box", "_check_hiring_book", "_check_expert_invitation", "check_supply_phase"],
       "kind": "native typed reward custody, observed cash amount, paired supply selection and separate confirmation; inventory and independently recollected unit delivery verified before clearing the reward ledger"
+    },
+    {
+      "path": "autohsr/currency_wars_character_rewards.py",
+      "reference_functions": ["_check_hiring_book", "_check_expert_invitation"],
+      "kind": "named-core character preferences rewritten around current OCR candidate names and traits, selection count distinct from tier, complete before/after roster and preserved gear; advisor unlock declaration and later priced shop observation are separate facts; no fixed coordinate fallback or upstream cost table; hiring layout remains synthetic pending a real capture"
     },
     {
       "path": "autohsr/currency_wars_investment_policy.py",
