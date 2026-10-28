@@ -34,13 +34,17 @@ def build_window(ui, task_names, server_names):
     ui.header.grid(row=0, column=0, sticky="ew")
     ui.guide = Guide(root, s, ui)
     ui.guide.grid(row=1, column=0, sticky="nsew", padx=d(18))
-    root.bind("<Configure>", lambda e: ui.guide.grid_configure(padx=max(d(18), round((e.width-d(1280))/2))) if e.widget is root else None, add="+")
+    def position_guide(event=None):
+        if (event is None or event.widget is root) and getattr(ui, "active_page", "home") != "settings":
+            ui.guide.grid_configure(padx=max(d(18), round((root.winfo_width()-d(1280))/2)))
+    ui.position_guide = position_guide
+    root.bind("<Configure>", position_guide, add="+")
     body = ui.guide.content
     body.columnconfigure(0, weight=1)
     body.rowconfigure(0, weight=1)
     ui.nav_buttons = {key: ui.guide.buttons["universe" if key in ("differential_universe", "currency_wars") else key]
                       for key in PAGE_TITLES}
-    ui.pages = {key: ttk.Frame(body) for key in PAGE_TITLES}
+    ui.pages = {key: ttk.Frame(body) for key in PAGE_TITLES if key != "settings"}
     for page in ui.pages.values():
         page.grid(row=0, column=0, sticky="nsew")
         page.columnconfigure(0, weight=1)

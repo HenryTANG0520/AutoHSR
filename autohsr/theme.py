@@ -236,15 +236,15 @@ def _form_elements(root, style, scale):
         style.layout(name, layout)
 
     def setting_field(p, state):
-        p.box((0, 0, 84, 52), SETTING_VALUE)
+        p.box((0, 0, 84, 58), SETTING_VALUE)
         if "focus" in state and "disabled" not in state:
-            p.box((1, 1, 83, 51), None, 0, GOLD, 1.5)
+            p.box((1, 1, 83, 57), None, 0, GOLD, 1.5)
 
     def setting_arrow(p, state):
-        p.poly((10, 23, 20, 23, 15, 29), "#96979b" if "disabled" in state else "#44464b")
+        p.poly((10, 26, 20, 26, 15, 32), "#96979b" if "disabled" in state else "#44464b")
 
-    element("Settings.field", (84, 52), setting_field, states, border=3, sticky="nsew")
-    element("Settings.Combobox.downarrow", (30, 52), setting_arrow, states)
+    element("Settings.field", (84, 58), setting_field, states, border=3, sticky="nsew")
+    element("Settings.Combobox.downarrow", (30, 58), setting_arrow, states)
     for widget in ("Entry", "Combobox"):
         children = [(widget+".padding", {"sticky": "nswe", "children": [(widget+".textarea", {"sticky": "nswe"})]})]
         if widget == "Combobox":
@@ -278,8 +278,9 @@ def apply_theme(root, scale):
     style.configure("Settings.Row.TFrame", background=SETTING_ROW)
     style.configure("Settings.Value.TFrame", background=SETTING_VALUE)
     style.configure("Settings.Line.TFrame", background="#a5a7ab")
-    style.configure("Settings.TLabel", background=SETTING_ROW, foreground=TEXT, font=(FONT, 11))
+    style.configure("Settings.TLabel", background=SETTING_ROW, foreground=TEXT, font=(FONT, 12))
     style.configure("Settings.Hint.TLabel", background=SETTING_ROW, foreground="#5d6065", font=(FONT, 9))
+    style.configure("Settings.Note.TLabel", background=BG, foreground="#bdc0c9", font=(FONT, 10))
     for name,color,ink in (("TLabel",CARD,TEXT),("Card.TLabel",CARD,TEXT),("Muted.TLabel",CARD,MUTED),
         ("CardHint.TLabel",CARD,MUTED),("Hint.TLabel",PANEL,MUTED),("Footer.TLabel",BG,"#b8b8bc"),
         ("FooterStatus.TLabel",BG,LIGHT),("Rail.TLabel",RAIL,LIGHT),("Warning.TLabel",CARD,WARNING)):
@@ -326,6 +327,13 @@ def apply_theme(root, scale):
     style.map("TNotebook.Tab",background=[("selected",CARD)],foreground=[("selected",TEXT)])
     style.layout("Hidden.TNotebook.Tab", [])
     style.configure("Hidden.TNotebook", borderwidth=0, tabmargins=0)
+    style.layout("Settings.TNotebook", [])
+    style.layout("Settings.TNotebook.Tab", [])
+    style.configure("Settings.TNotebook", background=BG, borderwidth=0, tabmargins=0)
+    for name in ("Settings.Nav.TButton", "Settings.Selected.Nav.TButton", "Settings.Close.TButton"):
+        style.layout(name, [("Button.padding", {"sticky": "nswe", "children": [("Button.label", {"sticky": "nswe"})]})])
+        style.configure(name, background=BG, foreground=LIGHT, padding=d(3), borderwidth=0, font=(FONT, 10), anchor="center")
+        style.map(name, foreground=[("focus", GOLD), ("active", GOLD), ("!disabled", LIGHT)], background=[("active", BG), ("!disabled", BG)])
     style.configure("Horizontal.TScale",background=CARD,troughcolor="#c1c1c1",sliderlength=d(18))
     style.configure("Vertical.TScrollbar",background="#b0b0b0",troughcolor=PANEL,borderwidth=0,arrowcolor=MUTED)
     return style

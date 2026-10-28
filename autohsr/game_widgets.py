@@ -16,6 +16,7 @@ class Surface(tk.Canvas):
         self.scale=scale
         self._paint_job=None
         self.bind("<Configure>",self.redraw)
+        self.bind("<Map>", self.redraw, add="+")
         self.bind("<Destroy>",self._destroy,add="+")
 
     def _destroy(self,event):
@@ -34,7 +35,7 @@ class Surface(tk.Canvas):
     def _render(self):
         self._paint_job=None
         w,h=self.winfo_width(),self.winfo_height()
-        if w<2 or h<2:
+        if w<2 or h<2 or not self.winfo_ismapped():
             return
         p=t.Painter(w,h,self.scale,self.cget("bg"))
         self.paint(p)
@@ -42,6 +43,12 @@ class Surface(tk.Canvas):
         self.delete("art")
         self.create_image(0,0,image=self._photo,anchor="nw",tags="art")
         self.tag_lower("art")
+
+
+def paint_run_metrics(p, ui):
+    if ui.stamina.get() != "—":
+        p.text((p.width-295, 29), "已用开拓力  "+ui.stamina.get(), 14, t.LIGHT)
+        p.text((p.width-142, 29), ui.elapsed.get(), 14, t.LIGHT)
 
 
 class Header(Surface):
@@ -69,9 +76,7 @@ class Header(Surface):
         p.asset("guide-mark.png",(24,23,62,59),t.GOLD)
         p.text((73,21),"星际和平指南",14,t.GOLD)
         p.text((73,43),self.ui.page_title.get(),17,t.LIGHT)
-        if self.ui.stamina.get() != "—":
-            p.text((p.width-295,29),"已用开拓力  "+self.ui.stamina.get(),14,t.LIGHT)
-            p.text((p.width-142,29),self.ui.elapsed.get(),14,t.LIGHT)
+        paint_run_metrics(p, self.ui)
         x,y=p.width-33,36
         for sx,sy in ((-1,-1),(-1,1),(1,-1),(1,1)):
             p.line((x+sx*4,y+sy*4,x+sx*13,y+sy*13),t.LIGHT,2)

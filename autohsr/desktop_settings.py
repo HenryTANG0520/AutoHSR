@@ -3,9 +3,116 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk
+import math
+from PIL import ImageTk
 
 from . import theme as t
+from .game_widgets import PlanRibbon, Surface, paint_run_metrics
 from .weekly_plan import DAYS, MODES
+
+
+SECTIONS = (("game", "游戏连接", "客户端", "guide-mark.png"),
+            ("weekly", "周常计划", "任务安排", "tab-daily.png"),
+            ("run", "运行偏好", "运行功能", "tab-settings.png"),
+            ("recognition", "识别与等待", "识别参数", "tab-survival.png"),
+            ("admin", "管理员启动", "启动权限", "tab-records.png"))
+
+
+class SettingsShell(Surface):
+    """A separate settings surface, with the game's top navigation and return."""
+
+    def __init__(self, parent, scale, ui):
+        super().__init__(parent, scale, bg=t.BG)
+        self.ui, self.section = ui, "game"
+        self.watch(ui.stamina, ui.elapsed)
+        d = lambda n: round(n*scale)
+        self.menu = ttk.Frame(self, style="Footer.TFrame")
+        self.content = ttk.Frame(self, style="Footer.TFrame")
+        self.content.columnconfigure(0, weight=1)
+        self.content.rowconfigure(0, weight=1)
+        self.plan = PlanRibbon(self, scale, ui, dark=True)
+        self.photos = {}
+        self.buttons = {}
+        for index, (key, name, _, asset) in enumerate(SECTIONS):
+            for selected in (False, True):
+                p = t.Painter(d(48), d(48), scale, t.BG)
+                if selected:
+                    p.ellipse((3, 3, 45, 45), t.LIGHT)
+                    p.ellipse((0, 0, 48, 48), None, "#787c86", .8)
+                p.asset(asset, (10, 10, 38, 38), t.BG if selected else "#aaadb5")
+                self.photos[key, selected] = ImageTk.PhotoImage(p.finish(), master=self)
+            button = ttk.Button(self.menu, text=name, image=self.photos[key, False],
+                compound="top", style="Settings.Nav.TButton",
+                command=lambda key=key: self.choose(key))
+            button.grid(row=0, column=index, padx=d(8))
+            button.bind("<Left>", lambda event, index=index: self.move(index, -1))
+            button.bind("<Right>", lambda event, index=index: self.move(index, 1))
+            self.buttons[key] = button
+        p = t.Painter(d(36), d(36), scale, t.BG)
+        for sx, sy in ((-1, -1), (-1, 1), (1, -1), (1, 1)):
+            p.line((18+sx*4, 18+sy*4, 18+sx*13, 18+sy*13), t.LIGHT, 2)
+        self.close_photo = ImageTk.PhotoImage(p.finish(), master=self)
+        self.back = ttk.Button(self, text="返回", image=self.close_photo, style="Settings.Close.TButton", command=ui._leave_settings)
+        self.bind("<Configure>", self.position, add="+")
+
+    def choose(self, key):
+        if key == "weekly":
+            self.ui._show_weekly_plan()
+        else:
+            self.ui.settings_tabs.select(self.ui.settings_sections[key])
+
+    def move(self, index, step):
+        key = SECTIONS[(index+step) % len(SECTIONS)][0]
+        self.choose(key)
+        self.buttons[key].focus_set()
+        return "break"
+
+    def select(self, key):
+        self.section = key
+        for name, button in self.buttons.items():
+            button.configure(image=self.photos[name, name == key],
+                style="Settings.Selected.Nav.TButton" if name == key else "Settings.Nav.TButton")
+        self.redraw()
+
+    def position(self, _=None):
+        d = lambda n: round(n*self.scale)
+        w, h = self.winfo_width(), self.winfo_height()
+        margin = max(d(36), round(w*.052))
+        self.menu.place(x=(w-self.menu.winfo_reqwidth())//2, y=d(6))
+        self.back.place(x=w-d(56), y=d(14), width=d(44), height=d(44))
+        daily = getattr(self.ui, "action_page", "home") in ("home", "tasks")
+        reserve = d(70 if daily else 20)
+        self.content.place(x=margin, y=d(126), width=max(1, w-2*margin), height=max(1, h-d(126)-reserve))
+        if daily:
+            self.plan.place(x=margin, y=h-d(58), width=max(1, w-2*margin), height=d(46))
+        else:
+            self.plan.place_forget()
+
+    def paint(self, p):
+        self.position()
+        # These are restrained code-drawn rings, not a fabricated game scene.
+        for radius in (82, 112, 150):
+            p.ellipse((35-radius, -24-radius, 35+radius, -24+radius), None, "#222936", .7)
+        for x, y, radius, teeth in ((40, 34, 13, 8), (51, 43, 6, 6)):
+            points = []
+            for step in range(teeth*4):
+                angle = step*math.tau/(teeth*4)
+                r = radius if step % 4 in (1, 2) else radius*.74
+                points.extend((x+r*math.cos(angle), y+r*math.sin(angle)))
+            p.poly(points, t.GOLD)
+            p.ellipse((x-radius*.42, y-radius*.42, x+radius*.42, y+radius*.42), t.BG)
+        name, group = next((name, group) for key, name, group, _ in SECTIONS if key == self.section)
+        p.text((70, 19), "设置", 14, t.GOLD)
+        p.text((70, 41), name, 17, t.LIGHT)
+        paint_run_metrics(p, self.ui)
+        margin = max(36, p.width*.052)
+        p.text((margin, 98), group, 17, t.LIGHT)
+        p.line((margin, 120, p.width-margin, 120), "#4c505b", .8)
+        button = self.buttons[self.section]
+        if button.winfo_ismapped():
+            x = (self.menu.winfo_x()+button.winfo_x())/self.scale
+            width = button.winfo_width()/self.scale
+            p.line((x+8, 84, x+width-8, 84), t.LIGHT, 2)
 
 
 class BooleanSetting(ttk.Combobox):
@@ -14,7 +121,7 @@ class BooleanSetting(ttk.Combobox):
     def __init__(self, parent, variable):
         self.value = tk.StringVar(parent)
         super().__init__(parent, textvariable=self.value, values=("开启", "关闭"),
-                         state="readonly", style="Settings.TCombobox", justify="center", width=8)
+                         state="readonly", style="Settings.TCombobox", justify="center", width=8, font=(t.FONT, 12))
         self.variable = variable
         self.bind("<<ComboboxSelected>>", self._select)
         self.token = variable.trace_add("write", self._sync)
@@ -37,9 +144,9 @@ class SettingRow(ttk.Frame):
         super().__init__(parent, style="Settings.Row.TFrame")
         d = lambda n: round(n*scale)
         self.grid(row=index, column=0, sticky="ew")
-        self.columnconfigure(0, weight=1)
-        self.columnconfigure(1, weight=3 if wide else 0, minsize=d(240))
-        self.rowconfigure(0, minsize=d(52))
+        self.columnconfigure(0, weight=1 if wide else 3, uniform="setting")
+        self.columnconfigure(1, weight=3 if wide else 1, minsize=d(240), uniform="setting")
+        self.rowconfigure(0, minsize=d(58))
         caption = ttk.Frame(self, style="Settings.Row.TFrame", padding=(d(18), d(8)))
         caption.grid(row=0, column=0, sticky="ew")
         caption.columnconfigure(0, weight=1)
@@ -63,31 +170,23 @@ class SettingRow(ttk.Frame):
 def build_settings(ui):
     s = ui.ui_scale
     d = lambda n: round(n*s)
-    page = ui.pages["settings"]
-    page.columnconfigure(0, weight=0)
-    page.columnconfigure(1, weight=1)
-    page.rowconfigure(0, weight=1)
-    menu = ttk.Frame(page)
-    menu.grid(row=0, column=0, sticky="ns", padx=(0, d(24)))
-    tabs = ttk.Notebook(page, style="Hidden.TNotebook")
-    tabs.grid(row=0, column=1, sticky="nsew")
+    ui.settings_shell = SettingsShell(ui.root, s, ui)
+    page = ui.settings_shell.content
+    ui.pages["settings"] = ui.settings_shell
+    tabs = ttk.Notebook(page, style="Settings.TNotebook")
+    tabs.grid(row=0, column=0, sticky="nsew")
     ui.settings_tabs = tabs
     ui.settings_sections = {}
-    ui.settings_buttons = {}
-    for index, (key, name) in enumerate((("game", "游戏连接"), ("weekly", "周常计划"),
-            ("run", "运行偏好"), ("recognition", "识别与等待"), ("admin", "管理员启动"))):
-        section = ttk.Frame(tabs)
+    ui.settings_buttons = ui.settings_shell.buttons
+    for key, name, _, _ in SECTIONS:
+        section = ttk.Frame(tabs, style="Footer.TFrame")
         section.columnconfigure(0, weight=1)
         tabs.add(section, text=name)
         ui.settings_sections[key] = section
-        button = ttk.Button(menu, text=name, style="Option.TButton", width=13,
-            command=ui._show_weekly_plan if key == "weekly" else lambda section=section: tabs.select(section))
-        button.grid(row=index, column=0, sticky="ew", pady=(0, d(10)))
-        ui.settings_buttons[key] = button
 
     def selected(_):
-        for key, button in ui.settings_buttons.items():
-            button.configure(style="Selected.Option.TButton" if tabs.select() == str(ui.settings_sections[key]) else "Option.TButton")
+        key = next(key for key, section in ui.settings_sections.items() if tabs.select() == str(section))
+        ui.settings_shell.select(key)
     tabs.bind("<<NotebookTabChanged>>", selected)
 
     def row(section, index, name, **kwargs):
@@ -95,7 +194,7 @@ def build_settings(ui):
 
     def entry(target, variable, name, **kwargs):
         field = ttk.Entry(target.value, textvariable=variable, style="Settings.TEntry",
-                          width=10, justify=kwargs.pop("justify", "center"), **kwargs)
+                          width=10, font=(t.FONT, 12), justify=kwargs.pop("justify", "center"), **kwargs)
         target.place_control(field)
         setattr(ui, name, field)
         ui.setting_controls.append(field)
@@ -103,7 +202,7 @@ def build_settings(ui):
 
     def combo(target, variable, values, name):
         field = ttk.Combobox(target.value, textvariable=variable, values=values,
-            style="Settings.TCombobox", width=10, justify="center", state="readonly")
+            style="Settings.TCombobox", width=10, font=(t.FONT, 12), justify="center", state="readonly")
         target.place_control(field)
         setattr(ui, name, field)
         ui.setting_controls.append(field)
@@ -126,7 +225,7 @@ def build_settings(ui):
 
     def note(section, index, *, text=None, variable=None):
         args = dict(textvariable=variable) if variable is not None else dict(text=text)
-        label = t.wrapped_label(ui.settings_sections[section], style="Hint.TLabel", **args)
+        label = t.wrapped_label(ui.settings_sections[section], style="Settings.Note.TLabel", **args)
         label.grid(row=index, column=0, sticky="ew", pady=(d(12), 0))
 
     game = row("game", 0, "游戏程序", hint="StarRail.exe", wide=True)

@@ -103,6 +103,7 @@ class AutoHSRWindow:
         root.bind_all("<KeyRelease-F9>", self._f9_release)
         root.bind_all("<FocusOut>", lambda _: setattr(self, "_f9_local_pressed", False), add="+")
         root.bind_all("<F10>", lambda _: self._stop())
+        root.bind("<Escape>", self._settings_escape, add="+")
         root.after(100, self._drain)
         self._log("准备就绪。选择任务与副本，然后检测窗口。")
         self._log("仅使用已有开拓力；首次验证建议选择“设为 1 次”，核对副本与预计消耗。")
@@ -202,10 +203,19 @@ class AutoHSRWindow:
 
     def _show_page(self, name):
         from .desktop import PAGE_TITLES
+        if name == "settings" and getattr(self, "active_page", "home") != "settings":
+            self.settings_return_page = getattr(self, "active_page", "home")
+            self.settings_return_focus = self.root.focus_get()
         self.active_page = name
         self.page_title.set(PAGE_TITLES[name])
         for key, page in self.pages.items():
-            page.grid() if key == name else page.grid_remove()
+            if key == "settings":
+                page.grid(row=0, column=0, rowspan=2, sticky="nsew") if key == name else page.grid_remove()
+            else:
+                page.grid() if key == name else page.grid_remove()
+        for frame in (self.header, self.guide):
+            frame.grid_remove() if name == "settings" else frame.grid()
+        self.position_guide()
         self.guide.select(name)
         if name in ("differential_universe", "currency_wars"):
             self.last_universe_page = name
@@ -230,11 +240,32 @@ class AutoHSRWindow:
             command=self._currency_wars if currency else
                     (lambda: self._start(differential_universe=True)) if differential_universe else (lambda: self._start(run_plan=True)))
         self.header.position_plan()
+        self.settings_shell.position()
 
     def _show_weekly_plan(self):
         self.action_page = "home"
         self._show_page("settings")
         self.settings_tabs.select(self.settings_sections["weekly"])
+        self.settings_return_page = "home"
+        self.settings_return_focus = self.weekly_button
+
+    def _leave_settings(self):
+        if self.active_page != "settings":
+            return
+        target = getattr(self, "settings_return_page", "home")
+        focus = getattr(self, "settings_return_focus", None)
+        self._show_page(target)
+        self.root.update_idletasks()
+        if focus is not None and focus.winfo_exists() and focus.winfo_ismapped():
+            focus.focus_set()
+        else:
+            self.nav_buttons[target].focus_set()
+
+    def _settings_escape(self, event):
+        # Tcl-created combobox popdowns and separate dialogs own their Escape.
+        if self.active_page == "settings" and isinstance(event.widget, tk.Misc) and event.widget.winfo_toplevel() is self.root:
+            self._leave_settings()
+            return "break"
 
     def _weekly_values(self):
         from .weekly_plan import DAYS, MODES
@@ -987,7 +1018,9 @@ class AutoHSRWindow:
         seconds = int(time.monotonic() - self.started_at) if self.started_at is not None else self.elapsed_seconds
         minutes, seconds = divmod(max(0, seconds), 60)
         hours, minutes = divmod(minutes, 60)
-        self.elapsed.set(f"{hours:02}:{minutes:02}:{seconds:02}" if hours else f"{minutes:02}:{seconds:02}")
+        value = f"{hours:02}:{minutes:02}:{seconds:02}" if hours else f"{minutes:02}:{seconds:02}"
+        if self.elapsed.get() != value:
+            self.elapsed.set(value)
 
     def _freeze_clock(self) -> None:
         if self.started_at is not None:
