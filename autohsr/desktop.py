@@ -74,37 +74,39 @@ def _home(ui, names):
 
 def _tasks(ui, names):
     from .dungeons import CATEGORIES
-    from .dungeon_ui import select_category
     s = ui.ui_scale
     d = lambda n: round(n*s)
     page = ui.pages["tasks"]
     page.rowconfigure(0, weight=1)
-    page.columnconfigure(0, weight=0, minsize=d(232))
-    page.columnconfigure(1, weight=1)
+    page.columnconfigure(0, weight=3, minsize=d(232), uniform="survival")
+    page.columnconfigure(1, weight=7, uniform="survival")
     menu = ttk.Frame(page)
-    menu.grid(row=0, column=0, sticky="ns", padx=(0, d(24)))
+    menu.grid(row=0, column=0, sticky="nsew", padx=(0, d(24)))
     menu.columnconfigure(0, weight=1)
     ui.category_buttons = {}
     def choose(category):
-        ui.dungeon_category.set(category.label)
-        select_category(ui)
+        ui.dungeon_search.set("")
+        ui.dungeon_browse_category.set(category.label)
+        from .dungeon_ui import show_browser
+        show_browser(ui)
     def selected(*_):
         for label, button in ui.category_buttons.items():
-            button.configure(style="Selected.Option.TButton" if label == ui.dungeon_category.get() else "Option.TButton")
+            button.configure(style="Selected.Option.TButton" if label == ui.dungeon_browse_category.get() else "Option.TButton")
     for row, category in enumerate(CATEGORIES):
         button = ttk.Button(menu, text=category.label, style="Option.TButton", command=lambda category=category: choose(category))
         button.grid(row=row, column=0, sticky="ew", pady=(0, d(10)))
         ui.category_buttons[category.label] = button
         ui.setting_controls.append(button)
         ui.stamina_controls.append(button)
-    token = ui.dungeon_category.trace_add("write", selected)
-    menu.bind("<Destroy>", lambda e: ui.dungeon_category.trace_remove("write", token) if e.widget is menu else None, add="+")
+    token = ui.dungeon_browse_category.trace_add("write", selected)
+    menu.bind("<Destroy>", lambda e: ui.dungeon_browse_category.trace_remove("write", token) if e.widget is menu else None, add="+")
     selected()
     content = ttk.Frame(page, style="Card.TFrame", padding=d(18))
     content.grid(row=0, column=1, sticky="nsew")
     content.columnconfigure(0, weight=1)
+    content.rowconfigure(0, weight=1)
     specific = ttk.Frame(content, style="Card.TFrame")
-    specific.grid(row=0, column=0, sticky="ew")
+    specific.grid(row=0, column=0, sticky="nsew")
     ui._build_battle_fields(specific)
     ttk.Separator(content).grid(row=1, column=0, sticky="ew", pady=d(10))
     tasks = ttk.Frame(content, style="Card.TFrame")

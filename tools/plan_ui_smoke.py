@@ -162,7 +162,7 @@ def main():
                       ui.training_meter.verified and ui.summary.get() == summary)
                 ui.table.activate()
                 root.update()
-                check("task_setup_opens_specific_control", ui.active_page == "tasks" and root.focus_get() == ui.dungeon_name_combo)
+                check("task_setup_opens_specific_control", ui.active_page == "tasks" and root.focus_get() == ui.dungeon_list)
             finally:
                 if ui.busy:
                     ui._stop()

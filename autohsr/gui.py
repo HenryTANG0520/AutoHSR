@@ -119,6 +119,7 @@ class AutoHSRWindow:
         from .dungeons import category_for, count_limit
         category = category_for(self.settings)
         self.dungeon_category = tk.StringVar(value=category.label)
+        self.dungeon_browse_category = tk.StringVar(value=category.label)
         self.challenge_count = tk.StringVar(value=str(self.settings.challenge_count or count_limit(category, self.settings.stamina_limit)))
         self.battle_cost = tk.StringVar()
         self.use_support = tk.BooleanVar(value=self.settings.use_support)
@@ -340,6 +341,7 @@ class AutoHSRWindow:
         battle_enabled = allowed and self.tasks["battle"].get()
         for control in self.stamina_controls:
             control.configure(state="normal" if battle_enabled and not self.busy else "disabled")
+        self.dungeon_list.redraw()
         self.dungeon_category_combo.configure(state="readonly" if battle_enabled and not self.busy else "disabled")
         if not allowed:
             hint = "开拓力刷本未授权，当前仅收取委托与奖励"
@@ -348,7 +350,7 @@ class AutoHSRWindow:
         elif not self.use_support.get():
             hint = "好友支援已关闭；标准每日流程需勾选支援。"
         elif self.dungeon_category.get() == "饰品提取":
-            hint = "使用游戏中已有差分存档；仅消耗开拓力，不创建或切换存档。"
+            hint = "使用已有差分存档；已有沉浸器优先，余量使用开拓力。"
         else:
             hint = "仅用已有开拓力，不补充燃料或星琼。"
         self.battle_hint.set(hint)
@@ -423,6 +425,12 @@ class AutoHSRWindow:
         self._refresh_controls()
         self._restore()
         widget = getattr(self, control)
+        if self.input_error_field in ("target_name", "target_location"):
+            from .dungeon_ui import show_manual
+            show_manual(self)
+        if self.input_error_field == "stamina_limit":
+            from .dungeon_ui import show_advanced
+            show_advanced(self)
         def focus():
             if widget.winfo_exists():
                 widget.focus_set()
@@ -980,7 +988,13 @@ class AutoHSRWindow:
 
     def _show_task_setup(self, task):
         self._show_page("tasks")
-        control = self.dungeon_name_combo if task == "battle" and self.tasks[task].get() else self.task_controls[task]
+        if task == "battle" and self.tasks[task].get():
+            from .dungeon_ui import show_browser
+            show_browser(self)
+            self.dungeon_list.reveal_selection()
+            control = self.dungeon_list
+        else:
+            control = self.task_controls[task]
         self.root.after_idle(control.focus_set)
 
     def _show_task_detail(self, _: tk.Event | None = None) -> None:

@@ -14,8 +14,11 @@
 | `stamina.png` | 原样复用既有`templates/planar_stamina_cost_single.png`，来源记录仍保留 |
 | `reward-gift.png` | 从既有`templates/daily_reward.png`裁出礼物，排除通知角标；上游来源见[总署名](../ATTRIBUTION.md) |
 | `hsr-sc.ttf` | 客户端`StreamingAssets/MiHoYoSDKRes/HttpServerResources/font/zh-cn.ttf`原样复制，内部家族名`SDK_SC_Web` |
+| `survival/*.png` | 2026-10-20既有生存索引采集记录中的104条目录对应掉落图标或首领徽章，按行核对名称、地点和分类后裁切；不含玩家头像、余额或整图 |
 
 [sources.json](sources.json)逐项记录来源、源文件SHA-256、归一化坐标、变换、输出SHA-256及权利信息。没有包含UID、账号指纹、安装绝对路径或完整游戏画面。运行时只加载这些静态资源，不读取游戏安装目录。
+
+生存索引素材单独列在[survival/sources.json](survival/sources.json)，以分类、名称、地点三项绑定，保留原图相对标识、哈希、归一化裁切坐标和输出哈希。使用[prepare_survival_assets.py](../../tools/prepare_survival_assets.py)并提供既有目录采集文件夹可重现；脚本只读取PNG及配套OCR记录，不操作游戏。新目录项没有对应图标时使用通用生存索引标记，不借用其他副本的掉落图。未迁入上游图像库；这批新增游戏美术同样不纳入原创代码的GPL许可。
 
 可用[prepare_guide_assets.py](https://github.com/HenryTANG0520/AutoHSR/blob/main/tools/prepare_guide_assets.py)的`--daily`、`--guide`、`--universe`、`--font`参数提供对应本地原始文件，重新生成素材。字体采用进程私有注册，不安装到Windows字体目录；Pillow绘图也使用同一字体文件。
 

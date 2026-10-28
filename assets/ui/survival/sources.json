@@ -1,0 +1,2088 @@
+{
+  "client": "CN 4.6.0",
+  "source_date": "2026-10-20",
+  "prepared_at": "2026-10-29",
+  "rights": "HoYoverse game artwork; not relicensed under source-code GPL",
+  "assets": [
+    {
+      "category": "calyx_crimson",
+      "name": "丰饶之蕾",
+      "location": "绥园",
+      "file": "b26c1af326da7ee8.png",
+      "source": "20261020_173848_774067/173956_358819_catalogue_calyx_crimson_03.png",
+      "source_sha256": "71ac361317028d634be397837bc7c4b8c1ab835da8782c2b5c006d3e28348a2c",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        576,
+        860,
+        706
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "d006c157e7f0a4bac128f30241bf5ae09823491cb97e8e1075b521dc7e32f77f"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "丰饶之蕾",
+      "location": "边缘通路",
+      "file": "e271258e8bbee5e4.png",
+      "source": "20261020_173848_774067/173956_358819_catalogue_calyx_crimson_03.png",
+      "source_sha256": "71ac361317028d634be397837bc7c4b8c1ab835da8782c2b5c006d3e28348a2c",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        712,
+        860,
+        842
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "363203eedaa18fc267d846b3ebae2d5b39b14a9b4a981de4572899ed7f29404b"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "同谐之蕾",
+      "location": "「白日梦」酒店-梦境",
+      "file": "40e0a792b9e1b60b.png",
+      "source": "20261020_173848_774067/174003_082936_catalogue_calyx_crimson_05.png",
+      "source_sha256": "3a4d673c248ef2fd2bbf1b9c71a68d48731e4f9ad140203cc7ac852d6ea73206",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        564,
+        860,
+        694
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "14aa36adaabdb11269a29f7ed3f25b9bafefe7c87a3810edfc89087d5080614e"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "同谐之蕾",
+      "location": "机械聚落",
+      "file": "e11ed4678fdb2e43.png",
+      "source": "20261020_173848_774067/174003_082936_catalogue_calyx_crimson_05.png",
+      "source_sha256": "3a4d673c248ef2fd2bbf1b9c71a68d48731e4f9ad140203cc7ac852d6ea73206",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        698,
+        860,
+        828
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "53710aba04392e3948714f98f590d407b884975ee4df92f07968d54270a62a47"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "存护之蕾",
+      "location": "克劳克影视乐园",
+      "file": "bbe36e57855d70c3.png",
+      "source": "20261020_173848_774067/173949_547650_catalogue_calyx_crimson_01.png",
+      "source_sha256": "857d0c12f6def1837cbb2da13040f1404fa0f8562ca2500c25c74628afb37812",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        590,
+        860,
+        720
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "5f034053de7c179e52f8e2fd42287be198d2c753815e19a4e0faab96c68ca526"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "存护之蕾",
+      "location": "支援舱段",
+      "file": "4616d264ba9fc9ea.png",
+      "source": "20261020_173848_774067/173949_547650_catalogue_calyx_crimson_01.png",
+      "source_sha256": "857d0c12f6def1837cbb2da13040f1404fa0f8562ca2500c25c74628afb37812",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        725,
+        860,
+        855
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "2eb7b53d7f64ef1c82de69e8aca82060f9efb8205b8250c8dc40760cba788209"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "巡猎之蕾",
+      "location": "「葬忆彼岸」时光归墟",
+      "file": "739f2f379577fe90.png",
+      "source": "20261020_173848_774067/173952_970403_catalogue_calyx_crimson_02.png",
+      "source_sha256": "f8fee9e270a1b9b55654934fafa52b6149cde7f6441f942878d4a32a88b59f61",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        517,
+        860,
+        647
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "993cc9c73110fc04972d088589bd6d8242c563a41251938a841534487826f660"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "巡猎之蕾",
+      "location": "城郊雪原",
+      "file": "22c899cb922ab9b6.png",
+      "source": "20261020_173848_774067/173956_358819_catalogue_calyx_crimson_03.png",
+      "source_sha256": "71ac361317028d634be397837bc7c4b8c1ab835da8782c2b5c006d3e28348a2c",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        390,
+        860,
+        520
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "7eca0995c81856308185be88b0a2611e1e3a96642201091d7ad9e35584a01b57"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "巡猎之蕾",
+      "location": "苏乐达™热砂海选会场",
+      "file": "5b5c51ffb9527869.png",
+      "source": "20261020_173848_774067/173952_970403_catalogue_calyx_crimson_02.png",
+      "source_sha256": "f8fee9e270a1b9b55654934fafa52b6149cde7f6441f942878d4a32a88b59f61",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        652,
+        860,
+        782
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "549d2e2bd5288a181fb45ff9ad3dc636426fc1174825c08b0aba3d6c290274cd"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "智识之蕾",
+      "location": "匹诺康尼大剧院",
+      "file": "e5061e5721fcc047.png",
+      "source": "20261020_173848_774067/173959_654359_catalogue_calyx_crimson_04.png",
+      "source_sha256": "0cb2c9627158ef7e5ec15989dcd47086f4d47ef5985be7211dc81439c29a1adf",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        638,
+        860,
+        768
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "ee8be1b6c9c92ba566ac2d4312eca51ccc69db32b6c7bdc41baf336b0ceb2f85"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "智识之蕾",
+      "location": "海原电视塔",
+      "file": "56e86ec575f7c498.png",
+      "source": "20261020_173848_774067/173959_654359_catalogue_calyx_crimson_04.png",
+      "source_sha256": "0cb2c9627158ef7e5ec15989dcd47086f4d47ef5985be7211dc81439c29a1adf",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        502,
+        860,
+        632
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "b5d9b8c0edd026e8d2f9f55d2e01e11012580b960bddfed9108787e30998d41f"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "智识之蕾",
+      "location": "铆钉镇",
+      "file": "e7ba95d8898672da.png",
+      "source": "20261020_173848_774067/174003_082936_catalogue_calyx_crimson_05.png",
+      "source_sha256": "3a4d673c248ef2fd2bbf1b9c71a68d48731e4f9ad140203cc7ac852d6ea73206",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        377,
+        860,
+        507
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "65e19e63f62a53a272fb1c6e1057936ed11365e3ac3d1216f097def3290f2f17"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "欢愉之蕾",
+      "location": "「世界尽头」酒馆",
+      "file": "b94f3ee06e1a1d75.png",
+      "source": "20261020_173848_774067/173946_230859_catalogue_calyx_crimson_00.png",
+      "source_sha256": "fa7a0729dc33c048ef3379a95fc116a1f5f1b858e974602d00bbcb989cad2af3",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        342,
+        860,
+        472
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "daa0037579b2917a5662151f5bdc0d65e566112beb879386f814034ac87414a0"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "毁灭之蕾",
+      "location": "收容舱段",
+      "file": "4e2375f152a48797.png",
+      "source": "20261020_173848_774067/173949_547650_catalogue_calyx_crimson_01.png",
+      "source_sha256": "857d0c12f6def1837cbb2da13040f1404fa0f8562ca2500c25c74628afb37812",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        403,
+        860,
+        533
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "a6d955ee876cd31db5532bf1eb0d720bbecd87df530745f57f4cc91ea4807565"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "毁灭之蕾",
+      "location": "渡画泉隐",
+      "file": "92552f9d35801f84.png",
+      "source": "20261020_173848_774067/173946_230859_catalogue_calyx_crimson_00.png",
+      "source_sha256": "fa7a0729dc33c048ef3379a95fc116a1f5f1b858e974602d00bbcb989cad2af3",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        530,
+        860,
+        660
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "996a0a53a3609f9514d2946230f167e92c7ba599db8959e34c30bd98fd25cfe7"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "毁灭之蕾",
+      "location": "鳞渊境",
+      "file": "cf2ea08b3a1a6498.png",
+      "source": "20261020_173848_774067/173946_230859_catalogue_calyx_crimson_00.png",
+      "source_sha256": "fa7a0729dc33c048ef3379a95fc116a1f5f1b858e974602d00bbcb989cad2af3",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        664,
+        860,
+        794
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "8292e6ef525520b3be23505917e1e8e6a3f04ac875f43e9226d5957f64b89ab2"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "虚无之蕾",
+      "location": "「辉痕圣林」神悟树庭",
+      "file": "41ffb5811ddd02d3.png",
+      "source": "20261020_173848_774067/174006_487981_catalogue_calyx_crimson_06.png",
+      "source_sha256": "de5ceef46cad0ab3fb417e822287b917cfba825382a31da2ec58afd3ab6026d3",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        490,
+        860,
+        620
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "b4da5c19991b7b976df6fa3567b3fe1635598729d525300c9e6e78d0c74d9ffd"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "虚无之蕾",
+      "location": "丹鼎司",
+      "file": "5959574bdc009704.png",
+      "source": "20261020_173848_774067/174006_487981_catalogue_calyx_crimson_06.png",
+      "source_sha256": "de5ceef46cad0ab3fb417e822287b917cfba825382a31da2ec58afd3ab6026d3",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        625,
+        860,
+        755
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "4817c17cb74da2525959ee89b5f04b9b1642bfdedeadf8976805da995ef08d8e"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "虚无之蕾",
+      "location": "大矿区",
+      "file": "976f43ea50d2c35b.png",
+      "source": "20261020_173848_774067/174009_834818_catalogue_calyx_crimson_07.png",
+      "source_sha256": "ceae816bb9a703bdc99705f76979886bd416f089845bc7188c3e456e1ae80ad3",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        564,
+        860,
+        694
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "66287ae9939e1ad18a6088a3c8e347b6077b4b82d5e6635f9314af1eddb3992a"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "记忆之蕾",
+      "location": "「纷争荒墟」悬锋城",
+      "file": "0d827e7a3494851a.png",
+      "source": "20261020_173848_774067/174009_834818_catalogue_calyx_crimson_07.png",
+      "source_sha256": "ceae816bb9a703bdc99705f76979886bd416f089845bc7188c3e456e1ae80ad3",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        752,
+        860,
+        882
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "a1c11cb4d979b36bf01fb3936835643fffdca8e066ffdebdf8e17891d79bdced"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "「纷争荒墟」悬锋城",
+      "file": "13223f6458c955c5.png",
+      "source": "20261020_173848_774067/173909_972436_catalogue_calyx_golden_01.png",
+      "source_sha256": "acbd08fdf4b27a0c763dd7688129d74f81e5f30f9eb011cd3fce54b841ef04e6",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        537,
+        860,
+        667
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "d25df02407ab52d442a56cebac9a26d3bc0729a2ff26178edf9fbda5d6e8f3d1"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "太卜司",
+      "file": "a28fa7ef65c764d6.png",
+      "source": "20261020_173848_774067/173916_648354_catalogue_calyx_golden_03.png",
+      "source_sha256": "8857b85abc0e628437adc0c2a393f435f8e1db02999d9cafb146c74d10f0089c",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        659,
+        860,
+        789
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "8fe37c09792cf48a6d3e9412fcaff09529b34c88e68caace2123ad66fd108403"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "稚子的梦",
+      "file": "a4c95a2f5c2f3249.png",
+      "source": "20261020_173848_774067/173913_305975_catalogue_calyx_golden_02.png",
+      "source_sha256": "8f0431f553f5b3b42f05ef542abc4a266374caeb3d86f60bf467bb1c25fb9f27",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        598,
+        860,
+        728
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "db99e0b597e1ed3670f20b0bee3e6722e8ffcbc5c921f6f19d6f003da252ae7e"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "边缘通路",
+      "file": "b73d267b7c2f02db.png",
+      "source": "20261020_173848_774067/173919_933791_catalogue_calyx_golden_04.png",
+      "source_sha256": "fefd55c3129195fc57d3deb0a85f7eb3936ce25db9372ced8c05786ff4dd5059",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        719,
+        860,
+        849
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "152cec730df496b402ae1bde58ac31879e40c063682f032fe47bd4d39fcae8a1"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "鸽川区",
+      "file": "dd5699ecd46726e3.png",
+      "source": "20261020_173848_774067/173906_489998_catalogue_calyx_golden_00.png",
+      "source_sha256": "03d183451056cbe7174c844c51fcad82bc1307c410debe22eeec815b0cf13da2",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        478,
+        860,
+        608
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "3d3953398f2c87c19f9e4eb911da9bd5816d664b5d2216605abe6aade0b2c2cf"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "「神谕圣地」雅努萨波利斯",
+      "file": "93da2a5921a18d96.png",
+      "source": "20261020_173848_774067/173909_972436_catalogue_calyx_golden_01.png",
+      "source_sha256": "acbd08fdf4b27a0c763dd7688129d74f81e5f30f9eb011cd3fce54b841ef04e6",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        403,
+        860,
+        533
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "5a58ab5641587c1ccbe4d3f013f5f531cf93e6d7cdd0ff58bca90f1491288e55"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "城郊雪原",
+      "file": "1d5aff5b02f8cfb1.png",
+      "source": "20261020_173848_774067/173919_933791_catalogue_calyx_golden_04.png",
+      "source_sha256": "fefd55c3129195fc57d3deb0a85f7eb3936ce25db9372ced8c05786ff4dd5059",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        586,
+        860,
+        716
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "7f773801ce07ca6aa867a68d3a21b11d46cbf359ca25e9882be7750f2bcad64f"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "流云渡",
+      "file": "c0d3f59d8b649140.png",
+      "source": "20261020_173848_774067/173916_648354_catalogue_calyx_golden_03.png",
+      "source_sha256": "8857b85abc0e628437adc0c2a393f435f8e1db02999d9cafb146c74d10f0089c",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        526,
+        860,
+        656
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "83f3e17961cefddd88d9a624be4ff5413d96d7d596cce0c2d97264a70ce6560a"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "筑梦边境",
+      "file": "d4d562ce8939fff8.png",
+      "source": "20261020_173848_774067/173913_305975_catalogue_calyx_golden_02.png",
+      "source_sha256": "8f0431f553f5b3b42f05ef542abc4a266374caeb3d86f60bf467bb1c25fb9f27",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        464,
+        860,
+        594
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "d33768a3377bd04af38c1eb382c17b7e286467bb861aebe686e8a2e076d91b96"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "绘世学院",
+      "file": "f03dae594a51084c.png",
+      "source": "20261020_173848_774067/173906_489998_catalogue_calyx_golden_00.png",
+      "source_sha256": "03d183451056cbe7174c844c51fcad82bc1307c410debe22eeec815b0cf13da2",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        342,
+        860,
+        472
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "7ad6624c470135e73edd0cf88d02ff10d9bb6cfe272919c4dc1e292378f86ccf"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "「呓语密林」神悟树庭",
+      "file": "3b0232c5986c45e5.png",
+      "source": "20261020_173848_774067/173909_972436_catalogue_calyx_golden_01.png",
+      "source_sha256": "acbd08fdf4b27a0c763dd7688129d74f81e5f30f9eb011cd3fce54b841ef04e6",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        672,
+        860,
+        802
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "43143433693440b896eda4f43ea73349da0991652245dbab2cbbd5a4f7d5eee0"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "「白日梦」酒店-梦境",
+      "file": "e85e018b932c9d74.png",
+      "source": "20261020_173848_774067/173913_305975_catalogue_calyx_golden_02.png",
+      "source_sha256": "8f0431f553f5b3b42f05ef542abc4a266374caeb3d86f60bf467bb1c25fb9f27",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        732,
+        860,
+        862
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "b8586399fc073f257ef74004bb0787169f68257e874839ba71ece416d34e4729"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "大矿区",
+      "file": "5d050350b570be1e.png",
+      "source": "20261020_173848_774067/173923_300066_catalogue_calyx_golden_05.png",
+      "source_sha256": "f824e82fe52f2ac7a2080b32f86252d13c5e39a07bd11c477a08988b04b23e8c",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        752,
+        860,
+        882
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "ca3dc7a95383bdaa0678056a42c1084f3b02faa619ac6deda4bec8e5a6c29f9d"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "工造司",
+      "file": "0eadb664a521213a.png",
+      "source": "20261020_173848_774067/173919_933791_catalogue_calyx_golden_04.png",
+      "source_sha256": "fefd55c3129195fc57d3deb0a85f7eb3936ce25db9372ced8c05786ff4dd5059",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        398,
+        860,
+        528
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "4416fafd2f4409478296138d0b4eb627caf8360d7b2801f83a5da051f98f04d1"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "鸽川区",
+      "file": "2e6db7d8166a5063.png",
+      "source": "20261020_173848_774067/173906_489998_catalogue_calyx_golden_00.png",
+      "source_sha256": "03d183451056cbe7174c844c51fcad82bc1307c410debe22eeec815b0cf13da2",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        610,
+        860,
+        740
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "40c090e71a7e0edc4b72bba5346a06223b863c66c186e3cdeadf7aaee2d8c61d"
+    },
+    {
+      "category": "cavern",
+      "name": "勇骑之径",
+      "location": "匹诺康尼大剧院",
+      "file": "a4c652129e4e391b.png",
+      "source": "20261020_173848_774067/174145_787051_catalogue_cavern_02.png",
+      "source_sha256": "2d95f028e679ac3b4b002e14a1dabb86e0b6faff2d58bfeffb02371e5ca13864",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        574,
+        860,
+        704
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "3c6cc036e61031f3c67c376cefdf18ad45d5c6dd0bb0a2a71bdfcfe54ee9a290"
+    },
+    {
+      "category": "cavern",
+      "name": "圣颂之径",
+      "location": "流云渡",
+      "file": "d81fdd61fd242879.png",
+      "source": "20261020_173848_774067/174152_395333_catalogue_cavern_04.png",
+      "source_sha256": "f836f0332f36c544dcf488db85ba794987e007f859b6651261b1c210f1124b04",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        456,
+        860,
+        586
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "e04ee7f57ea31e744827d6dace9c4a228ef305f04cc4b0a71e639b290166d508"
+    },
+    {
+      "category": "cavern",
+      "name": "密伶之径",
+      "location": "生研院",
+      "file": "e2e94924dcb7055f.png",
+      "source": "20261020_173848_774067/174139_137100_catalogue_cavern_00.png",
+      "source_sha256": "faf5ccccdcd2b89d1eddf9f9528d93b1865f29455a0bbdb37ce15e8ee8cbd0fb",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        290,
+        860,
+        420
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "6c994779e6619f5ef8b88b469556aa3d966692fb0aaa7bc524f7b4df3f207037"
+    },
+    {
+      "category": "cavern",
+      "name": "幽冥之径",
+      "location": "绥园",
+      "file": "8cfaba7d209128aa.png",
+      "source": "20261020_173848_774067/174149_144447_catalogue_cavern_03.png",
+      "source_sha256": "8ebfc000d9b1f5c63688cd941fa705c8d06f42ebe2edd1eb555ba6f88f28ff64",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        448,
+        860,
+        578
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "26157835882bb9d9d09dee176bb79f4da65931d4ce55e0f2dac12f62440982a5"
+    },
+    {
+      "category": "cavern",
+      "name": "弦歌之径",
+      "location": "「浴血战端」悬锋城",
+      "file": "469a75198e4fe437.png",
+      "source": "20261020_173848_774067/174142_388826_catalogue_cavern_01.png",
+      "source_sha256": "c94bf8c59b0a98052d9808a90362399729a136d2005145364d310843ce54dddc",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        702,
+        860,
+        832
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "fa62be8ddec08d4a4b632b430274b9be91020af4357c09a20ab01c4dcbff7149"
+    },
+    {
+      "category": "cavern",
+      "name": "梦潜之径",
+      "location": "「白日梦」酒店-梦境",
+      "file": "f68255efba45a643.png",
+      "source": "20261020_173848_774067/174145_787051_catalogue_cavern_02.png",
+      "source_sha256": "2d95f028e679ac3b4b002e14a1dabb86e0b6faff2d58bfeffb02371e5ca13864",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        709,
+        860,
+        839
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "0c22b47e92cbd62d79b4cd3096c52b0f028a1bd7289c0f4d27502eea793f4fe4"
+    },
+    {
+      "category": "cavern",
+      "name": "漂泊之径",
+      "location": "残响回廊",
+      "file": "6616cd75a550eecd.png",
+      "source": "20261020_173848_774067/174152_395333_catalogue_cavern_04.png",
+      "source_sha256": "f836f0332f36c544dcf488db85ba794987e007f859b6651261b1c210f1124b04",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        725,
+        860,
+        855
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "ff551b1e917a7d3f3719997913030b02fd87c13470c4670ec4c6369ba72f95e2"
+    },
+    {
+      "category": "cavern",
+      "name": "睿治之径",
+      "location": "永冬岭",
+      "file": "1ae8905308d912e3.png",
+      "source": "20261020_173848_774067/174152_395333_catalogue_cavern_04.png",
+      "source_sha256": "f836f0332f36c544dcf488db85ba794987e007f859b6651261b1c210f1124b04",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        590,
+        860,
+        720
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "315cb4ba863f9122880f2d1d83e19cac50aa5b33a51e5ee79ef64f2bd95ed319"
+    },
+    {
+      "category": "cavern",
+      "name": "药使之径",
+      "location": "丹鼎司",
+      "file": "61c90c83887110ad.png",
+      "source": "20261020_173848_774067/174149_144447_catalogue_cavern_03.png",
+      "source_sha256": "8ebfc000d9b1f5c63688cd941fa705c8d06f42ebe2edd1eb555ba6f88f28ff64",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        582,
+        860,
+        712
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "6189aceb9be11bd83e11dda85a8dbf4dbcde6bba000913ab709393a600719826"
+    },
+    {
+      "category": "cavern",
+      "name": "观火之径",
+      "location": "观览云岛站",
+      "file": "41ca2ce0cae49107.png",
+      "source": "20261020_173848_774067/174139_137100_catalogue_cavern_00.png",
+      "source_sha256": "faf5ccccdcd2b89d1eddf9f9528d93b1865f29455a0bbdb37ce15e8ee8cbd0fb",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        559,
+        860,
+        689
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "677f25dba1ce1a937341e0f31f9beaae8a0660e0ac9a0500998a9486b9637357"
+    },
+    {
+      "category": "cavern",
+      "name": "迅拳之径",
+      "location": "铁卫禁区",
+      "file": "d86c1b3c77a3067f.png",
+      "source": "20261020_173848_774067/174155_647440_catalogue_cavern_05.png",
+      "source_sha256": "9cc0a5aa951d359cf293d4329d691bcf96a9a5877960380056f805cd7b68ddfb",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        752,
+        860,
+        882
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "7959944b107c0f2f0dfb888cbac1ebf44d02de6bdbea3178a0200fbf4b90b8d0"
+    },
+    {
+      "category": "cavern",
+      "name": "迷识之径",
+      "location": "幽囚狱",
+      "file": "a51bab6f00db0e4e.png",
+      "source": "20261020_173848_774067/174145_787051_catalogue_cavern_02.png",
+      "source_sha256": "2d95f028e679ac3b4b002e14a1dabb86e0b6faff2d58bfeffb02371e5ca13864",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        440,
+        860,
+        570
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "c6812d285ec0d20828f265237285adcc0e22ecc6faa4b8b834a536414891fc51"
+    },
+    {
+      "category": "cavern",
+      "name": "野焰之径",
+      "location": "迴星港",
+      "file": "79d12f62ab7744e3.png",
+      "source": "20261020_173848_774067/174149_144447_catalogue_cavern_03.png",
+      "source_sha256": "8ebfc000d9b1f5c63688cd941fa705c8d06f42ebe2edd1eb555ba6f88f28ff64",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        718,
+        860,
+        848
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "8dd724c4038760bc3e9b7c20cb9061362bd01b619d80e1d9319af1f26f7da066"
+    },
+    {
+      "category": "cavern",
+      "name": "隐救之径",
+      "location": "「全世矩阵」无名泰坦大墓",
+      "file": "e04398ee33712d06.png",
+      "source": "20261020_173848_774067/174142_388826_catalogue_cavern_01.png",
+      "source_sha256": "c94bf8c59b0a98052d9808a90362399729a136d2005145364d310843ce54dddc",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        432,
+        860,
+        562
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "88feeedb60a90e7f8dec59ad0bf358b01af9450270a666fc2b266adda3581cbf"
+    },
+    {
+      "category": "cavern",
+      "name": "雳涌之径",
+      "location": "「云端遗堡」晨昏之眼",
+      "file": "4dca3a88c44139f8.png",
+      "source": "20261020_173848_774067/174142_388826_catalogue_cavern_01.png",
+      "source_sha256": "c94bf8c59b0a98052d9808a90362399729a136d2005145364d310843ce54dddc",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        566,
+        860,
+        696
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "732d9b4c09524e472c995cc26ba0edba0eff8e12000bb1de6f07198534ff1318"
+    },
+    {
+      "category": "cavern",
+      "name": "霜风之径",
+      "location": "收容舱段",
+      "file": "72bd035becc0a63f.png",
+      "source": "20261020_173848_774067/174139_137100_catalogue_cavern_00.png",
+      "source_sha256": "faf5ccccdcd2b89d1eddf9f9528d93b1865f29455a0bbdb37ce15e8ee8cbd0fb",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        424,
+        860,
+        554
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "27fe5940de534f59d99f879730785d762bb2f01c1a1813512a0e4ba758c75bde"
+    },
+    {
+      "category": "cavern",
+      "name": "魔占之径",
+      "location": "绘世学院",
+      "file": "80dd9ad41655ab4b.png",
+      "source": "20261020_173848_774067/174139_137100_catalogue_cavern_00.png",
+      "source_sha256": "faf5ccccdcd2b89d1eddf9f9528d93b1865f29455a0bbdb37ce15e8ee8cbd0fb",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        693,
+        860,
+        823
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "ccb08c4530f0c7a94de256301477f291d8c1b2895b4ebb7ab46ce38dae02e0f7"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "不死的神实",
+      "location": "鳞渊境",
+      "file": "f900564e419c4a81.png",
+      "source": "20261020_173848_774067/174253_788920_catalogue_echo_of_war_10.png",
+      "source_sha256": "5d01a5d42e4692031132861ea5472a5a325e48613b0096c5b9a495d940ed2c00",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        691,
+        860,
+        867
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "abb363b815b07c461c63976c28b3e7991a8c9290df70db51a3a7c483e90cc19b"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "坏灭的喜剧",
+      "location": "寂灭空飨妖都",
+      "file": "88268ce3ddf875ad.png",
+      "source": "20261020_173848_774067/174221_431260_catalogue_echo_of_war_00.png",
+      "source_sha256": "f7f8fb4f0e1df9a52cfdd1202aeb06c672891b835a4e4ff15912d329b3175b5e",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        460,
+        860,
+        636
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "5148a140d6d830ed73fed82e4680231c4b36972d17fd0e3f0cba61de521a3e8e"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "寒潮的落幕",
+      "location": "永冬岭",
+      "file": "4332424719d75591.png",
+      "source": "20261020_173848_774067/174300_167472_catalogue_echo_of_war_12.png",
+      "source_sha256": "6a092b968d37e7b1b3a3745312c7a0c890a02dc73f5d7a3f852a0d285f24e975",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        691,
+        860,
+        867
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "f111520f8b7c54b0d8a8d41c93c529e329e6f280b2a9e489ae6162c1ca78dd90"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "尘梦的赞礼",
+      "location": "匹诺康尼大剧院",
+      "file": "149f4d263527948c.png",
+      "source": "20261020_173848_774067/174240_898177_catalogue_echo_of_war_06.png",
+      "source_sha256": "3e00e22d35e2d55883932f22d55075f9827c933e4e8a718fc84b8e08aff31ae0",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        691,
+        860,
+        867
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "4594753ca3c1fe8a9e3476319b121245f999c1655273de3bff7b959a2d855e64"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "心兽的战场",
+      "location": "竞锋舰",
+      "file": "0f7c3f87af97bfb9.png",
+      "source": "20261020_173848_774067/174234_527213_catalogue_echo_of_war_04.png",
+      "source_sha256": "00bad5ac24087a6a9d002d78d181c9f19c99c18c9c25f605f159cde1ae1b654d",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        691,
+        860,
+        867
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "3e35e92122e231f54f648b459feecbed3f0a057f71aa83bdc08adf2ec063fc51"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "晨昏的回眸",
+      "location": "「穹顶关塞」晨昏之眼",
+      "file": "98ba3dd21cf1c8de.png",
+      "source": "20261020_173848_774067/174227_968670_catalogue_echo_of_war_02.png",
+      "source_sha256": "7341a97d42940ae8c8df5bcb5ace94b742318d9f3913ad50a8db8fbb7c53d1fd",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        691,
+        860,
+        867
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "57f1f3d4c501f2af0f9a347e41fba41b62ef4c2f3f38cdf53a27a381843f5a0e"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "毁灭的开端",
+      "location": "支援舱段",
+      "file": "b343e9a72deb3bca.png",
+      "source": "20261020_173848_774067/174306_511343_catalogue_echo_of_war_14.png",
+      "source_sha256": "479f937e88e5026c35e4f0de527a2a5c72afa78fe74dce304794b2be602e83ba",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        700,
+        860,
+        876
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "9ea913de77f140bb8a39a753633afe0989687e9dd201bc9cf0b48a8b10757023"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "蛀星的旧魇",
+      "location": "禁闭舱段",
+      "file": "ef515b06f9e7e4e8.png",
+      "source": "20261020_173848_774067/174247_349374_catalogue_echo_of_war_08.png",
+      "source_sha256": "b001923e5d3791e8d510f85b88c1f998ca393e106bf48a783c1f4722c6aa339a",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        691,
+        860,
+        867
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "e82846e2e406f7e7e8a43a9f3ff6da8b3e9fc54e8db9c1cb6652748f0a8f33b3"
+    },
+    {
+      "category": "echo_of_war",
+      "name": "铁骸的锈冢",
+      "location": "「葬忆彼岸」时光归墟",
+      "file": "51f65dbf37af8f87.png",
+      "source": "20261020_173848_774067/174221_431260_catalogue_echo_of_war_00.png",
+      "source_sha256": "f7f8fb4f0e1df9a52cfdd1202aeb06c672891b835a4e4ff15912d329b3175b5e",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        658,
+        860,
+        834
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "13804c4b1fb2abc64d49a82507322091a15d1b2629d234d2e00a1e0ea0d69c46"
+    },
+    {
+      "category": "planar",
+      "name": "伴你入眠",
+      "location": "位面饰品",
+      "file": "225a8983602f4da8.png",
+      "source": "20261020_174933_827826/174957_822297_catalogue_planar_02.png",
+      "source_sha256": "053d87cae0592878ae0dd9e35a2d10489b4efc110e2b2d4e486681573a1c08da",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        715,
+        860,
+        845
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "c9999bae87c0650de368fd31ea8d24aa2a64ba2c3fd2c79ac636fba2b0dfc681"
+    },
+    {
+      "category": "planar",
+      "name": "坚城不倒",
+      "location": "位面饰品",
+      "file": "7a08d86855099653.png",
+      "source": "20261020_174933_827826/175004_368768_catalogue_planar_04.png",
+      "source_sha256": "572dc2378cc03f4c38fb3d6f69406f02ef7e0d0a901ef260b54f7b4302cb03cf",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        752,
+        860,
+        882
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "8e4027df8ce1816bfad3a95af85b1562844653999a0f6874620093cc33f1cb0f"
+    },
+    {
+      "category": "planar",
+      "name": "天剑如雨",
+      "location": "位面饰品",
+      "file": "f7feb94497fe82ca.png",
+      "source": "20261020_174933_827826/175001_097896_catalogue_planar_03.png",
+      "source_sha256": "a20675daa50b9e3baf3552084aa140ec7b3bc56adb592d1c3aa99624ba020b76",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        453,
+        860,
+        583
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "2a61650b70de7b9e412d0d735843f24738cbc5619030e495847c850dd277df58"
+    },
+    {
+      "category": "planar",
+      "name": "孽果盘生",
+      "location": "位面饰品",
+      "file": "28dbbf34bc9b420b.png",
+      "source": "20261020_174933_827826/175001_097896_catalogue_planar_03.png",
+      "source_sha256": "a20675daa50b9e3baf3552084aa140ec7b3bc56adb592d1c3aa99624ba020b76",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        588,
+        860,
+        718
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "5e9e352119fac10bf0e2b5b51e896c0ad0433beb4ce47dd91430130f04917ace"
+    },
+    {
+      "category": "planar",
+      "name": "月下朱殷",
+      "location": "位面饰品",
+      "file": "e245a50b8dfa336c.png",
+      "source": "20261020_174933_827826/174954_489575_catalogue_planar_01.png",
+      "source_sha256": "15d26e97052dd4a29456d1e1196bee66802795e8d69ad4daa4ba6b62b5daac1d",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        571,
+        860,
+        701
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "2b5ad1b7f3a68d3a8e32cf9f2d0b100f3230db7eef6337186a70c825af9f1a2a"
+    },
+    {
+      "category": "planar",
+      "name": "永恒笑剧",
+      "location": "位面饰品",
+      "file": "c47f897ae21d16f8.png",
+      "source": "20261020_174933_827826/174957_822297_catalogue_planar_02.png",
+      "source_sha256": "053d87cae0592878ae0dd9e35a2d10489b4efc110e2b2d4e486681573a1c08da",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        580,
+        860,
+        710
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "55a6cd8f4ed95b9d1588e8400c9b471ec40272b97786ca329eb3e26bb0a6d8db"
+    },
+    {
+      "category": "planar",
+      "name": "浴火钢心",
+      "location": "位面饰品",
+      "file": "cb04eab30f29eec1.png",
+      "source": "20261020_174933_827826/174951_041566_catalogue_planar_00.png",
+      "source_sha256": "edb72157368326c8128ab5acb57777d3a80f317ea3f37c15a63c1635772a5809",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        430,
+        860,
+        560
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "1f371e375a872cf94d19cb35640e19c3edbbcfac59cdef3ed401004cd2b66de7"
+    },
+    {
+      "category": "planar",
+      "name": "温柔话语",
+      "location": "位面饰品",
+      "file": "30ba1ccd3747a100.png",
+      "source": "20261020_174933_827826/175004_368768_catalogue_planar_04.png",
+      "source_sha256": "572dc2378cc03f4c38fb3d6f69406f02ef7e0d0a901ef260b54f7b4302cb03cf",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        618,
+        860,
+        748
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "b46ee8d4258e507584329b3f37c9e03f6fd3b6ea7c2e1919e3fe436721712079"
+    },
+    {
+      "category": "planar",
+      "name": "百年冻土",
+      "location": "位面饰品",
+      "file": "685b4c7cd207980b.png",
+      "source": "20261020_174933_827826/175001_097896_catalogue_planar_03.png",
+      "source_sha256": "a20675daa50b9e3baf3552084aa140ec7b3bc56adb592d1c3aa99624ba020b76",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        722,
+        860,
+        852
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "b1fe3370811f173b1647dda8b2c0c4986d838b0d2b9b9080675269f5789f2ee2"
+    },
+    {
+      "category": "planar",
+      "name": "纷争不休",
+      "location": "位面饰品",
+      "file": "41444b9111ba48e2.png",
+      "source": "20261020_174933_827826/174954_489575_catalogue_planar_01.png",
+      "source_sha256": "15d26e97052dd4a29456d1e1196bee66802795e8d69ad4daa4ba6b62b5daac1d",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        706,
+        860,
+        836
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "e57feb7c79b91a550d4a4e547713b844b876a7369283f4e46c50ad0e2daf6201"
+    },
+    {
+      "category": "planar",
+      "name": "虫虫来袭",
+      "location": "位面饰品",
+      "file": "68ba9dfc84fc9816.png",
+      "source": "20261020_174933_827826/174951_041566_catalogue_planar_00.png",
+      "source_sha256": "edb72157368326c8128ab5acb57777d3a80f317ea3f37c15a63c1635772a5809",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        564,
+        860,
+        694
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "c6e0a1aca565ed296a4ced5897280a5fb487e7bc81881628d1682138eea36b12"
+    },
+    {
+      "category": "planar",
+      "name": "蠹役饥肠",
+      "location": "位面饰品",
+      "file": "98398aba9bbc6c0b.png",
+      "source": "20261020_174933_827826/174957_822297_catalogue_planar_02.png",
+      "source_sha256": "053d87cae0592878ae0dd9e35a2d10489b4efc110e2b2d4e486681573a1c08da",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        446,
+        860,
+        576
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "250bea61c355fb7aa2f28155a0711472962463d64a49c132f53d28af71d5608c"
+    },
+    {
+      "category": "planar",
+      "name": "西风丛中",
+      "location": "位面饰品",
+      "file": "aeaddd69e509d8a0.png",
+      "source": "20261020_174933_827826/174954_489575_catalogue_planar_01.png",
+      "source_sha256": "15d26e97052dd4a29456d1e1196bee66802795e8d69ad4daa4ba6b62b5daac1d",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        437,
+        860,
+        567
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "a4718087f199dfc0b4c4ca59b1569565d4950956a3538ab48326572f9ebfe0a9"
+    },
+    {
+      "category": "planar",
+      "name": "鎏金追忆",
+      "location": "位面饰品",
+      "file": "41fbdc2349b41195.png",
+      "source": "20261020_174933_827826/174951_041566_catalogue_planar_00.png",
+      "source_sha256": "edb72157368326c8128ab5acb57777d3a80f317ea3f37c15a63c1635772a5809",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        698,
+        860,
+        828
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "43f4fd087998080dae11d99af8532a65cc8069b3fad1aa9c53a9804ce6623843"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "今宵之形",
+      "location": "匹诺康尼大剧院",
+      "file": "6cc50896411dc07b.png",
+      "source": "20261020_173848_774067/174058_396376_catalogue_stagnant_shadow_06.png",
+      "source_sha256": "fb601abaedf9ca10f971f28d2f0cfe27c1b6dcf60625db0f08c00fdc8d19cbd9",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        466,
+        860,
+        596
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "68b7afd260d71c9be6160a80693e44878b932037a4c7be3d445d17b7edd6afeb"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "偃偶之形",
+      "location": "工造司",
+      "file": "41cb9d0f2d29d772.png",
+      "source": "20261020_173848_774067/174108_695100_catalogue_stagnant_shadow_09.png",
+      "source_sha256": "18af5cc51c577d11da483e299bbc4994ab82462e25638439d03db2b2271fbe07",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        730,
+        860,
+        860
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "b072fd593b362db975e8a4aae8bdc1a08882865a4a5f21cea68e11dc67439446"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "冰棱之形",
+      "location": "流云渡",
+      "file": "c13d954ea6082ac0.png",
+      "source": "20261020_173848_774067/174037_637377_catalogue_stagnant_shadow_00.png",
+      "source_sha256": "b031ee5fd3266cca2e7f71c32a83a0babcdc645e212489c4a8a16a186a48321e",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        610,
+        860,
+        740
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "285a9881722b22f8840ef48c577d882024e69751b1936e2b123f0f97a631ef74"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "冰酿之形",
+      "location": "「白日梦」酒店-梦境",
+      "file": "5d6bfcba07d30a16.png",
+      "source": "20261020_173848_774067/174037_637377_catalogue_stagnant_shadow_00.png",
+      "source_sha256": "b031ee5fd3266cca2e7f71c32a83a0babcdc645e212489c4a8a16a186a48321e",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        478,
+        860,
+        608
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "f5d7b428b28eca2d0a17b9195a6fa4643695445e1889abc8781a83677443c384"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "凛月之形",
+      "location": "「呓语密林」神悟树庭",
+      "file": "3b9de33477d804fa.png",
+      "source": "20261020_173848_774067/174101_800611_catalogue_stagnant_shadow_07.png",
+      "source_sha256": "de194dc177017eae20b80569da4c9dfd20718d4b70beb5863684779f5b59c4bb",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        662,
+        860,
+        792
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "9804253a30457962d50a230c219e14c551104586e88b28bffd35afb0e440452a"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "吞噬之形",
+      "location": "渡画泉隐",
+      "file": "ed238f5ecff90625.png",
+      "source": "20261020_173848_774067/174101_800611_catalogue_stagnant_shadow_07.png",
+      "source_sha256": "de194dc177017eae20b80569da4c9dfd20718d4b70beb5863684779f5b59c4bb",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        527,
+        860,
+        657
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "6807caf05502be4d6325f9026b134ea9ee0a999322094b7d114c3d0d0d4e51c8"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "嗔怒之形",
+      "location": "朝露公馆",
+      "file": "74238c1cb883db65.png",
+      "source": "20261020_173848_774067/174048_162073_catalogue_stagnant_shadow_03.png",
+      "source_sha256": "748430f25d2dc7672ebd729f0149a682349453bef28394f850d882e0d3b5f411",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        470,
+        860,
+        600
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "eb610e3cc159766ccc24d1369661db510b245dc105b176f3bc35259088e3ad4a"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "塞壬之形",
+      "location": "「酣歌海垠」斯缇科西亚",
+      "file": "a7c92f72b65ebfde.png",
+      "source": "20261020_173848_774067/174037_637377_catalogue_stagnant_shadow_00.png",
+      "source_sha256": "b031ee5fd3266cca2e7f71c32a83a0babcdc645e212489c4a8a16a186a48321e",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        342,
+        860,
+        472
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "252eaed457a235e4958b42eb6cdbaef4a100ed7cd6053e79fa62531b88cd10be"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "天人之形",
+      "location": "丹鼎司",
+      "file": "13925aebd1e4889d.png",
+      "source": "20261020_173848_774067/174058_396376_catalogue_stagnant_shadow_06.png",
+      "source_sha256": "fb601abaedf9ca10f971f28d2f0cfe27c1b6dcf60625db0f08c00fdc8d19cbd9",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        600,
+        860,
+        730
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "8970489102b37b289c0bbe34f3c8cb2d3c454acf232464eef1b8e6d1a10955c2"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "孽兽之形",
+      "location": "鳞渊境",
+      "file": "cb4d70d149c443f6.png",
+      "source": "20261020_173848_774067/174105_160719_catalogue_stagnant_shadow_08.png",
+      "source_sha256": "1470d2e4acdf844304b82f76194e4670e03333085c3e6224efa703baffaf2175",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        534,
+        860,
+        664
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "4d851c8a2bd1a5fe02983b6c74155cd21da345f2d8f1acc37515a9ddef90cfe9"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "巽风之形",
+      "location": "铆钉镇",
+      "file": "204f4ad4446a27d9.png",
+      "source": "20261020_173848_774067/174058_396376_catalogue_stagnant_shadow_06.png",
+      "source_sha256": "fb601abaedf9ca10f971f28d2f0cfe27c1b6dcf60625db0f08c00fdc8d19cbd9",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        736,
+        860,
+        866
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "5b4ea52f8ff149a72afdb6e9b9433d730cebbd0e5be7df59e63ef28c449416ae"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "幻光之形",
+      "location": "边缘通路",
+      "file": "a951e44d92a17fd2.png",
+      "source": "20261020_173848_774067/174112_288707_catalogue_stagnant_shadow_10.png",
+      "source_sha256": "4f3169b6c32eda69675c42ab425da74a19e9ddc8809689d9177d9d31a2e1be75",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        752,
+        860,
+        882
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "d1afb7a1e78e396afdfec3cf0919f4331dc1a51492be5ba03bfb65f07b8de32e"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "幽府之形",
+      "location": "绥园",
+      "file": "5b2caa86ccf62e2c.png",
+      "source": "20261020_173848_774067/174044_714147_catalogue_stagnant_shadow_02.png",
+      "source_sha256": "042225d32916acace7ba460b60e161440e860950c7d5c9b49cc471e47dcb14f8",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        411,
+        860,
+        541
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "1b5fb0ebada15273bf34f3d14530914461d55b81c874bda47e56b78bc4f29da2"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "弦音之形",
+      "location": "匹诺康尼大剧院",
+      "file": "1a55c2717841eb3d.png",
+      "source": "20261020_173848_774067/174108_695100_catalogue_stagnant_shadow_09.png",
+      "source_sha256": "18af5cc51c577d11da483e299bbc4994ab82462e25638439d03db2b2271fbe07",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        595,
+        860,
+        725
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "db6592e34756e20fbe108208ad4fc36bdcb1115f01941d5765d8b1f0d4447b0d"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "役轮之形",
+      "location": "「命运重渊」雅努萨波利斯",
+      "file": "541f77d4a57f9b29.png",
+      "source": "20261020_173848_774067/174108_695100_catalogue_stagnant_shadow_09.png",
+      "source_sha256": "18af5cc51c577d11da483e299bbc4994ab82462e25638439d03db2b2271fbe07",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        462,
+        860,
+        592
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "534b500e3315bc723e3414c2497e19899192a054e15d630c375b7c529878346a"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "机狼之形",
+      "location": "幽囚狱",
+      "file": "71b5ee7c02aa8614.png",
+      "source": "20261020_173848_774067/174051_491896_catalogue_stagnant_shadow_04.png",
+      "source_sha256": "c632054c0820da2949c37973d8399290417c01c6b912ec7299836d789091a6e0",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        667,
+        860,
+        797
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "f5344562db407f96e372ce64fcb5967d884230100fb3202d0778958762aada8b"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "残灰之形",
+      "location": "「神谕圣地」雅努萨波利斯",
+      "file": "0597ec365896d415.png",
+      "source": "20261020_173848_774067/174044_714147_catalogue_stagnant_shadow_02.png",
+      "source_sha256": "042225d32916acace7ba460b60e161440e860950c7d5c9b49cc471e47dcb14f8",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        732,
+        860,
+        862
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "734787e872880e42fc0b08b6024a1e1534deedcdba28d35d3767eedcb5622a0d"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "溟簇之形",
+      "location": "「龙骸古城」斯缇科西亚",
+      "file": "89cd260c9701c806.png",
+      "source": "20261020_173848_774067/174041_135089_catalogue_stagnant_shadow_01.png",
+      "source_sha256": "d1ec190302b8182d4179c8dbfc1624713be2d73120c751e996065c4c737a2d01",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        538,
+        860,
+        668
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "5ed874bf4af3ff1bb0b674d0c99b0db36b1ebc5b12792c2cb9125138db6edaae"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "炎华之形",
+      "location": "铁卫禁区",
+      "file": "a764d29a5b742337.png",
+      "source": "20261020_173848_774067/174048_162073_catalogue_stagnant_shadow_03.png",
+      "source_sha256": "748430f25d2dc7672ebd729f0149a682349453bef28394f850d882e0d3b5f411",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        741,
+        860,
+        871
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "cc7c282005639f4ef76cdd2fb802126a333640b013949ab052faba0619583e65"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "烬日之形",
+      "location": "「穹顶关塞」晨昏之眼",
+      "file": "4619169dd2615ddc.png",
+      "source": "20261020_173848_774067/174054_978466_catalogue_stagnant_shadow_05.png",
+      "source_sha256": "da2d9096bdf44c2a7ede63ff13f60d4d0683ed0726ab851bee0e9d651759298f",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        727,
+        860,
+        857
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "a760d1bf33b1b0aec61bb517c03c987995690867c3c26c5f376748c65866d733"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "焦炙之形",
+      "location": "筑梦边境",
+      "file": "bf021763480c2be1.png",
+      "source": "20261020_173848_774067/174105_160719_catalogue_stagnant_shadow_08.png",
+      "source_sha256": "1470d2e4acdf844304b82f76194e4670e03333085c3e6224efa703baffaf2175",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        401,
+        860,
+        531
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "7b62c95cd38f2f6f7c5d250bab55dfcce2da562ce92beac086a4169616e15a03"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "燔灼之形",
+      "location": "大矿区",
+      "file": "82666282a4b0a955.png",
+      "source": "20261020_173848_774067/174048_162073_catalogue_stagnant_shadow_03.png",
+      "source_sha256": "748430f25d2dc7672ebd729f0149a682349453bef28394f850d882e0d3b5f411",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        606,
+        860,
+        736
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "7c3484ad5d4b765a61a4fde4b4c91f745b3956a81532cbfa9a33c3fae603b0ee"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "空海之形",
+      "location": "基座舱段",
+      "file": "b35b284964e44670.png",
+      "source": "20261020_173848_774067/174105_160719_catalogue_stagnant_shadow_08.png",
+      "source_sha256": "1470d2e4acdf844304b82f76194e4670e03333085c3e6224efa703baffaf2175",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        669,
+        860,
+        799
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "80f5cce96809dedca978c0dde3723df2e77816de752d3e12c30b38275490865a"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "职司之形",
+      "location": "克劳克影视乐园",
+      "file": "0f51e42bebe43532.png",
+      "source": "20261020_173848_774067/174041_135089_catalogue_stagnant_shadow_01.png",
+      "source_sha256": "d1ec190302b8182d4179c8dbfc1624713be2d73120c751e996065c4c737a2d01",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        672,
+        860,
+        802
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "c95ea7dfbd346aa0559dec51bcb8bb4af52906b50530b1005ecbbe423fc53c80"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "锋芒之形",
+      "location": "大矿区",
+      "file": "593a90bd245b496f.png",
+      "source": "20261020_173848_774067/174044_714147_catalogue_stagnant_shadow_02.png",
+      "source_sha256": "042225d32916acace7ba460b60e161440e860950c7d5c9b49cc471e47dcb14f8",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        545,
+        860,
+        675
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "320e4c0bb0e775957c68eda22f8ea4fcecd443b181e0fb10def1c76201bf4152"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "震厄之形",
+      "location": "迴星港",
+      "file": "3f53800394c9d80a.png",
+      "source": "20261020_173848_774067/174054_978466_catalogue_stagnant_shadow_05.png",
+      "source_sha256": "da2d9096bdf44c2a7ede63ff13f60d4d0683ed0726ab851bee0e9d651759298f",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        406,
+        860,
+        536
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "08a5e0fe1e25e9eac0d5c75f385aab527ec040edecd2c56bd98b785386aedf04"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "霜晶之形",
+      "location": "残响回廊",
+      "file": "f670f57db8183b53.png",
+      "source": "20261020_173848_774067/174037_637377_catalogue_stagnant_shadow_00.png",
+      "source_sha256": "b031ee5fd3266cca2e7f71c32a83a0babcdc645e212489c4a8a16a186a48321e",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        747,
+        860,
+        877
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "7fee31e082efe85322efaefdc9fbb8ec430d17f23e18a73bf6abbc21cecaef99"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "音爆之形",
+      "location": "鸽川区",
+      "file": "887ea7fc988953a2.png",
+      "source": "20261020_173848_774067/174051_491896_catalogue_stagnant_shadow_04.png",
+      "source_sha256": "c632054c0820da2949c37973d8399290417c01c6b912ec7299836d789091a6e0",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        532,
+        860,
+        662
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "5b8c4cf866809e143aad296158a5a29cae4b66cee73032b80f136d0ae4b93041"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "鸣雷之形",
+      "location": "残响回廊",
+      "file": "2bb8ed2499f12bf6.png",
+      "source": "20261020_173848_774067/174054_978466_catalogue_stagnant_shadow_05.png",
+      "source_sha256": "da2d9096bdf44c2a7ede63ff13f60d4d0683ed0726ab851bee0e9d651759298f",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        704,
+        540,
+        860,
+        670
+      ],
+      "transform": "Static reward or boss medallion crop; no labels, counters, player portraits or account data",
+      "sha256": "72c5a72d06407fbe7e00fb6355321407232d0bc920e9e15e2d17033a7befcf9a"
+    }
+  ]
+}

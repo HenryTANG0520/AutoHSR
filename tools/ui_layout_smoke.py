@@ -109,6 +109,7 @@ def main():
                 ui.table.activate()
                 assert ui.active_page == "tasks"
                 ui.category_buttons["历战余响"].invoke()
+                ui.dungeon_list.choose(0)
                 assert int(ui.challenge_count.get()) <= 3
                 assert "3" in ui.battle_cost.get()
                 ui.busy = True
