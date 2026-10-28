@@ -522,6 +522,8 @@ def main():
                 return dict(title='cancelled mock', width=1920, height=1080)
             fake.inspect_game = inspect
             ui._check()
+            if PACKAGE == 'autohsr':
+                check('new_diagnostic_clears_previous_error_banner', not ui.result_alert.get() and not ui.summary.get())
             pump(root, lambda: started.is_set())
             ui._stop()
             release.set()

@@ -556,6 +556,8 @@ class AutoHSRWindow:
         settings = self._read_settings(operation=action)
         if settings is None:
             return
+        self.summary.set("")
+        self.result_alert.set("")
         self.stop_requested.clear()
         self._set_busy(True)
         self.status.set("● 正在检测" if action == "check" else "● 正在启动")
