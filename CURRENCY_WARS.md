@@ -1,6 +1,8 @@
 # 货币战争开发目标与验收
 
-**当前状态：项目已停止开发（2026-10-26，用户明确终止）。** 此前的[双路线方案](docs/currency-wars-strategy-research.md)及标准博弈A8财富造物主40十场目标不再继续执行；停更时独立通关0/10。[验收与问题记录](docs/currency-wars-validation.md)保留真实进度。下文为历史开发记录，不表示仍在推进。
+**项目状态更新（2026-10-28）：项目整体已恢复开发，方向见[README](README.md)与[项目差异研究报告](docs/march7thassistant-comparison-2026-10-28.md)。** 本文保留货币战争的历史停更快照，旧十场目标和旧开发局不自动接续。
+
+**历史停更状态（2026-10-26，用户明确终止）：** 此前的[双路线方案](docs/currency-wars-strategy-research.md)及标准博弈A8财富造物主40十场目标终止；停更时独立通关0/10。[验收与问题记录](docs/currency-wars-validation.md)保留真实进度。下文为历史开发记录，不表示已恢复该目标。
 
 ## 停更快照
 

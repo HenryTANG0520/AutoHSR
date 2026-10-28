@@ -1,14 +1,18 @@
 # AutoHSR
 
-> **本项目已于2026年10月26日停止开发。** 不再继续功能迭代、问题修复或后续验收。仓库保留现有源码、未完成的开发快照和历史记录供参考，未完成事项不视为已交付。
+> **本项目于2026年10月28日恢复开发。** 后续将更多地以基于[三月七启动器（三月七小助手／March7thAssistant）](https://github.com/moesnow/March7thAssistant)的二次开发为方向，重点完善交互设计。
 
-停更时货币战争标准A8-40无人接管整局验收为 **0/10**。最后的节点出战与观察代码属于未完成实验：已进入1-1战斗，但节点OCR误识别导致观察中止，尚未修复或验收。详细状态见[停更记录](docs/currency-wars-validation.md#停止开发记录)。
+2026年10月28日以前，本项目的开发仅受[BetterGI](https://github.com/babalae/better-genshin-impact)启发，参考其I/O交互逻辑。在知晓[三月七启动器](https://github.com/moesnow/March7thAssistant)的存在后，维护者曾认为本项目已经没有存在价值，因而于2026年10月26日停止开发。随后，在实际尝试过[三月七启动器](https://github.com/moesnow/March7thAssistant)后，希望能进一步完善交互设计，遂于2026年10月28日重启项目；今日之后的开发将更多地像基于该项目的二次开发。
+
+以上说明设计动机与后续方向；当前代码仍是AutoHSR既有实现，本次重启尚未迁入March7thAssistant源码。已有第三方素材、模型与适配来源继续保留署名，见[来源与许可](#来源与许可)。两边的实现、交互与复用边界见[项目差异研究报告（2026-10-28）](docs/march7thassistant-comparison-2026-10-28.md)。
+
+重启保留全部历史记录，不把未完成实验视为已交付。2026年10月26日停更时，货币战争标准A8-40无人接管整局验收为 **0/10**；最后的节点出战与观察实验已进入1-1战斗，但节点OCR误识别导致观察中止，尚未修复或验收。旧十场目标和旧开发局不因项目重启自动接续，详细状态见[停更记录](docs/currency-wars-validation.md#停止开发记录)。
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-blue)](#运行条件)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)](#安装与启动)
 
-通过屏幕识别和模拟鼠标键盘输入，完成《崩坏：星穹铁道》日常任务与差分宇宙周期演算的 Windows 桌面助手。当前版本为`0.1.0`，本说明按 **2026-10-26的仓库实现**整理。
+通过屏幕识别和模拟鼠标键盘输入，完成《崩坏：星穹铁道》日常任务与差分宇宙周期演算的 Windows 桌面助手。当前版本为`0.1.0`，功能说明按 **2026-10-26的仓库实现**整理；项目状态与开发方向于 **2026-10-28**更新。
 
 AutoHSR默认使用本地Python流程、OCR、图像规则和ONNX检测模型决策，不读取游戏进程内存，不注入游戏。货币战争另有可选API只读决策原型，尚未接入实战动作；每日与差分流程仍完全本地。基本方式是：**观察画面 → 核实页面与目标 → 执行一个有界动作 → 再次观察并验证结果**。
 
@@ -27,7 +31,7 @@ AutoHSR默认使用本地Python流程、OCR、图像规则和ONNX检测模型决
 | 差分周期演算 | 指定预设开局，处理站点、战斗、事件与出口 | 累计10次独立周期V通关，最近同一版本连续3局成功 |
 | 差分附加功能 | 存档、红点领奖、首次通关后日常三个开关 | 均默认关闭，边界见下文 |
 | 日志与控制 | BetterGI风格透明字幕，F9暂停/继续，F10停止，保存报告 | 字幕不抢焦点、鼠标穿透，从识别截图排除 |
-| 货币战争 | 只读识别、统一局面、离线与可选API建议，既有部署、节点和流程实验 | 开发已恢复，目标标准A8-40十场；当前0/10，尚未完成独立整局 |
+| 货币战争 | 只读识别、统一局面、离线与可选API建议，既有部署、节点和流程实验 | 尚未完成独立整局；历史标准A8-40验收0/10，旧十场目标不自动接续 |
 
 十次差分独立成功是累计记录，**不等于十次尝试全部成功或100%成功率**；另有28次分段、接续通关单独记录。证据见 [差分实机验证](docs/du-validation.md)、[日常验证记录](VALIDATION.md)。
 
@@ -474,6 +478,8 @@ CURRENCY_WARS*.md                      货币战争历史与攻略
 
 ## 来源与许可
 
-原创代码、文档 **GPL-3.0-only**，见 [LICENSE](LICENSE)、[LICENSE_NOTICE.md](LICENSE_NOTICE.md)。架构和字幕参考 [BetterGI](https://github.com/babalae/better-genshin-impact)，部分模板来自StarRailOneDragon、StarRailCopilot，字幕亦参考AutoZZZ，具体版本和修改见 [assets/ATTRIBUTION.md](assets/ATTRIBUTION.md)。
+原创代码、文档 **GPL-3.0-only**，见 [LICENSE](LICENSE)、[LICENSE_NOTICE.md](LICENSE_NOTICE.md)。重启前的I/O交互逻辑与字幕设计受 [BetterGI](https://github.com/babalae/better-genshin-impact)启发；部分模板来自StarRailOneDragon、StarRailCopilot，字幕适配亦参考AutoZZZ，具体版本和修改见 [assets/ATTRIBUTION.md](assets/ATTRIBUTION.md)。
+
+自2026年10月28日重启后，后续开发更多地以基于[三月七启动器（三月七小助手／March7thAssistant）](https://github.com/moesnow/March7thAssistant)的二次开发为方向。当前尚未迁入其源码；实际复用时须按具体文件保留上游版权、许可、版本和修改记录，不将上游贡献标为AutoHSR原创。
 
 本地YOLO派生权重保留 **AGPL-3.0**，见 [模型说明](assets/models/README.md) 和附带许可；原创代码许可不改变第三方素材许可。游戏画面、名称、商标属于相应权利人。
