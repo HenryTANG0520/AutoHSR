@@ -159,6 +159,86 @@ def _button(root, style, scale, name, fill, ink, *, tab=False, option=False, bac
     style.map(name,foreground=[("disabled","#8b8b8b"),("!disabled",ink)],background=[("disabled","#d3d3d3"),("!disabled",fill)])
 
 
+def _form_elements(root, style, scale):
+    """Draw guide surfaces while retaining ttk editing and keyboard bindings."""
+    d = lambda n: round(n*scale)
+
+    def element(name, size, draw, states, *, border=0, sticky=""):
+        photos = []
+        for state in ((), *states):
+            p = Painter(d(size[0]), d(size[1]), scale, None)
+            draw(p, state)
+            photos.append(ImageTk.PhotoImage(p.finish(), master=root))
+        root._hsr_images.extend(photos)
+        style.element_create(name, "image", photos[0],
+            *((*state, photo) for state, photo in zip(states, photos[1:])),
+            border=d(border), padding=0, sticky=sticky)
+
+    def check(p, state):
+        disabled, selected = "disabled" in state, "selected" in state
+        edge = "#bcbab5" if disabled else GOLD if "focus" in state or "active" in state else "#8e8980"
+        p.box((2, 3, 22, 23), FIELD if disabled or not selected else RAIL, 1, edge, 1.2)
+        if selected:
+            p.line((6, 13, 10, 17, 18, 9), "#a7a49e" if disabled else "#f3e8cf", 2.4)
+        elif "alternate" in state:
+            p.line((7, 13, 17, 13), edge, 2)
+        if "focus" in state and not disabled:
+            p.box((0, 1, 24, 25), None, 2, GOLD)
+
+    element("Guide.Checkbutton.indicator", (32, 26), check,
+            (("disabled", "selected"), ("disabled",), ("focus", "selected"), ("focus",),
+             ("active", "selected"), ("active",), ("selected",), ("alternate",)))
+    layout = [("Checkbutton.padding", {"sticky": "nswe", "children": [
+        ("Guide.Checkbutton.indicator", {"side": "left"}),
+        ("Checkbutton.label", {"side": "left", "sticky": "nswe"})]})]
+    for name in ("TCheckbutton", "Card.TCheckbutton"):
+        style.layout(name, layout)
+
+    def field(p, state):
+        p.box((1, 1, 83, 35), PANEL if "disabled" in state else FIELD, 2,
+              GOLD if "focus" in state else "#c2beb7", 1)
+        if "focus" in state:
+            p.line((7, 34, 77, 34), GOLD, 2)
+
+    states = (("disabled",), ("focus",), ("active",))
+    element("Guide.field", (84, 36), field, states, border=7, sticky="nsew")
+    layouts = {}
+    for widget in ("Entry", "Combobox", "Spinbox"):
+        children = [(widget+".padding", {"sticky": "nswe", "children": [(widget+".textarea", {"sticky": "nswe"})]})]
+        if widget == "Combobox":
+            children.insert(0, ("Guide.Combobox.downarrow", {"side": "right", "sticky": "ns"}))
+        if widget == "Spinbox":
+            children.insert(0, ("null", {"side": "right", "children": [
+                ("Guide.Spinbox.uparrow", {"side": "top"}),
+                ("Guide.Spinbox.downarrow", {"side": "bottom"})]}))
+        layouts["T"+widget] = [("Guide.field", {"sticky": "nswe", "children": children})]
+
+    def arrow(up=False, compact=False):
+        def draw(p, state):
+            w, h = (24, 16) if compact else (30, 34)
+            ink = "#aaa69e" if "disabled" in state else GOLD if "active" in state else TEXT
+            cy, delta = h/2, -3 if up else 3
+            p.line((w/2-4, cy-delta/2, w/2, cy+delta/2, w/2+4, cy-delta/2), ink, 1.8)
+        return draw
+
+    element("Guide.Combobox.downarrow", (30, 34), arrow(), states, sticky="")
+    element("Guide.Spinbox.uparrow", (24, 16), arrow(True, True), states)
+    element("Guide.Spinbox.downarrow", (24, 16), arrow(False, True), states)
+    for name, layout in layouts.items():
+        style.layout(name, layout)
+
+    def trough(p, state):
+        p.box((0, 10, 96, 14), "#cecac3" if "disabled" in state else "#aaa59b", 2)
+    def slider(p, state):
+        p.ellipse((2, 2, 22, 22), "#d1cfca" if "disabled" in state else CARD,
+                  GOLD if "focus" in state or "active" in state else "#8e8980", 1.5)
+        p.ellipse((7, 7, 17, 17), "#b9b6af" if "disabled" in state else GOLD)
+    element("Guide.Horizontal.Scale.trough", (96, 24), trough, states, border=4, sticky="ew")
+    element("Guide.Horizontal.Scale.slider", (24, 24), slider, states)
+    style.layout("Horizontal.TScale", [("Guide.Horizontal.Scale.trough", {"sticky": "nswe", "children": [
+        ("Guide.Horizontal.Scale.slider", {"side": "left"})]})])
+
+
 def apply_theme(root, scale):
     load_font(root)
     d = lambda n: round(n*scale)
@@ -183,13 +263,16 @@ def apply_theme(root, scale):
                         lightcolor=LINE,darkcolor=LINE,arrowcolor=TEXT,padding=d(6),font=(FONT,11),borderwidth=0,
                         selectbackground="#d7cab0",selectforeground=TEXT)
         style.map(name,fieldbackground=[("disabled",PANEL),("readonly",FIELD)],foreground=[("disabled","#92918c"),("readonly",TEXT)],bordercolor=[("focus",GOLD)])
+        root.option_add("*"+name+".font", (FONT, 11))
+    _form_elements(root, style, scale)
     root.option_add("*TCombobox*Listbox.font",(FONT,11))
     root.option_add("*TCombobox*Listbox.background",CARD)
     root.option_add("*TCombobox*Listbox.foreground",TEXT)
     root.option_add("*TCombobox*Listbox.selectBackground","#d7cab0")
     root.option_add("*TCombobox*Listbox.selectForeground",TEXT)
     for name,fill,ink,tab,option,background in (
-        ("TButton",CARD,TEXT,False,False,PANEL),("Accent.TButton",CARD,TEXT,False,False,BG),
+        ("TButton",CARD,TEXT,False,False,CARD),("Panel.TButton",CARD,TEXT,False,False,PANEL),
+        ("Compact.TButton",CARD,TEXT,False,False,CARD),("Accent.TButton",CARD,TEXT,False,False,BG),
         ("Primary.TButton",CARD,TEXT,False,False,BG),("Footer.TButton",CARD,TEXT,False,False,BG),
         ("Danger.TButton",CARD,"#9d4949",False,False,BG),("Nav.TButton",RAIL,"#b7b7b7",True,False,RAIL),
         ("Selected.Nav.TButton",PANEL,TEXT,True,False,RAIL),("Option.TButton",CARD,TEXT,False,True,PANEL),

@@ -78,6 +78,75 @@ def issue_text(report: dict) -> str:
     return " · ".join(parts)
 
 
+def universe_result(report: dict) -> tuple[str, str]:
+    """Describe recorded outcomes without exposing OCR, IDs or action payloads."""
+    data = report.get("differential_universe") or {}
+    requested, completed = data.get("requested_runs"), data.get("completed_runs")
+    counts_known = (type(requested) is int and type(completed) is int
+                    and 1 <= requested <= 10 and 0 <= completed <= requested)
+    status = report.get("status")
+    outcome = {"success": "演算完成", "stopped": "已停止", "failed": "运行失败",
+               "partial": "部分完成"}.get(status, "运行结束")
+    if status == "success" and (not counts_known or completed != requested):
+        outcome = "完成情况待核对"
+    title = outcome + (f" · 已完成 {completed}/{requested} 局" if counts_known else " · 局数未核实")
+    if counts_known and completed == requested and status in ("failed", "partial", "stopped"):
+        rewards = data.get("reward_collection") or {}
+        following = ("后续已停止" if status == "stopped" else "领奖未完成"
+                     if rewards.get("status") in ("failed", "unhandled_notification") else "后续未完成")
+        title = f"已完成 {completed}/{requested} 局 · {following}"
+    lines = []
+    issue = issue_text(report)
+    if issue:
+        lines.append(issue)
+    mode = data.get("mode")
+    if mode in ("周期演算", "常规演算"):
+        lines.append(mode)
+    results = [r for r in data.get("run_results", []) if isinstance(r, dict)]
+    resumed = [r for r in results if r.get("origin") == "resumed_trial"
+               and r.get("status") in ("completed", "returned_uncounted")]
+    if resumed:
+        counted = sum(r.get("counted") is True for r in resumed)
+        lines.append(f"接续通关 {len(resumed)} 局 · {counted} 局计入本次目标")
+    saved = [str(r["save_name"]) for r in results
+             if r.get("save_status") == "saved" and r.get("save_name") and r.get("save_evidence")]
+    if saved:
+        lines.append("已保存：" + "、".join(saved))
+    full = sum(r.get("save_status") == "skipped_full" for r in results)
+    if full:
+        lines.append(f"存档槽已满 · {full} 局跳过保存")
+    rewards = data.get("reward_collection") or {}
+    reward_status = rewards.get("status")
+    if reward_status and reward_status != "disabled":
+        verified = reward_status == "complete" and bool(rewards.get("home_evidence"))
+        message = "红点奖励已核实领完" if verified else "红点奖励未完成"
+        cassettes = [r.get("mode_cassettes_used") for r in rewards.get("claims", [])
+                    if isinstance(r, dict) and "mode_cassettes_used" in r]
+        if cassettes:
+            cost_known = all(type(v) is int and v >= 0 for v in cassettes)
+            message += f" · 已使用 {sum(cassettes)} 月下卡带" if cost_known else " · 卡带消耗待核对"
+        if not verified and rewards.get("failure_reason") and rewards["failure_reason"] not in issue:
+            message += "："+str(rewards["failure_reason"])
+        lines.append(message)
+    for entry in data.get("daily_interludes", []):
+        if not isinstance(entry, dict):
+            continue
+        daily_status = entry.get("status")
+        if daily_status == "before_start_day":
+            lines.append(f"通关后日常未到开始日期：{entry.get('start_day', '未记录')}")
+        elif daily_status == "complete":
+            amounts = [entry.get("stamina_spent"), entry.get("immersifiers_spent")]
+            if all(type(v) is int and v >= 0 for v in amounts):
+                lines.append(f"通关后日常完成 · {amounts[0]} 开拓力 · {amounts[1]} 沉浸器")
+            else:
+                lines.append("通关后日常已结束 · 消耗待核对")
+        else:
+            lines.append("通关后日常未完成" + ("："+str(entry["error"]) if entry.get("error") and entry["error"] not in issue else ""))
+    if report.get("safe_next") and status != "success":
+        lines.append("下一步："+str(report["safe_next"]))
+    return title, "\n".join(lines)
+
+
 def standard_run_verified(data: dict) -> bool:
     return (data.get("mode") == "standard_development" and data.get("status") == "settled"
             and data.get("completion_verified") is True and data.get("settlement_verified") is True)

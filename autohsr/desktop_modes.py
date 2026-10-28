@@ -73,9 +73,12 @@ def build_universe(ui):
     status = ttk.Frame(page, style="Card.TFrame", padding=d(12))
     status.grid(row=2, column=0, sticky="ew", pady=(d(14), d(10)))
     status.columnconfigure(0, weight=1)
-    note(status, variable=ui.du_status, row=0, style="Warning.TLabel", scale=s)
+    note(status, variable=ui.du_status, row=0, style="CardTitle.TLabel", scale=s)
+    ui.du_record_button = ttk.Button(status, text="详细记录", command=ui._show_universe_record, state="disabled")
+    ui.du_record_button.grid(row=0, column=1, sticky="e", padx=(d(12), 0))
     page.rowconfigure(3, weight=1)
-    bound_text(ui, page, ui.du_observation, height=3).grid(row=3, column=0, sticky="nsew")
+    ui.du_result_text = bound_text(ui, page, ui.du_observation, height=3)
+    ui.du_result_text.grid(row=3, column=0, sticky="nsew")
 
 
 def build_currency(ui):

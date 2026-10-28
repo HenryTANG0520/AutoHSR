@@ -407,7 +407,9 @@ def main():
                 du_runner.release.set()
                 pump(root, lambda: not ui.busy)
                 check('differential_universe_report_is_separate_and_does_not_save',
-                    '10/10 局' in ui.summary.get() and '每日刷本预算未使用' in ui.summary.get() and
+                    '10/10 局' in ui.summary.get() and ui.du_result_report['operation'] == 'differential_universe' and
+                    ui.du_result_report['differential_universe']['completed_runs'] == 10 and
+                    'page_history' not in ui.du_observation.get() and
                     config.read_bytes() == original)
                 ui.differential_universe_runs.set('1')
                 ui.du_save.set(False)

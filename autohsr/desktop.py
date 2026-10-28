@@ -66,7 +66,7 @@ def _home(ui, names):
     plan.columnconfigure(0, weight=1)
     ui.plan_ribbon = PlanRibbon(plan, s, ui)
     ui.plan_ribbon.grid(row=0, column=0, sticky="ew")
-    ui.weekly_button = ttk.Button(plan, text="周常计划", command=ui._show_weekly_plan)
+    ui.weekly_button = ttk.Button(plan, text="周常计划", style="Panel.TButton", command=ui._show_weekly_plan)
     ui.weekly_button.grid(row=0, column=1, padx=(d(10), 0))
     ui.table = TaskBoard(page, s, ui, names)
     ui.table.grid(row=2, column=0, sticky="nsew")
@@ -143,6 +143,7 @@ def _logs(ui):
     ui.screenshot_button = ttk.Button(files, text="查看截图", command=lambda: ui._open_path(ui.last_screenshot))
     ui.directory_button = ttk.Button(files, text="运行目录", command=lambda: ui._open_path(ui.last_run_dir))
     for button in (ui.report_button, ui.screenshot_button, ui.directory_button):
+        button.configure(style="Panel.TButton")
         button.pack(side="left", padx=(0, round(10*s)))
     ui.details_button = ui.screenshot_button
     note(page, variable=ui.history_context, row=2, style="Hint.TLabel", scale=s)

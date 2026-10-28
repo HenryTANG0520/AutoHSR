@@ -15,7 +15,7 @@ from tkinter.scrolledtext import ScrolledText
 from typing import Any
 
 from .config import CONFIG_PATH, ROOT, Settings, SettingsError
-from .ux import report_context, recovery_text, exit_text, immersifier_text, issue_text, standard_activity, standard_run_verified
+from .ux import report_context, recovery_text, exit_text, immersifier_text, issue_text, standard_activity, standard_run_verified, universe_result
 from . import theme
 
 TASK_NAMES = {
@@ -176,8 +176,9 @@ class AutoHSRWindow:
         self.currency_zone = tk.StringVar(value='后台')
         self.currency_target_level = tk.StringVar(value='保持')
         self.currency_strategy = tk.StringVar(value='默认')
-        self.du_status = tk.StringVar(value="乐园漫记")
-        self.du_observation = tk.StringVar(value="暂无演算记录")
+        self.du_status = tk.StringVar(value="尚未运行")
+        self.du_observation = tk.StringVar()
+        self.du_result_report = None
         self.training_result = tk.StringVar(value="unknown")
         from .weekly_plan import DAYS, MODES
         self.weekly_enabled = tk.BooleanVar(value=self.settings.weekly_enabled)
@@ -713,6 +714,8 @@ class AutoHSRWindow:
         if differential_universe:
             self.du_status.set(f"正在演算 · 共 {settings.differential_universe_runs} 局")
             self.du_observation.set("等待页面识别")
+            self.du_result_report = None
+            self.du_record_button.configure(state="disabled")
             self.last_screenshot = None
         if currency_wars:
             self.currency_status.set("正在推进对局" if flow_test else "正在验证当前节点" if node_test else f"正在部署：{deployment_label}" if deploy_test else "正在验证前台 3→1 拖动" if drag_test else "正在只读识别")
@@ -891,9 +894,16 @@ class AutoHSRWindow:
             return
         progress = f"差分宇宙 · 已完成 {completed}/{requested} 局"
         self.du_status.set(progress)
+        self.du_observation.set("")
+        self.du_result_report = None
+        self.du_record_button.configure(state="disabled")
         self.current_task.set(("周常 · " if self.active_operation == "plan" else "")+progress)
         if self.active_operation == "plan":
             self.weekly_status.set(progress)
+
+    def _show_universe_record(self):
+        if self.du_result_report is not None:
+            self._show_summary(json.dumps(self.du_result_report, ensure_ascii=False, indent=2), title="差分宇宙 · 详细记录")
 
     def _currency_observed(self, data: dict) -> None:
         from .currency_wars_pages import PAGE_LABELS
@@ -1062,19 +1072,12 @@ class AutoHSRWindow:
             else:
                 self.currency_observation.set("本次未生成有效观察记录；请查看日志中的原因后重新识别。")
         if differential_universe:
-            data = report.get("differential_universe") or {}
-            completed = int(data.get("completed_runs", 0) or 0)
-            requested = int(data.get("requested_runs", self.settings.differential_universe_runs) or self.settings.differential_universe_runs)
-            outcome = "全部运行完成并返回" if status == "success" and completed == requested else "已停止，完成情况未达目标"
-            interludes=data.get('daily_interludes') or []
-            daily_summary='每日刷本预算未使用'
-            if interludes:
-                daily_summary=('通关后日常未完成，请查看记录' if any(v.get('status')!='complete' for v in interludes)
-                    else f"通关后日常完成 · 已确认 {sum(v.get('stamina_spent',0) for v in interludes)} 开拓力、{sum(v.get('immersifiers_spent',0) for v in interludes)} 沉浸器")
-            self.summary.set(f"差分宇宙 · {outcome} · {completed}/{requested} 局 · {daily_summary}" +
-                             ("\n" + str(data.get("last_message") or report.get("error")) if data.get("last_message") or report.get("error") else ""))
-            self.du_status.set(self.summary.get())
-            self.du_observation.set(json.dumps(data, ensure_ascii=False, indent=2) if data else "本次未生成运行观察记录；请查看日志中的失败原因。")
+            title, detail = universe_result(report)
+            self.summary.set("差分宇宙 · "+title+("\n"+detail if detail else ""))
+            self.du_status.set(title)
+            self.du_observation.set(detail)
+            self.du_result_report = json.loads(json.dumps(report, ensure_ascii=False))
+            self.du_record_button.configure(state="normal")
         if report.get("operation", self.active_operation) == "plan":
             weekly = report.get("weekly_plan") or {}
             message = weekly.get("message", "周常完成情况未核实")
