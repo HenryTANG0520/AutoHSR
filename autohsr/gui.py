@@ -339,7 +339,8 @@ class AutoHSRWindow:
         for control in self.setting_controls:
             control.configure(state=state)
         for name in ('currency_source_combo','currency_zone_combo','currency_level_combo','du_runs_combo','du_resume_combo','du_mode_combo',
-                     'weekly_mode_combo', 'weekly_day_combo', 'weekly_runs_combo', 'currency_strategy_combo'):
+                     'weekly_mode_combo', 'weekly_day_combo', 'weekly_runs_combo', 'currency_strategy_combo',
+                     'weekly_enabled_combo', 'overlay_control', 'synthesis_control'):
             if hasattr(self,name):
                 getattr(self,name).configure(state='disabled' if self.busy else 'readonly')
         for control in self.weekly_run_controls:

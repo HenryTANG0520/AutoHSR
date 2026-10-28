@@ -15,6 +15,8 @@ RAIL = "#242323"
 PANEL = "#e1e1e1"
 CARD = "#f4f4f4"
 FIELD = "#ebebeb"
+SETTING_ROW = "#c5c6c8"
+SETTING_VALUE = "#d6d7d9"
 TEXT = "#242424"
 MUTED = "#757575"
 GOLD = "#bca775"
@@ -233,6 +235,25 @@ def _form_elements(root, style, scale):
     for name, layout in layouts.items():
         style.layout(name, layout)
 
+    def setting_field(p, state):
+        p.box((0, 0, 84, 52), SETTING_VALUE)
+        if "focus" in state and "disabled" not in state:
+            p.box((1, 1, 83, 51), None, 0, GOLD, 1.5)
+
+    def setting_arrow(p, state):
+        p.poly((10, 23, 20, 23, 15, 29), "#96979b" if "disabled" in state else "#44464b")
+
+    element("Settings.field", (84, 52), setting_field, states, border=3, sticky="nsew")
+    element("Settings.Combobox.downarrow", (30, 52), setting_arrow, states)
+    for widget in ("Entry", "Combobox"):
+        children = [(widget+".padding", {"sticky": "nswe", "children": [(widget+".textarea", {"sticky": "nswe"})]})]
+        if widget == "Combobox":
+            children.insert(0, ("Settings.Combobox.downarrow", {"side": "right", "sticky": "ns"}))
+        style.layout("Settings.T"+widget, [("Settings.field", {"sticky": "nswe", "children": children})])
+        style.configure("Settings.T"+widget, padding=(d(12), d(7)), fieldbackground=SETTING_VALUE,
+                        background=SETTING_VALUE)
+        style.map("Settings.T"+widget, fieldbackground=[("disabled", SETTING_VALUE), ("readonly", SETTING_VALUE)])
+
     def trough(p, state):
         p.box((0, 10, 96, 14), "#cecac3" if "disabled" in state else "#aaa59b", 2)
     def slider(p, state):
@@ -254,6 +275,11 @@ def apply_theme(root, scale):
     style.configure(".",font=(FONT,11),background=PANEL,foreground=TEXT)
     for name,color in (("TFrame",PANEL),("Card.TFrame",CARD),("Panel.TFrame",CARD),("Rail.TFrame",RAIL),("Footer.TFrame",BG)):
         style.configure(name,background=color)
+    style.configure("Settings.Row.TFrame", background=SETTING_ROW)
+    style.configure("Settings.Value.TFrame", background=SETTING_VALUE)
+    style.configure("Settings.Line.TFrame", background="#a5a7ab")
+    style.configure("Settings.TLabel", background=SETTING_ROW, foreground=TEXT, font=(FONT, 11))
+    style.configure("Settings.Hint.TLabel", background=SETTING_ROW, foreground="#5d6065", font=(FONT, 9))
     for name,color,ink in (("TLabel",CARD,TEXT),("Card.TLabel",CARD,TEXT),("Muted.TLabel",CARD,MUTED),
         ("CardHint.TLabel",CARD,MUTED),("Hint.TLabel",PANEL,MUTED),("Footer.TLabel",BG,"#b8b8bc"),
         ("FooterStatus.TLabel",BG,LIGHT),("Rail.TLabel",RAIL,LIGHT),("Warning.TLabel",CARD,WARNING)):
@@ -279,6 +305,7 @@ def apply_theme(root, scale):
     for name,fill,ink,tab,option,background in (
         ("TButton",CARD,TEXT,False,False,CARD),("Panel.TButton",CARD,TEXT,False,False,PANEL),
         ("Compact.TButton",CARD,TEXT,False,False,CARD),("Accent.TButton",CARD,TEXT,False,False,BG),
+        ("Settings.TButton",CARD,TEXT,False,False,SETTING_VALUE),
         ("Poster.TButton",CARD,TEXT,False,False,PANEL),
         ("Primary.TButton",CARD,TEXT,False,False,BG),("Footer.TButton",CARD,TEXT,False,False,BG),
         ("Danger.TButton",CARD,"#9d4949",False,False,BG),("Nav.TButton",RAIL,"#b7b7b7",True,False,RAIL),
