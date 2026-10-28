@@ -659,3 +659,9 @@ Game artwork remains the property of HoYoverse.
 `autohsr/tests/fixtures/currency_wars_standard_environment.json`来自同日用户授权开发的标准A8-40环境选择页，仅保存卡片与固定UI OCR，排除UID、账号和原始图像。来源相对标识、客户端4.6.0与原图SHA-256保存在元数据；用于完整效果、数值与卡片顺序回归，不将回放当成实时输入授权。
 
 `autohsr/tests/fixtures/currency_wars_standard_shop.json`来自2026-10-26标准商店记录，仅保存商店标题、候选、标价与固定导航OCR，排除UID、玩家头像、余额区域及原始图像。元数据保留本地来源相对标识、日期和原图哈希；藿藿与单数字价采用已核实的局部识别，原始截图保持忽略，不分发游戏整图。
+
+# 2026-10-28 桌面指南界面
+
+AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实训”的信息层次和视觉语言（深色外框、浅色内容、金色菱形里程碑、任务条目），以及[AutoZZZ快捷手册界面](https://github.com/HenryTANG0520/AutoZZZ/tree/a137c1eee44ea7429d06d018bd60d47c34bed41a/autozzz)的游戏化任务组织与常驻控制思路。星铁界面的公开参考可见[HoYoLAB社区截图](https://www.hoyolab.com/article/24934874)与[每日实训截图](https://www.pushsquare.com/guides/honkai-star-rail-beginners-tips-tricks-and-how-to-play)。参考日期2026-10-28；仅作设计参考，不代表相应旧版截图中的游戏任务仍是当前规则。
+
+此次没有下载、裁切或分发上述截图，没有新增第三方位图、游戏字体或模型。`autohsr/theme.py`与`autohsr/game_widgets.py`中的书本罗盘标记、星图线、按钮、菱形进度与任务卡均由程序几何绘制，未复制游戏徽标；中文使用Windows系统字体Microsoft YaHei UI，不随程序分发字体文件。新增绘图代码按本仓库GPL-3.0-only声明提供，不主张拥有游戏原有视觉元素或名称。

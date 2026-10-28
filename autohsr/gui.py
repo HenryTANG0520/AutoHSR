@@ -16,6 +16,7 @@ from typing import Any
 
 from .config import CONFIG_PATH, ROOT, Settings
 from .ux import report_context, recovery_text, exit_text,immersifier_text
+from . import theme
 
 TASK_NAMES = {
     "assignments": "持续委托奖励", "battle": "日常副本挑战",
@@ -34,8 +35,8 @@ def event_kind(event: dict[str, Any]) -> str:
 
 
 class AutoHSRWindow:
-    BG, PANEL, INSET = "#0b1422", "#142237", "#101c2d"
-    TEXT, MUTED, ACCENT = "#e5edf7", "#91a6bf", "#47d9ce"
+    BG, PANEL, INSET = theme.BG, theme.CARD, theme.CARD
+    TEXT, MUTED, ACCENT = theme.TEXT, theme.MUTED, theme.GOLD
 
     def __init__(self, root: tk.Tk, config_path: Path = CONFIG_PATH):
         self.root, self.config_path = root, Path(config_path)
@@ -67,7 +68,6 @@ class AutoHSRWindow:
         root.minsize(1100, 760)
         root.configure(bg=self.BG)
         root.protocol("WM_DELETE_WINDOW", self._close)
-        self._style()
         self._variables()
         self._build()
         self._saved_signature = self._form_signature()
@@ -89,43 +89,6 @@ class AutoHSRWindow:
             self._log("开拓力刷本未授权，当前仅收取委托与奖励。", "warning")
         if config_error:
             root.after(200, lambda: messagebox.showwarning("配置读取失败", config_error, parent=root))
-
-    def _style(self) -> None:
-        style = ttk.Style(self.root)
-        style.theme_use("clam")
-        style.configure("TFrame", background=self.BG)
-        style.configure("Panel.TFrame", background=self.PANEL)
-        style.configure("TLabel", background=self.PANEL, foreground=self.TEXT, font=("Microsoft YaHei UI", 10))
-        style.configure("Muted.TLabel", foreground=self.MUTED, font=("Microsoft YaHei UI", 9))
-        style.configure("Warning.TLabel", foreground="#efc779", font=("Microsoft YaHei UI", 9))
-        style.configure("Title.TLabel", background=self.BG, font=("Microsoft YaHei UI", 23, "bold"))
-        style.configure("Subtitle.TLabel", background=self.BG, foreground=self.MUTED, font=("Microsoft YaHei UI", 9))
-        style.configure("Section.TLabel", font=("Microsoft YaHei UI", 11, "bold"))
-        style.configure("Metric.TLabel", font=("Microsoft YaHei UI", 14, "bold"))
-        style.configure("Status.TLabel", background=self.BG, foreground=self.ACCENT, font=("Microsoft YaHei UI", 11, "bold"))
-        style.configure("TCheckbutton", background=self.PANEL, foreground=self.TEXT, font=("Microsoft YaHei UI", 9), padding=(0, 0))
-        style.map("TCheckbutton", background=[("active", self.PANEL)], foreground=[("disabled", "#60758d")])
-        for name in ("TEntry", "TSpinbox"):
-            style.configure(name, fieldbackground="#1d2e46", foreground=self.TEXT, insertcolor=self.TEXT, padding=4, font=("Microsoft YaHei UI", 10))
-            style.map(name, fieldbackground=[("disabled", "#17263b")], foreground=[("disabled", "#60758d")])
-        style.configure('TCombobox',fieldbackground='#1d2e46',background='#294461',foreground=self.TEXT,
-                        arrowcolor=self.TEXT,font=('Microsoft YaHei UI',10))
-        style.map('TCombobox',fieldbackground=[('disabled','#17263b'),('readonly','#1d2e46')],
-                  foreground=[('disabled','#60758d'),('readonly',self.TEXT)],
-                  selectbackground=[('readonly','#1d2e46')],selectforeground=[('readonly',self.TEXT)])
-        style.configure("TButton", background="#253c56", foreground=self.TEXT, font=("Microsoft YaHei UI", 9), padding=(12, 8), borderwidth=0)
-        style.map("TButton", background=[("active", "#345775"), ("disabled", "#1b2c41")], foreground=[("disabled", "#60758d")])
-        style.configure("Primary.TButton", background=self.ACCENT, foreground="#082829", font=("Microsoft YaHei UI", 10, "bold"))
-        style.map("Primary.TButton", background=[("active", "#78e9de"), ("disabled", "#23595d")], foreground=[("disabled", "#7fabad")])
-        style.configure("Danger.TButton", foreground="#ffb6b6")
-        style.configure("Compact.TButton", padding=(9, 3))
-        style.configure("TNotebook", background=self.PANEL, borderwidth=0)
-        style.configure("TNotebook.Tab", background="#1d3048", foreground=self.MUTED, font=("Microsoft YaHei UI", 9), padding=(15, 6))
-        style.map("TNotebook.Tab", background=[("selected", self.PANEL)], foreground=[("selected", self.ACCENT)])
-        style.configure("Treeview", background=self.INSET, fieldbackground=self.INSET, foreground=self.TEXT, rowheight=30, borderwidth=0, font=("Microsoft YaHei UI", 9))
-        style.configure("Treeview.Heading", background="#20334d", foreground=self.MUTED, font=("Microsoft YaHei UI", 9), padding=6, relief="flat")
-        style.map("Treeview", background=[("selected", "#24475b")])
-        style.configure("Vertical.TScrollbar", background="#32475f", troughcolor=self.INSET, bordercolor=self.INSET, arrowcolor=self.MUTED)
 
     def _variables(self) -> None:
         self.game_path = tk.StringVar(value=self.settings.game_path)
@@ -186,6 +149,7 @@ class AutoHSRWindow:
         self.currency_target_level = tk.StringVar(value='保持')
         self.du_status = tk.StringVar(value="当前季节：乐园漫记。操作会记录本次页面文字、动作和前后截图。")
         self.du_observation = tk.StringVar(value="尚无差分宇宙运行记录。")
+        self.training_result = tk.StringVar(value="unknown")
 
     def _build(self):
         from .desktop import build_window
@@ -196,8 +160,10 @@ class AutoHSRWindow:
         for key, page in self.pages.items():
             page.grid() if key == name else page.grid_remove()
             self.nav_buttons[key].configure(style="Selected.Nav.TButton" if key == name else "Nav.TButton")
-        currency = name == "currency_wars"
-        differential_universe = name == "differential_universe"
+        if name not in ("logs", "settings"):
+            self.action_page = name
+        currency = getattr(self, "action_page", "home") == "currency_wars"
+        differential_universe = getattr(self, "action_page", "home") == "differential_universe"
         self.start_button.configure(
             text="只读识别当前画面" if currency else
                  f"开始 {self.differential_universe_runs.get()} 局自动演算" if differential_universe else "开始每日",
@@ -249,7 +215,7 @@ class AutoHSRWindow:
         if not self.settings.allow_stamina_spend and self.tasks["battle"].get():
             self.tasks["battle"].set(False)
         self.save_status.set("● 有未保存的修改" if self.dirty else ("配置已保存" if self.config_path.exists() else "默认配置 · 尚未保存"))
-        self.save_label.configure(foreground="#efc779" if self.dirty else self.MUTED)
+        self.save_label.configure(foreground="#dcc391" if self.dirty else "#aeb8c7")
         selected = [label for key, label in TASK_NAMES.items() if self.tasks[key].get()]
         from .dungeon_ui import refresh_count
         refresh_count(self)
@@ -263,13 +229,13 @@ class AutoHSRWindow:
         pending = state['pending'] if state['pending'] is not None else '未记录'
         self.recovery_hint.set((state.get("reason") if state["corrupt"] else
             f"上次刷本未完整结束：已确认 {state['spent']}，待核对 {pending} 开拓力{immersifier_text(state)}。可先仅补领奖；新刷本需确认新增预算。")
-            if state["blocked"] else "本次运行使用独立预算；异常后保留已确认与待核对消耗。")
+            if state["blocked"] else "")
 
     def _refresh_controls(self) -> None:
         state = "disabled" if self.busy else "normal"
         for control in self.setting_controls:
             control.configure(state=state)
-        for name in ('currency_source_combo','currency_zone_combo','currency_level_combo','du_runs_combo','du_resume_combo'):
+        for name in ('currency_source_combo','currency_zone_combo','currency_level_combo','du_runs_combo','du_resume_combo','du_mode_combo'):
             if hasattr(self,name):
                 getattr(self,name).configure(state='disabled' if self.busy else 'readonly')
         allowed = self.settings.allow_stamina_spend
@@ -296,12 +262,12 @@ class AutoHSRWindow:
                 self.table.item(name, values=(label, "等待" if selected else "跳过", detail), tags=() if selected else ("skipped",))
         for button in (self.save_button, self.check_button, self.launch_button):
             button.configure(state=state)
-        currency_page = getattr(self, "active_page", "") == "currency_wars"
-        self.pause_button.configure(state="normal" if self.running and self.runner is not None and not self.stopping else "disabled", text="继续" if self.paused else "暂停")
+        currency_page = getattr(self, "action_page", "") == "currency_wars"
+        self.pause_button.configure(state="normal" if self.running and self.runner is not None and not self.stopping else "disabled", text="继续 F9" if self.paused else "暂停 F9")
         self.stop_button.configure(state="normal" if self.busy and not self.stopping else "disabled")
-        independent_page = currency_page or getattr(self, "active_page", "") == "differential_universe"
-        if getattr(self, "active_page", "") == "differential_universe":
-            self.start_button.configure(text=f"开始 {self.differential_universe_runs.get()} 局自动演算")
+        independent_page = currency_page or getattr(self, "action_page", "") == "differential_universe"
+        if getattr(self, "action_page", "") == "differential_universe":
+            self.start_button.configure(text=f"开始演算 · {self.differential_universe_runs.get()} 局")
         self.start_button.configure(state="normal" if not self.busy and (independent_page or any(v.get() for v in self.tasks.values())) else "disabled")
         self.reward_button.configure(state="normal" if not self.busy and not independent_page else "disabled")
         can_open = not self.busy or self.paused
@@ -556,6 +522,8 @@ class AutoHSRWindow:
         if currency_standard:
             self.plan.set('货币战争 · 标准A8-40开发 · ' + ('接续已记录对局' if currency_resume else '核实难度后新开对局'))
         self._has_run = True
+        if operation in ("daily", "reward_only"):
+            self.training_result.set("unknown")
         self.paused = self.stopping = False
         self.focus_waiting = False
         self.stop_requested.clear()
@@ -813,6 +781,7 @@ class AutoHSRWindow:
         differential_universe = report.get("operation", self.active_operation) == "differential_universe"
         if not currency and report.get("daily_verified") is True:
             self._task(dict(task="daily", status="ok", detail="每日实训奖励已核实领取。"), log=False)
+            self.training_result.set("verified")
         self._finalize_task_rows(status)
         self._progress(report.get("stamina_spent", 0))
         self._freeze_clock()

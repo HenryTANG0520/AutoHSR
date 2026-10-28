@@ -5,6 +5,7 @@ from tkinter import ttk
 
 from .config import RESOURCE_ROOT, ROOT
 from .dungeons import CATEGORIES, BY_KEY, category_for, count_limit, load_catalogue
+from .theme import wrapped_label
 
 
 def reload_catalogue(ui):
@@ -56,7 +57,7 @@ def build_fields(ui, parent):
     ui.challenge_entry = entry
     ui.setting_controls.extend((ui.challenge_scale, entry))
     ui.stamina_controls.extend((ui.challenge_scale, entry))
-    ttk.Label(parent, textvariable=ui.battle_cost, style="Muted.TLabel").pack(anchor="w", pady=(4, 7))
+    wrapped_label(parent, textvariable=ui.battle_cost, style="Muted.TLabel").pack(fill="x", pady=(4, 7))
     safety = ttk.Frame(parent, style="Panel.TFrame")
     safety.pack(fill="x")
     ttk.Label(safety, text="本次开拓力上限", style="Muted.TLabel").pack(side="left")
@@ -76,7 +77,7 @@ def build_fields(ui, parent):
         ui.setting_controls.append(button)
         if label != "刷新游戏副本":
             ui.stamina_controls.append(button)
-    ttk.Label(parent, textvariable=ui.battle_hint, style="Warning.TLabel", wraplength=760).pack(anchor="w", pady=(5, 0))
+    wrapped_label(parent, textvariable=ui.battle_hint, style="Warning.TLabel").pack(fill="x", pady=(5, 0))
 
 
 def update_options(ui):

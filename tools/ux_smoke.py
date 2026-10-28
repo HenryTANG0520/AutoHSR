@@ -244,7 +244,7 @@ def main():
                 # Independent mode must not depend on daily selections or invalid resource drafts.
                 ui._show_page('currency_wars')
                 check('currency_has_own_sidebar_entry_and_primary_action',
-                    ui.nav_buttons['currency_wars'].cget('text') == '货币战争' and
+                    '货币战争' in ui.nav_buttons['currency_wars'].cget('text') and
                     ui.start_button.cget('text') == '只读识别当前画面' and
                     str(ui.start_button.cget('state')) == 'normal' and str(ui.reward_button.cget('state')) == 'disabled')
                 ui.start_button.invoke()
@@ -379,8 +379,8 @@ def main():
                 check('du_daily_interlude_default_off',not ui.du_daily.get())
                 check('du_defaults_to_periodic_named_preset',ui.du_mode.get()=='周期演算' and ui.du_team.get()=='哈哈哈哈')
                 check('differential_universe_has_parallel_sidebar_and_action',
-                    ui.nav_buttons['differential_universe'].cget('text') == '差分宇宙' and
-                    ui.start_button.cget('text') == '开始 3 局自动演算' and
+                    '差分宇宙' in ui.nav_buttons['differential_universe'].cget('text') and
+                    ui.start_button.cget('text') == '开始演算 · 3 局' and
                     str(ui.start_button.cget('state')) == 'normal' and str(ui.reward_button.cget('state')) == 'disabled')
                 ui.differential_universe_runs.set('10')
                 ui.du_save.set(True)
