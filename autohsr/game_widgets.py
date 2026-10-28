@@ -50,8 +50,22 @@ class Header(Surface):
         self.ui=ui
         self.watch(ui.page_title,ui.stamina,ui.elapsed)
         self.bind("<Button-1>",lambda e:ui._close() if e.x>self.winfo_width()-55*scale else None)
+        self.plan = ttk.Frame(self, style="Footer.TFrame")
+        self.plan.columnconfigure(0, weight=1)
+        ui.plan_ribbon = PlanRibbon(self.plan, scale, ui, dark=True)
+        ui.plan_ribbon.grid(row=0, column=0, sticky="ew")
+        ui.weekly_button = ttk.Button(self.plan, text="周常计划", style="Footer.TButton", command=ui._show_weekly_plan)
+        ui.weekly_button.grid(row=0, column=1, padx=(round(10*scale), 0))
+
+    def position_plan(self):
+        if getattr(self.ui, "action_page", "home") in ("home", "tasks"):
+            d = lambda n: round(n*self.scale)
+            self.plan.place(x=d(200), y=d(18), width=max(1, self.winfo_width()-d(550)), height=d(46))
+        else:
+            self.plan.place_forget()
 
     def paint(self,p):
+        self.position_plan()
         p.asset("guide-mark.png",(24,23,62,59),t.GOLD)
         p.text((73,21),"星际和平指南",14,t.GOLD)
         p.text((73,43),self.ui.page_title.get(),17,t.LIGHT)
@@ -77,6 +91,8 @@ class Guide(Surface):
         for col,(key,label,filename) in enumerate(definitions):
             for selected in (False,True):
                 p=t.Painter(round(42*scale),round(42*scale),scale,t.PANEL if selected else t.RAIL)
+                if selected:
+                    p.glow((21,21),10,(96,181,237,155),7)
                 p.asset(filename,(1,1,41,41),"#111111" if selected else "#b6b6b6")
                 self.photos[key,selected]=ImageTk.PhotoImage(p.finish(),master=self)
             command=lambda key=key:ui._show_page(getattr(ui,"last_universe_page","differential_universe") if key=="universe" else key)
@@ -151,17 +167,22 @@ class TrainingMeter(Surface):
         w=p.width
         p.box((39,12,w-1,98),"#e9e9e9",35,"#f7f7f7",2)
         p.box((78,62,w-1,98),"#e9e9e9")
-        cx,cy,r=54,54,48
+        cx,cy,r=54,54,53
         p.ellipse((cx-r,cy-r,cx+r,cy+r),"#f8f8f5","#d2c9b5")
         for n in range(72):
             angle=n*math.pi/36
-            p.line((cx+39*math.cos(angle),cy+39*math.sin(angle),cx+47*math.cos(angle),cy+47*math.sin(angle)),"#c6b994",.55)
-        p.asset("activity.png",(cx-16,cy-36,cx+16,cy+15),"#ad9a70")
+            p.line((cx+44*math.cos(angle),cy+44*math.sin(angle),cx+52*math.cos(angle),cy+52*math.sin(angle)),"#c6b994",.55)
+        p.asset("activity.png",(cx-19,cy-43,cx+19,cy+17),"#ad9a70")
         p.text((cx,cy+23),"500" if self.verified else "—",23,"#101010","mt")
         start,end=120,w-34
         color=t.ORANGE if self.verified else "#a6a6a6"
-        p.line((start,47,end,47),color,4)
-        p.ellipse((start-4,43,start+4,51),color)
+        markers = [start+(end-start)*i/5 for i in range(6)]
+        for index, (left, right) in enumerate(zip(markers, markers[1:])):
+            left += 28 if index else 0
+            right -= 32
+            p.line((left,47,right,47),color,4)
+            for x in (left, right):
+                p.ellipse((x-4,43,x+4,51),color)
         p.text((start,75),"0",18,t.TEXT,"mt")
         for i in range(1,6):
             x=start+(end-start)*i/5
@@ -263,39 +284,45 @@ class TaskBoard(Surface):
 
     def paint(self,p):
         w,h=p.width,p.height
-        self.visible_count=4 if w>=940 else 3
+        self.visible_count=4 if w>=850 else 3
         self.offset=min(self.offset,len(self.names)-self.visible_count)
         self.hitboxes={}
-        gap=28
-        width=(w-10-gap*(self.visible_count-1))/self.visible_count
-        keys=list(self.names)[self.offset:self.offset+self.visible_count]
+        # Reference card: 290 x 480, a 372px paper section and 45px gaps.
+        # Keep that aspect when space changes, and expose the next card's edge.
+        width=min((w-10)/(self.visible_count*335/290+40/290), (h-32)*290/480)
+        unit=width/290
+        q=lambda value:value*unit
+        gap=q(45)
+        keys=list(self.names)[self.offset:self.offset+self.visible_count+1]
         for i,key in enumerate(keys):
             x=2+i*(width+gap)
+            if x>=w:
+                break
             right=x+width
-            card_bottom=h-112
+            card_bottom=q(372)
+            bottom=q(480)
             selected=key in (self.selected,self.hover)
-            p.box((x+6,6,right+6,h-28),"#c7c7c7",7)
-            p.box((x,1,right,card_bottom),"#fbfaf7",7,t.GOLD if selected else "#eeede8",2 if selected else 1)
-            # Fine map pattern, the native watermark, and dotted gold inset.
+            p.box((x+q(10),q(10),right+q(10),bottom+q(10)),"#c7c7c7",q(7))
+            p.box((x,1,right,card_bottom),"#fbfaf7",q(7),t.GOLD if selected else "#eeede8",2 if selected else 1)
             for dx in (-40,20,90,160):
-                p.line((max(x,x+dx),2,min(right,x+dx+70),min(60,card_bottom)),"#efede5",1)
-            p.asset("card-watermark.png",(x+width*.12,80,x+width*.88,card_bottom-46))
-            for xx in range(round(x+11),round(right-10),4):
-                for yy in (48,round(card_bottom-12)):
+                p.line((max(x,x+q(dx)),2,min(right,x+q(dx+70)),q(60)),"#efede5",1)
+            p.asset("card-watermark.png",(x+q(40),q(110),x+q(250),q(282)))
+            for xx in range(round(x+q(14)),round(right-q(14)),max(3,round(q(4)))):
+                for yy in (q(64),card_bottom-q(16)):
                     p.box((xx,yy,xx+1,yy+1),"#d4bc8b")
-            for yy in range(48,round(card_bottom-12),4):
-                for xx in (x+11,right-11):
+            for yy in range(round(q(64)),round(card_bottom-q(16)),max(3,round(q(4)))):
+                for xx in (x+q(14),right-q(14)):
                     p.box((xx,yy,xx+1,yy+1),"#d4bc8b")
             _,state,_=self.records[key]["values"]
-            p.box((x+1,14,min(right-12,x+150),36),"#e9dbbd",0,"#d7bd8b")
-            p.text((x+16,17),state,14,"#6b624d")
-            p.text((x+20,62),p.wrap(TITLES[key],width-40,19,3),19,"#111111")
-            resource_y=card_bottom-66
-            p.box((x+13,resource_y,right-13,card_bottom-13),"#f4f4f4")
+            p.box((x+1,q(16),x+q(162),q(47)),"#e9dbbd",0,"#d7bd8b")
+            p.text((x+q(24),q(20)),state,q(23),"#6b624d")
+            p.text((x+q(24),q(80)),p.wrap(TITLES[key],width-q(48),q(25),3),q(25),"#111111")
+            resource_y=q(278)
+            p.box((x+q(15),resource_y,right-q(15),card_bottom-q(17)),"#f4f4f4")
             if key=="daily":
-                p.asset("activity.png",(x+20,resource_y-3,x+54,card_bottom-15),"#ad9a70")
+                p.asset("activity.png",(x+q(60),q(265),x+q(117),q(351)),"#ad9a70")
             else:
-                p.asset("stamina.png",(x+22,resource_y+7,x+52,resource_y+39))
+                p.asset("stamina.png",(x+q(62),q(288),x+q(108),q(334)))
             if key=="battle":
                 value=self.ui.challenge_count.get()+" 次" if self.ui.tasks[key].get() else "0 次"
                 from .dungeon_ui import selected_category
@@ -311,31 +338,33 @@ class TaskBoard(Surface):
             else:
                 value="0"
                 sub="开拓力"
-            p.text((x+64,resource_y+3),value,21,"#494442")
-            p.text((x+64,resource_y+29),sub,13,t.MUTED)
-            with p.clip((x,card_bottom,right,h-32),7):
-                p.asset("card-footer.png",(x,card_bottom,right,h-32))
-            p.text((x+width/2,card_bottom+40),self.action_label(key),19,"#d8ba78","mm")
+            p.text((x+q(126),q(286)),value,q(32),"#494442")
+            p.text((x+q(126),q(326)),sub,q(16),t.MUTED)
+            with p.clip((x,card_bottom,right,bottom),q(7)):
+                p.asset("card-footer.png",(x,card_bottom,right,bottom))
+            p.text((x+width/2,q(426)),self.action_label(key),q(25),"#d8ba78","mm")
             if selected:
-                p.box((x-1,0,right+1,h-31),None,7,t.GOLD,2)
-            self.hitboxes[key]=(x,0,right,h-30)
+                p.box((x-1,0,right+1,bottom),None,q(7),t.GOLD,2)
+            self.hitboxes[key]=(x,0,min(right,w),bottom)
+        visible_end=min(len(self.names),self.offset+self.visible_count)
         for key,x,symbol in (("previous",w-103,"‹"),("next",w-15,"›")):
             enabled=self.offset>0 if key=="previous" else self.offset<len(self.names)-self.visible_count
             p.text((x,h-13),symbol,24,t.TEXT if enabled else "#bcbcbc","mm")
             if enabled:
                 self.hitboxes[key]=(x-16,h-29,x+16,h)
-        p.text((w-59,h-12),f"{self.offset+1}–{self.offset+len(keys)} / {len(self.names)}",12,t.MUTED,"mm")
+        p.text((w-59,h-12),f"{self.offset+1}–{visible_end} / {len(self.names)}",12,t.MUTED,"mm")
 
 
 class PlanRibbon(Surface):
-    def __init__(self, parent, scale, ui):
-        super().__init__(parent, scale, height=round(46*scale))
+    def __init__(self, parent, scale, ui, *, dark=False):
+        super().__init__(parent, scale, bg=t.BG if dark else t.PANEL, height=round(46*scale))
         self.ui = ui
+        self.dark = dark
         self.watch(ui.daily_caption, ui.weekly_status)
 
     def paint(self, p):
-        p.text((2, 3), p.wrap(self.ui.daily_caption.get(), p.width-6, 14, 1), 14, t.TEXT)
-        p.text((2, 26), p.wrap(self.ui.weekly_status.get(), p.width-6, 13, 1), 13, t.MUTED)
+        p.text((2, 3), p.wrap(self.ui.daily_caption.get(), p.width-6, 14, 1), 14, t.LIGHT if self.dark else t.TEXT)
+        p.text((2, 26), p.wrap(self.ui.weekly_status.get(), p.width-6, 13, 1), 13, "#b8b8bc" if self.dark else t.MUTED)
 
 
 class SummaryStrip(Surface):

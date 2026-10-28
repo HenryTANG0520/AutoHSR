@@ -6,7 +6,7 @@ from contextlib import contextmanager
 import ctypes
 import sys
 from tkinter import font as tkfont, ttk
-from PIL import Image, ImageDraw, ImageFont, ImageTk
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageTk
 
 from .config import RESOURCE_ROOT
 
@@ -90,6 +90,12 @@ class Painter:
     def poly(self, points, fill=TEXT):
         self.draw.polygon(self.coords(points), fill=fill)
 
+    def glow(self, center, radius, color, blur):
+        layer = Image.new("RGBA", self.image.size)
+        x, y = center
+        ImageDraw.Draw(layer).ellipse(self.coords((x-radius,y-radius,x+radius,y+radius)), fill=color)
+        self.image.alpha_composite(layer.filter(ImageFilter.GaussianBlur(blur*self.factor)))
+
     def text(self, xy, text, size=16, fill=TEXT, anchor="lt"):
         if "\n" in str(text):
             for index, line in enumerate(str(text).splitlines()):
@@ -141,7 +147,7 @@ def _button(root, style, scale, name, fill, ink, *, tab=False, option=False, bac
         p = Painter(round(84*scale),round((58 if tab else 38)*scale),scale,background)
         color = "#d3d3d3" if state=="disabled" else fill
         if tab:
-            p.box((0,0,84,64), color, 7)
+            p.box((0,0,84,64), color, 7, None if fill==PANEL else "#54514e", 1.2)
         elif option:
             p.box((0,0,84,38), color)
             p.box((0,0,4,38), GOLD if fill==RAIL else "#a9a9a9")

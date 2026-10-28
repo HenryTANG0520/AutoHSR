@@ -124,7 +124,7 @@ def build_currency(ui):
                                               values=("默认", "阿格莱雅", "希儿"), state="readonly", width=14)
     ui.currency_strategy_combo.grid(row=0, column=1)
     ui.setting_controls.append(ui.currency_strategy_combo)
-    note(standard, "将消耗局内金币购买角色和经验。", row=2, style="Warning.TLabel", scale=s)
+    note(standard, "使用局内金币购买、升级和刷新；按策略出售多余备战角色。", row=2, style="Warning.TLabel", scale=s)
     buttons(standard, 3, (("新开 A8-40 开发局", ui._currency_standard, None), ("接续已记录开发局", ui._currency_resume, None)))
     note(standard, "接续沿用本局策略 · 整局未验收", row=4, style="Warning.TLabel", scale=s)
 

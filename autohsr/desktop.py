@@ -4,7 +4,7 @@ from __future__ import annotations
 from tkinter import ttk
 
 from . import theme as t
-from .game_widgets import ActivityStrip, Guide, Header, PlanRibbon, SummaryStrip, TaskBoard, TrainingMeter
+from .game_widgets import ActivityStrip, Guide, Header, SummaryStrip, TaskBoard, TrainingMeter
 
 PAGE_TITLES = {"home": "每日实训", "tasks": "生存索引", "differential_universe": "旷宇纷争",
                "currency_wars": "旷宇纷争", "logs": "运行记录", "settings": "设置"}
@@ -30,7 +30,8 @@ def build_window(ui, task_names, server_names):
     ui.style = t.apply_theme(root, s)
     root.columnconfigure(0, weight=1)
     root.rowconfigure(1, weight=1)
-    Header(root, s, ui).grid(row=0, column=0, sticky="ew")
+    ui.header = Header(root, s, ui)
+    ui.header.grid(row=0, column=0, sticky="ew")
     ui.guide = Guide(root, s, ui)
     ui.guide.grid(row=1, column=0, sticky="nsew", padx=d(18))
     root.bind("<Configure>", lambda e: ui.guide.grid_configure(padx=max(d(18), round((e.width-d(1280))/2))) if e.widget is root else None, add="+")
@@ -61,16 +62,9 @@ def _home(ui, names):
     page = ui.pages["home"]
     ui.training_meter = TrainingMeter(page, s, ui.training_result)
     ui.training_meter.grid(row=0, column=0, sticky="ew", pady=(0, d(10)))
-    plan = ttk.Frame(page)
-    plan.grid(row=1, column=0, sticky="ew", pady=(0, d(10)))
-    plan.columnconfigure(0, weight=1)
-    ui.plan_ribbon = PlanRibbon(plan, s, ui)
-    ui.plan_ribbon.grid(row=0, column=0, sticky="ew")
-    ui.weekly_button = ttk.Button(plan, text="周常计划", style="Panel.TButton", command=ui._show_weekly_plan)
-    ui.weekly_button.grid(row=0, column=1, padx=(d(10), 0))
     ui.table = TaskBoard(page, s, ui, names)
-    ui.table.grid(row=2, column=0, sticky="nsew")
-    page.rowconfigure(2, weight=1, minsize=d(250))
+    ui.table.grid(row=1, column=0, sticky="nsew")
+    page.rowconfigure(1, weight=1, minsize=d(250))
     recovery = t.wrapped_label(page, textvariable=ui.recovery_hint, style="Hint.TLabel")
     recovery.grid(row=3, column=0, sticky="ew", pady=(d(8), 0))
     token = ui.recovery_hint.trace_add("write", lambda *_: recovery.grid() if ui.recovery_hint.get() else recovery.grid_remove())
@@ -266,6 +260,11 @@ def _footer(ui):
     footer.columnconfigure(0, weight=1)
     ui.summary_label = SummaryStrip(footer, s, ui)
     ui.summary_label.grid(row=0, column=0, columnspan=2, sticky="ew")
+    def summary_visibility(*_):
+        ui.summary_label.grid() if ui.summary_label.message() else ui.summary_label.grid_remove()
+    tokens = [(v, v.trace_add("write", summary_visibility)) for v in (ui.summary, ui.input_error, ui.result_alert)]
+    footer.bind("<Destroy>", lambda e: [v.trace_remove("write", token) for v, token in tokens] if e.widget is footer else None, add="+")
+    summary_visibility()
     metrics = ttk.Frame(footer, style="Footer.TFrame")
     metrics.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, d(9)))
     metrics.columnconfigure(0, weight=1)

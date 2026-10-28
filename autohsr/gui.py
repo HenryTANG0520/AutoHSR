@@ -218,6 +218,7 @@ class AutoHSRWindow:
                  f"开始 {self.differential_universe_runs.get()} 局自动演算" if differential_universe else "开始计划",
             command=self._currency_wars if currency else
                     (lambda: self._start(differential_universe=True)) if differential_universe else (lambda: self._start(run_plan=True)))
+        self.header.position_plan()
 
     def _show_weekly_plan(self):
         self.action_page = "home"
@@ -236,7 +237,7 @@ class AutoHSRWindow:
         count = sum(variable.get() for variable in self.tasks.values())
         from .dungeon_ui import selected_category
         try:
-            cost = f"{self.target_name.get()} · {int(self.challenge_count.get())*selected_category(self).cost} 开拓力" if self.tasks["battle"].get() else "不刷本"
+            cost = f"{int(self.challenge_count.get())*selected_category(self).cost} 开拓力 · {self.target_name.get()}" if self.tasks["battle"].get() else "不刷本"
         except ValueError:
             cost = "次数待填写"
         self.daily_caption.set(f"日常 · {count} 项" + (f" · {cost}" if cost else ""))
