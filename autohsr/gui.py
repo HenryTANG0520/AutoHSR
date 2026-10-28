@@ -17,6 +17,7 @@ from typing import Any
 from .config import CONFIG_PATH, ROOT, Settings, SettingsError
 from .ux import report_context, recovery_text, exit_text, immersifier_text, issue_text, standard_activity, standard_run_verified, universe_result
 from . import theme
+from .currency_feedback import observation as currency_observation_text, result as currency_result
 
 TASK_NAMES = {
     "assignments": "持续委托奖励", "battle": "日常副本挑战",
@@ -173,6 +174,7 @@ class AutoHSRWindow:
         self.admin_launch_status = tk.StringVar(value="授权状态：未查询")
         self.currency_status = tk.StringVar(value="开发中 · 整局未验收")
         self.currency_observation = tk.StringVar(value="暂无识别记录")
+        self.currency_result_report = None
         self.currency_source_slot = tk.StringVar(value='3')
         self.currency_zone = tk.StringVar(value='后台')
         self.currency_target_level = tk.StringVar(value='保持')
@@ -738,6 +740,8 @@ class AutoHSRWindow:
             self.du_record_button.configure(state="disabled")
             self.last_screenshot = None
         if currency_wars:
+            self.currency_result_report = None
+            self.currency_record_button.configure(state="disabled")
             self.currency_status.set("正在推进对局" if flow_test else "正在验证当前节点" if node_test else f"正在部署：{deployment_label}" if deploy_test else "正在验证前台 3→1 拖动" if drag_test else "正在只读识别")
             self.currency_observation.set("正在生成本次证据；上次截图与报告保留在运行日志中。")
             self.last_screenshot = None
@@ -925,75 +929,16 @@ class AutoHSRWindow:
         if self.du_result_report is not None:
             self._show_summary(json.dumps(self.du_result_report, ensure_ascii=False, indent=2), title="差分宇宙 · 详细记录")
 
+    def _show_currency_record(self):
+        if self.currency_result_report is not None:
+            self._show_summary(json.dumps(self.currency_result_report, ensure_ascii=False, indent=2), title="货币战争 · 详细记录")
+
     def _currency_observed(self, data: dict) -> None:
-        from .currency_wars_pages import PAGE_LABELS
-        if data.get('mode') == 'standard_development':
+        self.currency_observation.set(currency_observation_text(data))
+        if data.get("mode") == "standard_development" and self.running and self.active_operation == "currency_wars_standard":
             activity = standard_activity(data)
-            completion = "开发局胜利及结算已核实，未计独立验收" if standard_run_verified(data) else "整局未完成"
-            self.currency_observation.set(
-                f"标准A8-40开发：{'已核实开局' if data.get('start_verified') else '开局待核实'} · {activity}；{completion}。"
-                + (f"\n{data['reason']}" if data.get('reason') else '')
-                + f"\n截图：{data.get('screenshot') or '未保存'}")
-            if self.running and self.active_operation == "currency_wars_standard":
-                self.current_task.set(activity)
-            if data.get('screenshot'):
-                self.last_screenshot = Path(data['screenshot'])
-            return
-        if data.get('mode') == 'entry_navigation':
-            ready = ('标准A8财富造物主40已核实' if data.get('rank_verified') else
-                     '标准模式已定位' if data.get('entry_ready') else data.get('action_status', '待处理'))
-            self.currency_observation.set(
-                f"入口导航：{ready}；未开始新对局。"
-                + (f"\n{data['reason']}" if data.get('reason') else '')
-                + f"\n截图：{data.get('screenshot') or '未保存'}")
-            if data.get('screenshot'):
-                self.last_screenshot = Path(data['screenshot'])
-            return
-        if data.get('mode') == 'startup_prepare':
-            kind = data.get('page_kind', '未核实')
-            label = {'phone': '手机菜单', 'world': '大世界'}.get(kind, PAGE_LABELS.get(kind, kind))
-            self.currency_observation.set(
-                f"启动准备：{'已核实' if data.get('game_ready') else '待处理'} · {label}；未开始新对局。"
-                + (f"\n{data['reason']}" if data.get('reason') else '')
-                + f"\n截图：{data.get('screenshot') or '未保存'}")
-            if data.get('screenshot'):
-                self.last_screenshot = Path(data['screenshot'])
-            return
-        if data.get('mode') == 'flow_test':
-            count = sum(a.get('node_verified') is True for a in data.get('actions',[]))
-            purchases=[a for a in data.get('actions',[]) if a.get('decision')]
-            choice=''
-            if purchases:
-                decision=purchases[-1]['decision']
-                reasons='、'.join(label for label,points in decision['reasons'] if points>0)
-                choice=f"\n最近决策：购买{decision['name']}，评分{decision['score']}；{reasons}。"
-            self.currency_observation.set(f"流程推进：已验证 {count} 个节点；{data.get('action_status','待核对')}，整局尚未完成。"+choice+f"\n截图：{data.get('screenshot') or '未保存'}")
-            if data.get('screenshot'):
-                self.last_screenshot=Path(data['screenshot'])
-            return
-        if data.get('mode') == 'single_node_test':
-            status = '节点胜利已验证' if data.get('node_verified') else '节点结果待核对'
-            self.currency_observation.set(f"{data.get('origin_node', '')}：{status}；整局尚未完成。\n截图：{data.get('screenshot', '未保存')}")
-            if data.get('screenshot'):
-                self.last_screenshot = Path(data['screenshot'])
-            return
-        if data.get("mode") in ("single_drag_test", "single_deployment_test"):
-            status = {"verified": "部署已确认" if data.get("mode") == "single_deployment_test" else "头像已互换", "unchanged": "卡位未改变", "pending": "动作结果待核对"}.get(data.get("action_status"), "结果尚未确认")
-            self.currency_observation.set(f"单次拖动验证：{status}。\n前：{data.get('before', '未保存')}\n后：{data.get('after', '未保存')}")
-            if data.get("screenshot"):
-                self.last_screenshot = Path(data["screenshot"])
-            return
-        text = ("朝露公馆 · 货币战争交互入口，尚未打开玩法。" if data.get("page_kind") == "world_entry" else
-                f"已识别{PAGE_LABELS[data['page_kind']]}；自动玩法及整局完成状态尚未验证。" if data.get("page_verified") and data.get("page_kind") in PAGE_LABELS else
-                "已记录候选文字；当前页面仍未核实。" if data.get("mode_text_visible") else
-                "未记录可信的完整玩法名称；当前页面未核实。")
-        match = data.get("match")
-        if isinstance(match, dict):
-            fields = [("节点", match.get("node")), ("金币", match.get("gold")), ("等级", match.get("level"))]
-            if match.get("deployment"):
-                fields.append(("出战", "/".join(map(str, match["deployment"]))))
-            text += "\n" + " · ".join(f"{label}：{value if value is not None else '未识别'}" for label, value in fields)
-        self.currency_observation.set(text + "\n截图：" + (data.get("screenshot") or "未保存"))
+            self.current_task.set(activity)
+            self.currency_status.set(activity)
         if data.get("screenshot"):
             self.last_screenshot = Path(data["screenshot"])
 
@@ -1085,18 +1030,14 @@ class AutoHSRWindow:
         elif report.get("battle_requested") is not None:
             self.summary.set(f"副本完成 {report.get('battle_completed', 0)} / {report['battle_requested']} 次 · " + self.summary.get())
         if currency:
-            outcome = ("已停止" if status == "stopped" else "运行失败" if status == "failed" else
-                       "标准开发结束" if report.get('operation', self.active_operation) == 'currency_wars_standard' else
-                       "启动准备结束" if report.get('operation', self.active_operation) == 'currency_wars_prepare' else
-                       "只读识别结束" if report.get('operation', self.active_operation) == 'currency_wars' else
-                       "连续流程验证结束" if report.get('operation', self.active_operation) == 'currency_wars_flow_test' else "单步验证结束")
-            completion = "开发局胜利及结算已核实 · 未计独立验收" if standard_completed else "玩法未完成 · 自动玩法未开放"
-            self.summary.set(f"货币战争 · {outcome} · {completion}" + ("\n" + recovery_text(report) if recovery_text(report) else ""))
-            self.currency_status.set(self.summary.get())
-            if report.get("currency_wars"):
-                self._currency_observed(report["currency_wars"])
-            else:
-                self.currency_observation.set("本次未生成有效观察记录；请查看日志中的原因后重新识别。")
+            title, detail = currency_result(dict(report, operation=report.get("operation", self.active_operation)))
+            self.summary.set("货币战争 · "+title+"\n"+detail)
+            self.currency_status.set(title)
+            self.currency_observation.set(detail)
+            self.currency_result_report = json.loads(json.dumps(report, ensure_ascii=False))
+            self.currency_record_button.configure(state="normal")
+            if (report.get("currency_wars") or {}).get("screenshot"):
+                self.last_screenshot = Path(report["currency_wars"]["screenshot"])
         if differential_universe:
             title, detail = universe_result(report)
             self.summary.set("差分宇宙 · "+title+("\n"+detail if detail else ""))
@@ -1130,7 +1071,7 @@ class AutoHSRWindow:
         if standard_completed and status == "success":
             label = "开发局结算已核实"
         elif currency and not standard_completed and status not in ("failed", "stopped"):
-            label = "玩法未完成"
+            label = self.currency_status.get()
         self.status.set("● "+label)
         self._restore()
 

@@ -267,8 +267,8 @@ def main():
                 FakeRunner.instances[-1].release.set()
                 pump(root, lambda: not ui.busy)
                 check('currency_observation_never_reports_gameplay_complete',
-                    '玩法未完成' in ui.summary.get() and '尚未核实' in ui.summary.get() and
-                    '玩法未完成' in ui.currency_status.get() and '尚未核实' in ui.currency_status.get())
+                    '尚未核实' in ui.summary.get() and '当前页面待核实' in ui.currency_status.get() and
+                    '全部完成' not in ui.summary.get() and '整局完成' not in ui.summary.get())
                 check('currency_does_not_save_or_change_daily_draft', config.read_bytes() == original and ui.stamina_limit.get() == 'invalid disabled draft')
                 ui._currency_prepare()
                 pump(root, lambda: ui.runner is not None)
@@ -281,7 +281,7 @@ def main():
                 pump(root, lambda: not ui.busy)
                 check('currency_prepare_ready_is_not_a_match_win_or_settings_save',
                     '手机菜单' in ui.currency_observation.get() and '未开始新对局' in ui.currency_observation.get() and
-                    '玩法未完成' in ui.summary.get() and config.read_bytes() == original)
+                    '启动准备结束' in ui.currency_status.get() and '整局完成' not in ui.summary.get() and config.read_bytes() == original)
                 ui._currency_locate()
                 pump(root, lambda: ui.runner is not None)
                 locate_runner = FakeRunner.instances[-1]
@@ -295,7 +295,7 @@ def main():
                 check('currency_locate_partial_without_daily_spend_or_settings_save',
                     '标准模式已定位' in ui.currency_observation.get() and
                     '未开始新对局' in ui.currency_observation.get() and
-                    '玩法未完成' in ui.summary.get() and config.read_bytes() == original)
+                    '整局完成' not in ui.summary.get() and config.read_bytes() == original)
                 ui._currency_configure()
                 pump(root, lambda: ui.runner is not None)
                 configure_runner = FakeRunner.instances[-1]
@@ -309,7 +309,7 @@ def main():
                 check('currency_configure_ready_keeps_match_incomplete',
                     '标准A8财富造物主40已核实' in ui.currency_observation.get() and
                     '未开始新对局' in ui.currency_observation.get() and
-                    '玩法未完成' in ui.summary.get() and config.read_bytes() == original)
+                    '整局完成' not in ui.summary.get() and config.read_bytes() == original)
                 for resume, strategy, value in ((False, '默认', 'default'), (False, '阿格莱雅', 'aglaea'),
                                                  (False, '希儿', 'seele'), (True, '阿格莱雅', None)):
                     ui.currency_strategy.set(strategy)
@@ -326,7 +326,7 @@ def main():
                     pump(root, lambda: not ui.busy)
                     check('currency_standard_resume_is_not_acceptance' if resume else 'currency_standard_start_is_not_acceptance',
                         '已核实开局' in ui.currency_observation.get() and '整局未完成' in ui.currency_observation.get() and
-                        '标准开发结束' in ui.summary.get() and config.read_bytes() == original)
+                        '当前画面待核实' in ui.currency_status.get() and config.read_bytes() == original)
                 check('strategy_picker_returns_readonly_without_saving', str(ui.currency_strategy_combo.cget('state')) == 'readonly' and config.read_bytes() == original)
                 ui.currency_drag_button.invoke()
                 pump(root, lambda: ui.runner is not None)
@@ -335,7 +335,7 @@ def main():
                     str(ui.currency_drag_button.cget('state')) == 'disabled' and not errors)
                 drag_runner.release.set()
                 pump(root, lambda: not ui.busy)
-                check('currency_drag_result_is_partial_and_does_not_save', '玩法未完成' in ui.summary.get() and
+                check('currency_drag_result_is_partial_and_does_not_save', '整局未完成' in ui.summary.get() and
                     '头像已互换' in ui.currency_observation.get() and config.read_bytes() == original)
                 ui.currency_source_slot.set('9')
                 ui.currency_zone.set('前台')
@@ -348,7 +348,7 @@ def main():
                 deploy_runner.release.set()
                 pump(root, lambda: not ui.busy)
                 check('currency_deploy_is_partial_and_does_not_save', '部署已确认' in ui.currency_observation.get() and
-                    '玩法未完成' in ui.summary.get() and config.read_bytes() == original and
+                    '整局未完成' in ui.summary.get() and config.read_bytes() == original and
                     str(ui.currency_zone_combo.cget('state'))=='readonly')
                 ui.currency_source_slot.set('3')
                 ui.currency_zone.set('后台')
@@ -360,7 +360,7 @@ def main():
                 node_runner.release.set()
                 pump(root, lambda: not ui.busy)
                 check('currency_node_win_is_partial_and_does_not_save', '节点胜利已验证' in ui.currency_observation.get() and
-                    '玩法未完成' in ui.summary.get() and config.read_bytes() == original)
+                    '整局未完成' in ui.summary.get() and config.read_bytes() == original)
                 ui.currency_target_level.set('7')
                 ui.currency_flow_button.invoke()
                 pump(root, lambda: ui.runner is not None)
@@ -371,7 +371,7 @@ def main():
                 flow_runner.release.set()
                 pump(root,lambda:not ui.busy)
                 check('currency_flow_stops_partial_without_saving','已验证 1 个节点' in ui.currency_observation.get() and
-                    '玩法未完成' in ui.summary.get() and config.read_bytes()==original and
+                    '整局未完成' in ui.summary.get() and config.read_bytes()==original and
                     str(ui.currency_level_combo.cget('state'))=='readonly')
                 ui.currency_target_level.set('保持')
                 ui._show_page('currency_wars')

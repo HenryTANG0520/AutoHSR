@@ -155,7 +155,16 @@ def standard_run_verified(data: dict) -> bool:
 def standard_activity(data: dict) -> str:
     exchange = data.get("exchange") or {}
     equipment = data.get("equipment") or {}
+    reward = data.get("reward") or {}
     status = data.get("action_status")
+    if reward.get("status") == "awaiting":
+        return "核对奖励交付"
+    if reward.get("status") == "unit_verifying":
+        return "核验补给角色"
+    if reward.get("status") == "unit_mismatch":
+        return "补给角色不符"
+    if status == "reward_verified":
+        return "奖励交付已核实" if reward_delivery_verified(data) else "奖励交付待核对"
     if equipment.get("status") == "verifying":
         return "核验角色装备"
     if equipment.get("status") == "equipment_mismatch":
@@ -173,3 +182,19 @@ def standard_activity(data: dict) -> str:
             "readonly_reconciled": "当前页面已核实", "transition_verified": "页面转换已核实",
             "unknown": "动作结果待核对", "step_limit": "本次开发步骤已结束",
             "settled": "本局结算已核实" if standard_run_verified(data) else "结算待核对"}.get(status, "观察当前局面")
+
+
+def reward_delivery_verified(data: dict) -> bool:
+    """A transition receipt alone is not a delivered unit or completed reward."""
+    reward, actions = data.get("reward") or {}, data.get("actions") or []
+    if reward.get("status") != "verified" or not isinstance(actions, list):
+        return False
+    indices = [reward.get("origin_action_id"), reward.get("claim_action_id")]
+    if not all(type(index) is int and 0 <= index < len(actions) for index in indices):
+        return False
+    if not all(isinstance(actions[index], dict) and actions[index].get("id") == index
+               and actions[index].get("reward_verified") is True for index in indices):
+        return False
+    effect = actions[indices[1]].get("reward_effect") or {}
+    return (effect.get("inventory_checked") is True and effect.get("unit_verified") is True
+            and (not effect.get("unit") or effect.get("other_roster_verified") is True))
