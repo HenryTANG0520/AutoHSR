@@ -9,6 +9,8 @@
 - **108个布局场景、30项指南参考检查通过**，`runs/footer-attention-ui_layout_smoke.log`、`footer-attention-reference.log`。卡片比例、全部入口、设置和结果可达；仅为局部布局及交互证据，不代表整屏与游戏逐像素相同。
 - **1189项全量单元测试通过**，`runs/footer-attention-unit.log`，140.382秒；在补充配置读取失败的界面分支之前完成，后续改动由上述底栏和GUI回归核对。未修改游戏流程、资源门禁或报告格式。
 
+源码`663a17c`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/footer-attention-build.log`。以`--no-admin-launch`实际检查首页、周常页、运行偏好草稿和还原：保存入口随修改出现、还原后收起，未点击保存、检测或运行。正常关闭退出码0，239份配置及运行证据哈希未变，123个UI素材、3份清单和23个上游文件一致。截图为`runs/footer-attention-package-home.png`、`footer-attention-package-weekly.png`、`footer-attention-package-draft.png`、`footer-attention-package-reverted.png`；核对记录`runs/footer-attention-package-verification.json`，备份`build/userdata-footer-attention-20261029_051005/`。EXE SHA-256为`51eed346ba7f6278382838afd99211eca1154f2489c989ab18ef604b37ffe521`。文档链接和`git diff --check`通过。
+
 本次未启动、检测或操作真实游戏。真实玩家的学习／注意力成本、整屏逐像素一致和日常周常组合实机仍未验收；货币战争周常及周积分奖励尚未接入，历史计数及失败记录不变。
 
 ## 2026-10-29：独立设置页与返回操作
