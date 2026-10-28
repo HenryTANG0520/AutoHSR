@@ -1202,7 +1202,11 @@ class Runner:
                  du_runs=None, du_resume_active=False, du_periodic_rank=None,
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
-                 currency_configure=False, currency_resume=False):
+                 currency_configure=False, currency_resume=False, weekly_plan=None):
+        from .weekly_plan import WeeklyGuard
+        if weekly_plan is not None and (not isinstance(weekly_plan, WeeklyGuard) or operation != "differential_universe"):
+            raise ValueError("周常记录核验仅用于计划中的差分宇宙。")
+        self.weekly_plan = weekly_plan
         self.settings = settings
         self._emit = emit or (lambda event: None)
         self._overlay = None
@@ -1508,7 +1512,7 @@ class Runner:
             monitor = threading.Thread(target=self._hotkeys, name="AutoHSR-hotkeys", daemon=True)
             monitor.start()
             monitor_started = True
-            if (not catalogue and not currency_wars and not differential_universe) or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard'):
+            if (not catalogue and not currency_wars and not differential_universe) or self.weekly_plan is not None or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard'):
                 self._prepare_daily_game()
             self._window = self._window or find_game(self.settings.game_path)
             if self.report.operation != "currency_wars" and is_elevated(self._window.hwnd) is True and not is_admin():
@@ -1539,8 +1543,11 @@ class Runner:
                 from .differential_universe import DifferentialUniverseWorkflow
                 # A universe may already have begun; never replay the whole run
                 # after an interrupted input or pause. Preserve evidence and stop.
-                result = DifferentialUniverseWorkflow(context, self.du_runs,
-                    resume_active=self.du_resume_active, periodic_rank=self.du_periodic_rank).run()
+                if self.weekly_plan is None or self.weekly_plan.prepare(context):
+                    result = DifferentialUniverseWorkflow(context, self.du_runs,
+                        resume_active=self.du_resume_active, periodic_rank=self.du_periodic_rank).run()
+                else:
+                    result = TaskResult("weekly", "ok", "本周演算已完成，已跳过。")
                 self.report.results.append(result)
                 self.report.status = "success" if result.status == "ok" else "partial"
                 self.report.failure_task = "" if result.status == "ok" else "differential_universe"

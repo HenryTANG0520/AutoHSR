@@ -319,6 +319,17 @@ class TaskBoard(Surface):
         p.text((w-59,h-12),f"{self.offset+1}–{self.offset+len(keys)} / {len(self.names)}",12,t.MUTED,"mm")
 
 
+class PlanRibbon(Surface):
+    def __init__(self, parent, scale, ui):
+        super().__init__(parent, scale, height=round(46*scale))
+        self.ui = ui
+        self.watch(ui.daily_caption, ui.weekly_status)
+
+    def paint(self, p):
+        p.text((2, 3), p.wrap(self.ui.daily_caption.get(), p.width-6, 14, 1), 14, t.TEXT)
+        p.text((2, 26), p.wrap(self.ui.weekly_status.get(), p.width-6, 13, 1), 13, t.MUTED)
+
+
 class SummaryStrip(Surface):
     def __init__(self,parent,scale,ui):
         super().__init__(parent,scale,bg=t.BG,height=round(25*scale))

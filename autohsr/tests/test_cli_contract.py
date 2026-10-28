@@ -10,6 +10,21 @@ from autohsr.__main__ import main
 
 
 class CliContractTests(unittest.TestCase):
+    def test_plan_is_explicit_and_does_not_save_or_register_timer(self):
+        with tempfile.TemporaryDirectory() as folder:
+            config = Path(folder)/'config.json'
+            Settings(weekly_enabled=True).save(config)
+            original = config.read_bytes()
+            with patch('autohsr.plan_runner.PlanRunner') as plan, patch('autohsr.app.Runner') as daily, \
+                    patch('autohsr.gui.main') as gui, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                plan.return_value.run.return_value = {'status': 'success'}
+                self.assertEqual(main(['--plan', '--new-battle-run', '--config', str(config)]), 0)
+                self.assertTrue(plan.call_args.args[0].weekly_enabled)
+                self.assertTrue(plan.call_args.kwargs['new_battle_run'])
+                daily.assert_not_called()
+                gui.assert_not_called()
+            self.assertEqual(config.read_bytes(), original)
+
     def test_ten_du_runs_and_optional_flags_are_transient_and_mode_scoped(self):
         with tempfile.TemporaryDirectory() as folder:
             config=Path(folder)/'config.json'

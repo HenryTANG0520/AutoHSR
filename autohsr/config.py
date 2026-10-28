@@ -41,16 +41,23 @@ class Settings:
     differential_universe_daily_from: str = ""
     differential_universe_team: str = "哈哈哈哈"
     differential_universe_mode: str = "periodic"
+    weekly_enabled: bool = False
+    weekly_mode: str = "differential_universe"
+    weekly_day: int = 1
+    weekly_time: str = "04:00"
+    weekly_runs: int = 1
 
     def validate(self, operation: str = "daily") -> None:
+        from .weekly_plan import validate_schedule
+        validate_schedule(self)
         if not isinstance(self.game_path, str) or not self.game_path.lower().endswith("starrail.exe"):
             raise ValueError("请选择 StarRail.exe 游戏程序。")
-        if operation == "save" or (operation == "daily" and self.battle and self.allow_stamina_spend):
+        if operation == "save" or (operation in ("daily", "plan") and self.battle and self.allow_stamina_spend):
             if not isinstance(self.target_name, str) or len(self.target_name.strip()) < 2:
                 raise ValueError("请选择副本，例如：回忆之蕾。")
             if not isinstance(self.target_location, str):
                 raise ValueError("副本地点必须是文字；留空时仅允许唯一匹配目标。")
-            if operation == "daily" and not self.target_location.strip():
+            if operation in ("daily", "plan") and not self.target_location.strip():
                 raise ValueError("刷本必须填写地点，以区分同名花萼；未开始挑战。")
             if isinstance(self.stamina_limit, bool) or not isinstance(self.stamina_limit, int) or not 10 <= self.stamina_limit <= 240 or self.stamina_limit % 10:
                 raise ValueError("本次运行开拓力上限应为 10～240 之间的 10 的倍数。")

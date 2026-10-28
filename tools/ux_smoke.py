@@ -110,7 +110,7 @@ class FakeRunner:
         self.release.wait(5)
         report = dict(status='stopped' if self.stopped else 'success', stamina_spent=0,
                       daily_verified=False if self.stopped else True, engagement=400,
-                      operation=self.kwargs.get('operation', self.report.operation), results=[])
+                      operation=self.kwargs.get('operation', self.report.operation), results=[], report_saved=True)
         self.emit(dict(type='finished', report=report))
         return report
 
@@ -172,7 +172,8 @@ def main():
                 ui._show_page(key)
                 pump(root)
                 layout(root)
-                check('persistent_controls_' + key, all(w.winfo_ismapped() for w in (ui.start_button, ui.pause_button, ui.stop_button)))
+                check('idle_primary_control_' + key, ui.start_button.winfo_ismapped() and
+                      not ui.pause_button.winfo_ismapped() and not ui.stop_button.winfo_ismapped())
                 ImageGrab.grab(window=root.winfo_id()).save(OUT / ('page-' + key + '.png'))
             if PACKAGE == 'autohsr':
                 from autohsr.admin_launch import AdminLaunchError
@@ -451,7 +452,7 @@ def main():
                         ui.runner.tail.set()
                         ui.worker.join(2)
                 ui._show_page('home')
-                check('currency_navigation_restores_daily_primary_action', ui.start_button.cget('text') == '开始每日')
+                check('currency_navigation_restores_plan_primary_action', ui.start_button.cget('text') == '开始计划')
                 # The resource draft is deliberately invalid; reward-only must ignore it.
                 ui._reward_only()
                 pump(root, lambda: ui.runner is not None)
