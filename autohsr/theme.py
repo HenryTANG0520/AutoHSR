@@ -317,6 +317,7 @@ def apply_theme(root, scale):
     style.configure("Option.TButton",anchor="w",padding=(d(22),d(17)),font=(FONT,13))
     style.configure("Selected.Option.TButton",anchor="w",padding=(d(22),d(17)),font=(FONT,13))
     style.configure("Compact.TButton",padding=(d(6),d(4)))
+    style.configure("Settings.TButton",padding=(d(4),d(7)))
     style.configure("Treeview",background=CARD,fieldbackground=CARD,foreground=TEXT,rowheight=d(33),borderwidth=0,font=(FONT,10))
     style.configure("Treeview.Heading",background=PANEL,foreground=MUTED,padding=d(6),font=(FONT,10))
     style.map("Treeview",background=[("selected","#d7cab0")],foreground=[("selected",TEXT)])
