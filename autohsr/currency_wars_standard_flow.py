@@ -37,6 +37,10 @@ def next_action(scene, confidence=.65, *, session=None):
 
 
 def _next_action(scene, confidence=.65, *, session=None):
+    from .currency_wars_standard_equipment import active_action as equipment_action
+    equipment = equipment_action(scene,session or {},confidence)
+    if equipment is not None:
+        return equipment
     from .currency_wars_standard_sale import active_action as sale_action
     sale = sale_action(scene,session or {},confidence)
     if sale is not None:
@@ -122,6 +126,10 @@ def _next_action(scene, confidence=.65, *, session=None):
                         experience = experience_action(scene, session, confidence)
                         if experience is not None:
                             return experience
+                        from .currency_wars_standard_equipment import proposal as equipment_proposal
+                        equipment = equipment_proposal(scene,session,confidence)
+                        if equipment is not None:
+                            return equipment
                     attempt = (session or {}).get('node_attempt',{})
                     actions = (session or {}).get('actions',[])
                     inflight = (session or {}).get('rederiving_action') or (actions[-1] if actions else {})
@@ -150,6 +158,10 @@ def _next_action(scene, confidence=.65, *, session=None):
         record = (session or {}).get('collection',{}).get('units',{}).get(key)
         if not record or record.get('unit') != asdict(profile):
             raise AutomationError('当前角色信息尚未记入本次采集，未关闭面板。')
+        if 'strategy' in (session or {}) and profile.zone != 'bench' and 'recommendations' not in record:
+            return StandardAction('open_standard_equipment_recommendations','standard_equipment_recommendations',
+                                  unique(clean,'装备推荐',(.72,.70,.85,.80)),
+                                  payload=(profile.zone,profile.slot,profile.name,record['signature']))
         return StandardAction('close_standard_unit','preparation',
                               Token('关闭已采集角色面板',1.,(.49,.49,.51,.51)))
     raise AutomationError('标准对局当前页面需要局面采集或新动作校准：' + kind)
@@ -163,6 +175,23 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None, session=None):
+    if choice.expected == 'standard_equipment_inspectable':
+        from .currency_wars_standard_equipment import inspectable
+        return before is not None and inspectable(choice,before,scene,confidence)
+    if choice.expected == 'standard_equipment_board':
+        from .currency_wars_standard_equipment import _board
+        try:
+            return bool(session and _board(scene,session['equipment'],confidence))
+        except (AutomationError,KeyError):
+            return False
+    if choice.expected == 'standard_equipment_recommendations':
+        from .currency_wars_equipment_catalog import recommendation_visible
+        from .currency_wars_collector import owned_profile
+        try:
+            profile = owned_profile(scene,(session or {}).get('inspecting'),confidence)
+            return recommendation_visible(scene,confidence) and (profile.zone,profile.slot,profile.name)==choice.payload[:3]
+        except AutomationError:
+            return False
     if choice.expected == 'standard_sale_panel':
         from .currency_wars_standard_sale import panel_feedback
         return before is not None and panel_feedback(choice,before,scene,confidence)
@@ -313,7 +342,8 @@ def run_standard(c):
             store.persist()
         from .currency_wars_standard_exchange import panel_stale, record_profile
         from .currency_wars_standard_sale import stale as sale_stale
-        if kind == 'character' and not panel_stale(store.data) and not sale_stale(store.data):
+        from .currency_wars_standard_equipment import panel_stale as equipment_stale, record_profile as equipment_profile
+        if kind == 'character' and not panel_stale(store.data) and not sale_stale(store.data) and not equipment_stale(store.data):
             from .currency_wars_collector import owned_profile
             try:
                 profile = owned_profile(scene,store.data.get('inspecting'),c.settings.ocr_confidence)
@@ -322,10 +352,13 @@ def run_standard(c):
             else:
                 inspecting = store.data['inspecting']
                 profile_source = evidence(c,scene,'currency_standard_owned_'+str(profile.slot))
-                collection['units'][profile.zone+':'+str(profile.slot)] = dict(unit=asdict(profile),
+                previous = collection['units'].get(profile.zone+':'+str(profile.slot),{})
+                previous = previous if previous.get('signature')==inspecting['signature'] else {}
+                collection['units'][profile.zone+':'+str(profile.slot)] = dict(previous,unit=asdict(profile),
                     signature=inspecting['signature'],node=inspecting['node'],
                     source=profile_source)
                 problem = record_profile(store.data,profile,inspecting,profile_source,c.runner.input_epoch)
+                problem = problem or equipment_profile(store.data,profile,inspecting,profile_source,c.runner.input_epoch)
                 store.persist()
                 if problem:
                     raise AutomationError(problem)
@@ -374,6 +407,10 @@ def run_standard(c):
             action['decision'] = dict(source=choice.details[0],target=choice.details[1],
                                       improvement=choice.details[2],policy=choice.details[3])
             store.persist()
+        elif choice.intent == 'stage_standard_equipment':
+            action['decision'] = dict(name=choice.details[0],item=choice.details[1],expected=list(choice.details[2]),
+                                      reason=choice.details[3],policy=choice.details[4])
+            store.persist()
         elif choice.details:
             action['decision'] = dict(name=choice.details[0], kind=choice.details[1], effect=choice.details[2],
                                       parameters=dict(choice.details[3]), score=choice.details[4],
@@ -389,6 +426,13 @@ def run_standard(c):
         if choice.intent == 'inspect_standard_sale_unit':
             from .currency_wars_standard_sale import bind_intent
             bind_intent(store.data,choice,scene,c.settings.ocr_confidence)
+            store.persist()
+        if choice.intent == 'stage_standard_equipment':
+            from .currency_wars_standard_equipment import bind_intent
+            bind_intent(store.data,choice,scene,c.settings.ocr_confidence)
+            store.persist()
+        if choice.intent == 'inspect_standard_equipment_unit':
+            store.data['equipment']['inspection_attempts'] += 1
             store.persist()
         if choice.intent == 'start_standard_node':
             store.data['node_attempt'] = dict(node=choice.payload[0],start_action_id=action['id'],
@@ -418,7 +462,7 @@ def run_standard(c):
                 stable = stable+1 if ready else 0
                 required = 2 if choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable',
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
-                                                    'standard_sale_panel','standard_owned_sold') else 1
+                                                    'standard_sale_panel','standard_owned_sold','standard_equipment_inspectable') else 1
                 if stable >= required:
                     after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
                     if choice.intent in FINANCIAL_ACTIONS:
@@ -440,7 +484,7 @@ def run_standard(c):
                         store.data.pop('expected_board', None)
                     if choice.intent == 'start_standard_node':
                         store.data['node_attempt']['status']='observing'
-                    if choice.intent in ('inspect_standard_unit','inspect_standard_exchange_unit'):
+                    if choice.intent in ('inspect_standard_unit','inspect_standard_exchange_unit','inspect_standard_equipment_unit'):
                         store.data['inspecting'] = dict(zone=choice.payload[0],slot=choice.payload[1],
                                                         node=choice.payload[2],signature=choice.payload[3],
                                                         input_epoch=c.runner.input_epoch,
@@ -448,6 +492,24 @@ def run_standard(c):
                                                         before=action['before'],after=action['after'])
                         if choice.intent == 'inspect_standard_exchange_unit':
                             store.data['inspecting']['exchange_id'] = choice.payload[4]
+                        if choice.intent == 'inspect_standard_equipment_unit':
+                            store.data['inspecting']['equipment_id'] = choice.payload[4]
+                    elif choice.intent == 'stage_standard_equipment':
+                        from .currency_wars_standard_equipment import begin_verification
+                        begin_verification(store.data,choice,scene,after,c.settings.ocr_confidence)
+                        store.data['action_status'] = 'equipment_identity_pending'
+                    elif choice.intent in ('close_standard_equipment_unit','close_standard_equipment_stale_panel'):
+                        from .currency_wars_standard_equipment import after_close
+                        after_close(store.data,choice,after,c.settings.ocr_confidence)
+                        if store.data['equipment']['status']=='verified':
+                            store.data['action_status'] = 'equipment_verified'
+                    elif choice.intent == 'open_standard_equipment_recommendations':
+                        from .currency_wars_equipment_catalog import recommendation_facts
+                        record = store.data['collection']['units'][choice.payload[0]+':'+str(choice.payload[1])]
+                        names,recipes = recommendation_facts(after,c.settings.ocr_confidence)
+                        record['recommendations'] = list(names)
+                        record['equipment_recipes'] = list(recipes)
+                        record['recommendations_source'] = after_path
                     elif choice.intent == 'inspect_standard_sale_unit':
                         store.data['inspecting'] = dict(zone='bench',slot=choice.payload[4],node=choice.payload[0],
                                                         signature=choice.payload[8],input_epoch=c.runner.input_epoch,

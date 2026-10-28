@@ -4,6 +4,7 @@
   "retrieved": "2026-10-28",
   "license": "GNU GPL version 3",
   "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json"],
   "sources": [
     {
       "path": "LICENSE",
@@ -68,6 +69,16 @@
         "_sell_single_character"
       ],
       "kind": "native per-unit bench cleanup after legal deployment, fresh identity inspection and observed refund; positive gold credit plus all nineteen slots verified, with no cached-list deletion as success"
+    },
+    {
+      "path": "autohsr/currency_wars_equipment_catalog.py",
+      "reference_functions": ["equip_aglaea", "equip_seele", "_equip_single_character"],
+      "kind": "pinned icon recognition plus independently observed native recommendations, paired ingredients and worn gear; original assets retain byte hashes and source attribution"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_equipment.py",
+      "reference_functions": ["equip_aglaea", "equip_seele", "equip_weapons", "_equip_single_character"],
+      "kind": "core-priority gear and observed-recipe assignment adapted to one durable material input followed by actual worn-result inspection; no blind counters, fallback choice or repeated drag"
     }
   ]
 }

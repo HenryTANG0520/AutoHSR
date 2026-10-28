@@ -676,3 +676,9 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 ## 2026-10-28 March7thAssistant货币战争策略适配
 
 标准模式“默认／阿格莱雅／希儿”的购买、成长和补空位偏好参考March7thAssistant固定提交`7cf6c6bed474539485d3b1504077ac352866829f`，作者moesnow及其贡献者，上游GPL v3。完整许可、Git blob与哈希清单及改写范围见[来源说明](upstream/March7thAssistant/README.md)。本次界面只接入对应的本次新局策略选择，接续继续使用已记录策略；没有迁入上游GUI、固定输入或图片，未将离线通过写作实机通过。
+
+## 2026-10-29 March7thAssistant装备识别参考
+
+后端装备阶段从同一固定提交引入18幅`assets/images/share/aglaea/`原始PNG，作者moesnow及其贡献者，遵循所附上游GPL v3；游戏美术与名称仍归其权利人。文件未经裁切、缩放或重编码，逐项原路径、Git blob、SHA-256和字节数见[装备来源清单](upstream/March7thAssistant/equipment/sources.json)，本地标识、用途及原生变体见[装备参考说明](upstream/March7thAssistant/equipment/README.md)。完整上游许可继续保留于[LICENSE](upstream/March7thAssistant/LICENSE)。
+
+这些图用于仓库、角色槽和当前推荐配方的本地识别。已校准14种可穿戴装备；参考图包含的投影仪、令牌、冶金炉和两种扳手尚未接入使用。没有复制上游输入实现，也没有将界面打开、材料消失、合成测试或离线模板回放写作实机穿戴成功；现有UI素材署名和原生4.6装备参考保持不变。

@@ -1,0 +1,151 @@
+{
+  "repository": "https://github.com/moesnow/March7thAssistant",
+  "commit": "7cf6c6bed474539485d3b1504077ac352866829f",
+  "license": "GPL-3.0",
+  "items": [
+    {
+      "file": "boots.png",
+      "source": "assets/images/share/aglaea/boots.png",
+      "git_blob": "61a2c56324715927311ac0c7c34b951c2761ec70",
+      "sha256": "cd9a205c0688bc847533138d2a8a54b0102fc8051a65922d50803c46802f6687",
+      "bytes": 5654,
+      "transform": "unmodified"
+    },
+    {
+      "file": "chainsaw.png",
+      "source": "assets/images/share/aglaea/chainsaw.png",
+      "git_blob": "d701803900ffccba4e7fc445a5fdf698f3482906",
+      "sha256": "7f60cd6776f1b2c744fa817c1e04b0d27d8274d466131c816a9f6646aedb3eb2",
+      "bytes": 4627,
+      "transform": "unmodified"
+    },
+    {
+      "file": "e1.png",
+      "source": "assets/images/share/aglaea/e1.png",
+      "git_blob": "ba862acaa4da11c465f56cdfc7ae19c85eec5a9c",
+      "sha256": "24d15cc12649306b555ffd57357f6f5f8adc5e179dc1b571a9401bc454b22d1d",
+      "bytes": 4083,
+      "transform": "unmodified"
+    },
+    {
+      "file": "e2.png",
+      "source": "assets/images/share/aglaea/e2.png",
+      "git_blob": "7f7e9be74525c658ae4f13ec194f6b0d6d971fce",
+      "sha256": "c467743f1d72deb996cfe369cf2c4efbc745693c3565feba91418dae1236b70f",
+      "bytes": 4558,
+      "transform": "unmodified"
+    },
+    {
+      "file": "e3.png",
+      "source": "assets/images/share/aglaea/e3.png",
+      "git_blob": "cfe1471f5bef9e32fa7d098dea4428ef648ca943",
+      "sha256": "5a5af9b31c3e3987ddbe9cf4294c019a25276f8b220fdd2db29878c7bc894a4d",
+      "bytes": 3567,
+      "transform": "unmodified"
+    },
+    {
+      "file": "e4.png",
+      "source": "assets/images/share/aglaea/e4.png",
+      "git_blob": "d4138c355ffd9aa9805488f1658567b8997a79b2",
+      "sha256": "3097201572efc9ce1e251d9b664f3c49d6f4551dde3e0e2c5478404c5d298fd3",
+      "bytes": 4504,
+      "transform": "unmodified"
+    },
+    {
+      "file": "e5.png",
+      "source": "assets/images/share/aglaea/e5.png",
+      "git_blob": "9624fb77e0463cab3e35b1833fb0e488221c2b8e",
+      "sha256": "743d820650ced277a6143a8e685d9315c1686421841b28072d4cd5e112737de4",
+      "bytes": 4378,
+      "transform": "unmodified"
+    },
+    {
+      "file": "e6.png",
+      "source": "assets/images/share/aglaea/e6.png",
+      "git_blob": "9eabee20b75d38d19a551bdcba0262342fff9d7a",
+      "sha256": "d06f7812531caf8f022ff7d6313a02c6a31178143385b6faad79ec102e45d229",
+      "bytes": 4469,
+      "transform": "unmodified"
+    },
+    {
+      "file": "e7.png",
+      "source": "assets/images/share/aglaea/e7.png",
+      "git_blob": "bee888cf591862fb7469bf932cd804aefc51c54e",
+      "sha256": "e01600070f008bc82f4903552d44cc8d5495655f92a5f16990357103633de097",
+      "bytes": 3922,
+      "transform": "unmodified"
+    },
+    {
+      "file": "firestorm.png",
+      "source": "assets/images/share/aglaea/firestorm.png",
+      "git_blob": "bc9f92d26dac22acf451aac81215205e5916f0dd",
+      "sha256": "ed836a281ea7e83b12d3cc74e069d70691e83eb78cd9f847dbca41932cfe901a",
+      "bytes": 3033,
+      "transform": "unmodified"
+    },
+    {
+      "file": "projector.png",
+      "source": "assets/images/share/aglaea/projector.png",
+      "git_blob": "bbc93d21d74ebb5606a241ebd9651625719f20f3",
+      "sha256": "edca36d6af7a19a7c6ac77a1adfda03dea199a1d04c0bec6e186ecc7fa6408f5",
+      "bytes": 4288,
+      "transform": "unmodified"
+    },
+    {
+      "file": "projector2.png",
+      "source": "assets/images/share/aglaea/projector2.png",
+      "git_blob": "a567334dd1625e180cf2b7d26518b9355a4f5da0",
+      "sha256": "df0fd8484b0fc8c1fa806c83f836d8b19269d6a10bbcb3dd06119e7001894e57",
+      "bytes": 4252,
+      "transform": "unmodified"
+    },
+    {
+      "file": "propeller.png",
+      "source": "assets/images/share/aglaea/propeller.png",
+      "git_blob": "2c5607be7ec24a898a0e311a6bb598c77015fea6",
+      "sha256": "aa9dee51a43eb311fe1748b150bd7b9619b02c22bd0681510abc54f36339db13",
+      "bytes": 3181,
+      "transform": "unmodified"
+    },
+    {
+      "file": "shoe.png",
+      "source": "assets/images/share/aglaea/shoe.png",
+      "git_blob": "08620b5874732440a580b28de5411429d03e9d1f",
+      "sha256": "fe420d01965d669840f8333826df147efd32ea6b1d32e7917c327838e8b3429d",
+      "bytes": 7461,
+      "transform": "unmodified"
+    },
+    {
+      "file": "stove.png",
+      "source": "assets/images/share/aglaea/stove.png",
+      "git_blob": "abd113420cf27953e195c04d6586bda42c4918cc",
+      "sha256": "874312d3ae4578c19fad0388e702d6897f1c55b0d36ca0d6b45f9a0f026bde57",
+      "bytes": 6016,
+      "transform": "unmodified"
+    },
+    {
+      "file": "token.png",
+      "source": "assets/images/share/aglaea/token.png",
+      "git_blob": "6e253521535f3b1e15613a0cc5abf1bfcbf1a88c",
+      "sha256": "426f5a5c622b31e6e33900efdff75b902b73ec130dbaa006e338117d6b4c7404",
+      "bytes": 5141,
+      "transform": "unmodified"
+    },
+    {
+      "file": "wrench.png",
+      "source": "assets/images/share/aglaea/wrench.png",
+      "git_blob": "ba51e399ccc9e2d19cd921f9a6417a871ab0dafc",
+      "sha256": "5aaa8eac6c6d7bb9115f3652267434ac672d8a03c01f12ba92bf0a60fd6c7993",
+      "bytes": 5345,
+      "transform": "unmodified"
+    },
+    {
+      "file": "wrench2.png",
+      "source": "assets/images/share/aglaea/wrench2.png",
+      "git_blob": "cb1566a567b19ca269624b4d90014bf7029c59b4",
+      "sha256": "5127031672c5f60b35da025a5186339e9eced0eb6983c4fc15128549e5364122",
+      "bytes": 4748,
+      "transform": "unmodified"
+    }
+  ]
+}
