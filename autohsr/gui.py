@@ -214,9 +214,16 @@ class AutoHSRWindow:
     def _configure_primary_action(self):
         currency = getattr(self, "action_page", "home") == "currency_wars"
         differential_universe = getattr(self, "action_page", "home") == "differential_universe"
+        deck = self.mode_decks.get(self.active_page)
+        in_poster = deck is not None and deck["shown"] == "hero" and self.active_page == self.action_page
+        self.start_button = deck["hero"].primary if in_poster else self.footer_start_button
+        if in_poster:
+            self.footer_start_button.pack_forget()
+        else:
+            self.footer_start_button.pack(side="left", padx=(round(8*self.ui_scale), 0))
         self.start_button.configure(
             text="只读识别当前画面" if currency else
-                 f"开始 {self.differential_universe_runs.get()} 局自动演算" if differential_universe else "开始计划",
+                 f"开始演算 · {self.differential_universe_runs.get()} 局" if differential_universe else "开始计划",
             command=self._currency_wars if currency else
                     (lambda: self._start(differential_universe=True)) if differential_universe else (lambda: self._start(run_plan=True)))
         self.header.position_plan()
@@ -366,7 +373,8 @@ class AutoHSRWindow:
         self.stop_button.configure(state="normal" if self.busy and not self.stopping else "disabled")
         for button in (self.pause_button, self.stop_button):
             if self.busy:
-                button.pack(side="left", before=self.start_button, padx=(round(8*self.ui_scale), 0))
+                order = dict(before=self.footer_start_button) if self.footer_start_button.winfo_manager() else {}
+                button.pack(side="left", padx=(round(8*self.ui_scale), 0), **order)
             else:
                 button.pack_forget()
         independent_page = currency_page or getattr(self, "action_page", "") == "differential_universe"
@@ -418,6 +426,9 @@ class AutoHSRWindow:
                 and self.weekly_mode.get() == "差分宇宙" and operation_page in ("home", "tasks")):
             page, section, control = "settings", "weekly", "weekly_team_entry"
         self._show_page(page)
+        if page == "differential_universe":
+            from .desktop_modes import show_mode_view
+            show_mode_view(self, page, "editor")
         if section:
             self.settings_tabs.select(self.settings_sections[section])
         self.action_page = operation_page
@@ -656,7 +667,7 @@ class AutoHSRWindow:
             mode=self.du_resume_mode.get()
             rank=int(mode.split()[-1]) if resume and mode.startswith("周期难度 ") else None
             if rank is not None and settings.differential_universe_runs != 1:
-                messagebox.showerror("接续局数", "周期演算接续仅完成当前 1 局，请将局数设为 1。", parent=self.root)
+                self._input_failed(SettingsError("differential_universe_runs", "周期演算接续仅完成当前 1 局，请将局数设为 1。"))
                 return
             du_options=dict(du_runs=settings.differential_universe_runs,
                             du_resume_active=resume,du_periodic_rank=rank)

@@ -1,0 +1,158 @@
+{
+  "assets": [
+    {
+      "file": "du.png",
+      "source": "local Star Rail CN 4.6.0 guide reference",
+      "source_date": "2026-10-24",
+      "source_sha256": "60b105e6f0bcfefea8fb29a12921d71450857590b161cb18697283b501906762",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        692,
+        289,
+        1658,
+        928
+      ],
+      "removed_regions": [
+        [
+          0,
+          51,
+          245,
+          113
+        ],
+        [
+          744,
+          56,
+          941,
+          94
+        ],
+        [
+          599,
+          101,
+          940,
+          134
+        ],
+        [
+          685,
+          139,
+          940,
+          204
+        ],
+        [
+          56,
+          347,
+          370,
+          387
+        ],
+        [
+          416,
+          369,
+          950,
+          518
+        ],
+        [
+          576,
+          555,
+          949,
+          625
+        ]
+      ],
+      "digit_region": [
+        160,
+        204,
+        270,
+        278
+      ],
+      "digit_components": 2,
+      "digit_mask": "bright enclosed components; 5x5 dilation",
+      "transform": "Lanczos normalization; static illustration crop; complete account, season, reward and action widgets removed with local OpenCV Telea colour extension (radius 7); reconstructed regions are not original pixels; no generative model",
+      "sha256": "e8695bbe15185a2da009c1be0791f923ea3cd0f77067a2335237259bbf981a7e",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    },
+    {
+      "file": "cw.png",
+      "source": "local Star Rail CN 4.6.0 guide reference",
+      "source_date": "2026-10-26",
+      "source_sha256": "fe11c514cefc24e94db6957cfc2bc7e2ec0c7bef2f284e9f966ef037dba1a275",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        692,
+        289,
+        1658,
+        928
+      ],
+      "removed_regions": [
+        [
+          0,
+          0,
+          966,
+          40
+        ],
+        [
+          654,
+          53,
+          940,
+          96
+        ],
+        [
+          646,
+          101,
+          940,
+          135
+        ],
+        [
+          659,
+          156,
+          940,
+          203
+        ],
+        [
+          57,
+          264,
+          382,
+          313
+        ],
+        [
+          70,
+          320,
+          369,
+          353
+        ],
+        [
+          423,
+          257,
+          940,
+          366
+        ],
+        [
+          417,
+          372,
+          950,
+          518
+        ],
+        [
+          656,
+          557,
+          945,
+          621
+        ]
+      ],
+      "digit_region": [
+        134,
+        170,
+        312,
+        256
+      ],
+      "digit_components": 3,
+      "digit_mask": "bright enclosed components; 5x5 dilation",
+      "transform": "Lanczos normalization; static illustration crop; complete account, season, reward and action widgets removed with local OpenCV Telea colour extension (radius 7); reconstructed regions are not original pixels; no generative model",
+      "sha256": "c0474c0cc6c87955208bb266047e74c3d9f3d497788c7c7c7b4283dae135f9b4",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
+    }
+  ]
+}

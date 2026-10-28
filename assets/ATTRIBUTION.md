@@ -686,3 +686,7 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 后端装备阶段从同一固定提交引入18幅`assets/images/share/aglaea/`原始PNG，作者moesnow及其贡献者，遵循所附上游GPL v3；游戏美术与名称仍归其权利人。文件未经裁切、缩放或重编码，逐项原路径、Git blob、SHA-256和字节数见[装备来源清单](upstream/March7thAssistant/equipment/sources.json)，本地标识、用途及原生变体见[装备参考说明](upstream/March7thAssistant/equipment/README.md)。完整上游许可继续保留于[LICENSE](upstream/March7thAssistant/LICENSE)。
 
 这些图用于仓库、角色槽和当前推荐配方的本地识别。已校准14种可穿戴装备；参考图包含的投影仪、令牌、冶金炉和两种扳手尚未接入使用。没有复制上游输入实现，也没有将界面打开、材料消失、合成测试或离线模板回放写作实机穿戴成功；现有UI素材署名和原生4.6装备参考保持不变。
+
+## 2026-10-29 旷宇纷争入口插图
+
+新增`assets/ui/universe/`两幅入口插图，来源为2026-10-24和26日已保存的CN 4.6.0指南画面。只保留静态插图，原等级、赛季倒计时、奖励预览和动作区域移除，局部颜色延展补充背景；原区域不再代表账号或当前版本状态。来源SHA-256、裁切、移除蒙版、处理方法与输出SHA-256见[来源清单](ui/universe/sources.json)。未启动游戏采集，不包含完整帧、UID或账号指纹；游戏美术归HoYoverse及相应权利人，继续排除在原创代码GPL许可之外。

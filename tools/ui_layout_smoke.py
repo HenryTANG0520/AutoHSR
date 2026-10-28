@@ -12,6 +12,7 @@ from autohsr import windows  # Establish DPI awareness before Tk; no game access
 from autohsr.config import Settings
 from autohsr.gui import AutoHSRWindow
 from autohsr import theme
+from autohsr.desktop_modes import show_mode_view
 from PIL import ImageGrab
 
 OUT = Path(__file__).resolve().parents[1] / "runs" / "ui-layout"
@@ -19,6 +20,9 @@ OUT = Path(__file__).resolve().parents[1] / "runs" / "ui-layout"
 
 def check_layout(widget):
     for child in widget.winfo_children():
+        # Tooltips use screen coordinates and are separate native windows.
+        if isinstance(child, tk.Toplevel):
+            continue
         if not child.winfo_ismapped():
             continue
         x, y, w, h = child.winfo_x(), child.winfo_y(), child.winfo_width(), child.winfo_height()
@@ -56,24 +60,32 @@ def main():
                     for page in ui.pages:
                         ui._show_page(page)
                         root.update()
-                        selections = [None]
+                        selections = [(None, None)]
                         notebook = None
                         if page == "settings":
                             notebook = ui.settings_tabs
-                            selections = list(ui.settings_sections.values())
+                            selections = [(None, section) for section in ui.settings_sections.values()]
                         elif page == "currency_wars":
                             notebook = ui.currency_tabs
-                            selections = list(ui.currency_sections.values())
-                        for index, selection in enumerate(selections):
-                            if notebook:
+                            selections = [("hero", None), *(("editor", section) for section in ui.currency_sections.values()), ("result", None)]
+                        elif page == "differential_universe":
+                            selections = [(view, None) for view in ("hero", "editor", "result")]
+                        for index, (view, selection) in enumerate(selections):
+                            if view:
+                                show_mode_view(ui, page, view)
+                            if notebook and selection is not None:
                                 notebook.select(selection)
                             root.update()
                             try:
                                 check_layout(root)
                             except AssertionError as exc:
                                 raise AssertionError((scale, size, page, index, exc.args)) from exc
-                            cases.append(dict(dpi=round(scale*100), size=size, page=page, section=index))
+                            cases.append(dict(dpi=round(scale*100), size=size, page=page, section=index, view=view))
+                            if size == "default" and scale == 1.5 and view:
+                                ImageGrab.grab(window=root.winfo_id()).save(OUT/(page+f"-{view}-{index}.png"))
                         if size == "default" and scale == 1.5:
+                            if page in ui.mode_decks:
+                                show_mode_view(ui, page, "hero")
                             if notebook:
                                 notebook.select(0)
                             root.update()
@@ -169,8 +181,10 @@ def main():
                 ui.summary.set("明确的错误原因与费用说明\n"*200)
                 for page in ("differential_universe", "currency_wars"):
                     ui._show_page(page)
-                    root.update()
-                    check_layout(root)
+                    for view in ("hero", "editor", "result"):
+                        show_mode_view(ui, page, view)
+                        root.update()
+                        check_layout(root)
                 assert config.read_bytes() == original
             finally:
                 ui.closing = True

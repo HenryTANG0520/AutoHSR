@@ -47,6 +47,7 @@ def build_window(ui, task_names, server_names):
     ui.server_combo = None
     _home(ui, task_names)
     _tasks(ui, task_names)
+    ui.mode_decks = {}
     from .desktop_modes import build_currency, build_universe
     build_universe(ui)
     build_currency(ui)
@@ -285,6 +286,7 @@ def _footer(ui):
     right.grid(row=2, column=1, sticky="e")
     ui.pause_button = ttk.Button(right, text="暂停 F9", style="Footer.TButton", command=ui._pause)
     ui.stop_button = ttk.Button(right, text="停止 F10", style="Danger.TButton", command=ui._stop)
-    ui.start_button = ttk.Button(right, text="开始计划", style="Accent.TButton", width=16, command=lambda: ui._start(run_plan=True))
+    ui.footer_start_button = ttk.Button(right, text="开始计划", style="Accent.TButton", width=16, command=lambda: ui._start(run_plan=True))
+    ui.start_button = ui.footer_start_button
     for button in (ui.pause_button, ui.stop_button, ui.start_button):
         button.pack(side="left", padx=(d(8), 0))

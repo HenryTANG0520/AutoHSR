@@ -10,6 +10,7 @@ from unittest.mock import patch
 from PIL import ImageGrab
 from ux_smoke import ROOT, Settings, Window, module
 from ui_layout_smoke import check_layout
+from autohsr.desktop_modes import show_mode_view
 
 OUT = ROOT/"runs/form-feedback-ui"
 
@@ -98,6 +99,7 @@ def main():
                 if scale == 1.5:
                     ImageGrab.grab(window=root.winfo_id()).save(OUT/"weekly-settings.png")
                 ui._show_page("differential_universe")
+                show_mode_view(ui, "differential_universe", "result")
                 ui._finish(dict(operation="differential_universe", status="failed", report_saved=True,
                     error="拟合奖励页未返回", safe_next="核对当前奖励页面后再接续。",
                     differential_universe=dict(requested_runs=3, completed_runs=3, mode="周期演算",

@@ -10,18 +10,60 @@ from .desktop import note
 def universe_page(ui, key):
     d = lambda n: round(n*ui.ui_scale)
     page = ui.pages[key]
-    page.columnconfigure(0, weight=0)
-    page.columnconfigure(1, weight=1)
+    page.columnconfigure(0, weight=3, minsize=d(212), uniform="universe")
+    page.columnconfigure(1, weight=7, uniform="universe")
     page.rowconfigure(0, weight=1)
     menu = ttk.Frame(page)
-    menu.grid(row=0, column=0, sticky="ns", padx=(0, d(24)))
+    menu.grid(row=0, column=0, sticky="nsew", padx=(0, d(24)))
+    menu.columnconfigure(0, weight=1)
+    menu.rowconfigure(2, weight=1)
     for row, (target, label) in enumerate((("currency_wars", "货币战争"), ("differential_universe", "差分宇宙"))):
-        ttk.Button(menu, text=label, width=12, style="Selected.Option.TButton" if target==key else "Option.TButton",
-                   command=lambda target=target: ui._show_page(target)).grid(row=row, column=0, sticky="ew", pady=(0, d(10)))
+        def choose(target=target):
+            show_mode_view(ui, target, "hero")
+            ui._show_page(target)
+        ttk.Button(menu, text=label, style="Selected.Option.TButton" if target==key else "Option.TButton",
+                   command=choose).grid(row=row, column=0, sticky="ew", pady=(0, d(10)))
+    weekly = ttk.Button(menu, text="周常计划", style="Panel.TButton", command=ui._show_weekly_plan)
+    weekly.grid(row=3, column=0, sticky="ew")
+    note(menu, variable=ui.weekly_status, row=4, style="Hint.TLabel", scale=ui.ui_scale)
     body = ttk.Frame(page)
     body.grid(row=0, column=1, sticky="nsew")
     body.columnconfigure(0, weight=1)
-    return body
+    body.rowconfigure(0, weight=1)
+    from .universe_widgets import UniversePoster
+    deck = {"shown": "hero"}
+    ui.mode_decks[key] = deck
+    deck["hero"] = UniversePoster(body, ui.ui_scale, ui, key, lambda view: show_mode_view(ui, key, view))
+    for view, title in (("editor", "演算设置" if key == "differential_universe" else "开发工具"), ("result", "运行结果")):
+        frame = ttk.Frame(body)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(1, weight=1)
+        heading = ttk.Frame(frame)
+        heading.grid(row=0, column=0, sticky="ew", pady=(0, d(12)))
+        back = ttk.Button(heading, text="返回", style="Panel.TButton", command=lambda: show_mode_view(ui, key, "hero"))
+        back.pack(side="left")
+        deck["back_"+view] = back
+        ttk.Label(heading, text=title, style="PageTitle.TLabel").pack(side="left", padx=d(16))
+        content = ttk.Frame(frame)
+        content.columnconfigure(0, weight=1)
+        content.grid(row=1, column=0, sticky="nsew")
+        deck[view] = frame
+        deck[view+"_body"] = content
+    for name in ("hero", "editor", "result"):
+        deck[name].grid(row=0, column=0, sticky="nsew")
+        if name != "hero":
+            deck[name].grid_remove()
+    return deck["editor_body"], deck["result_body"]
+
+
+def show_mode_view(ui, key, view):
+    deck = ui.mode_decks[key]
+    for name in ("hero", "editor", "result"):
+        deck[name].grid() if name == view else deck[name].grid_remove()
+    deck["shown"] = view
+    if hasattr(ui, "footer_start_button"):
+        ui._configure_primary_action()
+        ui._refresh_controls()
 
 
 def bound_text(ui, parent, variable, *, height=4):
@@ -36,7 +78,7 @@ def bound_text(ui, parent, variable, *, height=4):
 def build_universe(ui):
     s = ui.ui_scale
     d = lambda n: round(n*s)
-    page = universe_page(ui, "differential_universe")
+    page, result = universe_page(ui, "differential_universe")
     columns = ttk.Frame(page)
     columns.grid(row=1, column=0, sticky="ew")
     for col in range(2):
@@ -70,21 +112,24 @@ def build_universe(ui):
         ui.setting_controls.append(check)
     note(options, "红点奖励会使用已有卡带。\n每日按独立预算刷浴火钢心。", row=4, scale=s)
     note(setup, "预设名 1～32 字；难度沿用游戏当前选择。", row=6, scale=s).grid(columnspan=2)
-    status = ttk.Frame(page, style="Card.TFrame", padding=d(12))
-    status.grid(row=2, column=0, sticky="ew", pady=(d(14), d(10)))
+    status = ttk.Frame(result, style="Card.TFrame", padding=d(12))
+    status.grid(row=0, column=0, sticky="ew", pady=(0, d(10)))
     status.columnconfigure(0, weight=1)
     note(status, variable=ui.du_status, row=0, style="CardTitle.TLabel", scale=s)
     ui.du_record_button = ttk.Button(status, text="详细记录", command=ui._show_universe_record, state="disabled")
     ui.du_record_button.grid(row=0, column=1, sticky="e", padx=(d(12), 0))
-    page.rowconfigure(3, weight=1)
-    ui.du_result_text = bound_text(ui, page, ui.du_observation, height=3)
-    ui.du_result_text.grid(row=3, column=0, sticky="nsew")
+    result.rowconfigure(1, weight=1)
+    ui.du_result_text = bound_text(ui, result, ui.du_observation, height=3)
+    ui.du_result_text.grid(row=1, column=0, sticky="nsew")
 
 
 def build_currency(ui):
     s = ui.ui_scale
     d = lambda n: round(n*s)
-    page = universe_page(ui, "currency_wars")
+    page, result = universe_page(ui, "currency_wars")
+    note(result, variable=ui.currency_status, row=0, style="CardTitle.TLabel", scale=s)
+    result.rowconfigure(1, weight=1)
+    bound_text(ui, result, ui.currency_observation, height=3).grid(row=1, column=0, sticky="nsew", pady=(d(12), 0))
     tabs = ttk.Notebook(page)
     tabs.grid(row=1, column=0, sticky="nsew")
     page.rowconfigure(1, weight=1)
