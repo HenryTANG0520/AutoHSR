@@ -39,6 +39,13 @@ def load_font(root):
     FONT = next((name for name in tkfont.families(root) if name == "SDK_SC_Web"), "Microsoft YaHei UI")
 
 
+def native_font(widget, points):
+    """An explicit pixel size avoids Tk reusing a previous scale's point font."""
+    root = widget.winfo_toplevel()
+    scale = getattr(root, "_hsr_scale", float(root.tk.call("tk", "scaling"))/(96/72))
+    return FONT, -max(1, round(points*scale*96/72))
+
+
 @lru_cache(maxsize=96)
 def bitmap_font(size):
     return ImageFont.truetype(str(UI_ASSETS/"hsr-sc.ttf"), max(1, round(size)))
@@ -190,7 +197,7 @@ def _button(root, style, scale, name, fill, ink, *, tab=False, option=False, bac
                              ("active",photos[1]),("focus",photos[1]),
                              border=(round((8 if tab or option else 19)*scale),round((8 if tab else 1)*scale),round((8 if tab or option else 19)*scale),round(scale)),sticky="nsew")
     style.layout(name,[(element,{"sticky":"nsew","children":[("Button.padding",{"sticky":"nsew","children":[("Button.label",{"sticky":"nsew"})]})]})])
-    style.configure(name,foreground=ink,background=fill,padding=(round(10*scale),round(7*scale)),font=(FONT,11),width=0,anchor="center",borderwidth=0)
+    style.configure(name,foreground=ink,background=fill,padding=(round(10*scale),round(7*scale)),font=native_font(root, 11),width=0,anchor="center",borderwidth=0)
     style.map(name,foreground=[("disabled","#8b8b8b"),("!disabled",ink)],background=[("disabled","#d3d3d3"),("!disabled",fill)])
 
 
@@ -295,6 +302,7 @@ def _form_elements(root, style, scale):
 
 def apply_theme(root, scale):
     load_font(root)
+    root._hsr_scale = scale
     d = lambda n: round(n*scale)
     style = ttk.Style(root)
     root._hsr_theme_name = f"AutoHSR{round(scale*1000)}"
@@ -302,33 +310,33 @@ def apply_theme(root, scale):
         style.theme_create(root._hsr_theme_name, parent="clam")
     style.theme_use(root._hsr_theme_name)
     root._hsr_images=[]
-    style.configure(".",font=(FONT,11),background=PANEL,foreground=TEXT)
+    style.configure(".",font=native_font(root, 11),background=PANEL,foreground=TEXT)
     for name,color in (("TFrame",PANEL),("Card.TFrame",CARD),("Panel.TFrame",CARD),("Rail.TFrame",RAIL),("Footer.TFrame",BG)):
         style.configure(name,background=color)
     style.configure("Settings.Row.TFrame", background=SETTING_ROW)
     style.configure("Settings.Value.TFrame", background=SETTING_VALUE)
     style.configure("Settings.Line.TFrame", background="#a5a7ab")
-    style.configure("Settings.TLabel", background=SETTING_ROW, foreground=TEXT, font=(FONT, 12))
-    style.configure("Settings.Hint.TLabel", background=SETTING_ROW, foreground="#5d6065", font=(FONT, 9))
-    style.configure("Settings.Note.TLabel", background=BG, foreground="#bdc0c9", font=(FONT, 10))
+    style.configure("Settings.TLabel", background=SETTING_ROW, foreground=TEXT, font=native_font(root, 12))
+    style.configure("Settings.Hint.TLabel", background=SETTING_ROW, foreground="#5d6065", font=native_font(root, 9))
+    style.configure("Settings.Note.TLabel", background=BG, foreground="#bdc0c9", font=native_font(root, 10))
     for name,color,ink in (("TLabel",CARD,TEXT),("Card.TLabel",CARD,TEXT),("Muted.TLabel",CARD,MUTED),
         ("CardHint.TLabel",CARD,MUTED),("Hint.TLabel",PANEL,MUTED),("Footer.TLabel",BG,"#b8b8bc"),
         ("FooterStatus.TLabel",BG,LIGHT),("Rail.TLabel",RAIL,LIGHT),("Warning.TLabel",CARD,WARNING)):
-        style.configure(name,background=color,foreground=ink,font=(FONT,10))
+        style.configure(name,background=color,foreground=ink,font=native_font(root, 10))
     for name in ("Section.TLabel","CardTitle.TLabel"):
-        style.configure(name,background=CARD,foreground=TEXT,font=(FONT,14))
-    style.configure("PageTitle.TLabel",background=PANEL,foreground=TEXT,font=(FONT,17))
+        style.configure(name,background=CARD,foreground=TEXT,font=native_font(root, 14))
+    style.configure("PageTitle.TLabel",background=PANEL,foreground=TEXT,font=native_font(root, 17))
     for name in ("TCheckbutton","Card.TCheckbutton"):
-        style.configure(name,background=CARD,foreground=TEXT,font=(FONT,11),padding=(0,d(4)))
+        style.configure(name,background=CARD,foreground=TEXT,font=native_font(root, 11),padding=(0,d(4)))
         style.map(name,background=[("active",CARD)],foreground=[("disabled","#92918c")],indicatorbackground=[("selected",GOLD),("!selected",FIELD)])
     for name in ("TEntry","TSpinbox","TCombobox"):
         style.configure(name,fieldbackground=FIELD,background=FIELD,foreground=TEXT,insertcolor=TEXT,bordercolor=LINE,
-                        lightcolor=LINE,darkcolor=LINE,arrowcolor=TEXT,padding=d(6),font=(FONT,11),borderwidth=0,
+                        lightcolor=LINE,darkcolor=LINE,arrowcolor=TEXT,padding=d(6),font=native_font(root, 11),borderwidth=0,
                         selectbackground="#d7cab0",selectforeground=TEXT)
         style.map(name,fieldbackground=[("disabled",PANEL),("readonly",FIELD)],foreground=[("disabled","#92918c"),("readonly",TEXT)],bordercolor=[("focus",GOLD)])
-        root.option_add("*"+name+".font", (FONT, 11))
+        root.option_add("*"+name+".font", native_font(root, 11))
     _form_elements(root, style, scale)
-    root.option_add("*TCombobox*Listbox.font",(FONT,11))
+    root.option_add("*TCombobox*Listbox.font",native_font(root, 11))
     root.option_add("*TCombobox*Listbox.background",CARD)
     root.option_add("*TCombobox*Listbox.foreground",TEXT)
     root.option_add("*TCombobox*Listbox.selectBackground","#d7cab0")
@@ -343,17 +351,17 @@ def apply_theme(root, scale):
         ("Selected.Nav.TButton",PANEL,TEXT,True,False,RAIL),("Option.TButton",CARD,TEXT,False,True,PANEL),
         ("Selected.Option.TButton",RAIL,GOLD,False,True,PANEL)):
         _button(root,style,scale,name,fill,ink,tab=tab,option=option,background=background)
-    style.configure("Nav.TButton",padding=(d(19),d(6)),font=(FONT,14))
-    style.configure("Selected.Nav.TButton",padding=(d(24),d(6)),font=(FONT,14))
-    style.configure("Option.TButton",anchor="w",padding=(d(22),d(17)),font=(FONT,13))
-    style.configure("Selected.Option.TButton",anchor="w",padding=(d(22),d(17)),font=(FONT,13))
+    style.configure("Nav.TButton",padding=(d(19),d(6)),font=native_font(root, 14))
+    style.configure("Selected.Nav.TButton",padding=(d(24),d(6)),font=native_font(root, 14))
+    style.configure("Option.TButton",anchor="w",padding=(d(22),d(17)),font=native_font(root, 13))
+    style.configure("Selected.Option.TButton",anchor="w",padding=(d(22),d(17)),font=native_font(root, 13))
     style.configure("Compact.TButton",padding=(d(6),d(4)))
     style.configure("Settings.TButton",padding=(d(4),d(7)))
-    style.configure("Treeview",background=CARD,fieldbackground=CARD,foreground=TEXT,rowheight=d(33),borderwidth=0,font=(FONT,10))
-    style.configure("Treeview.Heading",background=PANEL,foreground=MUTED,padding=d(6),font=(FONT,10))
+    style.configure("Treeview",background=CARD,fieldbackground=CARD,foreground=TEXT,rowheight=d(33),borderwidth=0,font=native_font(root, 10))
+    style.configure("Treeview.Heading",background=PANEL,foreground=MUTED,padding=d(6),font=native_font(root, 10))
     style.map("Treeview",background=[("selected","#d7cab0")],foreground=[("selected",TEXT)])
     style.configure("TNotebook",background=PANEL,borderwidth=0,tabmargins=0)
-    style.configure("TNotebook.Tab",background=PANEL,foreground=MUTED,padding=(d(16),d(8)),font=(FONT,11))
+    style.configure("TNotebook.Tab",background=PANEL,foreground=MUTED,padding=(d(16),d(8)),font=native_font(root, 11))
     style.map("TNotebook.Tab",background=[("selected",CARD)],foreground=[("selected",TEXT)])
     style.layout("Hidden.TNotebook.Tab", [])
     style.configure("Hidden.TNotebook", borderwidth=0, tabmargins=0)
@@ -362,7 +370,7 @@ def apply_theme(root, scale):
     style.configure("Settings.TNotebook", background=BG, borderwidth=0, tabmargins=0)
     for name in ("Settings.Nav.TButton", "Settings.Selected.Nav.TButton", "Settings.Close.TButton"):
         style.layout(name, [("Button.padding", {"sticky": "nswe", "children": [("Button.label", {"sticky": "nswe"})]})])
-        style.configure(name, background=BG, foreground=LIGHT, padding=d(3), borderwidth=0, font=(FONT, 10), anchor="center")
+        style.configure(name, background=BG, foreground=LIGHT, padding=d(3), borderwidth=0, font=native_font(root, 10), anchor="center")
         style.map(name, foreground=[("focus", GOLD), ("active", GOLD), ("!disabled", LIGHT)], background=[("active", BG), ("!disabled", BG)])
     style.configure("Horizontal.TScale",background=CARD,troughcolor="#c1c1c1",sliderlength=d(18))
     style.configure("Vertical.TScrollbar",background="#b0b0b0",troughcolor=PANEL,borderwidth=0,arrowcolor=MUTED)

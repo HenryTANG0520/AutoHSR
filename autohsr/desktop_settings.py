@@ -122,7 +122,7 @@ class BooleanSetting(ttk.Combobox):
     def __init__(self, parent, variable):
         self.value = tk.StringVar(parent)
         super().__init__(parent, textvariable=self.value, values=("开启", "关闭"),
-                         state="readonly", style="Settings.TCombobox", justify="center", width=8, font=(t.FONT, 12))
+                         state="readonly", style="Settings.TCombobox", justify="center", width=8, font=t.native_font(parent, 12))
         self.variable = variable
         self.bind("<<ComboboxSelected>>", self._select)
         self.token = variable.trace_add("write", self._sync)
@@ -195,7 +195,7 @@ def build_settings(ui):
 
     def entry(target, variable, name, **kwargs):
         field = ttk.Entry(target.value, textvariable=variable, style="Settings.TEntry",
-                          width=10, font=(t.FONT, 12), justify=kwargs.pop("justify", "center"), **kwargs)
+                          width=10, font=t.native_font(target.value, 12), justify=kwargs.pop("justify", "center"), **kwargs)
         target.place_control(field)
         setattr(ui, name, field)
         ui.setting_controls.append(field)
@@ -203,7 +203,7 @@ def build_settings(ui):
 
     def combo(target, variable, values, name):
         field = ttk.Combobox(target.value, textvariable=variable, values=values,
-            style="Settings.TCombobox", width=10, font=(t.FONT, 12), justify="center", state="readonly")
+            style="Settings.TCombobox", width=10, font=t.native_font(target.value, 12), justify="center", state="readonly")
         target.place_control(field)
         setattr(ui, name, field)
         ui.setting_controls.append(field)

@@ -301,7 +301,7 @@ class AutoHSRWindow:
         return text
 
     def _text(self, parent: tk.Widget) -> ScrolledText:
-        return ScrolledText(parent, wrap="char", font=(theme.FONT, 10), background=self.INSET,
+        return ScrolledText(parent, wrap="char", font=theme.native_font(parent, 10), background=self.INSET,
                             foreground=self.TEXT, insertbackground=self.TEXT, relief="flat", borderwidth=0,
                             padx=11, pady=9, height=6, state="disabled")
 

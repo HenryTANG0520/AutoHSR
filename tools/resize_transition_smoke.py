@@ -38,6 +38,13 @@ def main():
             try:
                 root.update()
                 normal = root.geometry()
+                def text_sizes():
+                    # Measure the font used by Tk, without making a fresh Font
+                    # object that would hide stale font-cache scaling.
+                    fonts = (ui.style.lookup("Accent.TButton", "font"),
+                             ui.weekly_time_entry.cget("font"), ui.log.cget("font"))
+                    return [int(root.tk.call("font", "measure", font, "开始计划"))/ui.ui_scale for font in fonts]
+                normal_text = text_sizes()
                 for name, maximized in (("maximize", True), ("restore", False)):
                     prefix = f"{dpi}_{name}_"
                     old_shell, old_primary = ui.shell, ui.start_button
@@ -67,6 +74,7 @@ def main():
                     check(prefix+"automatic_resize_completed", bool(replaced) and not errors)
                     check(prefix+"previous_controls_released", not old_shell.winfo_exists()
                           and root.winfo_children() == [ui.shell])
+                    check(prefix+"native_button_entry_and_log_text_scale", all(abs(a-b) < 2 for a, b in zip(normal_text, text_sizes())))
                 check(f"{dpi}_no_config_write", config.read_bytes() == original)
             finally:
                 ui.closing = True

@@ -253,7 +253,7 @@ class Tooltip:
         self.tip=tk.Toplevel(self.widget)
         self.tip.overrideredirect(True)
         self.tip.geometry(f"+{self.widget.winfo_rootx()}+{self.widget.winfo_rooty()+self.widget.winfo_height()+5}")
-        tk.Label(self.tip,text=self.text,bg=t.RAIL,fg=t.LIGHT,font=(t.FONT,10),padx=12,pady=5).pack()
+        tk.Label(self.tip,text=self.text,bg=t.RAIL,fg=t.LIGHT,font=t.native_font(self.widget,10),padx=12,pady=5).pack()
 
     def hide(self,_=None):
         if self.tip is not None:

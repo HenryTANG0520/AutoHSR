@@ -8,7 +8,11 @@
 - **93项缩放交互检查通过**，`runs/transition-responsive-ui-retry.log`。草稿、当前设置页、编辑位置、搜索、结果、日志、队列、暂停停止、下拉菜单及对话框归属保持，反复切换后图片和根窗口回调数量有界。首次回归暴露的搜索回调清理错误保留在`runs/transition-responsive-ui.log`，修复后重测通过。
 - **156个布局场景、15项布局交互、84项GUI、63项背景和54项参考检查通过**，`runs/transition-ui_layout_smoke.log`、`transition-stage-gui.log`、`transition-guide_backdrop_smoke.log`、`transition-reference.log`。使用假后端与临时配置；本轮未启动、检测或操作游戏。
 
-先前停绘／画面缓存试验在慢速模拟中仍出现黑边或缺失控件，未采用；原中间帧继续保留。最终实现保留实际控件，不截取桌面或缓存窗口截图。离线自动切换的本机计时为2.2～4.7秒，不能宣称即时缩放；上述结构与布局检查也不等于连续画面的无闪烁验收。整屏逐像素一致、真实玩家学习／注意力成本和日常周常组合实机仍未验收，货币战争周常与周积分领奖尚未接入。
+首次正式构建`30732df`核对首页与最大化时发现：旧控件保留期间，Tk会复用缓存的点数字体，按钮与部分输入文字没有随新界面放大。原截图保留为`runs/transition-package-maximized.png`及`transition-package-maximized-settled.png`；此构建正常关闭，239份用户文件哈希未变。已改为按当前比例提供明确的像素字号，覆盖按钮、设置值、日志、下拉列表与键盘提示。原测试新建Font对象测量，绕过了已有字体缓存；现直接测量控件使用的字体，新回归在恢复旧点数字体时确实失败，见`runs/transition-point-font-regression.log`。修正后的**51项切换与字号检查通过**，`runs/transition-font-swap.log`。
+
+字号修正后，**93项缩放交互、156个布局场景与15项布局交互、123项设置及54项参考检查再次通过**，最终日志为`runs/transition-final-responsive_ui_smoke.log`、`transition-final-ui_layout_smoke.log`、`transition-final-settings_ui_smoke.log`及`transition-final-reference.log`。已查看最终假后端最大化画面，主按钮、周常入口与文字比例完整。
+
+先前停绘／画面缓存试验在慢速模拟中仍出现黑边或缺失控件，未采用；原中间帧继续保留。最终实现保留实际控件，不截取桌面或缓存窗口截图。字号修正后的离线自动切换本机计时为1.9～3.2秒，不能宣称即时缩放；上述结构与布局检查也不等于连续画面的无闪烁验收。整屏逐像素一致、真实玩家学习／注意力成本和日常周常组合实机仍未验收，货币战争周常与周积分领奖尚未接入。
 
 ## 2026-10-29：随窗口等比放大并保留操作位置
 

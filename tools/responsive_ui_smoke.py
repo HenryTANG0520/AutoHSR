@@ -8,7 +8,6 @@ import tempfile
 import time
 import traceback
 import tkinter as tk
-from tkinter import font as tkfont
 import types
 from unittest.mock import patch
 from pathlib import Path
@@ -90,7 +89,7 @@ def main():
                 normal_size = root.winfo_width(), root.winfo_height()
                 base = ui.ui_scale
                 book = (ui.guide.winfo_width()/base, ui.guide.winfo_height()/base)
-                text_width = tkfont.Font(root, font=ui.style.lookup("Accent.TButton", "font")).measure("开始计划")/base
+                text_width = int(root.tk.call("font", "measure", ui.style.lookup("Accent.TButton", "font"), "开始计划"))/base
                 for page in ui.pages:
                     ui._show_page(page)
                     root.update()
@@ -123,7 +122,7 @@ def main():
                 settle()
                 check(prefix+"settings_return_focus_kept", ui.active_page == "home" and root.focus_get() is ui.weekly_button)
                 check(prefix+"book_scales_uniformly", all(abs(a-b) < 3 for a,b in zip(book, (ui.guide.winfo_width()/ui.ui_scale, ui.guide.winfo_height()/ui.ui_scale))))
-                width = tkfont.Font(root, font=ui.style.lookup("Accent.TButton", "font")).measure("开始计划")/ui.ui_scale
+                width = int(root.tk.call("font", "measure", ui.style.lookup("Accent.TButton", "font"), "开始计划"))/ui.ui_scale
                 check(prefix+"button_text_scales_with_art", abs(width-text_width) < 2)
                 check_layout(root)
                 if dpi == 1.5:
