@@ -133,6 +133,8 @@ def purchase_action(scene, session, confidence=.65):
     if not session.get('pre_shop_snapshot', {}).get('roster_complete'):
         return None  # Legacy read-only shop observations keep their contract.
     snapshot = _shop_snapshot(scene,prior,'buy_standard_offer',confidence)
+    discarded = {entry['name'] for entry in prior.get('discarded_units',[]) if entry.get('node') == snapshot.node}
+    snapshot = replace(snapshot,offers=tuple(offer for offer in snapshot.offers if offer.name not in discarded))
     state = read_match(scene,confidence)
     traits, progress = shop_trait_facts(scene, confidence)
     ranking = rank_standard_offers(snapshot, session.get('strategy', 'default'), traits=traits, progress=progress)
@@ -169,7 +171,10 @@ def experience_action(scene, session, confidence=.65):
                           details=(strategy,0.,('余额足以支付到下一级；逐笔核实',),POLICY), payload=payload)
 
 
-def financial_feedback(choice, before, after, confidence=.65):
+def financial_feedback(choice, before, after, confidence=.65, *, session=None):
+    if choice.intent == 'sell_standard_owned':
+        from .currency_wars_standard_sale import sale_feedback
+        return sale_feedback(choice,before,after,session,confidence)
     if choice.intent == 'refresh_standard_shop':
         from .currency_wars_standard_refresh import refresh_feedback
         return refresh_feedback(choice,before,after,confidence)
@@ -229,6 +234,9 @@ def record_financial_feedback(session, choice, receipt):
     if not valid_receipt(dict(action, receipt=receipt)):
         raise AutomationError('标准交易收据与已落盘意图不一致。')
     action['receipt'] = receipt
+    if choice.intent == 'sell_standard_owned':
+        from .currency_wars_standard_sale import finish
+        finish(session)
     if choice.intent == 'buy_standard_experience' and receipt['level_after'] != choice.payload[3]:
         nodes = session.get('shop_observed_nodes', [])
         if choice.payload[0] in nodes:

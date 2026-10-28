@@ -58,6 +58,16 @@
         "buy_seele"
       ],
       "kind": "growth-phase refresh decisions rewritten for observed button prices, per-node limits, one Context click and an immutable five-offer/gold/bench receipt chain"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_sale.py",
+      "reference_functions": [
+        "sell_characters_aglaea_strategy",
+        "sell_characters_seele_strategy",
+        "sell_characters",
+        "_sell_single_character"
+      ],
+      "kind": "native per-unit bench cleanup after legal deployment, fresh identity inspection and observed refund; positive gold credit plus all nineteen slots verified, with no cached-list deletion as success"
     }
   ]
 }

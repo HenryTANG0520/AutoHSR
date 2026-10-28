@@ -37,6 +37,10 @@ def next_action(scene, confidence=.65, *, session=None):
 
 
 def _next_action(scene, confidence=.65, *, session=None):
+    from .currency_wars_standard_sale import active_action as sale_action
+    sale = sale_action(scene,session or {},confidence)
+    if sale is not None:
+        return sale
     from .currency_wars_standard_exchange import active_action
     verification = active_action(scene, session or {}, confidence)
     if verification is not None:
@@ -99,6 +103,11 @@ def _next_action(scene, confidence=.65, *, session=None):
             from .currency_wars_standard_market import open_standard_shop
             from .currency_wars_match import read_match
             state = read_match(scene,confidence)
+            if 'strategy' in (session or {}):
+                from .currency_wars_standard_sale import proposal as sale_proposal
+                sale = sale_proposal(scene,session,confidence)
+                if sale is not None:
+                    return sale
             if state.node in (session or {}).get('shop_observed_nodes',[]):
                 if 'strategy' in (session or {}) and state.deployment and state.deployment[0] == state.deployment[1]:
                     from .currency_wars_standard_exchange import exchange_proposal
@@ -153,7 +162,13 @@ def evidence(c, scene, label):
     return str(screenshot)
 
 
-def transition_ready(choice, scene, confidence=.65, *, before=None):
+def transition_ready(choice, scene, confidence=.65, *, before=None, session=None):
+    if choice.expected == 'standard_sale_panel':
+        from .currency_wars_standard_sale import panel_feedback
+        return before is not None and panel_feedback(choice,before,scene,confidence)
+    if choice.expected == 'standard_sale_cancelled':
+        from .currency_wars_standard_sale import cancelled_feedback
+        return session is not None and cancelled_feedback(scene,session,confidence)
     if choice.expected == 'standard_exchange_inspectable':
         from .currency_wars_standard_exchange import inspectable
         return before is not None and inspectable(choice, before, scene, confidence)
@@ -163,10 +178,10 @@ def transition_ready(choice, scene, confidence=.65, *, before=None):
         return bool(state and state.page == 'preparation'
                     and (state.node,state.gold,state.hp,state.level) == choice.payload[:4]
                     and state.deployment == choice.payload[4:6])
-    from .currency_wars_standard_ledger import PAID_ACTIONS
-    if choice.intent in PAID_ACTIONS:
+    from .currency_wars_standard_ledger import FINANCIAL_ACTIONS
+    if choice.intent in FINANCIAL_ACTIONS:
         from .currency_wars_standard_trading import financial_feedback
-        return before is not None and financial_feedback(choice, before, scene, confidence) is not None
+        return before is not None and financial_feedback(choice, before, scene, confidence,session=session) is not None
     if choice.expected == 'standard_node_advanced':
         from .currency_wars_standard_progress import advancement_feedback
         return advancement_feedback(scene, choice.payload[0], confidence) is not None
@@ -214,6 +229,7 @@ def transition_ready(choice, scene, confidence=.65, *, before=None):
 
 
 def run_standard(c):
+    from .currency_wars_standard_ledger import FINANCIAL_ACTIONS
     if c.report.operation != 'currency_wars_standard':
         raise AutomationError('标准对局开发须使用独立入口。')
     # This initial path is intentionally not an acceptance counter. Any repair
@@ -296,7 +312,8 @@ def run_standard(c):
                 collection['complete'] = False
             store.persist()
         from .currency_wars_standard_exchange import panel_stale, record_profile
-        if kind == 'character' and not panel_stale(store.data):
+        from .currency_wars_standard_sale import stale as sale_stale
+        if kind == 'character' and not panel_stale(store.data) and not sale_stale(store.data):
             from .currency_wars_collector import owned_profile
             try:
                 profile = owned_profile(scene,store.data.get('inspecting'),c.settings.ocr_confidence)
@@ -349,7 +366,7 @@ def run_standard(c):
             action['decision'] = dict(name=choice.details[0],star=choice.details[1],tier=choice.details[2],
                                       zone=choice.details[3],score=choice.details[4],policy=choice.details[5])
             store.persist()
-        elif choice.intent in ('buy_standard_offer','buy_standard_experience','refresh_standard_shop'):
+        elif choice.intent in FINANCIAL_ACTIONS or choice.intent == 'inspect_standard_sale_unit':
             action['decision'] = dict(strategy=choice.details[0], score=choice.details[1],
                                       reasons=list(choice.details[2]), policy=choice.details[3])
             store.persist()
@@ -368,6 +385,10 @@ def run_standard(c):
         if choice.intent in ('stage_standard_exchange','inspect_standard_exchange_unit'):
             from .currency_wars_standard_exchange import record_intent
             record_intent(store.data,choice)
+            store.persist()
+        if choice.intent == 'inspect_standard_sale_unit':
+            from .currency_wars_standard_sale import bind_intent
+            bind_intent(store.data,choice,scene,c.settings.ocr_confidence)
             store.persist()
         if choice.intent == 'start_standard_node':
             store.data['node_attempt'] = dict(node=choice.payload[0],start_action_id=action['id'],
@@ -393,21 +414,22 @@ def run_standard(c):
                 else:
                     if observed_account != store.data.get('account_key'):
                         raise AutomationError('标准动作反馈账号来源不一致，原意图保留待核对。')
-                    ready = transition_ready(choice, after, c.settings.ocr_confidence, before=scene)
+                    ready = transition_ready(choice, after, c.settings.ocr_confidence, before=scene,session=store.data)
                 stable = stable+1 if ready else 0
                 required = 2 if choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable',
-                                                    'standard_offer_bought','standard_experience_bought','standard_shop_refreshed') else 1
+                                                    'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
+                                                    'standard_sale_panel','standard_owned_sold') else 1
                 if stable >= required:
                     after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
-                    if choice.intent in ('buy_standard_offer','buy_standard_experience','refresh_standard_shop'):
+                    if choice.intent in FINANCIAL_ACTIONS:
                         from .currency_wars_standard_trading import financial_feedback
                         from .currency_wars_standard_ledger import valid_receipt
-                        receipt = financial_feedback(choice, scene, after, c.settings.ocr_confidence)
+                        receipt = financial_feedback(choice, scene, after, c.settings.ocr_confidence,session=store.data)
                         if not valid_receipt(dict(action,status='verified',after=after_path,receipt=receipt)):
                             raise AutomationError('标准交易收据与原意图不符，保留待核对状态。')
                     action.update(status='verified', after=after_path)
                     store.data.update(action_status='transition_verified', screenshot=action['after'])
-                    if choice.intent in ('buy_standard_offer','buy_standard_experience','refresh_standard_shop'):
+                    if choice.intent in FINANCIAL_ACTIONS:
                         from .currency_wars_standard_trading import record_financial_feedback
                         record_financial_feedback(store.data, choice, receipt)
                     if choice.intent == 'start_standard_a8_40':
@@ -426,6 +448,13 @@ def run_standard(c):
                                                         before=action['before'],after=action['after'])
                         if choice.intent == 'inspect_standard_exchange_unit':
                             store.data['inspecting']['exchange_id'] = choice.payload[4]
+                    elif choice.intent == 'inspect_standard_sale_unit':
+                        store.data['inspecting'] = dict(zone='bench',slot=choice.payload[4],node=choice.payload[0],
+                                                        signature=choice.payload[8],input_epoch=c.runner.input_epoch,
+                                                        run_dir=c.report.run_dir,before=action['before'],after=action['after'])
+                    elif choice.intent == 'close_standard_sale_stale_panel':
+                        from .currency_wars_standard_sale import finish
+                        finish(store.data,cancelled=True)
                     elif choice.intent == 'stage_standard_exchange':
                         from .currency_wars_standard_exchange import begin_verification
                         begin_verification(store.data,choice,scene,after,c.settings.ocr_confidence)
@@ -438,7 +467,7 @@ def run_standard(c):
                         action['feedback'] = deployment_feedback(scene,after,choice.target,c.settings.ocr_confidence)
                         transfer_collection(store.data,scene,after,choice.target,action['after'],c.settings.ocr_confidence)
                     elif choice.intent not in ('close_standard_unit','open_standard_shop','close_standard_shop',
-                                                'buy_standard_experience','refresh_standard_shop'):
+                                                'buy_standard_experience','refresh_standard_shop','sell_standard_owned'):
                         store.data.pop('collection',None)
                     if choice.intent == 'close_standard_shop':
                         nodes = store.data.setdefault('shop_observed_nodes',[])

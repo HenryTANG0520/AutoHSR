@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from .currency_wars_economy import Mode, assess_spend
 
 
-POLICY = 'standard-native-v2'
+POLICY = 'standard-native-v3'
 STRATEGIES = ('default', 'aglaea', 'seele')
 PREFERRED = {
     'default': (),
@@ -52,7 +52,7 @@ def rank_standard_offers(snapshot, strategy='default', *, traits=None, progress=
         if not owned and missing:
             benefit += 60
             reasons.append('补足不同角色数量')
-        if owned and highest and highest < 3:
+        if owned and highest and highest < 3 and (strategy == 'default' or offer.name == PREFERRED[strategy][0]):
             benefit += 25 if sum(unit.star == 1 for unit in owned) >= 2 else 18
             reasons.append('积累已持有角色；实际星级变化待重采')
         preferences = PREFERRED[strategy]
