@@ -10,7 +10,8 @@ from .models import AutomationError, EmptyCapture
 def entry_feedback(scene, node, confidence=.65):
     kind = observe(scene,confidence).page_kind
     return ((kind=='battle' and battle_node(scene,confidence)==node)
-            or (kind=='node_result' and result_node(scene,confidence)==node))
+            or (kind in ('node_result','final_victory') and result_node(scene,confidence)==node
+                and (kind != 'final_victory' or node.startswith('3-'))))
 
 
 def observe_started_node(c, store, scene):
@@ -31,25 +32,34 @@ def observe_started_node(c, store, scene):
         c.checkpoint()
         started, inactive = time.monotonic(), c.runner.inactive_duration
         kind = 'unknown'
+        unreadable = True
         if scene is not None:
             guard._require_current_scene(scene)
             if account_key(scene,max(.85,c.settings.ocr_confidence)) != store.data.get('account_key'):
                 raise AutomationError('节点观察账号来源不一致。')
             kind = observe(scene,c.settings.ocr_confidence).page_kind
+            unreadable = kind in ('unknown','preparation')
             if kind=='battle':
-                if battle_node(scene,c.settings.ocr_confidence)!=attempt['node']:
+                actual = battle_node(scene,c.settings.ocr_confidence)
+                unreadable = actual is None
+                if actual is not None and actual != attempt['node']:
                     attempt.update(status='unknown',reason='战斗节点与本次出战来源不符。')
                     break
-                unseen = 0.
-                if not attempt.get('battle_observed'):
+                if actual == attempt['node']:
+                    unseen = 0.
+                if actual == attempt['node'] and not attempt.get('battle_observed'):
                     attempt.update(battle_observed=True,battle=evidence(c,scene,'currency_standard_battle'))
                     store.persist()
                     c.log('标准节点'+attempt['node']+'正在自动战斗，仅观察日志。')
-            elif kind=='node_result':
-                same = result_node(scene,c.settings.ocr_confidence)==attempt['node']
+            elif kind in ('node_result','final_victory'):
+                same = (result_node(scene,c.settings.ocr_confidence)==attempt['node']
+                        and (kind != 'final_victory' or attempt['node'].startswith('3-')))
                 attempt.update(status='verified' if same else 'unknown',node_verified=same,
+                               result_kind=kind,
                                result=evidence(c,scene,'currency_standard_node_result'),
                                verification='matching_result_after_start' if same else 'wrong_result_node')
+                if same and kind == 'final_victory':
+                    store.data.update(match_victory_observed=True, victory_start_action_id=action_id)
                 store.persist()
                 c.log('标准节点'+attempt['node']+('胜利已核实；整局尚未完成。' if same else '结算编号不符，停止推进。'))
                 return scene, same
@@ -59,7 +69,7 @@ def observe_started_node(c, store, scene):
         c.sleep(2)
         duration = max(0.,time.monotonic()-started-(c.runner.inactive_duration-inactive))
         elapsed += duration
-        if kind in ('unknown','preparation'):
+        if unreadable:
             unseen += duration
             if unseen >= 30:
                 attempt.update(status='unknown',reason='出战后持续未识别到对应战斗或结算。')
@@ -71,7 +81,7 @@ def observe_started_node(c, store, scene):
             scene = None
         capture_duration = max(0.,time.monotonic()-capture_started-(c.runner.inactive_duration-capture_inactive))
         elapsed += capture_duration
-        if kind in ('unknown','preparation'):
+        if unreadable:
             unseen += capture_duration
     else:
         attempt.update(status='timeout',reason='标准节点自动战斗观察超时，未重复出战。')

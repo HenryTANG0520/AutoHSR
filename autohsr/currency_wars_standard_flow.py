@@ -29,6 +29,10 @@ def next_action(scene, confidence=.65, *, session=None):
         return StandardAction('start_standard_a8_40', 'boss_preview',
                               unique(clean, '开始对局', (.75, .82, .99, .97)))
     kind = observe(scene, confidence).page_kind
+    from .currency_wars_standard_progress import progress_action
+    progress = progress_action(scene, session or {}, confidence)
+    if progress is not None:
+        return progress
     if kind == 'boss_preview':
         return StandardAction('advance_standard_preview', 'plane_map',
                               unique(clean, '下一步', (.74, .87, .84, .95)))
@@ -53,7 +57,9 @@ def next_action(scene, confidence=.65, *, session=None):
         except AutomationError:
             return StandardAction('select_standard_environment_'+str(choice.slot),
                                   'environment_selected_'+str(choice.slot), choice.name, details)
-        return StandardAction('confirm_standard_environment_'+str(choice.slot), 'initial_board', target, details)
+        expected_board = (session or {}).get('expected_board')
+        return StandardAction('confirm_standard_environment_'+str(choice.slot), 'initial_board', target, details,
+                              payload=(expected_board,) if expected_board else ())
     if kind == 'preparation':
         from .currency_wars_node import loot_centers
         from .currency_wars_loot import loot_target
@@ -112,6 +118,16 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None):
+    if choice.expected == 'standard_node_advanced':
+        from .currency_wars_standard_progress import advancement_feedback
+        return advancement_feedback(scene, choice.payload[0], confidence) is not None
+    if choice.expected == 'standard_plane_entered':
+        return observe(scene, confidence).page_kind in ('environment', 'investment_selection')
+    if choice.expected == 'standard_arrival_shop_closed':
+        from .currency_wars_match import read_match
+        state = read_match(scene, confidence)
+        return bool(state and state.page == 'preparation' and (state.node, state.gold, state.level) == choice.payload[:3]
+                    and state.hp is not None and state.hp > 0)
     if choice.expected == 'standard_node_entered':
         from .currency_wars_standard_node import entry_feedback
         return entry_feedback(scene,choice.payload[0],confidence)
@@ -143,7 +159,8 @@ def transition_ready(choice, scene, confidence=.65, *, before=None):
     if choice.expected == 'initial_board':
         from .currency_wars_match import read_match
         state = read_match(scene, confidence)
-        return bool(state and state.node == '1-1' and state.page in ('shop','preparation'))
+        expected_node = choice.payload[0] if choice.payload else '1-1'
+        return bool(state and state.node == expected_node and state.page in ('shop','preparation'))
     return observe(scene, confidence).page_kind == choice.expected
 
 
@@ -175,6 +192,8 @@ def run_standard(c):
     scene = c.snapshot()
     for _ in range(40):
         c.checkpoint()
+        if store.data['completion_verified']:
+            break
         guard._require_current_scene(scene)
         if (store.data.get('account_verified_run') != c.report.run_dir or
                 store.data.get('account_verified_epoch') != c.runner.input_epoch):
@@ -207,7 +226,7 @@ def run_standard(c):
             store.data['collection'] = collection
             store.persist()
         kind = observe(scene,c.settings.ocr_confidence).page_kind
-        if kind in ('battle','node_result'):
+        if kind in ('battle','node_result','final_victory'):
             from .currency_wars_standard_node import observe_started_node
             scene, verified = observe_started_node(c,store,scene)
             if not verified:
@@ -291,7 +310,15 @@ def run_standard(c):
                 after = None
             if after is not None:
                 guard._require_current_scene(after)
-                ready = transition_ready(choice, after, c.settings.ocr_confidence, before=scene)
+                from .currency_wars_identity import account_key
+                try:
+                    observed_account = account_key(after, max(.85, c.settings.ocr_confidence))
+                except AutomationError:
+                    ready = False  # Animation may hide the UID; observe within this deadline.
+                else:
+                    if observed_account != store.data.get('account_key'):
+                        raise AutomationError('标准动作反馈账号来源不一致，原意图保留待核对。')
+                    ready = transition_ready(choice, after, c.settings.ocr_confidence, before=scene)
                 stable = stable+1 if ready else 0
                 required = 2 if choice.expected in ('loot_collected','standard_owned_deployed') else 1
                 if stable >= required:
@@ -302,6 +329,7 @@ def run_standard(c):
                         store.data['start_verified'] = True
                     if choice.intent.startswith('confirm_standard_environment_'):
                         store.data['environment'] = action['decision']
+                        store.data.pop('expected_board', None)
                     if choice.intent == 'start_standard_node':
                         store.data['node_attempt']['status']='observing'
                     if choice.intent == 'inspect_standard_unit':
@@ -318,6 +346,8 @@ def run_standard(c):
                         nodes = store.data.setdefault('shop_observed_nodes',[])
                         if choice.payload[0] not in nodes:
                             nodes.append(choice.payload[0])
+                    from .currency_wars_standard_progress import progress_verified
+                    progress_verified(store.data, choice, after, c.settings.ocr_confidence)
                     store.persist()
                     scene = after
                     break
@@ -330,10 +360,15 @@ def run_standard(c):
                 store.data['screenshot'] = evidence(c, after, 'currency_standard_transition_unknown')
             store.persist()
             break
+        if store.data['completion_verified']:
+            break
     else:
         store.data.update(action_status='step_limit', reason='本次标准开发达到步骤上限。')
         store.persist()
     c.report.currency_wars = store.data
     c.runner.emit(dict(type=TASK, data=store.data))
+    if store.data['completion_verified']:
+        c.report.safe_next = '本次为开发对局，结算完成不计作独立验收；原始证据已保留。'
+        return TaskResult(TASK, 'success', store.data['reason'])
     c.report.safe_next = '先读取标准对局当前局面，再接续已核实动作；不重开或重放未知交易。'
     return TaskResult(TASK, 'partial', store.data.get('reason', '标准对局开发未完成，已留证。'))

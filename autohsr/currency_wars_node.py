@@ -70,6 +70,10 @@ def result_node(scene, confidence=.65):
 
 
 def battle_node(scene, confidence=.65):
+    from .currency_wars_node_ocr import bounded_battle_node
+    attempted, value = bounded_battle_node(scene, confidence)
+    if attempted:
+        return value
     values = {normalize(t.text) for t in scene.tokens if confidence <= t.score <= 1
               and t.within((.30,0,.40,.05)) and re.fullmatch(r'[1-3]-[1-9][0-9]?',normalize(t.text))}
     return next(iter(values)) if len(values)==1 else None

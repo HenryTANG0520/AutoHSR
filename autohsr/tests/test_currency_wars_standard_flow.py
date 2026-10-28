@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from autohsr.app import Context, Runner
+from autohsr import currency_wars_standard_market  # Import before patching its dependency in individual tests.
 from autohsr.config import Settings
 from autohsr.currency_wars_session import StandardSession
 from autohsr.currency_wars_standard_flow import next_action, run_standard
@@ -198,7 +199,11 @@ class StandardFlowTests(unittest.TestCase):
             action=store.pending('open_standard_shop',0,'before.png','standard_shop_observe')
             action.update(status='unknown',target=['1-1',5,80,3])
             store.persist()
-            c=self.context(folder,[screen('shop')],resume=True)
+            scene = screen('shop')
+            # This fixture proves reconciliation only; without a close target
+            # the workflow cannot legitimately dispatch the following action.
+            scene.tokens = [t for t in scene.tokens if normalize(t.text) != '收起']
+            c=self.context(folder,[scene],resume=True)
             state=MatchState('shop',node='1-1',gold=5,hp=None,level=3)
             with patch('autohsr.currency_wars_match.read_match',return_value=state), \
                  patch('autohsr.currency_wars_replay.save_sample'):
