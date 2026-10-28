@@ -13,6 +13,8 @@
 
 首次正式构建`d0dbddf`在最大化时暴露旧布局问题：书页受最大宽度约束，高度却随窗口拉长。现为书页设置默认阅读高度并垂直居中，小窗口仍随可用空间收缩；背景继续铺满窗口。修正后63项场景、108个布局、123项设置、84项GUI及30项参考检查再次通过，日志为`runs/guide-backdrop-resize-*.log`。首次检查记录为`runs/guide-backdrop-package-initial-verification.json`，截图`guide-backdrop-package-initial-maximized.png`保留；原配置和239份运行证据哈希未变。这是离线界面修正，不是新游戏验证。
 
+最终源码`a475edf`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/guide-backdrop-build.log`。以`--no-admin-launch`核对首页、最大化／还原、周常入口与右上返回，未点击保存、检测或运行。正常关闭退出码0；239份配置及运行证据哈希未变，125个UI素材、4份清单、23个上游文件逐项一致。截图为`runs/guide-backdrop-package-home.png`、`guide-backdrop-package-maximized.png`、`guide-backdrop-package-weekly.png`、`guide-backdrop-package-return.png`；核对记录`runs/guide-backdrop-package-verification.json`，备份`build/userdata-guide-backdrop-20261029_054410/`。EXE SHA-256为`52ac6592af7b675cb3b621a044ffc64825daef03550d8ef6752977f5076dc42b`。
+
 本次未启动、检测或操作游戏。日常与周常组合实机、周积分奖励、货币战争周常和真实玩家学习／注意力成本仍未验收；历史资源、失败记录和通关计数不变。
 
 ## 2026-10-29：底栏按当前操作显示
