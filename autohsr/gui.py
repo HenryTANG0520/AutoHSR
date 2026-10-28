@@ -112,6 +112,8 @@ class AutoHSRWindow:
             self._log("开拓力刷本未授权，当前仅收取委托与奖励。", "warning")
         if config_error:
             root.after(200, lambda: messagebox.showwarning("配置读取失败", config_error, parent=root))
+        from .desktop_scale import ResponsiveLayout
+        self.responsive_layout = ResponsiveLayout(self)
 
     def _variables(self) -> None:
         self.game_path = tk.StringVar(value=self.settings.game_path)
@@ -198,16 +200,16 @@ class AutoHSRWindow:
         self.form_variables.extend((self.weekly_enabled, self.weekly_mode, self.weekly_day,
                                     self.weekly_time, self.weekly_runs))
 
-    def _build(self):
+    def _build(self, *, scale=None):
         from .desktop import build_window
-        build_window(self, TASK_NAMES, {})
+        build_window(self, TASK_NAMES, {}, scale=scale)
 
     def _show_page(self, name):
         from .desktop import PAGE_TITLES
         self.save_label.pack_forget()
         if name == "settings" and getattr(self, "active_page", "home") != "settings":
             self.settings_return_page = getattr(self, "active_page", "home")
-            self.settings_return_focus = self.root.focus_get()
+            self.settings_return_focus = theme.focus_widget(self.root)
         self.active_page = name
         self.page_title.set(PAGE_TITLES[name])
         for key, page in self.pages.items():

@@ -32,6 +32,7 @@ class Surface(tk.Canvas):
                 self._paint_job=None
             if self._scene_binding:
                 self._scene_root.unbind("<Configure>",self._scene_binding)
+            self._photo=None
 
     def _scene_resize(self,event):
         if event.widget is self._scene_root and (event.width,event.height)!=self._scene_size:
@@ -491,7 +492,7 @@ class SummaryStrip(Surface):
         if text:
             p.text((0,4),p.wrap(text,p.width-65,13,1),13,t.GOLD if self.ui.input_error.get() or self.ui.result_alert.get() else t.LIGHT)
             p.text((p.width,4),"修改  ›" if self.ui.input_error.get() else "详情  ›",13,t.GOLD,"rt")
-            if self.focus_get() is self:
+            if self.tk.call("focus") == self._w:
                 p.line((0,p.height-1,p.width,p.height-1),t.GOLD)
             self.configure(cursor="hand2", takefocus=True)
         else:

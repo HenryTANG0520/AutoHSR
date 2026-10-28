@@ -48,6 +48,8 @@ def main():
                     else:
                         root.state("zoomed")
                     root.update()
+                    ui.responsive_layout.fit()
+                    root.update()
                     actual = ImageGrab.grab(window=root.winfo_id()).convert("RGB")
                     with Image.open(ROOT/"assets/ui/guide/backdrop.png") as source:
                         expected = ImageOps.fit(source.convert("RGB"), actual.size, Image.Resampling.LANCZOS)
@@ -69,6 +71,8 @@ def main():
                         actual.save(OUT/"home.png")
                 root.state("normal")
                 root.geometry(normal)
+                root.update()
+                ui.responsive_layout.fit()
                 root.update()
                 ui.weekly_button.state(("disabled",))
                 ui.weekly_button.invoke()

@@ -194,7 +194,7 @@ class DungeonList(Surface):
                 if mission.category == "planar":
                     p.text((w-14, y+78), "已有沉浸器优先", 11, t.MUTED, "rt")
                 p.line((12, y+99, w-12, y+99), "#e5e5e5", 1.3)
-                if selected or (self.hover == i and not self.locked) or (self.focus_get() == self and self.cursor == i):
+                if selected or (self.hover == i and not self.locked) or (self.tk.call("focus") == self._w and self.cursor == i):
                     p.box((1, y+1, w-1, y+99), None, 0, t.GOLD if selected else "#bab5a9", 1.5)
-                if self.focus_get() == self and self.cursor == i:
+                if self.tk.call("focus") == self._w and self.cursor == i:
                     p.poly((2, y+44, 8, y+50, 2, y+56), t.GOLD)

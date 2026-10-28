@@ -17,14 +17,15 @@ def note(parent, text=None, variable=None, *, row, style="CardHint.TLabel", scal
     return label
 
 
-def build_window(ui, task_names, server_names):
+def build_window(ui, task_names, server_names, *, scale=None):
     root = ui.root
-    ui.ui_scale = max(1., float(root.tk.call("tk", "scaling"))/(96/72))
+    ui.ui_scale = scale if scale is not None else max(1., float(root.tk.call("tk", "scaling"))/(96/72))
     s = ui.ui_scale
     d = lambda n: round(n*s)
     width, height = min(d(1536), root.winfo_screenwidth()-d(32)), min(d(864), root.winfo_screenheight()-d(55))
-    root.geometry(f"{width}x{height}")
-    root.minsize(min(d(1100), width), min(d(800), height))
+    if scale is None:
+        root.geometry(f"{width}x{height}")
+        root.minsize(min(d(1100), width), min(d(800), height))
     root.title("AutoHSR · 开拓指南")
     root.configure(bg=t.BG)
     ui.style = t.apply_theme(root, s)
@@ -47,7 +48,9 @@ def build_window(ui, task_names, server_names):
             ui.guide._position()
             ui.guide.redraw()
     ui.position_guide = position_guide
-    root.bind("<Configure>", position_guide, add="+")
+    if getattr(ui, "_guide_position_binding", None):
+        root.unbind("<Configure>", ui._guide_position_binding)
+    ui._guide_position_binding = root.bind("<Configure>", position_guide, add="+")
     body = ui.guide.content
     body.columnconfigure(0, weight=1)
     body.rowconfigure(0, weight=1)

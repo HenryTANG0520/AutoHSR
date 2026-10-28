@@ -54,9 +54,15 @@ def main():
                 assert theme.FONT == "SDK_SC_Web", "The bundled reference font was not registered"
                 root.update()
                 default_geometry = root.geometry()
-                for size in ("default", "minimum"):
-                    if size == "minimum":
-                        root.geometry("%dx%d" % root.minsize())
+                for size in ("default", "minimum", "maximized"):
+                    if size == "maximized":
+                        root.state("zoomed")
+                    else:
+                        root.state("normal")
+                        root.geometry(default_geometry if size == "default" else "%dx%d" % root.minsize())
+                    root.update()
+                    ui.responsive_layout.fit()
+                    root.update()
                     for page in ui.pages:
                         ui._show_page(page)
                         root.update()
@@ -91,7 +97,11 @@ def main():
                             root.update()
                             ImageGrab.grab(window=root.winfo_id()).save(OUT/(page+".png"))
                 for size in ("default", "minimum"):
+                    root.state("normal")
                     root.geometry(default_geometry if size == "default" else "%dx%d" % root.minsize())
+                    root.update()
+                    ui.responsive_layout.fit()
+                    root.update()
                     ui._show_page("home")
                     ui.active_operation = "plan"
                     ui.runner = object()  # No backend or input method is available.

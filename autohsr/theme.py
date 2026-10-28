@@ -150,6 +150,26 @@ def wrapped_label(parent, **kwargs):
     return label
 
 
+def focus_widget(root):
+    """Return the Python owner when focus is inside a Tcl-created popdown."""
+    name = str(root.tk.call("focus"))
+    while name:
+        try:
+            return root.nametowidget(name)
+        except KeyError:
+            name = name.rpartition(".")[0]
+    return None
+
+
+def _theme_image(root, image):
+    # Stable names let an inactive theme release its pixels and recreate them
+    # when revisited. Only the current scale's bitmap objects stay resident.
+    photo = ImageTk.PhotoImage(image, master=root,
+        name=f"{root._hsr_theme_name}_{len(root._hsr_images)}")
+    root._hsr_images.append(photo)
+    return photo
+
+
 def _button(root, style, scale, name, fill, ink, *, tab=False, option=False, background=PANEL):
     photos = []
     for state in ("normal","active","pressed","disabled"):
@@ -163,12 +183,12 @@ def _button(root, style, scale, name, fill, ink, *, tab=False, option=False, bac
         else:
             p.box((1,1,83,37), color, 18, GOLD if state in ("active","pressed") else "#b4b4b4", 1.4)
             p.box((5,5,79,33), color, 14, "#d5d5d5" if fill!=RAIL else "#54504a", 1)
-        photos.append(ImageTk.PhotoImage(p.finish(),master=root))
-    root._hsr_images.extend(photos)
+        photos.append(_theme_image(root, p.finish()))
     element = name+".border"
-    style.element_create(element,"image",photos[0],("disabled",photos[3]),("pressed",photos[2]),
-                         ("active",photos[1]),("focus",photos[1]),
-                         border=(round((8 if tab or option else 19)*scale),round((8 if tab else 1)*scale),round((8 if tab or option else 19)*scale),round(scale)),sticky="nsew")
+    if element not in style.element_names():
+        style.element_create(element,"image",photos[0],("disabled",photos[3]),("pressed",photos[2]),
+                             ("active",photos[1]),("focus",photos[1]),
+                             border=(round((8 if tab or option else 19)*scale),round((8 if tab else 1)*scale),round((8 if tab or option else 19)*scale),round(scale)),sticky="nsew")
     style.layout(name,[(element,{"sticky":"nsew","children":[("Button.padding",{"sticky":"nsew","children":[("Button.label",{"sticky":"nsew"})]})]})])
     style.configure(name,foreground=ink,background=fill,padding=(round(10*scale),round(7*scale)),font=(FONT,11),width=0,anchor="center",borderwidth=0)
     style.map(name,foreground=[("disabled","#8b8b8b"),("!disabled",ink)],background=[("disabled","#d3d3d3"),("!disabled",fill)])
@@ -183,11 +203,11 @@ def _form_elements(root, style, scale):
         for state in ((), *states):
             p = Painter(d(size[0]), d(size[1]), scale, None)
             draw(p, state)
-            photos.append(ImageTk.PhotoImage(p.finish(), master=root))
-        root._hsr_images.extend(photos)
-        style.element_create(name, "image", photos[0],
-            *((*state, photo) for state, photo in zip(states, photos[1:])),
-            border=d(border), padding=0, sticky=sticky)
+            photos.append(_theme_image(root, p.finish()))
+        if name not in style.element_names():
+            style.element_create(name, "image", photos[0],
+                *((*state, photo) for state, photo in zip(states, photos[1:])),
+                border=d(border), padding=0, sticky=sticky)
 
     def check(p, state):
         disabled, selected = "disabled" in state, "selected" in state
@@ -277,7 +297,10 @@ def apply_theme(root, scale):
     load_font(root)
     d = lambda n: round(n*scale)
     style = ttk.Style(root)
-    style.theme_use("clam")
+    root._hsr_theme_name = f"AutoHSR{round(scale*1000)}"
+    if root._hsr_theme_name not in style.theme_names():
+        style.theme_create(root._hsr_theme_name, parent="clam")
+    style.theme_use(root._hsr_theme_name)
     root._hsr_images=[]
     style.configure(".",font=(FONT,11),background=PANEL,foreground=TEXT)
     for name,color in (("TFrame",PANEL),("Card.TFrame",CARD),("Panel.TFrame",CARD),("Rail.TFrame",RAIL),("Footer.TFrame",BG)):
