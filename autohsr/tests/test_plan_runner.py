@@ -80,6 +80,24 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(report.weekly_plan["mode"], "differential_universe")
         self.assertEqual(self.calls[0][0].stamina_limit, 240)
 
+    def test_daily_proof_is_published_before_weekly_can_finish(self):
+        observed = []
+        original = self.factory
+        def factory(settings, emit, **options):
+            if options["operation"] == "differential_universe":
+                observed.extend(e for e in self.events if e["type"] == "plan_daily_result")
+                emit(dict(type="progress", stamina_spent=0))
+            return original(settings, emit, **options)
+        runner = self.runner()
+        runner.factory = factory
+        report = runner.run()
+        self.assertEqual(len(observed), 1)
+        self.assertTrue(observed[0]["report"]["daily_verified"])
+        self.assertEqual(observed[0]["report"]["stamina_spent"], 120)
+        self.assertEqual([e["phase"] for e in self.events if e["type"] == "plan_phase"], ["daily", "weekly"])
+        self.assertEqual([e["phase"] for e in self.events if e["type"] == "progress"], ["weekly"])
+        self.assertEqual(report.stamina_spent, 120)
+
     def test_disabled_and_not_due_do_not_create_du_runner(self):
         for values, status in ((dict(weekly_enabled=False), "disabled"), (dict(weekly_day=7), "not_due")):
             with self.subTest(status=status):

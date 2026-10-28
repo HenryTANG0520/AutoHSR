@@ -30,11 +30,19 @@ def main():
         class WeeklyFake(FakeRunner):
             def run(self):
                 if self.kwargs.get("weekly_plan") is None:
-                    return super().run()
+                    report = super().run()
+                    if self.kwargs.get("operation") == "daily":
+                        report.update(stamina_spent=120, battle_completed=12, battle_requested=12,
+                                      results=[dict(task="assignments", status="ok", detail="模拟完成委托"),
+                                               dict(task="battle", status="ok", detail="模拟完成 12 次，120 开拓力")])
+                    return report
                 guard = self.kwargs["weekly_plan"]
                 guard.receipt = WeeklyReceipt(run_root, "c"*24, guard.slot)
                 guard.already_complete = not guard.receipt.begin(guard.settings)
-                self.release.wait(5)
+                self.emit(dict(type="progress", stamina_spent=0))
+                self.emit(dict(type="log", message="模拟周常：累计确认消耗 0 开拓力"))
+                self.emit(dict(type="universe_progress", requested_runs=self.kwargs["du_runs"], completed_runs=0))
+                self.release.wait(20)
                 if guard.already_complete:
                     report = dict(status="success", operation="differential_universe", results=[])
                 elif self.stopped:
@@ -51,6 +59,12 @@ def main():
             ui = Window(root, config)
             try:
                 root.update()
+                ui.du_team.set("")
+                ui.differential_universe_runs.set("")
+                daily_settings = ui._read_settings(operation="plan")
+                check("daily_start_ignores_unrelated_unfinished_du_fields", daily_settings is not None and not errors)
+                ui.du_team.set("哈哈哈哈")
+                ui.differential_universe_runs.set("3")
                 ui.weekly_button.invoke()
                 root.update()
                 check("weekly_editor_one_click", ui.settings_tabs.select() == str(ui.settings_sections["weekly"]))
@@ -74,11 +88,29 @@ def main():
                       str(ui.weekly_mode_combo.cget("state")) == "disabled" and
                       ui.pause_button.winfo_manager() == "pack" and ui.stop_button.winfo_manager() == "pack")
                 first = FakeRunner.instances[0]
+                check("running_task_is_visible_and_card_opens_progress", "副本" in ui.activity.get() and
+                      ui.table.action_label("battle") == "查看进度")
                 first.release.set()
-                pump(root, lambda: len(FakeRunner.instances) == 2)
+                pump(root, lambda: len(FakeRunner.instances) == 2 and ui.training_meter.verified and "0/2" in ui.activity.get())
                 second = FakeRunner.instances[1]
                 check("daily_automatically_advances_to_frozen_weekly", second.kwargs["operation"] == "differential_universe" and
                       second.kwargs["du_runs"] == 2 and not second.settings.differential_universe_daily)
+                check("daily_proof_and_cost_visible_while_weekly_running", ui.busy and
+                      ui.table.item("daily", "values")[1] == "完成" and ui.confirmed_stamina == 120 and
+                      str(ui.save_button.cget("state")) == "disabled")
+                check("completed_card_uses_actual_run_counts_and_cost", ui.table.item("battle", "metrics") == ("12/12 次", "已确认 120 开拓力"))
+                second.emit(dict(type="universe_progress", requested_runs=2, completed_runs=1))
+                pump(root, lambda: "1/2" in ui.activity.get())
+                ui._restore()
+                root.update()
+                check_layout(root)
+                ImageGrab.grab(window=root.winfo_id()).save(OUT/"weekly-running.png")
+                ui._pause()
+                root.update()
+                check("pause_keeps_stage_and_verified_count", "已暂停" in ui.activity.get() and "1/2" in ui.activity.get())
+                ui._pause()
+                root.update()
+                check("resume_keeps_stage_and_verified_count", "正在运行" in ui.activity.get() and "1/2" in ui.activity.get())
                 second.release.set()
                 pump(root, lambda: not ui.busy)
                 check("combined_result_keeps_daily_and_distinguishes_score_rewards", ui.training_meter.verified and
@@ -106,6 +138,30 @@ def main():
                 ui._save_settings()
                 saved = Settings.load(config)
                 check("only_explicit_save_persists_weekly", saved.weekly_enabled and saved.weekly_runs == 2 and saved.weekly_time == "04:00")
+                previous = {key: ui.table.item(key) for key in ui.tasks}
+                ui._show_page("differential_universe")
+                ui.start_button.invoke()
+                pump(root, lambda: len(FakeRunner.instances) == 6 and ui.runner is not None)
+                check("independent_run_preserves_daily_cards_at_start", previous == {key: ui.table.item(key) for key in ui.tasks})
+                FakeRunner.instances[-1].release.set()
+                pump(root, lambda: not ui.busy)
+                check("independent_run_preserves_daily_cards_at_finish", previous == {key: ui.table.item(key) for key in ui.tasks})
+                summary = ui.summary.get()
+                ui._show_page("home")
+                ui.table.selected = "battle"
+                ui.table.activate()
+                root.update()
+                check("task_details_do_not_replace_overall_outcome", ui.summary_dialog.winfo_exists() and ui.summary.get() == summary)
+                ui.summary_dialog.destroy()
+                ui.overlay_logs.set(not ui.overlay_logs.get())
+                check("display_preferences_keep_daily_results", ui.table.action_label("battle") == "查看结果")
+                ui.challenge_count.set("1")
+                check("changed_daily_plan_returns_to_settings_actions", ui.table.action_label("battle") == "副本设置" and
+                      ui.table.item("battle", "values")[1] == "等待" and ui.table.item("battle", "metrics") is None and
+                      ui.training_meter.verified and ui.summary.get() == summary)
+                ui.table.activate()
+                root.update()
+                check("task_setup_opens_specific_control", ui.active_page == "tasks" and root.focus_get() == ui.dungeon_name_combo)
             finally:
                 if ui.busy:
                     ui._stop()

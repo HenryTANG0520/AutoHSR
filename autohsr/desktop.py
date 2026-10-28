@@ -4,7 +4,7 @@ from __future__ import annotations
 from tkinter import ttk
 
 from . import theme as t
-from .game_widgets import Guide, Header, PlanRibbon, SummaryStrip, TaskBoard, TrainingMeter
+from .game_widgets import ActivityStrip, Guide, Header, PlanRibbon, SummaryStrip, TaskBoard, TrainingMeter
 
 PAGE_TITLES = {"home": "每日实训", "tasks": "生存索引", "differential_universe": "旷宇纷争",
                "currency_wars": "旷宇纷争", "logs": "运行记录", "settings": "设置"}
@@ -258,9 +258,11 @@ def _footer(ui):
     ui.summary_label.grid(row=0, column=0, columnspan=2, sticky="ew")
     metrics = ttk.Frame(footer, style="Footer.TFrame")
     metrics.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, d(9)))
-    ttk.Label(metrics, textvariable=ui.status, style="FooterStatus.TLabel").pack(side="left")
+    metrics.columnconfigure(0, weight=1)
+    ui.activity_label = ActivityStrip(metrics, s, ui.activity)
+    ui.activity_label.grid(row=0, column=0, sticky="ew", padx=(0, d(18)))
     ui.save_label = ttk.Label(metrics, textvariable=ui.save_status, style="Footer.TLabel")
-    ui.save_label.pack(side="right")
+    ui.save_label.grid(row=0, column=1, sticky="e")
     left = ttk.Frame(footer, style="Footer.TFrame")
     left.grid(row=2, column=0, sticky="w")
     ui.save_button = ttk.Button(left, text="保存设置", style="Footer.TButton", command=ui._save_settings)

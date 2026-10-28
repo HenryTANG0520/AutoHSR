@@ -54,16 +54,17 @@ class PlanRunner:
                 return
             self._stop.wait(.1)
 
-    def _send(self, event):
+    def _send(self, event, phase):
         if event.get("type") == "paused":
             with self._lock:
                 self._paused = bool(event.get("paused"))
         if event.get("type") != "finished":
-            self.emit(event)
+            self.emit(dict(event, phase=phase))
 
-    def _run(self, settings, **options):
+    def _run(self, settings, *, phase, **options):
         self._checkpoint()
-        child = self.factory(settings, self._send, **options)
+        self.emit(dict(type="plan_phase", phase=phase))
+        child = self.factory(settings, lambda event: self._send(event, phase), **options)
         with self._lock:
             self.child = child
             if self._stop.is_set():
@@ -97,7 +98,7 @@ class PlanRunner:
             self._checkpoint()
             daily_selected = any(getattr(self.settings, name) for name in ("assignments", "battle", "daily", "mail", "battlepass"))
             if daily_selected:
-                daily = self._run(self.settings, operation="daily", new_battle_run=self.new_battle_run)
+                daily = self._run(self.settings, phase="daily", operation="daily", new_battle_run=self.new_battle_run)
                 report.weekly_plan["children"].append(dict(operation="daily", run_dir=daily.get("run_dir", "")))
                 for name in ("stamina_spent", "stamina_limit", "stamina_pending", "immersifiers_spent",
                              "immersifiers_pending", "battle_completed", "battle_requested", "daily_verified",
@@ -105,6 +106,7 @@ class PlanRunner:
                     if name in daily:
                         setattr(report, name, daily[name])
                 report.results.extend(TaskResult(r["task"], r["status"], r.get("detail", "")) for r in daily.get("results", []))
+                self.emit(dict(type="plan_daily_result", report=daily))
                 if daily.get("status") != "success" or daily.get("report_saved") is not True:
                     report.status = "stopped" if daily.get("status") == "stopped" else "partial"
                     self._weekly_result("not_started", "日常未完整结束；周常未开始。")
@@ -126,7 +128,7 @@ class PlanRunner:
                                           differential_universe_runs=self.settings.weekly_runs,
                                           differential_universe_daily=False, differential_universe_save=False,
                                           differential_universe_rewards=False)
-                weekly = self._run(weekly_settings, operation="differential_universe",
+                weekly = self._run(weekly_settings, phase="weekly", operation="differential_universe",
                                    du_runs=self.settings.weekly_runs, weekly_plan=guard)
                 report.weekly_plan["children"].append(dict(operation="differential_universe", run_dir=weekly.get("run_dir", "")))
                 report.differential_universe = weekly.get("differential_universe", {})

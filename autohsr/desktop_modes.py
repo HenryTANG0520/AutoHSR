@@ -114,9 +114,16 @@ def build_currency(ui):
 
     standard = ui.currency_sections["standard"]
     ttk.Label(standard, text="标准 A8 · 财富造物主 40", style="CardTitle.TLabel").grid(row=0, column=0, sticky="w", pady=(0, d(10)))
-    note(standard, "将进行局内购买、升级与装备分配。", row=1, style="Warning.TLabel", scale=s)
-    buttons(standard, 2, (("新开 A8-40 开发局", ui._currency_standard, None), ("接续已记录开发局", ui._currency_resume, None)))
-    note(standard, "开发中 · 整局未验收", row=3, style="Warning.TLabel", scale=s)
+    strategy = ttk.Frame(standard, style="Card.TFrame")
+    strategy.grid(row=1, column=0, sticky="w", pady=d(8))
+    ttk.Label(strategy, text="新局策略（仅本次）", style="Muted.TLabel").grid(row=0, column=0, padx=(0, d(14)))
+    ui.currency_strategy_combo = ttk.Combobox(strategy, textvariable=ui.currency_strategy,
+                                              values=("默认", "阿格莱雅", "希儿"), state="readonly", width=14)
+    ui.currency_strategy_combo.grid(row=0, column=1)
+    ui.setting_controls.append(ui.currency_strategy_combo)
+    note(standard, "将消耗局内金币购买角色和经验。", row=2, style="Warning.TLabel", scale=s)
+    buttons(standard, 3, (("新开 A8-40 开发局", ui._currency_standard, None), ("接续已记录开发局", ui._currency_resume, None)))
+    note(standard, "接续沿用本局策略 · 整局未验收", row=4, style="Warning.TLabel", scale=s)
 
     debug = ui.currency_sections["debug"]
     ttk.Label(debug, text="单步实验", style="CardTitle.TLabel").grid(row=0, column=0, sticky="w")

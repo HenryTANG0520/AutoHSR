@@ -274,6 +274,7 @@ class DifferentialUniverseWorkflow:
         self._forge_console_used = False
         self._combat_chest_attempts = 0
         self._reward_overlay_budget = 0
+        self._last_progress = None
         self.report["timeouts"] = dict(room_seconds=ROOM_TIMEOUT,run_seconds=RUN_TIMEOUT)
         run_dir=getattr(context.report,"run_dir",None)
         if isinstance(run_dir,(str,Path)) and run_dir:
@@ -312,6 +313,11 @@ class DifferentialUniverseWorkflow:
         temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         replace_file(temp,path)
         self.report["ledger_path"] = str(path)
+        progress = (self.report["requested_runs"], self.report["completed_runs"])
+        emit = getattr(getattr(self.ctx, "runner", None), "emit", None)
+        if callable(emit) and progress != self._last_progress:
+            emit(dict(type="universe_progress", requested_runs=progress[0], completed_runs=progress[1]))
+            self._last_progress = progress
 
     def _observe(self, scene: Scene, label="page") -> str:
         self._pages += 1

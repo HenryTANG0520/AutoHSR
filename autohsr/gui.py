@@ -45,6 +45,7 @@ class AutoHSRWindow:
         self.worker: threading.Thread | None = None
         self.busy = self.running = self.paused = self.stopping = self.closing = False
         self._has_run = False
+        self._daily_result_signature = None
         self.focus_waiting = False
         self.active_operation = "daily"
         self._f9_local_pressed = False
@@ -115,6 +116,9 @@ class AutoHSRWindow:
         self.summary = tk.StringVar()
         self.page_title = tk.StringVar(value="每日实训")
         self.current_task = tk.StringVar(value="等待开始")
+        self.activity = tk.StringVar(value=self.status.get())
+        self.status.trace_add("write", self._refresh_activity)
+        self.current_task.trace_add("write", self._refresh_activity)
         self.elapsed = tk.StringVar(value="00:00")
         self.stamina = tk.StringVar(value="0")
         self.battle_hint = tk.StringVar()
@@ -148,6 +152,7 @@ class AutoHSRWindow:
         self.currency_source_slot = tk.StringVar(value='3')
         self.currency_zone = tk.StringVar(value='后台')
         self.currency_target_level = tk.StringVar(value='保持')
+        self.currency_strategy = tk.StringVar(value='默认')
         self.du_status = tk.StringVar(value="乐园漫记")
         self.du_observation = tk.StringVar(value="暂无演算记录")
         self.training_result = tk.StringVar(value="unknown")
@@ -249,6 +254,15 @@ class AutoHSRWindow:
     def _form_signature(self) -> tuple[Any, ...]:
         return tuple(variable.get() for variable in self.form_variables)
 
+    def _daily_form_signature(self):
+        return tuple(variable.get() for variable in (self.game_path, self.target_name, self.target_location,
+            self.dungeon_category, self.challenge_count, self.stamina_limit, self.use_support,
+            self.daily_synthesis, *self.tasks.values()))
+
+    def _refresh_activity(self, *_):
+        task = self.current_task.get() if self.running else ""
+        self.activity.set(self.status.get()+(" · "+task if task else ""))
+
     @property
     def dirty(self) -> bool:
         return self._form_signature() != self._saved_signature
@@ -258,6 +272,9 @@ class AutoHSRWindow:
             return
         if not self.settings.allow_stamina_spend and self.tasks["battle"].get():
             self.tasks["battle"].set(False)
+        if not self.busy and self._has_run and self._daily_result_signature is not None and self._daily_form_signature() != self._daily_result_signature:
+            self._has_run = False
+            self._daily_result_signature = None
         self.save_status.set("未保存" if self.dirty else ("已保存" if self.config_path.exists() else "默认设置"))
         self.save_label.configure(foreground="#dcc391" if self.dirty else "#aeb8c7")
         selected = [label for key, label in TASK_NAMES.items() if self.tasks[key].get()]
@@ -282,7 +299,7 @@ class AutoHSRWindow:
         for control in self.setting_controls:
             control.configure(state=state)
         for name in ('currency_source_combo','currency_zone_combo','currency_level_combo','du_runs_combo','du_resume_combo','du_mode_combo',
-                     'weekly_mode_combo', 'weekly_day_combo', 'weekly_runs_combo'):
+                     'weekly_mode_combo', 'weekly_day_combo', 'weekly_runs_combo', 'currency_strategy_combo'):
             if hasattr(self,name):
                 getattr(self,name).configure(state='disabled' if self.busy else 'readonly')
         for control in self.weekly_run_controls:
@@ -308,7 +325,7 @@ class AutoHSRWindow:
             for name, label in TASK_NAMES.items():
                 selected = self.tasks[name].get()
                 detail = "开拓力刷本未授权" if name == "battle" and not allowed else ("" if selected else "未勾选")
-                self.table.item(name, values=(label, "等待" if selected else "跳过", detail), tags=() if selected else ("skipped",))
+                self.table.item(name, values=(label, "等待" if selected else "跳过", detail), tags=() if selected else ("skipped",), has_result=False, metrics=None)
         for button in (self.save_button, self.check_button, self.launch_button):
             button.configure(state=state)
         currency_page = getattr(self, "action_page", "") == "currency_wars"
@@ -367,13 +384,16 @@ class AutoHSRWindow:
                               ocr_confidence=float(self.ocr_confidence.get()))
             elif save or operation not in ("check", "launch"):
                 values.update(auto_launch=self.auto_launch.get(),
-                              differential_universe_runs=int(self.differential_universe_runs.get()),
-                              differential_universe_team=self.du_team.get().strip(),
-                              differential_universe_mode='periodic' if self.du_mode.get()=='周期演算' else 'normal',
-                              differential_universe_save=self.du_save.get(),
-                              differential_universe_rewards=self.du_rewards.get(),
-                              differential_universe_daily=self.du_daily.get(),
                               **{name: variable.get() if name != "battle" or self.settings.allow_stamina_spend else False for name, variable in self.tasks.items()})
+                if save:
+                    values.update(differential_universe_runs=int(self.differential_universe_runs.get()),
+                                  differential_universe_team=self.du_team.get().strip(),
+                                  differential_universe_mode='periodic' if self.du_mode.get()=='周期演算' else 'normal',
+                                  differential_universe_save=self.du_save.get(),
+                                  differential_universe_rewards=self.du_rewards.get(),
+                                  differential_universe_daily=self.du_daily.get())
+                elif operation == "plan" and self.weekly_enabled.get() and self.weekly_mode.get() == "差分宇宙":
+                    values["differential_universe_team"] = self.du_team.get().strip()
                 if operation == "reward_only":
                     values.update(assignments=False, battle=False, daily=True, mail=False, battlepass=False)
                 if values["battle"] and self.settings.allow_stamina_spend:
@@ -403,7 +423,7 @@ class AutoHSRWindow:
                 self._loading = False
                 self._form_changed()
             else:
-                self.save_status.set("本次使用当前表单；未写入配置。")
+                self.save_status.set("未保存" if self.dirty else ("已保存" if self.config_path.exists() else "默认设置"))
             return settings
         except (ValueError, TypeError, OSError, StopIteration) as exc:
             self.save_status.set("输入未通过检查；配置未改变。")
@@ -423,6 +443,7 @@ class AutoHSRWindow:
         if not running:
             self.paused = self.stopping = False
         self._refresh_controls()
+        self._refresh_activity()
 
     def _check(self) -> None:
         self._operation("check")
@@ -544,6 +565,11 @@ class AutoHSRWindow:
                 return
             du_options=dict(du_runs=settings.differential_universe_runs,
                             du_resume_active=resume,du_periodic_rank=rank)
+        currency_options = {}
+        if currency_standard:
+            strategies = {'默认': 'default', '阿格莱雅': 'aglaea', '希儿': 'seele'}
+            currency_options = dict(currency_resume=currency_resume,
+                                    currency_strategy=None if currency_resume else strategies[self.currency_strategy.get()])
         from .recovery import recovery_state, reward_only_settings
         new_battle_run = False
         if reward_only:
@@ -566,6 +592,7 @@ class AutoHSRWindow:
             return
         self.runner = None
         self.active_operation = operation
+        self.plan_phase = "daily" if operation == "plan" else ""
         deployment_label=f"备战{currency_source_slot}→空"+('前台' if currency_zone=='front' else '后台')
         self.plan.set("货币战争 · 整局验证 · 超频A0" if flow_test and currency_start_from_lobby else ("货币战争 · 连续流程验证"+(f" · 升级至Lv{currency_target_level}" if currency_target_level else " · 不购买经验")) if flow_test else "货币战争 · 当前节点战斗验证" if node_test else f"货币战争 · 单次{deployment_label}部署" if deploy_test else "货币战争 · 单次前台3→1拖动验证" if drag_test else "货币战争 · 只读识别 · 自动玩法未开放" if currency_wars else
                       f"差分宇宙 · {self.du_mode.get()} · {settings.differential_universe_runs} 局 · 预设编队 {settings.differential_universe_team} · 不消耗每日刷本预算" if differential_universe else
@@ -578,8 +605,11 @@ class AutoHSRWindow:
             self.plan.set('货币战争 · 配置标准A8-40 · 不开始对局' if currency_configure else
                           '货币战争 · 指南定位标准模式 · 不开始对局' if currency_locate else '货币战争 · 启动准备 · 不开始对局')
         if currency_standard:
-            self.plan.set('货币战争 · 标准A8-40开发 · ' + ('接续已记录对局' if currency_resume else '核实难度后新开对局'))
-        self._has_run = True
+            self.plan.set('货币战争 · 标准A8-40开发 · ' + ('接续已记录对局 · 沿用本局策略' if currency_resume else '新局策略：'+self.currency_strategy.get()))
+        daily_operation = operation in ("daily", "plan", "reward_only")
+        if daily_operation:
+            self._has_run = True
+            self._daily_result_signature = self._daily_form_signature()
         if operation == "plan":
             from .weekly_plan import plan_caption
             self.plan.set(self.plan.get()+"\n"+plan_caption(settings))
@@ -618,10 +648,11 @@ class AutoHSRWindow:
         self.summary.set("")
         self.output_tabs.select(0)
         self.table.selection_remove(*self.table.selection())
-        for name, label in TASK_NAMES.items():
-            enabled = getattr(settings, name)
-            detail = "开拓力刷本未授权" if name == "battle" and not settings.allow_stamina_spend else ("" if enabled else "未勾选")
-            self.table.item(name, values=(label, "等待" if enabled else "跳过", detail), tags=() if enabled else ("skipped",))
+        if daily_operation:
+            for name, label in TASK_NAMES.items():
+                enabled = getattr(settings, name)
+                detail = "开拓力刷本未授权" if name == "battle" and not settings.allow_stamina_spend else ("" if enabled else "未勾选")
+                self.table.item(name, values=(label, "等待" if enabled else "跳过", detail), tags=() if enabled else ("skipped",), has_result=False, metrics=None)
         self._log("开始标准A8-40开发；未知页面和反馈停下留证。" if currency_standard else "开始货币战争启动准备，不开始对局。" if currency_prepare else "开始差分宇宙自动演算。助手将最小化，让游戏保持前台。" if differential_universe else "开始货币战争流程推进验证。" if flow_test else "开始货币战争当前节点战斗验证。" if node_test else "开始货币战争单次部署验证。" if deploy_test else "开始货币战争单次拖动验证。" if drag_test else "开始货币战争只读识别。" if currency_wars else "开始执行每日任务。助手将最小化，让游戏保持前台。")
         self.root.iconify()
 
@@ -641,7 +672,7 @@ class AutoHSRWindow:
                         **du_options,
                         **(dict(currency_locate=True) if currency_locate else {}),
                         **(dict(currency_configure=True) if currency_configure else {}),
-                        **(dict(currency_resume=currency_resume) if currency_standard else {}),
+                        **currency_options,
                         **(dict(currency_control_probe=True) if currency_control_probe else {}),
                         **(dict(currency_timeout_probe=True) if currency_timeout_probe else {}),
                         **(dict(currency_source_slot=currency_source_slot,currency_zone=currency_zone) if deploy_test else {}),
@@ -719,7 +750,7 @@ class AutoHSRWindow:
     def _log(self, message: Any, level: str = "info") -> None:
         message = str(message)
         match = re.search(r"累计确认消耗\s*(\d+)\s*开拓力", message)
-        if self.running and match:
+        if self.running and match and not (self.active_operation == "plan" and getattr(self, "plan_phase", "") == "weekly"):
             self._progress(int(match.group(1)))
         self.log.configure(state="normal")
         self.log.insert("end", f"{time.strftime('%H:%M:%S')}  {message}\n", level)
@@ -739,14 +770,44 @@ class AutoHSRWindow:
         if task == "currency_wars":
             self.currency_status.set(detail)
             self.current_task.set("标准A8-40开发" if self.active_operation == 'currency_wars_standard' else "货币战争启动准备" if self.active_operation == 'currency_wars_prepare' else "货币战争连续流程验证" if self.active_operation == "currency_wars_flow_test" else "货币战争节点战斗验证" if self.active_operation == "currency_wars_node_test" else "货币战争部署验证" if self.active_operation == "currency_wars_deploy_test" else "货币战争拖动验证" if self.active_operation == "currency_wars_drag_test" else "货币战争只读识别")
-        if task in TASK_NAMES:
+        if task in TASK_NAMES and not (self.active_operation == "plan" and event.get("phase") == "weekly"):
+            self._has_run = True
+            if self._daily_result_signature is None:
+                self._daily_result_signature = self._daily_form_signature()
             tag = "success" if status in ("success", "ok", "completed", "done") else status
-            self.table.item(task, values=(TASK_NAMES[task], STATUS_NAMES.get(status, status), detail), tags=(tag,))
+            self.table.item(task, values=(TASK_NAMES[task], STATUS_NAMES.get(status, status), detail), tags=(tag,), has_result=True)
             if status == "running":
                 self.current_task.set(TASK_NAMES[task])
         if log:
             label = "周常" if task == "weekly" else "货币战争" if task == "currency_wars" else TASK_NAMES.get(task, task)
             self._log(f"{label}：{STATUS_NAMES.get(status, status)} {detail}".strip(), "error" if status in ("failed", "error") else "info")
+
+    def _plan_daily_result(self, report):
+        for result in report.get("results", []):
+            if isinstance(result, dict):
+                self._task(result, log=False)
+        if report.get("daily_verified") is True:
+            self._task(dict(task="daily", status="ok", detail="每日实训奖励已核实领取。"), log=False)
+            self.training_result.set("verified")
+        self._progress(report.get("stamina_spent"))
+        self._battle_result(report)
+        self._finalize_task_rows(str(report.get("status", "partial")))
+
+    def _battle_result(self, report):
+        completed, requested, spent = (report.get(name) for name in ("battle_completed", "battle_requested", "stamina_spent"))
+        if (all(type(value) is int for value in (completed, requested, spent))
+                and 0 <= completed <= requested and requested > 0 and spent >= 0):
+            self.table.item("battle", metrics=(f"{completed}/{requested} 次", f"已确认 {spent} 开拓力"))
+
+    def _universe_progress(self, event):
+        requested, completed = event.get("requested_runs"), event.get("completed_runs")
+        if type(requested) is not int or type(completed) is not int or not 1 <= requested <= 10 or not 0 <= completed <= requested:
+            return
+        progress = f"差分宇宙 · 已完成 {completed}/{requested} 局"
+        self.du_status.set(progress)
+        self.current_task.set(("周常 · " if self.active_operation == "plan" else "")+progress)
+        if self.active_operation == "plan":
+            self.weekly_status.set(progress)
 
     def _currency_observed(self, data: dict) -> None:
         from .currency_wars_pages import PAGE_LABELS
@@ -816,21 +877,26 @@ class AutoHSRWindow:
         if data.get("screenshot"):
             self.last_screenshot = Path(data["screenshot"])
 
+    def _show_task_setup(self, task):
+        self._show_page("tasks")
+        control = self.dungeon_name_combo if task == "battle" and self.tasks[task].get() else self.task_controls[task]
+        self.root.after_idle(control.focus_set)
+
     def _show_task_detail(self, _: tk.Event | None = None) -> None:
         selected = self.table.selection()
-        if selected and (not self.running or self.paused):
+        if selected:
             label, status, detail = self.table.item(selected[0], "values")
-            self.summary.set(f"{label} · {status}：{detail or '暂无详细说明'}")
-            self._show_summary()
+            self._show_summary(f"{label} · {status}\n{detail or '暂无详细说明'}", title=label)
 
-    def _show_summary(self) -> None:
-        if not self.summary.get():
+    def _show_summary(self, content=None, *, title="运行详情") -> None:
+        content = self.summary.get() if content is None else content
+        if not content:
             return
         previous = getattr(self, "summary_dialog", None)
         if previous is not None and previous.winfo_exists():
             previous.destroy()
         dialog = self.summary_dialog = tk.Toplevel(self.root)
-        dialog.title("运行详情")
+        dialog.title(title)
         dialog.transient(self.root)
         d = lambda value: round(value*self.ui_scale)
         dialog.geometry(f"{d(680)}x{d(340)}")
@@ -838,7 +904,7 @@ class AutoHSRWindow:
         dialog.configure(background=theme.CARD)
         text = self._text(dialog)
         text.pack(fill="both", expand=True, padx=d(12), pady=d(12))
-        self._replace_text(text, self.summary.get())
+        self._replace_text(text, content)
         ttk.Button(dialog, text="关闭", command=dialog.destroy).pack(pady=(0, d(12)))
         dialog.bind("<Escape>", lambda _: dialog.destroy())
         text.focus_set()
@@ -873,7 +939,9 @@ class AutoHSRWindow:
         if not currency and report.get("daily_verified") is True:
             self._task(dict(task="daily", status="ok", detail="每日实训奖励已核实领取。"), log=False)
             self.training_result.set("verified")
-        self._finalize_task_rows(status)
+        if report.get("operation", self.active_operation) in ("daily", "plan", "reward_only"):
+            self._finalize_task_rows(status)
+            self._battle_result(report)
         self._progress(report.get("stamina_spent", 0))
         self._freeze_clock()
         daily = "已验证" if report.get("daily_verified", False) else "未验证"
@@ -1021,8 +1089,16 @@ class AutoHSRWindow:
                     self._task(event)
                 elif kind == "currency_wars":
                     self._currency_observed(event.get("data", {}))
+                elif kind == "plan_phase":
+                    self.plan_phase = event.get("phase", "")
+                    self.current_task.set("核对本周演算记录" if self.plan_phase == "weekly" else "准备日常")
+                elif kind == "plan_daily_result":
+                    self._plan_daily_result(event.get("report", {}))
+                elif kind == "universe_progress":
+                    self._universe_progress(event)
                 elif kind == "progress":
-                    self._progress(event.get("stamina_spent"))
+                    if not (self.active_operation == "plan" and event.get("phase") == "weekly"):
+                        self._progress(event.get("stamina_spent"))
                 elif kind == "paused":
                     self._pause_state(bool(event.get("paused", False)))
                 elif kind == "focus_wait":
@@ -1056,7 +1132,8 @@ class AutoHSRWindow:
                     self.runner = None
                     if kind == "run_error":
                         self._freeze_clock()
-                        self._finalize_task_rows("failed")
+                        if self.active_operation in ("daily", "plan", "reward_only"):
+                            self._finalize_task_rows("failed")
                         self.current_task.set("执行失败")
                     self._set_busy(False)
                     self.status.set("● 执行失败")

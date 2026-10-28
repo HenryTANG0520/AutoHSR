@@ -310,13 +310,16 @@ def main():
                     '标准A8财富造物主40已核实' in ui.currency_observation.get() and
                     '未开始新对局' in ui.currency_observation.get() and
                     '玩法未完成' in ui.summary.get() and config.read_bytes() == original)
-                for resume in (False, True):
+                for resume, strategy, value in ((False, '默认', 'default'), (False, '阿格莱雅', 'aglaea'),
+                                                 (False, '希儿', 'seele'), (True, '阿格莱雅', None)):
+                    ui.currency_strategy.set(strategy)
                     (ui._currency_resume if resume else ui._currency_standard)()
                     pump(root, lambda: ui.runner is not None)
                     standard_runner = FakeRunner.instances[-1]
                     check('currency_standard_resume_scope' if resume else 'currency_standard_start_scope',
                         standard_runner.kwargs['operation'] == 'currency_wars_standard' and
                         standard_runner.kwargs.get('currency_resume') is resume and
+                        standard_runner.kwargs.get('currency_strategy') == value and
                         ui.current_task.get() == '标准A8-40开发' and
                         all(str(w.cget('state')) == 'disabled' for w in ui.setting_controls))
                     standard_runner.release.set()
@@ -324,6 +327,7 @@ def main():
                     check('currency_standard_resume_is_not_acceptance' if resume else 'currency_standard_start_is_not_acceptance',
                         '已核实开局' in ui.currency_observation.get() and '整局未完成' in ui.currency_observation.get() and
                         '标准开发结束' in ui.summary.get() and config.read_bytes() == original)
+                check('strategy_picker_returns_readonly_without_saving', str(ui.currency_strategy_combo.cget('state')) == 'readonly' and config.read_bytes() == original)
                 ui.currency_drag_button.invoke()
                 pump(root, lambda: ui.runner is not None)
                 drag_runner = FakeRunner.instances[-1]

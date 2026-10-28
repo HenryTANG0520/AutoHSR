@@ -182,7 +182,7 @@ class TaskBoard(Surface):
     def __init__(self,parent,scale,ui,names):
         super().__init__(parent,scale,height=round(350*scale),takefocus=True)
         self.ui,self.names=ui,names
-        self.records={key:dict(values=(label,"等待",""),tags=()) for key,label in names.items()}
+        self.records={key:dict(values=(label,"等待",""),tags=(),has_result=False,metrics=None) for key,label in names.items()}
         self.offset,self.selected,self.hover=0,None,None
         self.hitboxes={}
         self.visible_count=4
@@ -227,12 +227,18 @@ class TaskBoard(Surface):
 
     def activate(self):
         self.selected=self.selected or list(self.names)[self.offset]
-        if self.ui._has_run:
+        if self.records[self.selected]["has_result"]:
             self.ui._show_task_detail()
         else:
-            self.ui._show_page("tasks")
+            self.ui._show_task_setup(self.selected)
         self.redraw()
         return "break"
+
+    def action_label(self, key):
+        if self.records[key]["has_result"]:
+            return "查看进度" if self.records[key]["values"][1] == "进行中" else "查看结果"
+        return {"assignments":"委托设置", "battle":"副本设置", "daily":"实训设置",
+                "mail":"邮件设置", "battlepass":"勋礼设置"}[key]
 
     def _target(self,e):
         x,y=e.x/self.scale,e.y/self.scale
@@ -294,9 +300,11 @@ class TaskBoard(Surface):
                 value=self.ui.challenge_count.get()+" 次" if self.ui.tasks[key].get() else "0 次"
                 from .dungeon_ui import selected_category
                 try:
-                    sub=f"{int(self.ui.challenge_count.get())*selected_category(self.ui).cost} 开拓力" if self.ui.tasks[key].get() else "未启用"
+                    sub=f"预计 {int(self.ui.challenge_count.get())*selected_category(self.ui).cost} 开拓力" if self.ui.tasks[key].get() else "未启用"
                 except ValueError:
                     sub="次数待填写"
+                if self.records[key]["metrics"] is not None:
+                    value, sub = self.records[key]["metrics"]
             elif key=="daily":
                 value="500"
                 sub="活跃目标"
@@ -307,7 +315,7 @@ class TaskBoard(Surface):
             p.text((x+64,resource_y+29),sub,13,t.MUTED)
             with p.clip((x,card_bottom,right,h-32),7):
                 p.asset("card-footer.png",(x,card_bottom,right,h-32))
-            p.text((x+width/2,card_bottom+40),"查看结果" if self.ui._has_run else "任务设置",19,"#d8ba78","mm")
+            p.text((x+width/2,card_bottom+40),self.action_label(key),19,"#d8ba78","mm")
             if selected:
                 p.box((x-1,0,right+1,h-31),None,7,t.GOLD,2)
             self.hitboxes[key]=(x,0,right,h-30)
@@ -345,3 +353,13 @@ class SummaryStrip(Surface):
             self.configure(cursor="hand2")
         else:
             self.configure(cursor="")
+
+
+class ActivityStrip(Surface):
+    def __init__(self, parent, scale, variable):
+        super().__init__(parent, scale, bg=t.BG, height=round(23*scale))
+        self.variable = variable
+        self.watch(variable)
+
+    def paint(self, p):
+        p.text((0, 2), p.wrap(self.variable.get(), p.width-2, 13, 1), 13, t.LIGHT)

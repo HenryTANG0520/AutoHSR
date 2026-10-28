@@ -48,6 +48,8 @@ def main():
             ui = AutoHSRWindow(root, config)
             try:
                 assert theme.FONT == "SDK_SC_Web", "The bundled reference font was not registered"
+                root.update()
+                default_geometry = root.geometry()
                 for size in ("default", "minimum"):
                     if size == "minimum":
                         root.geometry("%dx%d" % root.minsize())
@@ -76,6 +78,30 @@ def main():
                                 notebook.select(0)
                             root.update()
                             ImageGrab.grab(window=root.winfo_id()).save(OUT/(page+".png"))
+                for size in ("default", "minimum"):
+                    root.geometry(default_geometry if size == "default" else "%dx%d" % root.minsize())
+                    ui._show_page("home")
+                    ui.active_operation = "plan"
+                    ui.runner = object()  # No backend or input method is available.
+                    ui._set_busy(True, True)
+                    ui._plan_daily_result(dict(status="success", daily_verified=True, stamina_spent=240,
+                        battle_completed=6, battle_requested=6, results=[dict(task="battle", status="ok", detail="模拟结果")]))
+                    ui._universe_progress(dict(requested_runs=2, completed_runs=1))
+                    for paused in (False, True):
+                        ui._pause_state(paused)
+                        ui._restore()
+                        root.update()
+                        check_layout(root)
+                        cases.append(dict(dpi=round(scale*100), size=size, page="home", state="paused" if paused else "running"))
+                        if scale == 1.5 and size == "default":
+                            ImageGrab.grab(window=root.winfo_id()).save(OUT/("paused.png" if paused else "running.png"))
+                    ui.runner = None
+                    ui._set_busy(False)
+                ui._has_run = False
+                ui._daily_result_signature = None
+                ui.active_operation = "daily"
+                ui.training_result.set("unknown")
+                ui._refresh_controls()
                 ui._show_page("home")
                 root.update()
                 assert not ui.training_meter.verified
@@ -115,12 +141,13 @@ def main():
                 ui._show_page("home")
                 board = ui.table
                 for key in ui.tasks:
-                    board.item(key, values=(key, "部分完成", "完整的详细结果："+key))
+                    board.item(key, values=(key, "部分完成", "完整的详细结果："+key), has_result=True)
                 board.move(9)
                 root.update()
                 assert board.selection() == ("battlepass",) and "battlepass" in board.hitboxes
+                summary = ui.summary.get()
                 board.activate()
-                assert "完整的详细结果：battlepass" in ui.summary.get()
+                assert ui.summary.get() == summary
                 root.update()
                 assert ui.summary_dialog.winfo_exists()
                 from tkinter.scrolledtext import ScrolledText
