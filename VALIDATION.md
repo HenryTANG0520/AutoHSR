@@ -13,6 +13,8 @@
 
 首版`fb57818`构建并打开正式EXE，发现首次进入设置时选中圆环显示、下划线缺失。补充真实画布像素检查后重现失败，日志`runs/settings-shell-first-entry-before.log`；新增分类按钮映射与导航布局事件触发重绘，最终**123项设置检查通过**，`runs/settings-shell-first-entry-final.log`，覆盖三档缩放首次进入后的下划线及原有全部设置路径。首版EXE的配置和运行记录239份哈希未变，已正常关闭；首版核对记录、构建日志及截图保留为`settings-shell-package-initial-verification.json`、`settings-shell-initial-build.log`、`settings-shell-package-initial-weekly.png`，不混作最终版本。
 
+最终源码`e782372`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/settings-shell-build.log`。以`--no-admin-launch`打开正式程序，核对首次进入周常设置的完整选中标记、管理员按钮列及右上返回每日实训，正常关闭退出码0。实际截图为`runs/settings-shell-package-weekly.png`、`settings-shell-package-admin.png`、`settings-shell-package-return.png`；最终模拟截图另存`runs/settings-shell-final-ui/`。239份配置及运行证据哈希未变，123个UI素材、3份清单、23个上游文件一致；记录`runs/settings-shell-package-verification.json`，备份`build/userdata-settings-shell-20261029_045325/`。EXE SHA-256为`5b4a919adfdb870a69e5f33e9e4a859e25f63597cf3862a0e61f073e98d6211e`。文档相对链接和`git diff --check`通过，7处历史忽略报告链接在原工作区核对。
+
 本次未启动、检测或操作真实游戏。日常周常组合实机、周积分奖励、货币战争周常和真实玩家学习／注意力成本仍未验收；历史资源、失败记录和通关计数不变。
 
 ## 2026-10-29：设置行布局与明确开关状态
