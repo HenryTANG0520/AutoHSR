@@ -61,6 +61,10 @@ def _next_action(scene, confidence=.65, *, session=None):
         purchase = purchase_action(scene, session or {}, confidence)
         if purchase is not None:
             return purchase
+        from .currency_wars_standard_refresh import refresh_action
+        refresh = refresh_action(scene,session or {},confidence)
+        if refresh is not None:
+            return refresh
         from .currency_wars_standard_market import close_standard_shop
         target = close_standard_shop(scene,session or {},confidence)
         payload, purchased = shop_return_values(scene, session, confidence)
@@ -345,7 +349,7 @@ def run_standard(c):
             action['decision'] = dict(name=choice.details[0],star=choice.details[1],tier=choice.details[2],
                                       zone=choice.details[3],score=choice.details[4],policy=choice.details[5])
             store.persist()
-        elif choice.intent in ('buy_standard_offer','buy_standard_experience'):
+        elif choice.intent in ('buy_standard_offer','buy_standard_experience','refresh_standard_shop'):
             action['decision'] = dict(strategy=choice.details[0], score=choice.details[1],
                                       reasons=list(choice.details[2]), policy=choice.details[3])
             store.persist()
@@ -392,10 +396,10 @@ def run_standard(c):
                     ready = transition_ready(choice, after, c.settings.ocr_confidence, before=scene)
                 stable = stable+1 if ready else 0
                 required = 2 if choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable',
-                                                    'standard_offer_bought','standard_experience_bought') else 1
+                                                    'standard_offer_bought','standard_experience_bought','standard_shop_refreshed') else 1
                 if stable >= required:
                     after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
-                    if choice.intent in ('buy_standard_offer','buy_standard_experience'):
+                    if choice.intent in ('buy_standard_offer','buy_standard_experience','refresh_standard_shop'):
                         from .currency_wars_standard_trading import financial_feedback
                         from .currency_wars_standard_ledger import valid_receipt
                         receipt = financial_feedback(choice, scene, after, c.settings.ocr_confidence)
@@ -403,7 +407,7 @@ def run_standard(c):
                             raise AutomationError('标准交易收据与原意图不符，保留待核对状态。')
                     action.update(status='verified', after=after_path)
                     store.data.update(action_status='transition_verified', screenshot=action['after'])
-                    if choice.intent in ('buy_standard_offer','buy_standard_experience'):
+                    if choice.intent in ('buy_standard_offer','buy_standard_experience','refresh_standard_shop'):
                         from .currency_wars_standard_trading import record_financial_feedback
                         record_financial_feedback(store.data, choice, receipt)
                     if choice.intent == 'start_standard_a8_40':
@@ -434,7 +438,7 @@ def run_standard(c):
                         action['feedback'] = deployment_feedback(scene,after,choice.target,c.settings.ocr_confidence)
                         transfer_collection(store.data,scene,after,choice.target,action['after'],c.settings.ocr_confidence)
                     elif choice.intent not in ('close_standard_unit','open_standard_shop','close_standard_shop',
-                                                'buy_standard_experience'):
+                                                'buy_standard_experience','refresh_standard_shop'):
                         store.data.pop('collection',None)
                     if choice.intent == 'close_standard_shop':
                         nodes = store.data.setdefault('shop_observed_nodes',[])

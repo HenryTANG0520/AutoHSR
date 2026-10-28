@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from .currency_wars_economy import Mode, assess_spend
 
 
-POLICY = 'standard-native-v1'
+POLICY = 'standard-native-v2'
 STRATEGIES = ('default', 'aglaea', 'seele')
 PREFERRED = {
     'default': (),
@@ -115,3 +115,29 @@ def can_buy_experience(snapshot, strategy='default'):
     required = ((remaining+3)//4)*4
     reserve = 0 if snapshot.hp <= 40 or snapshot.gold < 10 else 10
     return snapshot.gold-reserve >= required
+
+
+def refresh_reason(snapshot, strategy, price, count, spent):
+    from .currency_wars_standard_refresh import MAX_NODE_REFRESHES, MAX_NODE_REFRESH_SPEND
+    strategy = _strategy(strategy)
+    if (not snapshot.roster_complete or snapshot.gold is None or snapshot.hp is None or snapshot.hp <= 0
+            or snapshot.level is None or snapshot.bench_capacity is None or snapshot.bench_occupied is None
+            or snapshot.bench_occupied >= snapshot.bench_capacity or snapshot.capacity is None
+            or sum(unit.zone != 'bench' for unit in snapshot.roster) != snapshot.capacity
+            or type(price) is not int or not 0 <= price <= 99 or count >= MAX_NODE_REFRESHES
+            or spent+price > MAX_NODE_REFRESH_SPEND or can_buy_experience(snapshot,strategy)):
+        return None
+    reserve = 0 if snapshot.hp <= 40 or snapshot.gold < 10 else 10
+    if snapshot.gold-price < reserve+(1 if price else 0):
+        return None
+    names = {unit.name for unit in snapshot.roster}
+    if strategy == 'default':
+        return '成长预算不足时寻找可培养角色；保留利息和购买余量' if any(
+            unit.star is not None and unit.star < 3 for unit in snapshot.roster) else None
+    core = PREFERRED[strategy][0]
+    highest = max((unit.star or 0 for unit in snapshot.roster if unit.name == core),default=0)
+    if strategy == 'seele' and snapshot.level < growth_target(snapshot,strategy):
+        return None
+    if highest < 3 or set(PREFERRED[strategy][1:])-names:
+        return '按当前已核实核心星级和成长阶段寻找核心或缺失协同角色'
+    return None

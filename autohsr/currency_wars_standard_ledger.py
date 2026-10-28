@@ -12,7 +12,7 @@ FREE_ACTIONS = frozenset((
     'settle_standard_final_victory', 'settle_standard_match_rating',
     'settle_standard_match_summary', 'settle_standard_match_statistics',
 ))
-PAID_ACTIONS = frozenset(('buy_standard_offer', 'buy_standard_experience'))
+PAID_ACTIONS = frozenset(('buy_standard_offer', 'buy_standard_experience', 'refresh_standard_shop'))
 
 
 def valid_receipt(action):
@@ -43,6 +43,19 @@ def valid_receipt(action):
                 and receipt.get('bench_before') == target[7] and isinstance(receipt.get('bench_after'), str)
                 and re.fullmatch(r'[0-9a-f]{64}', receipt['bench_after']) is not None
                 and receipt['bench_after'] != target[7] and receipt.get('bench_changed') is True)
+    if action['action'] == 'refresh_standard_shop':
+        if (type(target[4]) is not int or not 0 <= target[4] <= 99 or price != target[4]
+                or receipt.get('level_after') != target[3]
+                or any(not isinstance(v,str) or re.fullmatch(r'[0-9a-f]{64}',v) is None for v in target[5:])
+                or receipt.get('table_before') != target[5] or receipt.get('table_after') == target[5]
+                or receipt.get('bench_before') != target[6] or receipt.get('bench_after') != target[6]):
+            return False
+        from .currency_wars_standard_refresh import table_digest
+        try:
+            return (table_digest(receipt.get('offers_before')) == target[5]
+                    and table_digest(receipt.get('offers_after'),complete=True) == receipt.get('table_after'))
+        except ValueError:
+            return False
     if (any(type(value) is not int for value in target[4:]) or not 0 <= target[4] < target[5] <= 9999
             or not target[3] < target[6] <= 10 or price != 4 or receipt.get('hp_after') != target[2]):
         return False

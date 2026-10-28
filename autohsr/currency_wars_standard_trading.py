@@ -9,7 +9,7 @@ from .currency_wars_deployment import _crop, _texture, backend_layout, bench_fac
 from .currency_wars_match import unit_name
 from .currency_wars_standard_ledger import ledger_status, valid_receipt
 from .currency_wars_standard_policy import POLICY, can_buy_experience, growth_target, rank_standard_offers
-from .currency_wars_state import ShopOffer, StrategySnapshot
+from .currency_wars_state import FactEvidence, ShopOffer, StrategySnapshot
 from .models import AutomationError, normalize
 
 
@@ -57,20 +57,34 @@ def _scope(session, own_intent):
     return prior
 
 
-def purchase_action(scene, session, confidence=.65):
-    from .currency_wars_standard_flow import StandardAction
-    from .currency_wars_market import overclock_board, shop_trait_facts
-    prior = _prior(session, 'buy_standard_offer')
-    actions = prior.get('actions', [])
-    if actions and actions[-1].get('status') == 'pending' and actions[-1].get('action') in (
-            'close_standard_shop', 'close_standard_shop_after_purchase'):
-        prior = _prior(prior, actions[-1]['action'])
-    if prior.get('actions') and prior['actions'][-1].get('action') == 'buy_standard_offer':
-        return None  # Recollect after one purchase, before deciding another.
+def _shop_balance(session, before):
+    """Trace this opening's refresh receipts back to its unchanged roster."""
+    from .currency_wars_standard_refresh import table_digest
+    chain = []
+    for action in reversed(session.get('actions',[])):
+        if action.get('action') == 'open_standard_shop' and action.get('status') == 'verified':
+            break
+        if action.get('action') != 'refresh_standard_shop' or not valid_receipt(action):
+            raise AutomationError('当前商店没有连续已核实的开店／刷新来源。')
+        chain.append(action)
+    else:
+        raise AutomationError('商店刷新缺少已核实开店来源。')
+    gold, table = before.get('gold'), None
+    for action in reversed(chain):
+        target,receipt = action['target'],action['receipt']
+        if ((target[0],target[1],target[2],target[3]) != (before.get('node'),gold,before.get('hp'),before.get('level'))
+                or target[6] != hashlib.sha256(''.join(session.get('pre_shop_bench',{}).values()).encode('ascii')).hexdigest()
+                or table is not None and target[5] != table_digest(table,complete=True)):
+            raise AutomationError('刷新账本的节点、余额或报价不连续。')
+        gold,table = receipt['gold_after'],receipt['offers_after']
+    return gold,table
+
+
+def _shop_snapshot(scene, session, own_intent, confidence=.65):
+    from .currency_wars_market import overclock_board
+    from .currency_wars_standard_refresh import offer_table
+    prior = _scope(session,own_intent)
     raw = session.get('pre_shop_snapshot', {})
-    if not raw.get('roster_complete'):
-        return None  # Legacy read-only shop observations keep their contract.
-    prior = _scope(prior, 'buy_standard_offer')
     try:
         # asdict keeps tuples in the live process; a persisted/reloaded
         # session contains JSON arrays. Parse the same canonical shape in both.
@@ -78,22 +92,48 @@ def purchase_action(scene, session, confidence=.65):
     except (ValueError, TypeError) as error:
         raise AutomationError('开店前完整局面记录无效，未交易。') from error
     state = read_match(scene, confidence)
-    history = prior.get('actions', [])
+    gold,table = _shop_balance(prior,raw)
     if (not state or state.page != 'shop' or before.transaction_status != 'clear'
             or before.mode != 'standard' or before.rank != 8 or before.wealth != 40
             or before.game_version != '4.6' or before.rules_version != '4.6'
             or before.input_epoch != prior['collection']['input_epoch']
             or not before.known('mode','rank','wealth','game_version','rules_version','transaction_status',
                                 'node','gold','hp','level','roster','roster_complete','capacity','bench_capacity','bench_occupied')
-            or (state.node, state.gold, state.level) != (before.node, before.gold, before.level)
+            or (state.node, state.gold, state.level) != (before.node, gold, before.level)
             or state.hp not in (None, before.hp) or before.hp <= 0
-            or not history or history[-1].get('action') != 'open_standard_shop'
-            or history[-1].get('status') != 'verified'
             or backend_layout(scene.image)[0] != 6 or overclock_board(scene)
             or bench_signatures(scene) != session.get('pre_shop_bench')):
         raise AutomationError('商店或备战席与已核实开店来源不一致，未交易。')
+    if table is not None:
+        try:
+            unchanged = offer_table(state) == table
+        except ValueError:
+            unchanged = False
+        if not unchanged:
+            raise AutomationError('当前五格报价与最近已核实刷新不一致。')
     offers = tuple(ShopOffer(offer.slot, offer.name, price=offer.cost) for offer in state.offers)
-    snapshot = replace(before, page='shop', offers=offers, observed_at=scene.captured_at)
+    source = 'shop_observation:'+str(scene.captured_at)
+    evidence = tuple(e for e in before.evidence if e.field not in ('gold','offers','experience'))
+    return replace(before,page='shop',gold=state.gold,offers=offers,experience=state.experience,
+                   observed_at=scene.captured_at,evidence=evidence+tuple(
+                       FactEvidence(field,source,before.input_epoch) for field in ('gold','offers','experience')
+                       if getattr(state,field) is not None))
+
+
+def purchase_action(scene, session, confidence=.65):
+    from .currency_wars_standard_flow import StandardAction
+    from .currency_wars_market import shop_trait_facts
+    prior = _prior(session, 'buy_standard_offer')
+    actions = prior.get('actions', [])
+    if actions and actions[-1].get('status') == 'pending' and actions[-1].get('action') in (
+            'close_standard_shop', 'close_standard_shop_after_purchase'):
+        prior = _prior(prior, actions[-1]['action'])
+    if prior.get('actions') and prior['actions'][-1].get('action') == 'buy_standard_offer':
+        return None  # Recollect after one purchase, before deciding another.
+    if not session.get('pre_shop_snapshot', {}).get('roster_complete'):
+        return None  # Legacy read-only shop observations keep their contract.
+    snapshot = _shop_snapshot(scene,prior,'buy_standard_offer',confidence)
+    state = read_match(scene,confidence)
     traits, progress = shop_trait_facts(scene, confidence)
     ranking = rank_standard_offers(snapshot, session.get('strategy', 'default'), traits=traits, progress=progress)
     if not ranking:
@@ -104,7 +144,7 @@ def purchase_action(scene, session, confidence=.65):
                and token.within((left,.265,left+.115,.305)) and unit_name(token.text) == decision.name]
     if len(targets) != 1:
         raise AutomationError('标准商店候选名称不唯一，未购买。')
-    payload = (state.node, state.gold, before.hp, state.level, decision.slot,
+    payload = (state.node, state.gold, snapshot.hp, state.level, decision.slot,
                decision.name, decision.price, bench_signature(scene))
     return StandardAction('buy_standard_offer', 'standard_offer_bought', targets[0],
                           details=(session.get('strategy','default'),decision.score,decision.reasons,POLICY), payload=payload)
@@ -130,6 +170,9 @@ def experience_action(scene, session, confidence=.65):
 
 
 def financial_feedback(choice, before, after, confidence=.65):
+    if choice.intent == 'refresh_standard_shop':
+        from .currency_wars_standard_refresh import refresh_feedback
+        return refresh_feedback(choice,before,after,confidence)
     first, last = read_match(before, confidence), read_match(after, confidence)
     if (first is None or last is None or first.node != last.node or first.node != choice.payload[0]
             or first.gold != choice.payload[1] or first.level != choice.payload[3]
@@ -201,12 +244,14 @@ def shop_return_values(scene, session, confidence=.65):
     before, state = session.get('pre_shop_snapshot', {}), read_match(scene, confidence)
     previous = actions[-1] if actions else {}
     purchased = previous.get('action') == 'buy_standard_offer'
-    gold = previous.get('receipt', {}).get('gold_after') if purchased else before.get('gold')
+    refreshed = previous.get('action') == 'refresh_standard_shop'
+    gold = previous.get('receipt', {}).get('gold_after') if purchased else _shop_balance(dict(session,actions=actions),before)[0]
     if (not state or state.page != 'shop' or session.get('status') != 'active'
             or before.get('hp') is None or state.hp not in (None,before['hp'])
             or (state.node,state.gold,state.level) != (before.get('node'),gold,before.get('level'))
             or previous.get('status') != 'verified'
             or (purchased and not valid_receipt(previous))
-            or (not purchased and previous.get('action') != 'open_standard_shop')):
+            or (refreshed and (not valid_receipt(previous) or bench_signatures(scene) != session.get('pre_shop_bench')))
+            or (not purchased and not refreshed and previous.get('action') != 'open_standard_shop')):
         raise AutomationError('收起标准商店前缺少同节点、余额或已核实交易来源。')
     return (state.node,state.gold,before['hp'],state.level), purchased

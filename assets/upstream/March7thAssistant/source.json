@@ -50,6 +50,14 @@
         "move_character"
       ],
       "kind": "native occupied-slot exchanges with two independently inspected identities; returned board alone is not movement proof"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_refresh.py",
+      "reference_functions": [
+        "buy_aglaea",
+        "buy_seele"
+      ],
+      "kind": "growth-phase refresh decisions rewritten for observed button prices, per-node limits, one Context click and an immutable five-offer/gold/bench receipt chain"
     }
   ]
 }
