@@ -776,3 +776,9 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 参考固定March7thAssistant的`Echoofwar.start`及`Daily.prepare_daily`，将当前0～3次周额度与清体力前的优先执行适配为[原生历战周计划](../autohsr/echo_weekly.py)。源码Git blob、SHA-256、固定提交和GPL v3来源见[清单](upstream/March7thAssistant/source.json)。本项目使用日常开始时间、04:00游戏周和单份冻结预算，独立核实周额度、可见结算与本次实际完成，不迁入上游配置时间戳写回、输入或定时器。
 
 没有新增图像、模型或游戏采集，检查沿用合成窗口与场景。缩短新归档目录键并保留完整账本摘要是本项目对Windows路径长度的修复，既有目录不迁移或覆盖。培养目标和支援角色偏好仅完成源码核对，尚未适配，不在本轮署为已实现；交互、运行证据及实机边界见[说明](../docs/echo-of-war-plan.md)。
+
+## 2026-10-30 支援角色与好友偏好
+
+参考固定March7thAssistant的`Character.borrow`及角色／好友查找、角标遮罩检查，适配为[原生支援选择](../autohsr/support_selection.py)。固定代码、角色名称来源的Git blob及SHA-256见[父清单](upstream/March7thAssistant/source.json)，上游代码使用GPL v3。另引入105幅未改变字节的角色头像，逐幅路径、尺寸、哈希和原Git blob见[头像清单](upstream/March7thAssistant/support/sources.json)，[说明](upstream/March7thAssistant/support/README.md)区分源码许可与HoYoverse等原权利人的游戏美术权利。
+
+有界逐页查找、精确好友名、角色形态分差、左侧星魂遮罩、明确回退和原生逐次反馈属于本项目适配。没有迁入上游输入框架、满员移除自身角色或借用即完成实训的行为；没有训练模型或新增游戏采集。合成变体与两份既有列表仅用于机制／局部校准，不代表独立真实留出或实机通过，见[功能与验证边界](../docs/support-preferences.md)。

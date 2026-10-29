@@ -81,6 +81,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--echo-start-day',type=int,help='历战从游戏周的星期几04:00开始到期，1～7；仅用于体力计划')
     parser.add_argument('--echo-target',help='本次历战周计划副本名称；仍须实时核实')
     parser.add_argument('--echo-location',help='本次历战周计划副本地点')
+    parser.add_argument('--support-preferences-file',type=Path,help='本次支援偏好JSON列表，含character和friend，不保存配置')
+    parser.add_argument('--support-scroll-pages',type=int,help='本次支援查找页数1～20，包含当前页，仅用于日常／计划')
+    parser.add_argument('--support-fallback',choices=('stop','friend','skip'),help='偏好未核实时停止、另借好友或不借支援；仅用于日常／计划')
     parser.add_argument("--resume-active-currency", action="store_true", help="仅配合标准开发入口，接续有记录且已核实开始的货币战争")
     parser.add_argument('--currency-runs', type=int, help='循环局数；积分目标启用时为新局上限，0表示无局数上限；仅用于 --currency-wars-loop，不保存配置')
     parser.add_argument('--resume-currency-loop', action='store_true', help='明确接续原循环的剩余局数与原设置；仅用于 --currency-wars-loop')
@@ -93,6 +96,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    if (args.support_preferences_file is not None or args.support_scroll_pages is not None or args.support_fallback is not None) and (
+            not (args.run or args.plan) or args.reward_only or args.resume_weekly_currency):
+        parser.error('支援偏好参数仅用于 --run/--plan 的本次日常，不能用于仅补领奖或只接续周常。')
     if (args.power_plan and (not (args.run or args.plan) or args.reward_only or args.resume_weekly_currency)
             or not args.power_plan and (args.power_plan_file is not None or args.new_power_plan or args.keep_power_plan is not None or args.fill_power_plan is not None)):
         parser.error('体力计划覆盖仅用于 --run/--plan --power-plan，不能用于仅补领奖或只接续周常。')
@@ -208,6 +214,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         settings = Settings.load(args.config)
+        if args.support_preferences_file is not None:
+            if args.support_preferences_file.stat().st_size>4*1024*1024:raise ValueError('支援偏好文件过大。')
+            settings.support_preferences=json.loads(args.support_preferences_file.read_text(encoding='utf-8-sig'))
+            settings.use_support=True
+        if args.support_scroll_pages is not None:settings.support_scroll_pages=args.support_scroll_pages
+        if args.support_fallback is not None:settings.support_fallback=args.support_fallback
         if args.power_plan:
             settings.battle=True
             if args.power_plan_file is not None:

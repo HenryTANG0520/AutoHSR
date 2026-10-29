@@ -56,7 +56,9 @@ def runtime(root,settings,world=None):
     def read_scene(image,geometry):
         window.scene=world.scene(world.settings);window.scene.geometry=geometry
         return window.scene
-    vision=SimpleNamespace(read=read_scene,planar_payment=lambda scene:FakeContext.planar_payment(None,scene))
+    # Synthetic scenes already contain the localized support OCR tokens.
+    vision=SimpleNamespace(read=read_scene,planar_payment=lambda scene:FakeContext.planar_payment(None,scene),
+                           refine_planar_support=lambda scene:None)
     with ExitStack() as stack:
         stack.enter_context(patch('autohsr.app.ROOT',root))
         stack.enter_context(patch('autohsr.app.C.get_last_error',return_value=0))

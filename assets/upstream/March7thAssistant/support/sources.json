@@ -1,0 +1,1378 @@
+{
+  "repository": "https://github.com/moesnow/March7thAssistant",
+  "commit": "7cf6c6bed474539485d3b1504077ac352866829f",
+  "retrieved": "2026-10-30",
+  "license": "Upstream code GPL-3.0; game artwork remains owned by HoYoverse and respective rights holders; attribution does not grant additional artwork rights",
+  "name_source": {
+    "path": "assets/config/character_names.json",
+    "git_blob": "d2d65935605c86ef84925541ded8d9f6087be3cc",
+    "sha256": "e52b802c6c3dd64c7843d008c558de705f22ca2a199967a9a24955ee4e85bc5e"
+  },
+  "images": [
+    {
+      "character": "Acheron",
+      "name": "黄泉",
+      "file": "Acheron.png",
+      "source_path": "assets/images/share/character/Acheron.png",
+      "git_blob": "2155ff50ea814a161311b0a457bf6ba9b90f7dc9",
+      "sha256": "3981539ef832c70af857a6c58c9ba569a62faccc84129b82cb41481d9e888e90",
+      "size": [
+        100,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Aglaea",
+      "name": "阿格莱雅",
+      "file": "Aglaea.png",
+      "source_path": "assets/images/share/character/Aglaea.png",
+      "git_blob": "d0d21b5fb9339f3ed2827138d77e8eebd4b4f3f6",
+      "sha256": "72f5fec9d41e25d99fe72dadf50c2d5f2b3766f97f946a6b7ebe172bde8107b9",
+      "size": [
+        103,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Anaxa",
+      "name": "那刻夏",
+      "file": "Anaxa.png",
+      "source_path": "assets/images/share/character/Anaxa.png",
+      "git_blob": "a40fae84aa8016c7868111364306b0fa15b376c7",
+      "sha256": "9935bc99116a137db93cad2a361b89d77b02365b16ca1e3d2b9509e343756df0",
+      "size": [
+        105,
+        103
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Archer",
+      "name": "Archer",
+      "file": "Archer.png",
+      "source_path": "assets/images/share/character/Archer.png",
+      "git_blob": "2f60b2b36c0d66d65144c97bd9ba9d87e57bbac7",
+      "sha256": "b5f935ed73b73178d28bac63fa70ffd2a89a199de93bf14d206be5f5ea21e12c",
+      "size": [
+        105,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Argenti",
+      "name": "银枝",
+      "file": "Argenti.png",
+      "source_path": "assets/images/share/character/Argenti.png",
+      "git_blob": "e2ab4f7bdd407c34176a948fc2ada199aa32afaf",
+      "sha256": "7f100a9b1ec3da9f83f713d62c078dc0a7df51136b2f0a9bad19773f04868631",
+      "size": [
+        100,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Arlan",
+      "name": "阿兰",
+      "file": "Arlan.png",
+      "source_path": "assets/images/share/character/Arlan.png",
+      "git_blob": "1e629bf5100e096ccce23a4449830d124d0828da",
+      "sha256": "d78e20864913dab6577ff2a5b75572e6035fde67c92a138fa0716203f92d099e",
+      "size": [
+        100,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Ashveil",
+      "name": "不死途",
+      "file": "Ashveil.png",
+      "source_path": "assets/images/share/character/Ashveil.png",
+      "git_blob": "0e2e7615280730542064e468b38a2acdb69d67db",
+      "sha256": "06bd05180e6367f5e6addbc515fba0125825f4bcc7d985a413ec9320c477e4e0",
+      "size": [
+        100,
+        96
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Asta",
+      "name": "艾丝妲",
+      "file": "Asta.png",
+      "source_path": "assets/images/share/character/Asta.png",
+      "git_blob": "ad74e0e8fb63aa62c1627f51af3cd8443cf1cffb",
+      "sha256": "d2928a7ee634c879a3eca86ee41b2d51bd0abf45522b4c79bbc52605e8b8c0fd",
+      "size": [
+        103,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Aventurine",
+      "name": "砂金",
+      "file": "Aventurine.png",
+      "source_path": "assets/images/share/character/Aventurine.png",
+      "git_blob": "8dd151c946d34a67cb30c4a1e9bf7a8aba12645a",
+      "sha256": "2126ec304d2ce20a93d459133a00af2b4f85242beaf06654f3856409d63b6f84",
+      "size": [
+        102,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "AventurineWaveflair",
+      "name": "砂金·戏浪",
+      "file": "AventurineWaveflair.png",
+      "source_path": "assets/images/share/character/AventurineWaveflair.png",
+      "git_blob": "f9e8b8be13410f494d770048b5c1e46d47edbe35",
+      "sha256": "3f5c2119cc563222b7689bc2fac0a14377454271d55dcf8adeca0f86fd5e43d9",
+      "size": [
+        101,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Bailu",
+      "name": "白露",
+      "file": "Bailu.png",
+      "source_path": "assets/images/share/character/Bailu.png",
+      "git_blob": "a24d3118b079b1a3938d77e748703194fe4b7cd3",
+      "sha256": "361cc53f9bf47a06be887814c615c79612cca234e0ff0eba5c840200df62cf47",
+      "size": [
+        102,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "BlackSwan",
+      "name": "黑天鹅",
+      "file": "BlackSwan.png",
+      "source_path": "assets/images/share/character/BlackSwan.png",
+      "git_blob": "c07dc4c305c394ee9f2c4752f1fda01174226c8c",
+      "sha256": "6961a88e5014e010722979244b2722de3f7d5e7c3466a921405eae6ffceed0bf",
+      "size": [
+        98,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Blade",
+      "name": "刃",
+      "file": "Blade.png",
+      "source_path": "assets/images/share/character/Blade.png",
+      "git_blob": "8347f9a9cdbb51e67924dec305ab1047a0e342a7",
+      "sha256": "5a3c093c7b485cfb87994e51c3ba742235b0ccf4da49d3b5b21df72df0852b27",
+      "size": [
+        102,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Boothill",
+      "name": "波提欧",
+      "file": "Boothill.png",
+      "source_path": "assets/images/share/character/Boothill.png",
+      "git_blob": "e6a3c64d26a3d26696646e9d038319c73afb5a37",
+      "sha256": "8e33f01937d467804d81fd73ea4449ff72f3c8b419f4a2dda985dc52526e914f",
+      "size": [
+        100,
+        98
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Bronya",
+      "name": "布洛妮娅",
+      "file": "Bronya.png",
+      "source_path": "assets/images/share/character/Bronya.png",
+      "git_blob": "772bdb9842528848c8852513ba9257d40e8f67b5",
+      "sha256": "6151dbd55f6b80a69e40d594baf7be659ea9963157aa85a3db7118304931a26a",
+      "size": [
+        100,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "CaelumDestruction",
+      "name": "穹（毁灭）",
+      "file": "CaelumDestruction.png",
+      "source_path": "assets/images/share/character/CaelumDestruction.png",
+      "git_blob": "f691a85bca237b0dc79e30897ed9b20f8abf427b",
+      "sha256": "6706389446242b8b87d0adfea188619b7323321cd6ee7e0e3a47c3f2ddf2ae2f",
+      "size": [
+        100,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "CaelumElation",
+      "name": "穹（欢愉）",
+      "file": "CaelumElation.png",
+      "source_path": "assets/images/share/character/CaelumElation.png",
+      "git_blob": "2c0c22d8c2dcf989582b9c35da8b59bc36df5207",
+      "sha256": "c4065de42ab47f5f2a9aa5280205ac4b9767e61c7a0492e188a9fd00db1fee82",
+      "size": [
+        100,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "CaelumImaginary",
+      "name": "穹（同谐）",
+      "file": "CaelumImaginary.png",
+      "source_path": "assets/images/share/character/CaelumImaginary.png",
+      "git_blob": "207ddb92e4ebb255bf479a803195174b9ca36299",
+      "sha256": "f5f959ee502ba855798c0516d84abd37fb21e88a2f7c775c098381762baf33fc",
+      "size": [
+        100,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "CaelumPreservation",
+      "name": "穹（存护）",
+      "file": "CaelumPreservation.png",
+      "source_path": "assets/images/share/character/CaelumPreservation.png",
+      "git_blob": "ce42b4c02c907dee43971159147ffbe8ae9392f5",
+      "sha256": "242b54bafa2132b33e13376a25b2e426ea0cc5a66bc5bd3c71ac5ebbe1ca8220",
+      "size": [
+        100,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "CaelumRemembrance",
+      "name": "穹（记忆）",
+      "file": "CaelumRemembrance.png",
+      "source_path": "assets/images/share/character/CaelumRemembrance.png",
+      "git_blob": "7d1a885c74a51195e15a2726863107c037ec51c1",
+      "sha256": "fc84f7284752381d6d40509694c23795f50baa0aad4df151755fffee7e715370",
+      "size": [
+        106,
+        98
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Castorice",
+      "name": "遐蝶",
+      "file": "Castorice.png",
+      "source_path": "assets/images/share/character/Castorice.png",
+      "git_blob": "0b267f328f70d1fa09819dcce5574aeda654601e",
+      "sha256": "46e0aa1d434a76f18c78b54ae22198df00cc08bd32645b1a89c0b881387ed5dc",
+      "size": [
+        106,
+        98
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "CastoriceGossamerFlutter",
+      "name": "遐蝶「幽梦翩跹」",
+      "file": "CastoriceGossamerFlutter.png",
+      "source_path": "assets/images/share/character/CastoriceGossamerFlutter.png",
+      "git_blob": "3ffce08b2fd06bab0067fa4e831fc2e773079141",
+      "sha256": "5245899d3c9f68ee784079a2094ae9de973535aeda3209366a78b61d3c0d0f82",
+      "size": [
+        103,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Cerydra",
+      "name": "刻律德菈",
+      "file": "Cerydra.png",
+      "source_path": "assets/images/share/character/Cerydra.png",
+      "git_blob": "0d5390ed37b5b51118ac355b48d48a9683a4512e",
+      "sha256": "51a8dbd765138f5439eaa7ec7a1cd2df68ce975076465c13b4b6cdc61e7094be",
+      "size": [
+        104,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Cipher",
+      "name": "赛飞儿",
+      "file": "Cipher.png",
+      "source_path": "assets/images/share/character/Cipher.png",
+      "git_blob": "27953e7e37b2fe29f9f4f275968086d40f9361c2",
+      "sha256": "cb9154a50587951f08b034aee465c49ddddcec39941ccbdc6eb2e375e2ea7b46",
+      "size": [
+        101,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Clara",
+      "name": "克拉拉",
+      "file": "Clara.png",
+      "source_path": "assets/images/share/character/Clara.png",
+      "git_blob": "60c1eaf3729df27b94e4206b67fd1927ed9d1c51",
+      "sha256": "efb047f98fe65172ddcd8f79173f7b916d995206658a23e450a60b77502cbfc4",
+      "size": [
+        102,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Cyrene",
+      "name": "昔涟",
+      "file": "Cyrene.png",
+      "source_path": "assets/images/share/character/Cyrene.png",
+      "git_blob": "b671007815367bcbf016c12b4254ab69f8a0aea4",
+      "sha256": "bef2f428045ba6744f6aeefd72f34d58cbfd68ff96a957268eb197c1d9d3b186",
+      "size": [
+        108,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "DanHeng",
+      "name": "丹恒",
+      "file": "DanHeng.png",
+      "source_path": "assets/images/share/character/DanHeng.png",
+      "git_blob": "4fffaca7bf2826a2998b4d8dbbea3a62faabe97b",
+      "sha256": "b13777ff2a3f5e3d18542b1a9a2cd76eecb0701350e1b01ad49ffcf4525e9a74",
+      "size": [
+        100,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "DanHengImbibitorLunae",
+      "name": "丹恒·饮月",
+      "file": "DanHengImbibitorLunae.png",
+      "source_path": "assets/images/share/character/DanHengImbibitorLunae.png",
+      "git_blob": "b653253bc60d07995f9495a28125c2690c2361e8",
+      "sha256": "21c4ddb8460c810c2236de7316fd31c0f49edc7cbec6f5b65cacb4290f3166a1",
+      "size": [
+        100,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "DanHengPermansorTerrae",
+      "name": "丹恒·腾荒",
+      "file": "DanHengPermansorTerrae.png",
+      "source_path": "assets/images/share/character/DanHengPermansorTerrae.png",
+      "git_blob": "10014a9b6d1cd5ca70cce94965a8cf97a27c2eb2",
+      "sha256": "9331d070b31728799e56bc03214dd57ef850c0d4bbfa983b0578e3a74d663900",
+      "size": [
+        98,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "DrRatio",
+      "name": "真理医生",
+      "file": "DrRatio.png",
+      "source_path": "assets/images/share/character/DrRatio.png",
+      "git_blob": "17a123885426432e1eede6f8d3aa2c7bac70420e",
+      "sha256": "f4a040f96ae7439f0dc70950406d8dac2712cc5ac3a989195b8a2de7272ebdc4",
+      "size": [
+        104,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Evanescia",
+      "name": "绯英",
+      "file": "Evanescia.png",
+      "source_path": "assets/images/share/character/Evanescia.png",
+      "git_blob": "3ca38de5dc210bd800d7b6e20389d7c5108a6e4b",
+      "sha256": "2b397686ee0c9397f2fb55443d354321003684bba36d04ffc505433ce8ee3264",
+      "size": [
+        91,
+        87
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "EvanesciaLunarBlossoming",
+      "name": "绯英·月待花时",
+      "file": "EvanesciaLunarBlossoming.png",
+      "source_path": "assets/images/share/character/EvanesciaLunarBlossoming.png",
+      "git_blob": "b5c280ac08c89ac1308c10595ad0bebd916a064e",
+      "sha256": "f8ce20faab0909bbbde6923c7fffc97d6feafa775ead5e84efd408f9bea7153c",
+      "size": [
+        102,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Evernight",
+      "name": "长夜月",
+      "file": "Evernight.png",
+      "source_path": "assets/images/share/character/Evernight.png",
+      "git_blob": "d4989cd54217953cb680070e0ad683b152ac4e47",
+      "sha256": "e61863742e16eea808d3b34192a07fc8fba1ca3f5507e1e47d36d998d6c97660",
+      "size": [
+        102,
+        98
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Feixiao",
+      "name": "飞霄",
+      "file": "Feixiao.png",
+      "source_path": "assets/images/share/character/Feixiao.png",
+      "git_blob": "a69224250269d6f1381058b0d5ca7f36b437f126",
+      "sha256": "06758bcb42bd84982220cad0735c80baa369e3fd9e27a3a6a41c0cf8bab94d68",
+      "size": [
+        96,
+        93
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Firefly",
+      "name": "流萤",
+      "file": "Firefly.png",
+      "source_path": "assets/images/share/character/Firefly.png",
+      "git_blob": "760cd343b64eae83864dfee504cf4be64c135b40",
+      "sha256": "f5c02ca103bcbed710140be11ebc1806794d4c1a9612e5f58343faed58cfe777",
+      "size": [
+        101,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "FireflySpringMissive",
+      "name": "流萤「春日手信」",
+      "file": "FireflySpringMissive.png",
+      "source_path": "assets/images/share/character/FireflySpringMissive.png",
+      "git_blob": "c33b51faa421c20425160a6c6faf561526745863",
+      "sha256": "dc8aebc2f8385a15c1d5bc1cc62e229838f29d638438e531616f168b0032cccf",
+      "size": [
+        104,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "FuXuan",
+      "name": "符玄",
+      "file": "FuXuan.png",
+      "source_path": "assets/images/share/character/FuXuan.png",
+      "git_blob": "82e7fde047a1dae7d6e7641e2ceb2231d73fe527",
+      "sha256": "8bd951536582d6580f43d21abfd3a05a2566e45976f40e9acb22e9ac8b6ffb0e",
+      "size": [
+        103,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Fugue",
+      "name": "忘归人",
+      "file": "Fugue.png",
+      "source_path": "assets/images/share/character/Fugue.png",
+      "git_blob": "f22e6eca7dc30ea0b54c6654d60ed89bd6972ffe",
+      "sha256": "ae2e7e1c0f4f094d7f976acee35f997d0f2576bdcd548f1ad00ba9203cbad0b8",
+      "size": [
+        107,
+        105
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Gallagher",
+      "name": "加拉赫",
+      "file": "Gallagher.png",
+      "source_path": "assets/images/share/character/Gallagher.png",
+      "git_blob": "311a325f0a6e23af9368c41868f4d1f0f075f9b4",
+      "sha256": "94788f88cb406204554d3fe78f7fc02e8fb3a7550b822f28db18fa280e88b345",
+      "size": [
+        99,
+        98
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Gepard",
+      "name": "杰帕德",
+      "file": "Gepard.png",
+      "source_path": "assets/images/share/character/Gepard.png",
+      "git_blob": "967f6c9e5b4df6dbf94570462ea2dd5943e87728",
+      "sha256": "72523a650f0215ea7f37dc82c768bcc07f5b0a79f58a18d45bfc94eab9b1d7ae",
+      "size": [
+        102,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Gilgamesh",
+      "name": "吉尔伽美什",
+      "file": "Gilgamesh.png",
+      "source_path": "assets/images/share/character/Gilgamesh.png",
+      "git_blob": "87c86eed0ffc85e490dcf8c0e4c7268965d45978",
+      "sha256": "0a44ca41f9ddb890d449a5c09d5eb7769d176e3ab3508908464399cf27f5b28e",
+      "size": [
+        101,
+        96
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Guinaifen",
+      "name": "桂乃芬",
+      "file": "Guinaifen.png",
+      "source_path": "assets/images/share/character/Guinaifen.png",
+      "git_blob": "b2623946125b2675e156e39aa47678a8e4e1c30f",
+      "sha256": "dfa7a884e8e378deb5f8d529ea5d162c09275dacf837d19b0ff127fb7b9fec17",
+      "size": [
+        100,
+        98
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Hanya",
+      "name": "寒鸦",
+      "file": "Hanya.png",
+      "source_path": "assets/images/share/character/Hanya.png",
+      "git_blob": "f76f354a59710fcb051acb2c265cb6a85b1cf2fd",
+      "sha256": "03f618f92031ccedb4b71de71da9233f740a1f7a0b50d61658dfe2160cce9e6c",
+      "size": [
+        100,
+        95
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Herta",
+      "name": "黑塔",
+      "file": "Herta.png",
+      "source_path": "assets/images/share/character/Herta.png",
+      "git_blob": "a5b52e90f71a92bf97f1547a16ab28fd4894f6a6",
+      "sha256": "9894f01530c354e5c33d057c712b09274b12e7b090cf8915d579816ea2d72beb",
+      "size": [
+        102,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Himeko",
+      "name": "姬子",
+      "file": "Himeko.png",
+      "source_path": "assets/images/share/character/Himeko.png",
+      "git_blob": "5f094a823e61fdb93d265b28ede2d24f735e7308",
+      "sha256": "f6b652318886b458ef4a6e9ae2f7c45849ca9fe59aac3d027f866fb146df5b0d",
+      "size": [
+        102,
+        104
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "HimekoNova",
+      "name": "姬子·启行",
+      "file": "HimekoNova.png",
+      "source_path": "assets/images/share/character/HimekoNova.png",
+      "git_blob": "d500f0d9132349fe4dbff21112558d14ad2c54ab",
+      "sha256": "55a8e230c5910439bf122bc86b5ae0f7cc2671483892547e0a9629b03601570d",
+      "size": [
+        101,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Hook",
+      "name": "虎克",
+      "file": "Hook.png",
+      "source_path": "assets/images/share/character/Hook.png",
+      "git_blob": "46e1c9e32c5c1351dd14519a809c32d8bde9e951",
+      "sha256": "bde0936188f80e326f66aacc9a04dda88d57823c8ac0c5115cff6e37d177ccf6",
+      "size": [
+        101,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Huohuo",
+      "name": "藿藿",
+      "file": "Huohuo.png",
+      "source_path": "assets/images/share/character/Huohuo.png",
+      "git_blob": "60e8f8c1fed6870743bba3dac6708963615474bb",
+      "sha256": "48505765014a4439e17f942160c64af2a6c9b33747943667c6e1ae7d41385369",
+      "size": [
+        101,
+        103
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Hyacine",
+      "name": "风堇",
+      "file": "Hyacine.png",
+      "source_path": "assets/images/share/character/Hyacine.png",
+      "git_blob": "8a1704314ae22a369e4b81bf1386b959ce2d1743",
+      "sha256": "88aac3bb58bb1cb2ccd3242e806991890c4a3cc951dfcae99253809c3fb941a3",
+      "size": [
+        107,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "HyacineWarmCottonSkies",
+      "name": "风堇·云边拾暖",
+      "file": "HyacineWarmCottonSkies.png",
+      "source_path": "assets/images/share/character/HyacineWarmCottonSkies.png",
+      "git_blob": "562a18004fe5303bb11eee043e9650c061637d3b",
+      "sha256": "c16faed618039fcdda49a3eaf6940f76b496e010e60a5b64b611fda905921f38",
+      "size": [
+        100,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Hysilens",
+      "name": "海瑟音",
+      "file": "Hysilens.png",
+      "source_path": "assets/images/share/character/Hysilens.png",
+      "git_blob": "0e1f6fa10b4b719be289e7e91d4f5c984ac18706",
+      "sha256": "3b5bf258629ddfbba38efff64869d29403fb1022e832fad540cbf8cbe455596f",
+      "size": [
+        105,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Jade",
+      "name": "翡翠",
+      "file": "Jade.png",
+      "source_path": "assets/images/share/character/Jade.png",
+      "git_blob": "bb55600cf3203aeb11c89fa688b3016ceb109ff4",
+      "sha256": "cdbc35db419f20d21a9708977f7cb63038cd320251b764fc42d0c7bab7841213",
+      "size": [
+        99,
+        95
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Jiaoqiu",
+      "name": "椒丘",
+      "file": "Jiaoqiu.png",
+      "source_path": "assets/images/share/character/Jiaoqiu.png",
+      "git_blob": "607265f6d4c099c8db67f3845f7613c347c53064",
+      "sha256": "92fe405f5c758b1e0057f01597521bb5ca421aca6b3efb81f5900a3a9cbcef11",
+      "size": [
+        96,
+        96
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "JingYuan",
+      "name": "景元",
+      "file": "JingYuan.png",
+      "source_path": "assets/images/share/character/JingYuan.png",
+      "git_blob": "db7f944ebb5e2b245592e88634f178de77f39ab3",
+      "sha256": "37ef9e4961afc25d7a59701d70f67bba175658985914dc1555ae5634e0c549a7",
+      "size": [
+        100,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Jingliu",
+      "name": "镜流",
+      "file": "Jingliu.png",
+      "source_path": "assets/images/share/character/Jingliu.png",
+      "git_blob": "2262de6491887afb7f7533208c72ebc8f315d11d",
+      "sha256": "3fe88a77cdbc9ce4a3f07f90cb8de3b9ff55b7d7c9db9d72265171b510112186",
+      "size": [
+        99,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Kafka",
+      "name": "卡芙卡",
+      "file": "Kafka.png",
+      "source_path": "assets/images/share/character/Kafka.png",
+      "git_blob": "f840e46a0d8a9ec15cb2cc22165a20884c0f276a",
+      "sha256": "82730420cf3cf2311760543d1fed3ecfb6e692270414dd2684be08972641ba4b",
+      "size": [
+        102,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Lingsha",
+      "name": "灵砂",
+      "file": "Lingsha.png",
+      "source_path": "assets/images/share/character/Lingsha.png",
+      "git_blob": "731f6ca4f253407fbf20261c9bbb5702203c7e89",
+      "sha256": "d12a83c85d70a195d7ab03962c7053b9648c8cc0b4c69f180c92701289b7e125",
+      "size": [
+        75,
+        84
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Luka",
+      "name": "卢卡",
+      "file": "Luka.png",
+      "source_path": "assets/images/share/character/Luka.png",
+      "git_blob": "f14bd55d767640909b31fb2aee078b17ce0d567a",
+      "sha256": "f57c9970b55b9aeee8d7f44ee80a93f9b479c04c1b775423aebc2d4237f09cbc",
+      "size": [
+        102,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Luocha",
+      "name": "罗刹",
+      "file": "Luocha.png",
+      "source_path": "assets/images/share/character/Luocha.png",
+      "git_blob": "5f2024df99a21343ef6f2689c3171140a26be188",
+      "sha256": "b3a82fd5b83b56f6d8aa6b0d0b96299c1129112a5e047e01644a034c9f891bb1",
+      "size": [
+        101,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Lynx",
+      "name": "玲可",
+      "file": "Lynx.png",
+      "source_path": "assets/images/share/character/Lynx.png",
+      "git_blob": "72cf280b71918e2e3c356bd90ff665e83c3154b2",
+      "sha256": "19325f7aea44b4e5825570a4aef7e4829ab08960ffb8a0d9c3117094a2fae04a",
+      "size": [
+        102,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "March7th",
+      "name": "三月七（冰）",
+      "file": "March7th.png",
+      "source_path": "assets/images/share/character/March7th.png",
+      "git_blob": "0dbd5d48e5ea465902309b07c453fc690a1473f9",
+      "sha256": "09f808deec368500f41a94fab3c733544f65b699a172e6a3b62cb5342aa76e69",
+      "size": [
+        104,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "March7thImaginary",
+      "name": "三月七（虚数）",
+      "file": "March7thImaginary.png",
+      "source_path": "assets/images/share/character/March7thImaginary.png",
+      "git_blob": "aa52aa9a3de15d7f5e96d3b04c551e4cd494427d",
+      "sha256": "a20562d60e8f96a216ba1aa22a3047a4a7da4ad09630ec1e3171563dbabb15e1",
+      "size": [
+        98,
+        97
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "March7thNascentSpring",
+      "name": "三月七「冬去煦至」",
+      "file": "March7thNascentSpring.png",
+      "source_path": "assets/images/share/character/March7thNascentSpring.png",
+      "git_blob": "474062daeb3ce11fe51390a7af1bb5438619c3ac",
+      "sha256": "a74b102f211b727319974a96862efaa43af1ffb3c4c46cad8c1f4ab49d3c0b7c",
+      "size": [
+        112,
+        107
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Misha",
+      "name": "米沙",
+      "file": "Misha.png",
+      "source_path": "assets/images/share/character/Misha.png",
+      "git_blob": "db8abec23f6a11365bf64cf5e45def751e932c9e",
+      "sha256": "7b695fb9f66a42a3a1bc615b4ebf183ef626fe1c1dac179ddd0bba3809a10e93",
+      "size": [
+        98,
+        98
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "MortenaxBlade",
+      "name": "千冶·刃",
+      "file": "MortenaxBlade.png",
+      "source_path": "assets/images/share/character/MortenaxBlade.png",
+      "git_blob": "adb7afa408466e64cd22c2376df2b22d85133c47",
+      "sha256": "3bbb35896d13766e5de87d419bf94ed9651f68101af5c7f4df5d9257024800e5",
+      "size": [
+        100,
+        98
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Moze",
+      "name": "貊泽",
+      "file": "Moze.png",
+      "source_path": "assets/images/share/character/Moze.png",
+      "git_blob": "4de163ccdb54e13b3ce9118aefb96fb7a8edfad5",
+      "sha256": "e5a161238b8dc003e94b8579228e1bec4b9fcddff1fba91e561a33b45ee1c6e5",
+      "size": [
+        99,
+        98
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Mydei",
+      "name": "万敌",
+      "file": "Mydei.png",
+      "source_path": "assets/images/share/character/Mydei.png",
+      "git_blob": "4ebef9d407dadb3903b3d858a98d3a758d3b06dd",
+      "sha256": "e18da30b77d391089cdd34d66f39ed5d8039b0ec440b4225e94d431540af4f39",
+      "size": [
+        102,
+        103
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Natasha",
+      "name": "娜塔莎",
+      "file": "Natasha.png",
+      "source_path": "assets/images/share/character/Natasha.png",
+      "git_blob": "7b0b43e54eb28b1a3e51d8e0360b3af2ad96051d",
+      "sha256": "d32a9fee72d96593fa2b10078645e66e63dfada15158c25f5aaef29432fe0fef",
+      "size": [
+        102,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Pearl",
+      "name": "真珠",
+      "file": "Pearl.png",
+      "source_path": "assets/images/share/character/Pearl.png",
+      "git_blob": "db9690427548c3da036360d6debfc380c1aa2255",
+      "sha256": "ba01a1b16383cc841a5577981cd5d9453f598d55ff8dd95ded5d566bedf90960",
+      "size": [
+        107,
+        104
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Pela",
+      "name": "佩拉",
+      "file": "Pela.png",
+      "source_path": "assets/images/share/character/Pela.png",
+      "git_blob": "6226dc1e4d9372bfa9a9a9f8f8f7c6545d5792d5",
+      "sha256": "5c20b3038292130f183bc47e39fad141b8993cd0b293f6d529dca178bcf7f930",
+      "size": [
+        103,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Phainon",
+      "name": "白厄",
+      "file": "Phainon.png",
+      "source_path": "assets/images/share/character/Phainon.png",
+      "git_blob": "40cdbeadc6350e287324cd0dd0211445040598b0",
+      "sha256": "96c6e216a10a3d54b0343ec1afeef07234518e197f622253aa0826b42d1723b1",
+      "size": [
+        104,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Qingque",
+      "name": "青雀",
+      "file": "Qingque.png",
+      "source_path": "assets/images/share/character/Qingque.png",
+      "git_blob": "7d5e940a335d639f623b33f6360eed40f1d63e64",
+      "sha256": "f21be3cc3265e8edab9ea465c5bade694b6d0d819234ed03d6bdd0e8754af6f2",
+      "size": [
+        101,
+        103
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Rappa",
+      "name": "乱破",
+      "file": "Rappa.png",
+      "source_path": "assets/images/share/character/Rappa.png",
+      "git_blob": "92073dedbd2e4f85c1f3cccc437138f437fdb1ac",
+      "sha256": "26b378e44ca1ead3f573ec8380ff6857f84ce4ef4d97aac3697913267ee3854c",
+      "size": [
+        78,
+        83
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "RinTohsaka",
+      "name": "远坂凛",
+      "file": "RinTohsaka.png",
+      "source_path": "assets/images/share/character/RinTohsaka.png",
+      "git_blob": "0d2b29ba98f05be6bb65d7200a72ba7836c23840",
+      "sha256": "aaae41e151cf39b18b16cad272cfcd5ad8856e4847b9901db71d1dc72986f7fa",
+      "size": [
+        95,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Robin",
+      "name": "知更鸟",
+      "file": "Robin.png",
+      "source_path": "assets/images/share/character/Robin.png",
+      "git_blob": "ff4beef47afcd0db501bd1dbcbb1b8ae65b4e19b",
+      "sha256": "fbdc22bfb76d8fe2045e57f2db970af0d59f5c846dd432fcc79b65a7aec98c62",
+      "size": [
+        100,
+        97
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "RobinSummeretto",
+      "name": "知更鸟·晴歌",
+      "file": "RobinSummeretto.png",
+      "source_path": "assets/images/share/character/RobinSummeretto.png",
+      "git_blob": "fb5ea62f5a0845dc63d6ada6a52f2272f50f4ca3",
+      "sha256": "342a091bffe66f01312e96687eb0bdd295e78d1eae83dfa201f814fe4e8924ee",
+      "size": [
+        100,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "RuanMei",
+      "name": "阮·梅",
+      "file": "RuanMei.png",
+      "source_path": "assets/images/share/character/RuanMei.png",
+      "git_blob": "55bb9256e1821b3ba474849297d7169d3a79dfca",
+      "sha256": "407e36761e1304be8d52990be6d16a225770192269ba93e70cc93e0628487fe0",
+      "size": [
+        100,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "RuanMeiPlumblossomLetter",
+      "name": "阮·梅「雪绽梅笺」",
+      "file": "RuanMeiPlumblossomLetter.png",
+      "source_path": "assets/images/share/character/RuanMeiPlumblossomLetter.png",
+      "git_blob": "9a9dfba33bf0351663f32ce4f6a67b115dea1bbc",
+      "sha256": "53d9d5eced9b6394d7475b1ab2bab8effbf6e10e3b4f492a21fe4493381a6302",
+      "size": [
+        104,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Saber",
+      "name": "Saber",
+      "file": "Saber.png",
+      "source_path": "assets/images/share/character/Saber.png",
+      "git_blob": "c8893c0c02357bc62374396e670fe8319d615ffe",
+      "sha256": "fdae9f884c211d6db78e678854b4762fddf9b389f003d4d12cab9d2579eecca4",
+      "size": [
+        106,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Sampo",
+      "name": "桑博",
+      "file": "Sampo.png",
+      "source_path": "assets/images/share/character/Sampo.png",
+      "git_blob": "ed4b39d8156a90e637eecbcc1d1d0ddb4b835bfe",
+      "sha256": "47e3ef684e2bd3d00538567329e0f5c955a9bf16f49946e60c89d6224938327a",
+      "size": [
+        104,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Seele",
+      "name": "希儿",
+      "file": "Seele.png",
+      "source_path": "assets/images/share/character/Seele.png",
+      "git_blob": "db10e436cf8afb87cea5d2f72010b5fef28bbd65",
+      "sha256": "8f5b49a2f24c1c0d9d26ac987ffe4216c1d784a85e49f6452b1520f40764ed3b",
+      "size": [
+        103,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Serval",
+      "name": "希露瓦",
+      "file": "Serval.png",
+      "source_path": "assets/images/share/character/Serval.png",
+      "git_blob": "54e9f8f3f9cecb55b6754b6f82796ca1ef8d2130",
+      "sha256": "cc87f777fd9b2a3e09465497f450fded0cbfe527081f2749cf614bb8207ce0a2",
+      "size": [
+        103,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "SilverWolf",
+      "name": "银狼",
+      "file": "SilverWolf.png",
+      "source_path": "assets/images/share/character/SilverWolf.png",
+      "git_blob": "1720993ee79e5c7bb8cc0dc627df5626768a35ea",
+      "sha256": "58d81e556e68533c0ad247ff22df0c2fcf511a05dda2587729371047f0198531",
+      "size": [
+        99,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "SilverWolfLV999",
+      "name": "银狼LV.999",
+      "file": "SilverWolfLV999.png",
+      "source_path": "assets/images/share/character/SilverWolfLV999.png",
+      "git_blob": "918863dc3be5a2a330153878ffe5081f131abcb0",
+      "sha256": "13c5e92a9259e39c80c8a7c5176220f845497b012c5adabaf922f141f9a5ee67",
+      "size": [
+        98,
+        98
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Sparkle",
+      "name": "花火",
+      "file": "Sparkle.png",
+      "source_path": "assets/images/share/character/Sparkle.png",
+      "git_blob": "a0fbde25dbbc48ca6c0e7882d9fa49033bf77a46",
+      "sha256": "c6b1e174ede57993fbe340cdb290688d3c5f689f38e1e21874937f2ff5af7d19",
+      "size": [
+        100,
+        98
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Sparxie",
+      "name": "火花",
+      "file": "Sparxie.png",
+      "source_path": "assets/images/share/character/Sparxie.png",
+      "git_blob": "e6158ec71ab182c44a111b22d81cfdb85f854c24",
+      "sha256": "9eb72cb251d09453b807d11966475c0366392aac40873c60450bff850b653235",
+      "size": [
+        105,
+        103
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "SparxieCandyCoatedWaves",
+      "name": "火花·甜梦电波",
+      "file": "SparxieCandyCoatedWaves.png",
+      "source_path": "assets/images/share/character/SparxieCandyCoatedWaves.png",
+      "git_blob": "1784e5fecd75fd837b09edd303432964d2cafee4",
+      "sha256": "a65da6298fe58688e1112a1ea67f10e6a40311a00bc14356b638a9c288b2c718",
+      "size": [
+        100,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "StelleDestruction",
+      "name": "星（毁灭）",
+      "file": "StelleDestruction.png",
+      "source_path": "assets/images/share/character/StelleDestruction.png",
+      "git_blob": "bc7b99fc0ab55afd5192af9e30db6bd6963bc587",
+      "sha256": "c7816fd0039d76dc6ac9cdc6e62aa3bbecd341f6ea1cb248dc6bb1c755ee876c",
+      "size": [
+        100,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "StelleElation",
+      "name": "星（欢愉）",
+      "file": "StelleElation.png",
+      "source_path": "assets/images/share/character/StelleElation.png",
+      "git_blob": "351092b0900080be54585ca65b345455bdc4c8a0",
+      "sha256": "6a080c80e444a7e2c24d85c148be3aaaf9221e35f2e927191edf5ff7962975ac",
+      "size": [
+        100,
+        96
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "StelleImaginary",
+      "name": "星（同谐）",
+      "file": "StelleImaginary.png",
+      "source_path": "assets/images/share/character/StelleImaginary.png",
+      "git_blob": "49b2057dd64e4f0c59dd4156f6ed7841c4a79f75",
+      "sha256": "6ff6dd8a5e6000691a4d4737456beab5df7e9efb839df1aa6e9c4951add95069",
+      "size": [
+        100,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "StellePreservation",
+      "name": "星（存护）",
+      "file": "StellePreservation.png",
+      "source_path": "assets/images/share/character/StellePreservation.png",
+      "git_blob": "417bfc071f7195126b2ffaf5795e20945d50733f",
+      "sha256": "f3e2fadac135b250f938e97a34cc38bc96e5bf19b5fe38dfd7c5b044adfd8d9a",
+      "size": [
+        105,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "StelleRemembrance",
+      "name": "星（记忆）",
+      "file": "StelleRemembrance.png",
+      "source_path": "assets/images/share/character/StelleRemembrance.png",
+      "git_blob": "a477f78114c2a80fc7a29cefbb4f088c32456578",
+      "sha256": "dbe01f084017958c61d8c7e66f477159046b4e3738bc080e9e02a5aab87b9dc4",
+      "size": [
+        106,
+        103
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Sunday",
+      "name": "星期日",
+      "file": "Sunday.png",
+      "source_path": "assets/images/share/character/Sunday.png",
+      "git_blob": "1d98ea27d73970144ce8bba73c15b595754e4a25",
+      "sha256": "2c7c5086874c89eab04509aaf2a710b8ba837ac72a576307d84b4ce1478aa31b",
+      "size": [
+        102,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Sushang",
+      "name": "素裳",
+      "file": "Sushang.png",
+      "source_path": "assets/images/share/character/Sushang.png",
+      "git_blob": "c5bc5f5f2e151cd97b9f64f7b17fa6a18bd477e4",
+      "sha256": "48d337f9a791527dedfa4ec6c22a21739df034c831df0461aa9afe708402742c",
+      "size": [
+        102,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "TheDahlia",
+      "name": "大丽花",
+      "file": "TheDahlia.png",
+      "source_path": "assets/images/share/character/TheDahlia.png",
+      "git_blob": "c7c74116e5d478f0b4e504cc1865fc40052c78db",
+      "sha256": "4af8ce76c574e78542bc1654a35479057c64be9583e3bd1f688ae8e55e4b6bb9",
+      "size": [
+        101,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "TheHerta",
+      "name": "大黑塔",
+      "file": "TheHerta.png",
+      "source_path": "assets/images/share/character/TheHerta.png",
+      "git_blob": "d1f1fa2e2867442ede435008dd02517f53e194a6",
+      "sha256": "fbd645ad2804a686f551c0541d2d8b91701f31b3a1d66cc0da88643a0c8ee3e2",
+      "size": [
+        103,
+        100
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Tingyun",
+      "name": "停云",
+      "file": "Tingyun.png",
+      "source_path": "assets/images/share/character/Tingyun.png",
+      "git_blob": "b381846138e866bf3ae9a95f2f180c0cb95bf248",
+      "sha256": "2e8e287a2a4b6de2f75e8f0066e6bf02bba1ee7f4a90c129b0f7c735e5c5c271",
+      "size": [
+        105,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "TopazandNumby",
+      "name": "托帕&账账",
+      "file": "TopazandNumby.png",
+      "source_path": "assets/images/share/character/TopazandNumby.png",
+      "git_blob": "0fdfd0c5aa3f51d55bc05d9373c5d136388a224d",
+      "sha256": "f023fb864e54de5d08a22247ff557f2317196a7979148f3da4ac4ff1a1a12129",
+      "size": [
+        100,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Tribbie",
+      "name": "缇宝",
+      "file": "Tribbie.png",
+      "source_path": "assets/images/share/character/Tribbie.png",
+      "git_blob": "378b710c12b7a99b9ef8d5f29cb82b57314d5a5d",
+      "sha256": "31e08a1ae2c83db7d317d6a21d4f0d54620f344b54309d5452b7cdd64642b1a8",
+      "size": [
+        101,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Welt",
+      "name": "瓦尔特",
+      "file": "Welt.png",
+      "source_path": "assets/images/share/character/Welt.png",
+      "git_blob": "391622b462d3ce0f08b0092543204bd5802ec8ef",
+      "sha256": "4264f9c05459696ebb43dabfcbfdf2f45771d7576f6062ead6852f09009db0d7",
+      "size": [
+        102,
+        103
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Xueyi",
+      "name": "雪衣",
+      "file": "Xueyi.png",
+      "source_path": "assets/images/share/character/Xueyi.png",
+      "git_blob": "ad0546b376a01b77c2965b1803f69d565c45d2a3",
+      "sha256": "0eac4e7157a380f2c7a61315a306f0e67959e3942033a29cc8469dd0d6ca76c0",
+      "size": [
+        99,
+        97
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Yanqing",
+      "name": "彦卿",
+      "file": "Yanqing.png",
+      "source_path": "assets/images/share/character/Yanqing.png",
+      "git_blob": "b5121517cb81628b06f45465f8cdbd82f222f9a7",
+      "sha256": "8f8e9fb1b5b2104319fad721428909afd21f9e1469e71c01d6a62356968dd83e",
+      "size": [
+        104,
+        102
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "YaoGuang",
+      "name": "爻光",
+      "file": "YaoGuang.png",
+      "source_path": "assets/images/share/character/YaoGuang.png",
+      "git_blob": "303616af7923ee8124eb2f804b5cfea70f40f1f3",
+      "sha256": "9899216893bef958e3d65d772e2ec4ff0c6194323907f4f710b84df278078217",
+      "size": [
+        104,
+        99
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Yukong",
+      "name": "驭空",
+      "file": "Yukong.png",
+      "source_path": "assets/images/share/character/Yukong.png",
+      "git_blob": "098dd85013cd51738bc6c8b461810cffb880d61d",
+      "sha256": "90bf15e6fb3fbd4a386ddead2428d5031d539f6b3b24afb795f3dc9429ab71de",
+      "size": [
+        103,
+        101
+      ],
+      "transform": "unchanged"
+    },
+    {
+      "character": "Yunli",
+      "name": "云璃",
+      "file": "Yunli.png",
+      "source_path": "assets/images/share/character/Yunli.png",
+      "git_blob": "5191aca2fcc1a058e573ac20aeec88416e6cf79b",
+      "sha256": "a3f2ff7de0608c9f67b9c4d8de8fd160d5ea1a2d8866c04e2ce776f4a6cdcdf5",
+      "size": [
+        97,
+        96
+      ],
+      "transform": "unchanged"
+    }
+  ]
+}

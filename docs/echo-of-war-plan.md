@@ -52,7 +52,7 @@
 
 参考March7thAssistant固定提交`7cf6c6bed474539485d3b1504077ac352866829f`的[Echoofwar.start](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/weekly/echoofwar.py)与[Daily.prepare_daily](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/daily/daily.py)。本项目重新实现游戏周快照、输入与统一预算，不迁入上游输入、配置时间戳写回或培养目标读取。固定Git blob、SHA-256及GPL v3来源见[清单](../assets/upstream/March7thAssistant/source.json)，没有新增素材或模型。
 
-[新增机制检查](../autohsr/tests/test_echo_weekly.py)使用合成窗口、当前原生Runner／Context、原付款与计划存储，覆盖0～3次、单轮与多轮、跨04:00及跨周、预算不足、后续饰品混合支付、原日常父报告、旧目录及旧字段兼容、确认写入失败、后续未知保留已核实历战、CLI范围和不保存。模板、页面和编队布局继续依赖已有独立检查，模拟过渡不证明新组合已通过实机。GUI接线、多候选支援及培养目标仍未完成，没有重建EXE或新增实机通关计数。
+[新增机制检查](../autohsr/tests/test_echo_weekly.py)使用合成窗口、当前原生Runner／Context、原付款与计划存储，覆盖0～3次、单轮与多轮、跨04:00及跨周、预算不足、后续饰品混合支付、原日常父报告、旧目录及旧字段兼容、确认写入失败、后续未知保留已核实历战、CLI范围和不保存。模板、页面和编队布局继续依赖已有独立检查，模拟过渡不证明新组合已通过实机。GUI接线及培养目标仍未完成；后续多候选支援适配另见[支援偏好](support-preferences.md)。没有重建EXE或新增实机通关计数。
 
 | 检查 | 结果与边界 |
 | --- | --- |

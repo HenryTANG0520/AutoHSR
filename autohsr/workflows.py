@@ -714,6 +714,9 @@ class DailyWorkflow:
         return scene.has("队伍角色已满", (0.25, 0.20, 0.75, 0.40), exact=True)
 
     def _support(self, scene: Scene) -> Scene:
+        if self.settings.support_preferences:
+            from .support_selection import select
+            return select(self,scene)
         if category_for(self.settings).key == "planar":
             return self._planar_support(scene)
         if not self._team_page(scene):
@@ -836,7 +839,12 @@ class DailyWorkflow:
             feedback = lambda s: (self._team_page(s) and self._planar_marker(s)) or (self._planar_picker(s) and (self._planar_marker(s) or self._support_full(s)))
             if not feedback(scene):
                 scene = self._wait(feedback, timeout=15, description="核实饰品提取好友支援反馈")
+            if self._planar_marker(scene) and self._support_full(scene):
+                raise AutomationError('饰品提取支援与满员反馈冲突，未继续选择。')
             if self._support_full(scene):
+                scene=self._wait(lambda s:self._planar_picker(s) and not self._support_full(s),
+                                 timeout=10,description='等待本张饰品好友的满员提示消失')
+                if self._planar_marker(scene):raise AutomationError('满员后出现未归属支援，未选择下一张。')
                 continue
             if self._planar_picker(scene):
                 scene = self._press("esc")
@@ -1051,7 +1059,9 @@ class DailyWorkflow:
             if category.key == "planar":
                 scene = self._disable_quick_refill(scene)
                 scene, cost = self._limit_batch(scene, remaining)
-                if not cost or (self.settings.use_support and not self._planar_marker(scene)):
+                skipped=(getattr(self,'_support_skipped',False) is True and self.settings.support_preferences
+                         and self.settings.support_fallback=='skip')
+                if not cost or (self.settings.use_support and not skipped and not self._planar_marker(scene)):
                     raise AutomationError("饰品提取支援后的费用、次数或支援标记发生未核实变化。")
             start = scene.find("开始挑战", BOTTOM, exact=True)
             if start is None or not self._team_page(scene):

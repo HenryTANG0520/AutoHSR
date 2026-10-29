@@ -68,14 +68,20 @@ class Settings:
     echo_of_war_start_day: int = 1
     echo_of_war_target: str = '毁灭的开端'
     echo_of_war_location: str = '支援舱段'
+    support_preferences: list[dict] = field(default_factory=list)
+    support_scroll_pages: int = 10
+    support_fallback: str = 'stop'
 
     def __post_init__(self):
         from copy import deepcopy
         self.differential_universe_station_priority=deepcopy(self.differential_universe_station_priority)
         self.differential_universe_station_disabled=deepcopy(self.differential_universe_station_disabled)
         self.power_plan=deepcopy(self.power_plan)
+        self.support_preferences=deepcopy(self.support_preferences)
 
     def validate(self, operation: str = "daily") -> None:
+        from .support_profiles import validate as validate_support
+        validate_support(self)
         from .echo_weekly import validate_settings as validate_echo
         validate_echo(self)
         if operation in ('save','power_plan'):

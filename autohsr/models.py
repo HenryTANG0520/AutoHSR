@@ -118,6 +118,7 @@ class RunReport:
     battle_requested: int | None = None
     dungeon_catalogue: dict = field(default_factory=dict)
     team_selections: list[dict] = field(default_factory=list)
+    support_selections: list[dict] = field(default_factory=list)
     failure_task: str = ""
     error: str = ""
     safe_next: str = ""

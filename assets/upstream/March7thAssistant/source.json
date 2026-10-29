@@ -4,7 +4,7 @@
   "retrieved": "2026-10-28",
   "license": "GNU GPL version 3",
   "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json"],
+  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json"],
   "native_extensions": [
     {
       "path": "autohsr/currency_wars_worn_reforge.py",
@@ -61,9 +61,51 @@
     {
       "path": "assets/config/config.example.yaml",
       "git_blob": "8bd288efd8282a4c45e1ae6a1b915c9bd9c0569e"
+    },
+    {
+      "path": "tasks/power/character.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "30c9451c641622d816609b9ba8be0ff65ed916d8",
+      "sha256": "eb65c7af1b30493adb359b906644b95059e988ada16bfd7edb9b1be86bb3c0ea"
+    },
+    {
+      "path": "tests/test_tasks/test_support_character.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "79b2cf8f03588f1b9655cc71af9b6053643efdee",
+      "sha256": "fba38fdc33ba91a26103aa54a73d78f55e28acd4bbe11d5c3d9c6f6ad2732d2b"
+    },
+    {
+      "path": "assets/config/character_names.json",
+      "retrieved": "2026-10-30",
+      "git_blob": "d2d65935605c86ef84925541ded8d9f6087be3cc",
+      "sha256": "e52b802c6c3dd64c7843d008c558de705f22ca2a199967a9a24955ee4e85bc5e"
     }
   ],
   "adaptations": [
+    {
+      "path": "autohsr/support_selection.py",
+      "native_files": [
+        "autohsr/support_profiles.py",
+        "autohsr/support_portraits.py",
+        "autohsr/workflows.py",
+        "autohsr/plan_runner.py"
+      ],
+      "reference_source": "tasks/power/character.py",
+      "reference_functions": [
+        "Character.borrow"
+      ],
+      "additional_references": [
+        {
+          "source": "tests/test_tasks/test_support_character.py",
+          "scope": "corner-mask retry variations"
+        },
+        {
+          "source": "assets/config/character_names.json",
+          "scope": "exact catalogue display names"
+        }
+      ],
+      "kind": "Native ordered per-page support role and optional exact friend preferences, bounded scroll pages and explicit stop/friend/skip fallback. Uses unchanged upstream portrait references with SHA-256 verification, local card binding, original then corner-mask retry; adds star-count mask and all-catalogue rival margin while retaining 0.90 threshold. Each input uses fresh native Context, full-team toast must clear, ambiguous feedback stops, own preset slots never removed. Borrow confirmation remains separate from daily battle proof. Default empty preferences keep legacy friend flow, runtime overrides do not save settings. GUI, task-only borrowing condition and live preferred borrowing remain pending."
+    },
     {
       "path": "autohsr/echo_weekly.py",
       "native_files": ["autohsr/power_plan_run.py", "autohsr/power_plan_store.py", "autohsr/dungeon_workflow.py"],

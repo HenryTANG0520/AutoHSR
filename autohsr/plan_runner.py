@@ -106,7 +106,7 @@ class PlanRunner:
         report.weekly_plan['children'].append(dict(operation='daily',run_dir=daily.get('run_dir',''),reused=reused))
         for name in ('stamina_spent','stamina_limit','stamina_pending','immersifiers_spent','immersifiers_pending',
                      'battle_completed','battle_requested','daily_verified','daily_synthesis','engagement','game_day',
-                     'error','safe_next','failure_task'):
+                     'error','safe_next','failure_task','support_selections'):
             if name in daily:setattr(report,name,daily[name])
         if 'power_plan' in daily:report.power_plan=daily['power_plan']
         report.results.extend(TaskResult(r['task'],r['status'],r.get('detail','')) for r in daily.get('results',[]))
