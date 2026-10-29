@@ -6,7 +6,9 @@
 
 现在仅为展开下拉列表的`ComboboxListbox`绑定Home／End，复用Tk已有的Ctrl+Home／End首末行选择动作。按键只移动高亮并滚动至可见位置，Enter才提交，Esc取消；保留Ctrl快捷键、文本光标、普通Listbox和禁用选项行为。没有新增界面说明或修改任务、保存、资源门禁。假后端对照`runs/settings-keys-before.json`、`settings-keys-after.json`确认修复前后行为与配置不变。
 
-**514项GUI检查通过**：新增125项首末行导航、原设置225项、返回80项与GUI84项，汇总`runs/settings-keys-regressions.json`。新检查覆盖100%、125%、150%、200%缩放，实际2／7／10项选项、30项滚动长列表、空列表、确认一次、Esc分层取消、重建／复用布局、Ctrl快捷键、输入光标和禁用状态；初轮109项证据与最终125项证据均保留，没有游戏后端调用、配置写入或回调异常。原生修复后核对另行记录；整屏视觉一致性、玩家体验和日常周常组合实机仍未验收，没有启动、检测或操作游戏。
+**514项GUI检查通过**：新增125项首末行导航、原设置225项、返回80项与GUI84项，汇总`runs/settings-keys-regressions.json`。新检查覆盖100%、125%、150%、200%缩放，实际2／7／10项选项、30项滚动长列表、空列表、确认一次、Esc分层取消、重建／复用布局、Ctrl快捷键、输入光标和禁用状态；初轮109项证据与最终125项证据均保留，没有游戏后端调用、配置写入或回调异常。整屏视觉一致性、玩家体验和日常周常组合实机仍未验收，没有启动、检测或操作游戏。
+
+源码`d73d754`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。独立默认配置、`--no-admin-launch`下，全程以Tab、方向键、Home／End、Enter和Esc核对周常列表：End高亮货币战争时字段仍为差分宇宙，Enter提交后重新展开，Home高亮差分宇宙而字段仍为货币战争；Enter恢复后，在7项日期中同样确认周日／周一，另用End、Esc取消并保留周一，第二次Esc返回“开始计划”首页。没有点击保存、开始、检测或游戏入口，恢复默认草稿后正常关闭、退出码0；独立配置和239份原有用户文件哈希不变，147项素材、5份清单及23份上游文件一致。截图前缀`runs/settings-keys-package-`，元数据`runs/settings-keys-package-verification.json`，EXE SHA-256为`a996ec3878c50e8d7e6a7e3dd203a9a2dc4264f265c62e69896732975ea41a95`，备份`build/userdata-settings-keys-20261029_213451/`，构建日志`runs/settings-keys-build.log`。修复前原生对照、源探针及回归证据归档至正式项目`runs/settings-keys-*`与`runs/choice-keys-ui/`，索引`runs/settings-keys-evidence-archive.json`。原生仅核对本段列出的2项玩法与7项日期，其他导航变体的验证范围为上述假后端检查。
 
 ## 2026-10-29：按冻结任务范围显示计划结果
 
