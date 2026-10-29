@@ -55,10 +55,14 @@ class Settings:
     weekly_runs: int = 1
     currency_remembrance_name: str = ""
     currency_fast_mode: bool = False
+    currency_runs: int = 1  # Only the explicit loop entry uses this; 0 = until stopped.
 
     def validate(self, operation: str = "daily") -> None:
         from .weekly_plan import validate_schedule
         validate_schedule(self)
+        from .currency_wars_loop_store import runs_value
+        try:runs_value(self.currency_runs)
+        except ValueError as error:raise SettingsError('currency_runs',str(error)) from error
         from .currency_wars_names import validate_name
         try:validate_name(self.currency_remembrance_name)
         except ValueError as error:raise SettingsError('currency_remembrance_name',str(error)) from error

@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-10-29 逐局连续运行
+
+参考固定March7thAssistant的`main.py`中`run_sub_task`及其局部循环／货币战争调用，将连续运行改写为[原生组合Runner](../autohsr/currency_wars_loop.py)。逐局归属、冻结目标、账号输入门禁、原报告核验和可恢复归档属于AutoHSR原生适配；失败／未知停止，不迁入上游false返回后继续或遥测实现。Git blob及GPL v3许可见[source.json](upstream/March7thAssistant/source.json)。未新增公开图像、模型或真实采集；检查使用合成最终节点、假窗口与既有原生结算协议。
+
 AutoHSR is distributed under the GNU General Public License version 3. The full
 license is in [../LICENSE](../LICENSE). The resources below retain their upstream
 license and contributor attribution. They are used as UI recognition references

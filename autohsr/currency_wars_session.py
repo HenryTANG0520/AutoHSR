@@ -60,6 +60,9 @@ class StandardSession:
         if 'remembrance_name' in data and validate_name(data['remembrance_name'])!=data['remembrance_name']:
             raise ValueError('对局记忆开拓者名称无效')
         if FAST_FIELD in data:validate_fast_mode(data[FAST_FIELD])
+        if 'loop_owner' in data:
+            from .currency_wars_loop_store import validate_owner
+            validate_owner(data['loop_owner'])
         for index, action in enumerate(data['actions']):
             if (type(action) is not dict or action.get('id') != index
                     or not isinstance(action.get('action'), str)
@@ -108,6 +111,7 @@ class StandardSession:
             raise AutomationError('标准对局输入记录未写入，未输入。') from error
         items = data['actions']
         if (data['match_id'] != self.data['match_id'] or data.get('remembrance_name','')!=self.data.get('remembrance_name','') or not items or
+                data.get('loop_owner') != self.data.get('loop_owner') or
                 data.get(FAST_FIELD,False) is not self.data.get(FAST_FIELD,False) or
                 items[-1]['action'] != action or items[-1]['status'] != 'pending'
                 or items[-1]['input_epoch'] != epoch):

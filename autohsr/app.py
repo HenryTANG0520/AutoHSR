@@ -202,6 +202,9 @@ class Context:
             raise AutomationError('标准开发动作与当前页面不符。')
         if choice.payload and data['actions'][-1].get('target') != list(choice.payload):
             raise AutomationError('标准动作目标与落盘记录不一致。')
+        loop_guard = getattr(self.runner, 'currency_loop_guard', None)
+        if loop_guard is not None:
+            loop_guard.authorize(scene, data, max(.85, self.settings.ocr_confidence))
         guard._require_current_scene(scene)
         if choice.intent in ('deploy_standard_owned','stage_standard_exchange','stage_standard_relocate','stage_standard_equipment','stage_standard_consumable'):
             plan = choice.target
@@ -1210,11 +1213,15 @@ class Runner:
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
                  currency_configure=False, currency_resume=False, weekly_plan=None, currency_strategy=None,
-                 currency_remembrance_name=None,currency_fast_mode=None):
+                 currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None):
         from .weekly_plan import WeeklyGuard
         if weekly_plan is not None and (not isinstance(weekly_plan, WeeklyGuard) or operation != "differential_universe"):
             raise ValueError("周常记录核验仅用于计划中的差分宇宙。")
         self.weekly_plan = weekly_plan
+        from .currency_wars_loop_store import LoopGuard
+        if currency_loop_guard is not None and (operation != 'currency_wars_standard' or not isinstance(currency_loop_guard, LoopGuard)):
+            raise ValueError('循环逐局记录仅用于原生标准货币战争。')
+        self.currency_loop_guard = currency_loop_guard
         self.settings = settings
         self._emit = emit or (lambda event: None)
         self._overlay = None
@@ -1529,7 +1536,11 @@ class Runner:
                 from .currency_wars_session import StandardSession,require_session_access
                 from .currency_wars_equipment_mode import resolve_fast_mode
                 saved=StandardSession(directory.parent/'currency-standard-session.json').data
-                require_session_access(saved,self.currency_resume)
+                if self.currency_loop_guard is not None:
+                    self.currency_loop_guard.require_access(saved,self.currency_resume)
+                    self.currency_loop_guard.register_run(directory)
+                else:
+                    require_session_access(saved,self.currency_resume)
                 configured_name=resolve_name(self.settings,self.currency_remembrance_name,saved,resume=self.currency_resume)
                 resolve_fast_mode(self.settings,self.currency_fast_mode,saved,resume=self.currency_resume)
             if not catalogue and not currency_wars and not differential_universe and self.settings.battle and self.settings.allow_stamina_spend:

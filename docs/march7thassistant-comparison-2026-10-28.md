@@ -2,6 +2,8 @@
 
 研究日期：2026-10-28（Asia/Shanghai）。研究目的：为项目恢复开发及后续交互设计、二次开发提供依据。
 
+本文保留重启当日的比较基线。后续功能适配、当前差距及未验证项持续记录在[开发范围与进度](development-roadmap.md)；2026-10-29新增的标准连续运行见[循环说明](currency-wars-loop.md)，不以离线机制检查代替真实整局验收。
+
 ## 1. 对象、版本与证据边界
 
 本文的“三月七启动器”指[三月七小助手／March7thAssistant](https://github.com/moesnow/March7thAssistant)，维护者为`moesnow`；`March7th Launcher.exe`是它的图形入口，不是另一个独立项目。[M1]

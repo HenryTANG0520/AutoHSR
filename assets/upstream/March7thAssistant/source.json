@@ -23,6 +23,10 @@
   ],
   "sources": [
     {
+      "path": "main.py",
+      "git_blob": "feab0b158e1f80c2b7a0c85c6cc276479d710bf4"
+    },
+    {
       "path": "LICENSE",
       "git_blob": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7"
     },
@@ -36,6 +40,12 @@
     }
   ],
   "adaptations": [
+    {
+      "path": "autohsr/currency_wars_loop.py",
+      "reference_source": "main.py",
+      "reference_functions": ["run_sub_task", "_run_loop_task_with_telemetry", "currencywars"],
+      "kind": "sequential composition of AutoHSR native standard Runners, finite or until stopped; frozen options and explicit remaining-goal resume, local account and match ownership, verified terminal settlement, original reports and recoverable hash-bound archives; native failure or unknown stops, while weekly goals, rewards, other modes and live acceptance remain pending"
+    },
     {
       "path": "autohsr/currency_wars_equipment_mode.py",
       "reference_functions": ["equip_weapons", "check_main_screen", "equip_aglaea", "equip_seele"],

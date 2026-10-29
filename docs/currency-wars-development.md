@@ -1,5 +1,25 @@
 # 货币战争重启开发记录
 
+## 2026-10-29：逐局循环、原生归属及可恢复归档
+
+参考固定March7thAssistant的`run_sub_task`／`_run_loop_task_with_telemetry`／`currencywars`，新增[循环Runner](../autohsr/currency_wars_loop.py)与[逐局本地记录](../autohsr/currency_wars_loop_store.py)。持续调用原单局Runner，新增指定局数及剩余目标接续；每局完整核实后才允许下一局。CLI、目录、事件和恢复见[连续运行说明](currency-wars-loop.md)。
+
+- 新增严格整数设置`currency_runs=1`，0表示直到停止，仅用于显式循环。CLI新增`--currency-wars-loop`、`--currency-runs`与`--resume-currency-loop`，策略、显示名和装备模式可作本次覆盖，不保存配置。循环冻结这些设置，显式冲突在游戏访问前拒绝。
+- 预约先写盘，单局首个输入前写入`loop_owner`及本局ID，正式Context每次回读核对。首次标准输入前持久化循环账号，下一局仍须一致。写盘失败、换号或归属改变不发送输入；外部未完成／未知局不自动接管，原单局接续入口保留。
+- 计数须有最终节点出战和胜利来源、连续四步结算、清晰账本、专项核验、成功原报告和存在的证据。归档依次保存意图、重命名原文件、写不可覆盖回执、更新计数。中断可明确接续只读补齐，不重复游戏操作；哈希、局号、目的地或文件双份冲突停止并保留证据，下一局前复查上一局来源。
+- 已完成的原单局可先归档prior而不计入新目标。若原生结算完整而原报告保存失败，当前运行仍停止；明确接续时可重核证据并另存只读审计，保留原失败报告及其哈希。未知支付、未完成专项和缺证据不能绕过。
+- 每局原报告独立，汇总只发一次finished；暂停停止转交子Runner，F10另覆盖归档间隙，间隙F9仅在游戏仍在前台时处理。操作系统文件锁防止并发循环，进程退出自动释放。完成数只表示开发局结算留档，独立验收仍0/10。
+
+新增[22项专项检查](../autohsr/tests/test_currency_wars_loop.py)，以合成最终节点和正式Context四步结算覆盖两局归档、直到停止、冻结目标与剩余接续、原报告失败后的只读审计、归档中断及篡改、账号／归属和首次绑定写盘失败、启动前拒绝、CLI与热键转交。这些不是整局策略或真实多局验收。
+
+首轮夹具将旧OCR专用场景当作已有图像保存，直接导入TestCase另引入额外检查；改为合成图像和模块引用后修正。第三轮余下两处失败是已有完成数、但本次请求被拒绝时应保留partial的断言，未放宽生产门禁。原日志`runs/currency-loop-first.log`、`runs/currency-loop-second.log`和`runs/currency-loop-third.log`保留。50项新旧流程／装备模式／结算回归通过`runs/currency-loop-related.log`，最终22项通过`runs/currency-loop-final.log`。
+
+本轮没有启动、检测或操作真实游戏，未消耗资源、采集画面或构建EXE。当前限标准A8-40，GUI交既有界面对话整合；其他模式、周期积分目标和领奖、失败结算继续及完整整局尚未完成。上游正常返回false后继续的行为未套用于未核实的本地对局。
+
+**1411项全量测试通过**（637.718秒），见`runs/currency-loop-all.log`；84项假后端GUI通过`runs/currency-loop-gui.log`。全量运行期间另补强开局原动作来源和接续显示名归一化，22项通过`runs/currency-loop-final-fixed.log`，56项新旧入口／结算／装备模式整合通过`runs/currency-loop-integration-final.log`；同一22项随后补查带空格显示名的归一化接续，通过`runs/currency-loop-final-names.log`。最终热键审阅发现父层轮询可能消费子Runner的F9短按历史，已改为子局期间不读取F9，F10由任一读取者处理按住或短按历史，避免丢失紧急停止；专项覆盖低位短按和子局期间的实际读取键列表。来源检查核对4份固定blob、3个循环方法、GPL许可、18幅旧图和7份文档134条相对链接，结果见忽略的`runs/currency-loop-source-check.json`。`git diff --check`通过。
+
+最终热键版本56项整合通过`runs/currency-loop-integration-release.log`（19.854秒），随后将间隙热键读取与子Runner交接置于同一把锁下，22项专项再通过`runs/currency-loop-controls-final.log`（7.048秒）。CLI真实帮助已核对循环入口及局数／接续参数；日志、检查脚本、会话和配置保持忽略。
+
 ## 2026-10-29：标准速通装备、冻结设置与访问游戏前检查
 
 参考固定March7thAssistant的`equip_weapons`和`check_main_screen`调用关系，新增[原生装备模式](../autohsr/currency_wars_equipment_mode.py)。上游先独立执行阿格莱雅／希儿核心装备，再执行受速通开关约束的普通分配；本次按同一边界适配，不把核心准备误当成应当跳过的普通装备步骤。

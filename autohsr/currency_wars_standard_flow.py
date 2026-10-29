@@ -362,7 +362,11 @@ def run_standard(c):
     # or development continuation is recorded separately from ten frozen runs.
     store = StandardSession(Path(c.report.run_dir).parent/'currency-standard-session.json')
     c.currency_standard_session = store
-    require_session_access(store.data,c.runner.currency_resume)
+    loop_guard = getattr(c.runner, 'currency_loop_guard', None)
+    if loop_guard is not None:
+        loop_guard.require_access(store.data,c.runner.currency_resume)
+    else:
+        require_session_access(store.data,c.runner.currency_resume)
     from .currency_wars_standard_policy import STRATEGIES
     from .currency_wars_names import resolve_name
     requested_strategy = getattr(c.runner, 'currency_strategy', None)
@@ -380,11 +384,14 @@ def run_standard(c):
         entry = c.report.currency_wars
         if not entry.get('rank_verified'):
             return result
-        store.begin(c.report.run_dir, entry)
+        if store.data is None:
+            store.begin(c.report.run_dir, entry)
     store.data['strategy'] = strategy
     store.data['remembrance_name']=remembrance_name
     store.data[FAST_FIELD]=fast_mode
     store.persist()
+    if loop_guard is not None:
+        loop_guard.bind(store)
     c.report.currency_wars = store.data
     guard = CurrencyWarsWorkflow(c)
     scene = c.snapshot()
