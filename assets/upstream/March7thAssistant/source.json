@@ -37,6 +37,11 @@
   ],
   "adaptations": [
     {
+      "path": "autohsr/currency_wars_equipment_mode.py",
+      "reference_functions": ["equip_weapons", "check_main_screen", "equip_aglaea", "equip_seele"],
+      "kind": "optional generic-equipment fast schedule with pinned standard boss nodes 1-9/2-7/3-7; follows upstream's call graph so named-core equipment and tools remain independent; preserves AutoHSR's default all-node behavior, freezes a typed per-match preference, allows standard-only temporary CLI overrides and retains native per-item consumption/worn verification; other modes are not wired"
+    },
+    {
       "path": "autohsr/currency_wars_standard_budget.py",
       "reference_functions": ["start_war", "identify_current_stage"],
       "kind": "whole-match execution with bounded per-phase technical work, inspired by upstream's ongoing stage monitoring; resets use AutoHSR's verified continuation or completed cross-node supply receipt, never OCR alone, while retaining total action bounds, explicit resume, unknown-input protection and independent settlement; does not port abandon/restart or the five-identical-stage heuristic"

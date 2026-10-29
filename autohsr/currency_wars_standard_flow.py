@@ -9,7 +9,7 @@ from pathlib import Path
 from .currency_wars import CurrencyWarsWorkflow, TASK, observe
 from .currency_wars_navigation import locate, unique
 from .currency_wars_prepare import trusted
-from .currency_wars_session import StandardSession
+from .currency_wars_session import StandardSession,require_session_access
 from .currency_wars_standard import difficulty_page, selected_rank
 from .models import AutomationError, EmptyCapture, TaskResult
 from .models import Token, normalize
@@ -362,8 +362,7 @@ def run_standard(c):
     # or development continuation is recorded separately from ten frozen runs.
     store = StandardSession(Path(c.report.run_dir).parent/'currency-standard-session.json')
     c.currency_standard_session = store
-    if store.data is not None and not c.runner.currency_resume:
-        raise AutomationError('已有标准对局记录，请使用明确的接续入口核对当前局，未重开。')
+    require_session_access(store.data,c.runner.currency_resume)
     from .currency_wars_standard_policy import STRATEGIES
     from .currency_wars_names import resolve_name
     requested_strategy = getattr(c.runner, 'currency_strategy', None)
@@ -371,12 +370,9 @@ def run_standard(c):
     if strategy not in STRATEGIES or requested_strategy is not None and requested_strategy != strategy:
         raise AutomationError('本次策略与已记录对局不同，未中途改写策略。')
     remembrance_name=resolve_name(c.settings,getattr(c.runner,'currency_remembrance_name',None),store.data,resume=c.runner.currency_resume)
+    from .currency_wars_equipment_mode import resolve_fast_mode,FAST_FIELD
+    fast_mode=resolve_fast_mode(c.settings,getattr(c.runner,'currency_fast_mode',None),store.data,resume=c.runner.currency_resume)
     if c.runner.currency_resume:
-        if store.data is None or store.data['status'] != 'active':
-            raise AutomationError('没有已核实开始且可接续的标准对局；未知开局未重放。')
-        if (store.data['actions'] and store.data['actions'][-1]['status'] != 'verified'
-                and store.data['actions'][-1]['action'] != 'open_standard_shop'):
-            raise AutomationError('上次标准动作尚未核实，先核对反馈，未接续输入。')
         store.data.setdefault('continuations', []).append(str(c.report.run_dir))
         store.persist()
     else:
@@ -387,6 +383,7 @@ def run_standard(c):
         store.begin(c.report.run_dir, entry)
     store.data['strategy'] = strategy
     store.data['remembrance_name']=remembrance_name
+    store.data[FAST_FIELD]=fast_mode
     store.persist()
     c.report.currency_wars = store.data
     guard = CurrencyWarsWorkflow(c)

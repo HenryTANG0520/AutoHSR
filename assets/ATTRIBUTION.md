@@ -734,3 +734,7 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 ## 2026-10-29 整局执行与有界存档
 
 参考固定March7thAssistant的`start_war`及`identify_current_stage`的整局执行与阶段监测，将本项目总512步实验循环改写为[原生分段执行上限](../autohsr/currency_wars_standard_budget.py)。计数刷新依赖本项目的胜利继续／补给交付来源，原未知输入保护继续使用；不迁入自动放弃与重开，也不以OCR变化作为额度刷新。64 MiB有界存档、写入前容量检查及总4096动作限制属于AutoHSR原生设计。源码blob、引用函数和GPL v3继续记在[source.json](upstream/March7thAssistant/source.json)；没有新增公开素材、模型或游戏采集，检查使用合成记录与已有署名素材。
+
+## 2026-10-29 速通装备选项
+
+参考固定March7thAssistant的`equip_weapons`、`check_main_screen`及`equip_aglaea`／`equip_seele`调用关系，将普通装备的首领节点限制改写为[原生装备模式](../autohsr/currency_wars_equipment_mode.py)。命名核心分配独立，保留本项目默认、设置保存语义及逐件装备回执；标准首领节点采用固定源码中的1-9、2-7、3-7，不将其他模式写成已接入。来源函数、Git blob及GPL v3许可见[source.json](upstream/March7thAssistant/source.json)。没有新增公开游戏素材、模型或实机采集；检查沿用既有署名图标与合成状态。

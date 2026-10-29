@@ -50,8 +50,10 @@ def resulting_gear(old, incoming, recipes=()):
     return tuple(sorted(result))
 
 
-def choose_equipment(snapshot, cells, strategy='default', recommendations=None, recipes=None):
+def choose_equipment(snapshot, cells, strategy='default', recommendations=None, recipes=None, *, fast_mode=False):
     from .currency_wars_equipment import available_slots
+    from .currency_wars_equipment_mode import generic_allowed,validate_fast_mode
+    validate_fast_mode(fast_mode)
     field = tuple(unit for unit in snapshot.roster if unit.zone != 'bench')
     available = tuple(cell for cell in cells if cell.name in GEAR)
     if not snapshot.roster_complete or len(field) != snapshot.capacity or not available:
@@ -90,6 +92,7 @@ def choose_equipment(snapshot, cells, strategy='default', recommendations=None, 
                     if useful:
                         return core,cell,expected,'策略核心优先；使用已观察的成品或有来源的配方材料'
             return None  # Preserve core materials until its intended loadout is complete.
+    if not generic_allowed(snapshot,fast_mode):return None
     for unit in sorted(field,key=lambda u:(-(u.tier or 0),-(u.star or 0),u.zone!='front',u.slot)):
         if unit.equipment is None:
             continue
@@ -141,7 +144,9 @@ def proposal(scene, session, confidence=.65):
         raise AutomationError('装备分配缺少本局版本、完整阵容或清晰余额来源。')
     recommendations = {key:record.get('recommendations',()) for key,record in prior['collection']['units'].items()}
     recipes = {key:record.get('equipment_recipes',()) for key,record in prior['collection']['units'].items()}
-    chosen = choose_equipment(snapshot,inventory(scene,confidence),prior.get('strategy','default'),recommendations,recipes)
+    from .currency_wars_equipment_mode import stored_fast_mode
+    chosen = choose_equipment(snapshot,inventory(scene,confidence),prior.get('strategy','default'),recommendations,recipes,
+                              fast_mode=stored_fast_mode(prior))
     if chosen is None:
         return None
     unit,item,expected,reason = chosen

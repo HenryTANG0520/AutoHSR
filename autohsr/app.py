@@ -1210,7 +1210,7 @@ class Runner:
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
                  currency_configure=False, currency_resume=False, weekly_plan=None, currency_strategy=None,
-                 currency_remembrance_name=None):
+                 currency_remembrance_name=None,currency_fast_mode=None):
         from .weekly_plan import WeeklyGuard
         if weekly_plan is not None and (not isinstance(weekly_plan, WeeklyGuard) or operation != "differential_universe"):
             raise ValueError("周常记录核验仅用于计划中的差分宇宙。")
@@ -1247,6 +1247,10 @@ class Runner:
         if currency_remembrance_name is not None and operation!='currency_wars_standard':
             raise ValueError('记忆开拓者名称仅用于标准货币战争入口。')
         self.currency_remembrance_name=None if currency_remembrance_name is None else validate_name(currency_remembrance_name)
+        from .currency_wars_equipment_mode import validate_fast_mode
+        if currency_fast_mode is not None and operation!='currency_wars_standard':
+            raise ValueError('速通装备设置仅用于标准货币战争入口。')
+        self.currency_fast_mode=None if currency_fast_mode is None else validate_fast_mode(currency_fast_mode)
         if operation == 'currency_wars_standard':
             self.currency_locate = self.currency_configure = True
         self.currency_source_slot,self.currency_zone = currency_source_slot,currency_zone
@@ -1522,9 +1526,12 @@ class Runner:
             configured_name=''
             if self.report.operation=='currency_wars_standard':
                 from .currency_wars_names import resolve_name
-                from .currency_wars_session import StandardSession
-                saved=StandardSession(directory.parent/'currency-standard-session.json').data if self.currency_resume else None
+                from .currency_wars_session import StandardSession,require_session_access
+                from .currency_wars_equipment_mode import resolve_fast_mode
+                saved=StandardSession(directory.parent/'currency-standard-session.json').data
+                require_session_access(saved,self.currency_resume)
                 configured_name=resolve_name(self.settings,self.currency_remembrance_name,saved,resume=self.currency_resume)
+                resolve_fast_mode(self.settings,self.currency_fast_mode,saved,resume=self.currency_resume)
             if not catalogue and not currency_wars and not differential_universe and self.settings.battle and self.settings.allow_stamina_spend:
                 from .recovery import BattleBudget
                 self.battle_budget = BattleBudget(ROOT / "runs", self.settings, self.report)

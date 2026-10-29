@@ -10,6 +10,7 @@ from pathlib import Path
 from .currency_wars_state import strict_json
 from .models import AutomationError
 from .storage import replace_file
+from .currency_wars_equipment_mode import FAST_FIELD,validate_fast_mode
 
 MAX_ACTIONS = 4096
 MAX_SESSION_BYTES = 64*1024*1024
@@ -21,6 +22,16 @@ def read_session(path):
         raw=stream.read(MAX_SESSION_BYTES+1)
     if len(raw)>MAX_SESSION_BYTES:raise ValueError('对局记录超过64 MiB大小限制')
     return strict_json(raw.decode('utf-8'))
+
+
+def require_session_access(data,resume):
+    if not resume:
+        if data is not None:raise AutomationError('已有标准对局记录，请使用明确的接续入口核对当前局，未重开。')
+        return
+    if data is None or data['status']!='active':
+        raise AutomationError('没有已核实开始且可接续的标准对局；未知开局未重放。')
+    if data['actions'] and data['actions'][-1]['status']!='verified' and data['actions'][-1]['action']!='open_standard_shop':
+        raise AutomationError('上次标准动作尚未核实，先核对反馈，未接续输入。')
 
 
 class StandardSession:
@@ -48,6 +59,7 @@ class StandardSession:
         from .currency_wars_names import validate_name
         if 'remembrance_name' in data and validate_name(data['remembrance_name'])!=data['remembrance_name']:
             raise ValueError('对局记忆开拓者名称无效')
+        if FAST_FIELD in data:validate_fast_mode(data[FAST_FIELD])
         for index, action in enumerate(data['actions']):
             if (type(action) is not dict or action.get('id') != index
                     or not isinstance(action.get('action'), str)
@@ -96,6 +108,7 @@ class StandardSession:
             raise AutomationError('标准对局输入记录未写入，未输入。') from error
         items = data['actions']
         if (data['match_id'] != self.data['match_id'] or data.get('remembrance_name','')!=self.data.get('remembrance_name','') or not items or
+                data.get(FAST_FIELD,False) is not self.data.get(FAST_FIELD,False) or
                 items[-1]['action'] != action or items[-1]['status'] != 'pending'
                 or items[-1]['input_epoch'] != epoch):
             raise AutomationError('标准对局输入与本次已落盘意图不符。')

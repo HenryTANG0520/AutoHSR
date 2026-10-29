@@ -66,6 +66,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--currency-strategy", choices=('default','aglaea','seele'),
                         help="标准开发购买与成长策略；新局默认 default，接续沿用本局记录")
     parser.add_argument('--currency-remembrance-name',help='本局记忆开拓者实际显示名称；留空不配置，接续沿用已记录名称，不保存设置')
+    parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
+                        help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
     if args.resume_active_currency and not args.currency_wars_standard:
         parser.error('--resume-active-currency 仅用于 --currency-wars-standard。')
@@ -73,6 +75,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error('--currency-strategy 仅用于 --currency-wars-standard。')
     if args.currency_remembrance_name is not None and not args.currency_wars_standard:
         parser.error('--currency-remembrance-name 仅用于 --currency-wars-standard。')
+    if args.currency_fast_mode is not None and not args.currency_wars_standard:
+        parser.error('--currency-fast-mode 仅用于 --currency-wars-standard。')
     if args.admin_owner is not None and args.admin_launch not in ("enable", "disable"):
         parser.error("--admin-owner 仅用于管理员授权操作。")
     if args.admin_task and raw_args != ["--admin-task"]:
@@ -214,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
                             **(dict(currency_resume=args.resume_active_currency) if args.currency_wars_standard else {}),
                             **(dict(currency_strategy=args.currency_strategy) if args.currency_strategy is not None else {}),
                             **(dict(currency_remembrance_name=args.currency_remembrance_name) if args.currency_remembrance_name is not None else {}),
+                            **(dict(currency_fast_mode=args.currency_fast_mode) if args.currency_fast_mode is not None else {}),
                             **(dict(du_runs=settings.differential_universe_runs,
                                     du_resume_active=args.resume_active_du,
                                     du_periodic_rank=args.du_periodic_rank) if args.differential_universe else {}))
