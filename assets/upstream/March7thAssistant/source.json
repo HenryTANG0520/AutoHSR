@@ -82,12 +82,13 @@
     {
       "path": "autohsr/currency_wars_standard_sale.py",
       "reference_functions": [
+        "check_main_screen",
         "sell_characters_aglaea_strategy",
         "sell_characters_seele_strategy",
         "sell_characters",
         "_sell_single_character"
       ],
-      "kind": "native per-unit bench cleanup after legal deployment, fresh identity inspection and observed refund; positive gold credit plus all nineteen slots verified, with no cached-list deletion as success"
+      "kind": "native observed-credit cleanup for bench units and Seele-owned on-field non-strategy units with independently empty gear; legacy bench targets remain separate from typed front/back credits, frozen roster/HUD/local appearances, actual refunds and deployment decrease; all-slot feedback and immutable source checks replace cached-list deletion as success"
     },
     {
       "path": "autohsr/currency_wars_equipment_catalog.py",

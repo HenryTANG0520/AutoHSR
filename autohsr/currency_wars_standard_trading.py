@@ -172,7 +172,7 @@ def experience_action(scene, session, confidence=.65):
 
 
 def financial_feedback(choice, before, after, confidence=.65, *, session=None):
-    if choice.intent == 'sell_standard_owned':
+    if choice.intent in ('sell_standard_owned','sell_standard_field_owned'):
         from .currency_wars_standard_sale import sale_feedback
         return sale_feedback(choice,before,after,session,confidence)
     if choice.intent == 'refresh_standard_shop':
@@ -234,7 +234,7 @@ def record_financial_feedback(session, choice, receipt):
     if not valid_receipt(dict(action, receipt=receipt)):
         raise AutomationError('标准交易收据与已落盘意图不一致。')
     action['receipt'] = receipt
-    if choice.intent == 'sell_standard_owned':
+    if choice.intent in ('sell_standard_owned','sell_standard_field_owned'):
         from .currency_wars_standard_sale import finish
         finish(session)
     if choice.intent == 'buy_standard_experience' and receipt['level_after'] != choice.payload[3]:

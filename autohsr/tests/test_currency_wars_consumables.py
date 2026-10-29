@@ -58,6 +58,9 @@ def fixture(name='projector',quantity=1,*,strategy='aglaea',worn=(),duplicate=Fa
     for record in records.values():
         unit=record['unit'];unit.update(traits=('测试',),equipment=(),eligible_zones=(unit['zone'],))
     core=records['front:2']['unit'];core.update(name='希儿' if strategy=='seele' else '阿格莱雅',star=1,tier=4,equipment=worn)
+    if strategy=='seele':
+        records['front:1']['unit']['name']='符玄'
+        records['back:1']['unit']['name']='瓦尔特'
     if duplicate:
         patch=_crop(board.image,bench_face(4));patch[:]=np.random.default_rng(44).integers(0,256,patch.shape,dtype=np.uint8)
         cell=next(c for c in roster_cells(board) if (c.zone,c.slot)==('bench',4))

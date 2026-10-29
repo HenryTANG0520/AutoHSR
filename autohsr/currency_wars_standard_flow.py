@@ -267,7 +267,7 @@ def transition_ready(choice, scene, confidence=.65, *, before=None, session=None
             return recommendation_visible(scene,confidence) and (profile.zone,profile.slot,profile.name)==choice.payload[:3]
         except AutomationError:
             return False
-    if choice.expected == 'standard_sale_panel':
+    if choice.expected in ('standard_sale_panel','standard_field_sale_panel'):
         from .currency_wars_standard_sale import panel_feedback
         return before is not None and panel_feedback(choice,before,scene,confidence)
     if choice.expected == 'standard_sale_cancelled':
@@ -507,7 +507,7 @@ def run_standard(c):
             action['decision'] = dict(name=choice.details[0],star=choice.details[1],tier=choice.details[2],
                                       zone=choice.details[3],score=choice.details[4],policy=choice.details[5])
             store.persist()
-        elif choice.intent in FINANCIAL_ACTIONS or choice.intent == 'inspect_standard_sale_unit':
+        elif choice.intent in FINANCIAL_ACTIONS or choice.intent in ('inspect_standard_sale_unit','inspect_standard_field_sale_unit'):
             action['decision'] = dict(strategy=choice.details[0], score=choice.details[1],
                                       reasons=list(choice.details[2]), policy=choice.details[3])
             store.persist()
@@ -565,7 +565,7 @@ def run_standard(c):
             from .currency_wars_standard_exchange import record_intent
             record_intent(store.data,choice)
             store.persist()
-        if choice.intent == 'inspect_standard_sale_unit':
+        if choice.intent in ('inspect_standard_sale_unit','inspect_standard_field_sale_unit'):
             from .currency_wars_standard_sale import bind_intent
             bind_intent(store.data,choice,scene,c.settings.ocr_confidence)
             store.persist()
@@ -622,7 +622,7 @@ def run_standard(c):
                 stable = stable+1 if ready else 0
                 required = 2 if choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable',
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
-                                                    'standard_sale_panel','standard_owned_sold','standard_equipment_inspectable',
+                                                    'standard_sale_panel','standard_owned_sold','standard_field_sale_panel','standard_field_owned_sold','standard_equipment_inspectable',
                                                     'standard_reward_returned','standard_supply_selected','standard_supply_refreshed',
                                                     'standard_investment_selected','standard_investment_applied',
                                                     'standard_stale_unit_board','standard_collected_unit_board',
@@ -704,8 +704,9 @@ def run_standard(c):
                     elif choice.intent in ('confirm_standard_movement_star','close_standard_popup_unit','close_standard_popup_stale_panel'):
                         from .currency_wars_standard_popup import returned as popup_returned
                         popup_returned(store.data,choice,after,c.settings.ocr_confidence)
-                    elif choice.intent == 'inspect_standard_sale_unit':
-                        store.data['inspecting'] = dict(zone='bench',slot=choice.payload[4],node=choice.payload[0],
+                    elif choice.intent in ('inspect_standard_sale_unit','inspect_standard_field_sale_unit'):
+                        from .currency_wars_standard_sale import target_zone
+                        store.data['inspecting'] = dict(zone=target_zone(choice.payload),slot=choice.payload[4],node=choice.payload[0],
                                                         signature=choice.payload[8],input_epoch=c.runner.input_epoch,
                                                         run_dir=c.report.run_dir,before=action['before'],after=action['after'])
                     elif choice.intent == 'close_standard_sale_stale_panel':
@@ -723,7 +724,7 @@ def run_standard(c):
                         action['feedback'] = deployment_feedback(scene,after,choice.target,c.settings.ocr_confidence)
                         transfer_collection(store.data,scene,after,choice.target,action['after'],c.settings.ocr_confidence)
                     elif choice.intent not in ('close_standard_unit','open_standard_shop','close_standard_shop','select_standard_movement_star',
-                                                'buy_standard_experience','refresh_standard_shop','sell_standard_owned'):
+                                                'buy_standard_experience','refresh_standard_shop','sell_standard_owned','sell_standard_field_owned'):
                         store.data.pop('collection',None)
                     if choice.intent == 'close_standard_shop':
                         nodes = store.data.setdefault('shop_observed_nodes',[])

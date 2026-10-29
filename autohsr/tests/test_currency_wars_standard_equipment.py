@@ -40,6 +40,9 @@ def fixture(strategy='seele', items=('shoe','knife'), worn=()):
         units.pop('bench:'+str(slot),None);_crop(board.image,bench_face(slot))[:] = 0
     units['front:2']['unit'].update(name='希儿' if strategy=='seele' else '阿格莱雅' if strategy=='aglaea' else '主力角色',
                                    traits=('测试',),equipment=worn)
+    if strategy=='seele':
+        units['front:1']['unit']['name']='符玄'
+        units['back:1']['unit']['name']='瓦尔特'
     for i,name in enumerate(items):
         place(board.image,name,(2460,(330,430,535,640,745,845)[i]))
     session['strategy'] = strategy
