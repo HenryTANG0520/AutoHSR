@@ -12,6 +12,10 @@
 
 本轮未新增界面解释段落，没有启动、检测或操作游戏。整体视觉一致性、玩家体验与日常周常组合实机仍未验收。
 
+源码`c9d17ce`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/excluded-draft-build.log`。使用独立配置和`--no-admin-launch`，通过原生鼠标与键盘选定密伶之径／生研院，取消加入，再改为3次、120开拓力上限、关闭支援并点击保存。窗口显示“已保存”且目标不变；磁盘全字段与预期一致。正常关闭、重新启动同一配置后，首页显示该副本未加入，生存索引与挑战设置保留上述值；再次关闭，两次退出码均为0，重开阶段配置哈希不变。截图为`runs/excluded-draft-package-count.png`、`package-before-save.png`、`package-saved.png`、`package-reopened-home.png`、`package-reopened-browser.png`、`package-reopened-settings.png`（后五项同`excluded-draft-`前缀）。
+
+239份原有用户文件哈希不变，147项素材、5份清单和23份上游文件与源码一致；记录`runs/excluded-draft-package-verification.json`，备份`build/userdata-excluded-draft-20261029_162044/`。最终EXE SHA-256为`789386f23c21cb837cbd54c40a730853524527e6d78fa40da8bc146389cd6cfc`。本轮原始与最终证据归档至正式项目`runs/excluded-draft-*`；保存操作仅作用于独立核验配置。
+
 ## 2026-10-29：浏览副本后一键加入计划
 
 继续只读参考AutoZZZ本地`b197004`的导航和直接动作入口，未修改其工作区。在AutoHSR `b714457`、独立配置和假后端下复现：关闭副本任务后，分类、搜索和列表一起锁定，但费用仍显示预计240开拓力；证据为`runs/dungeon-join-before.json/png`，配置字节未变，未启动游戏。
