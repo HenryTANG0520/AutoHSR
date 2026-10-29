@@ -24,6 +24,11 @@ def main():
     def check(name, condition):
         assert condition, name
         checks.append(name)
+    def thumb_fraction(slider):
+        y = slider.winfo_height()//2
+        positions = [x for x in range(slider.winfo_width()) if slider.identify(x, y).endswith("slider")]
+        assert positions, "The challenge slider thumb must be visible"
+        return (min(positions)+max(positions))/2/slider.winfo_width()
     catalogue = load_catalogue(ROOT/"assets/dungeons.json")
     entries = json.loads((ROOT/"assets/ui/survival/sources.json").read_text("utf-8"))["assets"]
     check("all_104_catalogue_rows_have_exact_artwork_keys", len(entries) == len(catalogue) == 104 and
@@ -39,7 +44,7 @@ def main():
     fake.Runner = reject
     with tempfile.TemporaryDirectory() as folder, patch.object(module, "ROOT", Path(folder)), patch.dict(sys.modules, {"autohsr.app": fake}):
         config = Path(folder)/"config.json"
-        Settings().save(config)
+        Settings(battle=False).save(config)
         original = config.read_bytes()
         for scale in (1., 1.25, 1.5, 2.):
             root = tk.Tk()
@@ -47,9 +52,22 @@ def main():
             root.report_callback_exception = lambda kind, value, traceback: (_ for _ in ()).throw(value.with_traceback(traceback))
             ui = Window(root, config)
             try:
+                ui._show_page("tasks")
+                root.update()
+                check(f"{scale}_initial_excluded_count_matches_disabled_slider", ui.challenge_count.get() == "24"
+                      and ui.challenge_scale.get() == 24 and ui.challenge_scale.instate(("disabled",)))
+                check(f"{scale}_initial_excluded_thumb_matches_maximum", thumb_fraction(ui.challenge_scale) > .9)
+                ui.battle_checkbox.invoke()
+                root.update()
+                check(f"{scale}_first_join_preserves_count_and_thumb", ui.tasks["battle"].get()
+                      and ui.challenge_count.get() == "24" and ui.challenge_scale.get() == 24
+                      and thumb_fraction(ui.challenge_scale) > .9)
+                ui._show_page("home")
                 ui._show_task_setup("battle")
                 root.focus_force()
                 root.update()
+                check(f"{scale}_return_preserves_count_and_thumb", ui.challenge_scale.get() == 24
+                      and thumb_fraction(ui.challenge_scale) > .9)
                 board = ui.dungeon_list
                 initial = ui._form_signature()
                 original_mission = next(m for m in board.rows if board.matches(m))

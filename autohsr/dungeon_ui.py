@@ -256,7 +256,8 @@ def refresh_count(ui):
         if not 1 <= count <= maximum:
             raise ValueError()
         if round(ui.challenge_scale.get()) != count:
-            ui.challenge_scale.set(count)
+            # Display the draft even while disabled; Scale.set ignores that state.
+            ui.challenge_scale.configure(value=count)
         cost = count * category.cost
         suffix = " · 每周最多领取 3 次，以游戏剩余次数为准" if category.weekly_limit else ""
         if category.key == "planar":
