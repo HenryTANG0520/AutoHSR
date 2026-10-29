@@ -19,6 +19,8 @@
 | 每日设置最大化 | 2784毫秒 | 1115毫秒 |
 | 每日设置还原 | 1424毫秒 | 834毫秒 |
 
+源码`094d0e2`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/resize-performance-build.log`。以`--no-admin-launch`核对首页、最大化、邮件卡直达每日设置、还原、Esc返回原卡片及正常关闭，退出码0；所捕获的各帧画面完整，邮件焦点与返回位置保持、指南背景恢复。未点击保存、检测或运行，239份用户文件哈希未变；125个UI素材、4份清单、23个上游文件一致。核对记录为`runs/resize-performance-package-verification.json`，备份`build/userdata-resize-performance-20261029_085056/`；EXE SHA-256为`1c1ba831f2e0437b390f33d7abe11c070aec2206bf83d6589cdd3c1bad944022`。正式截图为`runs/resize-performance-package-home.png`、`resize-performance-package-maximized.png`、`resize-performance-package-settings.png`、`resize-performance-package-restored.png`及`resize-performance-package-return.png`。
+
 已查看切换前与稳定画面。还原时旧的大布局仍会暂时裁切，缩放等待尚未消除，不能称为即时或无闪烁。检查使用假后端，未启动、检测或操作游戏；真实玩家学习／注意力成本、整屏逐像素一致、日常周常组合实机仍未验收，货币战争周常与周积分领奖尚未接入。
 
 ## 2026-10-29：首页任务直达每日设置
