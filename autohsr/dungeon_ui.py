@@ -4,7 +4,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from .config import RESOURCE_ROOT, ROOT
+from .config import RESOURCE_ROOT, ROOT, SettingsError
 from .dungeons import CATEGORIES, BY_KEY, category_for, count_limit, load_catalogue
 from .theme import wrapped_label
 
@@ -19,6 +19,18 @@ def reload_catalogue(ui):
 
 def selected_category(ui):
     return next(item for item in CATEGORIES if item.label == ui.dungeon_category.get())
+
+
+def available_count(ui, category=None):
+    """Read the current draft's ceiling without changing its resource budget."""
+    category = category or selected_category(ui)
+    budget = ui._number("stamina_limit", int)
+    if not 10 <= budget <= 240 or budget % 10:
+        raise SettingsError("stamina_limit", "本次开拓力上限应为 10～240 之间的 10 的倍数。")
+    maximum = count_limit(category, budget)
+    if maximum < 1:
+        raise SettingsError("stamina_limit", f"{category.label}单次需要 {category.cost} 开拓力，当前上限为 {budget}。请调整上限。")
+    return maximum
 
 
 def build_fields(ui, parent):
@@ -202,6 +214,11 @@ def _show_editor(ui):
 def select_mission(ui, mission):
     if ui.busy or not ui.settings.allow_stamina_spend:
         return
+    try:
+        available_count(ui, BY_KEY[mission.category])
+    except SettingsError as error:
+        ui._input_failed(error)
+        return
     loading = ui._loading
     ui._loading = True
     try:
@@ -217,7 +234,7 @@ def select_mission(ui, mission):
         update_options(ui)
     finally:
         ui._loading = loading
-    if ui.input_error_field in ("target_name", "target_location"):
+    if ui.input_error_field in ("target_name", "target_location", "challenge_count", "stamina_limit"):
         ui._clear_input_error()
     ui._form_changed()
 
@@ -232,14 +249,14 @@ def update_options(ui):
 
 
 def use_budget(ui):
-    try:
-        budget = int(ui.stamina_limit.get())
-        if not 10 <= budget <= 240 or budget % 10 or budget < selected_category(ui).cost:
-            raise ValueError()
-    except ValueError:
-        ui.save_status.set("请先填写能支付单次挑战的开拓力上限（10～240，10的倍数）。")
+    if ui.busy or not ui.settings.allow_stamina_spend:
         return
-    ui._preset(budget, selected_category(ui).batch)
+    try:
+        available_count(ui)
+    except SettingsError as error:
+        ui._input_failed(error)
+        return
+    ui._preset(int(ui.stamina_limit.get()), selected_category(ui).batch)
 
 
 def select_category(ui):
@@ -269,7 +286,12 @@ def select_name(ui):
 def set_count(ui, count):
     if ui.busy or not ui.settings.allow_stamina_spend:
         return
-    value = str(max(1, min(count_limit(selected_category(ui)), count)))
+    try:
+        maximum = available_count(ui)
+    except SettingsError as error:
+        ui._input_failed(error)
+        return
+    value = str(max(1, min(maximum, count)))
     if ui.challenge_count.get() != value:
         ui.challenge_count.set(value)
 
@@ -284,7 +306,11 @@ def change_count(ui, delta):
 
 def refresh_count(ui):
     category = selected_category(ui)
-    maximum = count_limit(category)
+    try:
+        maximum = available_count(ui)
+    except SettingsError:
+        # Keep unfinished input intact; explicit actions reveal its field error.
+        maximum = count_limit(category)
     ui.challenge_scale.configure(to=maximum)
     ui.challenge_entry.configure(to=maximum)
     try:

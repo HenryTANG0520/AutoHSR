@@ -9,7 +9,8 @@ from tkinter import ttk
 from PIL import Image, ImageTk
 
 from . import theme as t
-from .dungeons import CATEGORIES
+from .config import SettingsError
+from .dungeons import CATEGORIES, BY_KEY
 from .game_widgets import SceneButton, Surface
 from .models import normalize
 
@@ -147,6 +148,12 @@ class DungeonList(Surface):
     def action_label(self, mission):
         if not self.ui.settings.allow_stamina_spend:
             return "未授权"
+        if not self.ui.busy:
+            from .dungeon_ui import available_count
+            try:
+                available_count(self.ui, BY_KEY[mission.category])
+            except SettingsError:
+                return "调整上限"
         if not self.ui.tasks["battle"].get():
             return "未加入" if self.ui.busy else "加入计划"
         return "已选" if self.matches(mission) else "选用"
