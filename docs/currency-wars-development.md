@@ -1,5 +1,23 @@
 # 货币战争重启开发记录
 
+## 2026-10-29：独立普通积分领奖与原图回执核验
+
+参考固定March7thAssistant的`get_reward`与周期奖励辅助，新增[领奖控件](../autohsr/currency_wars_weekly_rewards.py)、[独立Runner流程](../autohsr/currency_wars_weekly_reward_run.py)和[意图／回执](../autohsr/currency_wars_weekly_reward_store.py)。CLI为`--currency-wars-rewards`，明确接续为`--resume-currency-rewards`；不自动加入旧循环／周常，不保存设置，当前没有新增清理或购买输入。详细字段与边界见[积分及领奖说明](currency-wars-weekly-notes.md)。
+
+- 新运行在游戏准备前检查标准旧局与未完成领奖；导航到主页后冻结账号、客户端、识别阈值、积分和游戏周。每次输入重核新鲜画面、UID、客户端、代次、冻结周与已落盘意图。只允许打开积分、一次当前可用领取、一次本次奖励展示关闭及返回主页。
+- 可用金色控件、中性禁用、明确无可领取、缺失和未知分开；低置信度重复也构成冲突。领取后须两帧一致的独立“获得物品”、正数量与关闭提示；关闭后再核对两帧不可领取状态，最后核对两帧同积分、同账号及倒计时一致的主页。不能以红点消失或缺按钮认定成功。
+- 原图、限定OCR、控件状态及反馈时序保存到独立尝试目录；提交回执前用原图与字段重新构建页面、积分、数量及可用状态，拒绝伪造摘要、数量和重复帧。字段不包含UID及无关账号文字，截图与目录不进入模型载荷。
+- 原报告和回执处理完才释放原生运行锁。保存失败不再领取；完整返回但未提交回执可显式只读补存新审计报告，记录原报告路径、存在时的哈希与恢复标记，旧失败文件保留。pending／unknown在游戏访问前拒绝重放；其他输入Runner也在准备前阻止越过未完成领奖。只读识别仍可用。
+- 助燃券满额单独取得两帧提示，只将领取结果记为fuel_ticket_limit／blocked／partial，不记到账、不清理、不重试。`claimed_now`、当前可领取结清、满18000的本周奖励核实与对局完成分开；零积分无可领取不等于本周完成，`completion_verified=false`、`match_started=false`。
+
+新增[19项专项检查](../autohsr/tests/test_currency_wars_weekly_rewards.py)，正式Runner、Context、报告与回执均执行，窗口／OCR／按钮图像为模拟。覆盖普通领取、初始禁用／零分、明确无可领取区域、满额拆行、未知不重放、核实后停止与接续、跨周、报告及回执失败只读恢复、原图重验与元数据伪造、账号／客户端／代次／写账门禁、返回原子保存、其他Runner隔离及CLI不保存配置。最初113项通过`runs/currency-weekly-rewards-related-final.log`（33.482秒）；阶段来源、原子保存及仅本尝试原图补查后，114项最终通过`runs/currency-weekly-rewards-release.log`（41.710秒），补查前的全量运行中止并保留`runs/currency-weekly-rewards-all.log`，改跑最终源码全量。
+
+首轮遗漏CLI默认GUI分流条件，测试停在使用临时配置的GUI；已仅结束该测试进程，补入命令行入口并加入禁止GUI回退的检查，日志`runs/currency-weekly-rewards-first.log`保留。随后停止检查发现共享测试环境把checkpoint整体替换，已恢复真实控制检查、只模拟焦点，原失败见`runs/currency-weekly-rewards-routing-fixed.log`。原图回执增加时序核验后，模拟sleep无等待导致Windows同一时钟刻度的两帧被正确拒绝；测试改为短暂模拟等待，生产0.3秒反馈等待与严格时序门禁未放宽，9个失败的`runs/currency-weekly-rewards-proof.log`保留。修正后15项通过`runs/currency-weekly-rewards-proof-fixed.log`（13.443秒），补充原图状态、局部文字与满额拆行反例后完成上述113项整合。
+
+本轮未启动、检测或控制真实游戏，未新增真实游戏截图或资源消耗、未构建EXE；正向领奖仍只有合成图像机制检查，不宣称实际到账、全部客户端支持或完整周常已验收。满额清理／重试、循环及周常整合、GUI和真实路径仍待完成，历史独立通关0/10不变。
+
+最终**1480项全量单元测试通过**（664.187秒），见`runs/currency-weekly-rewards-all-final.log`；84项假后端GUI通过`runs/currency-weekly-rewards-gui.log`。随后补查领奖失败提示：流程说明仍会被Runner统一异常出口覆盖，19项复核中1项失败的`runs/currency-weekly-rewards-message-final.log`保留；统一出口现区分领奖失败，说明保留原记录、未知不重发及仅已核实步骤可接续。114项最终相关检查通过`runs/currency-weekly-rewards-message-release.log`（37.592秒），没有改变领奖／回执协议。五份固定上游blob、三个领奖参考方法、GPL许可、18幅原素材、三份旧图／清单及22条白名单核对不变；七份文档180条相对链接、CLI新入口／接续帮助通过`runs/currency-weekly-rewards-source-check.json`。原始工单及合入改动另有只读核对，外部附件HTTP 403、未取得像素，见忽略的`runs/currency-fuel-limit-public-attachment.json`。`git diff --check`通过，配置、截图、原失败、日志、报告、回执及检查脚本保持忽略。
+
 ## 2026-10-29：本周积分循环、局数上限和空记录归档
 
 将现有独立积分Runner接入[循环](../autohsr/currency_wars_loop.py)，新增默认关闭的`Settings.currency_until_points`及仅循环可用的双向`--currency-until-points`。新局前与每局完整留档后查当前积分；满分且本期倒计时一致时可零局或提前结束。正局数仍是该目标的新局上限，0为无局数上限；达到上限但未满时记exhausted／partial，不扩大预算。原按局数／直到停止循环保留，旧记录缺该字段时按关闭接续，不随保存设置中途改目标。CLI覆盖不保存配置，GUI交现有界面工作。

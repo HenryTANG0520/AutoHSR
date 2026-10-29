@@ -65,7 +65,7 @@ def next_action(scene, context):
     if clean.has(('密码', '验证码', '扫码登录', '用户协议', '资源下载', '更新游戏')):
         raise AutomationError('导航出现账号验证、协议或更新，未输入。')
     kind = page_kind(scene, confidence)
-    if getattr(getattr(context,'report',None),'operation',None)=='currency_wars_points':
+    if getattr(getattr(context,'report',None),'operation',None) in ('currency_wars_points','currency_wars_rewards'):
         if kind=='lobby':return None
         if kind=='standard_difficulty':return NavigationAction('points_back_from_rank',('mode_select','lobby'),key='esc')
         if kind=='mode_select':return NavigationAction('points_back_from_mode',('lobby',),key='esc')
@@ -127,7 +127,7 @@ def standard_selected(scene, confidence=.65):
 
 
 def locate(c, *, stop_at_lobby=False):
-    if type(stop_at_lobby) is not bool or stop_at_lobby and c.report.operation!='currency_wars_points':
+    if type(stop_at_lobby) is not bool or stop_at_lobby and c.report.operation not in ('currency_wars_points','currency_wars_rewards'):
         raise AutomationError('仅独立积分核对可请求主页定位。')
     if c.report.operation not in PREPARATION_OPERATIONS or not c.runner.currency_locate:
         raise AutomationError('定位入口需要显式的货币战争导航操作。')

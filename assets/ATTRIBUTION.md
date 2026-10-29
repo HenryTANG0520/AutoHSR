@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-10-29 独立积分领奖
+
+参考固定March7thAssistant的`get_reward`、`_fuel_ticket_limit_visible`及`wait_for_weekly_reward`，改写为[原生积分领奖控件](../autohsr/currency_wars_weekly_rewards.py)、独立Runner与意图／回执存储。沿用AutoHSR当前页面、账号、客户端、代次及输入门禁，另核对两帧奖励展示、数量字段、禁用状态、原图及原报告；满额只记录拒绝结果，不清理或重发。来源blob和GPL v3见[source.json](upstream/March7thAssistant/source.json)。本次未导入上游领取按钮图、GUI或输入框架，未新增真实采集、公开图片或模型；正向领取检查使用合成文字／按钮图像及假窗口，不作为真实领取样本。
+
 ## 2026-10-29 本周积分循环目标
 
 在固定上游`check_currency_wars_score`及循环入口参考上，将[独立积分观察](../autohsr/currency_wars_points_run.py)接入[原生循环目标](../autohsr/currency_wars_points_goal.py)。冻结周／账号、局数上限、精确回执、开局前双重门禁与空记录归档为AutoHSR适配；没有迁入全局时间戳、未知失败后重开或领奖实现。函数、blob及GPL v3见[source.json](upstream/March7thAssistant/source.json)。本轮未新增素材、真实采集或模型，检查采用模拟窗口与既有原生报告协议。

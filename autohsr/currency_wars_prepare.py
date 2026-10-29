@@ -12,7 +12,7 @@ from .models import AutomationError, EmptyCapture, Scene, TaskResult, Token, nor
 from .storage import replace_file
 from .workflows import DailyWorkflow
 
-PREPARATION_OPERATIONS = ('currency_wars_prepare', 'currency_wars_standard', 'currency_wars_points')
+PREPARATION_OPERATIONS = ('currency_wars_prepare', 'currency_wars_standard', 'currency_wars_points', 'currency_wars_rewards')
 
 
 def trusted(scene, confidence=.65):

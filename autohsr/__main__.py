@@ -30,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--currency-wars-standard", action="store_true", help="标准A8-40开发：核实配置后新开局；未知页面停下留证")
     mode.add_argument('--currency-wars-loop', action='store_true', help='标准A8-40连续开发：逐局核实结算与保存，失败或未知即停止')
     mode.add_argument('--currency-wars-points',action='store_true',help='导航到货币战争主页，核对当前积分、账号与游戏周；不开始对局或领取积分奖励')
+    mode.add_argument('--currency-wars-rewards',action='store_true',help='独立核对并领取当前可领取的货币战争积分奖励；不开始对局或清理满额助燃券')
     mode.add_argument("--check", action="store_true", help="检测窗口和 OCR，输出 JSON；不操作游戏")
     mode.add_argument("--scan-dungeons", action="store_true", help="采集生存索引全部副本入口；不开始挑战或消耗资源")
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
@@ -67,6 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--resume-active-currency", action="store_true", help="仅配合标准开发入口，接续有记录且已核实开始的货币战争")
     parser.add_argument('--currency-runs', type=int, help='循环局数；积分目标启用时为新局上限，0表示无局数上限；仅用于 --currency-wars-loop，不保存配置')
     parser.add_argument('--resume-currency-loop', action='store_true', help='明确接续原循环的剩余局数与原设置；仅用于 --currency-wars-loop')
+    parser.add_argument('--resume-currency-rewards',action='store_true',help='明确接续已核实步骤后的积分领奖，或只读补存回执；未知领取不重放')
     parser.add_argument('--currency-until-points', action=argparse.BooleanOptionalAction, default=None,
                         help='本周积分满后停止，仍受 --currency-runs 上限约束；仅用于循环，接续沿用原目标，不保存配置')
     parser.add_argument("--currency-strategy", choices=('default','aglaea','seele'),
@@ -77,6 +79,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(raw_args)
     if args.resume_active_currency and not args.currency_wars_standard:
         parser.error('--resume-active-currency 仅用于 --currency-wars-standard。')
+    if args.resume_currency_rewards and not args.currency_wars_rewards:
+        parser.error('--resume-currency-rewards 仅用于 --currency-wars-rewards。')
     if (args.currency_runs is not None or args.resume_currency_loop or args.currency_until_points is not None) and not args.currency_wars_loop:
         parser.error('--currency-runs、--resume-currency-loop 与 --currency-until-points 仅用于 --currency-wars-loop。')
     for option, value in (('--currency-strategy',args.currency_strategy), ('--currency-remembrance-name',args.currency_remembrance_name),
@@ -153,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
         tests = unittest.defaultTestLoader.discover(str(test_path))
         result = unittest.TextTestRunner(verbosity=2).run(tests)
         return 0 if result.wasSuccessful() else 1
-    if not any((args.check, args.scan_dungeons, args.launch, args.run, args.plan, args.currency_wars_check, args.currency_wars_prepare, args.currency_wars_locate, args.currency_wars_configure, args.currency_wars_standard, args.currency_wars_loop, args.currency_wars_points, args.differential_universe)):
+    if not any((args.check, args.scan_dungeons, args.launch, args.run, args.plan, args.currency_wars_check, args.currency_wars_prepare, args.currency_wars_locate, args.currency_wars_configure, args.currency_wars_standard, args.currency_wars_loop, args.currency_wars_points, args.currency_wars_rewards, args.differential_universe)):
         from .admin_launch import AdminLaunchError, handoff, is_admin
         try:
             if args.admin_task and not is_admin():
@@ -201,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.reward_only:
             from .recovery import reward_only_settings
             settings = reward_only_settings(settings)
-        settings.validate("check" if args.check or args.scan_dungeons else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points else "differential_universe" if args.differential_universe else "daily")
+        settings.validate("check" if args.check or args.scan_dungeons else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "daily")
         from .app import Runner, inspect_game, launch_game
         if args.check:
             print(_json(inspect_game(settings)))
@@ -223,7 +227,8 @@ def main(argv: list[str] | None = None) -> int:
             runner = PlanRunner(settings, emit, new_battle_run=args.new_battle_run)
         else:
             runner = Runner(settings, emit, new_battle_run=args.new_battle_run,
-                            operation="dungeon_catalogue" if args.scan_dungeons else "currency_wars_points" if args.currency_wars_points else "currency_wars_standard" if args.currency_wars_standard else "currency_wars_prepare" if args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure else "currency_wars" if args.currency_wars_check else "differential_universe" if args.differential_universe else "reward_only" if args.reward_only else "daily",
+                            operation="dungeon_catalogue" if args.scan_dungeons else "currency_wars_rewards" if args.currency_wars_rewards else "currency_wars_points" if args.currency_wars_points else "currency_wars_standard" if args.currency_wars_standard else "currency_wars_prepare" if args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure else "currency_wars" if args.currency_wars_check else "differential_universe" if args.differential_universe else "reward_only" if args.reward_only else "daily",
+                            **(dict(currency_rewards_resume=args.resume_currency_rewards) if args.currency_wars_rewards else {}),
                             **(dict(currency_locate=True) if args.currency_wars_locate or args.currency_wars_configure else {}),
                             **(dict(currency_configure=True) if args.currency_wars_configure else {}),
                             **(dict(currency_resume=args.resume_active_currency) if args.currency_wars_standard else {}),

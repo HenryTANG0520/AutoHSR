@@ -35,11 +35,22 @@
       "git_blob": "52507ccfa8bf7977f8a8be9eca24050a6c16990d"
     },
     {
+      "path": "tasks/weekly/weekly_reward.py",
+      "git_blob": "f1dc22ae0f755c81ccc948520bb7fd02520ea751"
+    },
+    {
       "path": "assets/config/config.example.yaml",
       "git_blob": "8bd288efd8282a4c45e1ae6a1b915c9bd9c0569e"
     }
   ],
   "adaptations": [
+    {
+      "path": "autohsr/currency_wars_weekly_rewards.py",
+      "native_files": ["autohsr/currency_wars_weekly_reward_run.py", "autohsr/currency_wars_weekly_reward_store.py"],
+      "reference_functions": ["get_reward"],
+      "additional_references": [{"source": "tasks/weekly/weekly_reward.py", "functions": ["_fuel_ticket_limit_visible", "wait_for_weekly_reward"]}],
+      "kind": "native independent current-rewards operation with current UID/client/week checks, bounded one-shot intents, two-frame overlay quantities and panel-state feedback, OCR/image proof replay and post-report immutable receipts; disabled controls differ from absent controls, incomplete/unknown attempts block further game IO, verified-step resume and report-only recovery preserve original failures; fuel-ticket saturation is a separately observed rejected claim without cleanup or retry; loop/weekly integration, saturation cleanup and live validation remain pending; no upstream reward button image or input framework was imported"
+    },
     {
       "path": "autohsr/currency_wars_points.py",
       "native_files": ["autohsr/currency_wars_points_run.py", "autohsr/currency_wars_points_goal.py"],
