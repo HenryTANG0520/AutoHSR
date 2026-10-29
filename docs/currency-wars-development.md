@@ -1,5 +1,19 @@
 # 货币战争重启开发记录
 
+## 2026-10-29：修复正式Runner结果传递，补齐循环生命周期检查
+
+核对周常接入前的正式运行链时发现：`run_standard`已核实胜利、四步结算并返回success，但`Runner._inspect_currency_wars`最后仍无条件将报告标为partial。上一轮循环夹具直接调用标准流程后手动设置成功报告，因此没有覆盖此差异；实际循环会在第一局后停止，不能据1411项旧全量声称正式Runner已完成两局闭环。
+
+修复[Runner结果传递](../autohsr/app.py)：仅标准开发操作、任务结果success、会话settled且完成／结算两个字段均为真实布尔true时，将本局报告设为success并清除failure_task。其他只读、准备和未完成标准结果仍为partial。后续报告保存失败继续改变状态，循环仍检查report_saved与全部原生证据；success不增加独立验收计数。
+
+更新[循环夹具](../autohsr/tests/test_currency_wars_loop.py)，通过真实`Runner._inspect_currency_wars`取得状态，删除手动成功赋值。另新增正式`Runner.run`→四次Context输入→原报告写入→循环归档的两局检查，以及原报告写盘失败阻止下一局、明确接续只读恢复后仅执行剩余一局的完整链路；同时检查准备／partial结果不被提升。窗口、起始最终节点、OCR和热键为模拟，正式调度、输入目标核验、报告保存、归档和计数不替换。
+
+修复前的正式链路检查准确复现partial失败，日志`runs/currency-loop-runner-before.log`保留。修复后25项循环专项通过`runs/currency-loop-runner-final.log`；补入正式写盘失败接续后，59项新旧流程、结算和装备模式整合通过`runs/currency-loop-runner-related.log`（23.276秒），84项假后端GUI通过`runs/currency-loop-runner-gui.log`。整局策略和真实多局仍未验收，历史独立通关0/10不变。
+
+本轮同时完成[积分及周奖励证据核对](currency-wars-weekly-notes.md)：审计438份旧清单及固定上游的积分、领奖和满额提示辅助。主页满分不是奖励已领取，也不归因于AutoHSR通关；该部分目前仍待原生流程和周常接入，没有为研究操作游戏。
+
+**1414项全量单元测试通过**（624.294秒），见`runs/currency-loop-runner-all.log`。固定来源及许可、18幅原有素材、8份文档144条相对链接通过检查；周奖励研究另核对3份上游blob、3份旧清单与原图哈希，以及438幅图的指定区域扫描，见忽略的`runs/currency-weekly-research-check.json`和`runs/currency-weekly-button-audit.json`。`git diff --check`通过，原失败、配置、截图、会话与本轮检查输出保持忽略；没有新采集、真实游戏操作或EXE构建。
+
 ## 2026-10-29：逐局循环、原生归属及可恢复归档
 
 参考固定March7thAssistant的`run_sub_task`／`_run_loop_task_with_telemetry`／`currencywars`，新增[循环Runner](../autohsr/currency_wars_loop.py)与[逐局本地记录](../autohsr/currency_wars_loop_store.py)。持续调用原单局Runner，新增指定局数及剩余目标接续；每局完整核实后才允许下一局。CLI、目录、事件和恢复见[连续运行说明](currency-wars-loop.md)。

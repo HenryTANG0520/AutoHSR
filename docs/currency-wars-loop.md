@@ -58,4 +58,4 @@ F10与界面停止覆盖对局及归档间隙；F9在子Runner运行时沿用其
 
 参考固定March7thAssistant提交`7cf6c6bed474539485d3b1504077ac352866829f`的[循环任务入口](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/main.py#L208-L245)。上游重复调用`CurrencyWars.start`，正常返回false后仍继续，异常退出。AutoHSR保留“直到停止”并增加指定局数与逐局证据；尚无可核实的失败结算继续协议，因此失败或未知会停止。这不表示全部模式、周目标及领奖已经等价。
 
-22项[专项检查](../autohsr/tests/test_currency_wars_loop.py)使用合成最终节点、假窗口和正式Context的四步结算，覆盖连续两局、停止续跑、冻结设置、账号／写盘门禁、归档中断、来源篡改、原报告保留、CLI与热键。它们没有覆盖完整整局策略或访问真实游戏；全量检查见[开发记录](currency-wars-development.md)。
+25项[专项检查](../autohsr/tests/test_currency_wars_loop.py)使用合成最终节点和假窗口，覆盖正式Runner.run、四步Context输入、原报告写入、连续两局归档，以及原报告失败后的明确接续、剩余局执行、停止、冻结设置、账号／写盘门禁、归档中断、来源篡改、CLI与热键。最初22项的成功夹具绕过了Runner报告状态赋值，随后正式链路检查发现并修复报告被固定写为partial的问题；夹具现已调用真实结果分派，不手动赋成功。检查不覆盖完整整局策略，也没有访问真实游戏；详情见[开发记录](currency-wars-development.md)。

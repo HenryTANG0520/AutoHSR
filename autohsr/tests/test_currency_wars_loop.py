@@ -1,5 +1,5 @@
 """Fake-window settlement integration and crash/ownership counterexamples."""
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from copy import deepcopy
 import io
 import json
@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import Mock, patch
 import uuid
 from PIL import Image
+import numpy as np
 
 from autohsr.app import Context, Runner
 from autohsr.config import Settings, SettingsError
@@ -19,7 +20,8 @@ from autohsr.currency_wars_loop import CurrencyLoopRunner
 from autohsr.currency_wars_loop_store import LoopStore, _write, loop_lock
 from autohsr.currency_wars_session import StandardSession
 from autohsr.currency_wars_standard_flow import next_action, run_standard
-from autohsr.models import AutomationError, RunReport, Stopped, Token, normalize
+from autohsr.models import AutomationError, RunReport, Stopped, TaskResult, Token, normalize
+from autohsr.windows import Geometry
 from autohsr.tests import test_currency_wars_standard_flow as flow_helpers
 from autohsr.tests.test_currency_wars_node import screen
 from autohsr.tests.test_currency_wars_standard_flow import ready
@@ -33,8 +35,8 @@ def options(runs=1):
 GAP_CONTROLS = CurrencyLoopRunner._gap_controls
 
 
-def settled(root, guard=None):
-    """Simulated final node, then the actual four native Context input gates."""
+def seed_final_node(root, guard=None):
+    """Existing start/node evidence is simulated; no game is accessed."""
     directory = root/('native_'+uuid.uuid4().hex[:8]); directory.mkdir()
     if guard is not None:
         guard.register_run(directory)
@@ -56,6 +58,13 @@ def settled(root, guard=None):
         guard.bind(store)
         store.data.update(status='active',actions=actions)
         store.persist()
+    return store,policy
+
+
+def settled(root, guard=None):
+    """Simulated final node, actual Context IO and Runner result dispatch."""
+    store,policy=seed_final_node(root,guard)
+    directory=Path(store.data['run_dir'])
     runner = Runner(Settings(), operation='currency_wars_standard', currency_resume=True,
                     currency_strategy=policy['strategy'], currency_remembrance_name=policy['remembrance_name'],
                     currency_fast_mode=policy['equipment_fast_mode'], currency_loop_guard=guard)
@@ -77,12 +86,50 @@ def settled(root, guard=None):
         return path
     c.snapshot = snapshot; c.evidence = evidence
     with patch('autohsr.currency_wars_replay.save_sample'):
-        result = run_standard(c)
-    if result.status != 'success' or c.window.click.call_count != 4:
+        runner._inspect_currency_wars(c)
+    if runner.report.status != 'success' or c.window.click.call_count != 4:
         raise AssertionError('native settlement did not complete')
-    runner.report.status, runner.report.report_saved = 'success', True
+    runner.report.report_saved = True
     _write(directory/'report.json', runner.report.to_dict())
     return runner.report
+
+
+@contextmanager
+def real_runtime(root):
+    """Keep Runner.run/dispatch/report saving and Context IO; replace OS/vision."""
+    window=Mock();window.hwnd=44;window.path=str(root/'fake-game'/'StarRail.exe')
+    def snapshot(c):
+        state=c.runner._loop_test_scenes.pop(0)
+        state.tokens=[t for t in state.tokens if not normalize(t.text).startswith('uid')]
+        state.tokens.append(Token('UID:100000000',.99,(.01,.96,.10,.99)))
+        state.geometry=Geometry(0,0,1920,1080)
+        state.image=np.full((1080,1920,3),80,dtype=np.uint8)
+        state.captured_at=time.monotonic();c.last_scene=state;c.scene_epoch=c.runner.input_epoch
+        return state
+    with patch('autohsr.app.ROOT',root),patch('autohsr.windows.kernel32') as kernel, \
+         patch('autohsr.app.C.get_last_error',return_value=0),patch('autohsr.app.find_game',return_value=window), \
+         patch('autohsr.app.is_elevated',return_value=False),patch('autohsr.app.IsolatedVision'), \
+         patch.object(Runner,'_prepare_daily_game'),patch.object(Runner,'_arm_hotkeys'), \
+         patch.object(Runner,'_hotkeys'),patch.object(Runner,'checkpoint'), \
+         patch.object(Context,'snapshot',snapshot),patch.object(Context,'sleep'), \
+         patch('autohsr.currency_wars_replay.save_sample'):
+        kernel.CreateMutexW.return_value=1
+        yield window
+
+
+class ActualRunnerFactory:
+    def __init__(self,root):self.root=root;self.children=[]
+
+    def __call__(self,settings,emit,**kwargs):
+        # Enter a synthetic already-started final node. All subsequent native
+        # dispatch, four Context inputs, report writing and archival are real.
+        seed_final_node(self.root/'runs',kwargs['currency_loop_guard'])
+        kwargs['currency_resume']=True
+        runner=Runner(settings,emit,**kwargs)
+        runner._loop_test_scenes=[screen(k) for k in
+            ('final_victory','match_rating','match_rating','match_summary','match_statistics','lobby')]
+        self.children.append(runner)
+        return runner
 
 
 class NativeFactory:
@@ -138,6 +185,60 @@ class CurrencyLoopTests(unittest.TestCase):
             self.assertEqual(sum(e['type']=='finished' for e in events), 1)
             self.assertEqual(len(factory.calls), 2)
             self.assertTrue(all(call['operation']=='currency_wars_standard' for call in factory.calls))
+
+    def test_actual_runner_saves_success_and_loop_archives_two_separate_matches(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);factory=ActualRunnerFactory(root);events=[]
+            with real_runtime(root) as window:
+                result=CurrencyLoopRunner(Settings(overlay_logs=False),events.append,runs=2,root=root/'runs',runner_factory=factory).run()
+            self.assertTrue(factory.children)
+            self.assertTrue(all(child.report.currency_wars['completion_verified'] for child in factory.children))
+            self.assertTrue(all(child.report.report_saved for child in factory.children))
+            self.assertEqual(result.status,'success',result.error);self.assertEqual(result.currency_wars['completed'],2)
+            self.assertEqual(window.click.call_count,8);self.assertEqual(len(factory.children),2)
+            self.assertEqual(sum(e['type']=='finished' for e in events),1)
+            for child in factory.children:
+                saved=json.loads((Path(child.report.run_dir)/'report.json').read_text(encoding='utf-8'))
+                self.assertEqual(saved['status'],'success');self.assertIs(saved['report_saved'],True)
+                self.assertEqual(saved['failure_task'],'');self.assertIs(saved['currency_wars']['settlement_verified'],True)
+            store=LoopStore(root/'runs');store.load();store.check_tail()
+            self.assertEqual(len(list(store.path.parent.glob('*.session.json'))),2)
+            self.assertFalse(store.journal.exists());self.assertEqual(result.currency_wars['acceptance_runs'],0)
+
+    def test_actual_runner_report_write_failure_keeps_completed_session_without_next_match(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);factory=ActualRunnerFactory(root)
+            with real_runtime(root) as window,patch('autohsr.app.replace_file',side_effect=OSError('report disk full')):
+                result=CurrencyLoopRunner(Settings(overlay_logs=False),runs=2,root=root/'runs',runner_factory=factory).run()
+            self.assertEqual(result.status,'partial');self.assertEqual(result.currency_wars['completed'],0)
+            self.assertEqual(len(factory.children),1);self.assertEqual(window.click.call_count,4)
+            self.assertFalse(factory.children[0].report.report_saved)
+            store=LoopStore(root/'runs');store.load()
+            self.assertEqual(StandardSession(store.journal).data['status'],'settled')
+            self.assertFalse(list(store.path.parent.glob('*.session.receipt.json')))
+            original_temp=Path(factory.children[0].report.run_dir)/'report.tmp';raw=original_temp.read_bytes()
+            resumed_factory=ActualRunnerFactory(root)
+            with real_runtime(root) as resumed_window:
+                resumed=CurrencyLoopRunner(Settings(overlay_logs=False),resume=True,root=root/'runs',runner_factory=resumed_factory).run()
+            self.assertEqual(resumed.status,'success',resumed.error);self.assertEqual(resumed.currency_wars['completed'],2)
+            self.assertEqual(len(resumed_factory.children),1);self.assertEqual(resumed_window.click.call_count,4)
+            self.assertEqual(original_temp.read_bytes(),raw)
+            store.load();receipt=json.loads((store.path.parent/'1.session.receipt.json').read_text(encoding='utf-8'))
+            self.assertIs(receipt['recovered'],True);store.check_tail()
+
+    def test_partial_standard_and_observation_results_do_not_become_success_reports(self):
+        full=dict(status='settled',completion_verified=True,settlement_verified=True)
+        for task_status,data in (('partial',full),('success',{}),('success',dict(full,settlement_verified=False))):
+            with self.subTest(task_status=task_status,data=data):
+                runner=Runner(Settings(),operation='currency_wars_standard');runner.report.currency_wars=deepcopy(data)
+                c=Mock(report=runner.report)
+                with patch('autohsr.currency_wars_standard_flow.run_standard',return_value=TaskResult('currency_wars',task_status,'')):
+                    runner._inspect_currency_wars(c)
+                self.assertEqual(runner.report.status,'partial');self.assertEqual(runner.report.failure_task,'currency_wars')
+        runner=Runner(Settings(),operation='currency_wars_prepare');runner.report.currency_wars=full
+        with patch('autohsr.currency_wars_prepare.prepare',return_value=TaskResult('currency_wars','success','ready')):
+            runner._inspect_currency_wars(Mock(report=runner.report))
+        self.assertEqual(runner.report.status,'partial')
 
     def test_until_stopped_preserves_two_completed_matches_without_third_start(self):
         with tempfile.TemporaryDirectory() as folder:

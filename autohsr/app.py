@@ -1376,7 +1376,13 @@ class Runner:
                 result = self._resume_step(CurrencyWarsWorkflow(context).inspect, TASK)
         self.report.results.append(result)
         self.emit(dict(type="task", **result.__dict__))
-        self.report.status = "partial"
+        data = self.report.currency_wars
+        completed = (self.report.operation == 'currency_wars_standard' and result.status == 'success'
+                     and data.get('status') == 'settled' and data.get('completion_verified') is True
+                     and data.get('settlement_verified') is True)
+        self.report.status = 'success' if completed else 'partial'
+        if completed:
+            self.report.failure_task = ''
 
     def stop(self):
         self._stop.set()
