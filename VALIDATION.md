@@ -12,6 +12,8 @@
 
 早期探针漏考虑尚未绘制的控件没有`_photo`，原日志`runs/cached-paint-probe.log`保留，修正后的几何记录为`runs/cached-paint-probe-v2.log`。扩展背景检查的首次指针命中断言失败记录为`runs/header-position-before.log`，该路径此前已淘汰待验证的缓存；未以该断言推断按钮缺失，后续用直接缓存还原及完整祖先边界检查复现。
 
+源码`359c6d2`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/header-restore-build.log`。以`--no-admin-launch`核对首页最大化、直接还原且不切页，周常入口完整显示；按当前画面点击按钮进入周常计划，再以Esc返回原入口，正常关闭退出码0。未点击保存、检测或运行，239份用户文件哈希未变；125个UI素材、4份清单、23个上游文件一致。核对记录`runs/header-restore-package-verification.json`，备份`build/userdata-header-restore-20261029_101316/`；EXE SHA-256为`81c7921c5b9ff97db93654a8ecc138df15daed85817abbae8b3b775c5afce333`。正式截图为`runs/header-restore-package-home.png`、`header-restore-package-maximized.png`、`header-restore-package-restored.png`、`header-restore-package-weekly.png`及`header-restore-package-return.png`。
+
 这次修复稳定后的周常入口缺失，不代表已消除整个缩放过渡的裁切或闪烁。未启动、检测或操作游戏；整屏与游戏完全一致、真实玩家学习／注意力成本、日常周常组合实机仍未验收，货币战争周常与周积分领奖尚未接入。
 
 ## 2026-10-29：复用最近窗口布局并保持动态控件状态
