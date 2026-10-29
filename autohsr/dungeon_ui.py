@@ -36,12 +36,16 @@ def build_fields(ui, parent):
     ttk.Label(header, text="搜索", style="Muted.TLabel").grid(row=0, column=0, padx=(0, d(8)))
     ui.dungeon_search_entry = ttk.Entry(header, textvariable=ui.dungeon_search, width=10)
     ui.dungeon_search_entry.grid(row=0, column=1, sticky="ew")
-    ui.dungeon_search_entry.bind("<Escape>", lambda _: ui.dungeon_search.set(""))
+    def clear_search(_event=None):
+        if ui.dungeon_search.get():
+            ui.dungeon_search.set("")
+            return "break"
+    ui.dungeon_search_entry.bind("<Escape>", clear_search)
     clear = ttk.Button(header, text="×", width=2, style="Compact.TButton", command=lambda: ui.dungeon_search.set(""))
     clear.grid(row=0, column=2, padx=(d(4), 0))
-    ui.dungeon_manual_button = ttk.Button(header, text="手动填写", style="Compact.TButton", command=lambda: show_manual(ui, not ui.dungeon_manual_visible))
+    ui.dungeon_manual_button = ttk.Button(header, text="手动填写", style="Compact.TButton", command=lambda: show_manual(ui, not ui.dungeon_manual_visible, focus=True))
     ui.dungeon_manual_button.grid(row=0, column=3, padx=d(8))
-    ui.dungeon_advanced_button = ttk.Button(header, text="挑战设置", style="Compact.TButton", command=lambda: show_advanced(ui, not ui.dungeon_advanced_visible))
+    ui.dungeon_advanced_button = ttk.Button(header, text="挑战设置", style="Compact.TButton", command=lambda: show_advanced(ui, not ui.dungeon_advanced_visible, focus=True))
     ui.dungeon_advanced_button.grid(row=0, column=4)
     ui.setting_controls.extend((ui.dungeon_search_entry, clear, ui.dungeon_manual_button, ui.dungeon_advanced_button))
     ui.stamina_controls.extend((ui.dungeon_manual_button, ui.dungeon_advanced_button))
@@ -74,6 +78,9 @@ def build_fields(ui, parent):
     ui.dungeon_category_combo.configure(values=[item.label for item in CATEGORIES])
     ui.dungeon_category_combo.bind("<<ComboboxSelected>>", lambda _: select_category(ui))
     ui.dungeon_name_combo.bind("<<ComboboxSelected>>", lambda _: select_name(ui))
+    ui.dungeon_catalogue_button = ttk.Button(fields, text="读取游戏目录", style="Compact.TButton", command=lambda: ui._start(catalogue=True))
+    ui.dungeon_catalogue_button.grid(row=3, column=1, sticky="w", pady=(d(10), 0))
+    ui.setting_controls.append(ui.dungeon_catalogue_button)
     update_options(ui)
     target = ttk.Frame(parent, style="Card.TFrame")
     target.grid(row=2, column=0, sticky="ew", pady=(d(8), d(3)))
@@ -102,28 +109,34 @@ def build_fields(ui, parent):
     ui.stamina_controls.extend((ui.challenge_scale, entry))
     wrapped_label(parent, textvariable=ui.battle_cost, style="Muted.TLabel").grid(row=4, column=0, sticky="ew", pady=(d(4), d(5)))
     advanced = ui.dungeon_advanced_fields = ttk.Frame(parent, style="Panel.TFrame")
-    advanced.grid(row=1, column=0, sticky="new")
+    advanced.grid(row=5, column=0, sticky="ew", pady=(d(3), 0))
+    advanced.columnconfigure(0, weight=1)
+    ttk.Separator(advanced).grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, d(9)))
     safety = ttk.Frame(advanced, style="Panel.TFrame")
-    safety.pack(fill="x")
-    ttk.Label(safety, text="本次开拓力上限", style="Muted.TLabel").pack(side="left")
+    safety.grid(row=1, column=0, sticky="ew")
+    ttk.Label(safety, text="开拓力上限", style="Muted.TLabel").pack(side="left")
     budget = ttk.Spinbox(safety, from_=10, to=240, increment=10, textvariable=ui.stamina_limit, width=6)
     ui.stamina_limit_entry = budget
     budget.pack(side="left", padx=(d(10), d(20)))
-    support = ttk.Checkbutton(safety, text="借用好友支援", variable=ui.use_support)
+    support = ui.dungeon_support_control = ttk.Checkbutton(safety, text="借用好友支援", variable=ui.use_support)
     support.pack(side="left")
     ui.setting_controls.extend((budget, support))
     ui.stamina_controls.extend((budget, support))
     presets = ttk.Frame(advanced, style="Panel.TFrame")
-    presets.pack(fill="x", pady=(d(6), 0))
+    presets.grid(row=1, column=1, sticky="e", padx=(d(10), 0))
     for label, command in (("设为 1 次", lambda: ui._preset(selected_category(ui).cost, 1)),
-                           ("填满预算", lambda: use_budget(ui)),
-                           ("刷新副本目录", lambda: ui._start(catalogue=True))):
+                           ("填满预算", lambda: use_budget(ui))):
         button = ttk.Button(presets, text=label, style="Compact.TButton", command=command)
         button.pack(side="left", padx=(0, d(7)))
         ui.setting_controls.append(button)
-        if label != "刷新副本目录":
-            ui.stamina_controls.append(button)
-    wrapped_label(advanced, textvariable=ui.battle_hint, style="Warning.TLabel").pack(fill="x", pady=(d(5), 0))
+        ui.stamina_controls.append(button)
+    hint = ui.dungeon_hint_label = wrapped_label(advanced, textvariable=ui.battle_hint, style="Warning.TLabel")
+    hint.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(d(5), 0))
+    def show_hint(*_):
+        hint.grid() if ui.battle_hint.get() else hint.grid_remove()
+    hint_token = ui.battle_hint.trace_add("write", show_hint)
+    hint.bind("<Destroy>", lambda event: ui.battle_hint.trace_remove("write", hint_token) if event.widget is hint else None, add="+")
+    show_hint()
     show_manual(ui, False)
     show_advanced(ui, False)
     def search_changed(*_):
@@ -137,30 +150,53 @@ def build_fields(ui, parent):
 
 
 def show_browser(ui):
-    ui.dungeon_manual_visible = ui.dungeon_advanced_visible = False
+    ui.dungeon_manual_visible = False
     _show_editor(ui)
 
 
-def show_manual(ui, visible=True):
+def show_manual(ui, visible=True, *, focus=False):
     ui.dungeon_manual_visible = visible
     if visible:
         ui.dungeon_advanced_visible = False
     _show_editor(ui)
+    if focus:
+        _queue_focus(ui, "dungeon_name_combo" if visible else "dungeon_manual_button")
 
 
-def show_advanced(ui, visible=True):
+def show_advanced(ui, visible=True, *, focus=False):
     ui.dungeon_advanced_visible = visible
     if visible:
         ui.dungeon_manual_visible = False
     _show_editor(ui)
+    if focus:
+        _queue_focus(ui, "stamina_limit_entry" if visible else "dungeon_advanced_button")
+
+
+def _queue_focus(ui, attribute):
+    view = ui.dungeon_manual_visible, ui.dungeon_advanced_visible
+    def focus():
+        if ui.closing or ui.active_page != "tasks" or view != (ui.dungeon_manual_visible, ui.dungeon_advanced_visible):
+            return
+        from .theme import focus_widget
+        current = focus_widget(ui.root)
+        if current is not None and current.winfo_toplevel() is not ui.root:
+            return
+        control = getattr(ui, attribute)
+        if control.instate(("disabled",)):
+            ui.nav_buttons["tasks"].focus_set()
+        elif control.winfo_manager():
+            control.focus_set()
+            if isinstance(control, ttk.Entry):
+                control.selection_range(0, "end")
+    ui.root.after_idle(focus)
 
 
 def _show_editor(ui):
     ui.dungeon_manual_button.configure(text="返回列表" if ui.dungeon_manual_visible else "手动填写")
-    ui.dungeon_advanced_button.configure(text="返回列表" if ui.dungeon_advanced_visible else "挑战设置")
+    ui.dungeon_advanced_button.configure(text="收起设置" if ui.dungeon_advanced_visible else "挑战设置")
     ui.dungeon_manual_fields.grid() if ui.dungeon_manual_visible else ui.dungeon_manual_fields.grid_remove()
     ui.dungeon_advanced_fields.grid() if ui.dungeon_advanced_visible else ui.dungeon_advanced_fields.grid_remove()
-    ui.dungeon_browser.grid_remove() if ui.dungeon_manual_visible or ui.dungeon_advanced_visible else ui.dungeon_browser.grid()
+    ui.dungeon_browser.grid_remove() if ui.dungeon_manual_visible else ui.dungeon_browser.grid()
 
 
 def select_mission(ui, mission):

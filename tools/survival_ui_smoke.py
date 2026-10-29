@@ -291,7 +291,8 @@ def main():
                 show_advanced(ui)
                 ui.category_buttons["历战余响"].invoke()
                 root.update()
-                check(f"{scale}_category_returns_from_editor_to_list", not ui.dungeon_advanced_visible and ui.dungeon_browser.winfo_ismapped())
+                check(f"{scale}_category_keeps_inline_settings_and_list", ui.dungeon_advanced_visible
+                      and ui.dungeon_browser.winfo_ismapped() and ui.dungeon_advanced_fields.winfo_ismapped())
                 ui.target_name.set("新增副本")
                 ui.target_location.set("新增地点")
                 show_manual(ui)

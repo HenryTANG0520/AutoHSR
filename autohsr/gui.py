@@ -320,6 +320,14 @@ class AutoHSRWindow:
         if self.active_page == "settings":
             self._leave_settings()
             return "break"
+        if self.active_page == "tasks":
+            from .dungeon_ui import show_advanced, show_manual
+            if self.dungeon_manual_visible:
+                show_manual(self, False, focus=True)
+                return "break"
+            if self.dungeon_advanced_visible:
+                show_advanced(self, False, focus=True)
+                return "break"
         deck = self.mode_decks.get(self.active_page)
         if deck is not None and deck["shown"] != "hero":
             from .desktop_modes import show_mode_view
@@ -476,7 +484,7 @@ class AutoHSRWindow:
         if not allowed:
             hint = "开拓力刷本未授权，当前仅收取委托与奖励"
         elif not battle_enabled:
-            hint = "副本挑战未启用"
+            hint = ""
         elif not self.use_support.get():
             hint = "好友支援已关闭；标准每日流程需勾选支援。"
         elif self.dungeon_category.get() == "饰品提取":
