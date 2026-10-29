@@ -1,0 +1,41 @@
+{
+  "retrieved": "2026-10-30",
+  "usage": "Lazy Excel-only serializer; JSON/analysis paths do not import openpyxl. Packages are pinned in requirements.txt; owned streaming XML is cleaned on stop/error. No game assets or player data.",
+  "packages": [
+    {
+      "project": "https://pypi.org/project/openpyxl/3.1.5/",
+      "name": "openpyxl",
+      "version": "3.1.5",
+      "wheel": "openpyxl-3.1.5-py2.py3-none-any.whl",
+      "wheel_sha256": "5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2",
+      "license": "MIT",
+      "licenses": [
+        {
+          "package_path": "LICENCE.rst",
+          "repository_path": "assets/upstream/openpyxl-LICENSE",
+          "sha256": "0c84bb42f5d367e5ebf9fc2dde35b16141df5ee0fdc189250858bc6c5560f69e"
+        }
+      ]
+    },
+    {
+      "project": "https://pypi.org/project/et_xmlfile/2.0.0/",
+      "name": "et_xmlfile",
+      "version": "2.0.0",
+      "wheel": "et_xmlfile-2.0.0-py3-none-any.whl",
+      "wheel_sha256": "7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa",
+      "license": "MIT",
+      "licenses": [
+        {
+          "package_path": "LICENCE.rst",
+          "repository_path": "assets/upstream/et_xmlfile-LICENSE",
+          "sha256": "0c84bb42f5d367e5ebf9fc2dde35b16141df5ee0fdc189250858bc6c5560f69e"
+        },
+        {
+          "package_path": "LICENCE.python",
+          "repository_path": "assets/upstream/et_xmlfile-PYTHON-LICENSE",
+          "sha256": "4ccdaaebc0f44b83720ec0399bb7ab329adce067dd62f73c5535a2dc05628ab2"
+        }
+      ]
+    }
+  ]
+}

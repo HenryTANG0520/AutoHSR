@@ -121,11 +121,25 @@
   },
   "adaptations": [
     {
+      "path": "autohsr/warp_statistics.py",
+      "reference_source": "app/tools/warp_export.py",
+      "reference_functions": ["data_to_html"],
+      "kind": "per-account/per-pool observed window statistics and local five-star history. Prefix before the first observed five, missing ranks, unknown quantities and absent intervals stay explicit; unknown-rank segments are excluded from bounded interval means, item count is not record count, ID/time disagreements are flagged and all results retain history_complete=false. Private history is separated from detached public allowlisted metrics; no UI HTML or actual pity/lifetime guarantee"
+    },
+    {
+      "path": "autohsr/warp_xlsx.py",
+      "reference_source": "app/warp_interface.py",
+      "reference_functions": ["__onExportExcelBtnClicked"],
+      "native_files": ["autohsr/warp_service.py", "autohsr/warp_cli.py", "autohsr/tests/test_warp_statistics_xlsx.py"],
+      "dependency_manifest": "assets/upstream/openpyxl-source.json",
+      "kind": "styled streamed workbook adapted from upstream Excel export: account-separated records and pool summaries, observed-window scope, unknown cells, exact text IDs and literal display values, gold/purple high-rank rows, filters and frozen headers. Lazy pinned engine is checked before source reads; private streaming XML and unpublished workbook are cleaned on stop/error, atomic new-file publication is shared with JSON. Independent analysis-only mode does not save a file or load the Excel engine; native GUI/Excel desktop visual acceptance remain pending"
+    },
+    {
       "path": "autohsr/warp_records.py",
       "reference_source": "app/tools/warp_export.py",
       "reference_functions": ["srgf_to_uigf_hkrpg", "uigf_to_srgf_hkrpg", "detect_format"],
       "native_files": ["autohsr/warp_service.py", "autohsr/warp_cli.py", "autohsr/tests/test_warp_records.py", "tools/warp_schema_check.py"],
-      "kind": "UI-neutral Star Rail interchange rewritten around the published formats: exact required types, optional unknown fields remain unknown, numeric string IDs, multi-account UIGF, explicit single-account SRGF, timezone-preserving merge and conflict rejection. Current v4.2 and collaboration pools are distinguished from legacy SRGF rather than exporting invalid legacy enums or taking the first UID. New-file atomic publication, bounded input, anonymous events and no settings writes are AutoHSR-native; GUI/Excel/statistics views remain pending"
+      "kind": "UI-neutral Star Rail interchange rewritten around the published formats: exact required types, optional unknown fields remain unknown, numeric string IDs, multi-account UIGF, explicit single-account SRGF, timezone-preserving merge and conflict rejection. Current v4.2 and collaboration pools are distinguished from legacy SRGF rather than exporting invalid legacy enums or taking the first UID. New-file atomic publication, bounded input, anonymous events and no settings writes are AutoHSR-native; Excel/statistics have separate native adapters, while GUI/chart integration remains pending"
     },
     {
       "path": "autohsr/warp_fetch.py",

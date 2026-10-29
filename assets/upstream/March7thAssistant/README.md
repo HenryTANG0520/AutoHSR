@@ -1,6 +1,6 @@
 # March7thAssistant 参考来源与适配
 
-2026-10-30另将`app/tools/warp_export.py`的缓存／URL读取、六池分页和SRGF／UIGF转换，及`app/warp_interface.py`的导入导出行为，适配为[原生独立记录工具](../../../docs/warp-records.md)。原件保留、数字ID去重、时区核对、明确多账号选择、冲突停止、匿名事件和新文件发布继续使用本项目语义；未迁入Qt、遥测、自动账号目录扫描或覆盖式修复。三份上游源码／测试和GPL来源见[source.json](source.json)；现行UIGF格式另按组织规范检查，没有分发官方Schema或真实玩家数据。GUI、Excel及真实缓存／API路径仍待完成。
+2026-10-30另将`app/tools/warp_export.py`的缓存／URL读取、六池分页和SRGF／UIGF转换，及`app/warp_interface.py`的导入导出行为，适配为[原生独立记录工具](../../../docs/warp-records.md)。原件保留、数字ID去重、时区核对、明确多账号选择、冲突停止、匿名事件和新文件发布继续使用本项目语义；未迁入Qt、遥测、自动账号目录扫描或覆盖式修复。三份上游源码／测试和GPL来源见[source.json](source.json)；现行UIGF格式另按组织规范检查，没有分发官方Schema或真实玩家数据。后续另接[窗口统计、只分析与Excel](../../../docs/warp-statistics-xlsx.md)，参考`data_to_html`和`__onExportExcelBtnClicked`，通过首段／未知字段及文本ID规则改写，固定依赖与原许可独立记账。GUI图形和真实缓存／API／Excel桌面仍待验收。
 
 2026-10-30另参考`_check_battle_result`与`main.py`循环入口，将终局失败与普通节点继续分开，接入[原生失败结算及循环规则](../../../docs/currency-wars-defeat-loop.md)。失败须有同局出战、两帧终局、零生命、失败总览、四步反馈及原partial报告；胜利与失败分列，失败消耗原局数，默认停止，明确接续仅确认该次原回执。源码blob与适配范围见[source.json](source.json)，没有迁入上游输入或遥测，也没有新增游戏采集；失败页面几何是既有胜利布局的合成变体，真实校准及整局仍待验收。
 

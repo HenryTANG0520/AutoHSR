@@ -1,6 +1,6 @@
 # 跃迁记录读取、合并与导出
 
-更新日期：2026-10-30。当前为独立工具后端与CLI，沿用AutoHSR“本次操作不保存游戏设置、分项报告真实结果”的语义。没有修改现有GUI；工具箱入口、统计展示和真实账号路径仍待界面接入与验证。本功能读取已有记录，不执行跃迁，不启动或控制游戏。
+更新日期：2026-10-30。当前为独立工具后端与CLI，另已接[记录窗口统计、只分析及Excel导出](warp-statistics-xlsx.md)，沿用AutoHSR“本次操作不保存游戏设置、分项报告真实结果”的语义。没有修改现有GUI；工具箱入口、图形呈现和真实账号路径仍待界面接入与验证。本功能读取已有记录，不执行跃迁，不启动或控制游戏。
 
 ## 格式与合并
 
@@ -14,6 +14,7 @@
 | UIGF v4.1、v4.2 | 星铁分组，六类卡池、多账号 | 导出v4.2，账号、时区、可选语言和记录分开保留 |
 | SRGF v1.0 | 单账号、四类旧卡池 | 单账号导出；多账号须明确选择UID，不能默取第一账号 |
 | 上游扩展SRGF | 保留其中21／22，附`legacy_srgf_extended_pools`提示 | 应导出UIGF；旧SRGF导出拒绝联动池，不静默删记录 |
+| Excel `.xlsx` | 不作为交换档案导入 | 分池统计与按账号记录表，未知留空，原JSON仍保留 |
 
 卡池1／2／11／12／21／22分别独立读取。记录ID始终为字符串，排序按大整数比较，不经过浮点，也不按字典序排列。相同账号和ID去重，缺失的可选字段可补齐；同ID的实际内容冲突则停止整次操作。记录级JSON扩展字段保留，不改写输入原件。
 
@@ -36,7 +37,7 @@
 .\.venv\Scripts\python.exe -m autohsr --warp-records --warp-url-file .\runs\warp\private-link.txt --warp-output .\runs\warp\fetched-from-link.json
 ```
 
-`--warp-import`可以重复指定，并可与一种获取来源合并；`--warp-url-file`与`--warp-cache-dir`不能同时使用。`--warp-format`默认为`uigf`。`--warp-pools 11,12`只请求选定卡池，结果中保留本次范围；不选择时读取全部六类。`--warp-max-pages`为每池1～5000页，默认1000页。卡池与页数参数只用于获取来源，不用于纯文件转换。
+`--warp-import`可以重复指定，并可与一种获取来源合并；`--warp-url-file`与`--warp-cache-dir`不能同时使用。`--warp-format`默认为`uigf`，另支持`srgf`与`xlsx`。`--warp-analysis`只输出匿名窗口统计，不生成文件，不接受导出格式或路径，详见[分析与Excel用法](warp-statistics-xlsx.md)。`--warp-pools 11,12`只请求选定卡池，结果中保留本次范围；不选择时读取全部六类。`--warp-max-pages`为每池1～5000页，默认1000页。卡池与页数参数只用于获取来源，不用于纯文件转换。
 
 此工具在加载游戏配置、GUI或Runner之前分派，不能混用游戏任务、管理员或配置参数。错误不会回退为启动GUI。CLI成功为0、失败为2，用户中断为130。完成指本次文件操作和请求范围核实结束，不证明账号终身历史完整。
 
@@ -52,13 +53,13 @@
 
 ## 文件与界面对接
 
-`warp_service.run(imports=(), url_file=None, cache_dir=None, output=..., format='uigf', selected_uid=None, pools=..., max_pages=1000, cancel=None, emit=None)`是界面入口。完成后只创建用户指定的新JSON；既有目标拒绝覆盖。先写临时文件、flush／fsync，检查取消，再原子发布；Windows使用不替换既有目标的重命名，其他平台使用同目录排他硬链接。写盘或发布失败不改输入原件。
+`warp_service.run(imports=(), url_file=None, cache_dir=None, output=None, format='uigf', selected_uid=None, pools=..., max_pages=1000, cancel=None, emit=None, analysis_only=False)`是界面入口。导出创建用户指定的新JSON或Excel，既有目标拒绝覆盖；只分析不选输出和格式，也不创建文件。先写临时文件、flush／fsync，检查取消，再原子发布；Windows使用不替换既有目标的重命名，其他平台使用同目录排他硬链接。写盘或发布失败不改输入原件。
 
 完成摘要含`status`、输出格式、账号数、记录数、各卡池的总记录／四星记录／五星记录／未知星级记录数、来源格式提示、获取范围与输出哈希；不把记录数当作物品`count`总和。`history_complete=false`始终保留，不能将观察窗口统计称为完整保底或终身抽数。标准导出文件按格式含UID；公共摘要和事件不带UID、角色名称、鉴权或本地输入路径。没有将记录传给决策模型。
 
-事件分别为`warp_import_progress`（已读文件数与匿名摘要）、`warp_fetch_progress`（当前卡池、页码、已读数量）和`warp_finished`（完成摘要）。只有导出发布成功才发finished。界面应显示本次来源和卡池范围、冲突原因及新文件目标；多账号SRGF使用明确选择，不沿用上游取第一账号行为。
+事件分别为`warp_import_progress`（已读文件数与匿名摘要）、`warp_fetch_progress`（当前卡池、页码、已读数量）和`warp_finished`（导出完成摘要）。只有导出发布成功才发warp_finished；只分析使用单独的`warp_analysis_finished`，不能显示已保存文件。公共结果新增匿名`statistics`，既有数量字段保留。界面应显示本次来源和卡池范围、冲突原因及新文件目标；多账号SRGF使用明确选择，不沿用上游取第一账号行为。
 
-运行不新增第三方依赖。JSON输入／输出最多32 MiB、每账号最多500000条、一次最多1000文件；缓存总读取最多64 MiB、最多100个缓存文件及每文件10000个URL候选。GUI、Excel表格导出、图形统计、覆盖式纠错、更多语言兼容和真实客户端缓存／账号接口仍待完成。
+JSON和只分析不加载Excel引擎；Excel依赖固定openpyxl及et_xmlfile，由setup安装并保留许可，见[依赖与导出边界](warp-statistics-xlsx.md)。JSON输入／输出最多32 MiB、每账号最多500000条、一次最多1000文件，Excel为128 MiB；缓存总读取最多64 MiB、最多100个缓存文件及每文件10000个URL候选。GUI图形呈现、覆盖式纠错、更多语言兼容和真实客户端缓存／账号接口仍待完成。
 
 ## 来源和验证
 

@@ -1,5 +1,11 @@
 # AutoHSR resource attribution
 
+## 2026-10-30 记录窗口统计与Excel
+
+参考固定March7thAssistant的`WarpExport.data_to_html`与`WarpInterface.__onExportExcelBtnClicked`，新增[本地窗口统计](../autohsr/warp_statistics.py)和[Excel序列化](../autohsr/warp_xlsx.py)。保留分池星级和高星着色，同时将首段不完整、缺失星级及物品数量与记录数分开；未知间隔不构造均值，全部统计仍为已导入窗口。UID／ID按文本、显示文字原样保存，按账号分表，停止和错误清理自有临时文件，经原服务发布新文件。源码／函数与适配边界见[原清单](upstream/March7thAssistant/source.json)，没有新增游戏素材、模型或玩家记录。
+
+Excel采用延迟加载的openpyxl 3.1.5与et_xmlfile 2.0.0，均按包声明保留MIT许可；et_xmlfile随附的Python许可文本亦原样保留。[依赖清单](upstream/openpyxl-source.json)记录PyPI固定版本、wheel与许可SHA-256，对应原件为[openpyxl许可](upstream/openpyxl-LICENSE)、[et_xmlfile许可](upstream/et_xmlfile-LICENSE)、[随附Python许可](upstream/et_xmlfile-PYTHON-LICENSE)。新依赖用于Excel序列化，JSON与只分析不加载引擎；未迁入上游Qt界面，实际Excel桌面和GUI图表仍待验收，见[范围与检查](../docs/warp-statistics-xlsx.md)。
+
 ## 2026-10-30 跃迁记录获取与交换格式
 
 参考固定March7thAssistant的`app/tools/warp_export.py`和`app/warp_interface.py`，将缓存／链接读取、六类卡池分页、导入及SRGF／UIGF转换改写为[原生记录模块](../autohsr/warp_records.py)、[只读获取](../autohsr/warp_fetch.py)及[独立工具服务](../autohsr/warp_service.py)。多账号显式选择、字符串ID数字排序、跨时区合并、冲突拒绝、原件保留、取消及新文件原子发布属于AutoHSR适配。没有复制Qt控件、自动扫描本机用户目录、上传统计、明文链接输出或覆盖式修复。三份上游源码／测试的固定Git blob及SHA-256、GPL v3和函数范围见[source.json](upstream/March7thAssistant/source.json)。
