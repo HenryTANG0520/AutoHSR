@@ -557,7 +557,8 @@ class TaskBoard(Surface):
             p.asset("card-watermark.png",(x+q(36),q(107),x+q(248),q(276)))
             _,state,_=self.records[key]["values"]
             excluded = state == "未加入"
-            p.box((x+1,q(16),x+q(162),q(47)),"#dedede" if excluded else "#e9dbbd",0,"#bdbdbd" if excluded else "#d7bd8b")
+            status_width=t.bitmap_font(q(23)*p.factor).getlength(state)/p.factor+q(48)
+            p.box((x+1,q(16),x+min(width-q(16),status_width),q(47)),"#dedede" if excluded else "#e9dbbd",0,"#bdbdbd" if excluded else "#d7bd8b")
             p.text((x+q(24),q(20)),state,q(23),"#747474" if excluded else "#6b624d")
             p.text((x+q(24),q(80)),TITLES[key],q(28),"#717171" if excluded else "#111111")
             if key == "battle" and not self.records[key]["has_result"]:
