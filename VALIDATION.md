@@ -14,6 +14,10 @@
 
 21幅图标已逐一查看；`runs/survival-groups-asset-verification.json`核对原图、OCR及输出哈希，分组清单SHA-256为`1359589505826ac653567b90ec856c8eed0deb75a25269e334bc06623d813532`。新增素材及复现脚本见`assets/ui/survival/groups.json`、`tools/prepare_survival_groups.py`及署名文件；原始截图与账号区域不分发。未启动、检测或操作游戏，未扩大资源授权；整屏一致性、最终玩家体验与组合计划实机尚未验收。
 
+源码`e063dde`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/survival-groups-build.log`。独立配置、`--no-admin-launch`下，原生鼠标点击“更换副本”直接显示已选“回忆之蕾／城郊雪原”和雅利洛-VI分组；输入“匹诺康尼”后显示该地区三条金色花萼，原选中目标、24次和240开拓力预算不变。Esc清除搜索，再返回每日实训，原计划仍保持三项，未出现未保存改动。截图为`runs/survival-groups-package-home.png`、`survival-groups-package-selected.png`、`survival-groups-package-search.png`与`survival-groups-package-return.png`。全程未保存、检测或运行游戏。
+
+监督脚本在界面核对期间达到360秒等待上限，原记录`runs/survival-groups-package-verification.json`保留；随后通过原生标题栏关闭助手，另确认进程已退出，但未取得助手退出码，不记录为0。补充核验`runs/survival-groups-package-final-verification.json`确认239份用户文件与独立配置哈希不变、1727个包文件与构建产物一致；其中147项UI素材、5份清单及23个上游文件与源码一致。备份`build/userdata-survival-groups-20261029_145943/`，EXE SHA-256为`14ef1584c2753c4f2748af733199e32b30fb68c56f944b9297a57039b50f13a8`。本轮失败记录、前后对照、检查与原生截图均归档到正式项目`runs/survival-groups-*`。
+
 ## 2026-10-29：启动路径错误直接定位到设置
 
 沿用当前AutoZZZ的明确动作入口和显式保存约定，继续处理首次配置路径。原实现只在表单中检查文件名格式：路径以StarRail.exe结尾但文件不存在时，后端会报告一般失败，用户需自行找到设置。现在启动文件检查返回带字段的SettingsError，直接启动事件、普通Runner和日常／周常合并报告保留`input_error_field`；桌面在工作线程结束后打开游戏连接、选中路径，并显示必要原因。没有增加重复教程或自动打开文件选择器。
