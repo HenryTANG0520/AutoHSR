@@ -19,6 +19,8 @@ from .storage import replace_file
 
 
 def launch_game(settings: Settings) -> str:
+    from .workflow_lease import require_workflow_access
+    require_workflow_access()
     settings.validate("launch")
     return launch(settings.game_path)
 
@@ -1603,6 +1605,8 @@ class Runner:
         try:
             if not mutex or already_running:
                 raise AutomationError("另一个 AutoHSR 任务正在运行，请先停止后重试。")
+            from .workflow_lease import require_workflow_access
+            require_workflow_access()
             currency_wars = self.report.operation in ("currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test")
             differential_universe = self.report.operation == "differential_universe"
             catalogue = self.report.operation == "dungeon_catalogue"

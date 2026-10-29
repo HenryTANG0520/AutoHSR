@@ -105,6 +105,18 @@
       "retrieved": "2026-10-30",
       "git_blob": "05aa79f50b00fcf6feeaac72c57955ca0a2fc8d4",
       "sha256": "d130d0797468e35080ba1d6821ef33486d90e1ea646b0414f83693c499e2f50f"
+    },
+    {
+      "path": "module/workflow/__init__.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "60e122213d9bfc3cabbd2db7ea60ce60f0bc3ccb",
+      "sha256": "26905df9f12bc88ea467dcc9a271bc227838574971fb5f9a6dda7afb0885b2f2"
+    },
+    {
+      "path": "assets/docs/Workflow.md",
+      "retrieved": "2026-10-30",
+      "git_blob": "8c9d802f4aedbbe3c0137dfa19529f24fdfb0239",
+      "sha256": "8a12e5fe09e471c3ebb2ce9861a7d4daf083a1f94b802d460338c7314c8b95e5"
     }
   ],
   "warp_format_references": {
@@ -372,6 +384,36 @@
         "check_supply_phase"
       ],
       "kind": "native four/five-column association from the complete equipment row, bounded dual name reads and retained image identities for unreadable unselected roles; no fixed first/middle candidate fallback"
+    },
+    {
+      "path": "autohsr/task_workflow.py",
+      "reference_source": "module/workflow/__init__.py",
+      "reference_functions": [
+        "parse_workflow_step_path",
+        "WorkflowRunner._execute_steps",
+        "WorkflowRunner._execute_step"
+      ],
+      "kind": "AutoHSR-authored strict JSON task tree, finite for/while and if/else, previous-result conditions and selected subtree paths. Conservative single daily/DU/CW reservations; no upstream YAML, template, keyboard, coordinates or scripts."
+    },
+    {
+      "path": "autohsr/task_workflow_run.py",
+      "reference_source": "module/workflow/__init__.py",
+      "reference_functions": [
+        "parse_workflow_step_path",
+        "WorkflowRunner._execute_steps",
+        "WorkflowRunner._execute_step"
+      ],
+      "kind": "AutoHSR-authored task-level adaptation of control-tree execution using existing native Runners; durable per-execution intent, one parent completion, exact saved child report and hash, inherited disabled daily flags, stop/pause propagation, failed game tasks block later game input, no retry or automatic resume."
+    },
+    {
+      "path": "autohsr/workflow_lease.py",
+      "reference_source": "module/workflow/__init__.py",
+      "reference_functions": [
+        "parse_workflow_step_path",
+        "WorkflowRunner._execute_steps",
+        "WorkflowRunner._execute_step"
+      ],
+      "kind": "AutoHSR-authored Windows named sequence marker with thread-local ownership; all native Runner and standalone launch entries reject other sequence owners during task gaps. No game-input framework copied."
     }
   ]
 }

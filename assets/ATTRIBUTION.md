@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-10-30 正式任务流程编排
+
+参考固定March7thAssistant的`module/workflow/__init__.py`及`assets/docs/Workflow.md`，在[任务树](../autohsr/task_workflow.py)、[执行器](../autohsr/task_workflow_run.py)和[独立CLI](../autohsr/task_workflow_cli.py)中适配步骤树、条件、有界循环与选中子步骤的概念。任务级Runner组合、单预算静态预留、已保存原报告核对、Windows跨进程执行归属、先写意图、未知停止和游戏失败后仅本地继续为AutoHSR实现。没有迁入Qt编辑器、坐标／键鼠／模板动作、上游YAML解析、消息推送或官方示例养成流程；详细差距见[任务流程](../docs/task-workflows.md)。两份固定源码／教程的blob和SHA-256及函数记录在[原清单](upstream/March7thAssistant/source.json)，GPL v3原件保留。没有新增玩家样本、图像素材、模型或运行时依赖。
+
 ## 2026-10-30 记录窗口统计与Excel
 
 参考固定March7thAssistant的`WarpExport.data_to_html`与`WarpInterface.__onExportExcelBtnClicked`，新增[本地窗口统计](../autohsr/warp_statistics.py)和[Excel序列化](../autohsr/warp_xlsx.py)。保留分池星级和高星着色，同时将首段不完整、缺失星级及物品数量与记录数分开；未知间隔不构造均值，全部统计仍为已导入窗口。UID／ID按文本、显示文字原样保存，按账号分表，停止和错误清理自有临时文件，经原服务发布新文件。源码／函数与适配边界见[原清单](upstream/March7thAssistant/source.json)，没有新增游戏素材、模型或玩家记录。

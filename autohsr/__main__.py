@@ -24,6 +24,8 @@ def main(argv: list[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group()
     from .warp_cli import add_arguments as add_warp_arguments
     add_warp_arguments(mode,parser)
+    from .task_workflow_cli import add_arguments as add_workflow_arguments
+    add_workflow_arguments(mode, parser)
     mode.add_argument("--currency-wars-replay", type=Path, help="离线回放 .sample.json；不访问游戏或加载每日配置")
     mode.add_argument("--currency-wars-check", action="store_true", help="货币战争只读识别与证据保存；自动玩法尚未开放")
     mode.add_argument("--currency-wars-prepare", action="store_true", help="启动或复用游戏，进入已有登录及主界面；不开始对局")
@@ -103,6 +105,9 @@ def main(argv: list[str] | None = None) -> int:
     from .warp_cli import dispatch as dispatch_warp
     warp_result=dispatch_warp(args,parser,raw_args)
     if warp_result is not None:return warp_result
+    from .task_workflow_cli import dispatch as dispatch_workflow
+    workflow_result = dispatch_workflow(args, parser, raw_args)
+    if workflow_result is not None:return workflow_result
     if (args.support_preferences_file is not None or args.support_scroll_pages is not None or args.support_fallback is not None) and (
             not (args.run or args.plan) or args.reward_only or args.resume_weekly_currency):
         parser.error('支援偏好参数仅用于 --run/--plan 的本次日常，不能用于仅补领奖或只接续周常。')
