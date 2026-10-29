@@ -152,7 +152,12 @@
         "sell_characters",
         "_sell_single_character"
       ],
-      "kind": "native observed-credit cleanup for bench units and Seele-owned on-field non-strategy units with independently empty gear; legacy bench targets remain separate from typed front/back credits, frozen roster/HUD/local appearances, actual refunds and deployment decrease; all-slot feedback and immutable source checks replace cached-list deletion as success"
+      "kind": "native observed-credit cleanup for bench units and Seele-owned on-field non-strategy units; legacy empty-gear targets remain valid, equipped units use a separate typed gear-return target, complete known inventory and visible room before inspection, exact returned counts and full roster recollection; frozen roster/HUD/local appearances, actual refunds and deployment decrease remain independent proofs"
+    },
+    {
+      "path": "autohsr/currency_wars_sale_equipment.py",
+      "reference_functions": ["sell_characters_aglaea_strategy", "sell_characters_seele_strategy", "sell_characters", "_sell_single_character"],
+      "kind": "native one-to-three known worn items, 14 visible stock cells, zero/finite/infinite tools kept separate, canonical versioned targets and exact inventory deltas; inspected source and credit receipt are bound to the original policy, full roster and input epoch; unknown stock skips this extension, missing returns never authorize replay; no new images or copied blind-success fallback"
     },
     {
       "path": "autohsr/currency_wars_equipment_catalog.py",
