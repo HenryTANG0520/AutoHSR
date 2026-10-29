@@ -26,6 +26,14 @@ def _items(scene,confidence):
 
 def _role(scene,slot,x,confidence):
     roi=(x-.09,.50,x+.09,.55)
+    from .currency_wars_names import configured_name,pending_name
+    configured=configured_name(scene,roi,confidence)
+    if configured is not None:
+        variants=[t for kind in ('raw','binary') for t in scene.field_reads.get('currency_supply_role_'+str(slot)+'_'+kind,())]
+        if any(t is not None and t.score>=max(.9,confidence) and unit_name(t.text)!=unit_name(configured.text) for t in variants):
+            raise AutomationError('配置角色名称与局部角色文字冲突。')
+        return configured
+    if pending_name(scene,roi):raise AutomationError('配置角色名称尚无完整可信来源。')
     raw=[t for t in scene.tokens if t.within(roi)]
     if len(raw)>1 or any(not confidence<=t.score<=1 or not _name(t) for t in raw):
         raise AutomationError('补给角色文字冲突或可信度不足。')

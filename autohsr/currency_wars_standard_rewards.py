@@ -14,7 +14,7 @@ from .currency_wars_equipment_catalog import GEAR, NAMES, inventory, inventory_c
 from .currency_wars_match import read_match, unit_name
 from .currency_wars_prepare import trusted
 from .currency_wars_standard_ledger import ledger_status
-from .currency_wars_standard_policy import PREFERRED
+from .currency_wars_standard_policy import preferred_names
 from .models import AutomationError, Token, normalize
 
 PAGES = frozenset(('equipment_selection','advanced_equipment_selection','expert_selection','supply_selection','hiring_selection'))
@@ -208,12 +208,14 @@ def _chosen(scene, data, strategy, confidence):
     units = data['basis']['snapshot'].get('roster',[])
     owned = {unit['name'] for unit in units}
     ranking = []
+    from .currency_wars_names import basis_name
+    preferences=preferred_names(strategy,basis_name(data))
     for option in options:
         if option[2] is None or data['page']=='supply_selection' and option[3] is None:
             continue  # Unidentified effects cannot become a default first choice.
         score = 100-5*priorities.index(option[2]) if option[2] in priorities else 5
-        if option[3] and strategy!='default' and option[3] in PREFERRED[strategy]:
-            index = PREFERRED[strategy].index(option[3])
+        if option[3] and strategy!='default' and option[3] in preferences:
+            index = preferences.index(option[3])
             highest = max((u.get('star') or 0 for u in units if u['name']==option[3]),default=0)
             score += 100 if index==0 and highest<3 else max(10,45-index*3) if option[3] not in owned else 0
         ranking.append((-score,option[0],option))

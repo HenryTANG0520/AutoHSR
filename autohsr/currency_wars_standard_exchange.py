@@ -48,7 +48,9 @@ def choose_exchange(snapshot, strategy='default'):
         return None
     if len({unit.name for unit in field}) != len(field) or any(unit.zone not in unit.eligible_zones for unit in field):
         raise AutomationError('当前满员阵容存在重名或位置不适配，先核实。')
-    base = team_score(field, strategy)
+    from .currency_wars_names import snapshot_name
+    alias=snapshot_name(snapshot)
+    base = team_score(field, strategy,remembrance_name=alias)
     best = None
     for source in snapshot.roster:
         for target in field:
@@ -60,7 +62,7 @@ def choose_exchange(snapshot, strategy='default'):
                              replace(target,zone=source.zone,slot=source.slot) if unit == source else unit for unit in field)
             if len({unit.name for unit in proposed}) != len(proposed):
                 continue
-            gain = team_score(proposed,strategy)-base
+            gain = team_score(proposed,strategy,remembrance_name=alias)-base
             order = (gain,source.zone == 'bench',-source.slot,target.zone == 'back',-target.slot)
             if gain > 0 and (best is None or order > best[0]):
                 best = (order,ExchangeChoice(source,target,gain))

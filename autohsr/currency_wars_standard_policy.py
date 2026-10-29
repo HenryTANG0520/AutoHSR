@@ -18,6 +18,11 @@ PREFERRED = {
 }
 
 
+def preferred_names(strategy='default',remembrance_name=''):
+    from .currency_wars_names import with_name
+    return with_name(PREFERRED[_strategy(strategy)],strategy,remembrance_name)
+
+
 @dataclass(frozen=True)
 class PurchaseDecision:
     slot: int
@@ -34,6 +39,7 @@ def _strategy(value):
 
 
 def rank_standard_offers(snapshot, strategy='default', *, traits=None, progress=None):
+    from .currency_wars_names import snapshot_name
     strategy = _strategy(strategy)
     if (not snapshot.roster_complete or snapshot.bench_capacity is None or snapshot.bench_occupied is None
             or snapshot.capacity is None or snapshot.gold is None or snapshot.hp is None
@@ -55,7 +61,7 @@ def rank_standard_offers(snapshot, strategy='default', *, traits=None, progress=
         if owned and highest and highest < 3 and (strategy == 'default' or offer.name == PREFERRED[strategy][0]):
             benefit += 25 if sum(unit.star == 1 for unit in owned) >= 2 else 18
             reasons.append('积累已持有角色；实际星级变化待重采')
-        preferences = PREFERRED[strategy]
+        preferences = preferred_names(strategy,snapshot_name(snapshot))
         if offer.name in preferences:
             index = preferences.index(offer.name)
             if index == 0 and highest < 3:
@@ -94,8 +100,8 @@ def growth_target(snapshot, strategy='default'):
     return 9 if highest >= 3 and {'风堇', '缇宝', '藿藿'} <= names else snapshot.level
 
 
-def owned_team_preference(name, strategy='default'):
-    preferences = PREFERRED[_strategy(strategy)]
+def owned_team_preference(name, strategy='default',remembrance_name=''):
+    preferences = preferred_names(strategy,remembrance_name)
     if name not in preferences:
         return 0
     index = preferences.index(name)
@@ -138,6 +144,7 @@ def refresh_reason(snapshot, strategy, price, count, spent):
     highest = max((unit.star or 0 for unit in snapshot.roster if unit.name == core),default=0)
     if strategy == 'seele' and snapshot.level < growth_target(snapshot,strategy):
         return None
-    if highest < 3 or set(PREFERRED[strategy][1:])-names:
+    from .currency_wars_names import snapshot_name
+    if highest < 3 or set(preferred_names(strategy,snapshot_name(snapshot))[1:])-names:
         return '按当前已核实核心星级和成长阶段寻找核心或缺失协同角色'
     return None

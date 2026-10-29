@@ -53,10 +53,14 @@ class Settings:
     weekly_day: int = 1
     weekly_time: str = "04:00"
     weekly_runs: int = 1
+    currency_remembrance_name: str = ""
 
     def validate(self, operation: str = "daily") -> None:
         from .weekly_plan import validate_schedule
         validate_schedule(self)
+        from .currency_wars_names import validate_name
+        try:validate_name(self.currency_remembrance_name)
+        except ValueError as error:raise SettingsError('currency_remembrance_name',str(error)) from error
         if not isinstance(self.game_path, str) or not self.game_path.lower().endswith("starrail.exe"):
             raise SettingsError("game_path", "请选择 StarRail.exe 游戏程序。")
         if operation == "save" or (operation in ("daily", "plan") and self.battle and self.allow_stamina_spend):

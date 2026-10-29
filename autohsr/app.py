@@ -1209,7 +1209,8 @@ class Runner:
                  du_runs=None, du_resume_active=False, du_periodic_rank=None,
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
-                 currency_configure=False, currency_resume=False, weekly_plan=None, currency_strategy=None):
+                 currency_configure=False, currency_resume=False, weekly_plan=None, currency_strategy=None,
+                 currency_remembrance_name=None):
         from .weekly_plan import WeeklyGuard
         if weekly_plan is not None and (not isinstance(weekly_plan, WeeklyGuard) or operation != "differential_universe"):
             raise ValueError("周常记录核验仅用于计划中的差分宇宙。")
@@ -1242,6 +1243,10 @@ class Runner:
         if currency_strategy is not None and (operation != 'currency_wars_standard' or currency_strategy not in STRATEGIES):
             raise ValueError('货币战争策略仅用于标准入口，须为 default、aglaea 或 seele。')
         self.currency_strategy = currency_strategy
+        from .currency_wars_names import validate_name
+        if currency_remembrance_name is not None and operation!='currency_wars_standard':
+            raise ValueError('记忆开拓者名称仅用于标准货币战争入口。')
+        self.currency_remembrance_name=None if currency_remembrance_name is None else validate_name(currency_remembrance_name)
         if operation == 'currency_wars_standard':
             self.currency_locate = self.currency_configure = True
         self.currency_source_slot,self.currency_zone = currency_source_slot,currency_zone
@@ -1514,6 +1519,12 @@ class Runner:
             if self.report.operation not in ("daily", "reward_only", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
                 raise AutomationError("未知运行类型，未访问游戏。")
             self.settings.validate("check" if catalogue else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "daily")
+            configured_name=''
+            if self.report.operation=='currency_wars_standard':
+                from .currency_wars_names import resolve_name
+                from .currency_wars_session import StandardSession
+                saved=StandardSession(directory.parent/'currency-standard-session.json').data if self.currency_resume else None
+                configured_name=resolve_name(self.settings,self.currency_remembrance_name,saved,resume=self.currency_resume)
             if not catalogue and not currency_wars and not differential_universe and self.settings.battle and self.settings.allow_stamina_spend:
                 from .recovery import BattleBudget
                 self.battle_budget = BattleBudget(ROOT / "runs", self.settings, self.report)
@@ -1539,6 +1550,7 @@ class Runner:
             self.log("正在加载中文 OCR 模型。F9 暂停/继续，F10 紧急停止。")
             vision = (IsolatedVision(self.settings.ocr_confidence, checkpoint=self._control_checkpoint,
                                       inactive=lambda: self.inactive_duration,
+                                      configured_name=configured_name,
                                       timeout=.05 if self.currency_timeout_probe else 30.) if currency_wars else
                       Vision(self.settings.ocr_confidence))
             context = Context(self, self._window, vision)

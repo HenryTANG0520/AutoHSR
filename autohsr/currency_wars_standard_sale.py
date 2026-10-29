@@ -11,7 +11,7 @@ import re
 from .currency_wars_collector import collected_snapshot, owned_profile, roster_cells
 from .currency_wars_deployment import _crop, _similarity, backend_layout
 from .currency_wars_match import read_match
-from .currency_wars_standard_policy import PREFERRED
+from .currency_wars_standard_policy import PREFERRED,preferred_names
 from .currency_wars_standard_hud import experience_observed
 from .currency_wars_state import StrategySnapshot
 from .models import AutomationError, Token, normalize
@@ -47,7 +47,8 @@ def choose_sale(snapshot, strategy='default'):
     field = tuple(unit for unit in snapshot.roster if unit.zone != 'bench')
     if len(field) != snapshot.capacity or choose_exchange(snapshot,strategy) is not None:
         return None  # Deploy useful units before discarding a possible improvement.
-    keep = set(PREFERRED[strategy]) | ({'昔涟','瓦尔特'} if strategy == 'aglaea' else set())
+    from .currency_wars_names import snapshot_name
+    keep = set(preferred_names(strategy,snapshot_name(snapshot))) | ({'昔涟','瓦尔特'} if strategy == 'aglaea' else set())
     keep |= {'开拓者','记忆开拓者'}
     candidates = []
     for unit in snapshot.roster:

@@ -225,11 +225,11 @@ def refreshed(session,choice,scene,confidence=.65):
     session['action_status']='supply_refreshed'
 
 
-def _valid_table(rows):
+def _valid_table(rows,private_names=()):
     from .currency_wars_standard_rewards import ITEM_IDS
     return (isinstance(rows,list) and len(rows) in (4,5) and len({r['name'] for r in rows})==len(rows)
         and all(set(r)=={'slot','name','item_name','item'} and type(r['slot']) is int and r['slot']==i
-            and isinstance(r['name'],str) and re.fullmatch(r'(?:[\u4e00-\u9fffa-z0-9·.]{1,40}|unknown:[0-9a-f]{64})',r['name'])
+            and isinstance(r['name'],str) and (r['name'] in private_names or re.fullmatch(r'(?:[\u4e00-\u9fffa-z0-9·.]{1,40}|unknown:[0-9a-f]{64})',r['name']))
             and isinstance(r['item_name'],str) and re.fullmatch(r'[\u4e00-\u9fff]{2,20}',r['item_name'])
             and r['item']==ITEM_IDS.get(r['item_name']) for i,r in enumerate(rows)))
 
@@ -260,7 +260,8 @@ def valid_receipt(action,actions):
                 or receipt.get('schema')!=1 or type(receipt.get('quota_used')) is not int or receipt['quota_used']!=1
                 or type(receipt.get('remaining_before')) is not int or receipt['remaining_before']!=target[2]
                 or type(receipt.get('remaining_after')) is not int or receipt['remaining_after']!=target[2]-1
-                or not _valid_table(origin['before_table']) or not _valid_table(receipt['candidates_after'])
+                or not _valid_table(origin['before_table'],origin['basis']['snapshot'].get('private_names',()))
+                or not _valid_table(receipt['candidates_after'],origin['basis']['snapshot'].get('private_names',()))
                 or len(origin['before_table'])!=len(receipt['candidates_after']) or receipt.get('candidates_before')!=origin['before_table']
                 or type(receipt.get('candidates_changed')) is not bool or receipt['candidates_changed']!=(receipt['candidates_after']!=origin['before_table'])
                 or not _valid_hud(origin['before_hud']) or receipt.get('hud_before')!=origin['before_hud'] or receipt.get('hud_after')!=origin['before_hud']

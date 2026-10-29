@@ -130,13 +130,16 @@ def supplement_character_tier(scene, reader):
             or len({t.text for t in fields}) != 1):
         return scene
     return Scene(scene.tokens+[Token(fields[0].text,min(t.score for t in fields),TIER_FIELD)],
-                 scene.image,scene.geometry,scene.captured_at)
+                 scene.image,scene.geometry,scene.captured_at,scene.field_reads)
 
 
 def session_snapshot(snapshot, session, epoch, source):
     """Stable session facts need their own sources, not visible roster slots."""
     from dataclasses import replace
     from .currency_wars_state import FactEvidence
+    from .currency_wars_names import validate_name
+    alias=validate_name(session.get('remembrance_name',''))
+    snapshot=replace(snapshot,private_names=((alias,) if alias else ())+tuple(n for n in snapshot.private_names if n!=alias))
     collection = session.get('collection', {})
     known = {}
     identity = (session.get('account_key') and session.get('account_verified_run') == collection.get('run_dir')

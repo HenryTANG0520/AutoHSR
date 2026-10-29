@@ -66,6 +66,11 @@ class Vision:
     def read_unit_name(self,image):
         return self._read_field(image,r'(?=.{2,40}$)(?=.*[\u4e00-\u9fff])[\u4e00-\u9fffA-Za-z0-9·.]+')
 
+    def read_configured_unit_name(self,image,expected):
+        from .currency_wars_match import unit_name
+        value=self._read_field(image,r'.{1,80}')
+        return value if value is not None and unit_name(value.text)==expected else None
+
     def refine_daily_synthesis(self, scene):
         from .daily_synthesis import selected, quantity
         if scene.image is None or not selected(scene) or quantity(scene) is not None:

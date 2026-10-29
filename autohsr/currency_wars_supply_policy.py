@@ -6,12 +6,14 @@ Only observed owned stars and equipment determine the remaining needs.
 from collections import Counter
 
 from .currency_wars_character_rewards import require_roster
-from .currency_wars_standard_policy import PREFERRED
+from .currency_wars_standard_policy import preferred_names
 
 
 def groups(data,strategy):
     if strategy not in ('aglaea','seele'):return ()
     units=require_roster(data['basis']['snapshot'])
+    from .currency_wars_names import basis_name
+    preferences=preferred_names(strategy,basis_name(data))
     core='阿格莱雅' if strategy=='aglaea' else '希儿'
     highest=max((u['star'] for u in units if u['name']==core),default=0)
     owned={u['name'] for u in units}
@@ -21,7 +23,7 @@ def groups(data,strategy):
         if bank['shoe']+2*bank['boots']<4:result.append(('item',('boots','shoe')))
         if highest<3:result.append(('unit',(core,)))
         if highest>=3:
-            names=tuple(n for n in PREFERRED[strategy][1:] if n not in owned)
+            names=tuple(n for n in preferences[1:] if n not in owned)
             if names:result.append(('unit',names))
         if bank['propeller']<1:result.append(('item',('propeller',)))
     else:
@@ -34,7 +36,7 @@ def groups(data,strategy):
         if highest<3:result.append(('unit',(core,)))
         advanced=tuple(n for n,amount in (('firestorm',2),('chainsaw',1)) if bank[n]<amount)
         if advanced:result.append(('item',advanced))
-        names=tuple(n for n in PREFERRED[strategy][1:] if n not in owned)
+        names=tuple(n for n in preferences[1:] if n not in owned)
         if names:result.append(('unit',names))
         if advanced:
             basics=('knife',)+(('shoe',) if 'firestorm' in advanced else ())+(('star',) if 'chainsaw' in advanced else ())

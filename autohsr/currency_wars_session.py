@@ -36,6 +36,9 @@ class StandardSession:
                 or type(data.get('completion_verified')) is not bool
                 or not isinstance(data.get('run_dir'), str)):
             raise ValueError('标准对局记录结构或难度无效')
+        from .currency_wars_names import validate_name
+        if 'remembrance_name' in data and validate_name(data['remembrance_name'])!=data['remembrance_name']:
+            raise ValueError('对局记忆开拓者名称无效')
         for index, action in enumerate(data['actions']):
             if (type(action) is not dict or action.get('id') != index
                     or not isinstance(action.get('action'), str)
@@ -78,7 +81,7 @@ class StandardSession:
         except (OSError, ValueError, KeyError, TypeError) as error:
             raise AutomationError('标准对局输入记录未写入，未输入。') from error
         items = data['actions']
-        if (data['match_id'] != self.data['match_id'] or not items or
+        if (data['match_id'] != self.data['match_id'] or data.get('remembrance_name','')!=self.data.get('remembrance_name','') or not items or
                 items[-1]['action'] != action or items[-1]['status'] != 'pending'
                 or items[-1]['input_epoch'] != epoch):
             raise AutomationError('标准对局输入与本次已落盘意图不符。')

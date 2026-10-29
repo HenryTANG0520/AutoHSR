@@ -33,8 +33,15 @@ def options(scene,kind,confidence=.65):
         headers=[m for m in headers if m]
         if len(headers)!=1:raise AutomationError('聘用书种类或费用字段不唯一。')
         tier=int(headers[0][1]) if headers[0][1] else None
-    names=sorted((t for t in clean.tokens if t.within((.14,.33,.90,.39))
-                  and re.fullmatch(r'(?=.{1,40}$)[\u4e00-\u9fffa-z0-9·.]+',normalize(t.text))),key=lambda t:t.center[0])
+    from .currency_wars_names import configured_name,pending_name
+    def role_name(token):
+        if not token.within((.14,.33,.90,.39)):return False
+        configured=configured_name(scene,token.box,confidence)
+        if pending_name(scene,token.box) and configured is None:
+            raise AutomationError('配置角色候选尚无完整可信名称，未按漏读后的较少候选选择。')
+        return bool(re.fullmatch(r'(?=.{1,40}$)[\u4e00-\u9fffa-z0-9·.]+',normalize(token.text))
+                    or configured is not None and unit_name(configured.text)==unit_name(token.text))
+    names=sorted((t for t in clean.tokens if role_name(t)),key=lambda t:t.center[0])
     cash=[t for t in names if normalize(t.text)=='现金为王']
     if (not 1<=len(names)<=5 or len({unit_name(t.text) for t in names})!=len(names)
             or any(names[i].center[0]-names[i-1].center[0]<.10 for i in range(1,len(names)))
@@ -66,17 +73,19 @@ def require_roster(snapshot):
 
 
 def choose(candidates,data,strategy):
+    from .currency_wars_names import basis_name,with_name
+    preferences=with_name(PREFERRED.get(strategy,()),strategy,basis_name(data))
     units=require_roster(data['basis']['snapshot'])
     candidates=tuple(c for c in candidates if c[6]['selectable'])
     highest={u['name']:max(v['star'] for v in units if v['name']==u['name']) for u in units}
     if data['page']==EXPERT:
         wanted=(('银狼',) if strategy=='aglaea' else
-                tuple(name for i,name in enumerate(PREFERRED.get(strategy,())) if highest.get(name,0)<3 and (i==0 or name not in highest)))
+                tuple(name for i,name in enumerate(preferences) if highest.get(name,0)<3 and (i==0 or name not in highest)))
         choices=[c for c in candidates if c[1] in wanted and highest.get(c[1],0)<3]
         return min(choices,key=lambda c:(wanted.index(c[1]),c[1])) if choices else None
     if strategy not in ('default','aglaea','seele'):raise AutomationError('聘用书本局策略无效。')
     traits=Counter(t for u in units for t in u.get('traits') or ())
-    preferred=PREFERRED.get(strategy,())
+    preferred=preferences
     def rank(c):
         name=c[1];priority=(200-preferred.index(name)*10 if name in preferred else 0) if highest.get(name,0)<3 else 0
         useful=30 if name not in highest else 15 if highest[name]<3 else 0

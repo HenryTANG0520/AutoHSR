@@ -698,3 +698,7 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 `assets/templates/currency_supply_refresh_4_6.png`从既有4.6补给画面静态裁出72×71的Q控件，排除次数、UID与完整画面；原图、原清单、坐标、变换、SHA-256及三份旧补给控件校准记录见[补给来源清单](currency-supply/sources.json)。游戏美术归HoYoverse及相应权利人，不纳入原创代码GPL声明，来源不授予额外再许可。没有启动游戏取材、公开整图或训练模型。
 
 命名策略的补给偏好和有界刷新参考同一March7thAssistant固定提交的`check_supply_phase`，经原生Context、独立次数回执、完整候选链和原奖励到账核验改写；保留上游署名与GPL v3许可。旧图缺失名字保留未知列，不从视觉人工读数伪造OCR通过；没有将局部校准或合成场景写成实机刷新成功。范围见[补给说明](currency-supply/README.md)。
+
+## 2026-10-29 记忆开拓者配置名策略适配
+
+同一March7thAssistant固定提交的`get_remembrance_trailblazer_name`及购买、保留、聘用书、顾问和补给调用，改写为AutoHSR的本局名称协议、原生策略偏好和一致身份核验。保留上游署名、固定源码Git blob及完整GPL v3许可，具体文件见[source.json](upstream/March7thAssistant/source.json)。名称配置不作图像素材，不引入上游固定费用或输入代码；本地实读名不发送给模型。本轮没有新增游戏素材或模型，真实字体及游戏路径尚未验收，见[开发记录](../docs/currency-wars-development.md)。

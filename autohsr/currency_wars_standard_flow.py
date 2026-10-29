@@ -342,6 +342,13 @@ def run_standard(c):
     c.currency_standard_session = store
     if store.data is not None and not c.runner.currency_resume:
         raise AutomationError('已有标准对局记录，请使用明确的接续入口核对当前局，未重开。')
+    from .currency_wars_standard_policy import STRATEGIES
+    from .currency_wars_names import resolve_name
+    requested_strategy = getattr(c.runner, 'currency_strategy', None)
+    strategy = (store.data or {}).get('strategy',requested_strategy or 'default')
+    if strategy not in STRATEGIES or requested_strategy is not None and requested_strategy != strategy:
+        raise AutomationError('本次策略与已记录对局不同，未中途改写策略。')
+    remembrance_name=resolve_name(c.settings,getattr(c.runner,'currency_remembrance_name',None),store.data,resume=c.runner.currency_resume)
     if c.runner.currency_resume:
         if store.data is None or store.data['status'] != 'active':
             raise AutomationError('没有已核实开始且可接续的标准对局；未知开局未重放。')
@@ -356,12 +363,8 @@ def run_standard(c):
         if not entry.get('rank_verified'):
             return result
         store.begin(c.report.run_dir, entry)
-    from .currency_wars_standard_policy import STRATEGIES
-    requested_strategy = getattr(c.runner, 'currency_strategy', None)
-    strategy = store.data.get('strategy', requested_strategy or 'default')
-    if strategy not in STRATEGIES or requested_strategy is not None and requested_strategy != strategy:
-        raise AutomationError('本次策略与已记录对局不同，未中途改写策略。')
     store.data['strategy'] = strategy
+    store.data['remembrance_name']=remembrance_name
     store.persist()
     c.report.currency_wars = store.data
     guard = CurrencyWarsWorkflow(c)

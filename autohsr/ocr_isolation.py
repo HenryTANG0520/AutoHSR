@@ -16,7 +16,7 @@ from pathlib import Path
 from .models import AutomationError, Scene, Token
 
 
-def _ocr_job(input_path: str, output_path: str, confidence: float):
+def _ocr_job(input_path: str, output_path: str, confidence: float, configured_name=""):
     try:
         import numpy as np
         from .vision import Vision
@@ -25,6 +25,8 @@ def _ocr_job(input_path: str, output_path: str, confidence: float):
         scene = reader.read(image)
         from .currency_wars_match import supplement_numbers
         scene = supplement_numbers(scene, reader)
+        from .currency_wars_names import supplement_configured_names
+        scene = supplement_configured_names(scene,reader,configured_name,confidence)
         from .currency_wars_standard import supplement_rank
         scene = supplement_rank(scene, reader)
         from .currency_wars_collector import supplement_character_tier
@@ -95,10 +97,12 @@ def _field_reads(result):
 
 
 class IsolatedVision:
-    def __init__(self, confidence=.65, *, checkpoint=lambda: None, inactive=lambda: 0., timeout=30.):
+    def __init__(self, confidence=.65, *, checkpoint=lambda: None, inactive=lambda: 0., timeout=30., configured_name=""):
         if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("OCR 超时必须为正数。")
         self.confidence, self.checkpoint, self.inactive, self.timeout = confidence, checkpoint, inactive, timeout
+        from .currency_wars_names import validate_name
+        self.configured_name=validate_name(configured_name)
 
     def template(self, scene, path, roi=(0, 0, 1, 1), threshold=.88):
         """Pure image matching shares Vision's implementation, never its OCR engine."""
@@ -119,8 +123,10 @@ class IsolatedVision:
             source, destination = Path(folder) / "frame.npy", Path(folder) / "result.json"
             np.save(source, image, allow_pickle=False)
             try:
+                arguments=(str(source),str(destination),self.confidence)
+                if self.configured_name:arguments+=(self.configured_name,)
                 process = multiprocessing.get_context("spawn").Process(
-                    target=_ocr_job, args=(str(source), str(destination), self.confidence), name="AutoHSR-OCR", daemon=True)
+                    target=_ocr_job, args=arguments, name="AutoHSR-OCR", daemon=True)
                 process.start()
                 started = True
                 while True:
