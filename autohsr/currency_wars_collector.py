@@ -57,11 +57,19 @@ def roster_cells(scene, confidence=.65):
     return tuple(result)
 
 
-def first_unit_probe(scene, confidence=.65, known=None):
+def record_matches(scene, cell, record, session=None):
+    if not record or record.get('node')!=cell.node:return False
+    if session is not None and 'collection_close_action_id' in record:
+        from .currency_wars_standard_collection import retained
+        return retained(scene,cell,record,session)
+    return record.get('signature')==cell.signature
+
+
+def first_unit_probe(scene, confidence=.65, known=None, *, session=None):
     cells = roster_cells(scene, confidence)
     known = known or {}
     candidates = [cell for cell in cells if cell.state == 'occupied' and
-                  known.get(cell.zone+':'+str(cell.slot),{}).get('signature') != cell.signature]
+                  not record_matches(scene,cell,known.get(cell.zone+':'+str(cell.slot)),session)]
     if not candidates:
         if any(cell.state == 'occupied' for cell in cells):
             return None
@@ -130,13 +138,16 @@ def supplement_character_tier(scene, reader):
             or len({t.text for t in fields}) != 1):
         return scene
     return Scene(scene.tokens+[Token(fields[0].text,min(t.score for t in fields),TIER_FIELD)],
-                 scene.image,scene.geometry,scene.captured_at)
+                 scene.image,scene.geometry,scene.captured_at,scene.field_reads)
 
 
 def session_snapshot(snapshot, session, epoch, source):
     """Stable session facts need their own sources, not visible roster slots."""
     from dataclasses import replace
     from .currency_wars_state import FactEvidence
+    from .currency_wars_names import validate_name
+    alias=validate_name(session.get('remembrance_name',''))
+    snapshot=replace(snapshot,private_names=((alias,) if alias else ())+tuple(n for n in snapshot.private_names if n!=alias))
     collection = session.get('collection', {})
     known = {}
     identity = (session.get('account_key') and session.get('account_verified_run') == collection.get('run_dir')
@@ -148,6 +159,9 @@ def session_snapshot(snapshot, session, epoch, source):
     from .currency_wars_standard_ledger import ledger_status
     if identity:
         known['transaction_status'] = ledger_status(session['actions'])
+        from .currency_wars_standard_investment import verified_names
+        investments=verified_names(session)
+        if investments:known['investments']=investments
     sources = {}
     for name in ('mode','rank','wealth'):
         sources[name] = 'match_entry:'+session.get('match_id','unverified')
@@ -185,7 +199,7 @@ def collected_snapshot(scene, session, epoch, source, confidence=.65, *, allow_r
         if cell.state != 'occupied':
             continue
         record = collection.get('units',{}).get(cell.zone+':'+str(cell.slot))
-        if not record or record.get('signature') != cell.signature or record.get('node') != cell.node:
+        if not record_matches(scene,cell,record,session):
             return snapshot
         data = dict(record['unit'])
         for name in ('traits','equipment','eligible_zones'):

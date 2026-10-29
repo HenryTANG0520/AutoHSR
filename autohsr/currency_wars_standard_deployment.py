@@ -9,7 +9,7 @@ from .models import AutomationError
 POLICY = 'owned-deployment-v3'
 
 
-def team_score(team, strategy='default', *, zones=None):
+def team_score(team, strategy='default', *, zones=None,remembrance_name=''):
     from .currency_wars_standard_policy import owned_team_preference
     positions = tuple(zones) if zones is not None else tuple(unit.zone for unit in team)
     front, back = positions.count('front'), positions.count('back')
@@ -17,7 +17,7 @@ def team_score(team, strategy='default', *, zones=None):
         raise AutomationError('阵容需要合法前后台位置与至少一名前台角色。')
     strength = sum((10,30,80,160)[unit.star-1]+2*unit.tier for unit in team)
     overlap = sum(len(set(a.traits or ()) & set(b.traits or ())) for a,b in combinations(team,2))
-    preference = sum(owned_team_preference(unit.name,strategy) for unit in team)
+    preference = sum(owned_team_preference(unit.name,strategy,remembrance_name) for unit in team)
     if strategy == 'seele':
         preference += sum(25 for unit,zone in zip(team,positions) if unit.name == '希儿' and zone == 'front')
     if strategy == 'aglaea' and not any(unit.name == '藿藿' for unit in team):
@@ -51,7 +51,8 @@ def choose_deployment(snapshot, strategy='default'):
             front, back = positions.count('front'), positions.count('back')
             if not front or front > 4 or back > 6:
                 continue
-            score = team_score(team,strategy,zones=positions)
+            from .currency_wars_names import snapshot_name
+            score = team_score(team,strategy,zones=positions,remembrance_name=snapshot_name(snapshot))
             key = (score, tuple(-u.slot for u in selected), tuple(z == 'back' for z in zones))
             if best is None or key > best[0]:
                 best = (key, selected, zones)
@@ -84,9 +85,9 @@ def standard_deployment(scene, session, confidence=.65):
     plan = plan_bench_deployment(scene,confidence,source_slot=unit.slot,zone=zone)
     if plan.backend_slots != 6:
         raise AutomationError('标准部署尚未核实当前后台布局。')
-    record = collection['units']['bench:'+str(unit.slot)]
+    cell = next(c for c in roster_cells(scene,confidence) if (c.zone,c.slot)==('bench',unit.slot))
     payload = (snapshot.node,snapshot.gold,snapshot.hp,snapshot.level,unit.slot,zone,
-               plan.target_slot,record['signature'])
+               plan.target_slot,cell.signature)
     return plan, unit, score, payload
 
 

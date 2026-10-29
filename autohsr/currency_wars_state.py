@@ -140,8 +140,15 @@ class StrategySnapshot:
     refresh_budget: int | None = None
     rules_version: str | None = None
     evidence: tuple[FactEvidence, ...] = ()
+    # Local preferences/privacy metadata, never a known game fact or API field.
+    private_names: tuple[str, ...] = ()
 
     def __post_init__(self):
+        from .currency_wars_names import validate_name
+        if (type(self.private_names) is not tuple or len(self.private_names)>8
+                or any(not n or validate_name(n)!=n for n in self.private_names)
+                or len(set(self.private_names))!=len(self.private_names)):
+            raise ValueError('本地角色名称隐私范围无效')
         text(self.page)
         integer(self.input_epoch, 0, 2**53)
         if (type(self.observed_at) not in (int, float) or not math.isfinite(self.observed_at)
@@ -197,7 +204,7 @@ class StrategySnapshot:
             raise ValueError('战斗历史无效')
         for value in self.recent_losses:
             integer(value, 0, 100)
-        allowed = {f.name for f in fields(self)} - {'evidence', 'observed_at', 'input_epoch'}
+        allowed = {f.name for f in fields(self)} - {'evidence', 'observed_at', 'input_epoch','private_names'}
         if (any(e.field not in allowed for e in self.evidence)
                 or len({e.field for e in self.evidence}) != len(self.evidence)):
             raise ValueError('证据字段未知或冲突')
@@ -208,16 +215,21 @@ class StrategySnapshot:
 
     def public_state(self):
         """Allowlisted game facts only; never export local evidence paths."""
+        from .currency_wars_match import unit_name
         data = asdict(self)
-        for name in ('evidence', 'observed_at'):
+        for name in ('evidence', 'observed_at','private_names'):
             data.pop(name)
         for name in tuple(data):
             if name != 'input_epoch' and not self.known(name):
                 data[name] = None
         data['known_fields'] = sorted(e.field for e in self.evidence if e.input_epoch == self.input_epoch)
         if data['roster'] is not None:
+            for unit in data['roster']:
+                if unit_name(unit['name']) in self.private_names:unit['name']='记忆开拓者'
             data['roster'] = sorted(data['roster'], key=lambda u: (u['zone'], u['slot']))
         if data['offers'] is not None:
+            for offer in data['offers']:
+                if unit_name(offer['name']) in self.private_names:offer['name']='记忆开拓者'
             data['offers'] = sorted(data['offers'], key=lambda o: o['slot'])
         return data
 
@@ -247,7 +259,7 @@ class StrategySnapshot:
                         fields_[key] = tuple(fields_[key])
                 converted.append(kind(**fields_))
             values[name] = tuple(converted)
-        for name in ('experience', 'inventory', 'environment', 'investments', 'recent_losses'):
+        for name in ('experience', 'inventory', 'environment', 'investments', 'recent_losses','private_names'):
             if values.get(name) is not None:
                 if type(values[name]) is not list:
                     raise ValueError('JSON集合必须是数组')
@@ -278,4 +290,5 @@ def snapshot_from_scene(scene, input_epoch, confidence=.65, source_id='current_s
                       offers=tuple(ShopOffer(o.slot, o.name, price=o.cost) for o in state.offers))
     values['evidence'] = tuple(FactEvidence(name, source_id, input_epoch) for name, value in values.items()
                               if name not in ('input_epoch', 'observed_at') and value is not None)
-    return StrategySnapshot(**values)
+    from .currency_wars_names import observed_private_names
+    return StrategySnapshot(**values,private_names=observed_private_names(scene))

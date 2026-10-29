@@ -39,6 +39,8 @@ PAGE_LABELS = {
     "equipment_selection": "简易武装箱装备选择",
     "advanced_equipment_selection": "进阶武装箱装备选择",
     "expert_selection": "专家邀请函选择",
+    "hiring_selection": "聘用书选择",
+    "token_selection": "好运令牌装备选择",
     "bench_full": "备战席已满，等待整理",
     "plane_map": "位面进度地图",
     "investment_selection": "投资策略选择",
@@ -77,9 +79,7 @@ _MODALS = {
         _Anchor("请选择投资策略", (.44,.07,.56,.11)),
         _Anchor("返回备战界面", (.85,.02,1,.08)),
         _Anchor("图例", (.09,.07,.14,.11)),
-        _Anchor(re.compile(r"刷新次数[0-9]"), (.18,.77,.30,.82)),
-        _Anchor(re.compile(r"刷新次数[0-9]"), (.44,.77,.57,.82)),
-        _Anchor(re.compile(r"刷新次数[0-9]"), (.70,.77,.83,.82)),
+        _Anchor(re.compile(r"刷新次数[0-9]{1,2}"), (.1,.76,.9,.84)),
         _Anchor("确认", (.47,.89,.53,.93)),
     ),
     "equipment_selection": (
@@ -97,7 +97,17 @@ _MODALS = {
     "expert_selection": (
         _Anchor("专家邀请函", (.49, .03, .59, .08)),
         _Anchor("请选择1个专家顾问，该角色在选择后同步加入商店", (.40, .07, .68, .11)),
-        _Anchor("现金为王", (.75, .33, .83, .38)),
+        _Anchor("现金为王", (.14, .33, .9, .39)),
+    ),
+    "hiring_selection": (
+        _Anchor(re.compile(r'(?:[1-5]费)?聘用书'), (.3,.02,.7,.10)),
+        _Anchor(re.compile(r'请选择1(?:个|名)(?:角色)?'), (.3,.06,.75,.13)),
+    ),
+    "token_selection": (
+        _Anchor("好运令牌",(.3,.02,.75,.10)),
+        _Anchor("请选择1个",(.3,.06,.8,.14)),
+        _Anchor("查看详情",(.35,.27,.6,.36)),
+        _Anchor("查看详情",(.6,.27,.85,.36)),
     ),
     "equipment_info": (
         _Anchor("简易装备", (.75, .15, .9, .21)),
@@ -305,10 +315,20 @@ def classify_page(trusted_tokens: list[Token]) -> str:
         if definitions is _PAGES and any(is_bench_full_notice(t) for t in trusted_tokens):
             return "bench_full"
         found = [kind for kind, anchors in definitions.items()
-                 if all(any(anchor.matches(token) for token in trusted_tokens) for anchor in anchors)]
+                 if all(any(anchor.matches(token) for token in trusted_tokens) for anchor in anchors)
+                 and (kind!='investment_selection' or _investment_layout(trusted_tokens))]
         if found:
             return found[0] if len(found) == 1 else "unknown"
     return "unknown"
+
+
+def _investment_layout(tokens):
+    names=sorted((t for t in tokens if t.within((.1,.43,.9,.48))),key=lambda t:t.center[0])
+    counters=[t for t in tokens if t.within((.1,.76,.9,.84)) and normalize(t.text).startswith('刷新次数')]
+    return bool(1<=len(names)<=3 and len({normalize(t.text) for t in names})==len(names)
+        and len(counters)==len(names) and all(names[i].center[0]-names[i-1].center[0]>=.2 for i in range(1,len(names)))
+        and all(sum(t.within((name.center[0]-.12,.76,name.center[0]+.12,.84))
+            and re.fullmatch('刷新次数[0-9]{1,2}',normalize(t.text)) is not None for t in counters)==1 for name in names))
 
 
 def is_bench_full_notice(token):

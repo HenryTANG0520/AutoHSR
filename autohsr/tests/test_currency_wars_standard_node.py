@@ -11,7 +11,7 @@ from autohsr.currency_wars_session import StandardSession
 from autohsr.currency_wars_standard_node import entry_feedback, observe_started_node
 from autohsr.currency_wars_standard_flow import next_action
 from autohsr.models import AutomationError, Scene, Token
-from autohsr.tests.test_currency_wars_node import screen, prepared
+from autohsr.tests.test_currency_wars_node import screen
 
 
 def current(kind,node='1-1'):
@@ -92,11 +92,10 @@ class StandardNodeTests(unittest.TestCase):
             self.assertEqual(len(store.data['actions']),1)
 
     def test_full_owned_board_can_start_once_and_own_pending_is_rederived(self):
-        scene=prepared()
-        scene.tokens.append(Token('商店',.99,(.83,.89,.87,.93)))
-        session=dict(shop_observed_nodes=['1-1'])
-        with patch('autohsr.currency_wars_collector.first_unit_probe',return_value=None), \
-             patch('autohsr.currency_wars_standard_deployment.standard_deployment',return_value=None):
+        from autohsr.tests.test_currency_wars_standard_trading import full_board_fixture
+        scene,source=full_board_fixture()
+        session=dict(shop_observed_nodes=['1-1'],collection=source['collection'])
+        with patch('autohsr.currency_wars_standard_deployment.standard_deployment',return_value=None):
             choice=next_action(scene,session=session)
             self.assertEqual(choice.intent,'start_standard_node')
             session.update(node_attempt=dict(node='1-1',status='start_pending',start_action_id=0),

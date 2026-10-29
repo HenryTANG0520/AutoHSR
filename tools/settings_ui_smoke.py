@@ -211,10 +211,11 @@ def main():
                 check(f"{scale}_external_boolean_updates_display", ui.weekly_enabled_combo.get() == "关闭")
                 choose(root, ui.weekly_enabled_combo, 0)
                 choose(root, ui.weekly_mode_combo, 1)
-                check(f"{scale}_currency_hides_complete_du_rows", all(not control.winfo_ismapped() for control in ui.weekly_run_controls)
-                      and "尚未接入" in ui.weekly_boundary.get())
+                check(f"{scale}_currency_shows_limit_and_hides_du_team", all(not control.winfo_ismapped() for control in ui.weekly_run_controls)
+                      and ui.weekly_runs_combo.winfo_ismapped() and ui.weekly_runs_row.caption.cget('text')=='对局上限'
+                      and '开发流程' in ui.weekly_boundary.get())
                 check(f"{scale}_hidden_fields_not_keyboard_targets", str(root.tk.call("tk_focusNext", ui.weekly_time_entry)) not in
-                      (str(ui.weekly_runs_combo), str(ui.weekly_team_entry)))
+                      (str(ui.weekly_team_entry),))
                 choose(root, ui.weekly_mode_combo, 0)
                 check(f"{scale}_du_rows_restore", all(control.winfo_ismapped() for control in ui.weekly_run_controls))
                 click(ui.weekly_day_combo)

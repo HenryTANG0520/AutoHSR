@@ -27,7 +27,7 @@ def loot_feedback(before,after,target,confidence=.65):
     kind=observe(after,confidence).page_kind
     if kind=='bench_full':
         return 'unchanged'
-    if kind in ('equipment_selection','advanced_equipment_selection','expert_selection'):
+    if kind in ('equipment_selection','advanced_equipment_selection','expert_selection','hiring_selection'):
         return 'choice_opened'
     first,last=read_match(before,confidence),read_match(after,confidence)
     if (first is None or last is None or last.page!='preparation' or first.node!=last.node

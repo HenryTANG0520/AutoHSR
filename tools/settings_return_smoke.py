@@ -18,6 +18,14 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     checks, callback_errors = [], []
     def check(name, condition):
+        if not condition:
+            from autohsr.theme import focus_widget
+            diagnostic = dict(check=name,focus=str(focus_widget(root)),native_focus=str(root.tk.call('focus')),
+                              page=ui.active_page,action=ui.action_page,return_page=ui.settings_return_page,
+                              return_focus=str(ui.settings_return_focus),busy=ui.busy,
+                              dungeon_state=str(ui.dungeon_list.cget('state')),geometry=root.geometry(),state=root.state())
+            (OUT/(name+'-failure.json')).write_text(json.dumps(diagnostic,ensure_ascii=False,indent=2),'utf-8')
+            ImageGrab.grab(window=root.winfo_id()).save(OUT/(name+'-failure.png'))
         assert condition, (name, callback_errors)
         checks.append(name)
     def reject(*args, **kwargs):

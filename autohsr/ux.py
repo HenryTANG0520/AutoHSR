@@ -133,12 +133,23 @@ def plan_result(report: dict) -> tuple[str, str] | None:
     if status == "success" and report.get("report_saved") is not True:
         label = "结果待核对"
     weekly_status = weekly.get("status")
+    reused = weekly.get('daily_reused') is True and report.get('budget_scope') == 'original_daily_run'
     if tasks and status == "success" and report.get("report_saved") is True and weekly_status in ("disabled", "not_due"):
         label = "日常已完成"
     elif not tasks and status == "success" and report.get("report_saved") is True:
         label = {"not_due": "本次无需执行", "complete": "周常演算完成" if weekly.get("mode") == "differential_universe" else "周常完成",
                  "already_complete": "周常已完成", "disabled": "本次未执行任务"}.get(weekly_status, label)
+    if weekly.get('mode') == 'currency_wars' and weekly_status in ('complete', 'already_complete'):
+        verified = status == 'success' and report.get('report_saved') is True and weekly.get('score_rewards_verified') is True
+        if not verified:
+            label = '周常待核对'
+        elif not tasks:
+            label = '周常积分及奖励完成'
+        if verified and (report.get('currency_wars') or {}).get('read_only_recovery') is True:
+            label = '原周常结果已补存'
     parts = [label]
+    if reused:
+        parts.append('沿用原日常结果')
     if not tasks and weekly_status == "not_due":
         parts.append("周常未到期")
     resources = (("stamina_spent", "stamina_pending", "开拓力"),
@@ -154,15 +165,15 @@ def plan_result(report: dict) -> tuple[str, str] | None:
         for spent, pending, name in resources:
             amount, unknown = report.get(spent), report.get(pending, 0)
             if spent == "stamina_spent" or amount or unknown or (spent in report and type(amount) is not int):
-                parts.append(f"已确认 {amount} {name}" if type(amount) is int and amount >= 0 else name+"消耗未记录")
+                parts.append(('原日常' if reused else '')+(f"已确认 {amount} {name}" if type(amount) is int and amount >= 0 else name+"消耗未记录"))
             if pending in report and (type(unknown) is not int or unknown < 0):
                 parts.append(name+"待核对")
             elif type(unknown) is int and unknown > 0:
                 parts.append(f"{unknown} {name}待核对")
     if "daily" in tasks or report.get("daily_verified") is True:
-        parts.append("实训奖励已核实" if report.get("daily_verified") is True else "实训奖励未核实")
+        parts.append(('原日常' if reused else '')+("实训奖励已核实" if report.get("daily_verified") is True else "实训奖励未核实"))
     if any(isinstance(row, dict) and row.get("task") == "close_game" for row in report.get("results", [])):
-        parts.append(exit_text(report))
+        parts.append(('原日常：' if reused else '')+exit_text(report))
     lines = [" · ".join(parts)]
     message = weekly.get("message")
     if weekly_status == "not_due":
@@ -176,6 +187,11 @@ def plan_result(report: dict) -> tuple[str, str] | None:
         except (KeyError, TypeError, ValueError):
             if isinstance(message, str) and message:
                 lines.append(message)
+    elif weekly.get('mode') == 'currency_wars' and weekly_status != 'disabled':
+        from .weekly_feedback import currency_weekly_caption
+        caption = currency_weekly_caption(report)
+        if caption:
+            lines.append(caption)
     elif weekly_status != "disabled" and isinstance(message, str) and message and message != report.get("error"):
         week = weekly.get("week")
         lines.append(message.replace("本周", week+" 当周") if isinstance(week, str) and

@@ -53,10 +53,20 @@ class Settings:
     weekly_day: int = 1
     weekly_time: str = "04:00"
     weekly_runs: int = 1
+    currency_remembrance_name: str = ""
+    currency_fast_mode: bool = False
+    currency_runs: int = 1  # Only the explicit loop entry uses this; 0 = until stopped.
+    currency_until_points: bool = False  # Optional weekly target; runs remains the new-game ceiling.
 
     def validate(self, operation: str = "daily") -> None:
         from .weekly_plan import validate_schedule
         validate_schedule(self)
+        from .currency_wars_loop_store import runs_value
+        try:runs_value(self.currency_runs)
+        except ValueError as error:raise SettingsError('currency_runs',str(error)) from error
+        from .currency_wars_names import validate_name
+        try:validate_name(self.currency_remembrance_name)
+        except ValueError as error:raise SettingsError('currency_remembrance_name',str(error)) from error
         if not isinstance(self.game_path, str) or not self.game_path.lower().endswith("starrail.exe"):
             raise SettingsError("game_path", "请选择 StarRail.exe 游戏程序。")
         if operation == "save" or (operation in ("daily", "plan") and self.battle and self.allow_stamina_spend):
@@ -77,7 +87,7 @@ class Settings:
                     raise SettingsError("challenge_count", f"{category.label}本次挑战次数应为 1～{count_limit(category)}。")
                 if self.challenge_count * category.cost > self.stamina_limit:
                     raise SettingsError("challenge_count", "所选次数的预计消耗超过本次开拓力上限，请减少次数或调整上限。")
-        for name in ("use_support", "assignments", "battle", "allow_stamina_spend", "daily", "mail", "battlepass", "auto_launch", "overlay_logs", "daily_synthesis", "differential_universe_save", "differential_universe_rewards", "differential_universe_daily"):
+        for name in ("use_support", "assignments", "battle", "allow_stamina_spend", "daily", "mail", "battlepass", "auto_launch", "overlay_logs", "daily_synthesis", "differential_universe_save", "differential_universe_rewards", "differential_universe_daily", "currency_fast_mode", "currency_until_points"):
             if type(getattr(self, name)) is not bool:
                 raise SettingsError(name, f"{name} 必须是布尔值。")
         for name, title, low, high in (("action_delay", "操作间隔（秒）", 0.3, 5),

@@ -29,6 +29,7 @@ STATUS_NAMES = {
     "skipped": "跳过", "stopped": "已停止", "partial": "部分完成",
     "paused": "已暂停", "cancelled": "已停止",
 }
+WEEKLY_CURRENCY_STAGES = {'points': '核对周积分', 'loop': '进行周常对局', 'rewards': '领取周积分奖励'}
 
 # Backend field -> page, settings section, Tk variable, control, readable name.
 INPUT_FIELDS = {
@@ -72,6 +73,8 @@ class AutoHSRWindow:
         self._weekly_result_summary = None
         self.focus_waiting = False
         self.active_operation = "daily"
+        self.plan_phase = ''
+        self._active_weekly_mode = self._weekly_currency_stage = None
         self._f9_local_pressed = False
         self.stop_requested = threading.Event()
         self.started_at: float | None = None
@@ -288,6 +291,9 @@ class AutoHSRWindow:
                  f"开始演算 · {self.differential_universe_runs.get()} 局" if differential_universe else "开始计划",
             command=self._currency_wars if currency else
                     (lambda: self._start(differential_universe=True)) if differential_universe else (lambda: self._start(run_plan=True)))
+        pending = getattr(self, '_weekly_currency_recovery', None)
+        if not currency and not differential_universe and pending and pending.get('resume'):
+            self.start_button.configure(text=pending['action'], command=lambda: self._start(run_plan=True, resume_weekly_currency=True))
         self.header.position_plan()
         self.settings_shell.position()
 
@@ -359,23 +365,34 @@ class AutoHSRWindow:
                     weekly_day=DAYS.index(self.weekly_day.get())+1,
                     weekly_time=self.weekly_time.get().strip(), weekly_runs=self._number("weekly_runs", int))
 
-    def _refresh_plan_caption(self):
+    def _refresh_daily_caption(self):
+        pending = getattr(self, '_weekly_currency_recovery', None)
+        if pending and pending.get('resume'):
+            self.daily_caption.set('日常 · 沿用原报告' if pending['daily_reused'] else '日常 · 本次不执行')
+            return
         count = sum(variable.get() for variable in self.tasks.values())
         from .dungeon_ui import selected_category
         metrics = planned_battle_metrics(selected_category(self), self.challenge_count.get(), self.tasks["battle"].get())
         cost = metrics[1].replace("\n", " · ")+" · "+self.target_name.get() if metrics else "不刷本"
         self.daily_caption.set(f"日常 · {count} 项" + (f" · {cost}" if cost else ""))
+
+    def _refresh_plan_caption(self):
+        self._refresh_daily_caption()
         self._weekly_caption_source = "preview"
         self._weekly_result_week = None
         self._weekly_result_summary = None
         self._refresh_weekly_caption(force=True)
         self.weekly_boundary.set("周期演算按局数完成；周积分奖励尚未接入。" if self.weekly_mode.get() == "差分宇宙" else
-                                 "货币战争周常尚未接入。")
+                                 "标准 A8-40 开发流程 · 已有周目标沿用原上限 · 完整实机未验收。")
 
     def _refresh_weekly_caption(self, *, force=False):
         # This is a read-only clock refresh, not a scheduler or an account check.
         # Running snapshots and unresolved results must retain their own status.
         if self._loading or self.busy or self.closing:
+            return
+        pending = getattr(self, '_weekly_currency_recovery', None)
+        if pending and pending.get('resume'):
+            self.weekly_status.set(pending['caption'])
             return
         from . import weekly_plan
         now = weekly_plan.datetime.now(weekly_plan.CHINA)
@@ -476,6 +493,14 @@ class AutoHSRWindow:
         self.recovery_hint.set((state.get("reason") if state["corrupt"] else
             f"上次刷本未完整结束：已确认 {state['spent']}，待核对 {pending} 开拓力{immersifier_text(state)}。可先仅补领奖；新刷本需确认新增预算。")
             if state["blocked"] else "")
+        from .weekly_feedback import pending_currency_week
+        self._weekly_currency_recovery = pending_currency_week(ROOT / 'runs')
+        if self._weekly_currency_recovery and not self._weekly_currency_recovery.get('resume'):
+            message = self._weekly_currency_recovery['caption']
+            self.recovery_hint.set('\n'.join(filter(None, (self.recovery_hint.get(), message))))
+        self._configure_primary_action()
+        self._refresh_daily_caption()
+        self._refresh_weekly_caption(force=True)
 
     def _refresh_controls(self) -> None:
         state = "disabled" if self.busy else "normal"
@@ -488,6 +513,7 @@ class AutoHSRWindow:
                 getattr(self,name).configure(state='disabled' if self.busy else 'readonly')
         for control in self.weekly_run_controls:
             control.grid() if self.weekly_mode.get() == "差分宇宙" else control.grid_remove()
+        self.weekly_runs_row.caption.configure(text="演算局数" if self.weekly_mode.get() == "差分宇宙" else "对局上限")
         allowed = self.settings.allow_stamina_spend
         for task, control in self.daily_task_controls.items():
             control.configure(state="disabled" if self.busy or (task == "battle" and not allowed) else "readonly")
@@ -621,11 +647,21 @@ class AutoHSRWindow:
         if isinstance(field, str) and field in INPUT_FIELDS and isinstance(message, str) and message.strip():
             self._input_failed(SettingsError(field, message))
 
-    def _read_settings(self, save=False, operation="daily") -> Settings | None:
+    def _read_settings(self, save=False, operation="daily", *, resume_weekly_currency=False) -> Settings | None:
         try:
             values = dict(game_path=self.game_path.get().strip(), overlay_logs=self.overlay_logs.get(),
                           daily_synthesis=self.daily_synthesis.get())
-            if not save and operation == "dungeon_catalogue":
+            if resume_weekly_currency and not save:
+                pending = self._weekly_currency_recovery
+                from datetime import datetime
+                from .weekly_plan import CHINA
+                due = datetime.fromisoformat(pending['due_at']).astimezone(CHINA)
+                values.update(assignments=False, battle=False, daily=False, mail=False, battlepass=False,
+                              weekly_enabled=True, weekly_mode='currency_wars', weekly_runs=pending['maximum'],
+                              weekly_day=due.weekday()+1, weekly_time=due.strftime('%H:%M'),
+                              action_delay=self._number('action_delay', float), battle_timeout=self._number('battle_timeout', int),
+                              ocr_confidence=self._number('ocr_confidence', float))
+            elif not save and operation == "dungeon_catalogue":
                 values.update(auto_launch=False, assignments=False, battle=False, daily=False, mail=False, battlepass=False,
                               dungeon_category="auto", ocr_confidence=self._number("ocr_confidence", float))
             elif not save and operation.startswith("currency_wars"):
@@ -669,7 +705,7 @@ class AutoHSRWindow:
             settings = replace(self.settings, **values)
             if save:
                 settings = replace(settings, **self._weekly_values())
-            elif operation == "plan":
+            elif operation == "plan" and not resume_weekly_currency:
                 weekly = self._weekly_values() if self.weekly_enabled.get() else dict(weekly_enabled=False)
                 settings = replace(settings, **weekly)
             settings.validate("save" if save else operation)
@@ -825,16 +861,22 @@ class AutoHSRWindow:
     def _start(self, reward_only=False, *, run_plan=False, catalogue=False, currency_wars=False, differential_universe=False, drag_test=False, deploy_test=False, node_test=False, flow_test=False,
                currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                currency_control_probe=False,currency_timeout_probe=False,currency_prepare=False,currency_locate=False,
-               currency_configure=False,currency_standard=False,currency_resume=False) -> None:
+               currency_configure=False,currency_standard=False,currency_resume=False,resume_weekly_currency=False) -> None:
         if self.busy or self.closing or (self.worker is not None and self.worker.is_alive()):
             return
+        if resume_weekly_currency:
+            self._refresh_recovery()
+            pending = self._weekly_currency_recovery
+            if not run_plan or not pending or not pending.get('resume'):
+                self.result_alert.set(pending['caption'] if pending else '没有可接续的原周常。')
+                return
         currency_locate = currency_locate or currency_configure
         currency_prepare = currency_prepare or currency_locate
         currency_wars = currency_wars or currency_standard or currency_prepare or drag_test or deploy_test or node_test or flow_test
         operation = "dungeon_catalogue" if catalogue else "currency_wars_standard" if currency_standard else "currency_wars_prepare" if currency_prepare else "currency_wars_flow_test" if flow_test else "currency_wars_node_test" if node_test else "currency_wars_deploy_test" if deploy_test else "currency_wars_drag_test" if drag_test else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "reward_only" if reward_only else "daily"
         if run_plan and operation == "daily":
             operation = "plan"
-        settings = self._read_settings(operation=operation)
+        settings = self._read_settings(operation=operation, **({'resume_weekly_currency': True} if resume_weekly_currency else {}))
         if settings is None:
             return
         du_options={}
@@ -874,6 +916,7 @@ class AutoHSRWindow:
             return
         self.runner = None
         self.active_operation = operation
+        self._active_weekly_mode = settings.weekly_mode if operation == 'plan' else None
         self.plan_phase = "daily" if operation == "plan" else ""
         deployment_label=f"备战{currency_source_slot}→空"+('前台' if currency_zone=='front' else '后台')
         self.plan.set("货币战争 · 整局验证 · 超频A0" if flow_test and currency_start_from_lobby else ("货币战争 · 连续流程验证"+(f" · 升级至Lv{currency_target_level}" if currency_target_level else " · 不购买经验")) if flow_test else "货币战争 · 当前节点战斗验证" if node_test else f"货币战争 · 单次{deployment_label}部署" if deploy_test else "货币战争 · 单次前台3→1拖动验证" if drag_test else "货币战争 · 只读识别 · 自动玩法未开放" if currency_wars else
@@ -900,6 +943,9 @@ class AutoHSRWindow:
             self._weekly_result_week = None
             self._weekly_result_summary = None
             self.weekly_status.set("等待日常结束" if settings.weekly_enabled else "周常未加入")
+            if resume_weekly_currency:
+                self.plan.set(self._weekly_currency_recovery['caption'])
+                self.weekly_status.set('核对原周常记录 · 不执行新日常')
         if operation in ("daily", "plan", "reward_only"):
             self.training_result.set("unknown")
         self.paused = self.stopping = False
@@ -960,7 +1006,8 @@ class AutoHSRWindow:
                 from .app import Runner
                 if operation == "plan":
                     from .plan_runner import PlanRunner
-                    runner = PlanRunner(settings, send, new_battle_run=new_battle_run, root=ROOT/"runs")
+                    runner = PlanRunner(settings, send, new_battle_run=new_battle_run, root=ROOT/"runs",
+                                        **({'resume_weekly_currency': True} if resume_weekly_currency else {}))
                 else:
                     runner = Runner(settings, send, new_battle_run=new_battle_run, operation=operation,
                         **du_options,
@@ -1065,6 +1112,8 @@ class AutoHSRWindow:
         if task == "currency_wars":
             self.currency_status.set(detail)
             self.current_task.set("标准A8-40开发" if self.active_operation == 'currency_wars_standard' else "货币战争启动准备" if self.active_operation == 'currency_wars_prepare' else "货币战争连续流程验证" if self.active_operation == "currency_wars_flow_test" else "货币战争节点战斗验证" if self.active_operation == "currency_wars_node_test" else "货币战争部署验证" if self.active_operation == "currency_wars_deploy_test" else "货币战争拖动验证" if self.active_operation == "currency_wars_drag_test" else "货币战争只读识别")
+            if self.active_operation == 'plan' and self.plan_phase == 'weekly' and self._active_weekly_mode == 'currency_wars':
+                self.current_task.set('货币战争 · '+WEEKLY_CURRENCY_STAGES.get(self._weekly_currency_stage, '核对周常'))
         if task in TASK_NAMES and not (self.active_operation == "plan" and event.get("phase") == "weekly"):
             self._has_run = True
             if self._daily_result_signature is None:
@@ -1077,7 +1126,7 @@ class AutoHSRWindow:
             label = "周常" if task == "weekly" else "货币战争" if task == "currency_wars" else TASK_NAMES.get(task, task)
             self._log(f"{label}：{STATUS_NAMES.get(status, status)} {detail}".strip(), "error" if status in ("failed", "error") else "info")
 
-    def _plan_daily_result(self, report):
+    def _plan_daily_result(self, report, *, reused=False):
         for result in report.get("results", []):
             if isinstance(result, dict):
                 self._task(result, log=False)
@@ -1087,6 +1136,21 @@ class AutoHSRWindow:
         self._progress(report.get("stamina_spent"))
         self._battle_result(report)
         self._finalize_task_rows(str(report.get("status", "partial")), reason=issue_text(report))
+        if reused:
+            self._reused_daily_display(report)
+
+    def _reused_daily_display(self, report):
+        # Original daily receipts are not a fresh account observation or payment.
+        self.training_result.set('unknown')
+        self.confirmed_stamina = 0
+        self.stamina.set('—')
+        names = {row.get('task') for row in report.get('results', []) if isinstance(row, dict)}
+        if report.get('daily_verified') is True:
+            names.add('daily')
+        for name in names.intersection(TASK_NAMES):
+            label, status, detail = self.table.item(name, 'values')
+            if not status.startswith('原日常'):
+                self.table.item(name, values=(label, '原日常'+status, detail))
 
     def _battle_result(self, report):
         self.table.item("battle", metrics=reported_battle_metrics(report))
@@ -1108,6 +1172,28 @@ class AutoHSRWindow:
         if self.du_result_report is not None:
             self._show_summary(json.dumps(self.du_result_report, ensure_ascii=False, indent=2), title="差分宇宙 · 详细记录", return_focus=self.du_record_button)
 
+    def _weekly_currency_progress(self, event):
+        if self.active_operation != 'plan' or self.plan_phase != 'weekly' or self._active_weekly_mode != 'currency_wars':
+            return
+        if event.get('type') == 'currency_weekly_phase':
+            message = WEEKLY_CURRENCY_STAGES.get(event.get('stage'))
+            if message:
+                self._weekly_currency_stage = event['stage']
+                self.current_task.set('货币战争 · '+message)
+        elif event.get('type') in ('currency_loop_points', 'currency_loop_phase'):
+            self._weekly_currency_stage = 'points' if event['type'] == 'currency_loop_points' else 'loop'
+            self.current_task.set('货币战争 · '+WEEKLY_CURRENCY_STAGES[self._weekly_currency_stage])
+        elif event.get('type') == 'currency_loop_progress':
+            data = event.get('data') or {}
+            completed, maximum = data.get('completed'), data.get('requested_runs')
+            if type(completed) is int and type(maximum) is int and 1 <= maximum <= 10 and 0 <= completed <= maximum:
+                self.weekly_status.set(f'货币战争 · 已完成 {completed} 局／上限 {maximum} 局')
+                self.current_task.set('货币战争 · 核对本局结果')
+        needs_game = ((event.get('type') == 'currency_weekly_phase' and event.get('stage') in ('points', 'rewards'))
+                      or event.get('type') in ('currency_loop_points', 'currency_loop_phase'))
+        if needs_game and self.running and not self.paused and not self.stopping:
+            self.root.iconify()
+
     def _show_currency_record(self):
         if self.currency_result_report is not None:
             self._show_summary(json.dumps(self.currency_result_report, ensure_ascii=False, indent=2), title="货币战争 · 详细记录", return_focus=self.currency_record_button)
@@ -1118,6 +1204,9 @@ class AutoHSRWindow:
             activity = standard_activity(data)
             self.current_task.set(activity)
             self.currency_status.set(activity)
+        elif (data.get('mode') == 'standard_development' and self.running and self.active_operation == 'plan'
+              and self.plan_phase == 'weekly' and self._active_weekly_mode == 'currency_wars'):
+            self.current_task.set('周常 · '+standard_activity(data))
         if data.get("screenshot"):
             self.last_screenshot = Path(data["screenshot"])
 
@@ -1254,7 +1343,8 @@ class AutoHSRWindow:
             valid_week = isinstance(week, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", week)
             self._weekly_result_week = week if saved_success and valid_week and weekly.get("status") in ("complete", "already_complete") else None
             self._weekly_caption_minute = None
-            self.weekly_status.set(message)
+            from .weekly_feedback import currency_weekly_caption
+            self.weekly_status.set(currency_weekly_caption(report) or message)
             # Keep the frozen report's week explicit in the retained result.
             # The preview may advance to a new week while this window stays open.
             result_message = message.replace("本周", week+" 当周") if valid_week else message
@@ -1264,6 +1354,8 @@ class AutoHSRWindow:
             else:
                 plan_label, summary = scoped
                 self.summary.set(summary)
+            if weekly.get('daily_reused') is True and report.get('budget_scope') == 'original_daily_run':
+                self._reused_daily_display(report)
         self.result_alert.set(issue_text(report))
         if report.get("report_saved") is False:
             self.summary.set("报告未保存\n"+self.summary.get())
@@ -1387,11 +1479,14 @@ class AutoHSRWindow:
                 elif kind == "plan_phase":
                     self.plan_phase = event.get("phase", "")
                     if (self.active_operation == "plan" and self.plan_phase in ("daily", "weekly")
+                            and not (self.plan_phase == 'weekly' and self._active_weekly_mode == 'currency_wars')
                             and self.running and not self.paused and not self.stopping):
                         self.root.iconify()
-                    self.current_task.set("核对本周演算记录" if self.plan_phase == "weekly" else "准备日常")
+                    self.current_task.set(("核对货币战争周常" if self._active_weekly_mode == 'currency_wars' else "核对本周演算记录") if self.plan_phase == "weekly" else "准备日常")
                 elif kind == "plan_daily_result":
-                    self._plan_daily_result(event.get("report", {}))
+                    self._plan_daily_result(event.get("report", {}), reused=event.get('reused') is True)
+                elif kind in ('currency_weekly_phase', 'currency_loop_points', 'currency_loop_phase', 'currency_loop_progress'):
+                    self._weekly_currency_progress(event)
                 elif kind == "universe_progress":
                     self._universe_progress(event)
                 elif kind == "progress":

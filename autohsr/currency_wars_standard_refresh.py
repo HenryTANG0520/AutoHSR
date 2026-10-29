@@ -113,24 +113,54 @@ def refresh_action(scene, session, confidence=.65):
         signature = table_digest(offer_table(state,sold_slots(prior,state.node)))
     except ValueError as error:
         raise AutomationError('刷新前五格报价缺失或价格不明，未刷新。') from error
-    if state.probabilities is None or state.experience is None:
+    if state.probabilities is None or state.experience is None and state.level!=10:
         raise AutomationError('刷新前等级概率或经验字段不明，未刷新。')
+    from .currency_wars_standard_investment import refresh_bonus
+    amount,_,bonus_digest=refresh_bonus(prior,node=state.node)
+    payload=(state.node,state.gold,snapshot.hp,state.level,price,signature,bench_signature(scene))
+    if amount and price:
+        payload+=(amount,*(state.experience or (0,0)),bonus_digest)
     target = unique(trusted(scene,confidence),'刷新',BUTTON_ROI)
     return StandardAction('refresh_standard_shop','standard_shop_refreshed',target,
                           details=(prior['strategy'],0.,(reason,),POLICY),
-                          payload=(state.node,state.gold,snapshot.hp,state.level,price,signature,bench_signature(scene)))
+                          payload=payload)
 
 
-def refresh_feedback(choice, before, after, confidence=.65):
+def experience_gain(level, xp, after_level, after_xp, amount):
+    if (type(amount) is not int or not 0<=amount<=99 or type(level) is not int or not 1<=level<=10
+            or type(after_level) is not int or not 1<=after_level<=10):return False
+    if level==10:return after_level==10 and xp is None and after_xp is None
+    if (not isinstance(xp,(list,tuple)) or len(xp)!=2 or any(type(v) is not int for v in xp)
+            or not 0<=xp[0]<xp[1]<=9999):return False
+    if not amount:return after_level==level and after_xp==xp
+    total=xp[0]+amount
+    if total<xp[1]:return after_level==level and after_xp==(total,xp[1])
+    if after_level!=level+1:return False
+    if after_level==10:return after_xp is None
+    return (isinstance(after_xp,(list,tuple)) and len(after_xp)==2 and all(type(v) is int for v in after_xp)
+            and after_xp[0]==total-xp[1] and 0<=after_xp[0]<after_xp[1]<=9999)
+
+
+def refresh_feedback(choice, before, after, confidence=.65, *, session=None):
     from .currency_wars_standard_trading import read_match, bench_signature
     first,last = read_match(before,confidence),read_match(after,confidence)
     if (not first or not last or first.page != 'shop' or last.page != 'shop'
             or (first.node,first.gold,first.level) != (choice.payload[0],choice.payload[1],choice.payload[3])
-            or (last.node,last.level) != (first.node,first.level) or last.gold is None
+            or last.node != first.node or last.gold is None
             or first.gold-last.gold != choice.payload[4] or last.hp not in (None,choice.payload[2])
-            or first.experience is None or first.experience != last.experience
-            or first.probabilities is None or first.probabilities != last.probabilities
+            or first.probabilities is None or last.probabilities is None
+            or last.level==first.level and first.probabilities!=last.probabilities
             or before.image is None or after.image is None or before.image.shape != after.image.shape):
+        return None
+    bonus=0;sources=[];signature=None
+    if session is not None:
+        from .currency_wars_standard_investment import refresh_bonus
+        from .currency_wars_standard_trading import _prior
+        bonus,sources,signature=refresh_bonus(_prior(session,choice.intent),node=first.node)
+        if choice.payload[4]==0:bonus=0
+    if (len(choice.payload)==11 and (not bonus or choice.payload[7:]!=(bonus,*(first.experience or (0,0)),signature))
+            or len(choice.payload)==7 and bonus or len(choice.payload) not in (7,11)
+            or not experience_gain(first.level,first.experience,last.level,last.experience,bonus)):
         return None
     try:
         # Missing before slots must have been proved at proposal time. The exact
@@ -145,6 +175,11 @@ def refresh_feedback(choice, before, after, confidence=.65):
             return None
     except (ValueError,AutomationError):
         return None
-    return dict(schema=1,currency='match_gold',node=first.node,gold_before=first.gold,gold_after=last.gold,
+    receipt=dict(schema=1,currency='match_gold',node=first.node,gold_before=first.gold,gold_after=last.gold,
                 price=choice.payload[4],level_after=last.level,table_before=old_hash,table_after=new_hash,
                 offers_before=old,offers_after=new,bench_before=choice.payload[6],bench_after=choice.payload[6])
+    if bonus:
+        receipt.update(bonus_xp=bonus,bonus_sources=sources,bonus_digest=signature,
+            experience_before=list(first.experience) if first.experience else None,
+            experience_after=list(last.experience) if last.experience else None)
+    return receipt

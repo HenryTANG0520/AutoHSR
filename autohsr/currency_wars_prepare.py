@@ -12,14 +12,14 @@ from .models import AutomationError, EmptyCapture, Scene, TaskResult, Token, nor
 from .storage import replace_file
 from .workflows import DailyWorkflow
 
-PREPARATION_OPERATIONS = ('currency_wars_prepare', 'currency_wars_standard')
+PREPARATION_OPERATIONS = ('currency_wars_prepare', 'currency_wars_standard', 'currency_wars_points', 'currency_wars_rewards')
 
 
 def trusted(scene, confidence=.65):
     tokens = [t for t in scene.tokens if math.isfinite(t.score) and confidence <= t.score <= 1
               and len(t.box) == 4 and all(math.isfinite(v) and 0 <= v <= 1 for v in t.box)
               and t.box[0] < t.box[2] and t.box[1] < t.box[3]]
-    return Scene(tokens, scene.image, scene.geometry, scene.captured_at)
+    return Scene(tokens, scene.image, scene.geometry, scene.captured_at,scene.field_reads)
 
 
 def click_target(scene, confidence=.65):

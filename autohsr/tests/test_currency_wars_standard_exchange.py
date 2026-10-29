@@ -29,8 +29,9 @@ def fixture(variant='core'):
         units['bench:4']['unit'].update(name='乱破',star=2,tier=1,eligible_zones=('front',))
     elif variant == 'positions':
         session['strategy'] = 'seele'
+        units['front:1']['unit']['name']='符玄'
         units['back:1']['unit'].update(name='希儿',eligible_zones=('front','back'),traits=())
-        units['front:2']['unit'].update(name='双位角色',eligible_zones=('front','back'),traits=())
+        units['front:2']['unit'].update(name='瓦尔特',eligible_zones=('front','back'),traits=())
     else:
         session['strategy'] = 'aglaea'
         units['bench:4']['unit'].update(name='阿格莱雅',star=1,tier=1,eligible_zones=('front','back'),traits=('协同',))

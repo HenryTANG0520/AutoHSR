@@ -83,6 +83,9 @@ def supply_fixture(count_options=5, strategy='default'):
                              before='result.png',after='supply.png',feedback=dict(page_kind='supply_selection',node='1-2'))]
     session['node_attempt']=dict(node='1-1',start_action_id=0,status='advanced',node_verified=True,result='result.png',result_kind='node_result')
     page=modal('supply_selection',before,destination='1-2')
+    # These cases isolate selection/delivery after the refresh quota is spent.
+    # Dedicated refresh fixtures restore a positive count and its visible Q control.
+    page.tokens=[Token('剩余次数：0',t.score,t.box) if normalize(t.text).startswith('剩余次数') else t for t in page.tokens]
     if count_options==4:
         names=[('新角色甲','轮滑鞋'),('新角色乙','光能电池'),('希儿','折叠小刀'),('新角色丁','量产型装甲')]
         page.tokens=[t for t in page.tokens if not t.within((.03,.50,.97,.55)) and not t.within((.03,.61,.97,.67))]

@@ -15,6 +15,7 @@ from .currency_wars_standard_deployment import team_score
 from .models import AutomationError, Token
 
 POLICY = 'owned-exchange-v1'
+MOVES = frozenset(('stage_standard_exchange','stage_standard_relocate'))
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,12 @@ def key(zone, slot):
     return zone+':'+str(slot)
 
 
+def _proof_current(scene,data,name,proof,cells):
+    if not data.get('empty'):return proof.get('signature')==cells[name].signature
+    from .currency_wars_appearance import appearance,same_appearance
+    return bool(proof.get('appearance') and same_appearance(proof['appearance'],appearance(scene,cells[name].roi)))
+
+
 def choose_exchange(snapshot, strategy='default'):
     if (not snapshot.roster_complete or snapshot.capacity is None or
             any(unit.star is None or unit.tier is None or not unit.eligible_zones for unit in snapshot.roster)):
@@ -48,7 +55,9 @@ def choose_exchange(snapshot, strategy='default'):
         return None
     if len({unit.name for unit in field}) != len(field) or any(unit.zone not in unit.eligible_zones for unit in field):
         raise AutomationError('当前满员阵容存在重名或位置不适配，先核实。')
-    base = team_score(field, strategy)
+    from .currency_wars_names import snapshot_name
+    alias=snapshot_name(snapshot)
+    base = team_score(field, strategy,remembrance_name=alias)
     best = None
     for source in snapshot.roster:
         for target in field:
@@ -60,7 +69,7 @@ def choose_exchange(snapshot, strategy='default'):
                              replace(target,zone=source.zone,slot=source.slot) if unit == source else unit for unit in field)
             if len({unit.name for unit in proposed}) != len(proposed):
                 continue
-            gain = team_score(proposed,strategy)-base
+            gain = team_score(proposed,strategy,remembrance_name=alias)-base
             order = (gain,source.zone == 'bench',-source.slot,target.zone == 'back',-target.slot)
             if gain > 0 and (best is None or order > best[0]):
                 best = (order,ExchangeChoice(source,target,gain))
@@ -104,8 +113,17 @@ def inspectable(choice, before, after, confidence=.65):
         a = {(cell.zone,cell.slot):cell for cell in roster_cells(before,confidence)}
         b = {(cell.zone,cell.slot):cell for cell in roster_cells(after,confidence)}
         changed = {(choice.payload[4],choice.payload[5]),(choice.payload[6],choice.payload[7])}
-        return (backend_layout(after.image)[0] == 6 and all(b[position].state == 'occupied' for position in changed)
-                and all(a[position].signature == b[position].signature for position in a if position not in changed))
+        source,target=(choice.payload[4],choice.payload[5]),(choice.payload[6],choice.payload[7])
+        relocate=choice.intent=='stage_standard_relocate'
+        if (a[source].state!='occupied' or a[target].state!=('empty' if relocate else 'occupied')
+                or a[source].signature!=choice.payload[8] or a[target].signature!=choice.payload[9]):return False
+        if relocate:
+            from .currency_wars_appearance import appearance,same_appearance
+            unchanged=all(a[p].state==b[p].state and (a[p].state=='empty' or
+                same_appearance(appearance(before,a[p].roi),appearance(after,b[p].roi))) for p in a if p not in changed)
+        else:unchanged=all(a[p].signature==b[p].signature for p in a if p not in changed)
+        return (backend_layout(after.image)[0] == 6 and b[target].state=='occupied'
+                and b[source].state==('empty' if relocate else 'occupied') and unchanged)
     except (AutomationError,KeyError):
         return False
 
@@ -119,15 +137,21 @@ def _active(session):
     index = data.get('action_id')
     actions = session.get('actions',[])
     if (type(index) is not int or not 0 <= index < len(actions)
-            or actions[index].get('action') != 'stage_standard_exchange'
+            or actions[index].get('action') not in MOVES
             or actions[index].get('status') != 'verified' or not actions[index].get('after')
             or actions[index].get('exchange_expected') != data.get('expected')):
         raise AutomationError('换人核验缺少已记录的同一次拖动来源。')
     action = actions[index]
     payload, board = action.get('target'),data.get('board')
+    relocate=action['action']=='stage_standard_relocate'
+    expected_keys={key(payload[6],payload[7])} if isinstance(payload,list) and len(payload)==14 else set()
+    if not relocate and isinstance(payload,list) and len(payload)==14:expected_keys.add(key(payload[4],payload[5]))
     if (not isinstance(payload,list) or len(payload) != 14 or not isinstance(board,list) or len(board) != 6
-            or payload[:4] != board[:4] or action.get('expected') != 'standard_exchange_inspectable'
-            or set(data.get('expected',{})) != {key(payload[4],payload[5]),key(payload[6],payload[7])}):
+            or payload[:4] != board[:4] or action.get('expected') != ('standard_relocate_inspectable' if relocate else 'standard_exchange_inspectable')
+            or set(data.get('expected',{})) != expected_keys
+            or relocate and (payload[4] not in ('front','back') or payload[6] not in ('front','back')
+                            or payload[4]==payload[6] or payload[12:]!=['',0]
+                            or data.get('empty')!=[key(payload[4],payload[5])])):
         raise AutomationError('换人核验节点或目标与原拖动意图不一致。')
     return data
 
@@ -150,6 +174,12 @@ def _board(scene, data, confidence):
     cells = {key(cell.zone,cell.slot):cell for cell in roster_cells(scene,confidence)}
     if backend_layout(scene.image)[0] != 6 or any(name not in cells or cells[name].state != 'occupied' for name in data['expected']):
         raise AutomationError('换人后目标槽不完整或布局改变。')
+    if data.get('empty'):
+        from .currency_wars_appearance import appearance,same_appearance
+        if (any(cells[name].state!='empty' for name in data['empty']) or any(
+                cells[name].state!=state or state=='occupied' and not same_appearance(data['appearances'][name],appearance(scene,cells[name].roi))
+                for name,state in data['occupancy'].items() if name not in data['expected'])):
+            raise AutomationError('移位核验期间来源空位或其他角色发生变化。')
     return cells
 
 
@@ -181,7 +211,7 @@ def active_action(scene, session, confidence=.65):
     proofs = data.get('proofs',{})
     for name in data['expected']:
         proof = proofs.get(name,{})
-        if (proof.get('closed') and proof.get('signature') == cells[name].signature and proof.get('input_epoch') == epoch
+        if (proof.get('closed') and _proof_current(scene,data,name,proof,cells) and proof.get('input_epoch') == epoch
                 and proof.get('run_dir') == session.get('account_verified_run')):
             continue
         inflight = session.get('rederiving_action') or {}
@@ -195,18 +225,28 @@ def active_action(scene, session, confidence=.65):
     raise AutomationError('换人核验尚未完成返回记录，未开始其他动作。')
 
 
-def record_intent(session, choice):
+def record_intent(session, choice, scene=None, confidence=.65):
     action = session['actions'][-1]
-    if choice.intent == 'stage_standard_exchange':
+    if choice.intent in MOVES:
         units = session['collection']['units']
         source_key, target_key = key(choice.payload[4],choice.payload[5]),key(choice.payload[6],choice.payload[7])
-        source, target = units[source_key]['unit'],units[target_key]['unit']
-        expected = {target_key:dict(source,zone=target['zone'],slot=target['slot']),
-                    source_key:dict(target,zone=source['zone'],slot=source['slot'])}
+        source = units[source_key]['unit']
+        expected = {target_key:dict(source,zone=choice.payload[6],slot=choice.payload[7])}
+        if choice.intent=='stage_standard_exchange':
+            target=units[target_key]['unit']
+            expected[source_key]=dict(target,zone=source['zone'],slot=source['slot'])
         action['exchange_expected'] = json.loads(json.dumps(expected))
+        from .currency_wars_standard_reorder import bind
+        bind(session,choice,scene,confidence)
     elif choice.intent == 'inspect_standard_exchange_unit':
         data = _active(session)
         data['inspection_attempts'] = data.get('inspection_attempts',0)+1
+        if data.get('empty'):
+            from .currency_wars_appearance import appearance
+            cells=_board(scene,data,confidence);cell=cells[key(choice.payload[0],choice.payload[1])]
+            if (cell.zone,cell.slot,cell.node,cell.signature)!=choice.payload[:4]:
+                raise AutomationError('空位移动后的查看目标与当前槽位不符。')
+            action['exchange_appearance']=appearance(scene,cell.roi)
 
 
 def begin_verification(session, choice, before, after, confidence=.65):
@@ -220,6 +260,13 @@ def begin_verification(session, choice, before, after, confidence=.65):
                                       list(state.experience) if state.experience else None],inspection_attempts=0)
     action['movement_verified'] = False
     cells = roster_cells(after,confidence)
+    from .currency_wars_standard_reorder import preserve_return
+    preserve_return(session,after,confidence)
+    if choice.intent=='stage_standard_relocate':
+        from .currency_wars_appearance import appearance
+        session['exchange'].update(empty=[key(choice.payload[4],choice.payload[5])],
+            occupancy={key(c.zone,c.slot):c.state for c in cells},
+            appearances={key(c.zone,c.slot):appearance(after,c.roi) for c in cells if c.state=='occupied'})
     old = session['collection']['units']
     session['collection']['units'] = {key(cell.zone,cell.slot):old[key(cell.zone,cell.slot)] for cell in cells
         if cell.state == 'occupied' and key(cell.zone,cell.slot) not in action['exchange_expected']
@@ -234,13 +281,25 @@ def record_profile(session, profile, inspecting, source, epoch):
     name = key(profile.zone,profile.slot)
     expected = data['expected'].get(name)
     actual = json.loads(json.dumps(asdict(profile)))
+    global_move=session['actions'][data['action_id']].get('reorder_root') is not None
+    properties_match=True
+    if global_move and expected is not None:
+        from .currency_wars_standard_reorder import identity
+        from .currency_wars_state import UnitState
+        original=UnitState(**{k:(tuple(v) if isinstance(v,list) else v) for k,v in expected.items()})
+        properties_match=identity(profile)==identity(original)
     if (inspecting.get('exchange_id') != data['action_id'] or expected is None
             or any(actual[field] != expected[field] for field in ('name','star','tier'))
-            or profile.zone != 'bench' and profile.zone not in (profile.eligible_zones or ())):
+            or profile.zone != 'bench' and profile.zone not in (profile.eligible_zones or ()) or not properties_match):
         data.update(status='identity_mismatch',actual=actual,expected_slot=name,source=source)
         return '换人后角色名称、星级、费用或位置不符，未继续交易或战斗。'
     data['proofs'][name] = dict(unit=actual,signature=inspecting['signature'],input_epoch=epoch,
                               run_dir=session.get('account_verified_run'),source=source,closed=False)
+    if data.get('empty'):
+        action=session['actions'][inspecting['inspection_action_id']]
+        if action.get('action')!='inspect_standard_exchange_unit' or not action.get('exchange_appearance'):
+            raise AutomationError('空位移动后的角色面板没有本次查看外观来源。')
+        data['proofs'][name]['appearance']=action['exchange_appearance']
     return None
 
 
@@ -253,10 +312,16 @@ def after_close(session, choice, scene, confidence=.65):
     inspecting = session['inspecting']
     name = key(inspecting['zone'],inspecting['slot'])
     proof = data['proofs'].get(name,{})
-    if (proof.get('signature') == cells[name].signature and proof.get('input_epoch') == session.get('account_verified_epoch')
+    if (_proof_current(scene,data,name,proof,cells) and proof.get('input_epoch') == session.get('account_verified_epoch')
             and proof.get('run_dir') == session.get('account_verified_run')):
         proof['closed'] = True
-    if all(data['proofs'].get(name,{}).get('closed') and data['proofs'][name]['signature'] == cells[name].signature
+        if data.get('empty'):
+            proof['returned_signature']=cells[name].signature
+            record=session['collection']['units'][name]
+            record.update(inspection_signature=proof['signature'],signature=cells[name].signature,
+                          exchange_inspection_signature=proof['signature'],
+                          exchange_parent_action_id=data['action_id'])
+    if all(data['proofs'].get(name,{}).get('closed') and _proof_current(scene,data,name,data['proofs'][name],cells)
            and data['proofs'][name]['input_epoch'] == session.get('account_verified_epoch')
            and data['proofs'][name]['run_dir'] == session.get('account_verified_run') for name in data['expected']):
         data['status'] = 'verified'

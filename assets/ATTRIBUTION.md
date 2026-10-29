@@ -1,5 +1,25 @@
 # AutoHSR resource attribution
 
+## 2026-10-29 货币战争周常编排
+
+参考固定March7thAssistant的日常`Daily.start`与`CurrencyWars.start`／`check_currency_wars_score`，将积分、原生有限循环及独立领奖接入[周常归属](../autohsr/currency_wars_weekly.py)与[顺序Runner](../autohsr/currency_wars_weekly_run.py)。每账号／游戏周索引、固定对局上限、原日常报告复用、逐局来源审计和只读恢复为AutoHSR适配；没有迁入上游定时器、全局时间戳、遥测或输入框架。源文件blob与GPL v3见[source.json](upstream/March7thAssistant/source.json)。本次没有新增素材或真实采集，检查使用假窗口与合成最终节点。
+
+## 2026-10-29 独立积分领奖
+
+参考固定March7thAssistant的`get_reward`、`_fuel_ticket_limit_visible`及`wait_for_weekly_reward`，改写为[原生积分领奖控件](../autohsr/currency_wars_weekly_rewards.py)、独立Runner与意图／回执存储。沿用AutoHSR当前页面、账号、客户端、代次及输入门禁，另核对两帧奖励展示、数量字段、禁用状态、原图及原报告；满额只记录拒绝结果，不清理或重发。来源blob和GPL v3见[source.json](upstream/March7thAssistant/source.json)。本次未导入上游领取按钮图、GUI或输入框架，未新增真实采集、公开图片或模型；正向领取检查使用合成文字／按钮图像及假窗口，不作为真实领取样本。
+
+## 2026-10-29 本周积分循环目标
+
+在固定上游`check_currency_wars_score`及循环入口参考上，将[独立积分观察](../autohsr/currency_wars_points_run.py)接入[原生循环目标](../autohsr/currency_wars_points_goal.py)。冻结周／账号、局数上限、精确回执、开局前双重门禁与空记录归档为AutoHSR适配；没有迁入全局时间戳、未知失败后重开或领奖实现。函数、blob及GPL v3见[source.json](upstream/March7thAssistant/source.json)。本轮未新增素材、真实采集或模型，检查采用模拟窗口与既有原生报告协议。
+
+## 2026-10-29 积分核对与旧OCR白名单
+
+参考固定March7thAssistant的`check_currency_wars_score`，将积分当前值／上限判断改写为[原生解析](../autohsr/currency_wars_points.py)及账号／游戏周观察回执；函数、Git blob和GPL v3见[source.json](upstream/March7thAssistant/source.json)。未迁入全局时间戳或领取实现，未新增图像或模型。[文字夹具](../autohsr/tests/fixtures/currency_wars_points.json)由三份既有游戏截图的原OCR筛选，仅保留22条菜单、积分与倒计时字段及来源哈希，不带UID、图像和无关余额；它们是旧校准材料，不是新实机留出。游戏界面及文字归HoYoverse和相应权利人所有。
+
+## 2026-10-29 逐局连续运行
+
+参考固定March7thAssistant的`main.py`中`run_sub_task`及其局部循环／货币战争调用，将连续运行改写为[原生组合Runner](../autohsr/currency_wars_loop.py)。逐局归属、冻结目标、账号输入门禁、原报告核验和可恢复归档属于AutoHSR原生适配；失败／未知停止，不迁入上游false返回后继续或遥测实现。Git blob及GPL v3许可见[source.json](upstream/March7thAssistant/source.json)。未新增公开图像、模型或真实采集；检查使用合成最终节点、假窗口与既有原生结算协议。
+
 AutoHSR is distributed under the GNU General Public License version 3. The full
 license is in [../LICENSE](../LICENSE). The resources below retain their upstream
 license and contributor attribution. They are used as UI recognition references
@@ -712,7 +732,59 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 
 后端装备阶段从同一固定提交引入18幅`assets/images/share/aglaea/`原始PNG，作者moesnow及其贡献者，遵循所附上游GPL v3；游戏美术与名称仍归其权利人。文件未经裁切、缩放或重编码，逐项原路径、Git blob、SHA-256和字节数见[装备来源清单](upstream/March7thAssistant/equipment/sources.json)，本地标识、用途及原生变体见[装备参考说明](upstream/March7thAssistant/equipment/README.md)。完整上游许可继续保留于[LICENSE](upstream/March7thAssistant/LICENSE)。
 
-这些图用于仓库、角色槽和当前推荐配方的本地识别。已校准14种可穿戴装备；参考图包含的投影仪、令牌、冶金炉和两种扳手尚未接入使用。没有复制上游输入实现，也没有将界面打开、材料消失、合成测试或离线模板回放写作实机穿戴成功；现有UI素材署名和原生4.6装备参考保持不变。
+这些图用于仓库、角色槽和当前推荐配方的本地识别。已校准14种可穿戴装备；六种工具另经专用数量识别与实际效果协议适配，范围见下节。没有复制上游输入实现，也没有将界面打开、材料消失、合成测试或离线模板回放写作实机穿戴成功；现有UI素材署名和原生4.6装备参考保持不变。
+
+## 2026-10-29 货币战争工具原生变体与次数校准
+
+`assets/templates/currency_wrench2_native_4_6.png`从既有本地4.6画面`146-boss-ready-loot-cleared.png`静态裁出75×70金色扳手图标，裁切坐标、原图及原清单SHA-256、输出哈希记录在[消耗品来源清单](currency-consumables/sources.json)。图标排除次数、UID、账号和完整画面；原始截图保持忽略，没有启动游戏取新图。游戏美术归HoYoverse及相应权利人，不纳入原创代码GPL声明，来源不授予额外再许可。
+
+工具初始参考继续使用上一节固定提交的18幅上游原PNG及完整GPL v3许可，没有改写这些字节。六种工具的命名核心优先思路改写为本项目Context、账号／输入代次、库存及完整角色效果核验；上游来源与具体适配文件继续记录于[source.json](upstream/March7thAssistant/source.json)。三份既有画面及五份工具教程仅记录脱离账号的局部事实、原哈希与本地标识；没有分发整图、更新模型或建立独立实机验收集。识别与执行边界见[工具说明](currency-consumables/README.md)。
+
+## 2026-10-29 货币战争补给刷新控件
+
+`assets/templates/currency_supply_refresh_4_6.png`从既有4.6补给画面静态裁出72×71的Q控件，排除次数、UID与完整画面；原图、原清单、坐标、变换、SHA-256及三份旧补给控件校准记录见[补给来源清单](currency-supply/sources.json)。游戏美术归HoYoverse及相应权利人，不纳入原创代码GPL声明，来源不授予额外再许可。没有启动游戏取材、公开整图或训练模型。
+
+命名策略的补给偏好和有界刷新参考同一March7thAssistant固定提交的`check_supply_phase`，经原生Context、独立次数回执、完整候选链和原奖励到账核验改写；保留上游署名与GPL v3许可。旧图缺失名字保留未知列，不从视觉人工读数伪造OCR通过；没有将局部校准或合成场景写成实机刷新成功。范围见[补给说明](currency-supply/README.md)。
+
+## 2026-10-29 记忆开拓者配置名策略适配
+
+同一March7thAssistant固定提交的`get_remembrance_trailblazer_name`及购买、保留、聘用书、顾问和补给调用，改写为AutoHSR的本局名称协议、原生策略偏好和一致身份核验。保留上游署名、固定源码Git blob及完整GPL v3许可，具体文件见[source.json](upstream/March7thAssistant/source.json)。名称配置不作图像素材，不引入上游固定费用或输入代码；本地实读名不发送给模型。本轮没有新增游戏素材或模型，真实字体及游戏路径尚未验收，见[开发记录](../docs/currency-wars-development.md)。
+
+## 2026-10-29 标准盛会之星弹窗与文字校准
+
+固定March7thAssistant提交的`move_character`、`check_festival_star_popup`改写为原生部署／换人后的弹窗来源、一次选择／确认及完整角色交付协议，保留上游署名和GPL v3许可，见[source.json](upstream/March7thAssistant/source.json)。AutoHSR原有花火偏好继续保留，没有复制固定首项或上游输入代码。
+
+[两卡文字夹具](../autohsr/tests/fixtures/currency_wars_star_two.json)来自既有4.6画面119／121，仅保留弹窗区域原OCR、原图及清单SHA-256，不修改识别文字，不含UID、账号或完整图像。游戏UI文字与角色内容归HoYoverse及相应权利人；来源记录不授予额外再许可。本轮未新增公开游戏图像或模型，119／121／169原图与清单保持本地忽略；用于查看的裁图和运行时局部图像来源不进入模型请求。布局、选中反例与未验收范围见[开发记录](../docs/currency-wars-development.md)。
+
+## 2026-10-29 普通角色采集局部图像校准
+
+复用既有CN 4.6画面115／116，比较原角色槽位的微小像素变化，核对原图与原清单哈希；没有获取新游戏截图、发布原图或新增模型。两份旧图属于相邻校准样本，不是独立留出或新实机验收。原素材权利仍归HoYoverse及相应权利人，来源记录不授予额外再许可。
+
+原弹窗协议的32×48灰度来源与有界比较移至[本地局部图像模块](../autohsr/currency_wars_appearance.py)，新增普通采集使用由本项目原生编写。运行时只裁已定位的角色槽位，图像来源保存在本地对局记录；不含UID或账号区域，不进入模型请求。公开新增测试仅生成合成槽位与面板；原图、清单、局部比较输出保持忽略，具体证据与边界见[开发记录](../docs/currency-wars-development.md)。
+
+## 2026-10-29 希儿场上整理与信用回执
+
+参考固定March7thAssistant的`check_main_screen`、`sell_characters_seele_strategy`和`_sell_single_character`，将取得希儿后的场上非策略角色整理改写为AutoHSR前台／后台的独立查看与信用回执。来源函数、固定Git blob及GPL v3许可继续记在[source.json](upstream/March7thAssistant/source.json)，没有移植上游输入代码或缓存删除即成功的判定。
+
+复用既有2026-10-26三份角色面板的当前`+5／+1／+2`返还文字与原图／清单哈希，未修改原图、重新取得游戏画面或公开账号区域；这些画面只校准返还字段，不能证明新增场上出售动作已通过实机。游戏素材权利仍归HoYoverse及相应权利人，来源记录不授予额外再许可。新增公开检查只生成合成槽位，使用既有署名图标构造空装备面板；场上来源及有界局部图像只保存到本地对局记录，不进入模型。验证与未实现的携装返回效果见[开发记录](../docs/currency-wars-development.md)。
+
+## 2026-10-29 原生全身重铸扩展
+
+[全身重铸协议](../autohsr/currency_wars_worn_reforge.py)由AutoHSR根据既有CN 4.6游戏教程67／68号原生编写，原图及清单哈希仍见[消耗品来源](currency-consumables/sources.json)。67号说明冶金炉的同品质重铸，68号明确对角色全部穿戴装备重新随机；已查看排除账号区域的旧教程裁图，其中示意角色前后三个装备格均保留。此为规则校准，不是新实机动作或独立留出。
+
+上游`equip_aglaea`、`equip_seele`提供仓库重铸及命名工具策略参考，全身目标及结果核验属于本项目新增扩展，分别记在[source.json](upstream/March7thAssistant/source.json)。没有添加新公开游戏图像或模型，测试使用既有署名图标与合成槽位。旧教程、离线QA裁图、角色有界来源与新回放保持本地忽略，QA查看排除账号区域，对局图像来源不加入策略模型载荷；游戏内容权利归HoYoverse及相应权利人，来源记录不授予额外再许可。
+
+## 2026-10-29 全局阵容整理与空位移动
+
+参考固定March7thAssistant的`deploy_and_optimize`及`move_character`，将全体持有角色的区域规划改写为[原生全局整理](../autohsr/currency_wars_standard_reorder.py)。保留本项目评分，固定与位置无关的目标，逐步核验真实身份和资源；新增另一侧空位移动，并处理其盛会之星接续。来源函数、固定Git blob与GPL v3许可见[source.json](upstream/March7thAssistant/source.json)，未直接移植上游金额排序、输入框架或缓存即成功的判定。没有新增公开图像、模型或游戏采集；测试沿用既有署名图标和合成棋盘，局部外观证明仅保存到忽略的本地记录，不加入模型载荷。
+
+## 2026-10-29 整局执行与有界存档
+
+参考固定March7thAssistant的`start_war`及`identify_current_stage`的整局执行与阶段监测，将本项目总512步实验循环改写为[原生分段执行上限](../autohsr/currency_wars_standard_budget.py)。计数刷新依赖本项目的胜利继续／补给交付来源，原未知输入保护继续使用；不迁入自动放弃与重开，也不以OCR变化作为额度刷新。64 MiB有界存档、写入前容量检查及总4096动作限制属于AutoHSR原生设计。源码blob、引用函数和GPL v3继续记在[source.json](upstream/March7thAssistant/source.json)；没有新增公开素材、模型或游戏采集，检查使用合成记录与已有署名素材。
+
+## 2026-10-29 速通装备选项
+
+参考固定March7thAssistant的`equip_weapons`、`check_main_screen`及`equip_aglaea`／`equip_seele`调用关系，将普通装备的首领节点限制改写为[原生装备模式](../autohsr/currency_wars_equipment_mode.py)。命名核心分配独立，保留本项目默认、设置保存语义及逐件装备回执；标准首领节点采用固定源码中的1-9、2-7、3-7，不将其他模式写成已接入。来源函数、Git blob及GPL v3许可见[source.json](upstream/March7thAssistant/source.json)。没有新增公开游戏素材、模型或实机采集；检查沿用既有署名图标与合成状态。
 
 ## 2026-10-29 旷宇纷争入口插图
 

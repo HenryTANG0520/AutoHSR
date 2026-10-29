@@ -100,4 +100,4 @@ def supplement_rank(scene, reader):
             or not 1 <= int(t.text) <= 50 for t in fields) or len({t.text for t in fields}) != 1):
         return scene
     token = Token(fields[0].text, min(t.score for t in fields), SELECTED_FIELD)
-    return Scene(scene.tokens+[token], scene.image, scene.geometry, scene.captured_at)
+    return Scene(scene.tokens+[token], scene.image, scene.geometry, scene.captured_at,scene.field_reads)

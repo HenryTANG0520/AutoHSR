@@ -8,17 +8,20 @@ FREE_ACTIONS = frozenset((
     'open_standard_shop', 'close_standard_shop', 'deploy_standard_owned', 'start_standard_node',
     'continue_standard_node', 'advance_standard_next_plane', 'close_standard_arrival_shop',
     'close_standard_shop_after_purchase',
-    'inspect_standard_sale_unit','close_standard_sale_stale_panel',
+    'inspect_standard_sale_unit','inspect_standard_field_sale_unit','close_standard_sale_stale_panel',
     'stage_standard_equipment','inspect_standard_equipment_unit','close_standard_equipment_unit',
     'close_standard_equipment_stale_panel','open_standard_equipment_recommendations',
     'open_standard_bench_reward','select_standard_supply','inspect_standard_reward_unit',
+    'select_standard_investment','close_standard_stale_unit',
     'close_standard_reward_unit','close_standard_reward_stale_panel',
-    'stage_standard_exchange','inspect_standard_exchange_unit','close_standard_exchange_unit','close_standard_exchange_stale_panel',
+    'inspect_standard_consumable_unit','close_standard_consumable_unit','close_standard_consumable_stale_panel',
+    'open_standard_consumable_recommendations','choose_standard_consumable_gear',
+    'stage_standard_exchange','stage_standard_relocate','inspect_standard_exchange_unit','close_standard_exchange_unit','close_standard_exchange_stale_panel',
     'settle_standard_final_victory', 'settle_standard_match_rating',
     'settle_standard_match_summary', 'settle_standard_match_statistics',
 ))
 PAID_ACTIONS = frozenset(('buy_standard_offer', 'buy_standard_experience', 'refresh_standard_shop'))
-CREDIT_ACTIONS = frozenset(('sell_standard_owned',))
+CREDIT_ACTIONS = frozenset(('sell_standard_owned','sell_standard_field_owned'))
 FINANCIAL_ACTIONS = PAID_ACTIONS | CREDIT_ACTIONS
 REWARD_CLAIMS = frozenset(('choose_standard_reward','confirm_standard_supply'))
 
@@ -33,7 +36,8 @@ def valid_receipt(action):
             or not isinstance(target[0], str) or not re.fullmatch(r'[1-3]-[1-9][0-9]?', target[0])
             or receipt.get('node') != target[0]):
         return False
-    expected_length = 12 if action['action'] in CREDIT_ACTIONS else 8 if action['action'] == 'buy_standard_offer' else 7
+    expected_length = (13 if action['action']=='sell_standard_field_owned' else 12 if action['action'] in CREDIT_ACTIONS else 8 if action['action']=='buy_standard_offer'
+                       else 11 if action['action']=='refresh_standard_shop' and len(target)==11 else 7)
     if (len(target) != expected_length or any(type(value) is not int for value in target[1:4])
             or not 0 <= target[1] <= 99999 or not 0 < target[2] <= 100 or not 1 <= target[3] <= 10):
         return False
@@ -54,12 +58,28 @@ def valid_receipt(action):
                 and re.fullmatch(r'[0-9a-f]{64}', receipt['bench_after']) is not None
                 and receipt['bench_after'] != target[7] and receipt.get('bench_changed') is True)
     if action['action'] == 'refresh_standard_shop':
+        bonus=len(target)==11
+        if not bonus and any(k in receipt for k in ('bonus_xp','bonus_sources','bonus_digest','experience_before','experience_after')):
+            return False
         if (type(target[4]) is not int or not 0 <= target[4] <= 99 or price != target[4]
-                or receipt.get('level_after') != target[3]
-                or any(not isinstance(v,str) or re.fullmatch(r'[0-9a-f]{64}',v) is None for v in target[5:])
+                or not bonus and receipt.get('level_after') != target[3]
+                or any(not isinstance(v,str) or re.fullmatch(r'[0-9a-f]{64}',v) is None for v in target[5:7])
                 or receipt.get('table_before') != target[5] or receipt.get('table_after') == target[5]
                 or receipt.get('bench_before') != target[6] or receipt.get('bench_after') != target[6]):
             return False
+        if bonus:
+            from .currency_wars_standard_refresh import experience_gain
+            if (not target[4] or any(type(v) is not int for v in target[7:10]) or not 1<=target[7]<=99
+                    or not isinstance(target[10],str) or not re.fullmatch('[0-9a-f]{64}',target[10])
+                    or receipt.get('bonus_xp')!=target[7] or receipt.get('bonus_digest')!=target[10]
+                    or not isinstance(receipt.get('bonus_sources'),list) or not receipt['bonus_sources']
+                    or any(type(i) is not int or i<0 for i in receipt['bonus_sources'])
+                    or receipt.get('experience_after') is not None and not isinstance(receipt['experience_after'],(list,tuple))
+                    or receipt.get('experience_before')!=(None if target[3]==10 else list(target[8:10]))
+                    or target[3]==10 and target[8:10] not in ((0,0),[0,0])
+                    or not experience_gain(target[3],tuple(target[8:10]) if target[3]!=10 else None,
+                        receipt.get('level_after'),tuple(receipt['experience_after']) if receipt.get('experience_after') is not None else None,target[7])):
+                return False
         from .currency_wars_standard_refresh import table_digest
         try:
             return (table_digest(receipt.get('offers_before')) == target[5]
@@ -82,11 +102,41 @@ def valid_receipt(action):
     return gained == 4
 
 
-def ledger_status(actions):
+def ledger_status(actions, *, investment_projection=None, popup_projection=None):
     for index,action in enumerate(actions):
         if action.get('status') != 'verified':
             return 'pending' if action.get('status') == 'pending' else 'unknown'
         name = action.get('action', '')
+        if name=='stage_standard_relocate' or action.get('reorder_root') is not None:
+            from .currency_wars_standard_reorder import valid_action
+            if not valid_action(action,actions):return 'unknown'
+            if action.get('movement_verified') is not True and index!=popup_projection:return 'pending'
+        if action.get('movement_popup') is not None:
+            from .currency_wars_standard_popup import valid_parent
+            if not valid_parent(action,actions):return 'unknown'
+            if action.get('popup_verified') is not True and index!=popup_projection:return 'pending'
+        from .currency_wars_standard_popup import ACTIONS as POPUP_ACTIONS,valid_child
+        if name in POPUP_ACTIONS:
+            if not valid_child(action,actions):return 'unknown'
+            continue
+        if name=='refresh_standard_supply':
+            from .currency_wars_standard_supply_refresh import valid_receipt as valid_supply_refresh,valid_prefix
+            if not valid_supply_refresh(action,actions) or not valid_prefix(action,actions):return 'unknown'
+            continue
+        if name=='confirm_standard_investment':
+            from .currency_wars_standard_investment import valid_effect
+            if not valid_effect(action,actions):return 'unknown'
+            if action.get('investment_verified') is not True and index!=investment_projection:return 'pending'
+            continue
+        if name=='stage_standard_consumable':
+            from .currency_wars_standard_consumables import valid_effect
+            if not valid_effect(action,actions):return 'unknown'
+            if action.get('consumable_verified') is not True:return 'pending'
+            continue
+        if name=='choose_standard_consumable_gear':
+            from .currency_wars_standard_consumables import valid_selection
+            if not valid_selection(action,actions):return 'unknown'
+            continue
         if name in REWARD_CLAIMS:
             from .currency_wars_standard_rewards import valid_effect
             if not valid_effect(action,actions):return 'unknown'
@@ -95,27 +145,46 @@ def ledger_status(actions):
         if name in FINANCIAL_ACTIONS:
             if not valid_receipt(action):
                 return 'unknown'
+            if name=='refresh_standard_shop':
+                from .currency_wars_standard_investment import valid_refresh_bonus
+                if not valid_refresh_bonus(action,actions):return 'unknown'
             if name in CREDIT_ACTIONS:
                 source = action['target'][11]
                 if source != index-1 or source < 0:
                     return 'unknown'
                 inspection = actions[source]
-                if (inspection.get('id') != source or inspection.get('action') != 'inspect_standard_sale_unit'
+                field=name=='sell_standard_field_owned'
+                expected_target=action['target'][:10]+action['target'][12:] if field else action['target'][:10]
+                if (inspection.get('id') != source or inspection.get('action') != ('inspect_standard_field_sale_unit' if field else 'inspect_standard_sale_unit')
                         or inspection.get('status') != 'verified' or not inspection.get('before') or not inspection.get('after')
-                        or inspection.get('target') != action['target'][:10]
+                        or inspection.get('target') != expected_target
                         or type(inspection.get('input_epoch')) is not int
                         or inspection['input_epoch'] != action.get('input_epoch')):
                     return 'unknown'
+                if field:
+                    from .currency_wars_standard_sale import valid_field_source,same_target
+                    try:
+                        if not same_target(inspection.get('target'),expected_target):return 'unknown'
+                    except (TypeError,ValueError):return 'unknown'
+                    if not valid_field_source(action,inspection):return 'unknown'
         elif name not in FREE_ACTIONS and not re.fullmatch(r'(?:select|confirm)_standard_environment_[0-2]', name):
             return 'unknown'
     return 'clear'
 
 
 def _valid_sale_receipt(receipt, target):
-    from .currency_wars_standard_sale import board_digest
+    from .currency_wars_standard_sale import board_digest,target_zone
+    field=len(target)==13
+    try:zone=target_zone(target)
+    except ValueError:return False
+    if target[3]==10:
+        if (receipt.get('max_level_verified') is not True or 'experience_before' not in receipt or 'experience_after' not in receipt
+                or receipt['experience_before'] is not None or receipt['experience_after'] is not None):return False
+    elif 'max_level_verified' in receipt or not field and any(key in receipt for key in ('experience_before','experience_after')):
+        return False
     if (any(type(receipt.get(k)) is not int for k in ('gold_before','gold_after','refund','slot','star','tier',
                                                     'level_after','hp_after','inspect_action_id'))
-            or type(target[4]) is not int or not 1 <= target[4] <= 9
+            or type(target[4]) is not int or not 1 <= target[4] <= dict(front=4,back=6,bench=9)[zone]
             or not isinstance(target[5],str) or not 0 < len(target[5]) <= 80
             or type(target[6]) is not int or not 1 <= target[6] <= 4
             or type(target[7]) is not int or not 1 <= target[7] <= 5
@@ -130,11 +199,31 @@ def _valid_sale_receipt(receipt, target):
             or receipt.get('inspect_action_id') != target[11] or receipt.get('source_before') != target[8]
             or receipt.get('source_empty') is not True or receipt.get('board_before') != target[9]):
         return False
+    if field:
+        if type(receipt.get('schema')) is not int or receipt.get('zone')!=zone:return False
+        a,b=receipt.get('deployment_before'),receipt.get('deployment_after')
+        if (not isinstance(a,list) or not isinstance(b,list) or len(a)!=2 or len(b)!=2
+                or any(type(v) is not int for v in a+b) or not 1<=a[0]<=a[1]<=10 or b!=[a[0]-1,a[1]]):return False
+        before,after=receipt.get('experience_before'),receipt.get('experience_after')
+        if target[3]!=10 and (not isinstance(before,list) or not isinstance(after,list) or len(before)!=2 or len(after)!=2
+                or any(type(v) is not int for v in before+after)
+                or not 0<=before[0]<before[1]<=9999 or after!=before):return False
+    elif any(key in receipt for key in ('zone','deployment_before','deployment_after','appearances_before','appearances_after')):return False
     try:
         old,new = receipt.get('cells_before'),receipt.get('cells_after')
         if board_digest(old) != target[9] or board_digest(new) != receipt.get('board_after'):
             return False
-        source = 'bench:'+str(target[4])
+        source = zone+':'+str(target[4])
+        if field and (sum(v[0]=='occupied' for k,v in old.items() if not k.startswith('bench:'))!=receipt['deployment_before'][0]
+                or sum(v[0]=='occupied' for k,v in new.items() if not k.startswith('bench:'))!=receipt['deployment_after'][0]):return False
+        if field:
+            from .currency_wars_appearance import _decoded,same_appearance
+            a,b=receipt.get('appearances_before'),receipt.get('appearances_after')
+            if (not isinstance(a,dict) or not isinstance(b,dict) or set(a)!={k for k,v in old.items() if v[0]=='occupied'}
+                    or set(b)!={k for k,v in new.items() if v[0]=='occupied'}):return False
+            for value in a.values():_decoded(value)
+            return (old[source]==['occupied',target[8]] and new[source][0]=='empty' and old[source][1]!=new[source][1]
+                and all(old[k][0]==new[k][0] and (old[k][0]=='empty' or same_appearance(a[k],b[k])) for k in old if k!=source))
         return (old[source] == ['occupied',target[8]] and new[source][0] == 'empty'
                 and old[source][1] != new[source][1] and all(old[k] == new[k] for k in old if k != source))
     except (ValueError,KeyError,TypeError):

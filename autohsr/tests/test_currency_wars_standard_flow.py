@@ -112,6 +112,7 @@ class StandardFlowTests(unittest.TestCase):
         c = SimpleNamespace(settings=Settings(), report=RunReport(operation='currency_wars_standard', run_dir=str(attempt)),
                             runner=SimpleNamespace(currency_resume=resume, input_epoch=0, inactive_duration=0, emit=Mock()),
                             scene_epoch=0, last_scene=None, checkpoint=Mock(), log=Mock(), sleep=Mock())
+        c._currency_weekly_checkpoint = lambda: Context._currency_weekly_checkpoint(c)
         pending = list(states)
         def snapshot():
             c.last_scene = pending.pop(0) if pending else c.last_scene
@@ -172,8 +173,19 @@ class StandardFlowTests(unittest.TestCase):
             c.currency_standard_input.assert_not_called()
 
     def test_loot_resume_requires_two_consistent_disappearance_frames(self):
-        from autohsr.tests.test_currency_wars_loot import reward, TARGET
-        before, after = reward(), reward(False)
+        from autohsr.tests.test_currency_wars_loot import TARGET
+        from autohsr.tests.test_currency_wars_standard_trading import full_board_fixture,hud
+        from autohsr.currency_wars_collector import roster_cells
+        from autohsr.currency_wars_deployment import _crop
+        from autohsr.models import Scene
+        # Reward collection now observes the current roster first. Provide a
+        # real six-slot layout and explicitly empty roster, while retaining
+        # the independent two-frame disappearance assertion below.
+        before,_ = full_board_fixture(gold=12,experience=(0,4))
+        for cell in roster_cells(before):_crop(before.image,cell.roi)[:] = 0
+        hud(before,deployment=(0,3))
+        after = Scene(list(before.tokens),before.image.copy())
+        before.image[463:515,1765:1817] = 190
         with tempfile.TemporaryDirectory() as folder:
             store = self.store(folder)
             store.data.update(status='active', start_verified=True)

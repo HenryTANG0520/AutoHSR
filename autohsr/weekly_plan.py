@@ -2,7 +2,7 @@
 
 Scheduling follows March7thAssistant's separation of a full run and its optional
 timer. This module never starts a timer: an explicit plan start checks eligibility.
-The supported target is a fixed number of DU runs, not weekly score rewards.
+DU uses fixed run counts; Currency Wars has a separately verified score/reward goal.
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def validate_schedule(settings):
     if not isinstance(settings.weekly_time, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", settings.weekly_time):
         raise SettingsError("weekly_time", "周常时间请填写 HH:MM，例如 04:00（北京时间）。")
     if type(settings.weekly_runs) is not int or not 1 <= settings.weekly_runs <= 10:
-        raise SettingsError("weekly_runs", "周常演算局数应为 1～10。")
+        raise SettingsError("weekly_runs", "周常局数应为 1～10。")
 
 
 @dataclass(frozen=True)
@@ -67,7 +67,7 @@ def plan_caption(settings, now=None):
     if settings.weekly_mode == "differential_universe":
         target += f" · {settings.weekly_runs} 局"
     else:
-        target += " · 待接入"
+        target += f" · 周积分及奖励，最多 {settings.weekly_runs} 局"
     when = "到期，运行时核对" if slot.due else f"{DAYS[settings.weekly_day-1]} {settings.weekly_time} 后"
     return f"{target} · {when}"
 

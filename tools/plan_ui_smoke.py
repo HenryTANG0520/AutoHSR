@@ -28,6 +28,10 @@ def main():
         Settings().save(config)
         original = config.read_bytes()
         class WeeklyFake(FakeRunner):
+            def __init__(self,*args,**kwargs):
+                super().__init__(*args,**kwargs)
+                if kwargs.get('operation')=='currency_wars_points':
+                    self.release.set()
             def run(self):
                 if self.kwargs.get("weekly_plan") is None:
                     report = super().run()
@@ -35,6 +39,9 @@ def main():
                         report.update(stamina_spent=120, battle_completed=12, battle_requested=12,
                                       results=[dict(task="assignments", status="ok", detail="模拟完成委托"),
                                                dict(task="battle", status="ok", detail="模拟完成 12 次，120 开拓力")])
+                        run=run_root/('daily-'+str(len(FakeRunner.instances)));run.mkdir(parents=True,exist_ok=True)
+                        report['run_dir']=str(run)
+                        (run/'report.json').write_text(json.dumps(report,ensure_ascii=False),'utf-8')
                     return report
                 guard = self.kwargs["weekly_plan"]
                 guard.receipt = WeeklyReceipt(run_root, "c"*24, guard.slot)
@@ -128,12 +135,12 @@ def main():
                 check("same_week_skips_completed_runs", "已跳过" in ui.weekly_status.get())
                 ui._show_weekly_plan()
                 ui.weekly_mode.set("货币战争")
-                check("currency_boundary_visible_before_start", "尚未接入" in ui.weekly_boundary.get())
+                check("currency_boundary_visible_before_start", "开发流程" in ui.weekly_boundary.get())
                 ui.start_button.invoke()
                 pump(root, lambda: len(FakeRunner.instances) == 5)
                 FakeRunner.instances[-1].release.set()
                 pump(root, lambda: not ui.busy)
-                check("unsupported_weekly_keeps_daily_without_development_run", len(FakeRunner.instances) == 5 and
+                check("unverified_weekly_points_keep_daily_without_development_run", len(FakeRunner.instances) == 6 and
                       ui.training_meter.verified and "部分完成" in ui.status.get())
                 ui.weekly_mode.set("差分宇宙")
                 ui._save_settings()
@@ -142,7 +149,7 @@ def main():
                 previous = {key: ui.table.item(key) for key in ui.tasks}
                 ui._show_page("differential_universe")
                 ui.start_button.invoke()
-                pump(root, lambda: len(FakeRunner.instances) == 6 and ui.runner is not None)
+                pump(root, lambda: len(FakeRunner.instances) == 7 and ui.runner is not None)
                 check("independent_run_preserves_daily_cards_at_start", previous == {key: ui.table.item(key) for key in ui.tasks})
                 FakeRunner.instances[-1].release.set()
                 pump(root, lambda: not ui.busy)

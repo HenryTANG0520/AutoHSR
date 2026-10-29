@@ -41,6 +41,9 @@ class PlanTests(unittest.TestCase):
                 owner.calls.append((replace(settings), options))
                 if options["operation"] == "daily":
                     report = dict(owner.daily)
+                elif options['operation'] == 'currency_wars_points':
+                    report = dict(operation='currency_wars_points', status='partial', report_saved=True,
+                                  error='模拟积分未核实', results=[])
                 else:
                     guard = options["weekly_plan"]
                     guard.receipt = WeeklyReceipt(owner.root, "a"*24, guard.slot)
@@ -96,7 +99,7 @@ class PlanTests(unittest.TestCase):
         self.settings = replace(self.settings, assignments=False, battle=False, daily=False,
                                 mail=False, battlepass=False, weekly_mode="currency_wars")
         report = self.runner().run()
-        self.assertEqual(self.calls, [])
+        self.assertEqual([item[1]['operation'] for item in self.calls], ['currency_wars_points'])
         self.assertEqual(report.weekly_plan["daily_tasks"], [])
         self.assertNotIn("日常结果", report.weekly_plan["message"])
         self.assertEqual(report.status, "partial")
@@ -131,13 +134,13 @@ class PlanTests(unittest.TestCase):
                 self.assertEqual(report.weekly_plan["status"], status)
                 self.assertEqual(report.status, "success")
 
-    def test_unsupported_currency_does_not_start_development_mode(self):
+    def test_currency_requires_saved_original_daily_before_starting_weekly(self):
         self.settings.weekly_mode = "currency_wars"
         report = self.runner().run()
         self.assertEqual(len(self.calls), 1)
         self.assertEqual(report.status, "partial")
         self.assertTrue(report.daily_verified)
-        self.assertEqual(report.weekly_plan["status"], "unavailable")
+        self.assertEqual(report.weekly_plan["status"], "needs_review")
 
     def test_daily_failure_or_unsaved_report_does_not_start_weekly(self):
         for values in (dict(status="partial"), dict(status="stopped"), dict(report_saved=False)):

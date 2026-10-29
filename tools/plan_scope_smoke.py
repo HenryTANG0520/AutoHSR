@@ -33,10 +33,12 @@ def main():
 
     class Child:
         def __init__(self, settings, emit, **options):
-            assert options.get('operation') == 'differential_universe', 'No game backend is allowed'
+            assert options.get('operation') in ('differential_universe', 'currency_wars_points'), 'No game backend is allowed'
             self.options, self.settings = options, settings
             calls.append(options['operation'])
         def run(self):
+            if self.options['operation'] == 'currency_wars_points':
+                return dict(operation='currency_wars_points',status='partial',report_saved=True,results=[],error='模拟积分未核实')
             guard = self.options['weekly_plan']
             guard.receipt = weekly_plan.WeeklyReceipt(guard.root, 'a'*24, guard.slot)
             guard.already_complete = not guard.receipt.begin(guard.settings)
@@ -123,8 +125,8 @@ def main():
                         root.iconify.reset_mock()
                         ui.start_button.invoke()
                         pump(root, lambda: not ui.busy)
-                        check(prefix+'unavailable_currency_keeps_partial_without_child_or_window_flash', len(calls)==before+1 and
-                              not root.iconify.called and '部分完成' in ui.status.get() and '尚未接入' in ui.summary_label.message())
+                        check(prefix+'currency_points_failure_keeps_partial_after_weekly_phase', len(calls)==before+2 and
+                              root.iconify.called and '部分完成' in ui.status.get() and '模拟积分未核实' in ui.summary_label.message())
                         check(prefix+'unrequested_daily_result_is_not_claimed', '日常结果' not in ui.summary.get())
                         ui._finish(dict(operation='plan',status='partial',report_saved=False,daily_verified=True,
                             battle_completed=12,battle_requested=24,stamina_spent=120,stamina_pending=10,

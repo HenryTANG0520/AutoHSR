@@ -159,7 +159,8 @@ class SettingRow(ttk.Frame):
         caption = ttk.Frame(self, style="Settings.Row.TFrame", padding=(d(18), d(8)))
         caption.grid(row=0, column=0, sticky="ew")
         caption.columnconfigure(0, weight=1)
-        t.wrapped_label(caption, text=name, style="Settings.TLabel").grid(row=0, column=0, sticky="ew")
+        self.caption = t.wrapped_label(caption, text=name, style="Settings.TLabel")
+        self.caption.grid(row=0, column=0, sticky="ew")
         if hint is not None or variable is not None:
             args = dict(textvariable=variable) if variable is not None else dict(text=hint)
             t.wrapped_label(caption, style="Settings.Hint.TLabel", **args).grid(
@@ -268,10 +269,11 @@ def build_settings(ui):
     combo(row("weekly", 2, "每周"), ui.weekly_day, DAYS, "weekly_day_combo")
     entry(row("weekly", 3, "时间（北京时间）", hint="HH:MM"), ui.weekly_time, "weekly_time_entry")
     runs = row("weekly", 4, "演算局数")
+    ui.weekly_runs_row = runs
     combo(runs, ui.weekly_runs, tuple(str(n) for n in range(1, 11)), "weekly_runs_combo")
     team = row("weekly", 5, "预设编队")
     entry(team, ui.du_team, "weekly_team_entry")
-    ui.weekly_run_controls = (runs, team)
+    ui.weekly_run_controls = (team,)
     note("weekly", 6, text="到期后随“开始计划”执行；每周一 04:00 刷新。")
     note("weekly", 7, variable=ui.weekly_boundary)
 

@@ -121,6 +121,10 @@ class Context:
         if self.report.operation.startswith("currency_wars"):
             raise AutomationError("货币战争当前仅允许只读识别，禁止发送游戏输入。")
 
+    def _currency_weekly_checkpoint(self):
+        guard=getattr(self.runner,'currency_weekly_guard',None)
+        if guard is not None:guard.current()
+
     def currency_prepare_click(self, scene, intent, target):
         from .currency_wars_prepare import PREPARATION_OPERATIONS
         if self.report.operation not in PREPARATION_OPERATIONS:
@@ -128,6 +132,7 @@ class Context:
         from .currency_wars import CurrencyWarsWorkflow
         from .currency_wars_prepare import click_target
         self.checkpoint()
+        self._currency_weekly_checkpoint()
         CurrencyWarsWorkflow(self)._require_current_scene(scene)
         if click_target(scene, self.settings.ocr_confidence) != (intent, target):
             raise AutomationError('启动准备目标已改变，未输入。')
@@ -146,6 +151,7 @@ class Context:
         from .currency_wars_prepare import key_allowed
         from .workflows import DailyWorkflow
         self.checkpoint()
+        self._currency_weekly_checkpoint()
         CurrencyWarsWorkflow(self)._require_current_scene(scene)
         workflow = DailyWorkflow(self)
         if (not key_allowed(scene, self.settings.ocr_confidence) and not workflow._world(scene)
@@ -165,6 +171,7 @@ class Context:
         from .currency_wars import CurrencyWarsWorkflow
         from .currency_wars_navigation import next_action
         self.checkpoint()
+        self._currency_weekly_checkpoint()
         CurrencyWarsWorkflow(self)._require_current_scene(scene)
         if next_action(scene, self) != choice:
             raise AutomationError('入口导航目标改变，未发送旧输入。')
@@ -178,12 +185,37 @@ class Context:
             self._focus_interrupted()
         self.sleep(self.settings.action_delay)
 
+    def currency_weekly_reward_input(self, scene, choice):
+        from .currency_wars_weekly_rewards import OPERATION, next_action
+        from .currency_wars_weekly_reward_run import client, current
+        from .currency_wars import CurrencyWarsWorkflow
+        if self.report.operation!=OPERATION:
+            raise AutomationError('当前任务不允许货币战争积分领奖输入。')
+        store=getattr(self,'currency_weekly_rewards',None)
+        if store is None:raise AutomationError('缺少积分领奖本次意图记录。')
+        if max(.85,self.settings.ocr_confidence)!=store.data['confidence']:
+            raise AutomationError('积分领奖冻结识别设置改变，未继续输入。')
+        current(self,scene,store.data)
+        store.require_pending(choice,self.runner.input_epoch)
+        if client(self)!=store.data['client']:
+            raise AutomationError('积分领奖客户端来源改变，未继续输入。')
+        if next_action(scene,store.data,max(.85,self.settings.ocr_confidence))!=choice:
+            raise AutomationError('积分领奖目标与当前画面不符。')
+        CurrencyWarsWorkflow(self)._require_current_scene(scene)
+        self.last_scene,self._scroll_anchor=None,None
+        try:
+            if choice.key is not None:self.window.key(choice.key)
+            else:self.window.click(*choice.target.center,scene.geometry)
+        except FocusLost:self._focus_interrupted()
+        self.sleep(self.settings.action_delay)
+
     def currency_standard_input(self, scene, choice):
         if self.report.operation != 'currency_wars_standard':
             raise AutomationError('当前任务不允许标准博弈开发输入。')
         from .currency_wars import CurrencyWarsWorkflow
         from .currency_wars_standard_flow import next_action
         self.checkpoint()
+        self._currency_weekly_checkpoint()
         guard = CurrencyWarsWorkflow(self)
         guard._require_current_scene(scene)
         store = getattr(self, 'currency_standard_session', None)
@@ -202,8 +234,11 @@ class Context:
             raise AutomationError('标准开发动作与当前页面不符。')
         if choice.payload and data['actions'][-1].get('target') != list(choice.payload):
             raise AutomationError('标准动作目标与落盘记录不一致。')
+        loop_guard = getattr(self.runner, 'currency_loop_guard', None)
+        if loop_guard is not None:
+            loop_guard.authorize(scene, data, max(.85, self.settings.ocr_confidence))
         guard._require_current_scene(scene)
-        if choice.intent in ('deploy_standard_owned','stage_standard_exchange','stage_standard_equipment'):
+        if choice.intent in ('deploy_standard_owned','stage_standard_exchange','stage_standard_relocate','stage_standard_equipment','stage_standard_consumable'):
             plan = choice.target
             route = ((plan.start[0],.735),(plan.end[0],.735)) if plan.zone=='back' or getattr(plan,'source_zone',None)=='back' else ()
             self._dispatch_drag(scene,plan.start,plan.end,route=route)
@@ -1209,11 +1244,24 @@ class Runner:
                  du_runs=None, du_resume_active=False, du_periodic_rank=None,
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
-                 currency_configure=False, currency_resume=False, weekly_plan=None, currency_strategy=None):
+                 currency_configure=False, currency_resume=False, weekly_plan=None, currency_strategy=None,
+                 currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None,currency_rewards_resume=False,currency_weekly_guard=None):
         from .weekly_plan import WeeklyGuard
         if weekly_plan is not None and (not isinstance(weekly_plan, WeeklyGuard) or operation != "differential_universe"):
             raise ValueError("周常记录核验仅用于计划中的差分宇宙。")
         self.weekly_plan = weekly_plan
+        from .currency_wars_loop_store import LoopGuard
+        if currency_loop_guard is not None and (operation != 'currency_wars_standard' or not isinstance(currency_loop_guard, LoopGuard)):
+            raise ValueError('循环逐局记录仅用于原生标准货币战争。')
+        self.currency_loop_guard = currency_loop_guard
+        from .currency_wars_weekly import WeekGuard
+        if currency_weekly_guard is not None and (not isinstance(currency_weekly_guard,WeekGuard)
+                or (operation,currency_weekly_guard.stage) not in (('currency_wars_points','points'),('currency_wars_rewards','rewards'))):
+            raise ValueError('货币战争周常归属仅允许对应积分／领奖子流程。')
+        self.currency_weekly_guard=currency_weekly_guard
+        if type(currency_rewards_resume) is not bool or currency_rewards_resume and operation!='currency_wars_rewards':
+            raise ValueError('积分领奖接续仅用于独立积分领奖入口。')
+        self.currency_rewards_resume=currency_rewards_resume
         self.settings = settings
         self._emit = emit or (lambda event: None)
         self._overlay = None
@@ -1227,12 +1275,13 @@ class Runner:
         self.input_epoch = 0
         self.inactive_duration = 0.0
         self.new_battle_run = new_battle_run
-        preparation_operations = ('currency_wars_prepare', 'currency_wars_standard')
+        from .currency_wars_prepare import PREPARATION_OPERATIONS
+        preparation_operations = PREPARATION_OPERATIONS
         if type(currency_locate) is not bool or currency_locate and operation not in preparation_operations:
             raise ValueError('货币战争入口导航仅允许独立准备操作。')
         self.currency_locate = currency_locate
         if (type(currency_configure) is not bool or currency_configure and
-                (operation not in preparation_operations or not currency_locate)):
+                (operation not in ('currency_wars_prepare','currency_wars_standard') or not currency_locate)):
             raise ValueError('标准A8-40配置仅允许独立入口导航操作。')
         self.currency_configure = currency_configure
         if type(currency_resume) is not bool or currency_resume and operation != 'currency_wars_standard':
@@ -1242,8 +1291,18 @@ class Runner:
         if currency_strategy is not None and (operation != 'currency_wars_standard' or currency_strategy not in STRATEGIES):
             raise ValueError('货币战争策略仅用于标准入口，须为 default、aglaea 或 seele。')
         self.currency_strategy = currency_strategy
+        from .currency_wars_names import validate_name
+        if currency_remembrance_name is not None and operation!='currency_wars_standard':
+            raise ValueError('记忆开拓者名称仅用于标准货币战争入口。')
+        self.currency_remembrance_name=None if currency_remembrance_name is None else validate_name(currency_remembrance_name)
+        from .currency_wars_equipment_mode import validate_fast_mode
+        if currency_fast_mode is not None and operation!='currency_wars_standard':
+            raise ValueError('速通装备设置仅用于标准货币战争入口。')
+        self.currency_fast_mode=None if currency_fast_mode is None else validate_fast_mode(currency_fast_mode)
         if operation == 'currency_wars_standard':
             self.currency_locate = self.currency_configure = True
+        if operation in ('currency_wars_points','currency_wars_rewards'):
+            self.currency_locate = True
         self.currency_source_slot,self.currency_zone = currency_source_slot,currency_zone
         if type(currency_target_level) is not int or not 0<=currency_target_level<=10:
             raise ValueError('货币战争目标等级必须为0到10的整数。')
@@ -1329,8 +1388,14 @@ class Runner:
         from .currency_wars import CurrencyWarsWorkflow, SAFE_NEXT, TASK
         self.report.failure_task = TASK
         self.report.safe_next = SAFE_NEXT
-        self.emit(dict(type="task", task=TASK, status="running", detail="标准A8-40开发：核实开局与当前局面" if self.report.operation == 'currency_wars_standard' else "启动准备：进入游戏，不开始对局" if self.report.operation == 'currency_wars_prepare' else "连续战斗与结算推进验证" if self.report.operation == "currency_wars_flow_test" else "当前节点战斗验证" if self.report.operation == "currency_wars_node_test" else "单次部署验证" if self.report.operation == "currency_wars_deploy_test" else "单次前台拖动验证" if self.report.operation == "currency_wars_drag_test" else "只读识别与证据保存"))
-        if self.report.operation == 'currency_wars_standard':
+        self.emit(dict(type="task", task=TASK, status="running", detail="核对并领取当前可领取积分奖励" if self.report.operation=='currency_wars_rewards' else "核对当前积分与游戏周" if self.report.operation=='currency_wars_points' else "标准A8-40开发：核实开局与当前局面" if self.report.operation == 'currency_wars_standard' else "启动准备：进入游戏，不开始对局" if self.report.operation == 'currency_wars_prepare' else "连续战斗与结算推进验证" if self.report.operation == "currency_wars_flow_test" else "当前节点战斗验证" if self.report.operation == "currency_wars_node_test" else "单次部署验证" if self.report.operation == "currency_wars_deploy_test" else "单次前台拖动验证" if self.report.operation == "currency_wars_drag_test" else "只读识别与证据保存"))
+        if self.report.operation == 'currency_wars_rewards':
+            from .currency_wars_weekly_reward_run import inspect_rewards
+            result=inspect_rewards(context)
+        elif self.report.operation == 'currency_wars_points':
+            from .currency_wars_points_run import inspect_points
+            result = inspect_points(context)
+        elif self.report.operation == 'currency_wars_standard':
             from .currency_wars_standard_flow import run_standard
             result = run_standard(context)
         elif self.report.operation == 'currency_wars_prepare':
@@ -1360,7 +1425,19 @@ class Runner:
                 result = self._resume_step(CurrencyWarsWorkflow(context).inspect, TASK)
         self.report.results.append(result)
         self.emit(dict(type="task", **result.__dict__))
-        self.report.status = "partial"
+        data = self.report.currency_wars
+        completed = (self.report.operation == 'currency_wars_standard' and result.status == 'success'
+                     and data.get('status') == 'settled' and data.get('completion_verified') is True
+                     and data.get('settlement_verified') is True)
+        points_checked=(self.report.operation=='currency_wars_points' and result.status=='ok'
+                        and data.get('mode')=='weekly_points' and data.get('points_verified') is True
+                        and data.get('completion_verified') is False)
+        rewards_checked=(self.report.operation=='currency_wars_rewards' and result.status=='ok'
+                         and data.get('mode')=='weekly_rewards' and data.get('phase')=='returned'
+                         and data.get('rewards_verified') is True and data.get('completion_verified') is False)
+        self.report.status = 'success' if completed or points_checked or rewards_checked else 'partial'
+        if completed or points_checked or rewards_checked:
+            self.report.failure_task = ''
 
     def stop(self):
         self._stop.set()
@@ -1508,12 +1585,44 @@ class Runner:
         try:
             if not mutex or already_running:
                 raise AutomationError("另一个 AutoHSR 任务正在运行，请先停止后重试。")
-            currency_wars = self.report.operation in ("currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test")
+            currency_wars = self.report.operation in ("currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test")
             differential_universe = self.report.operation == "differential_universe"
             catalogue = self.report.operation == "dungeon_catalogue"
-            if self.report.operation not in ("daily", "reward_only", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
+            if self.report.operation not in ("daily", "reward_only", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
                 raise AutomationError("未知运行类型，未访问游戏。")
             self.settings.validate("check" if catalogue else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "daily")
+            configured_name=''
+            if self.report.operation in ('currency_wars_points','currency_wars_rewards'):
+                from .currency_wars_points_run import require_no_active_match
+                from .currency_wars_session import StandardSession
+                require_no_active_match(StandardSession(directory.parent/'currency-standard-session.json').data)
+            if self.report.operation!='currency_wars':
+                from .currency_wars_weekly_reward_store import RewardStore
+                rewards=RewardStore(directory.parent)
+                saved_rewards=rewards.preflight(self.currency_rewards_resume if self.report.operation=='currency_wars_rewards' else False)
+                from .currency_wars_weekly import native_gate
+                self.currency_weekly_guard=native_gate(directory.parent,self.report.operation,self.currency_loop_guard,
+                    self.currency_weekly_guard,standard_resume=self.currency_resume,rewards_resume=self.currency_rewards_resume)
+                if (self.report.operation=='currency_wars_rewards' and self.currency_rewards_resume and saved_rewards
+                        and saved_rewards['phase']=='returned' and saved_rewards['rewards_verified'] is True):
+                    from copy import deepcopy
+                    self.report.currency_wars=deepcopy(saved_rewards)
+                    self.report.status='success';self.report.failure_task=''
+                    self.report.safe_next='原领奖及返回证据完整；仅补存新审计报告与回执，未导航或重发领取。'
+                    self.report.results.append(TaskResult('currency_wars','ok',self.report.safe_next))
+                    return self.report
+            if self.report.operation=='currency_wars_standard':
+                from .currency_wars_names import resolve_name
+                from .currency_wars_session import StandardSession,require_session_access
+                from .currency_wars_equipment_mode import resolve_fast_mode
+                saved=StandardSession(directory.parent/'currency-standard-session.json').data
+                if self.currency_loop_guard is not None:
+                    self.currency_loop_guard.require_access(saved,self.currency_resume)
+                    self.currency_loop_guard.register_run(directory)
+                else:
+                    require_session_access(saved,self.currency_resume)
+                configured_name=resolve_name(self.settings,self.currency_remembrance_name,saved,resume=self.currency_resume)
+                resolve_fast_mode(self.settings,self.currency_fast_mode,saved,resume=self.currency_resume)
             if not catalogue and not currency_wars and not differential_universe and self.settings.battle and self.settings.allow_stamina_spend:
                 from .recovery import BattleBudget
                 self.battle_budget = BattleBudget(ROOT / "runs", self.settings, self.report)
@@ -1523,7 +1632,7 @@ class Runner:
             monitor = threading.Thread(target=self._hotkeys, name="AutoHSR-hotkeys", daemon=True)
             monitor.start()
             monitor_started = True
-            if (not catalogue and not currency_wars and not differential_universe) or self.weekly_plan is not None or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard'):
+            if (not catalogue and not currency_wars and not differential_universe) or self.weekly_plan is not None or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard', 'currency_wars_points', 'currency_wars_rewards'):
                 self._prepare_daily_game()
             self._window = self._window or find_game(self.settings.game_path)
             if self.report.operation != "currency_wars" and is_elevated(self._window.hwnd) is True and not is_admin():
@@ -1539,6 +1648,7 @@ class Runner:
             self.log("正在加载中文 OCR 模型。F9 暂停/继续，F10 紧急停止。")
             vision = (IsolatedVision(self.settings.ocr_confidence, checkpoint=self._control_checkpoint,
                                       inactive=lambda: self.inactive_duration,
+                                      configured_name=configured_name,
                                       timeout=.05 if self.currency_timeout_probe else 30.) if currency_wars else
                       Vision(self.settings.ocr_confidence))
             context = Context(self, self._window, vision)
@@ -1597,7 +1707,8 @@ class Runner:
         except Exception as error:
             self.report.status = "partial" if self.report.daily_verified else "failed"
             self.report.error = str(error)
-            self.report.safe_next = ("货币战争操作失败；核对动作记录与前后截图，不自动重放。" if self.report.operation.startswith("currency_wars") else
+            self.report.safe_next = ("积分领奖未完成；保留原报告和领奖记录，未知领取不重发；仅已核实步骤可明确接续。" if self.report.operation=='currency_wars_rewards' else
+                                     "货币战争操作失败；核对动作记录与前后截图，不自动重放。" if self.report.operation.startswith("currency_wars") else
                                      "差分宇宙自动演算失败；核对当前页面、动作记录与截图后再决定如何处理存档。" if self.report.operation == "differential_universe" else
                                      "请人工核对当前界面和消耗；返回主界面后仅补领奖，新增刷本预算需明确确认。")
             if isinstance(error, SettingsError):
@@ -1628,7 +1739,7 @@ class Runner:
                     self.report.status = "partial"
                     self.report.error = f"刷本记录保存失败：{error}"
                     self.report.safe_next = "保留现有记录，人工核对消耗；不要直接开始新一轮刷本。"
-            if mutex:
+            if mutex and self.report.operation not in ('currency_wars_points','currency_wars_rewards'):
                 kernel32.CloseHandle(mutex)
             try:
                 self.report.report_saved = True
@@ -1644,6 +1755,28 @@ class Runner:
                                          "差分宇宙报告保存失败；保留当前目录，人工核对当前存档和动作。" if self.report.operation == "differential_universe" else
                                          "报告未保存；保留当前证据与刷本记录，人工核对消耗，不要直接重跑刷本。")
                 self.log(f"报告保存失败：{error}", "error")
+            if self.report.operation in ('currency_wars_points','currency_wars_rewards'):
+                try:
+                    if self.report.report_saved and self.report.status=='success':
+                        if self.report.operation=='currency_wars_points':
+                            from .currency_wars_points_run import finalize
+                        else:
+                            from .currency_wars_weekly_reward_run import finalize
+                        finalize(self.report)
+                except Exception as error:
+                    self.report.status='partial'
+                    self.report.error='积分观察／领奖回执保存或核验失败：'+str(error)
+                    self.report.safe_next=('保留原报告和积分截图，重新核对；本次未开始对局或领取积分奖励。'
+                        if self.report.operation=='currency_wars_points' else '原领奖记录和失败报告保留；明确接续只读核验并补存回执，不重发领取。')
+                    self.log(self.report.error,'error')
+                    try:
+                        temporary=directory/'report.tmp'
+                        temporary.write_text(json.dumps(self.report.to_dict(),ensure_ascii=False,indent=2),encoding='utf-8')
+                        replace_file(temporary,directory/'report.json')
+                    except OSError as report_error:
+                        self.report.report_saved=False;self.report.report_write_error=str(report_error)
+                finally:
+                    if mutex:kernel32.CloseHandle(mutex)
             if self.report.report_saved and self.report.operation == "differential_universe":
                 try:
                     files = [path for path in directory.rglob("*") if path.is_file()

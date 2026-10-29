@@ -46,7 +46,7 @@ def read_match(scene: Scene, confidence=.65, *, include_rewards=False) -> MatchS
               and len(t.box) == 4 and all(math.isfinite(x) and 0 <= x <= 1 for x in t.box)
               and t.box[0] < t.box[2] and t.box[1] < t.box[3]]
     page = classify_page(tokens)
-    reward_pages = ('equipment_selection','advanced_equipment_selection','expert_selection','supply_selection')
+    reward_pages = ('equipment_selection','advanced_equipment_selection','expert_selection','supply_selection','hiring_selection','token_selection')
     if page not in ("preparation", "shop", "character", "bench_full") and not (include_rewards and page in reward_pages):
         return None
     if page=='bench_full' and classify_page([t for t in tokens if not is_bench_full_notice(t)])!='preparation':
@@ -68,6 +68,10 @@ def read_match(scene: Scene, confidence=.65, *, include_rewards=False) -> MatchS
             left = .192 + .14 * slot
             name = _unique(tokens, (left, .265, left + .115, .305),
                            r'(?=.{2,40}$)(?=.*[\u4e00-\u9fff])[\u4e00-\u9fffa-z0-9.]+', lambda m: unit_name(m[0]))
+            from .currency_wars_names import configured_name,pending_name
+            named=configured_name(scene,(left,.265,left+.10,.305),confidence)
+            if named is not None:name=unit_name(named.text)
+            elif pending_name(scene,(left,.265,left+.10,.305)):name=None
             cost = number((left + .109, .265, left + .125, .305))
             if name:
                 offers.append(Offer(slot, name, cost if cost is not None and 0 <= cost <= 99 else None))
@@ -103,7 +107,13 @@ def supplement_numbers(scene: Scene, reader) -> Scene:
     height, width = scene.image.shape[:2]
     tokens = list(scene.tokens)
     if page=='expert_selection':
-        roi=(.828,.25,.849,.292)
+        cash=[t for t in scene.tokens if t.score>=.65 and normalize(t.text)=='现金为王' and t.within((.14,.33,.9,.39))]
+        if len(cash)!=1:return scene
+        # Anchor the amount to this card's text; four/five-card layouts need
+        # different positions. Preserve any conflicting full-screen reading.
+        right=cash[0].box[2]
+        roi=(right+.019,.25,right+.04,.292)
+        if not 0<=roi[0]<roi[2]<=1:return scene
         x1,y1,x2,y2=roi
         patch=cv2.resize(scene.image[round(y1*height):round(y2*height),round(x1*width):round(x2*width)],None,fx=3,fy=3)
         parts=reader.read(patch).tokens
@@ -113,7 +123,7 @@ def supplement_numbers(scene: Scene, reader) -> Scene:
         for t in parts:
             if re.fullmatch(r'[0-9]{1,2}',normalize(t.text)):
                 tokens.append(Token(t.text,t.score,roi))
-        return Scene(tokens,scene.image,scene.geometry,scene.captured_at)
+        return Scene(tokens,scene.image,scene.geometry,scene.captured_at,scene.field_reads)
     if page in ('node_result','final_victory'):
         # The adjacent crossed-swords icon can join OCR as "X战斗". Read
         # only the bounded node field, without deleting arbitrary letters.
@@ -130,7 +140,7 @@ def supplement_numbers(scene: Scene, reader) -> Scene:
             for t in parts:
                 if re.fullmatch(r'[1-3]-[1-9][0-9]?',normalize(t.text)):
                     tokens.append(Token(t.text,t.score,roi))
-        return Scene(tokens,scene.image,scene.geometry,scene.captured_at)
+        return Scene(tokens,scene.image,scene.geometry,scene.captured_at,scene.field_reads)
     if page == 'battle':
         # Reward fights expand the HUD with drop counters and shift the node.
         for x1,y1,x2,y2 in ((.358,0,.39,.045),(.312,0,.342,.045)):
@@ -138,7 +148,7 @@ def supplement_numbers(scene: Scene, reader) -> Scene:
             for t in reader.read(patch).tokens:
                 if re.fullmatch(r'[1-3]-[1-9][0-9]?',normalize(t.text)):
                     tokens.append(Token(t.text,t.score,(x1,y1,x2,y2)))
-        return Scene(tokens,scene.image,scene.geometry,scene.captured_at)
+        return Scene(tokens,scene.image,scene.geometry,scene.captured_at,scene.field_reads)
     for x1, y1, x2, y2 in rois:
         left, top, right, bottom = round(x1 * width), round(y1 * height), round(x2 * width), round(y2 * height)
         patch = cv2.resize(scene.image[top:bottom, left:right], None, fx=3, fy=3)
@@ -148,7 +158,7 @@ def supplement_numbers(scene: Scene, reader) -> Scene:
                 box = tuple((left + token.box[i] * (right-left)) / width if i % 2 == 0 else
                             (top + token.box[i] * (bottom-top)) / height for i in range(4))
                 tokens.append(Token(token.text, token.score, box))
-    current=read_match(Scene(tokens,scene.image,scene.geometry,scene.captured_at),.65)
+    current=read_match(Scene(tokens,scene.image,scene.geometry,scene.captured_at,scene.field_reads),.65)
     if current is not None and current.level is None and hasattr(reader,'read_number'):
         patch=cv2.resize(scene.image[round(.815*height):round(.866*height),round(.154*width):round(.178*width)],None,fx=3,fy=3)
         number=reader.read_number(patch)
@@ -184,7 +194,7 @@ def supplement_numbers(scene: Scene, reader) -> Scene:
                 scores.extend(t.score for t in found)
         if None not in counts and 0 <= counts[0] <= counts[1] <= 20 and counts[1] > 0:
             tokens.append(Token(f'{counts[0]}/{counts[1]}',min(scores),(.46,.19,.54,.265)))
-    return Scene(tokens, scene.image, scene.geometry, scene.captured_at)
+    return Scene(tokens, scene.image, scene.geometry, scene.captured_at,scene.field_reads)
 
 
 def supplement_shop_fields(scene, reader):
@@ -209,7 +219,8 @@ def supplement_shop_fields(scene, reader):
             if (all(t is not None and .9<=t.score<=1 and re.fullmatch(r'[0-9]{1,2}',t.text) for t in values)
                     and len({t.text for t in values})==1):
                 tokens.append(Token(values[0].text,min(t.score for t in values),price_roi))
-        if slot not in offers and hasattr(reader,'read_unit_name'):
+        from .currency_wars_names import pending_name
+        if slot not in offers and not pending_name(scene,(left,.265,left+.10,.305)) and hasattr(reader,'read_unit_name'):
             name_roi=(left,.265,left+.10,.305)
             gray=cv2.cvtColor(_crop(scene.image,name_roi),cv2.COLOR_BGR2GRAY)
             binary=cv2.threshold(gray,160,255,cv2.THRESH_BINARY)[1]
@@ -225,7 +236,7 @@ def supplement_shop_fields(scene, reader):
             if (all(t is not None and .9<=t.score<=1 for t in values)
                     and len({unit_name(t.text) for t in values})==1):
                 tokens.append(Token(values[0].text,min(t.score for t in values),name_roi))
-    return Scene(tokens,scene.image,scene.geometry,scene.captured_at)
+    return Scene(tokens,scene.image,scene.geometry,scene.captured_at,scene.field_reads)
 
 
 def verify_purchase(before: MatchState, after: MatchState, offer: Offer) -> str:

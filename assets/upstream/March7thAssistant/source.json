@@ -4,8 +4,28 @@
   "retrieved": "2026-10-28",
   "license": "GNU GPL version 3",
   "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json"],
+  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json"],
+  "native_extensions": [
+    {
+      "path": "autohsr/currency_wars_worn_reforge.py",
+      "mechanic_manifest": "assets/currency-consumables/sources.json",
+      "native_samples": ["67-tutorial-reforge-1.sample.json", "68-tutorial-reforge-2.sample.json"],
+      "kind": "AutoHSR-authored role-wide reforge extension of the native tool protocol, based on existing local game tutorials rather than upstream role-wide IO; protects wanted gear, limits each role/node, verifies complete identities and ordered worn results, keeps unchanged finite consumption distinct from changed gear"
+    }
+  ],
+  "mechanic_references": [
+    {
+      "url": "https://sr.mihoyo.com/news/162649?nav=home&type=news_all",
+      "title": "Currency Wars V4.0 expansion: expert advisors",
+      "reviewed": "2026-10-29",
+      "scope": "advisor unlock and later shop availability are distinct from an actual purchase; old costs, rank caps and balance values are not reused"
+    }
+  ],
   "sources": [
+    {
+      "path": "main.py",
+      "git_blob": "feab0b158e1f80c2b7a0c85c6cc276479d710bf4"
+    },
     {
       "path": "LICENSE",
       "git_blob": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7"
@@ -15,11 +35,65 @@
       "git_blob": "52507ccfa8bf7977f8a8be9eca24050a6c16990d"
     },
     {
+      "path": "tasks/weekly/weekly_reward.py",
+      "git_blob": "f1dc22ae0f755c81ccc948520bb7fd02520ea751"
+    },
+    {
+      "path": "tasks/daily/daily.py",
+      "git_blob": "de81520c412ca07ad8316cde1c95dbb0b3031898"
+    },
+    {
       "path": "assets/config/config.example.yaml",
       "git_blob": "8bd288efd8282a4c45e1ae6a1b915c9bd9c0569e"
     }
   ],
   "adaptations": [
+    {
+      "path": "autohsr/currency_wars_weekly.py",
+      "native_files": ["autohsr/currency_wars_weekly_run.py", "autohsr/plan_runner.py"],
+      "reference_functions": ["start", "check_currency_wars_score"],
+      "additional_references": [{"source": "tasks/daily/daily.py", "functions": ["start"]}],
+      "kind": "native weekly plan composition of existing points, bounded standard-loop and reward Runners; explicit game-week/account target and immutable per-account weekly index, one frozen match ceiling, original daily report reuse on explicit resume, same-goal native ownership, all-match archive audits and post-report weekly receipts; already-full score still checks rewards, later observed score growth only claims additional rewards without increasing match allowance; no upstream scheduler or input framework imported; GUI integration, full-inventory cleanup, additional modes and real gameplay remain unverified"
+    },
+    {
+      "path": "autohsr/currency_wars_weekly_rewards.py",
+      "native_files": ["autohsr/currency_wars_weekly_reward_run.py", "autohsr/currency_wars_weekly_reward_store.py"],
+      "reference_functions": ["get_reward"],
+      "additional_references": [{"source": "tasks/weekly/weekly_reward.py", "functions": ["_fuel_ticket_limit_visible", "wait_for_weekly_reward"]}],
+      "kind": "native independent current-rewards operation with current UID/client/week checks, bounded one-shot intents, two-frame overlay quantities and panel-state feedback, OCR/image proof replay and post-report immutable receipts; disabled controls differ from absent controls, incomplete/unknown attempts block further game IO, verified-step resume and report-only recovery preserve original failures; fuel-ticket saturation is a separately observed rejected claim without cleanup or retry; loop/weekly integration, saturation cleanup and live validation remain pending; no upstream reward button image or input framework was imported"
+    },
+    {
+      "path": "autohsr/currency_wars_points.py",
+      "native_files": ["autohsr/currency_wars_points_run.py", "autohsr/currency_wars_points_goal.py"],
+      "reference_functions": ["check_currency_wars_score"],
+      "kind": "native independent observed-score operation and optional score-target loop gate; fixed 18000 cap, current account and Monday-04:00 game-week evidence, visible countdown consistency, immutable observations and source/report hashes; loop freezes its week and account, retains a new-game ceiling and explicit resume, checks the exact recent receipt before a new start, and preserves never-submitted empty sessions; excludes UID and inventory from text proofs; rewards and weekly-plan integration remain pending"
+    },
+    {
+      "path": "autohsr/currency_wars_loop.py",
+      "reference_source": "main.py",
+      "reference_functions": ["run_sub_task", "_run_loop_task_with_telemetry", "currencywars"],
+      "kind": "sequential composition of AutoHSR native standard Runners, finite or until stopped, with an optional weekly score goal bounded by the requested new-game count; frozen options and game week, explicit remaining-goal resume, local account and match ownership, verified terminal settlement, original reports and recoverable hash-bound archives; native failure or unknown stops; rewards, weekly-plan integration, other modes and live acceptance remain pending"
+    },
+    {
+      "path": "autohsr/currency_wars_equipment_mode.py",
+      "reference_functions": ["equip_weapons", "check_main_screen", "equip_aglaea", "equip_seele"],
+      "kind": "optional generic-equipment fast schedule with pinned standard boss nodes 1-9/2-7/3-7; follows upstream's call graph so named-core equipment and tools remain independent; preserves AutoHSR's default all-node behavior, freezes a typed per-match preference, allows standard-only temporary CLI overrides and retains native per-item consumption/worn verification; other modes are not wired"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_budget.py",
+      "reference_functions": ["start_war", "identify_current_stage"],
+      "kind": "whole-match execution with bounded per-phase technical work, inspired by upstream's ongoing stage monitoring; resets use AutoHSR's verified continuation or completed cross-node supply receipt, never OCR alone, while retaining total action bounds, explicit resume, unknown-input protection and independent settlement; does not port abandon/restart or the five-identical-stage heuristic"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_popup.py",
+      "reference_functions": ["move_character", "check_festival_star_popup"],
+      "kind": "native deferred movement custody for the observed festival-star popup: complete details/name association, current selected-card proof, separate single selection/confirmation and full fresh roster verification; preserves AutoHSR Sparkle preference, scoped visual stability and immutable ledger lineage rather than upstream fixed first-card clicks or cached-list swapping"
+    },
+    {
+      "path": "autohsr/currency_wars_names.py",
+      "reference_functions": ["get_remembrance_trailblazer_name", "buy_aglaea", "buy_seele", "sell_characters_aglaea_strategy", "sell_characters_seele_strategy", "_check_hiring_book", "_check_expert_invitation", "check_supply_phase"],
+      "kind": "configured remembrance display-name preference rewritten across native buying, deployment, exchange, bench cleanup and rewards; frozen per match, literal current OCR proof, observed prices and complete identity receipts; local name metadata is masked from model payloads, no upstream fixed character fee or IO"
+    },
     {
       "path": "autohsr/currency_wars_standard_policy.py",
       "reference_functions": [
@@ -45,30 +119,40 @@
       "kind": "existing native vacancy assignment ranks observed owned units with the selected named-core preference"
     },
     {
+      "path": "autohsr/currency_wars_standard_reorder.py",
+      "reference_functions": [
+        "deploy_and_optimize",
+        "move_character"
+      ],
+      "kind": "whole-roster reassignment adapted to AutoHSR's existing star/core/trait baseline score, deterministic position-independent objective, strictly decreasing remaining-move potential and persisted provenance; may take a temporary score loss, verifies actual properties and empty-source custody before the next step, retains current equipment recommendations and per-slot proof of unchanged ordinary identities; caches validation of immutable decision fields while always checking current visual/input authority; not a port of upstream's money-first ranking or cached movement success"
+    },
+    {
       "path": "autohsr/currency_wars_standard_exchange.py",
       "reference_functions": [
         "deploy_and_optimize",
         "move_character"
       ],
-      "kind": "native occupied-slot exchanges with two independently inspected identities; returned board alone is not movement proof"
+      "kind": "native occupied-slot exchanges with two independently inspected identities and whole-roster field-to-empty-field relocation with one fresh property read, empty-source custody and bounded local appearance proof; returned board alone is not movement proof"
     },
     {
       "path": "autohsr/currency_wars_standard_refresh.py",
       "reference_functions": [
         "buy_aglaea",
-        "buy_seele"
+        "buy_seele",
+        "check_investment_environment"
       ],
-      "kind": "growth-phase refresh decisions rewritten for observed button prices, per-node limits, one Context click and an immutable five-offer/gold/bench receipt chain"
+      "kind": "growth-phase refresh decisions rewritten for observed button prices, per-node limits, one Context click and an immutable five-offer/gold/bench receipt chain; paid-refresh experience is derived only from a verified investment receipt and actual before/after experience"
     },
     {
       "path": "autohsr/currency_wars_standard_sale.py",
       "reference_functions": [
+        "check_main_screen",
         "sell_characters_aglaea_strategy",
         "sell_characters_seele_strategy",
         "sell_characters",
         "_sell_single_character"
       ],
-      "kind": "native per-unit bench cleanup after legal deployment, fresh identity inspection and observed refund; positive gold credit plus all nineteen slots verified, with no cached-list deletion as success"
+      "kind": "native observed-credit cleanup for bench units and Seele-owned on-field non-strategy units with independently empty gear; legacy bench targets remain separate from typed front/back credits, frozen roster/HUD/local appearances, actual refunds and deployment decrease; all-slot feedback and immutable source checks replace cached-list deletion as success"
     },
     {
       "path": "autohsr/currency_wars_equipment_catalog.py",
@@ -82,8 +166,60 @@
     },
     {
       "path": "autohsr/currency_wars_standard_rewards.py",
-      "reference_functions": ["check_box", "_check_equipment_box", "_check_expert_invitation", "check_supply_phase"],
+      "reference_functions": ["check_box", "_check_equipment_box", "_check_hiring_book", "_check_expert_invitation", "check_supply_phase"],
       "kind": "native typed reward custody, observed cash amount, paired supply selection and separate confirmation; inventory and independently recollected unit delivery verified before clearing the reward ledger"
+    },
+    {
+      "path": "autohsr/currency_wars_character_rewards.py",
+      "reference_functions": ["_check_hiring_book", "_check_expert_invitation"],
+      "kind": "named-core character preferences rewritten around current OCR candidate names and traits, selection count distinct from tier, complete before/after roster and preserved gear; accepted advisor selection with an unchanged roster, delivered units and later priced shop observations are separate facts; remaining unopened boxes stay protected throughout recollection; no fixed coordinate fallback or upstream cost table; hiring layout remains synthetic pending a real capture"
+    },
+    {
+      "path": "autohsr/currency_wars_investment_policy.py",
+      "reference_functions": ["check_investment_environment"],
+      "kind": "named-core preferences and exclusion list adapted to complete observed card effects, numeric field grammars and one/two/three-card pairing; unknown effects never inherit the upstream first-candidate or collection-badge fallback"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_investment.py",
+      "reference_functions": ["check_investment_environment", "check_box"],
+      "kind": "verified victory/map/plane origin, fresh selected-card proof and separate confirmation; declared weapon boxes remain a ledger obligation until their type and inventory delivery are independently verified; future experience modifiers require original verified receipts"
+    },
+    {
+      "path": "autohsr/currency_wars_consumables.py",
+      "reference_functions": [
+        "equip_aglaea",
+        "equip_seele"
+      ],
+      "kind": "pinned six tool identities plus separately hashed native gold-wrench variant; fourteen stock locations, independent numeric/infinity evidence, conflicting counters remain unknown"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_consumables.py",
+      "reference_functions": [
+        "equip_aglaea",
+        "equip_seele"
+      ],
+      "kind": "named-core one-input native tool protocol with observed stock delta and independently recollected complete roster: copies/upgrades, equipment removal, basic inventory reforge, native-tutorial role-wide reforge extension and separate four-option token selection; durable origins, scoped profile proofs and no unknown replay; no upstream blind retry or fixed first-option fallback"
+    },
+    {
+      "path": "autohsr/currency_wars_supply_policy.py",
+      "reference_functions": [
+        "check_supply_phase"
+      ],
+      "kind": "named-core supply priorities rewritten from observed worn/banked gear, missing recipe parts and actual owned stars; default strategy unchanged"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_supply_refresh.py",
+      "reference_functions": [
+        "check_supply_phase"
+      ],
+      "kind": "native one-click refresh quota protocol with observed Q control, independent counter grammar and immutable complete candidate/HUD chain through separate selection, confirmation and actual delivery; hidden balances remain unknown, no gold receipt or unknown replay"
+    },
+    {
+      "path": "autohsr/currency_wars_supply_fields.py",
+      "reference_functions": [
+        "check_supply_phase"
+      ],
+      "kind": "native four/five-column association from the complete equipment row, bounded dual name reads and retained image identities for unreadable unselected roles; no fixed first/middle candidate fallback"
     }
   ]
 }

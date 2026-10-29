@@ -98,6 +98,10 @@ def read_character(scene,confidence=.65):
     state=read_match(scene,confidence)
     names=[normalize(t.text) for t in scene.tokens if confidence<=t.score<=1 and
            t.within((.775,.19,.91,.235)) and re.fullmatch(r'(?=.{1,40}$)(?=.*[\u4e00-\u9fff])[\u4e00-\u9fffa-z0-9.]+',normalize(t.text))]
+    from .currency_wars_names import configured_name,pending_name
+    named=configured_name(scene,(.775,.19,.91,.235),confidence)
+    if named is not None:names=[normalize(named.text)]
+    elif pending_name(scene,(.775,.19,.91,.235)):names=[]
     modes=[normalize(t.text) for t in scene.tokens if confidence<=t.score<=1 and
            t.within((.78,.22,.90,.28)) and normalize(t.text) in ('前台','后台','前后台','日后台')]
     if not state or not state.node or len(names)!=1 or len(modes)!=1:

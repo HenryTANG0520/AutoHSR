@@ -9,6 +9,7 @@ from .currency_wars_deployment import backend_layout
 from .currency_wars_equipment_catalog import BASICS, GEAR, RECIPES, inventory, inventory_counts
 from .currency_wars_match import read_match
 from .currency_wars_standard_sale import board_cells
+from .currency_wars_standard_hud import experience_observed
 from .models import AutomationError, Token
 
 POLICY = 'owned-equipment-v1'
@@ -49,8 +50,10 @@ def resulting_gear(old, incoming, recipes=()):
     return tuple(sorted(result))
 
 
-def choose_equipment(snapshot, cells, strategy='default', recommendations=None, recipes=None):
+def choose_equipment(snapshot, cells, strategy='default', recommendations=None, recipes=None, *, fast_mode=False):
     from .currency_wars_equipment import available_slots
+    from .currency_wars_equipment_mode import generic_allowed,validate_fast_mode
+    validate_fast_mode(fast_mode)
     field = tuple(unit for unit in snapshot.roster if unit.zone != 'bench')
     available = tuple(cell for cell in cells if cell.name in GEAR)
     if not snapshot.roster_complete or len(field) != snapshot.capacity or not available:
@@ -89,6 +92,7 @@ def choose_equipment(snapshot, cells, strategy='default', recommendations=None, 
                     if useful:
                         return core,cell,expected,'策略核心优先；使用已观察的成品或有来源的配方材料'
             return None  # Preserve core materials until its intended loadout is complete.
+    if not generic_allowed(snapshot,fast_mode):return None
     for unit in sorted(field,key=lambda u:(-(u.tier or 0),-(u.star or 0),u.zone!='front',u.slot)):
         if unit.equipment is None:
             continue
@@ -135,12 +139,14 @@ def proposal(scene, session, confidence=.65):
     snapshot = collected_snapshot(scene,prior,prior['collection']['input_epoch'],'standard_equipment',confidence)
     if (snapshot.mode != 'standard' or snapshot.game_version != '4.6' or snapshot.rules_version != '4.6'
             or snapshot.transaction_status != 'clear' or snapshot.hp is None or snapshot.hp<=0
-            or snapshot.gold is None or snapshot.level is None or snapshot.experience is None
+            or snapshot.gold is None or not experience_observed(scene,snapshot,confidence)
             or backend_layout(scene.image)[0]!=6 or overclock_board(scene)):
         raise AutomationError('装备分配缺少本局版本、完整阵容或清晰余额来源。')
     recommendations = {key:record.get('recommendations',()) for key,record in prior['collection']['units'].items()}
     recipes = {key:record.get('equipment_recipes',()) for key,record in prior['collection']['units'].items()}
-    chosen = choose_equipment(snapshot,inventory(scene,confidence),prior.get('strategy','default'),recommendations,recipes)
+    from .currency_wars_equipment_mode import stored_fast_mode
+    chosen = choose_equipment(snapshot,inventory(scene,confidence),prior.get('strategy','default'),recommendations,recipes,
+                              fast_mode=stored_fast_mode(prior))
     if chosen is None:
         return None
     unit,item,expected,reason = chosen
@@ -164,7 +170,8 @@ def bind_intent(session, choice, scene, confidence=.65):
         raise AutomationError('装备意图的前后槽位与已采集角色不一致。')
     session['actions'][-1]['equipment_expected'] = dict(unit=json.loads(json.dumps(expected)),
         recommendations=old.get('recommendations',[]),equipment_recipes=old.get('equipment_recipes',[]),cells=board_cells(scene,confidence),
-        board=[state.node,state.gold,state.hp,state.level,list(state.deployment),list(state.experience)],
+        board=[state.node,state.gold,state.hp,state.level,list(state.deployment),list(state.experience) if state.experience is not None else None],
+        max_level_verified=state.level==10,
         counts=dict(inventory_counts(inventory(scene,confidence))),input_epoch=prior['collection']['input_epoch'],
         run_dir=prior['collection']['run_dir'])
 
@@ -172,6 +179,7 @@ def bind_intent(session, choice, scene, confidence=.65):
 def inspectable(choice, before, after, confidence=.65):
     first,last = read_match(before,confidence),read_match(after,confidence)
     if (not first or not last or first.page!='preparation' or last.page!='preparation'
+            or not experience_observed(before,first,confidence) or not experience_observed(after,last,confidence)
             or (first.node,first.gold,first.hp,first.level)!=choice.payload[:4]
             or (last.node,last.gold,last.hp,last.level,last.deployment,last.experience) !=
                (first.node,first.gold,first.hp,first.level,first.deployment,first.experience)):
@@ -226,7 +234,10 @@ def _board(scene, data, confidence):
     state = read_match(scene,confidence)
     lock = data['expected']['board']
     if (not state or state.page!='preparation'
-            or [state.node,state.gold,state.hp,state.level,list(state.deployment or ()),list(state.experience or ())]!=lock
+            or not experience_observed(scene,state,confidence)
+            or state.level==10 and data['expected'].get('max_level_verified') is not True
+            or [state.node,state.gold,state.hp,state.level,list(state.deployment or ()),
+                list(state.experience) if state.experience is not None else None]!=lock
             or board_cells(scene,confidence)!=data['expected']['cells']
             or inventory_counts(inventory(scene,confidence))!=Counter(data['counts'])):
         raise AutomationError('装备核验备战页的节点、余额、阵容或仓库已变。')
