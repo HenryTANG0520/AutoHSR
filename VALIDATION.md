@@ -6,6 +6,10 @@
 
 **20项相关单元检查、295项GUI检查通过**。新增73项冷启动检查覆盖原日常、仅周常、原报告改变三种来源，在100%、150%、200%下核对原挑战与消耗、草稿编辑、卡片详情、新建／复用缩放布局和只读文件哈希；记录`runs/weekly-resume-preview-ui/result.json`与`weekly-resume-preview-unit.log`。另回归货币计划49项、任务范围65项、原计划24项、GUI84项，汇总`runs/weekly-resume-preview-regressions.json`；正常启动、接续、只读补存及当前执行结果均保持。新工具`tools/weekly_resume_preview_smoke.py`的目标与报告均由模拟输入建立，没有真实游戏输入、截图或资源消耗。最初回归启动命令因PowerShell引号形成Python语法错误，未启动检查；改为保存包装脚本后顺序完成，不将启动错误称作产品失败。整屏视觉一致性、玩家体验、此前一次未定位的焦点失败、完整货币玩法及组合实机仍待核对。
 
+源码`aa22357`已构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，EXE SHA-256为`3835057ca58d3624ca08b8f5d14e9e09fd9704a0a7fb38dec8d043febc9bdf33`；构建日志`runs/weekly-resume-preview-build.log`。发布1733项文件，147项UI素材、5份清单及23份上游文件核对一致，239份原有用户文件与发布前备份哈希一致，备份`build/userdata-weekly-resume-preview-20261029_232937/`。
+
+相同EXE的隔离副本用模拟输入建立1局／上限2局的原周常。原生仅打开首页，画面部分可见“原日常完成”，但其他前台窗口遮挡了挑战次数等区域；CUA执行Raise失败，重新获取同一窗口后点击可见空白抬头仍报`failed to activate captured window`。没有继续发送输入，也没有操作遮挡窗口；核对进程路径后结束本次私有验证进程，包装脚本因未正常关闭而返回1。**本次原生任务卡与详情交互不计通过**，画面保留`runs/weekly-resume-preview-native-home-occluded.png`。终止后独立配置哈希未变，原目标来源仍通过只读核对，正式239份用户文件仍与备份一致；私有56份文件的全量前后哈希比较未完成，不声称全部未变。记录为`weekly-resume-preview-publication.json`、`weekly-resume-preview-native-verification.json`与`weekly-resume-preview-native-outcome.json`。没有点击开始、继续、补存、检测或游戏入口；该激活失败不证明此前返回焦点问题的原因。证据索引`runs/weekly-resume-preview-evidence-archive.json`。
+
 ## 2026-10-29：整合货币战争周常计划与原目标接续
 
 以`0c253b9`界面和已提交后端`a4d3e06`为基线，合入其标准循环、积分、领奖及周常编排依赖；没有取用主工作区未提交内容。保留计划的`daily_tasks`范围、错误字段定位及原报告。周常设置在货币模式显示1～10局“对局上限”，隐藏差分预设；说明保留标准A8-40开发范围、原目标上限不随偏好变化和完整实机未验收。阶段反馈区分积分、对局、领奖，不把周常执行写成独立只读识别。耗尽上限、过期、报告或奖励未核实分别保留为未完成；仅父报告接受完整积分奖励回执才显示完成。
