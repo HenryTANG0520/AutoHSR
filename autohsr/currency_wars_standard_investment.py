@@ -174,7 +174,7 @@ def _reward_action(scene, session, confidence):
     state=read_match(scene,confidence)
     if not state or state.page!='preparation' or state.node!=data['expected_node']:
         raise AutomationError('投资策略赠品尚未对应交付，未离开或领取其他物品。')
-    probe=first_unit_probe(scene,confidence,session.get('collection',{}).get('units')) if session.get('strategy')!='default' else None
+    probe=first_unit_probe(scene,confidence,session.get('collection',{}).get('units'),session=session) if session.get('strategy')!='default' else None
     if probe is not None:
         cell,target=probe
         return StandardAction('inspect_standard_unit','character',target,payload=(cell.zone,cell.slot,cell.node,cell.signature))

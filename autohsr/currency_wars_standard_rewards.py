@@ -390,7 +390,7 @@ def _unit_action(scene, session, data, confidence):
         return StandardAction(intent,'standard_reward_unit_board',Token('关闭奖励角色核验面板',1.,(.49,.49,.51,.51)))
     if not board_ready(scene,data,confidence):
         raise AutomationError('奖励角色核验时的节点、余额、人数或仓库已变。')
-    probe = first_unit_probe(scene,confidence,session.get('collection',{}).get('units'))
+    probe = first_unit_probe(scene,confidence,session.get('collection',{}).get('units'),session=session)
     if probe is None:
         raise AutomationError(data.get('unit_observation_incomplete') or '奖励全部角色已采集，仍缺结果核实记录。')
     cell,target = probe

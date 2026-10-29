@@ -24,12 +24,12 @@ class StandardAction:
     payload: tuple = ()
 
 
-def _preparation_probe(scene,confidence,known):
+def _preparation_probe(scene,confidence,known,session=None):
     from .currency_wars_collector import first_unit_probe,roster_cells
     # A fresh nineteen-cell scan can prove zero owned units. Failure to read
     # the layout or match the HUD still raises rather than authorizing a shop.
     if any(c.state=='occupied' for c in roster_cells(scene,confidence)):
-        return first_unit_probe(scene,confidence,known)
+        return first_unit_probe(scene,confidence,known,session=session)
     if known:
         raise AutomationError('当前空阵容与已采集角色不符，未沿用缓存或自动开店。')
     return None
@@ -128,7 +128,7 @@ def _next_action(scene, confidence=.65, *, session=None):
         from .currency_wars_node import loot_centers
         if 'strategy' in (session or {}) and (loot_centers(scene) or any(
                 normalize(t.text)=='开启' and t.within((.18,.78,.80,.92)) for t in clean.tokens)):
-            probe = _preparation_probe(scene,confidence,session.get('collection',{}).get('units'))
+            probe = _preparation_probe(scene,confidence,session.get('collection',{}).get('units'),session)
             if probe is not None:
                 cell,target = probe
                 return StandardAction('inspect_standard_unit','character',target,
@@ -143,7 +143,7 @@ def _next_action(scene, confidence=.65, *, session=None):
             return StandardAction('collect_standard_loot', 'loot_collected',
                                   Token('已核实奖励晶矿', 1., (x-radius,y-radius*16/9,x+radius,y+radius*16/9)),
                                   payload=(x,y,radius))
-        probe = _preparation_probe(scene,confidence,(session or {}).get('collection',{}).get('units'))
+        probe = _preparation_probe(scene,confidence,(session or {}).get('collection',{}).get('units'),session)
         if probe is None:
             from .currency_wars_standard_market import open_standard_shop
             from .currency_wars_match import read_match
@@ -234,7 +234,7 @@ def transition_ready(choice, scene, confidence=.65, *, before=None, session=None
         except (AutomationError,KeyError):return False
     if choice.expected in ('standard_stale_unit_board','standard_collected_unit_board'):
         from .currency_wars_standard_collection import board_feedback
-        return board_feedback(choice,scene,confidence)
+        return board_feedback(choice,scene,confidence,session=session)
     if choice.expected in ('standard_investment_selected','standard_investment_applied'):
         from .currency_wars_standard_investment import feedback
         return session is not None and feedback(choice,scene,session,confidence)
@@ -420,7 +420,7 @@ def run_standard(c):
             kind = observe(scene,c.settings.ocr_confidence).page_kind
         if kind == 'preparation':
             try:
-                collection['complete'] = _preparation_probe(scene,c.settings.ocr_confidence,collection['units']) is None
+                collection['complete'] = _preparation_probe(scene,c.settings.ocr_confidence,collection['units'],store.data) is None
             except AutomationError:
                 collection['complete'] = False
             store.persist()
@@ -477,7 +477,7 @@ def run_standard(c):
             from .currency_wars_collector import collected_snapshot
             if kind == 'preparation':
                 try:
-                    collection['complete'] = _preparation_probe(scene,c.settings.ocr_confidence,collection['units']) is None
+                    collection['complete'] = _preparation_probe(scene,c.settings.ocr_confidence,collection['units'],store.data) is None
                 except AutomationError:
                     collection['complete'] = False
             current = collected_snapshot(scene,store.data,c.runner.input_epoch,'standard_current',c.settings.ocr_confidence)
@@ -544,6 +544,10 @@ def run_standard(c):
         if choice.payload:
             action['target'] = list(choice.payload)
             store.persist()
+        if choice.intent=='inspect_standard_unit':
+            from .currency_wars_standard_collection import bind_inspection
+            bind_inspection(store.data,choice,scene,c.settings.ocr_confidence)
+            store.persist()
         from .currency_wars_standard_popup import bind_move,bind_intent as bind_popup
         bind_move(store.data,choice,scene,c.settings.ocr_confidence)
         bind_popup(store.data,choice,scene,c.settings.ocr_confidence)
@@ -586,9 +590,9 @@ def run_standard(c):
             from .currency_wars_standard_investment import bind_reward
             bind_reward(store.data,choice)
             store.persist()
-        if choice.intent=='close_standard_stale_unit':
+        if choice.intent in ('close_standard_unit','close_standard_stale_unit'):
             from .currency_wars_standard_collection import bind_close
-            bind_close(store.data,choice)
+            bind_close(store.data,choice,scene,c.settings.ocr_confidence)
             store.persist()
         c.report.currency_wars = store.data
         c.log('标准A8-40开发：' + choice.intent)
@@ -666,7 +670,7 @@ def run_standard(c):
                             store.data['inspecting']['consumable_id']=choice.payload[4]
                     elif choice.intent in ('close_standard_unit','close_standard_stale_unit'):
                         from .currency_wars_standard_collection import closed
-                        closed(store.data,choice)
+                        closed(store.data,choice,after,c.settings.ocr_confidence)
                     elif choice.intent == 'stage_standard_equipment':
                         from .currency_wars_standard_equipment import begin_verification
                         begin_verification(store.data,choice,scene,after,c.settings.ocr_confidence)

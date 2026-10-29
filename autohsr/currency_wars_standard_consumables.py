@@ -189,7 +189,7 @@ def active_action(scene,session,confidence=.65):
         return StandardAction('close_standard_consumable_stale_panel' if stale else 'close_standard_consumable_unit',
                               'standard_consumable_board',Token('关闭消耗品角色核验',1.,(.49,.49,.51,.51)))
     if not board_ready(scene,data,confidence):raise AutomationError('消耗品重采期间节点、库存或资源已变。')
-    probe=first_unit_probe(scene,confidence,session.get('collection',{}).get('units'))
+    probe=first_unit_probe(scene,confidence,session.get('collection',{}).get('units'),session=session)
     if probe is None:raise AutomationError(data.get('observation_pending') or '消耗品角色已重采，仍未核实预期结果。')
     cell,target=probe
     return StandardAction('inspect_standard_consumable_unit','character',target,payload=(cell.zone,cell.slot,cell.node,cell.signature,data['action_id']))

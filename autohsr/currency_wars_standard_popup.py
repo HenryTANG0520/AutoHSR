@@ -8,13 +8,12 @@ from dataclasses import asdict
 import hashlib
 import json
 import re
-import base64
-import zlib
 
 import cv2
 import numpy as np
 
 from .currency_wars import observe
+from .currency_wars_appearance import appearance,_decoded,same_appearance
 from .currency_wars_collector import owned_profile,roster_cells
 from .currency_wars_deployment import _crop
 from .currency_wars_equipment_catalog import inventory,inventory_counts
@@ -36,25 +35,6 @@ STAR_TRIGGERS=frozenset(('加拉赫','大丽花','花火','星期日','知更鸟
 
 def digest(value):
     return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
-
-
-def appearance(scene,roi):
-    gray=cv2.cvtColor(cv2.resize(_crop(scene.image,roi),(32,48),interpolation=cv2.INTER_AREA),cv2.COLOR_BGR2GRAY)
-    return base64.b64encode(zlib.compress(gray.tobytes())).decode('ascii')
-
-
-def _decoded(value):
-    if not isinstance(value,str) or not 0<len(value)<=4096:raise ValueError('槽位图像来源无效')
-    decoder=zlib.decompressobj();raw=decoder.decompress(base64.b64decode(value,validate=True),1537)
-    if len(raw)!=1536 or not decoder.eof or decoder.unused_data:raise ValueError('槽位图像来源大小无效')
-    return np.frombuffer(raw,dtype=np.uint8).reshape((48,32))
-
-
-def same_appearance(a,b):
-    left,right=_decoded(a),_decoded(b)
-    if np.array_equal(left,right):return True
-    score=float(cv2.matchTemplate(left,right,cv2.TM_CCOEFF_NORMED)[0,0])
-    return bool(np.isfinite(score) and score>=.995 and np.mean(np.abs(left.astype(float)-right.astype(float)))<=2.)
 
 
 def candidates(scene,confidence=.65):
@@ -427,4 +407,4 @@ def valid_parent(action,actions):
                     or not same_appearance(proof['appearance'],receipt['appearances'][key])
                     or any(proof['unit'][k]!=v for k,v in expected[key].items() if v is not None)):return False
         return True
-    except (AutomationError,AttributeError,IndexError,KeyError,TypeError,ValueError,zlib.error):return False
+    except (AutomationError,AttributeError,IndexError,KeyError,TypeError,ValueError):return False

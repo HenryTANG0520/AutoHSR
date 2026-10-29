@@ -708,3 +708,9 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 固定March7thAssistant提交的`move_character`、`check_festival_star_popup`改写为原生部署／换人后的弹窗来源、一次选择／确认及完整角色交付协议，保留上游署名和GPL v3许可，见[source.json](upstream/March7thAssistant/source.json)。AutoHSR原有花火偏好继续保留，没有复制固定首项或上游输入代码。
 
 [两卡文字夹具](../autohsr/tests/fixtures/currency_wars_star_two.json)来自既有4.6画面119／121，仅保留弹窗区域原OCR、原图及清单SHA-256，不修改识别文字，不含UID、账号或完整图像。游戏UI文字与角色内容归HoYoverse及相应权利人；来源记录不授予额外再许可。本轮未新增公开游戏图像或模型，119／121／169原图与清单保持本地忽略；用于查看的裁图和运行时局部图像来源不进入模型请求。布局、选中反例与未验收范围见[开发记录](../docs/currency-wars-development.md)。
+
+## 2026-10-29 普通角色采集局部图像校准
+
+复用既有CN 4.6画面115／116，比较原角色槽位的微小像素变化，核对原图与原清单哈希；没有获取新游戏截图、发布原图或新增模型。两份旧图属于相邻校准样本，不是独立留出或新实机验收。原素材权利仍归HoYoverse及相应权利人，来源记录不授予额外再许可。
+
+原弹窗协议的32×48灰度来源与有界比较移至[本地局部图像模块](../autohsr/currency_wars_appearance.py)，新增普通采集使用由本项目原生编写。运行时只裁已定位的角色槽位，图像来源保存在本地对局记录；不含UID或账号区域，不进入模型请求。公开新增测试仅生成合成槽位与面板；原图、清单、局部比较输出保持忽略，具体证据与边界见[开发记录](../docs/currency-wars-development.md)。

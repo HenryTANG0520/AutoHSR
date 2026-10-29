@@ -85,9 +85,9 @@ def standard_deployment(scene, session, confidence=.65):
     plan = plan_bench_deployment(scene,confidence,source_slot=unit.slot,zone=zone)
     if plan.backend_slots != 6:
         raise AutomationError('标准部署尚未核实当前后台布局。')
-    record = collection['units']['bench:'+str(unit.slot)]
+    cell = next(c for c in roster_cells(scene,confidence) if (c.zone,c.slot)==('bench',unit.slot))
     payload = (snapshot.node,snapshot.gold,snapshot.hp,snapshot.level,unit.slot,zone,
-               plan.target_slot,record['signature'])
+               plan.target_slot,cell.signature)
     return plan, unit, score, payload
 
 
