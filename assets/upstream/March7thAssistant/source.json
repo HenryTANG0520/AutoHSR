@@ -17,6 +17,20 @@
       "mechanic_manifest": "assets/currency-consumables/sources.json",
       "native_samples": ["67-tutorial-reforge-1.sample.json", "68-tutorial-reforge-2.sample.json"],
       "kind": "AutoHSR-authored role-wide reforge extension of the native tool protocol, based on existing local game tutorials rather than upstream role-wide IO; protects wanted gear, limits each role/node, verifies complete identities and ordered worn results, keeps unchanged finite consumption distinct from changed gear"
+    },
+    {
+      "path": "autohsr/workflow_identity.py",
+      "native_references": [
+        "autohsr/currency_wars_identity.py",
+        "autohsr/app.py",
+        "autohsr/recovery.py",
+        "autohsr/task_workflow_run.py"
+      ],
+      "tests": [
+        "autohsr/tests/test_workflow_identity.py",
+        "autohsr/tests/test_task_workflow.py"
+      ],
+      "kind": "AutoHSR-authored cross-step account continuity: strict existing UID parser, two fresh captures in one input epoch, first known login preparation only, immutable per-workflow binding, pause/focus rechecks, private UID crops and source integrity at boundaries, native input proxy, old-budget read-only preflight then begin only after current identity. Public identity metadata has no UID, account digest, image or installation path; original DU/CW ledger keys unchanged. Synthetic tests only, no real account calibration or complete multi-account switch support."
     }
   ],
   "mechanic_references": [

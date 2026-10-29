@@ -55,6 +55,8 @@ class Context:
         self._currency_equipment_request = None
         self._currency_position_request = None
         self._du_actions = []
+        from .workflow_identity import wrap_window
+        self.window = wrap_window(self, window)
 
     def log(self, message: str, level="info"):
         self.runner.log(message, level)
@@ -115,8 +117,13 @@ class Context:
                 self.last_scene = None
                 self.runner.wait_for_focus(self.window)
                 continue
-            self.last_scene = scene
             self.scene_epoch = capture_epoch
+            self.last_scene = scene  # Keep a failing identity frame for local evidence.
+            from .workflow_identity import observe
+            if not observe(self, scene):
+                self.last_scene = None
+                self.sleep(.15)
+                continue
             return scene
 
     def _focus_interrupted(self):
@@ -1602,6 +1609,7 @@ class Runner:
         context = None
         monitor = None
         monitor_started = False
+        defer_battle_budget = False
         try:
             if not mutex or already_running:
                 raise AutomationError("另一个 AutoHSR 任务正在运行，请先停止后重试。")
@@ -1648,7 +1656,10 @@ class Runner:
             if not catalogue and not currency_wars and not differential_universe and self.settings.battle and self.settings.allow_stamina_spend:
                 from .recovery import BattleBudget
                 self.battle_budget = BattleBudget(ROOT / "runs", self.settings, self.report)
-                self.battle_budget.begin(new_run=self.new_battle_run,**(dict(protect_pending=True) if self.use_power_plan else {}))
+                from .workflow_identity import active as workflow_identity_active
+                defer_battle_budget = workflow_identity_active()
+                begin = self.battle_budget.preflight if defer_battle_budget else self.battle_budget.begin
+                begin(new_run=self.new_battle_run,**(dict(protect_pending=True) if self.use_power_plan else {}))
             self.checkpoint()
             self._arm_hotkeys()
             monitor = threading.Thread(target=self._hotkeys, name="AutoHSR-hotkeys", daemon=True)
@@ -1675,6 +1686,11 @@ class Runner:
                       Vision(self.settings.ocr_confidence))
             context = Context(self, self._window, vision)
             context.battle_budget = self.battle_budget
+            from .workflow_identity import prepare as prepare_workflow_identity
+            prepare_workflow_identity(context)
+            if defer_battle_budget:
+                self.battle_budget.begin(new_run=self.new_battle_run,
+                    **(dict(protect_pending=True) if self.use_power_plan else {}))
             if catalogue:
                 from .dungeon_workflow import scan_catalogue
                 result = scan_catalogue(DailyWorkflow(context))

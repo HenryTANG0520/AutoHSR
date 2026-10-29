@@ -10,15 +10,27 @@ import tempfile
 import threading
 import subprocess
 import sys
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
 from autohsr.config import Settings
-from autohsr.models import AutomationError, RunReport, TaskResult
+from autohsr.models import AutomationError, RunReport, TaskResult, Scene, Token
+import numpy as np
 from autohsr.task_workflow import WorkflowError, compile_recipe, loads, task_spec
 from autohsr.task_workflow_run import TaskWorkflowRunner
 from autohsr.workflow_lease import require_workflow_access, workflow_lease
+
+
+def identity_scene(identity='100000000'):
+    captured = time.monotonic()
+    while captured <= getattr(identity_scene, '_last_capture', -1):
+        time.sleep(.001)
+        captured = time.monotonic()
+    identity_scene._last_capture = captured
+    return Scene([Token('UID:' + identity, .99, (.01, .96, .15, .99))],
+                 image=np.zeros((100, 200, 3), dtype=np.uint8), captured_at=captured)
 
 
 def task(identity, operation='daily', **params):
@@ -43,6 +55,7 @@ class WorkflowTests(unittest.TestCase):
         self.child_index = 0
         self.after_child = None
         self.owner = None
+        self.accounts = []
         self.settings = Settings()
         self.hotkeys = patch.object(TaskWorkflowRunner, '_hotkeys', lambda runner: runner._end.wait())
         self.hotkeys.start()
@@ -54,6 +67,7 @@ class WorkflowTests(unittest.TestCase):
             paused = False
             _control_hwnd = 1234
             stopped = False
+            input_epoch = 0
             def stop(self):
                 self.stopped = True
             def toggle_pause(self):
@@ -66,13 +80,21 @@ class WorkflowTests(unittest.TestCase):
                 self_intent = json.loads(log.read_text('utf8').splitlines()[-1])
                 owner.assertEqual(self_intent['event'], 'intent')
                 require_workflow_access()
-                owner.calls.append((replace(settings), deepcopy(options)))
                 operation = options.get('operation', 'currency_wars_loop')
                 values = owner.responses.pop(0) if owner.responses else {}
                 owner.child_index += 1
                 folder = owner.root / ('child-' + str(owner.child_index))
                 folder.mkdir()
                 result = RunReport(operation=operation, status='success', report_saved=True, run_dir=str(folder)).to_dict()
+                from autohsr.workflow_identity import _scope
+                scope = _scope.get()
+                fake = SimpleNamespace(runner=self, report=SimpleNamespace(run_dir=str(folder)),
+                                       settings=settings, scene_epoch=0)
+                identity = owner.accounts.pop(0) if owner.accounts else '100000000'
+                scope.observe(fake, identity_scene(identity))
+                time.sleep(.02)
+                scope.observe(fake, identity_scene(identity))
+                owner.calls.append((replace(settings), deepcopy(options)))
                 if operation == 'daily':
                     result.update(stamina_spent=120, daily_verified=True, battle_completed=3)
                 if operation == 'differential_universe':
@@ -313,6 +335,21 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(frozen.mail)
         self.assertFalse(frozen.battlepass)
 
+    def test_anonymous_identity_event_precedes_game_actions(self):
+        owner = self
+        class Actions(list):
+            def append(self, value):
+                owner.assertTrue(any(event.get('type') == 'workflow_identity' and event.get('verified') is True
+                                     for event in owner.events))
+                super().append(value)
+        self.calls = Actions()
+        report = self.runner(recipe(task('daily'))).run()
+        self.assertEqual(report.status, 'success')
+        private = json.loads(Path(report.run_dir, 'identity', 'state.json').read_text('utf8'))
+        state_events = [event for event in self.events if event.get('type') == 'workflow_identity']
+        self.assertNotIn(private['account_key'], json.dumps(state_events))
+        self.assertNotIn('100000000', json.dumps(state_events))
+
     def test_real_local_warp_analysis_and_export_keep_sources_and_privacy(self):
         source = self.root / 'source.json'
         source.write_text(json.dumps(dict(info=dict(uid='100000000', lang='zh-cn', srgf_version='v1.0',
@@ -424,9 +461,12 @@ class WorkflowTests(unittest.TestCase):
         from autohsr.app import Runner
         from autohsr.tests.test_runner_recovery import RunnerRecoveryTests
         workflow = SimpleNamespace(ensure_main=Mock())
-        RunnerRecoveryTests.fixture(self, self.root, workflow)
+        context, _ = RunnerRecoveryTests.fixture(self, self.root, workflow)
         def native_factory(settings, emit, **options):
             child = Runner(settings, emit, **options)
+            context.runner, context.settings, context.report, context.scene_epoch = child, settings, child.report, 0
+            context.snapshot.side_effect = identity_scene
+            context.checkpoint, context.sleep = child.checkpoint, time.sleep
             def daily():
                 child.report.daily_verified = True
                 child.report.engagement = 500

@@ -90,6 +90,7 @@ class TaskWorkflowRunner:
         self._input_blocked = False
         self._has_failure = False
         self._directory = None
+        self._identity = None
 
     def stop(self):
         self._stop.set()
@@ -239,6 +240,7 @@ class TaskWorkflowRunner:
         self.checkpoint()
         expected = {'plan': 'plan', 'currency_wars_loop': 'currency_wars_loop'}.get(node['task'], node['task'])
         result = None
+        identity_mark = self._identity.mark() if game else None
         try:
             if game:
                 child = self._make_child(node)
@@ -262,7 +264,11 @@ class TaskWorkflowRunner:
             if not isinstance(result, dict) or result.get('status') not in ('success', 'partial', 'failed', 'stopped'):
                 raise WorkflowError('任务返回了未知结果。')
             entry['source'] = self._source(result, expected)
-            self._copy_totals(result)
+            if not game or self._identity.has_step_proof(identity_mark):
+                self._copy_totals(result)
+            if game:
+                self._identity.require_step(identity_mark)
+                entry['account_verified'] = True
             entry['facts'] = self._facts(result)
             entry['status'] = result['status']
         except (Stopped, KeyboardInterrupt):
@@ -341,7 +347,7 @@ class TaskWorkflowRunner:
             except Exception as error:
                 if entry['status'] == 'running':
                     entry['status'] = 'partial'
-                entry['error'] = str(error)
+                entry.setdefault('error', str(error))
                 raise
             finally:
                 entry['finished_at'] = _now()
@@ -369,6 +375,15 @@ class TaskWorkflowRunner:
         leases = ExitStack()
         try:
             leases.enter_context(workflow_lease())
+            from .workflow_identity import WorkflowIdentity, account_scope
+            required = any(node['task'] in GAME_TASKS for node in _tasks(self.recipe.steps))
+            def publish_identity(public):
+                report.workflow['identity'] = public
+                self._save()
+                self.emit(dict(type='workflow_identity', **public))
+            self._identity = WorkflowIdentity(directory, required=required, publish=publish_identity)
+            report.workflow['identity'] = self._identity.public()
+            leases.enter_context(account_scope(self._identity))
             self.checkpoint()
             raw = _bytes(self.recipe.document)
             with (directory / 'workflow.json').open('xb') as stream:
@@ -394,6 +409,8 @@ class TaskWorkflowRunner:
             if monitor is not None:
                 monitor.join(timeout=1)
             report.workflow['input_blocked'] = self._input_blocked
+            if self._identity is not None:
+                report.workflow['identity'] = self._identity.public()
             report.finished_at = _now()
             report.safe_next = '查看各步骤原始报告；未完成步骤不自动重放。接续对局或领奖请使用对应正式入口。'
             report.results.append(TaskResult('task_workflow', 'ok' if report.status == 'success' else report.status,

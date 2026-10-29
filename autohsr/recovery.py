@@ -81,7 +81,8 @@ class BattleBudget:
         temp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         replace_file(temp,self.path)
 
-    def begin(self, *, new_run=False,protect_pending=False):
+    def preflight(self, *, new_run=False,protect_pending=False):
+        """Read-only checks shared by ordinary begin and workflow identity prep."""
         state = recovery_state(self.runs)
         if state["corrupt"]:
             raise AutomationError(state["reason"])
@@ -95,6 +96,10 @@ class BattleBudget:
             from .ux import immersifier_text
             raise AutomationError(f"上次刷本未完整结束（已确认{state['spent']}，待核对{pending}开拓力{immersifier_text(state)}）。"
                                   "请先仅补领奖；开始新一轮刷本须明确确认新增预算。")
+        return state
+
+    def begin(self, *, new_run=False,protect_pending=False):
+        state = self.preflight(new_run=new_run, protect_pending=protect_pending)
         self.report.budget_scope = "run"
         if state.get('power_plan'):
             from .power_plan_store import archive
