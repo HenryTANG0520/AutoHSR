@@ -1002,7 +1002,10 @@ class DailyWorkflow:
         self._click(scene, target)
         self._wait(lambda s: not s.has(("挑战成功", "战斗失败", "退出关卡", "再来一次")), description="确认退出关卡")
 
-    def battle(self) -> TaskResult:
+    def battle(self, *, completed_base=0,aggregate=False) -> TaskResult:
+        if type(completed_base) is not int or not 0<=completed_base<=self.ctx.report.battle_completed or type(aggregate) is not bool:
+            raise AutomationError('本项挑战的完成次数来源无效。')
+        self._battle_completed_base=completed_base
         if not getattr(self.settings, "allow_stamina_spend", False):
             return self._result("battle", "skipped", "尚未授权消耗开拓力，刷本任务已跳过。")
         if not self._snapshot().tokens:
@@ -1011,8 +1014,8 @@ class DailyWorkflow:
         requested = self.settings.challenge_count
         if category.weekly_limit:
             requested = min(requested or category.weekly_limit, category.weekly_limit)
-        self.ctx.report.battle_requested = requested
-        completed = self.ctx.report.battle_completed
+        self.ctx.report.battle_requested = None if aggregate else requested
+        completed = self.ctx.report.battle_completed-completed_base
         while ((category.key=='planar' or self.ctx.report.stamina_spent + category.cost <= self.settings.stamina_limit)
                and (requested is None or completed < requested)):
             scene = self._open_calyx()
@@ -1082,7 +1085,10 @@ class DailyWorkflow:
                     raise AutomationError("成功结算未独立核实本批完成波次，保留待核对消耗，不重复挑战。")
             # Accounting happens once, only after a visible success screen.
             completed += cost // category.cost
-            self.ctx.report.battle_completed = completed
+            # A multi-item plan also verifies current account and preserves its
+            # evidence before publishing a new completed counter.
+            planned=budget is not None and getattr(budget,'power_plan',None) is not None
+            if not planned:self.ctx.report.battle_completed = completed_base+completed
             if budget is not None:
                 if paid_immersifiers:
                     budget.confirm(paid_stamina, immersifiers=paid_immersifiers)

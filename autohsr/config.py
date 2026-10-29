@@ -61,13 +61,23 @@ class Settings:
     currency_fast_mode: bool = False
     currency_runs: int = 1  # Only the explicit loop entry uses this; 0 = until stopped.
     currency_until_points: bool = False  # Optional weekly target; runs remains the new-game ceiling.
+    power_plan: list[dict] = field(default_factory=list)
+    power_plan_keep: bool = False
+    power_plan_fill: bool = True
 
     def __post_init__(self):
         from copy import deepcopy
         self.differential_universe_station_priority=deepcopy(self.differential_universe_station_priority)
         self.differential_universe_station_disabled=deepcopy(self.differential_universe_station_disabled)
+        self.power_plan=deepcopy(self.power_plan)
 
     def validate(self, operation: str = "daily") -> None:
+        if operation in ('save','power_plan'):
+            from .power_plan import items,plan_spec
+            items(self.power_plan)
+            if operation=='power_plan':plan_spec(self)
+        for name in ('power_plan_keep','power_plan_fill'):
+            if type(getattr(self,name)) is not bool:raise SettingsError(name,f'{name}必须为布尔值。')
         from .du_station_policy import StationPreferences
         StationPreferences.from_settings(self)
         from .weekly_plan import validate_schedule
@@ -80,20 +90,21 @@ class Settings:
         except ValueError as error:raise SettingsError('currency_remembrance_name',str(error)) from error
         if not isinstance(self.game_path, str) or not self.game_path.lower().endswith("starrail.exe"):
             raise SettingsError("game_path", "请选择 StarRail.exe 游戏程序。")
-        if operation == "save" or (operation in ("daily", "plan") and self.battle and self.allow_stamina_spend):
-            if not isinstance(self.target_name, str) or len(self.target_name.strip()) < 2:
+        if operation == "save" or (operation in ("daily", "plan") and self.battle and self.allow_stamina_spend) or operation=='power_plan':
+            use_default=operation!='power_plan' or self.power_plan_fill
+            if use_default and (not isinstance(self.target_name, str) or len(self.target_name.strip()) < 2):
                 raise SettingsError("target_name", "请选择副本，例如：回忆之蕾。")
-            if not isinstance(self.target_location, str):
+            if use_default and not isinstance(self.target_location, str):
                 raise SettingsError("target_location", "副本地点必须是文字；留空时仅允许唯一匹配目标。")
-            if operation in ("daily", "plan") and not self.target_location.strip():
+            if use_default and operation in ("daily", "plan",'power_plan') and not self.target_location.strip():
                 raise SettingsError("target_location", "请填写副本地点，以区分同名花萼。")
             if isinstance(self.stamina_limit, bool) or not isinstance(self.stamina_limit, int) or not 10 <= self.stamina_limit <= 240 or self.stamina_limit % 10:
                 raise SettingsError("stamina_limit", "本次开拓力上限应为 10～240 之间的 10 的倍数。")
             if isinstance(self.rounds, bool) or not isinstance(self.rounds, int) or not 1 <= self.rounds <= 6:
                 raise SettingsError("rounds", "每次挑战轮数应为 1～6。")
             from .dungeons import category_for, count_limit
-            category = category_for(self)
-            if self.challenge_count is not None:
+            category = category_for(self) if use_default else None
+            if use_default and self.challenge_count is not None:
                 if type(self.challenge_count) is not int or not 1 <= self.challenge_count <= count_limit(category):
                     raise SettingsError("challenge_count", f"{category.label}本次挑战次数应为 1～{count_limit(category)}。")
                 if self.challenge_count * category.cost > self.stamina_limit:

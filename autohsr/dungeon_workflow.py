@@ -96,7 +96,8 @@ def open_dungeon(workflow):
     if category.weekly_limit and getattr(workflow, "_weekly_rewards", None) is None:
         raise AutomationError("未核实历战余响本周剩余领奖次数，未开始挑战。")
     if category.weekly_limit and workflow._weekly_rewards == 0:
-        raise AutomationError("历战余响本周领奖次数已用完，未进行无奖励挑战。")
+        from .models import DungeonQuotaExhausted
+        raise DungeonQuotaExhausted(scene)
     target = normalize(workflow.settings.target_name)
     location = normalize(workflow.settings.target_location)
     previous = None

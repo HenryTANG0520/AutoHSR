@@ -23,6 +23,16 @@
   ],
   "sources": [
     {
+      "path": "tasks/power/power.py",
+      "git_blob": "cf046174fe2f80992e8808d620f34165790ce238",
+      "sha256": "c9880986f720c0ec25626db7314a82036a73375a5d6ae9899126694081bc9e39"
+    },
+    {
+      "path": "tasks/power/instance.py",
+      "git_blob": "0859381134b79de365345b813d49f2b6a779a13b",
+      "sha256": "d0928d6044e249f2fc89a74e453c1fdc53cf90e902dc69b59a9913418f8547f3"
+    },
+    {
       "path": "main.py",
       "git_blob": "feab0b158e1f80c2b7a0c85c6cc276479d710bf4"
     },
@@ -48,6 +58,14 @@
     }
   ],
   "adaptations": [
+    {
+      "path": "autohsr/power_plan_run.py",
+      "native_files": ["autohsr/power_plan.py", "autohsr/power_plan_store.py", "autohsr/recovery.py", "autohsr/workflows.py", "autohsr/planar_resources.py", "autohsr/app.py", "autohsr/plan_runner.py"],
+      "reference_source": "tasks/power/power.py",
+      "reference_functions": ["Power.run", "Power.execute_power_plan", "Power.process"],
+      "additional_references": [{"source": "tasks/power/instance.py", "functions": ["Instance.run"]}],
+      "kind": "AutoHSR-authored ordered multi-dungeon plan, consumed remaining counts or fixed repeat and optional default-dungeon fill, explicitly enabled per invocation; uses existing native battle flow with one input owner and one frozen owned-stamina/immersifier budget. Settings remain save-only; canonical payment and per-item counters commit together, prior budgets are hash-bound archived with an anchored goal index before replacement, reorder preserves per-occurrence progress, unknown payment blocks new goals and new budgets. No upstream input framework, resource replenishment, relic cleanup or build-target reader imported. GUI integration and live acceptance remain pending; tests use synthetic windows and scenes only"
+    },
     {
       "path": "autohsr/currency_wars_weekly.py",
       "native_files": ["autohsr/currency_wars_weekly_run.py", "autohsr/plan_runner.py"],

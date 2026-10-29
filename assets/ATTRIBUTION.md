@@ -764,3 +764,9 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 ## 2026-10-29 携装角色出售与装备返还
 
 参考固定March7thAssistant的`_sell_single_character`及三种出售调用关系，将携装角色处理适配为[原生库存返还协议](../autohsr/currency_wars_sale_equipment.py)。保留本项目已校准图标和角色面板，增加版本化目标、完整库存来源、逐项返还及售后完整重采，未移植点击成功即完成的判断。来源函数、Git blob及GPL v3许可继续记录于[source.json](upstream/March7thAssistant/source.json)。本轮没有新增图像、模型或游戏采集；正向售出及返还均为合成画面机制检查，来源及边界见[开发记录](../docs/currency-wars-development.md)。
+
+## 2026-10-30 多副本体力计划
+
+参考固定March7thAssistant的`Power.run`、`Power.execute_power_plan`、`Power.process`及副本执行结构，将有序条目、剩余次数、固定重复和默认副本补刷适配为[AutoHSR原生计划](../autohsr/power_plan_run.py)。源码的Git blob、SHA-256、固定提交及GPL v3许可记在[source.json](upstream/March7thAssistant/source.json)，已与此前取得的固定目录树核对。没有复制上游GUI、输入框架或配置自动扣减写回行为；本项目仍只在保存设置时写配置，运行进度使用独立本地账本。
+
+一份已有资源预算、同账号新鲜画面、原生逐批支付核验、原子计数及不可覆盖归档属于AutoHSR实现。没有新增公开游戏素材、训练模型或采集画面；新增检查使用合成窗口与场景，账号数字为虚构测试值。培养目标、资源补充及遗器清理均未在本轮接入，界面与实机边界见[计划说明](../docs/power-plan.md)。

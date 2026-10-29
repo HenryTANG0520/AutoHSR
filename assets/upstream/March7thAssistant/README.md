@@ -1,5 +1,7 @@
 # March7thAssistant 参考来源与适配
 
+2026-10-30新增[多副本体力计划](../../../docs/power-plan.md)适配，参考固定`tasks/power/power.py`和`tasks/power/instance.py`。有序条目、剩余次数、固定重复和默认补刷使用AutoHSR原生单一输入所有者、共享资源预算及逐批回执；运行进度独立于保存设置，原账本在替换前归档并锚定历史。固定源码的Git blob及SHA-256见[source.json](source.json)，没有迁入上游输入、GUI、资源补充、培养目标或遗器清理逻辑；当前仅离线机制与模拟窗口验证，GUI接线和实机仍待完成。
+
 来源：[moesnow/March7thAssistant](https://github.com/moesnow/March7thAssistant)，维护者moesnow及其贡献者。核对日期2026-10-28，固定提交`7cf6c6bed474539485d3b1504077ac352866829f`。
 
 上游使用GNU GPL v3；保留的原许可见[LICENSE](LICENSE)，具体源文件的Git blob及许可文件SHA-256见[source.json](source.json)。AutoHSR本身也使用GPL v3。游戏角色名及相关游戏内容仍归各自权利人所有。

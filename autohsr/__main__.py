@@ -72,6 +72,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="接续当前用户已启动的周期演算时提供页面已选难度（1～10）；会将该局计入请求局数")
     parser.add_argument("--reward-only", action="store_true", help="本次仅验证并补领每日实训；不刷本，不保存配置")
     parser.add_argument("--new-battle-run", action="store_true", help="明确开始新的刷本预算；先人工核对上次已确认及待核对消耗")
+    parser.add_argument('--power-plan',action='store_true',help='本次日常使用多副本体力计划，统一资源预算；仅配合 --run 或 --plan')
+    parser.add_argument('--power-plan-file',type=Path,help='本次体力计划JSON列表，不保存配置')
+    parser.add_argument('--new-power-plan',action='store_true',help='明确建立相同内容的新体力目标；不核销未知支付，不保存配置')
+    parser.add_argument('--keep-power-plan',action=argparse.BooleanOptionalAction,default=None,help='本次固定重复原计划；默认沿用设置，不保存配置')
+    parser.add_argument('--fill-power-plan',action=argparse.BooleanOptionalAction,default=None,help='计划后以默认副本补刷剩余已有资源，不保存配置')
     parser.add_argument("--resume-active-currency", action="store_true", help="仅配合标准开发入口，接续有记录且已核实开始的货币战争")
     parser.add_argument('--currency-runs', type=int, help='循环局数；积分目标启用时为新局上限，0表示无局数上限；仅用于 --currency-wars-loop，不保存配置')
     parser.add_argument('--resume-currency-loop', action='store_true', help='明确接续原循环的剩余局数与原设置；仅用于 --currency-wars-loop')
@@ -84,6 +89,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    if (args.power_plan and (not (args.run or args.plan) or args.reward_only or args.resume_weekly_currency)
+            or not args.power_plan and (args.power_plan_file is not None or args.new_power_plan or args.keep_power_plan is not None or args.fill_power_plan is not None)):
+        parser.error('体力计划覆盖仅用于 --run/--plan --power-plan，不能用于仅补领奖或只接续周常。')
     station_options=(args.du_custom_stations is not None or args.du_station_priority is not None or args.du_station_disabled is not None)
     if station_options and not (args.differential_universe or args.plan):
         parser.error('站点偏好仅用于 --differential-universe 或差分 --plan。')
@@ -194,6 +202,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         settings = Settings.load(args.config)
+        if args.power_plan:
+            settings.battle=True
+            if args.power_plan_file is not None:
+                if args.power_plan_file.stat().st_size>4*1024*1024:raise ValueError('体力计划文件过大。')
+                settings.power_plan=json.loads(args.power_plan_file.read_text(encoding='utf-8-sig'))
+            if args.keep_power_plan is not None:settings.power_plan_keep=args.keep_power_plan
+            if args.fill_power_plan is not None:settings.power_plan_fill=args.fill_power_plan
         for argument, field in (("game_path", "game_path"), ("target", "target_name"), ("location", "target_location"), ("stamina", "stamina_limit"), ("rounds", "rounds"), ("category", "dungeon_category"), ("count", "challenge_count")):
             value = getattr(args, argument)
             if value is not None:
@@ -233,7 +248,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.reward_only:
             from .recovery import reward_only_settings
             settings = reward_only_settings(settings)
-        settings.validate("check" if args.check or args.scan_dungeons else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "daily")
+        settings.validate("check" if args.check or args.scan_dungeons else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "power_plan" if args.power_plan else "daily")
         from .app import Runner, inspect_game, launch_game
         if args.check:
             print(_json(inspect_game(settings)))
@@ -252,9 +267,11 @@ def main(argv: list[str] | None = None) -> int:
                 currency_fast_mode=args.currency_fast_mode, until_points=args.currency_until_points)
         elif args.plan:
             from .plan_runner import PlanRunner
-            runner = PlanRunner(settings, emit, new_battle_run=args.new_battle_run,resume_weekly_currency=args.resume_weekly_currency)
+            runner = PlanRunner(settings, emit, new_battle_run=args.new_battle_run,resume_weekly_currency=args.resume_weekly_currency,
+                **(dict(use_power_plan=True,new_power_plan=args.new_power_plan) if args.power_plan else {}))
         else:
             runner = Runner(settings, emit, new_battle_run=args.new_battle_run,
+                            **(dict(use_power_plan=True,new_power_plan=args.new_power_plan) if args.power_plan else {}),
                             operation="dungeon_catalogue" if args.scan_dungeons else "currency_wars_rewards" if args.currency_wars_rewards else "currency_wars_points" if args.currency_wars_points else "currency_wars_standard" if args.currency_wars_standard else "currency_wars_prepare" if args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure else "currency_wars" if args.currency_wars_check else "differential_universe" if args.differential_universe else "reward_only" if args.reward_only else "daily",
                             **(dict(currency_rewards_resume=args.resume_currency_rewards) if args.currency_wars_rewards else {}),
                             **(dict(currency_locate=True) if args.currency_wars_locate or args.currency_wars_configure else {}),

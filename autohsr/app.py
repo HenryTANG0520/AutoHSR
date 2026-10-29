@@ -57,6 +57,12 @@ class Context:
     def log(self, message: str, level="info"):
         self.runner.log(message, level)
 
+    def item_view(self,settings):
+        view=Context(self.runner,self.window,self.vision)
+        view.settings=settings;view.report=self.report
+        view.battle_budget=getattr(self,'battle_budget',None)
+        return view
+
     def checkpoint(self):
         self.runner.checkpoint()
 
@@ -1245,9 +1251,15 @@ class Runner:
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
                  currency_configure=False, currency_resume=False, weekly_plan=None, currency_strategy=None,
-                 currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None,currency_rewards_resume=False,currency_weekly_guard=None):
+                 currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None,currency_rewards_resume=False,currency_weekly_guard=None,
+                 use_power_plan=False,new_power_plan=False):
         from dataclasses import replace
         settings=replace(settings)
+        if (type(use_power_plan) is not bool or type(new_power_plan) is not bool or new_power_plan and not use_power_plan
+                or use_power_plan and (operation!='daily' or not settings.battle)):
+            raise ValueError('体力计划仅用于已选择刷本的日常入口，新目标须明确启用体力计划。')
+        self.use_power_plan=use_power_plan;self.new_power_plan=new_power_plan
+        if use_power_plan:settings.validate('power_plan')
         from .weekly_plan import WeeklyGuard
         if weekly_plan is not None and (not isinstance(weekly_plan, WeeklyGuard) or operation != "differential_universe"):
             raise ValueError("周常记录核验仅用于计划中的差分宇宙。")
@@ -1341,12 +1353,16 @@ class Runner:
                     if getattr(self.settings, name)]
         if not selected:
             raise AutomationError("至少选择一个任务。")
+        power=None
+        if self.use_power_plan:
+            from .power_plan_run import PowerWorkflow
+            power=PowerWorkflow(context,new_goal=self.new_power_plan)
         for index, name in enumerate(selected):
             self.checkpoint()
             self.report.failure_task = name
             self.emit(dict(type="task", task=name, status="running", detail="正在执行"))
             try:
-                result = self._resume_step(getattr(workflow, name), name)
+                result = self._resume_step(power.run if name=='battle' and power is not None else getattr(workflow, name), name)
             except Stopped:
                 raise
             except Exception as error:
@@ -1592,7 +1608,7 @@ class Runner:
             catalogue = self.report.operation == "dungeon_catalogue"
             if self.report.operation not in ("daily", "reward_only", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
                 raise AutomationError("未知运行类型，未访问游戏。")
-            self.settings.validate("check" if catalogue else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "daily")
+            self.settings.validate("check" if catalogue else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "power_plan" if self.use_power_plan else "daily")
             configured_name=''
             if self.report.operation in ('currency_wars_points','currency_wars_rewards'):
                 from .currency_wars_points_run import require_no_active_match
@@ -1628,7 +1644,7 @@ class Runner:
             if not catalogue and not currency_wars and not differential_universe and self.settings.battle and self.settings.allow_stamina_spend:
                 from .recovery import BattleBudget
                 self.battle_budget = BattleBudget(ROOT / "runs", self.settings, self.report)
-                self.battle_budget.begin(new_run=self.new_battle_run)
+                self.battle_budget.begin(new_run=self.new_battle_run,**(dict(protect_pending=True) if self.use_power_plan else {}))
             self.checkpoint()
             self._arm_hotkeys()
             monitor = threading.Thread(target=self._hotkeys, name="AutoHSR-hotkeys", daemon=True)
@@ -1692,7 +1708,7 @@ class Runner:
                 # Planar extraction has a uniquely named existing-save setup
                 # page, including its resource price. Reuse that verified page
                 # when no preceding assignment task needs the phone menu.
-                ready_planar = (self.settings.dungeon_category == "planar" and self.settings.battle
+                ready_planar = (not self.use_power_plan and self.settings.dungeon_category == "planar" and self.settings.battle
                                 and not self.settings.assignments and workflow._calyx_target(initial)
                                 and workflow._team_page(initial))
                 if not ready_planar:
@@ -1734,7 +1750,7 @@ class Runner:
             if self.battle_budget:
                 try:
                     self.battle_budget.finish()
-                except OSError as error:
+                except (OSError, AutomationError) as error:
                     self.report.status = "partial"
                     self.report.error = f"刷本记录保存失败：{error}"
                     self.report.safe_next = "保留现有记录，人工核对消耗；不要直接开始新一轮刷本。"
