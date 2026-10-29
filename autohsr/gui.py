@@ -1429,7 +1429,8 @@ class AutoHSRWindow:
         if self.closing:
             return
         if not self.busy and self.dirty:
-            choice = messagebox.askyesnocancel("保存修改", "配置有未保存的修改，关闭前保存吗？", parent=self.root)
+            from .desktop_dialogs import ask_save_changes
+            choice = ask_save_changes(self)
             if choice is None or (choice and self._read_settings(save=True, operation="save") is None):
                 return
         self.closing = True

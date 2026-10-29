@@ -639,12 +639,15 @@ It verifies modal priority and one-shot confirmation feedback; it is not
 independent completion evidence. Game artwork remains the property of HoYoverse.
 
 The same `du_runtime/last_area_confirm.png` is also a layout/color reference for
-the code-drawn read-only desktop detail panel in `autohsr/desktop_dialogs.py`
+the code-drawn desktop detail and unsaved-settings panels in `autohsr/desktop_dialogs.py`
 (2026-10-29): 960×360 plate, 8px offset frame, 96px footer at the 1920px baseline.
 The masked fixture SHA-256 is
 `961eefc1aaf95bb3c501bb23df9e519e97e6431abd2e4ff68b92714e3cdc7dab`.
 No new bitmap is extracted or bundled for this panel; the existing game font
 retains its attribution above. This reference does not prove whole-screen parity.
+The unsaved-settings panel has three explicit application choices; narrow work
+areas stack them vertically. These are application adaptations of the reference,
+not claims that the game's original two-button interaction is identical.
 
 `du_runtime/adventure_hanu_*` are locally captured 4.6 adventure-room frames
 with the bottom identifier strip masked at the 1920-pixel baseline. Their

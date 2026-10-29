@@ -537,7 +537,8 @@ def main():
             check('explicit_save_persists', config.read_bytes() != original and not errors)
             saved = config.read_bytes()
             ui.auto_launch.set(not ui.auto_launch.get())
-            with patch.object(module.messagebox, 'askyesnocancel', return_value=None):
+            close_prompt = PACKAGE + '.desktop_dialogs.ask_save_changes' if PACKAGE == 'autohsr' else PACKAGE + '.gui.messagebox.askyesnocancel'
+            with patch(close_prompt, return_value=None):
                 ui._close()
             check('dirty_close_cancel_keeps_window_and_file', not ui.closing and config.read_bytes() == saved)
             root.geometry('1100x800')
@@ -546,7 +547,7 @@ def main():
                 pump(root)
                 layout(root)
             check('minimum_layout_all_pages', True)
-            with patch.object(module.messagebox, 'askyesnocancel', return_value=False):
+            with patch(close_prompt, return_value=False):
                 ui._close()
             check('dirty_close_discard_does_not_save', config.read_bytes() == saved)
         finally:
