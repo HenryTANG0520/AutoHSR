@@ -14,30 +14,34 @@ import uuid
 
 from .config import ROOT
 from .currency_wars_loop_store import LoopStore, _write, loop_lock, runs_value
+from . import currency_wars_points_goal as points_goal
 from .currency_wars_session import StandardSession
 from .models import AutomationError, RunReport, Stopped, TaskResult
 
 
 class CurrencyLoopRunner:
     def __init__(self, settings, emit=None, *, runs=None, resume=False, currency_strategy=None,
-                 currency_remembrance_name=None, currency_fast_mode=None, runner_factory=None, root=None):
+                 currency_remembrance_name=None, currency_fast_mode=None, until_points=None, runner_factory=None, root=None):
         from .app import Runner
         from .currency_wars_names import resolve_name, validate_name
         from .currency_wars_equipment_mode import resolve_fast_mode
         from .currency_wars_standard_policy import STRATEGIES
         if type(resume) is not bool:
             raise ValueError('循环接续开关必须为布尔值。')
+        if until_points is not None and type(until_points) is not bool:
+            raise ValueError('周积分循环开关必须为布尔值。')
         if currency_strategy is not None and currency_strategy not in STRATEGIES:
             raise ValueError('货币战争策略须为 default、aglaea 或 seele。')
         self.settings = replace(settings)
         self.settings.validate('currency_wars')
         self.overrides = dict(runs=runs, strategy=currency_strategy,
                               remembrance_name=None if currency_remembrance_name is None else validate_name(currency_remembrance_name),
-                              equipment_fast_mode=currency_fast_mode)
+                              equipment_fast_mode=currency_fast_mode, until_points=until_points)
         self.options = dict(runs=runs_value(settings.currency_runs if runs is None else runs),
                             strategy=currency_strategy or 'default',
                             remembrance_name=resolve_name(settings, currency_remembrance_name),
-                            equipment_fast_mode=resolve_fast_mode(settings, currency_fast_mode))
+                            equipment_fast_mode=resolve_fast_mode(settings, currency_fast_mode),
+                            until_points=settings.currency_until_points if until_points is None else until_points)
         self.resume = resume
         self.root = Path(root) if root is not None else ROOT/'runs'
         self.factory = runner_factory or Runner
@@ -106,10 +110,14 @@ class CurrencyLoopRunner:
         data = store.data
         if data is None:
             return
+        children = {key: self.report.currency_wars[key] for key in ('last_child','last_points_child')
+                    if key in self.report.currency_wars}
         self.report.currency_wars = dict(mode='standard_loop', loop_id=data['loop_id'],
             requested_runs=data['options']['runs'], completed=data['completed'], status=data['status'],
             active=deepcopy(data['active']), loop_record=str(store.path), development_only=True,
-            acceptance_runs=0, **{k: v for k, v in data['options'].items() if k != 'runs'})
+            acceptance_runs=0, **children, **{k: v for k, v in data['options'].items() if k != 'runs'})
+        if points_goal.enabled(data):
+            self.report.currency_wars.update(points_goal=deepcopy(data['points_goal']), rewards_verified=False)
 
     def _run_child(self, guard, resume):
         self._checkpoint()
@@ -117,6 +125,15 @@ class CurrencyLoopRunner:
         child = self.factory(self.settings, self._send, operation='currency_wars_standard', currency_resume=resume,
                              currency_strategy=options['strategy'], currency_remembrance_name=options['remembrance_name'],
                              currency_fast_mode=options['equipment_fast_mode'], currency_loop_guard=guard)
+        return self._run_bound_child(child)
+
+    def _run_points(self):
+        self._checkpoint()
+        self.emit(dict(type='currency_loop_points', message='核对本周积分与倒计时；奖励不自动领取。'))
+        child = self.factory(self.settings, self._send, operation='currency_wars_points')
+        return self._run_bound_child(child)
+
+    def _run_bound_child(self, child):
         with self._lock:
             self.child = child
             if self._stop.is_set():
@@ -139,7 +156,8 @@ class CurrencyLoopRunner:
             if store.load() is None or store.data['status'] != 'active':
                 raise AutomationError('没有可接续的未结束货币战争循环。')
             for key, value in self.overrides.items():
-                if value is not None and value != store.data['options'][key]:
+                saved = store.data['options'].get(key, False) if key == 'until_points' else store.data['options'][key]
+                if value is not None and value != saved:
                     raise AutomationError('显式设置与循环冻结设置不同，未中途改写目标。')
         else:
             # A pre-existing match can never be silently adopted into a new loop.
@@ -150,18 +168,20 @@ class CurrencyLoopRunner:
         store.check_tail()
         if store.data.get('archive_intent') is not None:
             store.archive(count=store.data['archive_intent']['count'])
+        elif store.data.get('empty_archive_intent') is not None:
+            store.archive_unstarted()
         elif store.data['active'] is None and store.journal.exists():
             store.archive(count=False, recover=self.resume)
         self._summary(store)
         while True:
             self._checkpoint()
             data = store.data
-            if data['options']['runs'] and data['completed'] >= data['options']['runs']:
+            until_points = points_goal.enabled(data)
+            if not until_points and data['options']['runs'] and data['completed'] >= data['options']['runs']:
                 data['status'] = 'complete'
                 store.save()
                 self.report.status = 'success'
                 return
-            guard = store.reserve()
             store.check_tail()
             session = StandardSession(store.journal).data
             if session is not None and session['status'] == 'settled':
@@ -170,6 +190,44 @@ class CurrencyLoopRunner:
                 store.archive(recover=self.resume)
                 self._summary(store)
                 continue
+            # Never navigate away from an owned match already submitted. Empty
+            # reservations have no standard input and are preserved separately
+            # before fresh points navigation, including explicit crash resume.
+            submitted = session is not None and (session['status'] != 'start_pending' or bool(session['actions']))
+            if until_points and not submitted:
+                if data['active'] is not None:
+                    store.archive_unstarted()
+                if points_goal.expired(store):
+                    self._finish_goal(store, 'expired', '周积分目标已跨游戏周；已保留旧目标，未开始新局。')
+                    return
+                self._summary(store)
+                child = self._run_points()
+                self.report.currency_wars['last_points_child'] = dict(run_dir=child.get('run_dir',''), status=child.get('status'))
+                if child.get('status') != 'success' or child.get('report_saved') is not True:
+                    self.report.status = 'stopped' if child.get('status') == 'stopped' else 'partial'
+                    self.report.error = child.get('error','')
+                    self.report.safe_next = '积分核对或报告保存未完成；未开新局，可明确接续原循环重新核对。'
+                    return
+                points_goal.record(store, child)
+                current = points_goal.observation(store)
+                self._summary(store)
+                if points_goal.expired(store) or current['game_week'] != data['points_goal']['week']:
+                    self._finish_goal(store, 'expired', '积分观察已进入另一游戏周；原目标不自动迁移。')
+                    return
+                if current['period']['verified'] is not True:
+                    self.report.status = 'partial'
+                    self.report.safe_next = '积分已留档，但游戏周倒计时未核实；未开始新局，明确接续后重新核对。'
+                    return
+                if current['weekly_target_verified'] is True:
+                    self._finish_goal(store, 'complete', '本周积分已核实达标；积分奖励领取未核实。')
+                    return
+                if data['options']['runs'] and data['completed'] >= data['options']['runs']:
+                    self._finish_goal(store, 'exhausted', '已达到本循环局数上限，积分仍未满；没有追加新局。')
+                    return
+                self._checkpoint()
+                points_goal.require_start(store)
+                session = StandardSession(store.journal).data
+            guard = store.reserve()
             resume = session is not None and session['status'] == 'active'
             guard.require_access(session, resume)
             self._summary(store)
@@ -187,6 +245,12 @@ class CurrencyLoopRunner:
             store.archive()
             self._summary(store)
             self.emit(dict(type='currency_loop_progress', data=deepcopy(self.report.currency_wars)))
+
+    def _finish_goal(self, store, status, message):
+        store.data['status'] = status
+        store.save()
+        self.report.status = 'success' if status == 'complete' else 'partial'
+        self.report.safe_next = message
 
     def run(self):
         started = datetime.now().astimezone()

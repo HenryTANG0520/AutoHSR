@@ -126,13 +126,16 @@ class LoopStore:
         from .currency_wars_standard_policy import STRATEGIES
         from .currency_wars_equipment_mode import validate_fast_mode
         if (type(data) is not dict or data.get('schema') != 1 or not _hex(data.get('loop_id'))
-                or data.get('status') not in ('active', 'complete', 'cancelled')
+                or data.get('status') not in ('active', 'complete', 'cancelled', 'exhausted', 'expired')
                 or type(data.get('completed')) is not int or data['completed'] < 0
                 or type(data.get('options')) is not dict):
             raise AutomationError('循环记录结构无效。')
         options = data['options']
-        if set(options) != {'runs', 'strategy', 'remembrance_name', 'equipment_fast_mode'}:
+        required = {'runs', 'strategy', 'remembrance_name', 'equipment_fast_mode'}
+        if not required <= set(options) or set(options)-required-{'until_points'}:
             raise AutomationError('循环设置结构无效。')
+        if type(options.get('until_points', False)) is not bool:
+            raise AutomationError('周积分循环开关须为布尔值。')
         runs_value(options['runs']); validate_name(options['remembrance_name']); validate_fast_mode(options['equipment_fast_mode'])
         if (options['strategy'] not in STRATEGIES or options['runs'] and data['completed'] > options['runs']
                 or data.get('account_key') is not None and not _hex(data['account_key'], 64)
@@ -145,8 +148,18 @@ class LoopStore:
                     or active.get('match_id') is not None and not _hex(active['match_id'])
                     or data['status'] != 'active'):
                 raise AutomationError('循环当前局归属或编号无效。')
-        if data['status'] == 'complete' and (not options['runs'] or data['completed'] != options['runs']):
-            raise AutomationError('循环完成计数无效。')
+        from .currency_wars_points_goal import enabled, validate
+        validate(data)
+        if enabled(data):
+            goal = data['points_goal']
+            full = (goal['observation'] is not None and goal['observation']['weekly_target_verified'] is True
+                    and goal['observation']['game_week'] == goal['week'] and goal['checked_completed'] == data['completed'])
+            if (data['status'] == 'complete' and not full
+                    or data['status'] == 'exhausted' and (not options['runs'] or data['completed'] != options['runs'] or full)):
+                raise AutomationError('周积分目标终态与积分或局数不符。')
+        elif (data['status'] in ('exhausted', 'expired')
+              or data['status'] == 'complete' and (not options['runs'] or data['completed'] != options['runs'])):
+            raise AutomationError('循环完成计数或终态无效。')
 
     def save(self):
         self.validate(self.data)
@@ -160,6 +173,9 @@ class LoopStore:
         self.path = self.root/'currency-loops'/loop_id/'loop.json'
         self.data = dict(schema=1, loop_id=loop_id, options=deepcopy(options), status='active',
                          completed=0, last_receipt=None, account_key=None, active=None, development_only=True)
+        if options.get('until_points', False):
+            from .currency_wars_points_goal import begin
+            self.data['points_goal'] = begin()
         self.save()
         _write(self.pointer, dict(loop_id=loop_id))
 
@@ -170,6 +186,61 @@ class LoopStore:
                                        initial_run_dir=None, latest_run_dir=None)
             self.save()
         return LoopGuard(self)
+
+    def archive_unstarted(self):
+        """Preserve a never-submitted owned reservation before points navigation.
+
+        A pending/unknown start is deliberately ineligible. A rename crash is
+        recovered from the durable intent, without repeating any game input.
+        """
+        data = self.data
+        active = data['active']
+        if active is None:
+            if data.get('empty_archive_intent') is not None:
+                raise AutomationError('空局归档意图缺少当前归属。')
+            return
+        intent = data.get('empty_archive_intent')
+        guard = LoopGuard(self)
+        if intent is None:
+            session = StandardSession(self.journal).data
+            guard.require_access(session)
+            if session is None:
+                destination = self.path.parent/('unstarted-reservation-'+active['owner']['reservation_id']+'.json')
+                _immutable(destination, dict(schema=1, owner=active['owner'], match_id=None, input_started=False))
+                data['active'] = None
+                self.save()
+                return
+            if (session['status'] != 'start_pending' or session['actions']
+                    or session.get('completion_verified') is not False or session.get('start_verified') is True):
+                raise AutomationError('本局已有开局输入或结果，不能作为空记录归档。')
+            destination = self.path.parent/('unstarted-'+session['match_id']+'.session.json')
+            if destination.exists():
+                raise AutomationError('空局归档目标已存在且无提交意图，未覆盖。')
+            intent = dict(archive=str(destination), owner=deepcopy(active['owner']), match_id=session['match_id'],
+                          session_sha256=hashlib.sha256(self.journal.read_bytes()).hexdigest())
+            data['empty_archive_intent'] = intent
+            self.save()
+        destination = self._inside(intent['archive'])
+        if (set(intent) != {'archive','owner','match_id','session_sha256'} or intent['owner'] != active['owner']
+                or not _hex(intent['match_id']) or not _hex(intent['session_sha256'],64)
+                or destination != self.path.parent/('unstarted-'+intent['match_id']+'.session.json')):
+            raise AutomationError('空局归档的路径、身份或归属不符。')
+        if self.journal.exists() and destination.exists():
+            raise AutomationError('当前与空局归档同时存在，未删除记录。')
+        source = self.journal if self.journal.exists() else destination
+        if not source.is_file() or hashlib.sha256(source.read_bytes()).hexdigest() != intent['session_sha256']:
+            raise AutomationError('空局归档来源缺失或改变。')
+        session = StandardSession(source).data
+        guard.require_access(session)
+        if (session['match_id'] != intent['match_id'] or session['status'] != 'start_pending' or session['actions']
+                or session.get('completion_verified') is not False or session.get('start_verified') is True):
+            raise AutomationError('不能将已提交或未核实的开局作为空记录归档。')
+        if source == self.journal:
+            self.journal.rename(destination)
+        _immutable(destination.with_suffix('.receipt.json'), dict(schema=1, input_started=False, **intent))
+        data['active'] = None
+        data.pop('empty_archive_intent')
+        self.save()
 
     def check_tail(self):
         """Verify the last committed receipt against its unchanged archive."""
@@ -325,12 +396,14 @@ class LoopGuard:
     def __init__(self, store):
         self.store = store
         self.owner = deepcopy(store.data['active']['owner'])
+        self.week = store.data.get('points_goal', {}).get('week')
 
     def current(self):
         data = _read(self.store.path)
         self.store.validate(data)
         if (data['status'] != 'active' or data['active'] is None or data['active']['owner'] != self.owner
-                or data['options'] != self.store.data['options']):
+                or data['options'] != self.store.data['options']
+                or data.get('points_goal', {}).get('week') != self.week):
             raise AutomationError('循环归属或冻结设置改变，未继续输入。')
         self.store.data.clear()
         self.store.data.update(data)
@@ -390,6 +463,13 @@ class LoopGuard:
             raise AutomationError('当前账号与循环记录不同，未开始或继续对局。')
         if data['active']['match_id'] != session['match_id'] or session.get('loop_owner') != self.owner:
             raise AutomationError('本局归属尚未写入，未发送输入。')
+        if session['actions'] and session['actions'][-1]['action'] == 'start_standard_a8_40':
+            self.require_start()
         if data['account_key'] is None:
             data['account_key'] = current
             self.store.save()
+
+    def require_start(self):
+        from .currency_wars_points_goal import require_start
+        self.current()
+        require_start(self.store)

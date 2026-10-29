@@ -152,6 +152,25 @@ def finalize(report):
     _write(path.parent/'latest.json',dict(schema=1,receipt=str(path),sha256=_hash(path)))
 
 
+def read_receipt(root,path):
+    """Validate an immutable observation and its original saved report."""
+    root=Path(root).resolve();path=_inside(root,path)
+    receipt=_read(path)
+    if (type(receipt) is not dict or set(receipt)!={'schema','observation','report','report_sha256'}
+            or type(receipt['schema']) is not int or receipt['schema']!=1):
+        raise AutomationError('积分回执结构无效。')
+    data=receipt['observation']
+    if validate_observation(root,data)!=path:
+        raise AutomationError('积分归属或原始来源不符。')
+    report_path=_inside(root,receipt['report']);saved=_read(report_path)
+    if (report_path!=Path(data['run_dir']).resolve()/'report.json'
+            or _hash(report_path)!=receipt['report_sha256'] or saved.get('status')!='success'
+            or saved.get('report_saved') is not True or saved.get('operation')!=OPERATION
+            or saved.get('currency_wars')!=data or Path(saved['run_dir']).resolve()!=report_path.parent):
+        raise AutomationError('积分原报告缺失或改变。')
+    return receipt
+
+
 def latest(root,account,week):
     """Historical evidence only; callers must obtain current account identity."""
     root=Path(root).resolve()
@@ -165,16 +184,8 @@ def latest(root,account,week):
     path=_inside(root,pointer['receipt'])
     if path.parent!=directory or _hash(path)!=pointer['sha256']:
         raise AutomationError('积分入口与回执不一致。')
-    receipt=_read(path)
-    if (type(receipt) is not dict or set(receipt)!={'schema','observation','report','report_sha256'}
-            or type(receipt['schema']) is not int or receipt['schema']!=1):
-        raise AutomationError('积分回执结构无效。')
+    receipt=read_receipt(root,path)
     data=receipt['observation']
-    if (validate_observation(root,data)!=path or data['account_key']!=account or data['game_week']!=week):
+    if data['account_key']!=account or data['game_week']!=week:
         raise AutomationError('积分归属或原始来源不符。')
-    report_path=_inside(root,receipt['report']);saved=_read(report_path)
-    if (_hash(report_path)!=receipt['report_sha256'] or saved.get('status')!='success'
-            or saved.get('report_saved') is not True or saved.get('operation')!=OPERATION
-            or saved.get('currency_wars')!=data or Path(saved['run_dir']).resolve()!=report_path.parent):
-        raise AutomationError('积分原报告缺失或改变。')
     return receipt

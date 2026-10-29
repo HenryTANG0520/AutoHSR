@@ -42,15 +42,15 @@
   "adaptations": [
     {
       "path": "autohsr/currency_wars_points.py",
-      "native_files": ["autohsr/currency_wars_points_run.py"],
+      "native_files": ["autohsr/currency_wars_points_run.py", "autohsr/currency_wars_points_goal.py"],
       "reference_functions": ["check_currency_wars_score"],
-      "kind": "native independent observed-score operation; fixed 18000 cap with one/two/three-box field grammar, current account and Monday-04:00 game-week evidence, visible countdown consistency, immutable observations and source/report hashes; excludes UID and inventory from text proofs, preserves native navigation and report lifecycle, does not claim rewards or start matches; score-target loops and complete weekly workflow remain pending"
+      "kind": "native independent observed-score operation and optional score-target loop gate; fixed 18000 cap, current account and Monday-04:00 game-week evidence, visible countdown consistency, immutable observations and source/report hashes; loop freezes its week and account, retains a new-game ceiling and explicit resume, checks the exact recent receipt before a new start, and preserves never-submitted empty sessions; excludes UID and inventory from text proofs; rewards and weekly-plan integration remain pending"
     },
     {
       "path": "autohsr/currency_wars_loop.py",
       "reference_source": "main.py",
       "reference_functions": ["run_sub_task", "_run_loop_task_with_telemetry", "currencywars"],
-      "kind": "sequential composition of AutoHSR native standard Runners, finite or until stopped; frozen options and explicit remaining-goal resume, local account and match ownership, verified terminal settlement, original reports and recoverable hash-bound archives; native failure or unknown stops, while weekly goals, rewards, other modes and live acceptance remain pending"
+      "kind": "sequential composition of AutoHSR native standard Runners, finite or until stopped, with an optional weekly score goal bounded by the requested new-game count; frozen options and game week, explicit remaining-goal resume, local account and match ownership, verified terminal settlement, original reports and recoverable hash-bound archives; native failure or unknown stops; rewards, weekly-plan integration, other modes and live acceptance remain pending"
     },
     {
       "path": "autohsr/currency_wars_equipment_mode.py",

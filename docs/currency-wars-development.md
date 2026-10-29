@@ -1,5 +1,19 @@
 # 货币战争重启开发记录
 
+## 2026-10-29：本周积分循环、局数上限和空记录归档
+
+将现有独立积分Runner接入[循环](../autohsr/currency_wars_loop.py)，新增默认关闭的`Settings.currency_until_points`及仅循环可用的双向`--currency-until-points`。新局前与每局完整留档后查当前积分；满分且本期倒计时一致时可零局或提前结束。正局数仍是该目标的新局上限，0为无局数上限；达到上限但未满时记exhausted／partial，不扩大预算。原按局数／直到停止循环保留，旧记录缺该字段时按关闭接续，不随保存设置中途改目标。CLI覆盖不保存配置，GUI交现有界面工作。
+
+[积分目标门禁](../autohsr/currency_wars_points_goal.py)在创建时冻结周一04:00游戏周，首次有效积分观察绑定账号。子报告必须已成功保存并与精确观察回执、原报告、白名单OCR及原图哈希一致；不使用可被其他观察替换的latest作为启动依据。每次开局前要求同账号／同周、对应当前完成数、120秒内且未来偏差不超过5秒的未满分观察，倒计时必须核实；写开局意图前及正式Context输入前各检查一次，原生当前画面、UID、代次、难度和资源门禁保持。
+
+明确接续先完成已提交的本循环原局，不为查积分离开对局；跨周时仍可完成该局，归档后旧目标expired／partial，不迁移到新周。仅同归属、从未提交任何开局动作的start_pending空记录可经“写意图→原件重命名→不可覆盖回执”归档并释放预约，再重新核对积分；空预约也保留记录，均不计完成数。pending／unknown开局不适用，归档中断只读恢复。积分、周期、账号、证据或写盘未知时保留active并停止新局，原失败记录不改。
+
+新增[27项专项检查](../autohsr/tests/test_currency_wars_points_goal.py)。积分观察通过真实Runner、存储和回执链；结算通过真实Runner分派、Context及原生四步输入，窗口／OCR／起始最终节点为模拟，不替代完整整局。覆盖零局达标、两局提前完成、0上限、上限耗尽及新目标保留旧目录、原设置接续、旧循环兼容、跨周旧局、空记录崩溃恢复、未知输入阻止、精确原证据与latest分离、过期／未来观察、开局前双重核验、保存失败、停止与CLI范围。初版21项通过`runs/currency-points-goal-first.log`；补充后96项新旧相关回归通过`runs/currency-points-goal-related.log`（29.959秒）。
+
+本次未启动、检测或操作真实游戏，未新增截图、消耗资源或构建EXE。积分达标不等于奖励已领取，`rewards_verified=false`；周常计划、正常领奖、满额清理、其他模式及真实积分循环仍未完成，历史独立通关0/10不变。
+
+最终**1461项全量单元测试通过**（641.994秒），见`runs/currency-points-goal-all.log`；84项假后端GUI通过`runs/currency-points-goal-gui.log`。四份固定上游blob、四个参考方法、GPL许可、18幅原素材、三份旧图／清单及22条白名单原文核对不变；七份文档168条相对链接和真实CLI双向帮助通过`runs/currency-points-goal-source-check.json`。`git diff --check`通过，配置、原图、会话、报告、日志及检查脚本保持忽略。
+
 ## 2026-10-29：原生积分核对、游戏周一致性和独立观察回执
 
 参考固定March7thAssistant的`check_currency_wars_score`，新增[积分字段解析](../autohsr/currency_wars_points.py)和[独立核对流程](../autohsr/currency_wars_points_run.py)，CLI为`--currency-wars-points`。复用准备与导航，到主页即停；已识别难度／模式／积分面板只返回，不开始对局或领取积分奖励。原标准、日常及差分入口不改为积分模式，配置不自动保存。接口、字段和边界见[积分说明](currency-wars-weekly-notes.md)。

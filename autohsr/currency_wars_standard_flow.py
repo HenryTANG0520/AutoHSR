@@ -525,6 +525,8 @@ def run_standard(c):
             break
         if choice.intent == 'start_standard_a8_40' and (store.data['status'] != 'start_pending' or store.data['actions']):
             raise AutomationError('已有标准开局提交，未开始第二个对局。')
+        if choice.intent == 'start_standard_a8_40' and getattr(c.runner, 'currency_loop_guard', None) is not None:
+            c.runner.currency_loop_guard.require_start()
         if choice.intent == 'open_standard_shop':
             from .currency_wars_collector import collected_snapshot
             from .currency_wars_standard_trading import bench_signatures
