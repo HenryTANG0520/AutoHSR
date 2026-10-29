@@ -137,7 +137,7 @@ def main():
                     check(prefix+"display_changes_keep_the_task_result", ui.table.action_label("battle") == "查看结果")
                     ui.challenge_count.set("1")
                     root.update()
-                    check(prefix+"new_plan_restores_its_setup_action", ui.table.action_label("battle") == "副本设置"
+                    check(prefix+"new_plan_restores_its_setup_action", ui.table.action_label("battle") == "更换副本"
                           and ui.table.item("battle","values")[1] == "待执行" and not ui.table.item("battle","has_result")
                           and ui.summary.get() == summary)
                     check(prefix+"config_and_raw_reports_are_unchanged", config.read_bytes() == original

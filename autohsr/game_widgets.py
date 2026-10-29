@@ -214,8 +214,7 @@ class Guide(Surface):
         self.selected_page="home"
         self.hovered_page=None
         definitions=(("home","每日实训","tab-daily.png"),("tasks","生存索引","tab-survival.png"),
-                     ("universe","差分宇宙 / 货币战争","tab-universe.png"),("logs","记录","tab-records.png"),
-                     ("settings","设置","tab-settings.png"))
+                     ("universe","差分宇宙 / 货币战争","tab-universe.png"),("logs","记录","tab-records.png"))
         for col,(key,label,filename) in enumerate(definitions):
             for selected in (False,True):
                 for emphasized in (False,True):
@@ -239,6 +238,35 @@ class Guide(Surface):
                 button.bind(event,lambda _event:self._refresh_tabs(),add="+")
             if key not in ("logs", "settings"):
                 Tooltip(button,"旷宇纷争" if key=="universe" else label)
+        # Application settings are a utility at the opposite end of the book,
+        # separate from its game-mode tabs. Keep a visible name beside the gear.
+        style = ttk.Style(self)
+        style.layout("Settings.Entry.TButton", [("Button.padding", {"sticky":"nsew", "children":[("Button.label", {"sticky":"nsew"})]})])
+        style.configure("Settings.Entry.TButton", background=t.RAIL, foreground=t.LIGHT,
+                        font=t.native_font(self,14), padding=(round(8*scale),0), anchor="center")
+        style.map("Settings.Entry.TButton", foreground=[("active",t.GOLD),("focus",t.GOLD),("!disabled",t.LIGHT)],
+                  background=[("active",t.RAIL),("!disabled",t.RAIL)])
+        for emphasized in (False, True):
+            p=t.Painter(round(34*scale),round(34*scale),scale,t.RAIL)
+            color=t.GOLD if emphasized else t.LIGHT
+            points=[]
+            for step in range(32):
+                angle=step*math.tau/32
+                radius=12 if step%4 in (1,2) else 9
+                points.extend((15+radius*math.cos(angle),17+radius*math.sin(angle)))
+            p.poly(points,color)
+            p.ellipse((10,12,20,22),t.RAIL)
+            self.photos["settings",False,emphasized]=ImageTk.PhotoImage(p.finish(),master=self)
+        def settings():
+            ui._show_page("settings")
+            ui.settings_return_focus = self.buttons["settings"]
+        button=ttk.Button(self,text="设置",image=self.photos["settings",False,False],compound="left",
+                          style="Settings.Entry.TButton",command=settings)
+        self.buttons["settings"]=button
+        button.bind("<Enter>",lambda _:self._hover("settings"),add="+")
+        button.bind("<Leave>",lambda _:self._hover(None),add="+")
+        for event in ("<FocusIn>","<FocusOut>"):
+            button.bind(event,lambda _:self._refresh_tabs(),add="+")
         self.bind("<Configure>",self._position,add="+")
 
     def select(self,page):
@@ -252,6 +280,9 @@ class Guide(Surface):
     def _refresh_tabs(self):
         focus=self.focus_get()
         for key,button in self.buttons.items():
+            if key == "settings":
+                button.configure(image=self.photos[key,False,key==self.hovered_page or button==focus])
+                continue
             selected=key==self.selected_page
             emphasized=key==self.hovered_page or button==focus
             button.configure(style="Selected.Nav.TButton" if selected else "Nav.TButton",
@@ -261,6 +292,7 @@ class Guide(Surface):
         d=lambda n:round(n*self.scale)
         w,h=self.winfo_width()-self.art_left-self.art_right,self.winfo_height()
         self.tabs.place(x=self.art_left+d(110),y=d(24))
+        self.buttons["settings"].place(x=self.art_left+w-d(330),y=d(24),width=d(122),height=d(52))
         self.content.place(x=self.art_left+d(90),y=d(90),width=max(1,w-d(173)),height=max(1,h-d(130)))
 
     def paint(self,p):
@@ -361,8 +393,8 @@ class TrainingMeter(Surface):
             p.text((x,75),str(i*100),18,t.TEXT,"mt")
 
 
-TITLES={"assignments":"领取持续委托奖励","battle":"完成日常副本挑战","daily":"领取每日实训奖励",
-        "mail":"领取现有邮件附件","battlepass":"领取无名勋礼奖励"}
+TITLES={"assignments":"持续委托","battle":"日常副本","daily":"每日实训",
+        "mail":"邮件附件","battlepass":"无名勋礼"}
 
 
 class TaskBoard(Surface):
@@ -374,7 +406,7 @@ class TaskBoard(Surface):
         self.offset,self.selected,self.hover=0,None,None
         self.hitboxes={}
         self.visible_count=4
-        self.watch(ui.challenge_count,ui.battle_cost,*ui.tasks.values())
+        self.watch(ui.challenge_count,ui.battle_cost,ui.target_name,ui.target_location,*ui.tasks.values())
         self.bind("<Button-1>",self._click)
         self.bind("<Motion>",lambda e:self._set_hover(self._target(e)))
         self.bind("<Leave>",lambda _:self._set_hover(None))
@@ -417,6 +449,8 @@ class TaskBoard(Surface):
         self.selected=self.selected or list(self.names)[self.offset]
         if self.records[self.selected]["has_result"]:
             self.ui._show_task_detail()
+        elif self.can_join(self.selected):
+            self.ui.tasks[self.selected].set(True)
         else:
             self.ui._show_task_setup(self.selected)
         self.redraw()
@@ -425,8 +459,18 @@ class TaskBoard(Surface):
     def action_label(self, key):
         if self.records[key]["has_result"]:
             return "查看进度" if self.records[key]["values"][1] == "进行中" else "查看结果"
-        return {"assignments":"委托设置", "battle":"副本设置", "daily":"实训设置",
-                "mail":"邮件设置", "battlepass":"勋礼设置"}[key]
+        if self.ui.busy:
+            return "查看安排"
+        if self.can_join(key):
+            return "加入计划"
+        if key == "battle":
+            return "更换副本" if self.ui.tasks[key].get() else "查看限制"
+        return "调整任务"
+
+    def can_join(self, key):
+        return (not self.ui.busy and not self.records[key]["has_result"]
+                and not self.ui.tasks[key].get()
+                and (key != "battle" or self.ui.settings.allow_stamina_spend))
 
     def resource_metrics(self, key):
         if self.records[key]["values"][1] in ("未加入", "跳过", "未执行"):
@@ -460,7 +504,13 @@ class TaskBoard(Surface):
             self.redraw()
         elif key:
             self.selected=key
-            self.activate()
+            x1, _, x2, _ = self.hitboxes[key]
+            if x2-x1 < self.card_width-1:
+                # A peek at the next card does not expose its action label yet.
+                self._reveal(list(self.names).index(key))
+                self.redraw()
+            else:
+                self.activate()
 
     def paint(self,p):
         w,h=p.width,p.height
@@ -470,6 +520,7 @@ class TaskBoard(Surface):
         # Reference card: 290 x 480, a 372px paper section and 45px gaps.
         # Keep that aspect when space changes, and expose the next card's edge.
         width=min(w/(self.visible_count*335/290+40/290), (h-32)*290/480)
+        self.card_width=width
         unit=width/290
         q=lambda value:value*unit
         gap=q(45)
@@ -495,9 +546,13 @@ class TaskBoard(Surface):
                 for xx in (x+q(14),right-q(14)):
                     p.box((xx,yy,xx+1,yy+1),"#d4bc8b")
             _,state,_=self.records[key]["values"]
-            p.box((x+1,q(16),x+q(162),q(47)),"#e9dbbd",0,"#d7bd8b")
-            p.text((x+q(24),q(20)),state,q(23),"#6b624d")
-            p.text((x+q(24),q(80)),p.wrap(TITLES[key],width-q(48),q(25),3),q(25),"#111111")
+            excluded = state == "未加入"
+            p.box((x+1,q(16),x+q(162),q(47)),"#dedede" if excluded else "#e9dbbd",0,"#bdbdbd" if excluded else "#d7bd8b")
+            p.text((x+q(24),q(20)),state,q(23),"#747474" if excluded else "#6b624d")
+            p.text((x+q(24),q(80)),TITLES[key],q(28),"#717171" if excluded else "#111111")
+            if key == "battle" and not self.records[key]["has_result"]:
+                p.text((x+q(24),q(133)),p.wrap(self.ui.target_name.get() or "名称待填写",width-q(48),q(22),2),q(22),"#494442")
+                p.text((x+q(24),q(195)),p.wrap(self.ui.target_location.get() or "地点待填写",width-q(48),q(18),2),q(18),t.MUTED)
             metrics = self.resource_metrics(key)
             if metrics is not None:
                 value, sub = metrics

@@ -1,5 +1,19 @@
 # AutoHSR 0.1 验证记录
 
+## 2026-10-29：按任务卡与设置入口的用户反馈调整交互
+
+用户指出首页的任务卡和设置入口仍需要停下来辨认。本次将“设置”从左侧玩法页签移至指南右侧，用齿轮与文字共同标识，保留原指南印章；各玩法及记录页位置一致，返回保留原页面和入口。任务卡标题简化为任务名，副本卡直接显示当前名称、地点及预计费用；未加入的标签和标题改用灰色。按钮按动作显示“加入计划／调整任务／更换副本／查看安排／查看进度／查看结果”。加入只修改当前草稿，保存仍需显式操作；运行中不能加入，没有开拓力授权时只查看限制。边缘仅部分可见的卡片首次点击先展开，不在动作名称不可见时修改计划。
+
+详情样式同时对照已保存的4.6提示框`autohsr/tests/fixtures/du_runtime/last_area_confirm.png`：居中标题、圆点分隔线、浅色正文、深色底栏、单个右上圆角和关闭胶囊，素材说明见`assets/ATTRIBUTION.md`。标题不在正文重复，短提示居中，长记录完整可选、复制和滚动；原错误、费用和JSON内容不改。无系统标题栏，Esc、Alt+F4和关闭按钮通过同一退出路径恢复入口；主窗口最小化时同步隐藏。没有模态抓取，暂停／停止保持可操作。
+
+- **121项入口专项、128项参考几何与页签检查通过**，分别为`runs/entry-clarity-final-verified-entry_clarity_smoke.log`、`entry-clarity-checks-reference_ui_smoke.log`。覆盖100%、125%、150%、200%的普通／最小窗口、五个页面的一击设置与返回、加入草稿、运行锁定、资源授权、半露卡片先展开、原始结果与配置不变。参考使用既有无账号全宽裁图`runs/reference-daily-inspection.png`，SHA-256为`ed431d67e4af97330cde6864fb23c530b58f0e3b2f576a3785d548e0d6f9c6f3`。
+- **101项详情检查通过**，`runs/game-dialog-reference-final.log`与`runs/game-dialog-ui/`。四种缩放下核对参考纸色、底栏分界和按钮尺寸，以及长记录、短提示、最小化／还原、Esc／Alt+F4、窗口边缘和模拟620×360工作区。初期确实发现无边框窗口返回焦点、按钮图片纵向重复及设置按钮继承白色底的问题，已修复；原失败及中间截图日志保留。采样检查按明暗分界定位抗锯齿边缘，尺寸允许整数像素舍入。
+- **169项任务结果、192项设置、60项首页反馈、24项计划、84项GUI检查通过**。日志分别为`entry-clarity-release-task_card_state_smoke.log`、`entry-clarity-verified-settings_ui_smoke.log`、`entry-clarity-checks-home_feedback_smoke.log`、`entry-clarity-final-verified-plan_ui_smoke.log`、`entry-clarity-final-verified-gui_smoke.log`。旧测试中“未加入卡片直接打开设置”、设置与文字居中等预期已同步新交互；计划测试改经真实关闭协议退出详情，不直接销毁窗口绕过返回流程。返回入口检查保留应用内焦点目标，不把其他桌面应用短暂取得前台当成丢失返回位置。中间失败和漏传参考参数的记录均保留，未重跑后端全量测试。
+
+原生源码核验使用明确标注“离线入口核验”的假后端窗口与独立临时配置，记录`runs/entry-clarity-native-verification.json`：详情中心误差0，一次开启／关闭后返回原任务卡，退出码0、配置字节未变。截图为`entry-clarity-native-open-screenshot-0.png`等。截图工具在关闭后曾返回其他前台窗口像素，已停止依赖旧画面并重新绑定核验窗口；原生观察只确认记录中的一次返回，不将后续缓存截图当作Enter再次开启或Alt+F4成功的证据，这两项仍以专项事件检查为准。没有启动、检测或操作游戏。
+
+旧正式版首页截图保存在`runs/entry-clarity-before-home.png`，来源提交和哈希见`entry-clarity-baseline.json`；新版普通／最小窗口见`runs/entry-clarity-ui/`。这些检查验证入口、反馈和局部参考样式，不能证明真实玩家的学习／注意力成本接近零，也不证明整屏逐像素一致。日常周常组合实机、货币战争周常与积分奖励的原有边界不变。
+
 ## 2026-10-29：详情在当前窗口中央打开并返回原入口
 
 从`3cc4e2c`提取原`_show_summary`方法，在相同临时配置和窗口位置离线重放：主窗口客户区`[611,445,1651,1201]`，详情客户区`[11,45,1021,510]`，中心相差`[-915,-746]`像素。新实现对应`[926,790,1021,510]`，中心误差为0；坐标、版本及截图见`runs/summary-placement-before-replay.json`与`summary-placement-after.json`及同名PNG。初次探针重复运行时复用了文件名，旧`summary-placement-baseline.json`和`summary-placement-before.png`已被修后输出覆盖，不能作为修前证据；上述基线是从原提交重新取得的方法重放的结果。

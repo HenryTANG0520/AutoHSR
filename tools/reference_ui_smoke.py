@@ -94,11 +94,16 @@ def main():
                 check(f"{scale}_next_card_is_visible", 0 < x2-x1 < .75*(first[2]-first[0]))
                 root.focus_force()
                 root.update()
+                before = ui.tasks[partial].get()
                 board.event_generate("<Button-1>", x=round((x1+x2)/2*ui.ui_scale), y=round(90*ui.ui_scale))
                 root.update()
-                check(f"{scale}_partial_card_opens_its_settings", ui.active_page == "settings"
-                      and ui.settings_tabs.select() == str(ui.settings_sections["daily"])
-                      and root.focus_get() == ui.daily_task_controls[partial])
+                x1, y1, x2, y2 = board.hitboxes[partial]
+                check(f"{scale}_partial_card_reveals_its_action_before_editing", ui.active_page == "home"
+                      and ui.tasks[partial].get() == before and x2-x1 >= board.card_width-1)
+                board.event_generate("<Button-1>", x=round((x1+x2)/2*ui.ui_scale), y=round((y2-30)*ui.ui_scale))
+                root.update()
+                check(f"{scale}_revealed_card_performs_its_named_action", ui.tasks[partial].get() and
+                      (ui.active_page == "settings" if before else ui.active_page == "home"))
                 ui._show_page("home")
                 check(f"{scale}_summary_hidden_when_empty", not ui.summary_label.winfo_ismapped())
                 ui.result_alert.set("示例：待核对消耗")
@@ -124,7 +129,8 @@ def main():
                     ui._show_page("home")
                     root.update()
                     check(f"{scale}_{key}_name_visible_without_hover", button.winfo_ismapped() and
-                          button.cget("text") == caption and str(button.cget("compound")) == "center")
+                          button.cget("text") == caption
+                          and str(button.cget("compound")) == ("left" if key == "settings" else "center"))
                     button.event_generate("<Enter>")
                     root.update()
                     check(f"{scale}_{key}_has_no_duplicate_name_popup", not any(isinstance(child, tk.Toplevel)

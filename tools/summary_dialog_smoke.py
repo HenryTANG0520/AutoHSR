@@ -8,12 +8,12 @@ from tkinter import ttk
 import types
 from unittest.mock import patch
 
-from PIL import ImageGrab
-from ux_smoke import ROOT, Settings, Window, module
+from PIL import Image, ImageGrab, ImageTk
+from ux_smoke import ROOT, Settings, Window, module, pump
 from autohsr import desktop_dialogs
 from autohsr.desktop_modes import show_mode_view
 
-OUT = ROOT/"runs/summary-dialog-ui"
+OUT = ROOT/"runs/game-dialog-ui"
 
 
 def content_widget(dialog):
@@ -89,7 +89,7 @@ def main():
                 check(prefix+"does_not_grab_pause_or_stop_controls", root.grab_current() is None and str(dialog.transient()) == str(root))
                 text = content_widget(dialog)
                 check(prefix+"long_text_is_complete_and_readonly", text.cget("state") == "disabled"
-                      and text.get("1.0","end-1c") == "日常副本挑战 · 未执行\n"+detail)
+                      and text.get("1.0","end-1c") == "未执行\n"+detail)
                 text.yview_moveto(1)
                 text.tag_add("sel","end-8c","end-1c")
                 root.update()
@@ -126,7 +126,43 @@ def main():
                       and dialog.return_focus is ui.summary_label and dialog.title() == "核对结果")
                 root.tk.call(dialog.protocol("WM_DELETE_WINDOW"))
                 root.update()
-                check(prefix+"titlebar_close_restores_entry_focus", root.focus_get() is ui.summary_label and not dialog.winfo_exists())
+                check(prefix+"window_close_protocol_restores_entry_focus", root.focus_get() is ui.summary_label and not dialog.winfo_exists())
+
+                notice = "10 开拓力待核对。\n窗口未能核实。"
+                ui._show_summary(notice,title="提示",return_focus=ui.summary_label)
+                root.update()
+                dialog = ui.summary_dialog
+                text = content_widget(dialog)
+                check(prefix+"short_notice_uses_a_game_panel_without_os_chrome", bool(dialog.overrideredirect())
+                      and abs(dialog.winfo_width()/scale-774.4) <= 1
+                      and abs(dialog.winfo_height()/scale-294.4) <= 1)
+                check(prefix+"short_notice_has_one_heading_and_no_empty_scroll_rail", text.get("1.0","end-1c") == notice
+                      and text.tag_cget("notice","justify") == "center" and not text.master.children["!scrollbar"].winfo_ismapped())
+                pixels = ImageTk.getimage(dialog.detail_surface._photo).convert("RGB")
+                reference = Image.open(ROOT/"autohsr/tests/fixtures/du_runtime/last_area_confirm.png").convert("RGB")
+                # Independent 4.6 source coordinates: plate y360..720, footer y624.
+                paper = pixels.getpixel((round(70*scale),round(190*scale)))
+                original_paper = reference.getpixel((570,598))
+                check(prefix+"paper_matches_the_saved_reference_sample", max(abs(a-b) for a,b in zip(paper,original_paper)) < 12)
+                edge = next(y for y in range(round(100*scale),pixels.height)
+                            if max(pixels.getpixel((round(20*scale),y))) < 100)
+                check(prefix+"footer_boundary_matches_the_reference_proportion", abs(edge-(624-360)*.8*scale) <= 2)
+                button = close_button(dialog)
+                check(prefix+"close_pill_keeps_the_reference_size", abs(button.winfo_width()-360*.8*scale) <= 1.01
+                      and abs(button.winfo_height()-58*.8*scale) <= 1.01)
+                if scale == 1.25:
+                    ImageGrab.grab(window=dialog.winfo_id()).save(OUT/"short-detail.png")
+                root.iconify()
+                pump(root,lambda: not dialog.winfo_ismapped())
+                check(prefix+"minimizing_owner_hides_the_detail", not dialog.winfo_ismapped())
+                root.deiconify()
+                pump(root,lambda: dialog.winfo_ismapped())
+                check(prefix+"restoring_owner_restores_the_same_detail", dialog.winfo_ismapped() and text.get("1.0","end-1c") == notice)
+                text.focus_force()
+                text.event_generate("<Alt-F4>")
+                root.update()
+                check(prefix+"alt_f4_closes_only_detail_and_returns_to_entry", root.winfo_exists()
+                      and not dialog.winfo_exists() and root.focus_get() is ui.summary_label)
 
                 ui.table.selected = "battle"
                 ui.table.activate()

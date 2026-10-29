@@ -653,6 +653,7 @@ class AutoHSRWindow:
         if not running:
             self.paused = self.stopping = False
         self._refresh_controls()
+        self.table.redraw()
         self._refresh_activity()
 
     def _check(self) -> None:
@@ -1065,13 +1066,14 @@ class AutoHSRWindow:
         selected = self.table.selection()
         if selected:
             label, status, detail = self.table.item(selected[0], "values")
-            self._show_summary(f"{label} · {status}\n{detail or '暂无详细说明'}", title=label, return_focus=self.table)
+            self._show_summary(f"{status}\n{detail}".rstrip(), title=label, return_focus=self.table)
 
     def _show_summary(self, content=None, *, title="运行详情", return_focus=None) -> None:
         content = self.summary.get() if content is None else content
         if not content:
             return
         previous = getattr(self, "summary_dialog", None)
+        had_focus = theme.focus_widget(self.root) is not None
         origin = return_focus or theme.focus_widget(self.root)
         if previous is not None and previous.winfo_exists():
             if origin is not None and origin.winfo_toplevel() is previous:
@@ -1082,25 +1084,25 @@ class AutoHSRWindow:
         dialog.return_focus = origin
         dialog.title(title)
         dialog.transient(self.root)
-        d = lambda value: round(value*self.ui_scale)
-        dialog.configure(background=theme.CARD)
-        dialog.columnconfigure(0, weight=1)
-        dialog.rowconfigure(0, weight=1)
         text = self._text(dialog)
-        text.grid(row=0, column=0, sticky="nsew", padx=d(12), pady=d(12))
         self._replace_text(text, content)
         def dismiss(_=None):
+            focused = theme.focus_widget(self.root)
+            owned_focus = focused is not None and focused.winfo_toplevel() is dialog
             dialog.destroy()
             if not self.closing and origin is not None and origin.winfo_exists() and origin.winfo_ismapped():
-                origin.focus_set()
+                # A borderless owned window has no OS titlebar to reactivate its
+                # owner. Only transfer foreground focus when it was ours.
+                origin.focus_force() if owned_focus else origin.focus_set()
             return "break"
-        ttk.Button(dialog, text="关闭", command=dismiss).grid(row=1, column=0, pady=(0, d(12)))
+        from .desktop_dialogs import DetailClose, arrange_details
+        close = DetailClose(dialog, self.ui_scale, dismiss)
         dialog.protocol("WM_DELETE_WINDOW", dismiss)
         dialog.bind("<Escape>", dismiss)
-        from .desktop_dialogs import place_dialog
-        place_dialog(dialog, self.root, (d(680), d(340)), (d(400), d(200)), padding=d(12))
+        dialog.bind("<Alt-F4>", dismiss)
+        arrange_details(dialog, self.root, text, close, title, content, self.ui_scale)
         dialog.deiconify()
-        text.focus_set()
+        text.focus_force() if had_focus else text.focus_set()
 
     def _restore(self) -> None:
         if not self.closing:
