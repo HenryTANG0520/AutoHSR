@@ -70,8 +70,8 @@ class ResponsiveLayout:
             return False
         self.resizing = True
         try:
-            # Let the existing controls occupy the new client before staging.
-            self.root.update_idletasks()
+            # Freeze the previous surfaces before draining idle painting, so
+            # they do not redraw at a size we are already replacing.
             self._rebuild(scale)
         finally:
             self.resizing = False

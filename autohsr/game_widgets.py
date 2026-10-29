@@ -10,10 +10,11 @@ from . import theme as t
 
 
 class Surface(tk.Canvas):
-    def __init__(self,parent,scale,*,scene=False,**kwargs):
+    def __init__(self,parent,scale,*,scene=False,paint_height=None,**kwargs):
         kwargs.setdefault("bg",t.PANEL)
         super().__init__(parent,highlightthickness=0,borderwidth=0,**kwargs)
         self.scale=scale
+        self.paint_height=paint_height
         self._paint_job=None
         self.scene=scene
         self._scene_size=None
@@ -51,6 +52,10 @@ class Surface(tk.Canvas):
         w,h=self.winfo_width(),self.winfo_height()
         if w<2 or h<2 or not self.winfo_ismapped():
             return
+        if self.paint_height is not None:
+            # The canvas supplies the remaining solid background; only the
+            # decorated area needs an antialiased bitmap.
+            h=min(h,round(self.paint_height*self.scale))
         p=t.Painter(w,h,self.scale,self.cget("bg"))
         if self.scene:
             root=self._scene_root

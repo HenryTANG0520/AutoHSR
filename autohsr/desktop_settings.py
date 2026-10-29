@@ -23,7 +23,8 @@ class SettingsShell(Surface):
     """A separate settings surface, with the game's top navigation and return."""
 
     def __init__(self, parent, scale, ui):
-        super().__init__(parent, scale, bg=t.BG)
+        # The rings end at 126; leave room for the antialiasing filter below.
+        super().__init__(parent, scale, bg=t.BG, paint_height=132)
         self.ui, self.section = ui, "game"
         self.watch(ui.stamina, ui.elapsed)
         d = lambda n: round(n*scale)

@@ -12,6 +12,7 @@ import sys
 
 from ux_smoke import ROOT, Settings, Window, module
 from autohsr.desktop_scale import _widgets
+from autohsr.game_widgets import Surface
 from PIL import ImageGrab
 
 
@@ -58,6 +59,14 @@ def main():
                         root.update()
                     prefix = f"{dpi}_{view}_{name}_"
                     old_shell, old_primary = ui.shell, ui.start_button
+                    old_paints = []
+                    for _, widget in _widgets(old_shell):
+                        if isinstance(widget, Surface):
+                            present = widget._present
+                            def track_present(image, widget=widget, present=present):
+                                old_paints.append(type(widget).__name__)
+                                return present(image)
+                            widget._present = track_present
                     old_metrics = old_primary.winfo_reqwidth(), old_primary.winfo_reqheight(), font_width(old_primary)
                     captions = [w for _, w in _widgets(old_shell) if w.winfo_class() == "TLabel"
                                 and w.winfo_ismapped()]
@@ -94,6 +103,7 @@ def main():
                     root.update()
                     timings.append(dict(dpi=dpi, action=name, elapsed_ms=round((time.perf_counter()-started)*1000, 2)))
                     check(prefix+"automatic_resize_completed", bool(replaced) and not errors)
+                    check(prefix+"previous_artwork_is_not_repainted", not old_paints)
                     check(prefix+"previous_controls_released", not old_shell.winfo_exists()
                           and root.winfo_children() == [ui.shell])
                     check(prefix+"native_button_entry_and_log_text_scale", all(abs(a-b) < 2 for a, b in zip(normal_text, text_sizes())))

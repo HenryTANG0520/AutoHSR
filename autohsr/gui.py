@@ -219,6 +219,10 @@ class AutoHSRWindow:
                 page.grid() if key == name else page.grid_remove()
         for frame in (self.header, self.guide):
             frame.grid_remove() if name == "settings" else frame.grid()
+        if name == "settings":
+            self.backdrop.place_forget()
+        else:
+            self.backdrop.place(x=0, y=0, relwidth=1, relheight=1)
         self.position_guide()
         self.guide.select(name)
         if name in ("differential_universe", "currency_wars"):
