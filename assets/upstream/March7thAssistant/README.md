@@ -1,5 +1,7 @@
 # March7thAssistant 参考来源与适配
 
+2026-10-30另将`app/tools/warp_export.py`的缓存／URL读取、六池分页和SRGF／UIGF转换，及`app/warp_interface.py`的导入导出行为，适配为[原生独立记录工具](../../../docs/warp-records.md)。原件保留、数字ID去重、时区核对、明确多账号选择、冲突停止、匿名事件和新文件发布继续使用本项目语义；未迁入Qt、遥测、自动账号目录扫描或覆盖式修复。三份上游源码／测试和GPL来源见[source.json](source.json)；现行UIGF格式另按组织规范检查，没有分发官方Schema或真实玩家数据。GUI、Excel及真实缓存／API路径仍待完成。
+
 2026-10-30另参考`_check_battle_result`与`main.py`循环入口，将终局失败与普通节点继续分开，接入[原生失败结算及循环规则](../../../docs/currency-wars-defeat-loop.md)。失败须有同局出战、两帧终局、零生命、失败总览、四步反馈及原partial报告；胜利与失败分列，失败消耗原局数，默认停止，明确接续仅确认该次原回执。源码blob与适配范围见[source.json](source.json)，没有迁入上游输入或遥测，也没有新增游戏采集；失败页面几何是既有胜利布局的合成变体，真实校准及整局仍待验收。
 
 2026-10-30另补[投资策略角色赠送](../../../docs/currency-wars-investment-units.md)，继续参考`check_investment_environment`和特殊角色计数的处理思路。实际到账使用AutoHSR原末节点完整阵容来源、独立确认、逐角色重读／关闭及装备守恒，不通过缓存增加角色计数认定成功。既有150号效果文本与哈希见[机制说明](../../currency-investment/README.md)，没有新增图像、模型或游戏采集；满席／溢出、其他物品改造和真实赠送仍待验证。

@@ -1,5 +1,11 @@
 # AutoHSR resource attribution
 
+## 2026-10-30 跃迁记录获取与交换格式
+
+参考固定March7thAssistant的`app/tools/warp_export.py`和`app/warp_interface.py`，将缓存／链接读取、六类卡池分页、导入及SRGF／UIGF转换改写为[原生记录模块](../autohsr/warp_records.py)、[只读获取](../autohsr/warp_fetch.py)及[独立工具服务](../autohsr/warp_service.py)。多账号显式选择、字符串ID数字排序、跨时区合并、冲突拒绝、原件保留、取消及新文件原子发布属于AutoHSR适配。没有复制Qt控件、自动扫描本机用户目录、上传统计、明文链接输出或覆盖式修复。三份上游源码／测试的固定Git blob及SHA-256、GPL v3和函数范围见[source.json](upstream/March7thAssistant/source.json)。
+
+格式按[UIGF组织](https://uigf.org/)的[UIGF](https://uigf.org/zh/standards/uigf.html)与[SRGF](https://uigf.org/zh/standards/srgf.html)规范实现星铁数据读取和导出；旧SRGF中的联动扩展另作提示，严格旧格式输出拒绝联动记录。官方验证Schema的版本和哈希仅作为本地检查来源，不分发原Schema或第三方验证器包，也不声明认证；本仓库仅提供使用指定离线文件及虚构数据的QA脚本。没有新增游戏图像、模型或玩家记录，所有示例及网络检查为虚构，详见[功能与验证](../docs/warp-records.md)。
+
 ## 2026-10-30 整局失败结算与有界循环
 
 参考固定March7thAssistant的`_check_battle_result`与`main.py`循环入口，将普通节点继续与终局失败分开，改写为[原生失败协议](../autohsr/currency_wars_defeat.py)。同局出战、两帧终局、零生命与失败总览、四步独立反馈、原partial报告、逐局胜负计数和原局数上限属于AutoHSR适配；默认失败停止，明确接续只确认该次原回执，自动继续须在循环开始时冻结。未迁入上游输入框架、遥测、放弃旧局或未知失败后重开。源文件blob与GPL v3见[source.json](upstream/March7thAssistant/source.json)。未新增图像、模型或真实采集；失败页面使用已有胜利几何的合成变体，未声称真实布局已校准或失败结算已实机验收，见[范围](../docs/currency-wars-defeat-loop.md)。

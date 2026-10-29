@@ -87,9 +87,52 @@
       "retrieved": "2026-10-30",
       "git_blob": "d2d65935605c86ef84925541ded8d9f6087be3cc",
       "sha256": "e52b802c6c3dd64c7843d008c558de705f22ca2a199967a9a24955ee4e85bc5e"
+    },
+    {
+      "path": "app/tools/warp_export.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "13f386a8eb6d9bbe32684f77fa9ab5544db74cfe",
+      "sha256": "d71aaf00355a99fe21632856457d96a339e9d221b9f891e77ac9cb1f2228459c"
+    },
+    {
+      "path": "app/warp_interface.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "42d14fae06034f61a555185408ca695d3dcdba10",
+      "sha256": "e50d08878e40cbb1bcd091396189c367d697d67c7ea692a8bc866d06af7b3350"
+    },
+    {
+      "path": "tests/test_app/test_warp_export.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "05aa79f50b00fcf6feeaac72c57955ca0a2fc8d4",
+      "sha256": "d130d0797468e35080ba1d6821ef33486d90e1ea646b0414f83693c499e2f50f"
     }
   ],
+  "warp_format_references": {
+    "reviewed": "2026-10-30",
+    "uigf": "https://uigf.org/zh/standards/uigf.html",
+    "srgf": "https://uigf.org/zh/standards/srgf.html",
+    "verification_repository": "https://github.com/UIGF-org/UIGF-SchemaVerify",
+    "verification_commit": "3f87dbfa4ae690b56237f867c13d4fcb0c4c4ac2",
+    "uigf_schema_git_blob": "48138c3966327e353e9fd530bb970a46bb14967e",
+    "uigf_schema_sha256": "4cfe8552707ba86fefc26daa79340d1067d63faa0a5ea69e5f34de9d1c17e134",
+    "srgf_schema_git_blob": "ff9e278f8debdb308403f82223f2b8d012527f17",
+    "srgf_schema_sha256": "53ae458aa3241f1f2ceb6776818141ef9bb7174e04f1bc3bb01840844833d5c8",
+    "scope": "Star Rail import/export only; v4.2 output and strict legacy SRGF output, extended legacy collaboration imports are explicitly noted. Official schemas and the third-party jsonschema package are not redistributed or runtime dependencies; the AutoHSR offline QA wrapper checks their pinned hashes and uses synthetic data. Verification evidence, not certification; no real player data or auth used"
+  },
   "adaptations": [
+    {
+      "path": "autohsr/warp_records.py",
+      "reference_source": "app/tools/warp_export.py",
+      "reference_functions": ["srgf_to_uigf_hkrpg", "uigf_to_srgf_hkrpg", "detect_format"],
+      "native_files": ["autohsr/warp_service.py", "autohsr/warp_cli.py", "autohsr/tests/test_warp_records.py", "tools/warp_schema_check.py"],
+      "kind": "UI-neutral Star Rail interchange rewritten around the published formats: exact required types, optional unknown fields remain unknown, numeric string IDs, multi-account UIGF, explicit single-account SRGF, timezone-preserving merge and conflict rejection. Current v4.2 and collaboration pools are distinguished from legacy SRGF rather than exporting invalid legacy enums or taking the first UID. New-file atomic publication, bounded input, anonymous events and no settings writes are AutoHSR-native; GUI/Excel/statistics views remain pending"
+    },
+    {
+      "path": "autohsr/warp_fetch.py",
+      "reference_source": "app/tools/warp_export.py",
+      "reference_functions": ["detect_game_locale", "get_url_from_cache_text", "remove_query_params", "get_gacha_log", "init_info", "get_gacha_logs", "fetch_data"],
+      "kind": "explicit user-selected log/cache or URL source, official CN/global GET-only endpoints and separate collaboration endpoint, bounded numeric-ID pagination to an empty terminal page, current UID/language/timezone custody, no redirects, finite retry/cancellation and auth-free events/exports. Does not port automatic profile scanning, Qt worker, telemetry, exposed warplink, overwrite-based repair or any game input. Real cache/API paths remain unverified; all tests use synthetic data and mocked requests"
+    },
     {
       "path": "autohsr/currency_wars_defeat.py",
       "reference_source": "tasks/weekly/currency_wars.py",
