@@ -10,6 +10,10 @@
 
 首轮新增检查要求空白输入也有文字选区，诊断确认焦点与错误均正确，只有空白选区不存在；现空白核对插入点0，非空仍要求选中，生产逻辑未为此调整。保留`runs/selection-budget-initial.log`、`selection-budget-error-probe.log`。既有输入检查首轮在`action_delay_focus_nan`出现一次焦点断言失败，保留`selection-budget-final-input_feedback_smoke.log`；带状态诊断的独立复跑及原脚本复跑均通过55项（`selection-budget-focus-probe.log`、`selection-budget-verified-input_feedback_smoke.log`），未修改焦点代码或放宽断言，瞬态原因尚未核实。整屏视觉一致性、玩家体验及日常周常组合实机仍未验收。
 
+源码`31d7d23`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。独立120预算／花萼12次配置、`--no-admin-launch`下，从首页“更换副本”进入并选用密伶之径／生研院，直接得到3次／预计120，再点加号仍为3。随后通过花萼“设为1次”准备10预算／1次的草稿，浏览侵蚀隧洞显示“调整上限”；点击后仍保留花萼／绘世学院、1次与加入状态，预算10被选中。直接输入40后恢复“选用”，再次选择得到1次／预计40，未保存或执行。错误栏刚出现时有一次短暂布局裁切，稳定后的提示、列表和字段完整可见；分别保留`package-error-initial.png`与`package-error.png`，没有将瞬态图替换为通过证据。
+
+原生截图前缀`runs/selection-budget-package-`，包含`home`、`selected`、`capped`、`low-plan`、`unavailable`、`error-initial`、`error`、`corrected`、`final`与`close`。选择“不保存退出”后退出码0，独立配置与239份原有用户文件哈希未变，147项素材、5份清单及23份上游文件一致；详见`runs/selection-budget-package-verification.json`。EXE SHA-256为`a393a2042cc1fea80cb3e3192b28963f39be0e11364d38ff13ee07b404c2133f`，备份`build/userdata-selection-budget-20261029_181949/`，构建日志`runs/selection-budget-build.log`。原始与最终证据归档至正式项目`runs/selection-budget-*`，索引`runs/selection-budget-evidence-archive.json`；全程未检测或操作游戏。
+
 ## 2026-10-29：退出确认沿用游戏提示框与明确动作
 
 上一轮正式版`357da46`关闭草稿时仍使用Windows“是／否／取消”，原生证据`runs/challenge-inline-package-close-prompt.png`保留。现在复用既有4.6提示框的浅灰面板、偏移边框、深色底栏和胶囊按钮，仅保留一处未保存提醒；选择明确写成“返回修改／不保存退出／保存并退出”。Esc与Alt+F4返回原字段并保留草稿、选区和光标，Enter执行当前聚焦的选择，默认聚焦保存；重复关闭不叠加窗口。校验失败定位错误字段，写入失败保留窗口与原文件；执行中的关闭仍按原逻辑停止并等待后台。游戏原图为两按钮，三选项及小屏纵排是应用适配，不声称与原游戏交互逐项相同。
