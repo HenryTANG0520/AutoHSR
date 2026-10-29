@@ -163,7 +163,7 @@ class ResponsiveLayout:
         focus = paths.get(focus_widget(root))
         return_focus = paths.get(getattr(ui, "settings_return_focus", None))
         navigation = {key: getattr(ui, key, None) for key in
-            ("active_page", "action_page", "last_universe_page", "settings_return_page")}
+            ("active_page", "action_page", "last_universe_page", "settings_return_page", "settings_return_action")}
         mode_views = {key: deck["shown"] for key, deck in ui.mode_decks.items()}
         cards = deepcopy(ui.table.records), ui.table.offset, ui.table.selected
         browser = (ui.dungeon_search.get(), ui.dungeon_target_caption.get(),

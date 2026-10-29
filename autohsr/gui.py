@@ -215,6 +215,7 @@ class AutoHSRWindow:
         self.save_label.pack_forget()
         if name == "settings" and getattr(self, "active_page", "home") != "settings":
             self.settings_return_page = getattr(self, "active_page", "home")
+            self.settings_return_action = self.action_page
             self.settings_return_focus = theme.focus_widget(self.root)
         self.active_page = name
         self.input_focus.cancel_if_obsolete()
@@ -296,6 +297,7 @@ class AutoHSRWindow:
         self._show_page("settings")
         self.settings_tabs.select(self.settings_sections["weekly"])
         self.settings_return_page = "home"
+        self.settings_return_action = "home"
         self.settings_return_focus = self.weekly_button
 
     def _show_daily_tasks(self, task=None):
@@ -303,6 +305,7 @@ class AutoHSRWindow:
         self._show_page("settings")
         self.settings_tabs.select(self.settings_sections["daily"])
         self.settings_return_page = "home"
+        self.settings_return_action = "home"
         self.settings_return_focus = self.table
         if task is not None:
             self.root.after_idle(self.daily_task_controls[task].focus_set)
@@ -311,10 +314,20 @@ class AutoHSRWindow:
         if self.active_page != "settings":
             return
         target = getattr(self, "settings_return_page", "home")
+        action = getattr(self, "settings_return_action", self.action_page)
         focus = getattr(self, "settings_return_focus", None)
         self._show_page(target)
+        if self.action_page != action:
+            self.action_page = action
+            self._configure_primary_action()
+            self._refresh_controls()
         self.root.update_idletasks()
-        if focus is not None and focus.winfo_exists() and focus.winfo_ismapped():
+        enabled = focus is not None and focus.winfo_exists()
+        if enabled and isinstance(focus, ttk.Widget):
+            enabled = not focus.instate(("disabled",))
+        elif enabled and isinstance(focus, tk.Canvas):
+            enabled = str(focus.cget("state")) != "disabled"
+        if enabled and focus.winfo_ismapped():
             focus.focus_set()
         else:
             self.nav_buttons[target].focus_set()
