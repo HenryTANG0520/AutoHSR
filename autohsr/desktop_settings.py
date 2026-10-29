@@ -12,7 +12,8 @@ from .weekly_plan import DAYS, MODES
 
 
 SECTIONS = (("game", "游戏连接", "客户端", "guide-mark.png"),
-            ("weekly", "周常计划", "任务安排", "tab-daily.png"),
+            ("daily", "每日任务", "任务安排", "tab-daily.png"),
+            ("weekly", "周常计划", "任务安排", "tab-universe.png"),
             ("run", "运行偏好", "运行功能", "tab-settings.png"),
             ("recognition", "识别与等待", "识别参数", "tab-survival.png"),
             ("admin", "管理员启动", "启动权限", "tab-records.png"))
@@ -59,6 +60,8 @@ class SettingsShell(Surface):
     def choose(self, key):
         if key == "weekly":
             self.ui._show_weekly_plan()
+        elif key == "daily":
+            self.ui._show_daily_tasks()
         else:
             self.ui.settings_tabs.select(self.ui.settings_sections[key])
 
@@ -212,6 +215,7 @@ def build_settings(ui):
         field = target.place_control(BooleanSetting(target.value, variable))
         setattr(ui, name, field)
         ui.setting_controls.append(field)
+        return field
 
     def buttons(target, actions):
         frame = ttk.Frame(target.value, style="Settings.Value.TFrame", padding=d(8))
@@ -239,6 +243,19 @@ def build_settings(ui):
     note("game", 2, text="登录验证与更新需在游戏内完成。")
     note("game", 3, text="配置位置："+str(ui.config_path))
 
+    ui.daily_task_controls = {}
+    index = 0
+    for key, variable in ui.tasks.items():
+        target = row("daily", index, ui.table.names[key],
+                     hint="开拓力刷本未授权" if key == "battle" and not ui.settings.allow_stamina_spend else None)
+        ui.daily_task_controls[key] = toggle(target, variable, "daily_"+key+"_combo")
+        index += 1
+        if key == "daily":
+            toggle(row("daily", index, "实训合成", hint="1 个奇巧零食 · 两种普通材料各 1 个"),
+                   ui.daily_synthesis, "synthesis_control")
+            index += 1
+    note("daily", 6, text="仅实训未完成时合成；仅补领奖时不合成。")
+
     toggle(row("weekly", 0, "周常计划"), ui.weekly_enabled, "weekly_enabled_combo")
     combo(row("weekly", 1, "玩法"), ui.weekly_mode, tuple(MODES.values()), "weekly_mode_combo")
     combo(row("weekly", 2, "每周"), ui.weekly_day, DAYS, "weekly_day_combo")
@@ -252,9 +269,6 @@ def build_settings(ui):
     note("weekly", 7, variable=ui.weekly_boundary)
 
     toggle(row("run", 0, "游戏内日志字幕"), ui.overlay_logs, "overlay_control")
-    toggle(row("run", 1, "实训合成", hint="1 个奇巧零食 · 两种普通材料各 1 个"),
-           ui.daily_synthesis, "synthesis_control")
-    note("run", 2, text="仅实训未完成时合成；仅补领奖时不合成。")
 
     for index, (name, variable, limits, control) in enumerate((
             ("操作间隔（秒）", ui.action_delay, "0.3～5", "action_delay_entry"),

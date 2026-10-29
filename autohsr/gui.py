@@ -253,6 +253,15 @@ class AutoHSRWindow:
         self.settings_return_page = "home"
         self.settings_return_focus = self.weekly_button
 
+    def _show_daily_tasks(self, task=None):
+        self.action_page = "home"
+        self._show_page("settings")
+        self.settings_tabs.select(self.settings_sections["daily"])
+        self.settings_return_page = "home"
+        self.settings_return_focus = self.table
+        if task is not None:
+            self.root.after_idle(self.daily_task_controls[task].focus_set)
+
     def _leave_settings(self):
         if self.active_page != "settings":
             return
@@ -382,6 +391,8 @@ class AutoHSRWindow:
         for control in self.weekly_run_controls:
             control.grid() if self.weekly_mode.get() == "差分宇宙" else control.grid_remove()
         allowed = self.settings.allow_stamina_spend
+        for task, control in self.daily_task_controls.items():
+            control.configure(state="disabled" if self.busy or (task == "battle" and not allowed) else "readonly")
         self.battle_checkbox.configure(state="normal" if allowed and not self.busy else "disabled")
         battle_enabled = allowed and self.tasks["battle"].get()
         for control in self.stamina_controls:
@@ -999,15 +1010,18 @@ class AutoHSRWindow:
             self.last_screenshot = Path(data["screenshot"])
 
     def _show_task_setup(self, task):
-        self._show_page("tasks")
-        if task == "battle" and self.tasks[task].get():
-            from .dungeon_ui import show_browser
-            show_browser(self)
-            self.dungeon_list.reveal_selection()
-            control = self.dungeon_list
+        if task == "battle":
+            self._show_page("tasks")
+            if self.tasks[task].get():
+                from .dungeon_ui import show_browser
+                show_browser(self)
+                self.dungeon_list.reveal_selection()
+                control = self.dungeon_list
+            else:
+                control = self.battle_checkbox
+            self.root.after_idle(control.focus_set)
         else:
-            control = self.task_controls[task]
-        self.root.after_idle(control.focus_set)
+            self._show_daily_tasks(task)
 
     def _show_task_detail(self, _: tk.Event | None = None) -> None:
         selected = self.table.selection()

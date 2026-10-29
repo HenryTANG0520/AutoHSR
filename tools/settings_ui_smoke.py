@@ -68,6 +68,67 @@ def main():
             ui = Window(root, config)
             try:
                 root.update()
+                root.focus_force()
+                for task in ("assignments", "daily", "mail", "battlepass"):
+                    board = ui.table
+                    board._reveal(list(board.names).index(task))
+                    board.redraw()
+                    root.update()
+                    offset = board.offset
+                    x1, y1, x2, y2 = board.hitboxes[task]
+                    board.event_generate("<Button-1>", x=round((x1+x2)/2*ui.ui_scale),
+                                         y=round((y1+y2)/2*ui.ui_scale))
+                    root.update()
+                    control = ui.daily_task_controls[task]
+                    check(f"{scale}_{task}_card_opens_task_choices", ui.active_page == "settings"
+                          and ui.settings_tabs.select() == str(ui.settings_sections["daily"])
+                          and root.focus_get() == control and not ui.dungeon_list.winfo_ismapped()
+                          and ui.start_button.cget("text") == "开始计划")
+                    original_value = ui.tasks[task].get()
+                    choose(root, control, 1 if original_value else 0)
+                    check(f"{scale}_{task}_choice_updates_plan", ui.tasks[task].get() != original_value and ui.dirty
+                          and ui.table.item(task, "values")[1] == ("跳过" if original_value else "等待"))
+                    choose(root, control, 0 if original_value else 1)
+                    ui.settings_shell.back.invoke()
+                    root.update()
+                    check(f"{scale}_{task}_return_restores_card", ui.active_page == "home"
+                          and root.focus_get() == ui.table and ui.table.selected == task
+                          and ui.table.offset == offset and not ui.dirty)
+                ui.tasks["battle"].set(False)
+                ui.table.selected = "battle"
+                ui.table.activate()
+                root.update()
+                check(f"{scale}_disabled_battle_keeps_its_dungeon_shortcut", ui.active_page == "tasks"
+                      and root.focus_get() == ui.battle_checkbox)
+                ui.battle_checkbox.invoke()
+                ui._show_page("home")
+                ui.table.activate()
+                root.update()
+                check(f"{scale}_enabled_battle_still_opens_dungeon", ui.active_page == "tasks"
+                      and root.focus_get() == ui.dungeon_list)
+                ui.task_controls["mail"].invoke()
+                ui._show_daily_tasks("mail")
+                root.update()
+                check(f"{scale}_existing_checkbox_and_settings_stay_in_sync", ui.daily_task_controls["mail"].get() == "开启")
+                choose(root, ui.daily_task_controls["mail"], 1)
+                ui.settings.allow_stamina_spend = False
+                ui._form_changed()
+                root.update()
+                check(f"{scale}_task_choices_cannot_grant_stamina", not ui.tasks["battle"].get()
+                      and ui.daily_task_controls["battle"].instate(("disabled",)))
+                ui.settings.allow_stamina_spend = True
+                ui.tasks["battle"].set(True)
+                ui._show_daily_tasks("daily")
+                root.update()
+                check(f"{scale}_synthesis_beside_daily_rewards", ui.synthesis_control.winfo_ismapped())
+                ui._set_busy(True)
+                root.update()
+                check(f"{scale}_all_daily_choices_lock_during_work", all(control.instate(("disabled",))
+                      for control in (*ui.daily_task_controls.values(), ui.synthesis_control)))
+                ui._set_busy(False)
+                root.update()
+                check(f"{scale}_all_daily_choices_restore_readonly", all(control.instate(("readonly",))
+                      for control in ui.daily_task_controls.values()))
                 ui._show_weekly_plan()
                 root.update()
                 check(f"{scale}_first_entry_has_selected_underline", selection_marker_visible(ui.settings_shell))
@@ -142,8 +203,10 @@ def main():
                 ui._clock()
                 ui.settings_buttons["run"].invoke()
                 root.update()
-                for control, variable, name in ((ui.overlay_control, ui.overlay_logs, "subtitle"),
-                                                (ui.synthesis_control, ui.daily_synthesis, "synthesis")):
+                for section, control, variable, name in (("run", ui.overlay_control, ui.overlay_logs, "subtitle"),
+                                                ("daily", ui.synthesis_control, ui.daily_synthesis, "synthesis")):
+                    ui.settings_buttons[section].invoke()
+                    root.update()
                     choose(root, control, 1)
                     check(f"{scale}_{name}_turns_off", not variable.get())
                     choose(root, control, 0)
@@ -151,7 +214,7 @@ def main():
                 ui._set_busy(True)
                 root.update()
                 for section, control, variable in (("run", ui.overlay_control, ui.overlay_logs),
-                        ("run", ui.synthesis_control, ui.daily_synthesis), ("weekly", ui.weekly_enabled_combo, ui.weekly_enabled)):
+                        ("daily", ui.synthesis_control, ui.daily_synthesis), ("weekly", ui.weekly_enabled_combo, ui.weekly_enabled)):
                     ui.settings_tabs.select(ui.settings_sections[section])
                     root.update()
                     before = variable.get()

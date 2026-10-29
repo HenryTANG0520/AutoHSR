@@ -95,8 +95,9 @@ def main():
                 root.update()
                 board.event_generate("<Button-1>", x=round((x1+x2)/2*ui.ui_scale), y=round(90*ui.ui_scale))
                 root.update()
-                check(f"{scale}_partial_card_opens_its_settings", ui.active_page == "tasks"
-                      and root.focus_get() == ui.task_controls[partial])
+                check(f"{scale}_partial_card_opens_its_settings", ui.active_page == "settings"
+                      and ui.settings_tabs.select() == str(ui.settings_sections["daily"])
+                      and root.focus_get() == ui.daily_task_controls[partial])
                 ui._show_page("home")
                 check(f"{scale}_summary_hidden_when_empty", not ui.summary_label.winfo_ismapped())
                 ui.result_alert.set("示例：待核对消耗")

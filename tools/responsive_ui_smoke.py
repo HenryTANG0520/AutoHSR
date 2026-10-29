@@ -194,12 +194,17 @@ def main():
                 combo.tk.call("ttk::combobox::Unpost", str(combo))
                 settle()
                 check(prefix+"resize_after_dropdown", ui.weekly_mode_combo is not combo and ui.weekly_mode.get() == "差分宇宙")
+                ui.table.selected = "battlepass"
+                ui._show_daily_tasks("battlepass")
+                root.update()
                 for _ in range(2):
                     root.state("normal")
                     root.geometry(normal)
                     settle()
                     root.state("zoomed")
                     settle()
+                check(prefix+"daily_task_choice_and_focus_survive_resize", ui.settings_shell.section == "daily"
+                      and root.focus_get() is ui.daily_task_controls["battlepass"])
                 root.state("normal")
                 root.geometry("%dx%d" % tuple(round((a+b)/2) for a,b in zip(normal_size, large_size)))
                 settle()
@@ -209,6 +214,10 @@ def main():
                 gc.collect()
                 check(prefix+"repeated_resizes_keep_images_bounded", len(root.tk.call("image", "names")) <= image_count+2)
                 check(prefix+"repeated_resizes_keep_bindings_bounded", sum(bool(line.strip()) for line in root.bind("<Configure>").splitlines()) == bindings)
+                ui.settings_shell.back.invoke()
+                root.update()
+                check(prefix+"daily_task_return_survives_resize", ui.active_page == "home"
+                      and ui.table.selected == "battlepass" and root.focus_get() is ui.table)
                 check(prefix+"config_unchanged", config.read_bytes() == original)
             finally:
                 ui.closing = True
