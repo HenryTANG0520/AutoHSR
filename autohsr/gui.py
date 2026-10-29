@@ -66,6 +66,10 @@ class AutoHSRWindow:
         self.busy = self.running = self.paused = self.stopping = self.closing = False
         self._has_run = False
         self._daily_result_signature = None
+        self._weekly_caption_source = "preview"
+        self._weekly_caption_minute = None
+        self._weekly_result_week = None
+        self._weekly_result_summary = None
         self.focus_waiting = False
         self.active_operation = "daily"
         self._f9_local_pressed = False
@@ -292,19 +296,45 @@ class AutoHSRWindow:
                     weekly_time=self.weekly_time.get().strip(), weekly_runs=self._number("weekly_runs", int))
 
     def _refresh_plan_caption(self):
-        from .weekly_plan import plan_caption
         count = sum(variable.get() for variable in self.tasks.values())
         from .dungeon_ui import selected_category
         metrics = planned_battle_metrics(selected_category(self), self.challenge_count.get(), self.tasks["battle"].get())
         cost = metrics[1].replace("\n", " · ")+" · "+self.target_name.get() if metrics else "不刷本"
         self.daily_caption.set(f"日常 · {count} 项" + (f" · {cost}" if cost else ""))
-        try:
-            weekly = self._weekly_values() if self.weekly_enabled.get() else dict(weekly_enabled=False)
-            self.weekly_status.set(plan_caption(replace(self.settings, **weekly)))
-        except (ValueError, StopIteration):
-            self.weekly_status.set("周常时间或局数待填写")
+        self._weekly_caption_source = "preview"
+        self._weekly_result_week = None
+        self._weekly_result_summary = None
+        self._refresh_weekly_caption(force=True)
         self.weekly_boundary.set("周期演算按局数完成；周积分奖励尚未接入。" if self.weekly_mode.get() == "差分宇宙" else
                                  "周积分奖励尚未接入；到期时仅执行日常并保留未完成状态。")
+
+    def _refresh_weekly_caption(self, *, force=False):
+        # This is a read-only clock refresh, not a scheduler or an account check.
+        # Running snapshots and unresolved results must retain their own status.
+        if self._loading or self.busy or self.closing:
+            return
+        from . import weekly_plan
+        now = weekly_plan.datetime.now(weekly_plan.CHINA)
+        minute = now.replace(second=0, microsecond=0)
+        if not force and minute == self._weekly_caption_minute:
+            return
+        self._weekly_caption_minute = minute
+        try:
+            weekly = self._weekly_values() if self.weekly_enabled.get() else dict(weekly_enabled=False)
+            settings = replace(self.settings, **weekly)
+            if self._weekly_caption_source == "result":
+                if self._weekly_result_week is None or self._weekly_result_week == weekly_plan.weekly_slot(settings, now).week:
+                    return
+                if self.summary.get() == self._weekly_result_summary:
+                    self.summary.set("上次计划 · "+self.summary.get())
+                self._weekly_caption_source = "preview"
+                self._weekly_result_week = None
+                self._weekly_result_summary = None
+            caption = weekly_plan.plan_caption(settings, now)
+        except (ValueError, StopIteration):
+            caption = "周常时间或局数待填写"
+        if self.weekly_status.get() != caption:
+            self.weekly_status.set(caption)
 
     def _text_tab(self, title):
         frame = ttk.Frame(self.output_tabs)
@@ -795,6 +825,10 @@ class AutoHSRWindow:
         if operation == "plan":
             from .weekly_plan import plan_caption
             self.plan.set(self.plan.get()+"\n"+plan_caption(settings))
+            self._weekly_caption_source = "preview"
+            self._weekly_caption_minute = None
+            self._weekly_result_week = None
+            self._weekly_result_summary = None
             self.weekly_status.set("等待日常结束" if settings.weekly_enabled else "周常未加入")
         if operation in ("daily", "plan", "reward_only"):
             self.training_result.set("unknown")
@@ -1124,11 +1158,22 @@ class AutoHSRWindow:
         if report.get("operation", self.active_operation) == "plan":
             weekly = report.get("weekly_plan") or {}
             message = weekly.get("message", "周常完成情况未核实")
+            saved_success = status == "success" and report.get("report_saved") is True
+            self._weekly_caption_source = "preview" if saved_success and weekly.get("status") in ("disabled", "not_due") else "result"
+            week = weekly.get("week")
+            valid_week = isinstance(week, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", week)
+            self._weekly_result_week = week if saved_success and valid_week and weekly.get("status") in ("complete", "already_complete") else None
+            self._weekly_caption_minute = None
             self.weekly_status.set(message)
-            self.summary.set(self.summary.get()+"\n"+message)
+            # Keep the frozen report's week explicit in the retained result.
+            # The preview may advance to a new week while this window stays open.
+            result_message = message.replace("本周", week+" 当周") if valid_week else message
+            self.summary.set(self.summary.get()+"\n"+result_message)
         self.result_alert.set(issue_text(report))
         if report.get("report_saved") is False:
             self.summary.set("报告未保存\n"+self.summary.get())
+        if report.get("operation", self.active_operation) == "plan":
+            self._weekly_result_summary = self.summary.get()
         self.history_context.set(report_context(report, Path(report["run_dir"]) / "report.json" if report.get("run_dir") else None))
         if report.get("report_saved") is False:
             self.history_context.set("本次报告未写入磁盘 · " + self.history_context.get())
@@ -1298,6 +1343,7 @@ class AutoHSRWindow:
         except queue.Empty:
             pass
         self._clock()
+        self._refresh_weekly_caption()
         if self.closing and (self.worker is None or not self.worker.is_alive()):
             self.root.destroy()
             return
