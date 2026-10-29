@@ -8,6 +8,10 @@
 
 **611项离线检查通过**：272项生存索引、108项缩放、24项布局复用、123项缩放过渡、84项GUI。分类卡检查覆盖100%、125%、150%、200%，包含原生点击及空格切换、唯一选中态、运行禁用与恢复、最小窗口六类完整可见、草稿不变和配置未写入；沿用同名副本地点、半露行、次数限制和费用反例。最终生存索引结果位于`runs/survival-categories-ui-final/`，其余结果与日志为`survival-categories-final-*`，汇总`runs/survival-categories-regressions.json`。最后字号调整后重跑生存索引，不重复计算检查数。全程使用假后端，不启动游戏。整体逐像素一致性、玩家体验及日常周常组合实机仍未验收。
 
+源码`35b248b`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，构建日志`runs/survival-categories-build.log`。原生窗口使用独立配置与`--no-admin-launch`，核对六类完整显示、点击饰品提取与历战余响、打开设置后Esc返回保留分类；目标仍为原来未加入的回忆之蕾／城郊雪原，未点击任务执行入口。正常关闭退出码0，独立配置及原有239份用户文件哈希不变。截图为`runs/survival-categories-package-browser.png`、`package-planar.png`、`package-returned.png`、`package-echo.png`（后三项同`survival-categories-`前缀），记录`runs/survival-categories-package-verification.json`。
+
+147项素材、5份清单和23份上游文件与源码一致；用户文件恢复副本位于`build/userdata-survival-categories-20261029_165309/`。EXE SHA-256为`78ab73bb3a3d2416b833efeeae683f1970c1d4658c483c663b8b74e144932223`。本轮对照、离线与原生核验证据归档至正式项目`runs/survival-categories-*`，索引为`runs/survival-categories-evidence-archive.json`。
+
 ## 2026-10-29：保存与重开保留未加入的副本设置
 
 只读核对AutoZZZ本地`338951d`的草稿与显式保存流程，未修改其工作区。在AutoHSR `ea08b1b`用假后端复现：选“侵蚀隧洞／密伶之径／生研院”、3次、120开拓力、关闭支援后取消加入，点击保存会还原成回忆之蕾／城郊雪原及240预算，界面却标记已保存；类别和次数仍留在新值，磁盘则保留旧类别、次数与支援选项。原始记录`runs/excluded-draft-before.json`，未启动游戏。
