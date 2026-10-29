@@ -71,12 +71,20 @@
       "kind": "existing native vacancy assignment ranks observed owned units with the selected named-core preference"
     },
     {
+      "path": "autohsr/currency_wars_standard_reorder.py",
+      "reference_functions": [
+        "deploy_and_optimize",
+        "move_character"
+      ],
+      "kind": "whole-roster reassignment adapted to AutoHSR's existing star/core/trait baseline score, deterministic position-independent objective, strictly decreasing remaining-move potential and persisted provenance; may take a temporary score loss, verifies actual properties and empty-source custody before the next step, retains current equipment recommendations and per-slot proof of unchanged ordinary identities; caches validation of immutable decision fields while always checking current visual/input authority; not a port of upstream's money-first ranking or cached movement success"
+    },
+    {
       "path": "autohsr/currency_wars_standard_exchange.py",
       "reference_functions": [
         "deploy_and_optimize",
         "move_character"
       ],
-      "kind": "native occupied-slot exchanges with two independently inspected identities; returned board alone is not movement proof"
+      "kind": "native occupied-slot exchanges with two independently inspected identities and whole-roster field-to-empty-field relocation with one fresh property read, empty-source custody and bounded local appearance proof; returned board alone is not movement proof"
     },
     {
       "path": "autohsr/currency_wars_standard_refresh.py",

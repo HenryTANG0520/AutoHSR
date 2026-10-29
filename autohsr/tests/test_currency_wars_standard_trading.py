@@ -237,6 +237,8 @@ class StandardTradingTests(unittest.TestCase):
 
     def test_experience_flow_rederives_its_own_intent_and_uses_context_once(self):
         board,session = full_board_fixture(gold=22)
+        # This payment scenario starts with an already optimal owned team.
+        session['collection']['units']['front:2']['unit']['star']=2
         first = Scene(list(board.tokens),board.image.copy(),captured_at=time.monotonic())
         second = Scene(list(board.tokens),board.image.copy(),captured_at=time.monotonic())
         hud(first,gold=18,xp=(4,6));hud(second,gold=18,xp=(4,6))
@@ -307,6 +309,7 @@ class StandardTradingTests(unittest.TestCase):
         session['actions'].append(dict(action=close.intent,status='pending',target=list(close.payload),expected=close.expected))
         self.assertEqual(next_action(shop,session=session),close)
         board,session = full_board_fixture(gold=0)
+        session['collection']['units']['front:2']['unit']['star']=2
         start = next_action(board,session=session)
         self.assertEqual(start.intent,'start_standard_node')
         session['actions'].append(dict(id=0,action=start.intent,status='pending',target=list(start.payload),expected=start.expected))

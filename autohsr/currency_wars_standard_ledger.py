@@ -16,7 +16,7 @@ FREE_ACTIONS = frozenset((
     'close_standard_reward_unit','close_standard_reward_stale_panel',
     'inspect_standard_consumable_unit','close_standard_consumable_unit','close_standard_consumable_stale_panel',
     'open_standard_consumable_recommendations','choose_standard_consumable_gear',
-    'stage_standard_exchange','inspect_standard_exchange_unit','close_standard_exchange_unit','close_standard_exchange_stale_panel',
+    'stage_standard_exchange','stage_standard_relocate','inspect_standard_exchange_unit','close_standard_exchange_unit','close_standard_exchange_stale_panel',
     'settle_standard_final_victory', 'settle_standard_match_rating',
     'settle_standard_match_summary', 'settle_standard_match_statistics',
 ))
@@ -107,6 +107,10 @@ def ledger_status(actions, *, investment_projection=None, popup_projection=None)
         if action.get('status') != 'verified':
             return 'pending' if action.get('status') == 'pending' else 'unknown'
         name = action.get('action', '')
+        if name=='stage_standard_relocate' or action.get('reorder_root') is not None:
+            from .currency_wars_standard_reorder import valid_action
+            if not valid_action(action,actions):return 'unknown'
+            if action.get('movement_verified') is not True and index!=popup_projection:return 'pending'
         if action.get('movement_popup') is not None:
             from .currency_wars_standard_popup import valid_parent
             if not valid_parent(action,actions):return 'unknown'

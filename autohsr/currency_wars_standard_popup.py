@@ -22,7 +22,7 @@ from .currency_wars_prepare import trusted
 from .currency_wars_state import StrategySnapshot
 from .models import AutomationError,Token,normalize
 
-MOVES=frozenset(('deploy_standard_owned','stage_standard_exchange'))
+MOVES=frozenset(('deploy_standard_owned','stage_standard_exchange','stage_standard_relocate'))
 SELECT='select_standard_movement_star'
 CONFIRM='confirm_standard_movement_star'
 INSPECT='inspect_standard_popup_unit'
@@ -97,7 +97,7 @@ def _expected(action):
             or snapshot.input_epoch!=basis['input_epoch'] or type(action.get('input_epoch')) is not int
             or action['input_epoch']!=basis['input_epoch']):
         raise AutomationError('弹窗缺少移动前完整持有阵容。')
-    if action.get('expected')!=dict(deploy_standard_owned='standard_owned_deployed',stage_standard_exchange='standard_exchange_inspectable').get(action.get('action')):
+    if action.get('expected')!=dict(deploy_standard_owned='standard_owned_deployed',stage_standard_exchange='standard_exchange_inspectable',stage_standard_relocate='standard_relocate_inspectable').get(action.get('action')):
         raise AutomationError('移动输入的原期望转换不符。')
     expected={u['zone']+':'+str(u['slot']):dict(u) for u in raw['roster']}
     cells=basis['cells'];target=action['target']
@@ -108,14 +108,21 @@ def _expected(action):
             raise ValueError('部署来源无效')
         unit=expected.pop(start);unit.update(zone=target[5],slot=target[6]);expected[end]=unit
         deployment=[basis['deployment'][0]+1,basis['deployment'][1]]
-    elif action['action']=='stage_standard_exchange':
+    elif action['action'] in ('stage_standard_exchange','stage_standard_relocate'):
         if len(target)!=14:raise ValueError('换人目标无效')
         start=target[4]+':'+str(target[5]);end=target[6]+':'+str(target[7])
+        relocate=action['action']=='stage_standard_relocate'
         if (target[:4]!=[basis[k] for k in ('node','gold','hp','level')] or cells[start]!=['occupied',target[8]]
-                or cells[end]!=['occupied',target[9]] or expected[start]['name']!=target[10] or expected[start]['star']!=target[11]
-                or expected[end]['name']!=target[12] or expected[end]['star']!=target[13]):raise ValueError('换人来源无效')
-        a,b=expected[start],expected[end]
-        expected[start]=dict(b,zone=target[4],slot=target[5]);expected[end]=dict(a,zone=target[6],slot=target[7])
+                or cells[end]!=['empty' if relocate else 'occupied',target[9]] or expected[start]['name']!=target[10]
+                or expected[start]['star']!=target[11]):raise ValueError('换人来源无效')
+        a=expected.pop(start)
+        if relocate:
+            if target[4] not in ('front','back') or target[6] not in ('front','back') or target[4]==target[6] or target[12:]!=['',0]:raise ValueError('空位移动目标无效')
+        else:
+            b=expected[end]
+            if b['name']!=target[12] or b['star']!=target[13]:raise ValueError('换人目标身份无效')
+            expected[start]=dict(b,zone=target[4],slot=target[5])
+        expected[end]=dict(a,zone=target[6],slot=target[7])
         deployment=basis['deployment']
     else:raise ValueError('不是已授权移动')
     if (set(cells)!={f'{z}:{i}' for z,n in (('front',4),('back',6),('bench',9)) for i in range(1,n+1)}

@@ -726,3 +726,7 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 [全身重铸协议](../autohsr/currency_wars_worn_reforge.py)由AutoHSR根据既有CN 4.6游戏教程67／68号原生编写，原图及清单哈希仍见[消耗品来源](currency-consumables/sources.json)。67号说明冶金炉的同品质重铸，68号明确对角色全部穿戴装备重新随机；已查看排除账号区域的旧教程裁图，其中示意角色前后三个装备格均保留。此为规则校准，不是新实机动作或独立留出。
 
 上游`equip_aglaea`、`equip_seele`提供仓库重铸及命名工具策略参考，全身目标及结果核验属于本项目新增扩展，分别记在[source.json](upstream/March7thAssistant/source.json)。没有添加新公开游戏图像或模型，测试使用既有署名图标与合成槽位。旧教程、离线QA裁图、角色有界来源与新回放保持本地忽略，QA查看排除账号区域，对局图像来源不加入策略模型载荷；游戏内容权利归HoYoverse及相应权利人，来源记录不授予额外再许可。
+
+## 2026-10-29 全局阵容整理与空位移动
+
+参考固定March7thAssistant的`deploy_and_optimize`及`move_character`，将全体持有角色的区域规划改写为[原生全局整理](../autohsr/currency_wars_standard_reorder.py)。保留本项目评分，固定与位置无关的目标，逐步核验真实身份和资源；新增另一侧空位移动，并处理其盛会之星接续。来源函数、固定Git blob与GPL v3许可见[source.json](upstream/March7thAssistant/source.json)，未直接移植上游金额排序、输入框架或缓存即成功的判定。没有新增公开图像、模型或游戏采集；测试沿用既有署名图标和合成棋盘，局部外观证明仅保存到忽略的本地记录，不加入模型载荷。

@@ -79,6 +79,19 @@ def _next_action(scene, confidence=.65, *, session=None):
         return StandardAction('start_standard_a8_40', 'boss_preview',
                               unique(clean, '开始对局', (.75, .82, .99, .97)))
     kind = observe(scene, confidence).page_kind
+    from .currency_wars_standard_reorder import active as reordering,proposal as reorder_proposal
+    if reordering(session or {}):
+        if kind not in ('preparation','character'):
+            raise AutomationError('全局整理尚未完成，只允许核实当前角色与移动。')
+        if kind=='preparation':
+            probe=_preparation_probe(scene,confidence,session.get('collection',{}).get('units'),session)
+            if probe is not None:
+                cell,target=probe
+                return StandardAction('inspect_standard_unit','character',target,payload=(cell.zone,cell.slot,cell.node,cell.signature))
+            from .currency_wars_standard_reorder import recommendation_probe
+            recommendation=recommendation_probe(scene,session,confidence)
+            if recommendation is not None:return recommendation
+            return reorder_proposal(scene,session,confidence)
     from .currency_wars_standard_progress import progress_action
     progress = progress_action(scene, session or {}, confidence)
     if progress is not None:
@@ -159,6 +172,8 @@ def _next_action(scene, confidence=.65, *, session=None):
                     exchange = exchange_proposal(scene, session, confidence)
                     if exchange is not None:
                         return exchange
+                    reorder=reorder_proposal(scene,session,confidence)
+                    if reorder is not None:return reorder
                 from .currency_wars_standard_deployment import standard_deployment, POLICY
                 deployment = standard_deployment(scene,session or {},confidence)
                 if deployment is None:
@@ -273,7 +288,7 @@ def transition_ready(choice, scene, confidence=.65, *, before=None, session=None
     if choice.expected == 'standard_sale_cancelled':
         from .currency_wars_standard_sale import cancelled_feedback
         return session is not None and cancelled_feedback(scene,session,confidence)
-    if choice.expected == 'standard_exchange_inspectable':
+    if choice.expected in ('standard_exchange_inspectable','standard_relocate_inspectable'):
         from .currency_wars_standard_exchange import inspectable
         return before is not None and inspectable(choice, before, scene, confidence)
     if choice.expected == 'standard_exchange_board':
@@ -436,6 +451,9 @@ def run_standard(c):
             store.persist()
             if problem:raise AutomationError(problem)
             if verifying_consumable and store.data.get('consumable',{}).get('status')=='verified':c.checkpoint()
+            from .currency_wars_standard_reorder import advance as advance_reorder
+            if advance_reorder(store.data,scene,c.settings.ocr_confidence):
+                store.persist();c.checkpoint()
         from .currency_wars_standard_exchange import panel_stale, record_profile
         from .currency_wars_standard_sale import stale as sale_stale
         from .currency_wars_standard_equipment import panel_stale as equipment_stale, record_profile as equipment_profile
@@ -513,7 +531,7 @@ def run_standard(c):
             action['decision'] = dict(strategy=choice.details[0], score=choice.details[1],
                                       reasons=list(choice.details[2]), policy=choice.details[3])
             store.persist()
-        elif choice.intent == 'stage_standard_exchange':
+        elif choice.intent in ('stage_standard_exchange','stage_standard_relocate'):
             action['decision'] = dict(source=choice.details[0],target=choice.details[1],
                                       improvement=choice.details[2],policy=choice.details[3])
             store.persist()
@@ -553,7 +571,7 @@ def run_standard(c):
         from .currency_wars_standard_popup import bind_move,bind_intent as bind_popup
         bind_move(store.data,choice,scene,c.settings.ocr_confidence)
         bind_popup(store.data,choice,scene,c.settings.ocr_confidence)
-        if choice.intent in ('deploy_standard_owned','stage_standard_exchange','select_standard_movement_star','confirm_standard_movement_star','inspect_standard_popup_unit','close_standard_popup_unit','close_standard_popup_stale_panel'):
+        if choice.intent in ('deploy_standard_owned','stage_standard_exchange','stage_standard_relocate','select_standard_movement_star','confirm_standard_movement_star','inspect_standard_popup_unit','close_standard_popup_unit','close_standard_popup_stale_panel'):
             store.persist()
         if choice.intent=='refresh_standard_supply':
             from .currency_wars_standard_supply_refresh import bind_intent
@@ -563,9 +581,9 @@ def run_standard(c):
             from .currency_wars_standard_supply_refresh import bind_choice
             bind_choice(store.data,choice,scene,c.settings.ocr_confidence)
             store.persist()
-        if choice.intent in ('stage_standard_exchange','inspect_standard_exchange_unit'):
+        if choice.intent in ('stage_standard_exchange','stage_standard_relocate','inspect_standard_exchange_unit'):
             from .currency_wars_standard_exchange import record_intent
-            record_intent(store.data,choice)
+            record_intent(store.data,choice,scene,c.settings.ocr_confidence)
             store.persist()
         if choice.intent in ('inspect_standard_sale_unit','inspect_standard_field_sale_unit'):
             from .currency_wars_standard_sale import bind_intent
@@ -622,7 +640,7 @@ def run_standard(c):
                     if popup_stamp!=previous_popup:stable=0
                     previous_popup=popup_stamp
                 stable = stable+1 if ready else 0
-                required = 2 if choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable',
+                required = 2 if choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable','standard_relocate_inspectable',
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
                                                     'standard_sale_panel','standard_owned_sold','standard_field_sale_panel','standard_field_owned_sold','standard_equipment_inspectable',
                                                     'standard_reward_returned','standard_supply_selected','standard_supply_refreshed',
@@ -714,7 +732,7 @@ def run_standard(c):
                     elif choice.intent == 'close_standard_sale_stale_panel':
                         from .currency_wars_standard_sale import finish
                         finish(store.data,cancelled=True)
-                    elif choice.intent == 'stage_standard_exchange':
+                    elif choice.intent in ('stage_standard_exchange','stage_standard_relocate'):
                         from .currency_wars_standard_exchange import begin_verification
                         begin_verification(store.data,choice,scene,after,c.settings.ocr_confidence)
                         store.data['action_status'] = 'exchange_identity_pending'

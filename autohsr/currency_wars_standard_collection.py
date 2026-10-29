@@ -228,8 +228,10 @@ def retained(scene, cell, record, session):
                 or not _same(receipt['basis'],inspection['collection_basis'])
                 or not same_appearance(inspection['collection_appearance'],receipt['appearance'])):return False
         for offset,child in enumerate(actions[index+1:],index+1):
+            from .currency_wars_standard_reorder import preserves
+            permitted=child.get('action') in IDENTITY_PRESERVING_ACTIONS or preserves(child,record,cell,actions)
             if (type(child.get('id')) is not int or child.get('id')!=offset
-                    or child.get('action') not in IDENTITY_PRESERVING_ACTIONS or child.get('status')!='verified'
+                    or not permitted or child.get('status')!='verified'
                     or type(child.get('input_epoch')) is not int or child.get('input_epoch')!=collection['input_epoch']
                     or not child.get('before') or not child.get('after')):return False
         return same_appearance(receipt['appearance'],appearance(scene,cell.roi))
