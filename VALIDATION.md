@@ -8,6 +8,10 @@
 
 **437项离线检查通过**：80项设置返回、225项设置交互、24项计划、24项布局缓存、84项GUI。新增检查覆盖100%、125%、150%、200%，核对Esc与关闭按钮、来源输入选区、新建和缓存布局、日常周常快捷页、独立演算与货币只读入口、日志焦点和运行锁定；实际调用主按钮并截获派发，分别仍为原计划、独立演算或只读动作，没有访问游戏。日志与结果为`runs/settings-return-final-*`，汇总`runs/settings-return-regressions.json`。初版72项之后补充了禁用Canvas副本列表与可阅读任务卡的变体，最终80项通过；初版结果`runs/settings-return-ui/`保留。整屏视觉一致性、玩家体验及日常周常组合实机仍未验收。
 
+源码`9ed6d72`已构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，构建日志`runs/settings-return-build.log`。独立默认配置、`--no-admin-launch`下，在演算设置清空编队，回首页点击保存触发纠错；此时主操作为“开始计划”。打开一般设置、切到识别与等待、最大化，再按Esc返回，仍为原编队纠错页和“开始计划”；直接按空格能重新打开设置，核对来源齿轮焦点已恢复。再次返回并将编队纠正为“哈哈哈哈”，没有保存。
+
+另浏览货币战争只读页后打开设置，主操作仍为“只读识别当前画面”；明确切到周常计划后变为“开始计划”，按Esc返回每日实训及同一计划按钮。未更改周常参数，没有点击开始、识别、检测或游戏入口。原生截图为`runs/settings-return-package-{error,settings-max,plan-return,reopened,corrected,currency,currency-settings,weekly,weekly-home}.png`；关闭退出码0，独立配置与239份原有用户文件哈希不变，147项素材、5份清单及23份上游文件一致。详见`runs/settings-return-package-verification.json`，EXE SHA-256为`4209ba04bc7b441e7ab44fb257bce7b52b738f1157c8131f31751debae15ff47`，备份`build/userdata-settings-return-20261029_191712/`。原始和最终证据归档至正式项目`runs/settings-return-*`，索引`runs/settings-return-evidence-archive.json`。
+
 ## 2026-10-29：纠正输入与窗口缩放保留目标和启动操作
 
 在`b71a1b9`、临时配置与假后端下核对：预算错误定位尚未送达时快速纠正并继续搜索，旧回调仍将焦点拉回预算；错误后立即缩放，战斗超时落到同分组第一项操作间隔。`runs/input-focus-before.json`中这两条失败，离开错误页的反例通过。映射诊断`input-focus-trace.log`确认旧字段未显示时已尝试聚焦，随后旧Notebook事件还用新布局的分组查找而抛出`StopIteration`。
