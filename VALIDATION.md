@@ -14,6 +14,8 @@
 
 本轮只核对桌面素材与交互，不启动、检测或操作游戏。边缘透明度仍是提取结果，背景遮挡重建和应用专属内容也与游戏有差异；不宣称整屏逐像素相同。真人体验反馈按用户安排留待开发完成后，日常周常组合实机及未接入模式的既有边界不变。
 
+源码`41bd40a`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/card-paper-build.log`。独立配置、`--no-admin-launch`下，核对任务卡新纹样与边框；一击“更换副本”打开当前已选“回忆之蕾／城郊雪原”，打开设置后按Esc回到原副本页，再返回首页仍保留副本卡选择。没有修改选项、保存、检测或启动任务，正常关闭退出码0。239份用户文件与独立配置哈希不变，126项UI素材、4份清单及23个上游文件与源码一致。记录`runs/card-paper-package-verification.json`，备份`build/userdata-card-paper-20261029_133008/`；EXE SHA-256为`9a61b78f18abbcfa0e0751cc1242b4ed117925a4b419f5f9c83895b2976a147c`。原生截图为`runs/card-paper-package-home.png`、`card-paper-package-dungeon.png`、`card-paper-package-settings.png`、`card-paper-package-return.png`及`card-paper-package-final-home.png`；本轮证据已归档到正式项目`runs/card-paper-*`。
+
 ## 2026-10-29：按任务卡与设置入口的用户反馈调整交互
 
 用户指出首页的任务卡和设置入口仍需要停下来辨认。本次将“设置”从左侧玩法页签移至指南右侧，用齿轮与文字共同标识，保留原指南印章；各玩法及记录页位置一致，返回保留原页面和入口。任务卡标题简化为任务名，副本卡直接显示当前名称、地点及预计费用；未加入的标签和标题改用灰色。按钮按动作显示“加入计划／调整任务／更换副本／查看安排／查看进度／查看结果”。加入只修改当前草稿，保存仍需显式操作；运行中不能加入，没有开拓力授权时只查看限制。边缘仅部分可见的卡片首次点击先展开，不在动作名称不可见时修改计划。
