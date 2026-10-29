@@ -14,6 +14,8 @@
 
 这次修复详情位置及返回路径；原生标题栏和详情样式仍与游戏不同，不证明整屏复刻或真实玩家学习／注意力成本已经验收。未启动、检测或操作游戏。
 
+源码`e425c11`通过`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，最终日志`runs/summary-dialog-build-final.log`。独立配置下使用`--no-admin-launch`核对正式版正常启动、主入口显示及正常关闭，退出码0；截图`runs/summary-dialog-package-home.png`。详情操作由上述源码离线原生窗口与专项检查验证，正式版未启动任务来制造结果。239份用户文件和独立配置哈希未变，125项UI素材、4份清单及23个上游文件与源码一致。记录`runs/summary-dialog-package-verification.json`，备份`build/userdata-summary-dialog-20261029_121716/`，EXE SHA-256为`95f981afdd035bcf07e22e7f10fd1a00dc3ef93b1e0306c0c25f76b6b79229f1`。专项、任务卡、计划与首页证据均已归档到正式项目`runs/summary-dialog-*`目录，基线重放与修后位置保留在`runs/summary-placement-*`。
+
 ## 2026-10-29：区分任务安排与未执行结果
 
 在`5d0d73e`上用假后端复现：计划在委托阶段停止后，副本卡显示“未执行”，按钮仍是“副本设置”，点击会进入生存索引，无法直接查看这项为何未执行。运行前未启用的任务也显示“跳过”，与实际执行结果混淆。原记录`runs/task-card-state-baseline.json`、`task-card-state-before-home.png`和`task-card-state-before-stopped.png`保留。同次检查确认最小窗口的每日设置选项均在完整祖先可见范围内，没有据此改动布局。
