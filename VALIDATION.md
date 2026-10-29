@@ -18,6 +18,8 @@
 
 滑块修正后，228项生存索引检查通过；针对受影响的原生控件、输入纠错、缩放与计划又分别运行42、55、108、24项，合计457项通过。新增16项为四种比例下的首次禁用显示、实际滑块位置、首次加入和返回，原有212项选择检查一并通过。结果为`runs/dungeon-join-slider-ui/result.json`和`dungeon-join-slider-regressions.json`，日志`dungeon-join-slider-ui.log`及`dungeon-join-slider-final-*.log`；没有重复运行不受此次显示修正影响的其他项目。
 
+最终源码`cfa522d`再次构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。独立配置下，实际窗口首次打开未加入副本、点击加入、从首页“更换副本”返回时，24次与最右端滑块均一致；取消后显示本次不刷本，未保存或执行任务，正常关闭退出码0。239份用户文件及独立配置哈希仍不变，147项素材、5份清单、23份上游文件复核一致；记录`runs/dungeon-join-slider-package-verification.json`，截图`dungeon-join-slider-package-browser.png`、`package-selected.png`、`package-home-selected.png`、`package-return.png`、`package-removed.png`（后四项同`dungeon-join-slider-`前缀），构建日志`dungeon-join-slider-build.log`。备份`build/userdata-dungeon-join-slider-20261029_160411/`，最终EXE SHA-256为`5b9c9e60bf72c6af73ee9634c9eaf13b089ff12fefa451f94c01a412dddbab97`。本轮原始与最终证据归档至正式项目`runs/dungeon-join-*`，未替换失败记录。
+
 ## 2026-10-29：玩法设置与结果返回原入口
 
 继续按AutoZZZ的明确动作与原操作保留方式核对，阅读基线为本地`b197004`的桌面与详情代码，未修改其工作区。在AutoHSR `bcdf9a1`、临时配置和假后端中复现：差分／货币战争两种玩法进入设置或结果时，焦点留在已隐藏入口，Esc不返回；鼠标返回后焦点也留在隐藏的返回按钮。四条路径的原始结果见`runs/mode-navigation-before.json`，配置未变，后端调用为0。
