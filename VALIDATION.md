@@ -14,6 +14,8 @@
 
 旧正式版首页截图保存在`runs/entry-clarity-before-home.png`，来源提交和哈希见`entry-clarity-baseline.json`；新版普通／最小窗口见`runs/entry-clarity-ui/`。这些检查验证入口、反馈和局部参考样式，不能证明真实玩家的学习／注意力成本接近零，也不证明整屏逐像素一致。日常周常组合实机、货币战争周常与积分奖励的原有边界不变。
 
+源码`eb92eff`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/entry-clarity-build.log`。独立配置、`--no-admin-launch`下，原生鼠标一击齿轮打开设置，Esc返回后入口仍高亮；一击邮件卡“加入计划”使日常从3项变4项并出现保存入口，再点“调整任务”直接聚焦邮件选项。将该独立草稿恢复关闭后返回，原卡位置保留、保存入口消失，正常退出码0。没有保存、检测或执行任务；239份用户文件及独立配置哈希不变。125项UI素材、4份清单、23个上游文件与源码一致，记录`runs/entry-clarity-package-verification.json`，备份`build/userdata-entry-clarity-20261029_130545/`。EXE SHA-256为`c9bd3c62a6a4db205e02d017a0a99c030d391cb8e21f48cd131037e0f11cf870`。原生截图为`runs/entry-clarity-package-home.png`、`package-settings.png`、`package-return.png`、`package-joined.png`、`package-task-settings.png`与`package-restored.png`（后五项均同`entry-clarity-`前缀）；相关证据已归档到正式项目`runs/entry-clarity-*`与`runs/game-dialog-*`。
+
 ## 2026-10-29：详情在当前窗口中央打开并返回原入口
 
 从`3cc4e2c`提取原`_show_summary`方法，在相同临时配置和窗口位置离线重放：主窗口客户区`[611,445,1651,1201]`，详情客户区`[11,45,1021,510]`，中心相差`[-915,-746]`像素。新实现对应`[926,790,1021,510]`，中心误差为0；坐标、版本及截图见`runs/summary-placement-before-replay.json`与`summary-placement-after.json`及同名PNG。初次探针重复运行时复用了文件名，旧`summary-placement-baseline.json`和`summary-placement-before.png`已被修后输出覆盖，不能作为修前证据；上述基线是从原提交重新取得的方法重放的结果。
