@@ -21,6 +21,10 @@
 | 每日设置最大化 | 1115毫秒 | 462毫秒 |
 | 每日设置还原 | 834毫秒 | 264毫秒 |
 
+源码`f1ea1e6`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/resize-cache-build.log`。以`--no-admin-launch`核对最大化、邮件卡直达每日设置、关闭邮件后的4项草稿、还原后的值与焦点、恢复原开关、Esc返回原卡及5项计划，正常关闭退出码0。未点击保存、检测或运行，239份用户文件哈希未变；125个UI素材、4份清单、23个上游文件一致。核对记录`runs/resize-cache-package-verification.json`，备份`build/userdata-resize-cache-20261029_094719/`；EXE SHA-256为`83f33b217b06ed23e9a0ca89d7da1a80d0feb19877f0baf6c060f187e47796ed`。正式截图为`runs/resize-cache-package-maximized.png`、`resize-cache-package-settings.png`、`resize-cache-package-draft.png`、`resize-cache-package-restored.png`及`resize-cache-package-return.png`。
+
+首次桌面采集得到目标窗口外画面，保留为本地`runs/resize-cache-package-initial-capture-mismatch.png`，不作为界面证据或打包素材。前置后普通窗口首帧`resize-cache-package-home.png`尚未显示周常按钮，随后稳定的最大化和返回首页截图均显示入口；未将单帧检查当作连续过渡验收。
+
 已查看失败恢复后的首页和替换前的设置画面。还原时旧大布局仍可能短暂裁切，不能称为即时或无闪烁。未启动、检测或操作游戏；真实玩家学习／注意力成本、与游戏整屏逐像素一致、日常周常组合实机仍未验收，货币战争周常与周积分领奖尚未接入。
 
 ## 2026-10-29：减少窗口缩放的重复绘制
