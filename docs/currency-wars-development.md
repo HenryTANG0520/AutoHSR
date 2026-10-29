@@ -1,5 +1,22 @@
 # 货币战争重启开发记录
 
+## 2026-10-30：整局失败结算、胜负计数与原目标接续
+
+参考固定上游`_check_battle_result`与`main.py`循环入口，新增[原生终局失败协议](../autohsr/currency_wars_defeat.py)，接入节点观察、标准流程、统一账本、循环与周常汇总。普通“挑战结束／继续挑战”不当作整局失败，上游“对局未完成”与合成“对局失败”变体使用相同失败链。详细用法和限制见[失败与循环接续](currency-wars-defeat-loop.md)。
+
+- 本局开局与最近出战均须已核实，同节点两帧终局来源后，依次取得零生命评价、同节点失败总览、统计与主页；每步一次Context输入、两帧独立反馈。胜利／继续挑战文字、完整弹窗冲突、未知金融动作及未结束专项协议阻止推进，旧未知不重发。
+- 结算会话为settled和`match_outcome='defeat'`，单局报告partial、`completion_verified=false`，节点也不记胜利。归档核对原会话、partial报告、全部出战／终局／结算文件及哈希，不靠完成标志或当前主页。
+- `currency_continue_after_defeat=false`及循环专用双向CLI在开始时冻结。失败消耗原局数，默认归档后停止；明确接续只确认本次原回执并使用原剩余额度，下次失败仍停。最后一局失败不会自动补局，积分目标亦受原上限约束，技术异常／未知始终停止。
+- `completed/settled_games`、`victories`与`defeats`分列，逐局回执附累计失败数并核对前序链，旧胜利回执按0失败兼容。周常和父计划保留胜负、原日常验证及已确认资源，不为接续重复日常。写盘和归档中断依据原件只读补存，原失败报告不改成成功。
+
+23项专项通过`runs/currency-defeat-final.log`（11.885秒），涵盖两种失败文字、节点／胜利／弹窗反例、原生四步、默认停止与明确接续、原局数耗尽、积分及周常组合、原日常复用、未知交易不清账、未知点击不重放、原证据损坏和归档写盘恢复。118项相关回归通过`runs/currency-defeat-release-related.log`（58.805秒）；随后增加“对局未完成”及未结束popup反例，专项重新核实。此前20项、128项阶段回归及夹具错误日志保留；初次夹具缺观察参数和移动代码块导致的NameError均已修正，没有放宽结算与账号门禁。
+
+23项专项快照的**1655项全量通过**`runs/currency-defeat-all.log`（786.230秒）。全量启动后入口复查发现两处遗漏：普通非周常循环停在defeated后，新周常计划的旧预检只认active，会先执行新日常再遇旧循环；原周常重复新开始的复用摘要未带胜负字段。两项新增反例先在`runs/currency-defeat-plan-first.log`实际失败，现将defeated纳入日常前预检，并保留原日常、已结束及胜负摘要；两项修复检查通过`runs/currency-defeat-plan-fixed.log`（1.173秒）。原失败日志保留，没有重建旧预算。
+
+上述入口修复后的最终代码**122项相关回归通过**`runs/currency-defeat-final-related.log`（61.242秒），包含全部25项失败专项、原循环、积分目标、周常、标准推进、页面和父计划。随后**84项原GUI假后端检查通过**`runs/currency-defeat-gui.log`。两份上游源码的Git blob／SHA-256、GPL许可哈希、9份说明264条本地链接和CLI帮助通过`runs/currency-defeat-source-check.json`；`git diff --check`通过，配置、原始证据、日志及检查脚本保持忽略。
+
+未启动、检测或控制真实游戏，未接续旧对局，没有资源消耗、新游戏截图、模型训练／独立留出或EXE构建。失败页面采用已有4.6胜利几何的合成变体，不能写为实机校准已通过；实际布局、真实失败结算、完整策略及连续整局仍待验收。GUI文件由现有界面工作负责，本轮未修改。历史独立通关仍为0/10，旧十场目标没有恢复。
+
 ## 2026-10-30：投资策略赠送角色与完整身份回执
 
 继续参考固定三月七的`check_investment_environment`和`check_special_characters`，新增[赠送角色协议](../autohsr/currency_wars_investment_units.py)，接入原标准投资选择、统一账本与角色查看流程，详见[功能说明](currency-wars-investment-units.md)。没有修改GUI或新增实际对局授权，旧超频限制、标准A8-40入口及独立验收计数保持原义。

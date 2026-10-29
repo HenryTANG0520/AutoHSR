@@ -90,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--resume-currency-rewards',action='store_true',help='明确接续已核实步骤后的积分领奖，或只读补存回执；未知领取不重放')
     parser.add_argument('--currency-until-points', action=argparse.BooleanOptionalAction, default=None,
                         help='本周积分满后停止，仍受 --currency-runs 上限约束；仅用于循环，接续沿用原目标，不保存配置')
+    parser.add_argument('--currency-continue-after-defeat',action=argparse.BooleanOptionalAction,default=None,
+                        help='整局失败且结算核实后继续循环；失败局占原局数上限，默认关闭，仅用于循环，不保存设置')
     parser.add_argument("--currency-strategy", choices=('default','aglaea','seele'),
                         help="标准开发购买与成长策略；新局默认 default，接续沿用本局记录")
     parser.add_argument('--currency-remembrance-name',help='本局记忆开拓者实际显示名称；留空不配置，接续沿用已记录名称，不保存设置')
@@ -113,8 +115,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error('--resume-active-currency 仅用于 --currency-wars-standard。')
     if args.resume_currency_rewards and not args.currency_wars_rewards:
         parser.error('--resume-currency-rewards 仅用于 --currency-wars-rewards。')
-    if (args.currency_runs is not None or args.resume_currency_loop or args.currency_until_points is not None) and not args.currency_wars_loop:
-        parser.error('--currency-runs、--resume-currency-loop 与 --currency-until-points 仅用于 --currency-wars-loop。')
+    if (args.currency_runs is not None or args.resume_currency_loop or args.currency_until_points is not None or args.currency_continue_after_defeat is not None) and not args.currency_wars_loop:
+        parser.error('--currency-runs、--resume-currency-loop、--currency-until-points 与 --currency-continue-after-defeat 仅用于 --currency-wars-loop。')
     for option, value in (('--currency-strategy',args.currency_strategy), ('--currency-remembrance-name',args.currency_remembrance_name),
                           ('--currency-fast-mode',args.currency_fast_mode)):
         if value is not None and not (args.currency_wars_standard or args.currency_wars_loop):
@@ -285,7 +287,8 @@ def main(argv: list[str] | None = None) -> int:
             from .currency_wars_loop import CurrencyLoopRunner
             runner = CurrencyLoopRunner(settings, emit, runs=args.currency_runs, resume=args.resume_currency_loop,
                 currency_strategy=args.currency_strategy, currency_remembrance_name=args.currency_remembrance_name,
-                currency_fast_mode=args.currency_fast_mode, until_points=args.currency_until_points)
+                currency_fast_mode=args.currency_fast_mode, until_points=args.currency_until_points,
+                continue_after_defeat=args.currency_continue_after_defeat)
         elif args.plan:
             from .plan_runner import PlanRunner
             runner = PlanRunner(settings, emit, new_battle_run=args.new_battle_run,resume_weekly_currency=args.resume_weekly_currency,

@@ -2,6 +2,8 @@
 
 These labels describe visible UI only. They never authorize a gameplay action
 or imply that the tutorial, economy, or a match has been verified.
+Terminal defeat layouts are synthetic variants of the observed victory geometry;
+they still require real-screen calibration and acceptance.
 """
 from __future__ import annotations
 
@@ -49,6 +51,9 @@ PAGE_LABELS = {
     "match_rating": "整局挑战评价",
     "match_summary": "整局胜利阵容总览",
     "match_statistics": "整局伤害统计与返回",
+    "match_defeat": "整局挑战结束，失败结算待核实",
+    "defeat_rating": "整局失败评价与零生命核验",
+    "defeat_summary": "整局失败阵容总览",
 }
 
 
@@ -306,7 +311,40 @@ _PAGES = {
 }
 
 
+_DEFEAT_PAGES={
+    'match_defeat':(
+        _Anchor(re.compile('挑战结束|挑战失败'),(.42,.17,.58,.26)),
+        _Anchor(re.compile(r'[1-3]-[1-9][0-9]?(?:战斗|奖励|首领)?'),(.40,.24,.53,.30)),
+        _Anchor('挑战进度',(.46,.33,.55,.39)),
+        _Anchor('前往结算',(.46,.80,.55,.86)),
+    ),
+    'defeat_rating':(
+        _Anchor(re.compile('挑战结束|挑战失败'),(.42,.17,.58,.26)),
+        _Anchor(re.compile(r'小队生命值0(?:/100)?'),(.44,.25,.56,.30)),
+        _Anchor('对局评价',(.46,.32,.54,.38)),
+        _Anchor('下一步',(.46,.80,.55,.86)),
+    ),
+    'defeat_summary':(
+        _Anchor(re.compile('对局失败|对局未完成'),(.23,.18,.31,.23)),
+        _Anchor(re.compile(r'[1-3]-[1-9][0-9]?(?:战斗|奖励|首领)?'),(.40,.16,.53,.21)),
+        _Anchor('我的阵容',(.40,.34,.46,.40)),
+        _Anchor('投资环境',(.40,.65,.46,.70)),
+        _Anchor('投资策略',(.58,.65,.64,.70)),
+        _Anchor(re.compile('下一页|下顶'),(.46,.80,.55,.86)),
+    ),
+}
+
+
 def classify_page(trusted_tokens: list[Token]) -> str:
+    # The defeat layouts extend the observed victory geometry; their actual
+    # live layouts remain unverified. Exact contradictory text blocks them.
+    defeated=[kind for kind,anchors in _DEFEAT_PAGES.items()
+              if all(any(a.matches(t) for t in trusted_tokens) for a in anchors)]
+    if defeated:
+        conflict=any(_text(t.text) in ('挑战成功','对局胜利','继续挑战') for t in trusted_tokens)
+        conflict=conflict or any(all(any(a.matches(t) for t in trusted_tokens) for a in anchors)
+                                for anchors in _MODALS.values())
+        return defeated[0] if len(defeated)==1 and not conflict else 'unknown'
     for definitions in (_MODALS, _PAGES):
         if definitions is _PAGES and any(
             _Anchor('请选择投资策略',(.4,.04,.6,.50)).matches(t) for t in trusted_tokens

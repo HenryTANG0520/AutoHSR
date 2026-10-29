@@ -43,6 +43,9 @@ def _history(session, intent, expected, payload):
 
 def progress_action(scene, session, confidence=.65):
     from .currency_wars_standard_flow import StandardAction
+    from .currency_wars_defeat import proposal
+    defeat=proposal(scene,session,confidence)
+    if defeat is not None:return defeat
     kind = observe(scene, confidence).page_kind
     if kind == 'node_result':
         attempt = verified_attempt(session)
@@ -129,6 +132,8 @@ def progress_verified(session, choice, scene, confidence=.65):
     action = session['actions'][-1]
     if action.get('action') != choice.intent or action.get('status') != 'verified':
         raise AutomationError('推进结果缺少已核实动作。')
+    from .currency_wars_defeat import completed
+    if completed(session,choice,scene,confidence):return
     if choice.intent == 'continue_standard_node':
         feedback = advancement_feedback(scene, choice.payload[0], confidence)
         if feedback is None:

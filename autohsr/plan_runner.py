@@ -142,10 +142,13 @@ class PlanRunner:
                         target=old.data['weekly_plan']
                         report.currency_wars=dict(mode='weekly_currency',loop_id=old.data['loop_id'],week=target['week'],
                             maximum=target['maximum'],completed=old.data['completed'],state=target['state'],phase=target['phase'],
+                            settled_games=old.data['completed'],defeats=old.data.get('defeats',0),
+                            victories=old.data['completed']-old.data.get('defeats',0),
                             loop_record=str(old.path),score_rewards_verified=False,reused_result=True,current_account_verified=False,
                             acceptance_runs=0,development_only=True)
                         report.weekly_plan.update(week=target['week'],due_at=target['due_at'],requested_runs=target['maximum'],
-                            maximum_runs=target['maximum'],completed_runs=old.data['completed'])
+                            maximum_runs=target['maximum'],completed_runs=old.data['completed'],
+                            defeats=old.data.get('defeats',0),victories=old.data['completed']-old.data.get('defeats',0))
                     raise
                 if self.resume_weekly_currency:
                     from .weekly_plan import WeeklySlot
@@ -182,6 +185,7 @@ class PlanRunner:
                 report.weekly_plan.update(score_rewards_verified=(weekly.get('status')=='success' and weekly.get('report_saved') is True
                     and data.get('score_rewards_verified') is True),
                     completed_runs=data.get('completed',0),maximum_runs=data.get('maximum',self.settings.weekly_runs),
+                    victories=data.get('victories',data.get('completed',0)),defeats=data.get('defeats',0),
                     requested_runs=data.get('maximum',self.settings.weekly_runs))
                 report.error,report.safe_next=weekly.get('error',''),weekly.get('safe_next','')
                 if weekly.get('status')=='success' and weekly.get('report_saved') is True and data.get('score_rewards_verified') is True:

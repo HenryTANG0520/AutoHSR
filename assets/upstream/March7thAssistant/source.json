@@ -46,7 +46,8 @@
     },
     {
       "path": "main.py",
-      "git_blob": "feab0b158e1f80c2b7a0c85c6cc276479d710bf4"
+      "git_blob": "feab0b158e1f80c2b7a0c85c6cc276479d710bf4",
+      "sha256": "790391e9552763e1568c2c3165447d1c237a5ba4acabb0eff0fc2a04ff333211"
     },
     {
       "path": "LICENSE",
@@ -54,7 +55,8 @@
     },
     {
       "path": "tasks/weekly/currency_wars.py",
-      "git_blob": "52507ccfa8bf7977f8a8be9eca24050a6c16990d"
+      "git_blob": "52507ccfa8bf7977f8a8be9eca24050a6c16990d",
+      "sha256": "1a26a0339439204281e34a2fbc8cdec3aa46b61f0589f4ab1c5d377d0397ef54"
     },
     {
       "path": "tasks/weekly/weekly_reward.py",
@@ -88,6 +90,13 @@
     }
   ],
   "adaptations": [
+    {
+      "path": "autohsr/currency_wars_defeat.py",
+      "reference_source": "tasks/weekly/currency_wars.py",
+      "reference_functions": ["_check_battle_result"],
+      "native_files": ["autohsr/currency_wars_standard_node.py", "autohsr/currency_wars_loop.py", "autohsr/tests/test_currency_wars_defeat.py"],
+      "kind": "native terminal-defeat provenance and four-step settlement: same dispatched node, two terminal observations, zero life, explicit failed/unfinished summary and separate statistics/lobby feedback. Defeats remain partial with completion_verified=false, consume the original frozen loop ceiling and have independent chained outcome counts. Default stops, explicit resume acknowledges only that receipt, optional frozen auto-continuation never retries unknown IO or adds games. Defeat screen geometry is synthetic from existing victory layouts and has no real-screen acceptance; no upstream IO, telemetry or cached result flag imported"
+    },
     {
       "path": "autohsr/support_selection.py",
       "native_files": [
@@ -152,7 +161,7 @@
       "path": "autohsr/currency_wars_loop.py",
       "reference_source": "main.py",
       "reference_functions": ["run_sub_task", "_run_loop_task_with_telemetry", "currencywars"],
-      "kind": "sequential composition of AutoHSR native standard Runners, finite or until stopped, with an optional weekly score goal bounded by the requested new-game count; frozen options and game week, explicit remaining-goal resume, local account and match ownership, verified terminal settlement, original reports and recoverable hash-bound archives; native failure or unknown stops; rewards, weekly-plan integration, other modes and live acceptance remain pending"
+      "kind": "sequential composition of AutoHSR native standard Runners, finite or until stopped, with an optional weekly score goal bounded by the requested new-game count; frozen options and game week, explicit remaining-goal resume, local account and match ownership, verified terminal settlement, original reports and recoverable hash-bound archives. Verified defeats count against the original ceiling and stop by default, with one-receipt explicit resume or frozen optional auto-continuation; unknown and technical failure always stop. Independent rewards and weekly composition have separate native adapters; other modes and live acceptance remain pending"
     },
     {
       "path": "autohsr/currency_wars_equipment_mode.py",

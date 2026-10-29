@@ -234,6 +234,8 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None, session=None):
+    from .currency_wars_defeat import INTENTS as DEFEAT_INTENTS,feedback as defeat_feedback
+    if choice.intent in DEFEAT_INTENTS:return session is not None and defeat_feedback(choice,scene,session,confidence)
     if choice.expected in ('standard_movement_star_selected','standard_movement_star_returned','standard_popup_unit_board'):
         from .currency_wars_standard_popup import feedback
         return session is not None and feedback(choice,scene,session,confidence)
@@ -400,7 +402,7 @@ def run_standard(c):
     budget=StandardBudget(store.data)
     for _ in range(MAX_ACTIONS+1):
         c.checkpoint()
-        if store.data['completion_verified']:
+        if store.data['completion_verified'] or store.data.get('defeat_settlement_verified'):
             break
         guard._require_current_scene(scene)
         if (store.data.get('account_verified_run') != c.report.run_dir or
@@ -438,7 +440,7 @@ def run_standard(c):
             store.data['collection'] = collection
             store.persist()
         kind = observe(scene,c.settings.ocr_confidence).page_kind
-        if kind in ('battle','node_result','final_victory') and store.data.get('exchange',{}).get('status','verified') == 'verified':
+        if kind in ('battle','node_result','final_victory','match_defeat') and store.data.get('exchange',{}).get('status','verified') == 'verified':
             from .currency_wars_standard_node import observe_started_node
             scene, verified = observe_started_node(c,store,scene)
             if not verified:
@@ -659,7 +661,8 @@ def run_standard(c):
                     if popup_stamp!=previous_popup:stable=0
                     previous_popup=popup_stamp
                 stable = stable+1 if ready else 0
-                required = 2 if choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable','standard_relocate_inspectable',
+                from .currency_wars_defeat import INTENTS as DEFEAT_INTENTS
+                required = 2 if choice.intent in DEFEAT_INTENTS or choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable','standard_relocate_inspectable',
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
                                                     'standard_sale_panel','standard_owned_sold','standard_field_sale_panel','standard_field_owned_sold','standard_equipment_inspectable',
                                                     'standard_reward_returned','standard_supply_selected','standard_supply_refreshed',
@@ -795,7 +798,7 @@ def run_standard(c):
                 store.data['screenshot'] = evidence(c, after, 'currency_standard_transition_unknown')
             store.persist()
             break
-        if store.data['completion_verified']:
+        if store.data['completion_verified'] or store.data.get('defeat_settlement_verified'):
             break
     else:
         store.data.update(action_status='step_limit', reason='本次标准观察达到本局动作上限对应的轮数，已停止并保留记录。')
@@ -805,5 +808,8 @@ def run_standard(c):
     if store.data['completion_verified']:
         c.report.safe_next = '本次为开发对局，结算完成不计作独立验收；原始证据已保留。'
         return TaskResult(TASK, 'success', store.data['reason'])
+    if store.data.get('defeat_settlement_verified'):
+        c.report.safe_next='本局失败且结算已核实；原报告保留，循环按冻结设置与原局数上限处理，不接续或重打这局。'
+        return TaskResult(TASK,'partial',store.data['reason'])
     c.report.safe_next = '先读取标准对局当前局面，再接续已核实动作；不重开或重放未知交易。'
     return TaskResult(TASK, 'partial', store.data.get('reason', '标准对局开发未完成，已留证。'))

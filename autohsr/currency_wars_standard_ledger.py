@@ -19,6 +19,8 @@ FREE_ACTIONS = frozenset((
     'stage_standard_exchange','stage_standard_relocate','inspect_standard_exchange_unit','close_standard_exchange_unit','close_standard_exchange_stale_panel',
     'settle_standard_final_victory', 'settle_standard_match_rating',
     'settle_standard_match_summary', 'settle_standard_match_statistics',
+    'settle_standard_defeat_match_defeat','settle_standard_defeat_defeat_rating',
+    'settle_standard_defeat_defeat_summary','settle_standard_defeat_match_statistics',
 ))
 PAID_ACTIONS = frozenset(('buy_standard_offer', 'buy_standard_experience', 'refresh_standard_shop'))
 CREDIT_ACTIONS = frozenset(('sell_standard_owned','sell_standard_field_owned'))

@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-10-30 整局失败结算与有界循环
+
+参考固定March7thAssistant的`_check_battle_result`与`main.py`循环入口，将普通节点继续与终局失败分开，改写为[原生失败协议](../autohsr/currency_wars_defeat.py)。同局出战、两帧终局、零生命与失败总览、四步独立反馈、原partial报告、逐局胜负计数和原局数上限属于AutoHSR适配；默认失败停止，明确接续只确认该次原回执，自动继续须在循环开始时冻结。未迁入上游输入框架、遥测、放弃旧局或未知失败后重开。源文件blob与GPL v3见[source.json](upstream/March7thAssistant/source.json)。未新增图像、模型或真实采集；失败页面使用已有胜利几何的合成变体，未声称真实布局已校准或失败结算已实机验收，见[范围](../docs/currency-wars-defeat-loop.md)。
+
 2026-10-29差分站点偏好参考固定March7thAssistant `process_next_station`及默认配置，按行为适配为[原生冻结偏好](../autohsr/du_station_policy.py)。保留本项目默认顺序、输入门禁及危险信标检查，没有复制坐标、重抽循环或禁用项兜底。两个原源码blob、GPL v3许可哈希及范围见[站点来源说明](upstream/March7thAssistant/du/README.md)和[清单](upstream/March7thAssistant/du/source.json)；未新增图像、模型或游戏采集，检查使用模拟卡片及已有脱敏回放。
 
 ## 2026-10-29 货币战争周常编排
@@ -20,7 +24,7 @@
 
 ## 2026-10-29 逐局连续运行
 
-参考固定March7thAssistant的`main.py`中`run_sub_task`及其局部循环／货币战争调用，将连续运行改写为[原生组合Runner](../autohsr/currency_wars_loop.py)。逐局归属、冻结目标、账号输入门禁、原报告核验和可恢复归档属于AutoHSR原生适配；失败／未知停止，不迁入上游false返回后继续或遥测实现。Git blob及GPL v3许可见[source.json](upstream/March7thAssistant/source.json)。未新增公开图像、模型或真实采集；检查使用合成最终节点、假窗口与既有原生结算协议。
+参考固定March7thAssistant的`main.py`中`run_sub_task`及其局部循环／货币战争调用，将连续运行改写为[原生组合Runner](../autohsr/currency_wars_loop.py)。逐局归属、冻结目标、账号输入门禁、原报告核验和可恢复归档属于AutoHSR原生适配；最初失败／未知停止，10月30日另接同源已核实失败的可选继续，技术异常／未知仍停止，不按任意false结果重开，也不迁入遥测实现。Git blob及GPL v3许可见[source.json](upstream/March7thAssistant/source.json)。未新增公开图像、模型或真实采集；检查使用合成最终节点、假窗口与既有原生结算协议。
 
 AutoHSR is distributed under the GNU General Public License version 3. The full
 license is in [../LICENSE](../LICENSE). The resources below retain their upstream

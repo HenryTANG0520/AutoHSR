@@ -1,5 +1,7 @@
 # March7thAssistant 参考来源与适配
 
+2026-10-30另参考`_check_battle_result`与`main.py`循环入口，将终局失败与普通节点继续分开，接入[原生失败结算及循环规则](../../../docs/currency-wars-defeat-loop.md)。失败须有同局出战、两帧终局、零生命、失败总览、四步反馈及原partial报告；胜利与失败分列，失败消耗原局数，默认停止，明确接续仅确认该次原回执。源码blob与适配范围见[source.json](source.json)，没有迁入上游输入或遥测，也没有新增游戏采集；失败页面几何是既有胜利布局的合成变体，真实校准及整局仍待验收。
+
 2026-10-30另补[投资策略角色赠送](../../../docs/currency-wars-investment-units.md)，继续参考`check_investment_environment`和特殊角色计数的处理思路。实际到账使用AutoHSR原末节点完整阵容来源、独立确认、逐角色重读／关闭及装备守恒，不通过缓存增加角色计数认定成功。既有150号效果文本与哈希见[机制说明](../../currency-investment/README.md)，没有新增图像、模型或游戏采集；满席／溢出、其他物品改造和真实赠送仍待验证。
 
 2026-10-30另将`Character.borrow`及卡片内角色／好友匹配、角标重试适配为[支援偏好](../../../docs/support-preferences.md)。有序偏好、逐页查找与明确回退继续使用AutoHSR原生Context和入队反馈，满员不移除自身预设，借用不直接标记实训完成。新增105幅未改字节的[固定参考头像](support/README.md)，逐幅Git blob、SHA-256及游戏美术权利说明单独保存；没有新增玩家画面，GUI和真实借用仍待验收。
