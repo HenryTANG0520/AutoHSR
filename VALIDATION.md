@@ -1,5 +1,17 @@
 # AutoHSR 0.1 验证记录
 
+## 2026-10-29：设置入口直接聚焦当前选项
+
+以`9731bf0`为基线，用临时配置和假后端重现：从首页打开周常或设置，焦点仍在已隐藏的首页按钮；第一次Tab转到分类栏的第一个入口，而非正在显示的周常选项。记录`runs/settings-entry-focus-before.json`，两条路径的焦点`visible=false`，未修改配置、未运行游戏。
+
+现在用户打开设置、周常或切换设置分类时，焦点进入当前分类首个可用控件；任务卡指定项、错误字段、文本选择、分类键盘导航和其他详情窗口优先保留。以控件的布局归属处理Windows延后映射，不通过强行抢前台或增加按钮说明解决。只有用户导航请求安排默认焦点，单纯的Notebook页面变化不覆盖错误定位。下拉框沿用原生下方向键展开与Esc收起，随后Esc返回原入口；任务、保存和启动逻辑不变。
+
+初期实现确实遇到控件映射时机和通用页面事件覆盖错误焦点的问题，原失败与诊断保存在`runs/settings-entry-focus-initial.log`、`settings-entry-focus-verified.log`、`settings-entry-focus-final.log`、`settings-entry-focus-regressions.log`及对应trace文件。错误焦点检查在关闭新增导航回调时通过，之后将自动聚焦限定到用户导航请求，未放宽既有检查。 另一次检查误用了原生只读组合框未绑定的Space，已按实际绑定改用Down，没有新增或改变产品键位。 同进程串联两个旧GUI脚本时还出现前一脚本销毁窗口后遗留的`_drain`计时器警告，最终检查改为各脚本独立进程运行；未因此改写业务循环或游戏输入。
+
+**225项设置、55项输入纠错、121项任务入口、84项GUI检查通过**，最终日志为`runs/settings-focus-clean-settings_ui_smoke.log`、`settings-focus-clean-input_feedback_smoke.log`、`settings-focus-clean-entry_clarity_smoke.log`、`settings-focus-clean-gui_smoke.log`。设置专项覆盖100%、150%、200%，入口专项另含125%；普通／最小窗口、当前字段变禁用、快速返回、详情焦点、原生下拉、指定任务与错误字段均已核对。最终独立进程日志无回调错误或计时器警告，配置写入只发生在临时配置的显式保存检查中，游戏调用为0。
+
+本轮不新增提示文案、控件或键位，不改变日常与周常的执行、资源或保存约定；只修复导航后的焦点。真人体验反馈仍按用户安排留待开发完成后，不能以这些离线检查证明学习与注意力成本接近零。
+
 ## 2026-10-29：任务卡使用原纸面纹样与边框
 
 保留当前任务卡、设置入口与开始计划的交互。只读对照AutoZZZ本地`8511c1b`的`interface.py`、`desktop.py`、`game_widgets.py`和`gui.py`，继续采用整卡点击、鼠标与键盘同一动作、切页保留状态及单独保存设置的原则；没有操作AutoZZZ窗口或迁入其源码。

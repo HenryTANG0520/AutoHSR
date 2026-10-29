@@ -235,6 +235,37 @@ class AutoHSRWindow:
             self.action_page = name
         self._configure_primary_action()
         self._refresh_controls()
+        if name == "settings":
+            self.root.after_idle(self._focus_settings_entry)
+
+    def _focus_settings_entry(self):
+        """Move focus out of hidden pages without overriding an explicit target."""
+        if self.active_page != "settings":
+            return
+        key, section = next((key, section) for key, section in self.settings_sections.items()
+                            if str(section) == self.settings_tabs.select())
+
+        def in_section(widget):
+            if not str(widget).startswith(str(section)+"."):
+                return False
+            # Mapping arrives after idle callbacks on Windows. Inspect layout
+            # membership so explicit error/task focus survives that interval.
+            while widget is not section:
+                if not widget.winfo_manager():
+                    return False
+                widget = widget.master
+            return True
+
+        focus = theme.focus_widget(self.root)
+        if focus is not None:
+            if focus.winfo_toplevel() is not self.root:
+                return
+            enabled = not isinstance(focus, ttk.Widget) or not focus.instate(("disabled",))
+            if enabled and (in_section(focus) or focus is self.settings_buttons[key] or focus is self.settings_shell.back):
+                return
+        target = next((control for control in self.setting_controls
+                       if in_section(control) and not control.instate(("disabled",))), self.settings_buttons[key])
+        target.focus_set()
 
     def _configure_primary_action(self):
         currency = getattr(self, "action_page", "home") == "currency_wars"

@@ -65,6 +65,7 @@ class SettingsShell(Surface):
             self.ui._show_daily_tasks()
         else:
             self.ui.settings_tabs.select(self.ui.settings_sections[key])
+            self.ui.root.after_idle(self.ui._focus_settings_entry)
 
     def move(self, index, step):
         key = SECTIONS[(index+step) % len(SECTIONS)][0]
