@@ -16,7 +16,7 @@ from .currency_wars_prepare import trusted
 from .models import AutomationError, normalize
 
 
-POLICY = 'standard-investment-v1'
+POLICY = 'standard-investment-v2'
 AVOID = frozenset(('深井角斗场','佩佩客串','钻石商人','现金为王','降本增效','大裁员','人力重组',
     '全员晋升','节省工位','奋斗协议','专家研讨会','快请专家','英雄登场','命运礼物','独家代言',
     '全都要','广聚天下英才','阿哈大悦','好运来'))
@@ -47,6 +47,9 @@ class InvestmentOption:
 
 def parse_effect(effect):
     value = normalize(effect)
+    from .currency_wars_investment_units import parse as parse_units
+    unit_kind,unit_parameters,unit_score=parse_units(value)
+    if unit_kind:return unit_kind,unit_parameters,unit_score
     if m:=re.fullmatch(r'我方小队攻击敌方目标后若其生命值百分比少于([1-9][0-9]?|100)%将其【斩杀】',value):
         threshold=int(m[1])
         return 'execution',(('threshold',threshold),),100+threshold

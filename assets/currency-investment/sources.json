@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-30",
+  "upstream": {
+    "repository": "https://github.com/moesnow/March7thAssistant",
+    "commit": "7cf6c6bed474539485d3b1504077ac352866829f",
+    "source": "tasks/weekly/currency_wars.py",
+    "functions": ["check_investment_environment", "check_special_characters"],
+    "license": "GNU GPL version 3; game content remains owned by its respective rights holders"
+  },
+  "native_extension": "autohsr/currency_wars_investment_units.py",
+  "existing_local_samples": [
+    {
+      "sample": "150-investment-options.sample.json",
+      "sample_sha256": "296a726ce9b349a126befe8c9f9fd7295a00f9a3ba7900a49fff0788d7adad5e",
+      "capture": "150-investment-options.png",
+      "capture_sha256": "c09552d92241b1af132fb6392138c88559e2949e5b811a13d61dcd4f1fb4bfd2",
+      "client": "4.6.0",
+      "observed_date": "2026-10-18",
+      "purpose": "existing anonymized full-effect text calibration only; no actual role grant proof",
+      "transformation": "original sample and capture unchanged; interpreted role identities and decimal percentage only; no image copied into this directory"
+    }
+  ],
+  "validation": {
+    "mechanism": "synthetic native Context and full role inspection/close receipts, count/star/tier variants and counterexamples",
+    "old_sample_role": "calibration and adjacent replay",
+    "model_training": false,
+    "independent_real_holdout": false,
+    "live_acceptance": false
+  }
+}

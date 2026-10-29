@@ -4,8 +4,14 @@
   "retrieved": "2026-10-28",
   "license": "GNU GPL version 3",
   "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json"],
+  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json", "assets/currency-investment/sources.json"],
   "native_extensions": [
+    {
+      "path": "autohsr/currency_wars_investment_units.py",
+      "mechanic_manifest": "assets/currency-investment/sources.json",
+      "native_samples": ["150-investment-options.sample.json"],
+      "kind": "AutoHSR-authored investment role delivery: exact complete count/star/tier grammar and old named-role decimal-effect text; original last-node prebattle roster is bound by a direct verified victory/plane chain and frozen digest, confirmation only opens a pending obligation, current full roster inspection/close receipts prove actual gains and unchanged other units, merged gear is conserved. Unknown declared star stays unknown; explicit four-star grants are direct only, not inferred merges. Full benches, overflow and other role/item transformations remain unsupported; no game input framework or special-role counter cache imported"
+    },
     {
       "path": "autohsr/currency_wars_worn_reforge.py",
       "mechanic_manifest": "assets/currency-consumables/sources.json",
@@ -261,6 +267,7 @@
     {
       "path": "autohsr/currency_wars_standard_investment.py",
       "reference_functions": ["check_investment_environment", "check_box"],
+      "native_files": ["autohsr/currency_wars_investment_units.py"],
       "kind": "verified victory/map/plane origin, fresh selected-card proof and separate confirmation; declared weapon boxes remain a ledger obligation until their type and inventory delivery are independently verified; future experience modifiers require original verified receipts"
     },
     {

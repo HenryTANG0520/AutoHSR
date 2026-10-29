@@ -782,3 +782,9 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 参考固定March7thAssistant的`Character.borrow`及角色／好友查找、角标遮罩检查，适配为[原生支援选择](../autohsr/support_selection.py)。固定代码、角色名称来源的Git blob及SHA-256见[父清单](upstream/March7thAssistant/source.json)，上游代码使用GPL v3。另引入105幅未改变字节的角色头像，逐幅路径、尺寸、哈希和原Git blob见[头像清单](upstream/March7thAssistant/support/sources.json)，[说明](upstream/March7thAssistant/support/README.md)区分源码许可与HoYoverse等原权利人的游戏美术权利。
 
 有界逐页查找、精确好友名、角色形态分差、左侧星魂遮罩、明确回退和原生逐次反馈属于本项目适配。没有迁入上游输入框架、满员移除自身角色或借用即完成实训的行为；没有训练模型或新增游戏采集。合成变体与两份既有列表仅用于机制／局部校准，不代表独立真实留出或实机通过，见[功能与验证边界](../docs/support-preferences.md)。
+
+## 2026-10-30 投资策略角色赠送
+
+继续参考固定March7thAssistant的`check_investment_environment`和`check_special_characters`，将角色赠送接入[原生核验](../autohsr/currency_wars_investment_units.py)。固定源码及GPL v3署名保留在[上游清单](upstream/March7thAssistant/source.json)。原末节点完整阵容、直接位面来源、确认后全部重采、显式数量／星级／费用、装备守恒与逐角色关闭回执是AutoHSR实现，没有迁入上游缓存加计数或默认首项的行为。
+
+效果文本来自既有4.6的150号匿名字段样本，记录“黑塔、缇宝、0.15%”，未由标题猜测星级。原样本和PNG的SHA-256、校准范围及权利说明见[机制清单](currency-investment/sources.json)与[README](currency-investment/README.md)。没有新增、复制或公开原游戏画面，没有训练模型或独立真实留出；其他变体和输入链为合成检查，真实赠送尚未验收，见[说明](../docs/currency-wars-investment-units.md)。

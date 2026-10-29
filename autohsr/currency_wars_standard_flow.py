@@ -456,6 +456,12 @@ def run_standard(c):
             store.persist()
             if problem:raise AutomationError(problem)
             if verifying_reward and store.data.get('reward',{}).get('status')=='verified':c.checkpoint()
+            from .currency_wars_investment_units import verify as verify_investment_units
+            verifying_investment=store.data.get('investment',{}).get('status')=='unit_verifying'
+            problem=verify_investment_units(store.data,scene,c.runner.input_epoch,c.settings.ocr_confidence)
+            store.persist()
+            if problem:raise AutomationError(problem)
+            if verifying_investment and store.data.get('investment',{}).get('status')=='verified':c.checkpoint()
             from .currency_wars_standard_consumables import verify as verify_consumable
             verifying_consumable=store.data.get('consumable',{}).get('status')=='verifying'
             problem=verify_consumable(store.data,scene,c.runner.input_epoch,c.settings.ocr_confidence)

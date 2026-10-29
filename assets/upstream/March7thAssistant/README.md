@@ -1,5 +1,7 @@
 # March7thAssistant 参考来源与适配
 
+2026-10-30另补[投资策略角色赠送](../../../docs/currency-wars-investment-units.md)，继续参考`check_investment_environment`和特殊角色计数的处理思路。实际到账使用AutoHSR原末节点完整阵容来源、独立确认、逐角色重读／关闭及装备守恒，不通过缓存增加角色计数认定成功。既有150号效果文本与哈希见[机制说明](../../currency-investment/README.md)，没有新增图像、模型或游戏采集；满席／溢出、其他物品改造和真实赠送仍待验证。
+
 2026-10-30另将`Character.borrow`及卡片内角色／好友匹配、角标重试适配为[支援偏好](../../../docs/support-preferences.md)。有序偏好、逐页查找与明确回退继续使用AutoHSR原生Context和入队反馈，满员不移除自身预设，借用不直接标记实训完成。新增105幅未改字节的[固定参考头像](support/README.md)，逐幅Git blob、SHA-256及游戏美术权利说明单独保存；没有新增玩家画面，GUI和真实借用仍待验收。
 
 2026-10-30另参考`Echoofwar.start`和`Daily.prepare_daily`，接入[历战优先周计划](../../../docs/echo-of-war-plan.md)。在既有原生日常输入和资源预算内先核对周额度、有限挑战，再执行用户条目与默认副本；冻结04:00游戏周及开始星期，已用完与本次完成次数分开，周资格及进度不写配置时间戳。源文件blob及SHA-256见[source.json](source.json)，没有迁入上游输入、定时器或培养目标读取，未新增游戏采集或实机验收。
