@@ -108,7 +108,7 @@ class AutoHSRWindow:
         root.bind_all("<KeyRelease-F9>", self._f9_release)
         root.bind_all("<FocusOut>", lambda _: setattr(self, "_f9_local_pressed", False), add="+")
         root.bind_all("<F10>", lambda _: self._stop())
-        root.bind("<Escape>", self._settings_escape, add="+")
+        root.bind("<Escape>", self._page_escape, add="+")
         root.after(100, self._drain)
         self._log("准备就绪。选择任务与副本，然后检测窗口。")
         self._log("仅使用已有开拓力；首次验证建议选择“设为 1 次”，核对副本与预计消耗。")
@@ -313,10 +313,17 @@ class AutoHSRWindow:
         else:
             self.nav_buttons[target].focus_set()
 
-    def _settings_escape(self, event):
+    def _page_escape(self, event):
         # Tcl-created combobox popdowns and separate dialogs own their Escape.
-        if self.active_page == "settings" and isinstance(event.widget, tk.Misc) and event.widget.winfo_toplevel() is self.root:
+        if not isinstance(event.widget, tk.Misc) or event.widget.winfo_toplevel() is not self.root:
+            return
+        if self.active_page == "settings":
             self._leave_settings()
+            return "break"
+        deck = self.mode_decks.get(self.active_page)
+        if deck is not None and deck["shown"] != "hero":
+            from .desktop_modes import show_mode_view
+            show_mode_view(self, self.active_page, "hero", focus=True)
             return "break"
 
     def _weekly_values(self):

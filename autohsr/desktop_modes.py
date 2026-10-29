@@ -33,14 +33,14 @@ def universe_page(ui, key):
     from .universe_widgets import UniversePoster
     deck = {"shown": "hero"}
     ui.mode_decks[key] = deck
-    deck["hero"] = UniversePoster(body, ui.ui_scale, ui, key, lambda view: show_mode_view(ui, key, view))
+    deck["hero"] = UniversePoster(body, ui.ui_scale, ui, key, lambda view: show_mode_view(ui, key, view, focus=True))
     for view, title in (("editor", "演算设置" if key == "differential_universe" else "开发工具"), ("result", "运行结果")):
         frame = ttk.Frame(body)
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(1, weight=1)
         heading = ttk.Frame(frame)
         heading.grid(row=0, column=0, sticky="ew", pady=(0, d(12)))
-        back = ttk.Button(heading, text="返回", style="Panel.TButton", command=lambda: show_mode_view(ui, key, "hero"))
+        back = ttk.Button(heading, text="返回", style="Panel.TButton", command=lambda: show_mode_view(ui, key, "hero", focus=True))
         back.pack(side="left")
         deck["back_"+view] = back
         ttk.Label(heading, text=title, style="PageTitle.TLabel").pack(side="left", padx=d(16))
@@ -56,14 +56,40 @@ def universe_page(ui, key):
     return deck["editor_body"], deck["result_body"]
 
 
-def show_mode_view(ui, key, view):
+def show_mode_view(ui, key, view, *, focus=False):
     deck = ui.mode_decks[key]
+    previous = deck["shown"]
     for name in ("hero", "editor", "result"):
         deck[name].grid() if name == view else deck[name].grid_remove()
     deck["shown"] = view
     if hasattr(ui, "footer_start_button"):
         ui._configure_primary_action()
         ui._refresh_controls()
+    if focus:
+        ui.root.after_idle(lambda: _focus_mode_view(ui, key, view, previous))
+
+
+def _focus_mode_view(ui, key, view, previous):
+    """User navigation gets visible focus; errors and separate dialogs keep theirs."""
+    deck = ui.mode_decks[key]
+    if ui.closing or ui.active_page != key or deck["shown"] != view:
+        return
+    current = t.focus_widget(ui.root)
+    if current is not None:
+        if current.winfo_toplevel() is not ui.root:
+            return
+        if (str(current).startswith(str(deck[view])+".")
+                and (not isinstance(current, ttk.Widget) or not current.instate(("disabled",)))):
+            return
+    if view == "hero":
+        target = getattr(deck["hero"], previous+"_button", deck["hero"].editor_button)
+    elif view == "result":
+        target = ui.du_result_text if key == "differential_universe" else ui.currency_result_text
+    elif ui.busy:
+        target = deck["back_editor"]
+    else:
+        target = ui.du_runs_combo if key == "differential_universe" else ui.currency_tabs
+    target.focus_set()
 
 
 def bound_text(ui, parent, variable, *, height=4):
