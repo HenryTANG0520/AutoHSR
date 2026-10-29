@@ -1,5 +1,19 @@
 # AutoHSR 0.1 验证记录
 
+## 2026-10-29：详情在当前窗口中央打开并返回原入口
+
+从`3cc4e2c`提取原`_show_summary`方法，在相同临时配置和窗口位置离线重放：主窗口客户区`[611,445,1651,1201]`，详情客户区`[11,45,1021,510]`，中心相差`[-915,-746]`像素。新实现对应`[926,790,1021,510]`，中心误差为0；坐标、版本及截图见`runs/summary-placement-before-replay.json`与`summary-placement-after.json`及同名PNG。初次探针重复运行时复用了文件名，旧`summary-placement-baseline.json`和`summary-placement-before.png`已被修后输出覆盖，不能作为修前证据；上述基线是从原提交重新取得的方法重放的结果。
+
+现在先隐藏详情窗，测量原生边框后按助手客户区居中，并通过当前显示器工作区限制位置和大小；不以主显示器原点代替当前窗口位置。关闭按钮、Esc和标题栏关闭恢复原入口焦点；替换详情仍保留原入口，原入口隐藏时不强行把焦点送回隐藏控件。正文使用可伸缩网格，长文本保留滚动、选择和只读状态，底部关闭按钮优先保留。没有增加模态输入抓取，没有改写结果、配置、任务启动或游戏输入。
+
+**69项专项检查通过**，`runs/summary-dialog-release-smoke.log`与`runs/summary-dialog-ui/`。覆盖100%、125%、150%、200%，偏离原点的主窗口、实际工作区边缘、模拟620×360小工作区、长文本末尾、三种关闭方式、替换窗口、隐藏原入口及差分／货币战争的独立详细记录。最初两次检查错误地将独立Toplevel当成受主窗口客户区裁切的子控件，日志`runs/summary-dialog-smoke.log`与`summary-dialog-smoke-v2.log`保留；改为核对原生窗口工作区和其自身子控件后通过。
+
+**169项任务卡、60项首页反馈、24项计划、84项GUI检查通过**，日志为`runs/summary-dialog-task_card_state_smoke.log`、`summary-dialog-home_feedback_smoke.log`、`summary-dialog-plan_ui_smoke.log`与`summary-dialog-gui_smoke.log`。相关配置和原始结果未变，没有重跑后端全量单元测试。
+
+另以独立临时配置打开明确标注“离线详情核验”的源码窗口，使用原生键盘按Esc关闭、Enter再次打开同一结果，再用标题栏关闭。两次客户区中心误差均为0，两次关闭均返回原任务卡，正常退出码0，配置字节未变；记录`runs/summary-dialog-native-verification.json`，画面为`summary-dialog-native-open-screenshot-0.png`及`summary-dialog-native-reopened-screenshot-0.png`。第一次按缓存AX索引关闭遇到工具索引失效，刷新AX后正常关闭，没有重发任何游戏输入。
+
+这次修复详情位置及返回路径；原生标题栏和详情样式仍与游戏不同，不证明整屏复刻或真实玩家学习／注意力成本已经验收。未启动、检测或操作游戏。
+
 ## 2026-10-29：区分任务安排与未执行结果
 
 在`5d0d73e`上用假后端复现：计划在委托阶段停止后，副本卡显示“未执行”，按钮仍是“副本设置”，点击会进入生存索引，无法直接查看这项为何未执行。运行前未启用的任务也显示“跳过”，与实际执行结果混淆。原记录`runs/task-card-state-baseline.json`、`task-card-state-before-home.png`和`task-card-state-before-stopped.png`保留。同次检查确认最小窗口的每日设置选项均在完整祖先可见范围内，没有据此改动布局。

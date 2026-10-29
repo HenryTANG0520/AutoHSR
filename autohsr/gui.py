@@ -1032,11 +1032,11 @@ class AutoHSRWindow:
 
     def _show_universe_record(self):
         if self.du_result_report is not None:
-            self._show_summary(json.dumps(self.du_result_report, ensure_ascii=False, indent=2), title="差分宇宙 · 详细记录")
+            self._show_summary(json.dumps(self.du_result_report, ensure_ascii=False, indent=2), title="差分宇宙 · 详细记录", return_focus=self.du_record_button)
 
     def _show_currency_record(self):
         if self.currency_result_report is not None:
-            self._show_summary(json.dumps(self.currency_result_report, ensure_ascii=False, indent=2), title="货币战争 · 详细记录")
+            self._show_summary(json.dumps(self.currency_result_report, ensure_ascii=False, indent=2), title="货币战争 · 详细记录", return_focus=self.currency_record_button)
 
     def _currency_observed(self, data: dict) -> None:
         self.currency_observation.set(currency_observation_text(data))
@@ -1065,27 +1065,41 @@ class AutoHSRWindow:
         selected = self.table.selection()
         if selected:
             label, status, detail = self.table.item(selected[0], "values")
-            self._show_summary(f"{label} · {status}\n{detail or '暂无详细说明'}", title=label)
+            self._show_summary(f"{label} · {status}\n{detail or '暂无详细说明'}", title=label, return_focus=self.table)
 
-    def _show_summary(self, content=None, *, title="运行详情") -> None:
+    def _show_summary(self, content=None, *, title="运行详情", return_focus=None) -> None:
         content = self.summary.get() if content is None else content
         if not content:
             return
         previous = getattr(self, "summary_dialog", None)
+        origin = return_focus or theme.focus_widget(self.root)
         if previous is not None and previous.winfo_exists():
+            if origin is not None and origin.winfo_toplevel() is previous:
+                origin = previous.return_focus
             previous.destroy()
         dialog = self.summary_dialog = tk.Toplevel(self.root)
+        dialog.withdraw()
+        dialog.return_focus = origin
         dialog.title(title)
         dialog.transient(self.root)
         d = lambda value: round(value*self.ui_scale)
-        dialog.geometry(f"{d(680)}x{d(340)}")
-        dialog.minsize(d(400), d(200))
         dialog.configure(background=theme.CARD)
+        dialog.columnconfigure(0, weight=1)
+        dialog.rowconfigure(0, weight=1)
         text = self._text(dialog)
-        text.pack(fill="both", expand=True, padx=d(12), pady=d(12))
+        text.grid(row=0, column=0, sticky="nsew", padx=d(12), pady=d(12))
         self._replace_text(text, content)
-        ttk.Button(dialog, text="关闭", command=dialog.destroy).pack(pady=(0, d(12)))
-        dialog.bind("<Escape>", lambda _: dialog.destroy())
+        def dismiss(_=None):
+            dialog.destroy()
+            if not self.closing and origin is not None and origin.winfo_exists() and origin.winfo_ismapped():
+                origin.focus_set()
+            return "break"
+        ttk.Button(dialog, text="关闭", command=dismiss).grid(row=1, column=0, pady=(0, d(12)))
+        dialog.protocol("WM_DELETE_WINDOW", dismiss)
+        dialog.bind("<Escape>", dismiss)
+        from .desktop_dialogs import place_dialog
+        place_dialog(dialog, self.root, (d(680), d(340)), (d(400), d(200)), padding=d(12))
+        dialog.deiconify()
         text.focus_set()
 
     def _restore(self) -> None:

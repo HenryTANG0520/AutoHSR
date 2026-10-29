@@ -554,7 +554,7 @@ class SummaryStrip(Surface):
         if self.ui.input_error.get():
             self.ui._focus_input_error()
         else:
-            self.ui._show_summary()
+            self.ui._show_summary(return_focus=self)
         return "break"
 
     def paint(self,p):
