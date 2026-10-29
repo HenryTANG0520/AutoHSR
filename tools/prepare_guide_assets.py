@@ -17,6 +17,63 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def guide_details(frames):
+    """Use unobstructed static regions, retaining antialiasing and icon color."""
+    for name, source, box in (
+        ("tab-daily.png", "universe", (336, 184, 393, 240)),
+        ("tab-survival.png", "daily", (454, 184, 510, 240)),
+        ("tab-universe.png", "daily", (569, 186, 632, 238)),
+    ):
+        crop = frames[source].crop(box)
+        gray = np.asarray(crop).mean(axis=2)
+        # Unselected tabs have a neutral dark background and light glyph.
+        # In particular, the selected daily reference contains a mouse cursor.
+        background = np.median(np.concatenate((gray[0], gray[-1], gray[:, 0], gray[:, -1])))
+        # Resizing can undershoot the dark surround or overshoot the light ink;
+        # use the surround and dominant ink instead of those ringing extremes.
+        ink = np.bincount(np.rint(gray[gray > 100]).astype(int)).argmax()
+        alpha = np.clip((gray-background)/(ink-background), 0, 1)
+        glyph = Image.new("RGBA", crop.size, "white")
+        glyph.putalpha(Image.fromarray(np.rint(alpha*255).astype("uint8")))
+        yield name, glyph, source, box, "unselected static glyph without cursor; continuous alpha from neutral background and ink; recolored at render time"
+
+    # The task-card emblem has a flat surround; the meter emblem is over spokes.
+    # Preserve its gold gradient and opaque white inner rings, not just gold pixels.
+    import cv2
+    box = (332, 665, 396, 755)
+    pixels = np.asarray(frames["daily"].crop(box)).astype(float)
+    background = np.median(pixels[:, (0, 1, -2, -1)], axis=1)
+    chroma = pixels[:, :, 0]-pixels[:, :, 2]
+    ink = np.full((pixels.shape[0], 3), np.nan)
+    for row in range(pixels.shape[0]):
+        if chroma[row].max() > 20:
+            ink[row] = np.median(pixels[row, chroma[row] >= chroma[row].max()*.9], axis=0)
+    present = np.flatnonzero(np.isfinite(ink[:, 0]))
+    for channel in range(3):
+        ink[:, channel] = np.interp(np.arange(len(ink)), present, ink[present, channel])
+    delta = ink-background
+    alpha = np.clip(((pixels-background[:, None, :])*delta[:, None, :]).sum(2)/(delta*delta).sum(1)[:, None], 0, 1)
+    contours, _ = cv2.findContours((alpha > .1).astype("uint8"), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    silhouette = np.zeros(alpha.shape, dtype="uint8")
+    cv2.drawContours(silhouette, [max(contours, key=cv2.contourArea)], -1, 1, cv2.FILLED)
+    interior = cv2.erode(silhouette, np.ones((3, 3), dtype="uint8"))
+    alpha[interior.astype(bool)] = 1
+    rgb = np.clip((pixels-(1-alpha[:, :, None])*background[:, None, :])/np.maximum(alpha[:, :, None], .001), 0, 255)
+    emblem = Image.fromarray(np.rint(np.dstack((rgb, alpha*255))).astype("uint8"), "RGBA")
+    yield "activity.png", emblem, "daily", box, "static task-card emblem without radial backdrop, text or numbers; continuous edge alpha with background removed, gold gradient and opaque white inner rings retained"
+
+    # The fourth title is one line, leaving this motif region unobstructed.
+    # Reject the gold emblem entering its bottom-left corner and any dark ink.
+    box = (1318, 510, 1530, 679)
+    crop = frames["daily"].crop(box)
+    pixels = np.asarray(crop).astype(float)
+    gray = pixels.mean(2)
+    alpha = np.where((gray > 235) & (pixels.max(2)-pixels.min(2) <= 6), 255-pixels.min(2), 0)
+    rgb = np.clip(255+(pixels-255)*255/np.maximum(alpha[:, :, None], 1), 0, 255)
+    watermark = Image.fromarray(np.rint(np.dstack((rgb, alpha))).astype("uint8"), "RGBA")
+    yield "card-watermark.png", watermark, "daily", box, "static motif below fourth card title; warm tint and continuous alpha over white, gold emblem and dark ink excluded; native aspect retained at render time"
+
+
 def main():
     parser = argparse.ArgumentParser()
     for name in ("daily", "guide", "universe", "font"):
@@ -51,12 +108,10 @@ def main():
         save(name, rgba, source, box, "static glyph alpha mask; recolored at render time")
 
     glyph("guide-mark.png", "daily", (43, 42, 94, 89), "gold")
-    glyph("tab-daily.png", "daily", (336, 184, 393, 240))
-    glyph("tab-survival.png", "guide", (454, 184, 510, 240))
-    glyph("tab-universe.png", "universe", (569, 186, 632, 238))
+    for name, im, source, box, method in guide_details(frames):
+        save(name, im, source, box, method)
     glyph("tab-records.png", "daily", (690, 187, 750, 239), "light")
     glyph("tab-settings.png", "daily", (809, 184, 868, 241), "light")
-    glyph("activity.png", "daily", (322, 268, 369, 341), "gold")
     glyph("reward-check.png", "daily", (608, 278, 669, 339), "gold")
     glyph("guide-seal.png", "daily", (1614, 182, 1676, 234), "gold")
 
@@ -81,17 +136,6 @@ def main():
     paper = Image.new("RGBA", crop.size, "#c9c5b6")
     paper.putalpha(Image.fromarray(alpha))
     save("paper-pattern.png", paper, "daily", box, "static paper map texture luminance matte; no labels or counters")
-
-    # The watermark is a static low-contrast motif. Black task text and gold
-    # progress numerals are outside this crop or rejected by the matte.
-    box = (317, 531, 521, 668)
-    crop = frames["daily"].crop(box)
-    a = np.asarray(crop).astype(float)
-    gray = a.mean(axis=2)
-    alpha = np.where(gray > 218, np.clip((253-gray)*5, 0, 110), 0).astype("uint8")
-    im = Image.new("RGBA", crop.size, "#d7d7d7")
-    im.putalpha(Image.fromarray(alpha))
-    save("card-watermark.png", im, "daily", box, "static watermark luminance matte; text excluded")
 
     # Hand-traced outlines isolate the two ornaments from the blurred world.
     for name, box, points in (
@@ -141,7 +185,7 @@ def main():
         source_sha256=hashlib.sha256(args.font.read_bytes()).hexdigest(),
         sha256=hashlib.sha256((out/"hsr-sc.ttf").read_bytes()).hexdigest(),
         rights="Beijing Hanyi Innovation Technology; original font license and metadata retained")
-    (out/"sources.json").write_text(json.dumps(dict(date="2026-10-28", assets=sources), ensure_ascii=False, indent=2)+"\n", encoding="utf-8")
+    (out/"sources.json").write_text(json.dumps(dict(date="2026-10-28", updated="2026-10-29", assets=sources), ensure_ascii=False, indent=2)+"\n", encoding="utf-8")
     print(f"Prepared {len(sources)} static assets; no full screenshots or account fields copied.")
 
 

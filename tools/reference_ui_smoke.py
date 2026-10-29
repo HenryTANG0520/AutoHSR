@@ -58,10 +58,11 @@ def main():
         config = Path(folder)/"config.json"
         Settings().save(config)
         original = config.read_bytes()
-        for scale in (1., 1.5, 2.):
+        for scale in (1., 1.25, 1.5, 2.):
             root = tk.Tk()
             root.tk.call("tk", "scaling", scale*96/72)
-            root.report_callback_exception = lambda kind, value, traceback: (_ for _ in ()).throw(value.with_traceback(traceback))
+            callback_errors = []
+            root.report_callback_exception = lambda kind, value, traceback: callback_errors.append(str(value))
             ui = Window(root, config)
             try:
                 root.update()
@@ -119,7 +120,7 @@ def main():
                       < ui.daily_caption.get().index("长副本名称"))
                 check(f"{scale}_config_unchanged", config.read_bytes() == original)
                 for key, caption in (("logs", "记录"), ("settings", "设置")):
-                    button = ui.nav_buttons[key]
+                    button = ui.guide.buttons[key]
                     ui._show_page("home")
                     root.update()
                     check(f"{scale}_{key}_name_visible_without_hover", button.winfo_ismapped() and
@@ -135,6 +136,33 @@ def main():
                     root.update()
                     check(f"{scale}_{key}_named_button_opens_expected_page", ui.active_page == key and
                           ui.start_button.cget("text") == "开始计划")
+                for key, page in (("home", "home"), ("tasks", "tasks"), ("universe", "differential_universe")):
+                    ui._show_page(page)
+                    root.focus_force()
+                    root.focus_set()
+                    button = ui.guide.buttons[key]
+                    button.event_generate("<Leave>")
+                    root.update()
+                    def blue_pixels():
+                        shot = ImageGrab.grab(window=root.winfo_id())
+                        x, y = button.winfo_rootx()-root.winfo_rootx(), button.winfo_rooty()-root.winfo_rooty()
+                        pixels = np.asarray(shot.crop((x, y, x+button.winfo_width(), y+button.winfo_height())).convert("RGB")).astype(int)
+                        return int(((pixels[:, :, 2]-pixels[:, :, 0]) > 20).sum())
+                    idle = blue_pixels()
+                    button.event_generate("<Enter>")
+                    root.update()
+                    check(f"{scale}_{key}_hover_visible", blue_pixels() > idle+20)
+                    button.event_generate("<Leave>")
+                    root.update()
+                    check(f"{scale}_{key}_hover_clears", blue_pixels() == idle)
+                    button.focus_set()
+                    root.update()
+                    check(f"{scale}_{key}_keyboard_focus_visible", blue_pixels() > idle+20)
+                    button.event_generate("<KeyPress-space>")
+                    button.event_generate("<KeyRelease-space>")
+                    root.update()
+                    check(f"{scale}_{key}_keyboard_navigation", ui.active_page == page)
+                check(f"{scale}_no_drawing_callback_errors", not callback_errors)
             finally:
                 ui.closing = True
                 for token in root.tk.splitlist(root.tk.call("after", "info")):

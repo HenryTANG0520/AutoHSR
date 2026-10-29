@@ -211,30 +211,51 @@ class Guide(Surface):
         self.tabs=ttk.Frame(self,style="Rail.TFrame")
         self.buttons={}
         self.photos={}
+        self.selected_page="home"
+        self.hovered_page=None
         definitions=(("home","每日实训","tab-daily.png"),("tasks","生存索引","tab-survival.png"),
                      ("universe","差分宇宙 / 货币战争","tab-universe.png"),("logs","记录","tab-records.png"),
                      ("settings","设置","tab-settings.png"))
         for col,(key,label,filename) in enumerate(definitions):
             for selected in (False,True):
-                p=t.Painter(round(42*scale),round(42*scale),scale,t.PANEL if selected else t.RAIL)
-                if selected and key not in ("logs", "settings"):
-                    p.glow((21,21),10,(96,181,237,155),7)
-                if key not in ("logs", "settings"):
-                    p.asset(filename,(1,1,41,41),"#111111" if selected else "#b6b6b6")
-                self.photos[key,selected]=ImageTk.PhotoImage(p.finish(),master=self)
+                for emphasized in (False,True):
+                    p=t.Painter(round(52*scale),round(52*scale),scale,t.PANEL if selected else t.RAIL)
+                    if key not in ("logs", "settings"):
+                        if emphasized:
+                            p.glow((26,26),12,(96,181,237,155),6)
+                        source=t.asset(filename)
+                        half_w,half_h=source.width*.4,source.height*.4
+                        p.asset(filename,(26-half_w,26-half_h,26+half_w,26+half_h),
+                                "#031724" if selected and emphasized else "#080808" if selected else "#b6b6b6")
+                    self.photos[key,selected,emphasized]=ImageTk.PhotoImage(p.finish(),master=self)
             command=lambda key=key:ui._show_page(getattr(ui,"last_universe_page","differential_universe") if key=="universe" else key)
-            button=ttk.Button(self.tabs,text=label,image=self.photos[key,False],
+            button=ttk.Button(self.tabs,text=label,image=self.photos[key,False,False],
                              compound="center" if key in ("logs", "settings") else "none",style="Nav.TButton",command=command)
             button.grid(row=0,column=col,padx=0)
             self.buttons[key]=button
+            button.bind("<Enter>",lambda _event,key=key:self._hover(key),add="+")
+            button.bind("<Leave>",lambda _event:self._hover(None),add="+")
+            for event in ("<FocusIn>","<FocusOut>"):
+                button.bind(event,lambda _event:self._refresh_tabs(),add="+")
             if key not in ("logs", "settings"):
                 Tooltip(button,"旷宇纷争" if key=="universe" else label)
         self.bind("<Configure>",self._position,add="+")
 
     def select(self,page):
-        group="universe" if page in ("differential_universe","currency_wars") else page
+        self.selected_page="universe" if page in ("differential_universe","currency_wars") else page
+        self._refresh_tabs()
+
+    def _hover(self,page):
+        self.hovered_page=page
+        self._refresh_tabs()
+
+    def _refresh_tabs(self):
+        focus=self.focus_get()
         for key,button in self.buttons.items():
-            button.configure(style="Selected.Nav.TButton" if key==group else "Nav.TButton",image=self.photos[key,key==group])
+            selected=key==self.selected_page
+            emphasized=key==self.hovered_page or button==focus
+            button.configure(style="Selected.Nav.TButton" if selected else "Nav.TButton",
+                             image=self.photos[key,selected,emphasized])
 
     def _position(self,_event=None):
         d=lambda n:round(n*self.scale)
@@ -318,7 +339,7 @@ class TrainingMeter(Surface):
         for n in range(72):
             angle=n*math.tau/72
             p.line((cx+8*math.cos(angle),cy+8*math.sin(angle),cx+45*math.cos(angle),cy+45*math.sin(angle)),"#d0c8b4",.8)
-        p.asset("activity.png",(cx-19,cy-43,cx+19,cy+17),"#ad9a70")
+        p.asset("activity.png",(cx-20.4,cy-45.6,cx+23.12,cy+15.6))
         p.text((cx,cy+23),"500" if self.verified else "—",23,"#101010","mt")
         start,end=120,w-34
         color=t.ORANGE if self.verified else "#a6a6a6"
@@ -465,7 +486,8 @@ class TaskBoard(Surface):
             p.box((x,1,right,card_bottom),"#fbfaf7",q(7),t.GOLD if selected else "#eeede8",2 if selected else 1)
             for dx in (-40,20,90,160):
                 p.line((max(x,x+q(dx)),2,min(right,x+q(dx+70)),q(60)),"#efede5",1)
-            p.asset("card-watermark.png",(x+q(40),q(110),x+q(250),q(282)))
+            p.box((x+q(14),q(64),right-q(14),card_bottom-q(16)),"white")
+            p.asset("card-watermark.png",(x+q(36),q(107),x+q(248),q(276)))
             for xx in range(round(x+q(14)),round(right-q(14)),max(3,round(q(4)))):
                 for yy in (q(64),card_bottom-q(16)):
                     p.box((xx,yy,xx+1,yy+1),"#d4bc8b")
@@ -481,7 +503,7 @@ class TaskBoard(Surface):
                 value, sub = metrics
                 p.box((x+q(15),q(278),right-q(15),card_bottom-q(17)),"#f4f4f4")
                 if key=="daily":
-                    p.asset("activity.png",(x+q(60),q(265),x+q(117),q(351)),"#ad9a70")
+                    p.asset("activity.png",(x+q(55),q(262),x+q(119),q(352)))
                 else:
                     p.asset("stamina.png",(x+q(62),q(288),x+q(108),q(334)))
                 p.text((x+q(126),q(282)),value,q(30),"#494442")

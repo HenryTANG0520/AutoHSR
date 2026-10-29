@@ -83,13 +83,17 @@ class Painter:
             yield
         finally:
             bounds = self.coords(rect)
-            layer = self.image.crop(bounds)
-            mask = Image.new("L", layer.size)
-            ImageDraw.Draw(mask).rounded_rectangle((0,0,layer.width-1,layer.height-1), radius=round(radius*self.factor), fill=255)
-            from PIL import ImageChops
-            layer.putalpha(ImageChops.multiply(layer.getchannel("A"), mask))
-            base.alpha_composite(layer, bounds[:2])
-            self.image, self.draw = base, ImageDraw.Draw(base)
+            try:
+                # A fractional row at a viewport edge can round to zero pixels.
+                if bounds[2] > bounds[0] and bounds[3] > bounds[1]:
+                    layer = self.image.crop(bounds)
+                    mask = Image.new("L", layer.size)
+                    ImageDraw.Draw(mask).rounded_rectangle((0,0,layer.width-1,layer.height-1), radius=round(radius*self.factor), fill=255)
+                    from PIL import ImageChops
+                    layer.putalpha(ImageChops.multiply(layer.getchannel("A"), mask))
+                    base.alpha_composite(layer, bounds[:2])
+            finally:
+                self.image, self.draw = base, ImageDraw.Draw(base)
 
     def box(self, rect, fill, radius=0, outline=None, width=1):
         if rect[2] <= rect[0] or rect[3] <= rect[1]:
@@ -107,10 +111,12 @@ class Painter:
         self.draw.polygon(self.coords(points), fill=fill)
 
     def glow(self, center, radius, color, blur):
-        layer = Image.new("RGBA", self.image.size)
+        layer = Image.new("RGBA", self.image.size, color)
+        alpha = Image.new("L", self.image.size)
         x, y = center
-        ImageDraw.Draw(layer).ellipse(self.coords((x-radius,y-radius,x+radius,y+radius)), fill=color)
-        self.image.alpha_composite(layer.filter(ImageFilter.GaussianBlur(blur*self.factor)))
+        ImageDraw.Draw(alpha).ellipse(self.coords((x-radius,y-radius,x+radius,y+radius)), fill=color[3])
+        layer.putalpha(alpha.filter(ImageFilter.GaussianBlur(blur*self.factor)))
+        self.image.alpha_composite(layer)
 
     def text(self, xy, text, size=16, fill=TEXT, anchor="lt"):
         if "\n" in str(text):
@@ -410,8 +416,8 @@ def apply_theme(root, scale):
         ("Selected.Nav.TButton",PANEL,TEXT,True,False,RAIL),("Option.TButton",CARD,TEXT,False,True,PANEL),
         ("Selected.Option.TButton",RAIL,GOLD,False,True,PANEL)):
         _button(root,style,scale,name,fill,ink,tab=tab,option=option,background=background)
-    style.configure("Nav.TButton",padding=(d(19),d(6)),font=native_font(root, 14))
-    style.configure("Selected.Nav.TButton",padding=(d(24),d(6)),font=native_font(root, 14))
+    style.configure("Nav.TButton",padding=(d(14),d(1)),font=native_font(root, 14))
+    style.configure("Selected.Nav.TButton",padding=(d(19),d(1)),font=native_font(root, 14))
     style.configure("Option.TButton",anchor="w",padding=(d(22),d(17)),font=native_font(root, 13))
     style.configure("Selected.Option.TButton",anchor="w",padding=(d(22),d(17)),font=native_font(root, 13))
     style.configure("Compact.TButton",padding=(d(6),d(4)))

@@ -19,8 +19,8 @@
       "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
     },
     "tab-daily.png": {
-      "source": "local Star Rail 4.6.0 daily reference",
-      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "source": "local Star Rail 4.6.0 universe reference",
+      "source_sha256": "99a0e2106951c5be891d110be91a5f78e987789a65550be7b843bb91e3cf4eac",
       "baseline": [
         1920,
         1080
@@ -31,13 +31,13 @@
         393,
         240
       ],
-      "transform": "static glyph alpha mask; recolored at render time",
-      "sha256": "9cd93cea5117d22f6be9d0c052ed06f8d07c1957a13c72ff6c77352ae58354fd",
+      "transform": "unselected static glyph without cursor; continuous alpha from neutral background and ink; recolored at render time",
+      "sha256": "db9b46ce18e279f85a99b1029e7f7d885e9024ce29ed8299f521823a91bb109f",
       "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
     },
     "tab-survival.png": {
-      "source": "local Star Rail 4.6.0 guide reference",
-      "source_sha256": "4481bda9c9d70aed6d33fdf41233dbadaf46e18523df4dfdcbe22d89d1e5a36f",
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
       "baseline": [
         1920,
         1080
@@ -48,13 +48,13 @@
         510,
         240
       ],
-      "transform": "static glyph alpha mask; recolored at render time",
-      "sha256": "deaa35febb60df24e6ddbbb2f38314da7c803e6f9de07751fa891b803786841c",
+      "transform": "unselected static glyph without cursor; continuous alpha from neutral background and ink; recolored at render time",
+      "sha256": "9a47ee3c45b9363544ecefe5648c9cc7c1fa4edce251a1b4074f224f79b325c9",
       "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
     },
     "tab-universe.png": {
-      "source": "local Star Rail 4.6.0 universe reference",
-      "source_sha256": "99a0e2106951c5be891d110be91a5f78e987789a65550be7b843bb91e3cf4eac",
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
       "baseline": [
         1920,
         1080
@@ -65,8 +65,8 @@
         632,
         238
       ],
-      "transform": "static glyph alpha mask; recolored at render time",
-      "sha256": "9348e0f69df982dad76a37ecba7714e9a86a7c1e993e0c6e05f3c296cc70a955",
+      "transform": "unselected static glyph without cursor; continuous alpha from neutral background and ink; recolored at render time",
+      "sha256": "1fb9d94bfa757a66a77d8a1dc14e23b5876df4d4331a41bf2c4166ed8119456a",
       "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
     },
     "tab-records.png": {
@@ -111,13 +111,13 @@
         1080
       ],
       "crop": [
-        322,
-        268,
-        369,
-        341
+        332,
+        665,
+        396,
+        755
       ],
-      "transform": "static glyph alpha mask; recolored at render time",
-      "sha256": "721c5cb44539b5726ceec314c65cf3652bd7c68bb7531e70ac11b1186c8858af",
+      "transform": "static task-card emblem without radial backdrop, text or numbers; continuous edge alpha with background removed, gold gradient and opaque white inner rings retained",
+      "sha256": "03c196c3a910ad5d23ff103a9552a8cc988b67340fa4dc6d5aa78d83396a5b22",
       "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
     },
     "reward-check.png": {
@@ -196,13 +196,13 @@
         1080
       ],
       "crop": [
-        317,
-        531,
-        521,
-        668
+        1318,
+        510,
+        1530,
+        679
       ],
-      "transform": "static watermark luminance matte; text excluded",
-      "sha256": "2fa26a8b0b4bfb824c9bb7834cd816435c0a3fd6a861f740bcbeef291171af59",
+      "transform": "static motif below fourth card title; warm tint and continuous alpha over white, gold emblem and dark ink excluded; native aspect retained at render time",
+      "sha256": "000383ab875435c06cf7942e35dca9a8cda61f1e42f7da0bc32c34b124cfde40",
       "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
     },
     "guide-charm-left.png": {
@@ -268,5 +268,6 @@
       "sha256": "0d49951c017c299ca9bcb12c6e8283649ec100d34f367f4b567e5ab9a2b6b52e",
       "rights": "Beijing Hanyi Innovation Technology; original font license and metadata retained"
     }
-  }
+  },
+  "updated": "2026-10-29"
 }
