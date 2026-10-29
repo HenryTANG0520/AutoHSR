@@ -10,6 +10,10 @@
 
 首轮输入纠错在`stamina_limit_focus_abc`出现一次焦点断言失败，保留`runs/challenge-inline-final-input_feedback_smoke.log`。加入诊断的独立复现、原脚本复跑及后续整合均通过55项（`challenge-inline-focus-probe.log`、`challenge-inline-focus-recheck.log`、`challenge-inline-verified-input_feedback_smoke.log`），没有为通过该断言修改生产逻辑或放宽检查；瞬态原因尚未核实。全程未操作游戏；整体逐像素一致性、玩家体验及日常周常组合实机仍未验收。
 
+源码`357da46`已构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/challenge-inline-build.log`。使用独立配置、`--no-admin-launch`从首页“更换副本”进入，打开挑战设置后直接输入`abc`替换240；点击保存被整数校验阻止，字段重新选中，接着直接输入120即可纠正。切到侵蚀隧洞并选密伶之径／生研院，设置保持展开；点击填满预算得到3次／预计120开拓力，关闭支援后显示对应提示。Esc收起后，空格从返回的焦点重新打开，保留目标、次数、预算与支援；关闭时选择不保存。未点击任务执行或目录读取入口。原生截图`runs/challenge-inline-package-{opened,error,corrected,ready,collapsed,reopened,close-prompt}.png`保留各阶段。
+
+窗口退出码0，独立配置与原有239份用户文件哈希不变；147项素材、5份清单及23份上游文件一致。EXE SHA-256为`ecba831018e5acee3f3af14fa00e936622449aab50e8b542e637b3e614f12358`，用户文件恢复副本为`build/userdata-challenge-inline-20261029_172228/`；详见`runs/challenge-inline-package-verification.json`。本轮全部证据归档至正式项目`runs/challenge-inline-*`，索引`runs/challenge-inline-evidence-archive.json`。关闭草稿的确认框仍为系统样式，是后续视觉一致性待处理项；本轮未将它算作已对齐。
+
 ## 2026-10-29：生存索引双行分类卡与游戏顺序
 
 继续只读对照AutoZZZ本地`338951d`的导航、运行锁定与显式保存交互，未修改其工作区。界面依据既有4.6生存索引参考`runs/survival-layout-reference.png`及2026-10-20目录采集的分类OCR，恢复“分类名＋材料类型”、深底金色选中态、侧边标记和淡色徽记。六类按饰品提取、拟造花萼（金）、拟造花萼（赤）、凝滞虚影、侵蚀隧洞、历战余响排列；只调整显示顺序，不改工作流扫描顺序。复用已署名字体与水印，没有新增游戏截图或素材。
