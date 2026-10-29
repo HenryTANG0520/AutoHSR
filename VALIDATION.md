@@ -6,6 +6,8 @@
 
 本轮仅修改文字及说明，没有改变任务启用、预算、启动、保存或报告逻辑。**304项既有离线检查通过**：84项GUI、24项计划、169项任务状态与结果、27项启动失败反馈；覆盖单次启动、停止与失败、未执行任务、待核对费用、错误字段定位、报告及配置保留。结果与日志为`runs/plan-copy-final-*`，汇总`runs/plan-copy-regressions.json`。没有为替换文案另写镜像断言，没有启动或检测游戏；整屏视觉一致性、玩家体验和日常周常组合实机仍未验收。
 
+源码`859d67b`已构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。独立默认配置、`--no-admin-launch`下核对：首页保留本次3项日常、24次／预计240开拓力及“开始计划”；运行日志仅一条“准备就绪”；每日任务仍显示开启／关闭、1个奇巧零食与两种材料各1，以及仅实训未完成才合成的条件；识别页三项输入范围完整，游戏连接仍可找到检测与进入按钮。只浏览页面，没有修改配置、保存或执行游戏动作。截图为`runs/plan-copy-package-{home,log,connection,daily,ranges}.png`，退出码0，独立配置及239份原有用户文件哈希不变，147项素材、5份清单及23份上游文件一致。详见`runs/plan-copy-package-verification.json`，EXE SHA-256为`b0dcbfd5714ebb7c5889a5533b5204c86774a370eaec694bce107b82cb8f7cf9`，备份`build/userdata-plan-copy-20261029_193156/`，构建日志`runs/plan-copy-build.log`。原始证据归档至正式项目`runs/plan-copy-*`，索引`runs/plan-copy-evidence-archive.json`。
+
 ## 2026-10-29：从设置返回保留原任务与可用焦点
 
 在`35f3ead`、临时配置与假后端下复现：从“开始计划”的编队纠错页进入一般设置再返回，主按钮变为“开始演算 · 3局”；编辑框在设置期间锁定后返回，焦点仍落到禁用字段。原始状态`runs/settings-return-before.json`保留两个结果，配置未改，没有访问游戏。
