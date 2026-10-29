@@ -300,6 +300,65 @@ def _form_elements(root, style, scale):
         ("Guide.Horizontal.Scale.slider", {"side": "left"})]})])
 
 
+def preserve_widget_theme(root, style, widgets, next_scale):
+    """Keep displayed ttk controls on their old theme until the shell swaps.
+
+    ttk's active theme belongs to the interpreter, not the widget tree. Merely
+    retaining the previous shell would otherwise change its fonts and elements
+    while the replacement is still being built underneath it.
+    """
+    source = style.theme_use()
+    target = f"AutoHSR{round(next_scale*1000)}"
+    if target not in style.theme_names():
+        style.theme_create(target, parent="clam")
+    prefix = "Previous"+source+"."
+    controls = []
+    for widget in widgets:
+        if isinstance(widget, ttk.Widget):
+            name = str(widget.cget("style"))
+            if not name:
+                name = widget.winfo_class()
+                if name in ("TScale", "TScrollbar", "TSeparator", "TProgressbar"):
+                    name = str(widget.cget("orient")).title()+"."+name
+            controls.append((widget, name))
+    names = {name for _, name in controls}
+    names.update(name+suffix for widget, name in controls
+                 for suffix in ((".Tab",) if isinstance(widget, ttk.Notebook)
+                                else (".Heading",) if isinstance(widget, ttk.Treeview) else ()))
+    old_settings, new_settings, elements = {}, {}, {}
+    known = getattr(root, "_hsr_preserved_elements", {})
+    created = known.setdefault(target, set())
+
+    def copy_layout(layout):
+        result = []
+        for element, options in layout:
+            cloned = prefix+element if element != "null" else element
+            if element != "null" and cloned not in created:
+                elements[cloned] = {"element create": ("from", source, element)}
+            options = dict(options)
+            if "children" in options:
+                options["children"] = copy_layout(options["children"])
+            result.append((cloned, options))
+        return result
+
+    for name in names:
+        parts = name.split(".")
+        hierarchy = [".", *(".".join(parts[index:]) for index in reversed(range(len(parts))))]
+        config, mapping = {}, {}
+        for ancestor in hierarchy:
+            config.update(style.configure(ancestor) or {})
+            mapping.update(style.map(ancestor) or {})
+        layout = style.layout(name)
+        old_settings[prefix+name] = dict(configure=config, map=mapping, layout=layout)
+        new_settings[prefix+name] = dict(configure=config, map=mapping, layout=copy_layout(layout))
+    style.theme_settings(target, {**elements, **new_settings})
+    style.theme_settings(source, old_settings)
+    created.update(elements)
+    root._hsr_preserved_elements = known
+    for widget, name in controls:
+        widget.configure(style=prefix+name)
+
+
 def apply_theme(root, scale):
     load_font(root)
     root._hsr_scale = scale

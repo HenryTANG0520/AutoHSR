@@ -105,6 +105,8 @@ class ResponsiveLayout:
             if isinstance(widget, ttk.Notebook) and widget.select():
                 notebooks[path] = widget.index(widget.select())
 
+        from .theme import preserve_widget_theme
+        preserve_widget_theme(root, ui.style, previous.values(), scale)
         loading = ui._loading
         ui._loading = True
         # Inactive theme bitmaps must remain alive until the old controls leave.

@@ -9,7 +9,15 @@
 - **最终186项设置检查、84项GUI检查通过**，`runs/task-settings-battle-route-settings.log`、`runs/task-settings-battle-route-gui.log`。覆盖四张卡片的实际点击、对应焦点、原卡片返回、计划状态同步、两个副本入口状态、开拓力授权、运行锁定、草稿和显式保存，以及100%、150%、200%的默认／最小窗口。已查看每日任务页实际Tk截图，最终截图和结果归档为`runs/task-settings-ui/`。
 - **99项缩放检查、165个布局场景与15项布局交互、54项参考检查通过**，`runs/task-settings-final-responsive_ui_smoke.log`、`task-settings-final-ui_layout_smoke.log`、`task-settings-final-reference.log`。包括新分类与开关焦点在最大化、还原后保留，返回首页仍定位原卡片；原任务比例和结果详情入口保持。这批检查在最终保留关闭状态副本捷径之前完成，该分支调整后已重测上述186项设置及84项GUI。缩放截图和结果归档为`runs/task-settings-responsive-ui/`。
 
-本轮均为假后端界面检查，未启动、检测或操作游戏。上述结果证明入口与状态行为，不证明真实玩家学习／注意力成本，也不代表整屏与游戏逐像素一致；日常周常组合实机、货币战争周常和周积分领奖仍未验收或接入。
+首次正式源码`ab83691`通过`tools/build.ps1`构建，实查邮件卡直达、关闭任务后的4项计划、Esc返回原卡片、还原开关后的5项计划及正常退出，退出码0。239份用户文件哈希未变，125个素材、4份清单与23个上游文件一致；核对记录`runs/task-settings-package-verification.json`，备份`build/userdata-task-settings-20261029_080957/`，EXE SHA-256为`fcc1d7f92283be2ae3713940efb8f6445111d03d744f52a222b88b4c7363954e`。截图为`runs/task-settings-package-home.png`、`task-settings-package-mail.png`、`task-settings-package-draft.png`、`task-settings-package-draft-home.png`及`task-settings-package-return.png`。未点击保存、检测或运行。
+
+该构建最大化时仍捕获到文字交叠的中间帧，`runs/task-settings-package-maximized.png`保留；同一窗口随后恢复完整，见`task-settings-package-maximized-settled.png`。诊断确认Tk切换全局主题时，仍可见的旧按钮文字宽度从88变成140像素，见`runs/task-settings-theme-before.log`。现为旧控件保留原主题的字体、边距、状态和图形元素，再创建新布局；诊断恢复为88→88，见`task-settings-theme-after-v2.log`。旧布局释放前的**111项过渡检查通过**，覆盖首页与每日设置、三档缩放、最大化和还原，日志`runs/task-settings-theme-transition-v2.log`。原失败诊断保留，未删改。
+
+已查看旧布局释放前的截图：文字交叠消失，但还原过程中旧大布局仍会暂时裁切；新布局完成后恢复全部行。截图检查不是连续视频验收，本机该轮过渡测量1.5～4.6秒，不能称为即时或无闪烁切换。
+
+主题修复后的**102项缩放、186项设置、165个布局场景与15项布局交互再次通过**，日志为`runs/task-settings-theme-responsive_ui_smoke.log`、`task-settings-theme-settings_ui_smoke.log`、`task-settings-theme-ui_layout_smoke.log`。反复缩放复用旧主题元素，图片与回调数量有界；草稿、焦点、运行锁定、暂停停止和结果保持。最终离线证据另存于`runs/task-settings-theme-transition-ui/`、`runs/task-settings-theme-ui/`和`runs/task-settings-theme-responsive-ui/`。
+
+离线回归使用假后端，正式版检查仅操作助手界面；未启动、检测或操作游戏。上述结果证明入口与状态行为，不证明真实玩家学习／注意力成本，也不代表整屏与游戏逐像素一致；日常周常组合实机、货币战争周常和周积分领奖仍未验收或接入。
 
 ## 2026-10-29：缩放切换时保留旧控件
 

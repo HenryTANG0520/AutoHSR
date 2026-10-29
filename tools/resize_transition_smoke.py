@@ -11,6 +11,8 @@ from unittest.mock import patch
 import sys
 
 from ux_smoke import ROOT, Settings, Window, module
+from autohsr.desktop_scale import _widgets
+from PIL import ImageGrab
 
 
 def main():
@@ -45,9 +47,21 @@ def main():
                              ui.weekly_time_entry.cget("font"), ui.log.cget("font"))
                     return [int(root.tk.call("font", "measure", font, "开始计划"))/ui.ui_scale for font in fonts]
                 normal_text = text_sizes()
-                for name, maximized in (("maximize", True), ("restore", False)):
-                    prefix = f"{dpi}_{name}_"
+                def font_width(widget):
+                    font = widget.cget("font") if "font" in widget.keys() else None
+                    font = font or ui.style.lookup(str(widget.cget("style")) or widget.winfo_class(), "font")
+                    return int(root.tk.call("font", "measure", font, "开始计划"))
+                for view, name, maximized in ((view, name, zoom) for view in ("home", "settings")
+                        for name, zoom in (("maximize", True), ("restore", False))):
+                    if name == "maximize":
+                        ui._show_daily_tasks("mail") if view == "settings" else ui._show_page("home")
+                        root.update()
+                    prefix = f"{dpi}_{view}_{name}_"
                     old_shell, old_primary = ui.shell, ui.start_button
+                    old_metrics = old_primary.winfo_reqwidth(), old_primary.winfo_reqheight(), font_width(old_primary)
+                    captions = [w for _, w in _widgets(old_shell) if w.winfo_class() == "TLabel"
+                                and w.winfo_ismapped()]
+                    caption_fonts = [(w, font_width(w)) for w in captions]
                     photos = tuple(str(photo) for photo in root._hsr_images)
                     destroy = old_shell.destroy
                     replaced = []
@@ -55,10 +69,18 @@ def main():
                         check(prefix+"old_action_stays_mapped", old_shell.winfo_ismapped() and old_primary.winfo_ismapped())
                         check(prefix+"old_action_is_complete", old_primary.winfo_width() >= old_primary.winfo_reqwidth()
                               and old_primary.winfo_height() >= old_primary.winfo_reqheight())
+                        check(prefix+"displayed_native_metrics_stay_unchanged", old_metrics ==
+                              (old_primary.winfo_reqwidth(), old_primary.winfo_reqheight(), font_width(old_primary))
+                              and all(font_width(widget) == width for widget, width in caption_fonts))
                         check(prefix+"old_theme_pixels_survive", all(root.tk.call("image", "type", photo) == "photo" for photo in photos))
                         check(prefix+"old_shell_remains_on_top", root.winfo_children()[-1] is old_shell)
+                        artwork_ready = (ui.settings_shell._photo is not None
+                                         and all(c.winfo_ismapped() for c in ui.daily_task_controls.values())) if view == "settings" else (
+                                         ui.guide._photo is not None and ui.table._photo is not None)
                         check(prefix+"replacement_is_ready", ui.shell is not old_shell and ui.start_button.winfo_ismapped()
-                              and ui.guide._photo is not None and ui.table._photo is not None)
+                              and artwork_ready)
+                        if dpi == 1.5:
+                            ImageGrab.grab(window=root.winfo_id()).save(out/(view+"-"+name+"-before-swap.png"))
                         replaced.append(True)
                         destroy()
                     old_shell.destroy = inspect_swap

@@ -197,6 +197,7 @@ def main():
                 ui.table.selected = "battlepass"
                 ui._show_daily_tasks("battlepass")
                 root.update()
+                preserved_elements = sum(len(values) for values in root._hsr_preserved_elements.values())
                 for _ in range(2):
                     root.state("normal")
                     root.geometry(normal)
@@ -205,6 +206,8 @@ def main():
                     settle()
                 check(prefix+"daily_task_choice_and_focus_survive_resize", ui.settings_shell.section == "daily"
                       and root.focus_get() is ui.daily_task_controls["battlepass"])
+                check(prefix+"repeated_resizes_reuse_preserved_theme_elements", preserved_elements ==
+                      sum(len(values) for values in root._hsr_preserved_elements.values()))
                 root.state("normal")
                 root.geometry("%dx%d" % tuple(round((a+b)/2) for a,b in zip(normal_size, large_size)))
                 settle()
