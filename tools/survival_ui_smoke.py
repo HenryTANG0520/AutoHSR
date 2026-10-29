@@ -12,8 +12,8 @@ from PIL import ImageGrab
 from ux_smoke import ROOT, Settings, Window, module
 from ui_layout_smoke import check_layout
 from autohsr.dungeon_ui import show_advanced, show_manual
-from autohsr.dungeons import CATEGORIES, load_catalogue
-from autohsr.survival_widgets import artwork
+from autohsr.dungeons import CATEGORIES, Dungeon, load_catalogue
+from autohsr.survival_widgets import artwork, group_metadata, display_group
 
 OUT = ROOT/"runs/survival-ui"
 
@@ -29,6 +29,10 @@ def main():
     check("all_104_catalogue_rows_have_exact_artwork_keys", len(entries) == len(catalogue) == 104 and
           {(m.category, m.name, m.location) for m in catalogue} == set(artwork()))
     check("artwork_hashes_match", all(hashlib.sha256((ROOT/"assets/ui/survival"/e["file"]).read_bytes()).hexdigest() == e["sha256"] for e in entries))
+    groups, members = group_metadata()
+    check("21_observed_headings_cover_64_grouped_missions", len(groups) == 21 and len(members) == 64 and
+          set(members) == {(m.category, m.name, m.location) for m in catalogue if m.category in ("calyx_golden", "calyx_crimson", "stagnant_shadow")})
+    check("heading_icons_match_source_manifest", all(hashlib.sha256((ROOT/"assets/ui/survival"/g["file"]).read_bytes()).hexdigest() == g["sha256"] for g in groups.values()))
     fake = types.ModuleType("autohsr.app")
     def reject(*args, **kwargs):
         raise AssertionError("A catalogue interaction must not start a game backend")
@@ -37,7 +41,7 @@ def main():
         config = Path(folder)/"config.json"
         Settings().save(config)
         original = config.read_bytes()
-        for scale in (1., 1.5, 2.):
+        for scale in (1., 1.25, 1.5, 2.):
             root = tk.Tk()
             root.tk.call("tk", "scaling", scale*96/72)
             root.report_callback_exception = lambda kind, value, traceback: (_ for _ in ()).throw(value.with_traceback(traceback))
@@ -48,8 +52,10 @@ def main():
                 root.update()
                 board = ui.dungeon_list
                 current = next(i for i, m in enumerate(board.rows) if board.matches(m))
-                check(f"{scale}_current_target_is_fully_visible", current*board.ROW_HEIGHT >= board.offset-1 and
-                      (current+1)*board.ROW_HEIGHT <= board.offset+board.winfo_height()/ui.ui_scale+1)
+                top, bottom = board.row_bounds(current)
+                check(f"{scale}_current_target_is_fully_visible", top >= board.offset-1 and
+                      bottom <= board.offset+board.winfo_height()/ui.ui_scale+1)
+                check(f"{scale}_only_dungeon_toggle_remains_in_browser", set(ui.task_controls) == {"battle"} and ui.battle_checkbox.winfo_ismapped())
                 default = root.geometry()
                 signature = ui._form_signature()
                 for category in CATEGORIES:
@@ -58,6 +64,35 @@ def main():
                     check(f"{scale}_{category.key}_browse_only", ui._form_signature() == signature and
                           all(m.category == category.key for m in board.rows))
                 ui.category_buttons["拟造花萼（金）"].invoke()
+                ui.dungeon_search.set("匹诺康尼")
+                root.update()
+                check(f"{scale}_planet_search_finds_three_distinct_missions", len(board.rows) == 3 and
+                      len({m.name for m in board.rows}) == 3 and all(display_group(m)["label"] == "匹诺康尼" for m in board.rows)
+                      and ui._form_signature() == signature)
+                board.yview("moveto", "0")
+                root.update()
+                header = next(iter(board.header_hitboxes.values()))
+                board.event_generate("<Button-1>", x=round(90*ui.ui_scale), y=round((header[1]+header[3])/2*ui.ui_scale))
+                root.update()
+                check(f"{scale}_heading_is_not_a_mission_action", ui._form_signature() == signature)
+                ui.dungeon_search.set("")
+                root.update()
+                board.yview("moveto", str(50/board.total_height))
+                root.update()
+                partial = next((i for i, box in board.hitboxes.items() if 10 < box[3]-box[1] < board.ROW_HEIGHT-2), None)
+                check(f"{scale}_partial_row_fixture", partial is not None)
+                box = board.hitboxes[partial]
+                board.event_generate("<Button-1>", x=round(140*ui.ui_scale), y=round((box[1]+box[3])/2*ui.ui_scale))
+                root.update()
+                check(f"{scale}_partial_row_first_click_reveals_without_selecting", ui._form_signature() == signature and
+                      board.row_bounds(partial)[0] >= board.offset-1 and board.row_bounds(partial)[1] <= board.offset+board.winfo_height()/ui.ui_scale+1)
+                extra = Dungeon("calyx_golden", "回忆之蕾", "本地新增地点")
+                ui.dungeon_catalogue.append(extra)
+                ui.dungeon_search.set(extra.location)
+                root.update()
+                check(f"{scale}_unverified_group_does_not_inherit_from_same_name", board.rows == [extra]
+                      and board.headers[0][1]["label"] == "其他副本" and ui._form_signature() == signature)
+                ui.dungeon_catalogue.remove(extra)
                 ui.dungeon_search.set("回忆")
                 root.update()
                 check(f"{scale}_duplicate_names_keep_locations", len(board.rows) == 5 and len({m.location for m in board.rows}) == 5
@@ -96,6 +131,7 @@ def main():
                 ui.category_buttons["饰品提取"].invoke()
                 board.choose(0)
                 root.update()
+                check(f"{scale}_ungrouped_categories_keep_plain_rows", not board.headers and board.total_height == len(board.rows)*board.ROW_HEIGHT)
                 check(f"{scale}_planar_cost_retains_existing_immersifiers", "已有沉浸器优先" in ui.battle_cost.get()
                       and "最多" in ui.battle_cost.get() and "余量使用开拓力" in ui.battle_hint.get())
                 before = ui._form_signature()
@@ -157,7 +193,7 @@ def main():
                     if str(root.tk.call("after", "info", token)[0]).endswith("_drain"):
                         root.after_cancel(token)
                 root.destroy()
-    result = dict(game_started=False, checks=checks, count=len(checks), artwork_rows=len(entries), dpi=[100,150,200])
+    result = dict(game_started=False, checks=checks, count=len(checks), artwork_rows=len(entries), heading_icons=len(groups), dpi=[100,125,150,200])
     (OUT/"result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), "utf-8")
     print(json.dumps(result, ensure_ascii=False))
 

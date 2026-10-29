@@ -65,7 +65,7 @@ def build_window(ui, task_names, server_names, *, scale=None):
         page.columnconfigure(0, weight=1)
     ui.server_combo = None
     _home(ui, task_names)
-    _tasks(ui, task_names)
+    _tasks(ui)
     ui.mode_decks = {}
     from .desktop_modes import build_currency, build_universe
     build_universe(ui)
@@ -92,7 +92,7 @@ def _home(ui, names):
     recovery.grid_remove()
 
 
-def _tasks(ui, names):
+def _tasks(ui):
     from .dungeons import CATEGORIES
     s = ui.ui_scale
     d = lambda n: round(n*s)
@@ -128,18 +128,6 @@ def _tasks(ui, names):
     specific = ttk.Frame(content, style="Card.TFrame")
     specific.grid(row=0, column=0, sticky="nsew")
     ui._build_battle_fields(specific)
-    ttk.Separator(content).grid(row=1, column=0, sticky="ew", pady=d(10))
-    tasks = ttk.Frame(content, style="Card.TFrame")
-    tasks.grid(row=2, column=0, sticky="ew")
-    ttk.Label(tasks, text="每日任务", style="Muted.TLabel").grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, d(3)))
-    ui.task_controls = {}
-    for index, (key, label) in enumerate(names.items()):
-        check = ttk.Checkbutton(tasks, text=label, variable=ui.tasks[key], style="Card.TCheckbutton")
-        check.grid(row=1+index//3, column=index%3, sticky="w", padx=(0, d(14)))
-        ui.task_controls[key] = check
-        ui.setting_controls.append(check)
-        if key == "battle":
-            ui.battle_checkbox = check
 
 
 def _logs(ui):

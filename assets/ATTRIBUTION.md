@@ -697,6 +697,8 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 
 新增`assets/ui/survival/`的104幅静态图像，从2026-10-20既有CN 4.6.0生存索引目录采集画面裁出对应掉落图标或首领徽章。分类、名称和地点与现有104条目录逐项绑定；[来源清单](ui/survival/sources.json)记录原图相对标识、SHA-256、1920×1080坐标、裁切变换及输出哈希。排除完整画面、UID、玩家头像、余额和无关个人信息，没有启动游戏取新图。游戏美术归HoYoverse及相应权利人，不纳入原创代码GPL声明；来源记录不代表额外再许可。仅用于桌面目录展示，不能作为当前账号已解锁或已通关的证据。
 
+同日从同批归档画面补入21个地区、命途、属性标题图标。对应64条副本的分组按同屏标题及相邻滚动画面的重叠条目核对；[分组清单](ui/survival/groups.json)保留每组图标的裁切、原图与OCR记录哈希、输出哈希，以及条目归属的原始帧标识。没有采集新画面、复制账号状态或变更执行目录；图像的权利归属与上述许可边界相同。
+
 ## 2026-10-29 March7thAssistant装备识别参考
 
 后端装备阶段从同一固定提交引入18幅`assets/images/share/aglaea/`原始PNG，作者moesnow及其贡献者，遵循所附上游GPL v3；游戏美术与名称仍归其权利人。文件未经裁切、缩放或重编码，逐项原路径、Git blob、SHA-256和字节数见[装备来源清单](upstream/March7thAssistant/equipment/sources.json)，本地标识、用途及原生变体见[装备参考说明](upstream/March7thAssistant/equipment/README.md)。完整上游许可继续保留于[LICENSE](upstream/March7thAssistant/LICENSE)。

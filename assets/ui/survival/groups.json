@@ -1,0 +1,1027 @@
+{
+  "client": "CN 4.6.0",
+  "source_date": "2026-10-20",
+  "prepared_at": "2026-10-29",
+  "rights": "HoYoverse game artwork; not relicensed under source-code GPL",
+  "transform": "Static heading icons only. Membership follows visible headings and overlapping rows across consecutive archived frames; no player portraits, counters or account data.",
+  "groups": [
+    {
+      "id": "calyx_golden:二相乐园",
+      "category": "calyx_golden",
+      "label": "二相乐园",
+      "file": "group-calyx_golden-0.png",
+      "source": "20261020_173848_774067/173906_489998_catalogue_calyx_golden_00.png",
+      "source_sha256": "03d183451056cbe7174c844c51fcad82bc1307c410debe22eeec815b0cf13da2",
+      "sidecar_sha256": "131472ff24b84f083527148810b8cf6cf79287e2764bf9a4762687c55f0f066b",
+      "heading_text": "二相乐园",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        296,
+        764,
+        336
+      ],
+      "sha256": "2e34da092b6b210a83f2b33352da2f50bd3496bc41a4f7858d37b117fe8939fc"
+    },
+    {
+      "id": "calyx_golden:翁法罗斯",
+      "category": "calyx_golden",
+      "label": "翁法罗斯",
+      "file": "group-calyx_golden-1.png",
+      "source": "20261020_173848_774067/173906_489998_catalogue_calyx_golden_00.png",
+      "source_sha256": "03d183451056cbe7174c844c51fcad82bc1307c410debe22eeec815b0cf13da2",
+      "sidecar_sha256": "131472ff24b84f083527148810b8cf6cf79287e2764bf9a4762687c55f0f066b",
+      "heading_text": "翁法罗斯",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        750,
+        764,
+        790
+      ],
+      "sha256": "f24773504f376b90aad12fdd061a446d7e26e4b55459bc5b3f28164331a983aa"
+    },
+    {
+      "id": "calyx_golden:匹诺康尼",
+      "category": "calyx_golden",
+      "label": "匹诺康尼",
+      "file": "group-calyx_golden-2.png",
+      "source": "20261020_173848_774067/173909_972436_catalogue_calyx_golden_01.png",
+      "source_sha256": "acbd08fdf4b27a0c763dd7688129d74f81e5f30f9eb011cd3fce54b841ef04e6",
+      "sidecar_sha256": "7edff822a20d469ffb7015e9e5257766ef603ffde842943e88b274483ef83eb1",
+      "heading_text": "匹诺康尼",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        812,
+        764,
+        852
+      ],
+      "sha256": "88bb6bc836c03fe2048f9ae15265f7687f2210ef9433e05e126c8c82ed3d7c5e"
+    },
+    {
+      "id": "calyx_golden:仙舟「罗浮」",
+      "category": "calyx_golden",
+      "label": "仙舟「罗浮」",
+      "file": "group-calyx_golden-3.png",
+      "source": "20261020_173848_774067/173916_648354_catalogue_calyx_golden_03.png",
+      "source_sha256": "8857b85abc0e628437adc0c2a393f435f8e1db02999d9cafb146c74d10f0089c",
+      "sidecar_sha256": "597572dbd0f5430148c7c30c9e1789ce3e0fdf1cf5d7ee6625d5d5af4260d318",
+      "heading_text": "仙舟「罗浮」",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        477,
+        764,
+        517
+      ],
+      "sha256": "0e2c5bf6723417bf54a4cb21960235fd790e684d0849a9a89a0ce26ac8db9a1f"
+    },
+    {
+      "id": "calyx_golden:雅利洛-VI",
+      "category": "calyx_golden",
+      "label": "雅利洛-VI",
+      "file": "group-calyx_golden-4.png",
+      "source": "20261020_173848_774067/173919_933791_catalogue_calyx_golden_04.png",
+      "source_sha256": "fefd55c3129195fc57d3deb0a85f7eb3936ce25db9372ced8c05786ff4dd5059",
+      "sidecar_sha256": "d5c718007beb967b555a91fc522f462b77c859ac35c35e984cf4d5c7293eef64",
+      "heading_text": "雅利洛-VI",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        538,
+        764,
+        578
+      ],
+      "sha256": "10641d69a82ceb97a314cf58ae9e9fa8f9bc7fc5ac1d26ba34e4964599b89ed7"
+    },
+    {
+      "id": "calyx_crimson:欢愉",
+      "category": "calyx_crimson",
+      "label": "欢愉",
+      "file": "group-calyx_crimson-0.png",
+      "source": "20261020_173848_774067/173946_230859_catalogue_calyx_crimson_00.png",
+      "source_sha256": "fa7a0729dc33c048ef3379a95fc116a1f5f1b858e974602d00bbcb989cad2af3",
+      "sidecar_sha256": "545ec363ec96084160f82cb16167a76914f199376741434413710ebaf0ed9d82",
+      "heading_text": "欢愉",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        293,
+        764,
+        333
+      ],
+      "sha256": "5a07dd7609a116501da98cf625ce093b4751275f9719555fb72038614f04e7d8"
+    },
+    {
+      "id": "calyx_crimson:毁灭",
+      "category": "calyx_crimson",
+      "label": "毁灭",
+      "file": "group-calyx_crimson-1.png",
+      "source": "20261020_173848_774067/173946_230859_catalogue_calyx_crimson_00.png",
+      "source_sha256": "fa7a0729dc33c048ef3379a95fc116a1f5f1b858e974602d00bbcb989cad2af3",
+      "sidecar_sha256": "545ec363ec96084160f82cb16167a76914f199376741434413710ebaf0ed9d82",
+      "heading_text": "毁灭",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        482,
+        764,
+        522
+      ],
+      "sha256": "477b06693f9fa8483dc2836c7836f33ed02f25171a5b24fe5ef8df487a4d57d6"
+    },
+    {
+      "id": "calyx_crimson:存护",
+      "category": "calyx_crimson",
+      "label": "存护",
+      "file": "group-calyx_crimson-2.png",
+      "source": "20261020_173848_774067/173949_547650_catalogue_calyx_crimson_01.png",
+      "source_sha256": "857d0c12f6def1837cbb2da13040f1404fa0f8562ca2500c25c74628afb37812",
+      "sidecar_sha256": "785dfa1f66d40d6171673bfdcd566fcc1d87448b2b44ca4491eeb136d098b49d",
+      "heading_text": "存护",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        542,
+        764,
+        582
+      ],
+      "sha256": "3673fd9850a4870d9f093a16e5439a5d033d49ea179cfd5d8d044a0dcd90fd82"
+    },
+    {
+      "id": "calyx_crimson:巡猎",
+      "category": "calyx_crimson",
+      "label": "巡猎",
+      "file": "group-calyx_crimson-3.png",
+      "source": "20261020_173848_774067/173952_970403_catalogue_calyx_crimson_02.png",
+      "source_sha256": "f8fee9e270a1b9b55654934fafa52b6149cde7f6441f942878d4a32a88b59f61",
+      "sidecar_sha256": "f06e1152dc94dc65a9b722c99da53e160c1f244ad39325e48795bd7e4ff2755b",
+      "heading_text": "浆巡猎",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        470,
+        764,
+        510
+      ],
+      "sha256": "2596f6dca3a30972c950f80996a9393ab3626bb8fd980fa98c5d38094cd90759"
+    },
+    {
+      "id": "calyx_crimson:丰饶",
+      "category": "calyx_crimson",
+      "label": "丰饶",
+      "file": "group-calyx_crimson-4.png",
+      "source": "20261020_173848_774067/173956_358819_catalogue_calyx_crimson_03.png",
+      "source_sha256": "71ac361317028d634be397837bc7c4b8c1ab835da8782c2b5c006d3e28348a2c",
+      "sidecar_sha256": "f390738d803010868ed17f4d2a61b3eb302cb0f45df0a1d1b5f8a74468c17a8a",
+      "heading_text": "丰饶",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        529,
+        764,
+        569
+      ],
+      "sha256": "f7cdf54e5e50b2539486aac99fb23bb32b6414080426c12f70d8a5e5d5d69133"
+    },
+    {
+      "id": "calyx_crimson:智识",
+      "category": "calyx_crimson",
+      "label": "智识",
+      "file": "group-calyx_crimson-5.png",
+      "source": "20261020_173848_774067/173956_358819_catalogue_calyx_crimson_03.png",
+      "source_sha256": "71ac361317028d634be397837bc7c4b8c1ab835da8782c2b5c006d3e28348a2c",
+      "sidecar_sha256": "f390738d803010868ed17f4d2a61b3eb302cb0f45df0a1d1b5f8a74468c17a8a",
+      "heading_text": "恣智识",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        851,
+        764,
+        891
+      ],
+      "sha256": "25a8ee0e3e70687b4014ea6b7c3f240085a400a41de7c736e884a8d26509b17a"
+    },
+    {
+      "id": "calyx_crimson:同谐",
+      "category": "calyx_crimson",
+      "label": "同谐",
+      "file": "group-calyx_crimson-6.png",
+      "source": "20261020_173848_774067/174003_082936_catalogue_calyx_crimson_05.png",
+      "source_sha256": "3a4d673c248ef2fd2bbf1b9c71a68d48731e4f9ad140203cc7ac852d6ea73206",
+      "sidecar_sha256": "aa15fb5c9c6f0913a74fab9966ac8e261b8781ff997a8cbd9dcb74ad342a701d",
+      "heading_text": "同谐",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        515,
+        764,
+        555
+      ],
+      "sha256": "bdb60887aae8d8a56e8eedc4b65330205a43d2dfc6ebe05803829babc516ed58"
+    },
+    {
+      "id": "calyx_crimson:虚无",
+      "category": "calyx_crimson",
+      "label": "虚无",
+      "file": "group-calyx_crimson-7.png",
+      "source": "20261020_173848_774067/174003_082936_catalogue_calyx_crimson_05.png",
+      "source_sha256": "3a4d673c248ef2fd2bbf1b9c71a68d48731e4f9ad140203cc7ac852d6ea73206",
+      "sidecar_sha256": "aa15fb5c9c6f0913a74fab9966ac8e261b8781ff997a8cbd9dcb74ad342a701d",
+      "heading_text": "虚无",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        838,
+        764,
+        878
+      ],
+      "sha256": "c475670baef9382c788bb3aa0b7c574e2eb66d2e279164e9ae736f7cb1f27cb2"
+    },
+    {
+      "id": "calyx_crimson:记忆",
+      "category": "calyx_crimson",
+      "label": "记忆",
+      "file": "group-calyx_crimson-8.png",
+      "source": "20261020_173848_774067/174009_834818_catalogue_calyx_crimson_07.png",
+      "source_sha256": "ceae816bb9a703bdc99705f76979886bd416f089845bc7188c3e456e1ae80ad3",
+      "sidecar_sha256": "62db058d74acd58f98fd9aa2ef47541e923eb7ce84ddd09e4fc311d109b2df89",
+      "heading_text": "记忆",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        704,
+        764,
+        744
+      ],
+      "sha256": "ba98a6f498a1773ee5d9fde7a19fdff03158e2e182c47a93b2b2d1289a40e03e"
+    },
+    {
+      "id": "stagnant_shadow:冰",
+      "category": "stagnant_shadow",
+      "label": "冰",
+      "file": "group-stagnant_shadow-0.png",
+      "source": "20261020_173848_774067/174037_637377_catalogue_stagnant_shadow_00.png",
+      "source_sha256": "b031ee5fd3266cca2e7f71c32a83a0babcdc645e212489c4a8a16a186a48321e",
+      "sidecar_sha256": "deede3643c4896822b3de61dd9d77a61081b8fe1bdfabc33f946162d99992e31",
+      "heading_text": "冰",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        295,
+        764,
+        335
+      ],
+      "sha256": "a0adfbaaec20e89e9782dbe7def0cbf6296318fd0d015825a4a7e6ac03487750"
+    },
+    {
+      "id": "stagnant_shadow:物理",
+      "category": "stagnant_shadow",
+      "label": "物理",
+      "file": "group-stagnant_shadow-1.png",
+      "source": "20261020_173848_774067/174041_135089_catalogue_stagnant_shadow_01.png",
+      "source_sha256": "d1ec190302b8182d4179c8dbfc1624713be2d73120c751e996065c4c737a2d01",
+      "sidecar_sha256": "ebc5732fd4f0f8f9382c63dd7c71cbb6a23f955fe32e35370656e14c277052a0",
+      "heading_text": "擦物理",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        490,
+        764,
+        530
+      ],
+      "sha256": "125582d5837ddd23a3fba96401883be7d3c1d2035e161636e88db0d44783361a"
+    },
+    {
+      "id": "stagnant_shadow:火",
+      "category": "stagnant_shadow",
+      "label": "火",
+      "file": "group-stagnant_shadow-2.png",
+      "source": "20261020_173848_774067/174044_714147_catalogue_stagnant_shadow_02.png",
+      "source_sha256": "042225d32916acace7ba460b60e161440e860950c7d5c9b49cc471e47dcb14f8",
+      "sidecar_sha256": "63593fae66bfb867bd738c53881eae145f2f89f60831262c89bb08ed4948001a",
+      "heading_text": "火",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        686,
+        764,
+        726
+      ],
+      "sha256": "bb9dcc61d6eae1e2e35093d38aebe8fc58626bf70ca0b9298c2fe7568641330a"
+    },
+    {
+      "id": "stagnant_shadow:雷",
+      "category": "stagnant_shadow",
+      "label": "雷",
+      "file": "group-stagnant_shadow-3.png",
+      "source": "20261020_173848_774067/174051_491896_catalogue_stagnant_shadow_04.png",
+      "source_sha256": "c632054c0820da2949c37973d8399290417c01c6b912ec7299836d789091a6e0",
+      "sidecar_sha256": "d331dcf7ffb8f9341ac37ed067ab1dffa6b2dda65be2ff21507f62e682557aa9",
+      "heading_text": "雷",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        484,
+        764,
+        524
+      ],
+      "sha256": "4812165abcd8ffcd472215cf3c0437332095df8477df0ec7ed031e3a20f094f9"
+    },
+    {
+      "id": "stagnant_shadow:风",
+      "category": "stagnant_shadow",
+      "label": "风",
+      "file": "group-stagnant_shadow-4.png",
+      "source": "20261020_173848_774067/174054_978466_catalogue_stagnant_shadow_05.png",
+      "source_sha256": "da2d9096bdf44c2a7ede63ff13f60d4d0683ed0726ab851bee0e9d651759298f",
+      "sidecar_sha256": "4fc3547a6c5426b63cd434217cb1dfc614117e9ec822dbcca1eb07c8f16e1c12",
+      "heading_text": "风",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        680,
+        764,
+        720
+      ],
+      "sha256": "2489136e4c4cb65185cb1496b157296d101ffddf5eb9b2137de1d97cefdcfcce"
+    },
+    {
+      "id": "stagnant_shadow:量子",
+      "category": "stagnant_shadow",
+      "label": "量子",
+      "file": "group-stagnant_shadow-5.png",
+      "source": "20261020_173848_774067/174101_800611_catalogue_stagnant_shadow_07.png",
+      "source_sha256": "de194dc177017eae20b80569da4c9dfd20718d4b70beb5863684779f5b59c4bb",
+      "sidecar_sha256": "ddb301ca4cd7373386b6516abd3aa6bcb2a99f19fd4e86da6826bfc7770e4102",
+      "heading_text": "量子",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        479,
+        764,
+        519
+      ],
+      "sha256": "6dc691351af6e9816fdadee6d1c49d585452249530d6d3b17840c5c6d1edfa48"
+    },
+    {
+      "id": "stagnant_shadow:虚数",
+      "category": "stagnant_shadow",
+      "label": "虚数",
+      "file": "group-stagnant_shadow-6.png",
+      "source": "20261020_173848_774067/174105_160719_catalogue_stagnant_shadow_08.png",
+      "source_sha256": "1470d2e4acdf844304b82f76194e4670e03333085c3e6224efa703baffaf2175",
+      "sidecar_sha256": "7dbbb9fc8a7516e2fca42aba347ed8ab47fe01f57d0a826a448255869f05bf9b",
+      "heading_text": "虚数",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        726,
+        809,
+        764,
+        849
+      ],
+      "sha256": "8b73aab9994a5072edfbd7fb7865cd78a1a416ea12d8ce97fe06eaf1efdfd111"
+    }
+  ],
+  "memberships": [
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "绘世学院",
+      "group": "calyx_golden:二相乐园",
+      "source": "20261020_173848_774067/173906_489998_catalogue_calyx_golden_00.png"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "鸽川区",
+      "group": "calyx_golden:二相乐园",
+      "source": "20261020_173848_774067/173906_489998_catalogue_calyx_golden_00.png"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "鸽川区",
+      "group": "calyx_golden:二相乐园",
+      "source": "20261020_173848_774067/173906_489998_catalogue_calyx_golden_00.png"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "「神谕圣地」雅努萨波利斯",
+      "group": "calyx_golden:翁法罗斯",
+      "source": "20261020_173848_774067/173909_972436_catalogue_calyx_golden_01.png"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "「纷争荒墟」悬锋城",
+      "group": "calyx_golden:翁法罗斯",
+      "source": "20261020_173848_774067/173909_972436_catalogue_calyx_golden_01.png"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "「呓语密林」神悟树庭",
+      "group": "calyx_golden:翁法罗斯",
+      "source": "20261020_173848_774067/173909_972436_catalogue_calyx_golden_01.png"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "筑梦边境",
+      "group": "calyx_golden:匹诺康尼",
+      "source": "20261020_173848_774067/173913_305975_catalogue_calyx_golden_02.png"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "稚子的梦",
+      "group": "calyx_golden:匹诺康尼",
+      "source": "20261020_173848_774067/173913_305975_catalogue_calyx_golden_02.png"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "「白日梦」酒店-梦境",
+      "group": "calyx_golden:匹诺康尼",
+      "source": "20261020_173848_774067/173913_305975_catalogue_calyx_golden_02.png"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "流云渡",
+      "group": "calyx_golden:仙舟「罗浮」",
+      "source": "20261020_173848_774067/173916_648354_catalogue_calyx_golden_03.png"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "太卜司",
+      "group": "calyx_golden:仙舟「罗浮」",
+      "source": "20261020_173848_774067/173916_648354_catalogue_calyx_golden_03.png"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "工造司",
+      "group": "calyx_golden:仙舟「罗浮」",
+      "source": "20261020_173848_774067/173916_648354_catalogue_calyx_golden_03.png"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "回忆之蕾",
+      "location": "城郊雪原",
+      "group": "calyx_golden:雅利洛-VI",
+      "source": "20261020_173848_774067/173919_933791_catalogue_calyx_golden_04.png"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "以太之蕾",
+      "location": "边缘通路",
+      "group": "calyx_golden:雅利洛-VI",
+      "source": "20261020_173848_774067/173919_933791_catalogue_calyx_golden_04.png"
+    },
+    {
+      "category": "calyx_golden",
+      "name": "藏珍之蕾",
+      "location": "大矿区",
+      "group": "calyx_golden:雅利洛-VI",
+      "source": "20261020_173848_774067/173923_300066_catalogue_calyx_golden_05.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "欢愉之蕾",
+      "location": "「世界尽头」酒馆",
+      "group": "calyx_crimson:欢愉",
+      "source": "20261020_173848_774067/173946_230859_catalogue_calyx_crimson_00.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "毁灭之蕾",
+      "location": "渡画泉隐",
+      "group": "calyx_crimson:毁灭",
+      "source": "20261020_173848_774067/173946_230859_catalogue_calyx_crimson_00.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "毁灭之蕾",
+      "location": "鳞渊境",
+      "group": "calyx_crimson:毁灭",
+      "source": "20261020_173848_774067/173946_230859_catalogue_calyx_crimson_00.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "毁灭之蕾",
+      "location": "收容舱段",
+      "group": "calyx_crimson:毁灭",
+      "source": "20261020_173848_774067/173949_547650_catalogue_calyx_crimson_01.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "存护之蕾",
+      "location": "克劳克影视乐园",
+      "group": "calyx_crimson:存护",
+      "source": "20261020_173848_774067/173949_547650_catalogue_calyx_crimson_01.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "存护之蕾",
+      "location": "支援舱段",
+      "group": "calyx_crimson:存护",
+      "source": "20261020_173848_774067/173949_547650_catalogue_calyx_crimson_01.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "巡猎之蕾",
+      "location": "「葬忆彼岸」时光归墟",
+      "group": "calyx_crimson:巡猎",
+      "source": "20261020_173848_774067/173952_970403_catalogue_calyx_crimson_02.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "巡猎之蕾",
+      "location": "苏乐达™热砂海选会场",
+      "group": "calyx_crimson:巡猎",
+      "source": "20261020_173848_774067/173952_970403_catalogue_calyx_crimson_02.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "巡猎之蕾",
+      "location": "城郊雪原",
+      "group": "calyx_crimson:巡猎",
+      "source": "20261020_173848_774067/173952_970403_catalogue_calyx_crimson_02.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "丰饶之蕾",
+      "location": "绥园",
+      "group": "calyx_crimson:丰饶",
+      "source": "20261020_173848_774067/173956_358819_catalogue_calyx_crimson_03.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "丰饶之蕾",
+      "location": "边缘通路",
+      "group": "calyx_crimson:丰饶",
+      "source": "20261020_173848_774067/173956_358819_catalogue_calyx_crimson_03.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "智识之蕾",
+      "location": "海原电视塔",
+      "group": "calyx_crimson:智识",
+      "source": "20261020_173848_774067/173959_654359_catalogue_calyx_crimson_04.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "智识之蕾",
+      "location": "匹诺康尼大剧院",
+      "group": "calyx_crimson:智识",
+      "source": "20261020_173848_774067/173959_654359_catalogue_calyx_crimson_04.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "智识之蕾",
+      "location": "铆钉镇",
+      "group": "calyx_crimson:智识",
+      "source": "20261020_173848_774067/173959_654359_catalogue_calyx_crimson_04.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "同谐之蕾",
+      "location": "「白日梦」酒店-梦境",
+      "group": "calyx_crimson:同谐",
+      "source": "20261020_173848_774067/174003_082936_catalogue_calyx_crimson_05.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "同谐之蕾",
+      "location": "机械聚落",
+      "group": "calyx_crimson:同谐",
+      "source": "20261020_173848_774067/174003_082936_catalogue_calyx_crimson_05.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "虚无之蕾",
+      "location": "「辉痕圣林」神悟树庭",
+      "group": "calyx_crimson:虚无",
+      "source": "20261020_173848_774067/174006_487981_catalogue_calyx_crimson_06.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "虚无之蕾",
+      "location": "丹鼎司",
+      "group": "calyx_crimson:虚无",
+      "source": "20261020_173848_774067/174006_487981_catalogue_calyx_crimson_06.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "虚无之蕾",
+      "location": "大矿区",
+      "group": "calyx_crimson:虚无",
+      "source": "20261020_173848_774067/174006_487981_catalogue_calyx_crimson_06.png"
+    },
+    {
+      "category": "calyx_crimson",
+      "name": "记忆之蕾",
+      "location": "「纷争荒墟」悬锋城",
+      "group": "calyx_crimson:记忆",
+      "source": "20261020_173848_774067/174009_834818_catalogue_calyx_crimson_07.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "塞壬之形",
+      "location": "「酣歌海垠」斯缇科西亚",
+      "group": "stagnant_shadow:冰",
+      "source": "20261020_173848_774067/174037_637377_catalogue_stagnant_shadow_00.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "冰酿之形",
+      "location": "「白日梦」酒店-梦境",
+      "group": "stagnant_shadow:冰",
+      "source": "20261020_173848_774067/174037_637377_catalogue_stagnant_shadow_00.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "冰棱之形",
+      "location": "流云渡",
+      "group": "stagnant_shadow:冰",
+      "source": "20261020_173848_774067/174037_637377_catalogue_stagnant_shadow_00.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "霜晶之形",
+      "location": "残响回廊",
+      "group": "stagnant_shadow:冰",
+      "source": "20261020_173848_774067/174037_637377_catalogue_stagnant_shadow_00.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "溟簇之形",
+      "location": "「龙骸古城」斯缇科西亚",
+      "group": "stagnant_shadow:物理",
+      "source": "20261020_173848_774067/174041_135089_catalogue_stagnant_shadow_01.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "职司之形",
+      "location": "克劳克影视乐园",
+      "group": "stagnant_shadow:物理",
+      "source": "20261020_173848_774067/174041_135089_catalogue_stagnant_shadow_01.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "幽府之形",
+      "location": "绥园",
+      "group": "stagnant_shadow:物理",
+      "source": "20261020_173848_774067/174044_714147_catalogue_stagnant_shadow_02.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "锋芒之形",
+      "location": "大矿区",
+      "group": "stagnant_shadow:物理",
+      "source": "20261020_173848_774067/174044_714147_catalogue_stagnant_shadow_02.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "残灰之形",
+      "location": "「神谕圣地」雅努萨波利斯",
+      "group": "stagnant_shadow:火",
+      "source": "20261020_173848_774067/174044_714147_catalogue_stagnant_shadow_02.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "嗔怒之形",
+      "location": "朝露公馆",
+      "group": "stagnant_shadow:火",
+      "source": "20261020_173848_774067/174048_162073_catalogue_stagnant_shadow_03.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "燔灼之形",
+      "location": "大矿区",
+      "group": "stagnant_shadow:火",
+      "source": "20261020_173848_774067/174048_162073_catalogue_stagnant_shadow_03.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "炎华之形",
+      "location": "铁卫禁区",
+      "group": "stagnant_shadow:火",
+      "source": "20261020_173848_774067/174048_162073_catalogue_stagnant_shadow_03.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "音爆之形",
+      "location": "鸽川区",
+      "group": "stagnant_shadow:雷",
+      "source": "20261020_173848_774067/174051_491896_catalogue_stagnant_shadow_04.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "机狼之形",
+      "location": "幽囚狱",
+      "group": "stagnant_shadow:雷",
+      "source": "20261020_173848_774067/174051_491896_catalogue_stagnant_shadow_04.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "震厄之形",
+      "location": "迴星港",
+      "group": "stagnant_shadow:雷",
+      "source": "20261020_173848_774067/174054_978466_catalogue_stagnant_shadow_05.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "鸣雷之形",
+      "location": "残响回廊",
+      "group": "stagnant_shadow:雷",
+      "source": "20261020_173848_774067/174054_978466_catalogue_stagnant_shadow_05.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "烬日之形",
+      "location": "「穹顶关塞」晨昏之眼",
+      "group": "stagnant_shadow:风",
+      "source": "20261020_173848_774067/174054_978466_catalogue_stagnant_shadow_05.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "今宵之形",
+      "location": "匹诺康尼大剧院",
+      "group": "stagnant_shadow:风",
+      "source": "20261020_173848_774067/174058_396376_catalogue_stagnant_shadow_06.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "天人之形",
+      "location": "丹鼎司",
+      "group": "stagnant_shadow:风",
+      "source": "20261020_173848_774067/174058_396376_catalogue_stagnant_shadow_06.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "巽风之形",
+      "location": "铆钉镇",
+      "group": "stagnant_shadow:风",
+      "source": "20261020_173848_774067/174058_396376_catalogue_stagnant_shadow_06.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "吞噬之形",
+      "location": "渡画泉隐",
+      "group": "stagnant_shadow:量子",
+      "source": "20261020_173848_774067/174101_800611_catalogue_stagnant_shadow_07.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "凛月之形",
+      "location": "「呓语密林」神悟树庭",
+      "group": "stagnant_shadow:量子",
+      "source": "20261020_173848_774067/174101_800611_catalogue_stagnant_shadow_07.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "焦炙之形",
+      "location": "筑梦边境",
+      "group": "stagnant_shadow:量子",
+      "source": "20261020_173848_774067/174101_800611_catalogue_stagnant_shadow_07.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "孽兽之形",
+      "location": "鳞渊境",
+      "group": "stagnant_shadow:量子",
+      "source": "20261020_173848_774067/174105_160719_catalogue_stagnant_shadow_08.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "空海之形",
+      "location": "基座舱段",
+      "group": "stagnant_shadow:量子",
+      "source": "20261020_173848_774067/174105_160719_catalogue_stagnant_shadow_08.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "役轮之形",
+      "location": "「命运重渊」雅努萨波利斯",
+      "group": "stagnant_shadow:虚数",
+      "source": "20261020_173848_774067/174108_695100_catalogue_stagnant_shadow_09.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "弦音之形",
+      "location": "匹诺康尼大剧院",
+      "group": "stagnant_shadow:虚数",
+      "source": "20261020_173848_774067/174108_695100_catalogue_stagnant_shadow_09.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "偃偶之形",
+      "location": "工造司",
+      "group": "stagnant_shadow:虚数",
+      "source": "20261020_173848_774067/174108_695100_catalogue_stagnant_shadow_09.png"
+    },
+    {
+      "category": "stagnant_shadow",
+      "name": "幻光之形",
+      "location": "边缘通路",
+      "group": "stagnant_shadow:虚数",
+      "source": "20261020_173848_774067/174112_288707_catalogue_stagnant_shadow_10.png"
+    }
+  ],
+  "evidence": [
+    {
+      "source": "20261020_173848_774067/173906_489998_catalogue_calyx_golden_00.png",
+      "source_sha256": "03d183451056cbe7174c844c51fcad82bc1307c410debe22eeec815b0cf13da2",
+      "sidecar_sha256": "131472ff24b84f083527148810b8cf6cf79287e2764bf9a4762687c55f0f066b"
+    },
+    {
+      "source": "20261020_173848_774067/173909_972436_catalogue_calyx_golden_01.png",
+      "source_sha256": "acbd08fdf4b27a0c763dd7688129d74f81e5f30f9eb011cd3fce54b841ef04e6",
+      "sidecar_sha256": "7edff822a20d469ffb7015e9e5257766ef603ffde842943e88b274483ef83eb1"
+    },
+    {
+      "source": "20261020_173848_774067/173913_305975_catalogue_calyx_golden_02.png",
+      "source_sha256": "8f0431f553f5b3b42f05ef542abc4a266374caeb3d86f60bf467bb1c25fb9f27",
+      "sidecar_sha256": "901f2f3116364f06eca220ab3fc00406081213f22017f23a1ddd1a3c2f3353bb"
+    },
+    {
+      "source": "20261020_173848_774067/173916_648354_catalogue_calyx_golden_03.png",
+      "source_sha256": "8857b85abc0e628437adc0c2a393f435f8e1db02999d9cafb146c74d10f0089c",
+      "sidecar_sha256": "597572dbd0f5430148c7c30c9e1789ce3e0fdf1cf5d7ee6625d5d5af4260d318"
+    },
+    {
+      "source": "20261020_173848_774067/173919_933791_catalogue_calyx_golden_04.png",
+      "source_sha256": "fefd55c3129195fc57d3deb0a85f7eb3936ce25db9372ced8c05786ff4dd5059",
+      "sidecar_sha256": "d5c718007beb967b555a91fc522f462b77c859ac35c35e984cf4d5c7293eef64"
+    },
+    {
+      "source": "20261020_173848_774067/173923_300066_catalogue_calyx_golden_05.png",
+      "source_sha256": "f824e82fe52f2ac7a2080b32f86252d13c5e39a07bd11c477a08988b04b23e8c",
+      "sidecar_sha256": "af0fdbc0af333ef3c18dfbb118eb7aa30a127ee716e151044fc03f7adb9b4fa8"
+    },
+    {
+      "source": "20261020_173848_774067/173946_230859_catalogue_calyx_crimson_00.png",
+      "source_sha256": "fa7a0729dc33c048ef3379a95fc116a1f5f1b858e974602d00bbcb989cad2af3",
+      "sidecar_sha256": "545ec363ec96084160f82cb16167a76914f199376741434413710ebaf0ed9d82"
+    },
+    {
+      "source": "20261020_173848_774067/173949_547650_catalogue_calyx_crimson_01.png",
+      "source_sha256": "857d0c12f6def1837cbb2da13040f1404fa0f8562ca2500c25c74628afb37812",
+      "sidecar_sha256": "785dfa1f66d40d6171673bfdcd566fcc1d87448b2b44ca4491eeb136d098b49d"
+    },
+    {
+      "source": "20261020_173848_774067/173952_970403_catalogue_calyx_crimson_02.png",
+      "source_sha256": "f8fee9e270a1b9b55654934fafa52b6149cde7f6441f942878d4a32a88b59f61",
+      "sidecar_sha256": "f06e1152dc94dc65a9b722c99da53e160c1f244ad39325e48795bd7e4ff2755b"
+    },
+    {
+      "source": "20261020_173848_774067/173956_358819_catalogue_calyx_crimson_03.png",
+      "source_sha256": "71ac361317028d634be397837bc7c4b8c1ab835da8782c2b5c006d3e28348a2c",
+      "sidecar_sha256": "f390738d803010868ed17f4d2a61b3eb302cb0f45df0a1d1b5f8a74468c17a8a"
+    },
+    {
+      "source": "20261020_173848_774067/173959_654359_catalogue_calyx_crimson_04.png",
+      "source_sha256": "0cb2c9627158ef7e5ec15989dcd47086f4d47ef5985be7211dc81439c29a1adf",
+      "sidecar_sha256": "f3f2a9178294e29bf505c4167e1bb13d5f941d6b0a3bc0c58cd2254212362d44"
+    },
+    {
+      "source": "20261020_173848_774067/174003_082936_catalogue_calyx_crimson_05.png",
+      "source_sha256": "3a4d673c248ef2fd2bbf1b9c71a68d48731e4f9ad140203cc7ac852d6ea73206",
+      "sidecar_sha256": "aa15fb5c9c6f0913a74fab9966ac8e261b8781ff997a8cbd9dcb74ad342a701d"
+    },
+    {
+      "source": "20261020_173848_774067/174006_487981_catalogue_calyx_crimson_06.png",
+      "source_sha256": "de5ceef46cad0ab3fb417e822287b917cfba825382a31da2ec58afd3ab6026d3",
+      "sidecar_sha256": "fbe40c96e3ecc67aa6a405e53791c5854c9e61497ca21e857d92e16d31f53df5"
+    },
+    {
+      "source": "20261020_173848_774067/174009_834818_catalogue_calyx_crimson_07.png",
+      "source_sha256": "ceae816bb9a703bdc99705f76979886bd416f089845bc7188c3e456e1ae80ad3",
+      "sidecar_sha256": "62db058d74acd58f98fd9aa2ef47541e923eb7ce84ddd09e4fc311d109b2df89"
+    },
+    {
+      "source": "20261020_173848_774067/174037_637377_catalogue_stagnant_shadow_00.png",
+      "source_sha256": "b031ee5fd3266cca2e7f71c32a83a0babcdc645e212489c4a8a16a186a48321e",
+      "sidecar_sha256": "deede3643c4896822b3de61dd9d77a61081b8fe1bdfabc33f946162d99992e31"
+    },
+    {
+      "source": "20261020_173848_774067/174041_135089_catalogue_stagnant_shadow_01.png",
+      "source_sha256": "d1ec190302b8182d4179c8dbfc1624713be2d73120c751e996065c4c737a2d01",
+      "sidecar_sha256": "ebc5732fd4f0f8f9382c63dd7c71cbb6a23f955fe32e35370656e14c277052a0"
+    },
+    {
+      "source": "20261020_173848_774067/174044_714147_catalogue_stagnant_shadow_02.png",
+      "source_sha256": "042225d32916acace7ba460b60e161440e860950c7d5c9b49cc471e47dcb14f8",
+      "sidecar_sha256": "63593fae66bfb867bd738c53881eae145f2f89f60831262c89bb08ed4948001a"
+    },
+    {
+      "source": "20261020_173848_774067/174048_162073_catalogue_stagnant_shadow_03.png",
+      "source_sha256": "748430f25d2dc7672ebd729f0149a682349453bef28394f850d882e0d3b5f411",
+      "sidecar_sha256": "829d9786e15c3223568d7af95f4d09afdb0b78d8166bb09d91ef4d57caa252db"
+    },
+    {
+      "source": "20261020_173848_774067/174051_491896_catalogue_stagnant_shadow_04.png",
+      "source_sha256": "c632054c0820da2949c37973d8399290417c01c6b912ec7299836d789091a6e0",
+      "sidecar_sha256": "d331dcf7ffb8f9341ac37ed067ab1dffa6b2dda65be2ff21507f62e682557aa9"
+    },
+    {
+      "source": "20261020_173848_774067/174054_978466_catalogue_stagnant_shadow_05.png",
+      "source_sha256": "da2d9096bdf44c2a7ede63ff13f60d4d0683ed0726ab851bee0e9d651759298f",
+      "sidecar_sha256": "4fc3547a6c5426b63cd434217cb1dfc614117e9ec822dbcca1eb07c8f16e1c12"
+    },
+    {
+      "source": "20261020_173848_774067/174058_396376_catalogue_stagnant_shadow_06.png",
+      "source_sha256": "fb601abaedf9ca10f971f28d2f0cfe27c1b6dcf60625db0f08c00fdc8d19cbd9",
+      "sidecar_sha256": "ab96a728c42e2473a9f0a983e3d2d7849dca81ca162b5520eea62a4198738b8c"
+    },
+    {
+      "source": "20261020_173848_774067/174101_800611_catalogue_stagnant_shadow_07.png",
+      "source_sha256": "de194dc177017eae20b80569da4c9dfd20718d4b70beb5863684779f5b59c4bb",
+      "sidecar_sha256": "ddb301ca4cd7373386b6516abd3aa6bcb2a99f19fd4e86da6826bfc7770e4102"
+    },
+    {
+      "source": "20261020_173848_774067/174105_160719_catalogue_stagnant_shadow_08.png",
+      "source_sha256": "1470d2e4acdf844304b82f76194e4670e03333085c3e6224efa703baffaf2175",
+      "sidecar_sha256": "7dbbb9fc8a7516e2fca42aba347ed8ab47fe01f57d0a826a448255869f05bf9b"
+    },
+    {
+      "source": "20261020_173848_774067/174108_695100_catalogue_stagnant_shadow_09.png",
+      "source_sha256": "18af5cc51c577d11da483e299bbc4994ab82462e25638439d03db2b2271fbe07",
+      "sidecar_sha256": "a728df8378d04030777e4a423f907abbc0594f28bb0ddf23a4a7a4c76c9669bf"
+    },
+    {
+      "source": "20261020_173848_774067/174112_288707_catalogue_stagnant_shadow_10.png",
+      "source_sha256": "4f3169b6c32eda69675c42ab425da74a19e9ddc8809689d9177d9d31a2e1be75",
+      "sidecar_sha256": "2497a6e35ad562d2143c744726c656672952f89b58ad72d9b2fc1e2fe00ad15d"
+    }
+  ]
+}

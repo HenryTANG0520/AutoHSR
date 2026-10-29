@@ -15,13 +15,16 @@
 | `stamina.png` | 原样复用既有`templates/planar_stamina_cost_single.png`，来源记录仍保留 |
 | `reward-gift.png` | 从既有`templates/daily_reward.png`裁出礼物，排除通知角标；上游来源见[总署名](../ATTRIBUTION.md) |
 | `hsr-sc.ttf` | 客户端`StreamingAssets/MiHoYoSDKRes/HttpServerResources/font/zh-cn.ttf`原样复制，内部家族名`SDK_SC_Web` |
-| `survival/*.png` | 2026-10-20既有生存索引采集记录中的104条目录对应掉落图标或首领徽章，按行核对名称、地点和分类后裁切；不含玩家头像、余额或整图 |
+| `survival/`内以摘要命名的PNG | 2026-10-20既有生存索引采集记录中的104条目录对应掉落图标或首领徽章，按行核对名称、地点和分类后裁切；不含玩家头像、余额或整图 |
+| `survival/group-*.png` | 同批归档画面的21个地区、命途、属性分组图标；只裁出静态图标，不包含账号状态 |
 | `universe/du.png`、`universe/cw.png` | 2026-10-24、26日既有旷宇纷争参考中的静态入口插图；移除原等级、倒计时、赛季、奖励预览及按钮，用运行时计划与动作替代 |
 | `guide/backdrop.png`、`guide/close.png` | 既有每日实训参考的模糊场景与静态关闭符号；背景中的指南、文字和整个底部HUD区域移除，遮挡处用邻近颜色插值 |
 
 [sources.json](sources.json)逐项记录来源、源文件SHA-256、归一化坐标、变换、输出SHA-256及权利信息。没有包含UID、账号指纹、安装绝对路径或完整游戏画面。运行时只加载这些静态资源，不读取游戏安装目录。
 
 生存索引素材单独列在[survival/sources.json](survival/sources.json)，以分类、名称、地点三项绑定，保留原图相对标识、哈希、归一化裁切坐标和输出哈希。使用[prepare_survival_assets.py](../../tools/prepare_survival_assets.py)并提供既有目录采集文件夹可重现；脚本只读取PNG及配套OCR记录，不操作游戏。新目录项没有对应图标时使用通用生存索引标记，不借用其他副本的掉落图。未迁入上游图像库；这批新增游戏美术同样不纳入原创代码的GPL许可。
+
+分组图标及64条归属单独记录在[survival/groups.json](survival/groups.json)，用[prepare_survival_groups.py](../../tools/prepare_survival_groups.py)读取同批采集目录重现。脚本按同屏标题、连续帧重叠的副本行建立归属，有冲突或缺项时中止；只处理已记录的标题OCR变体，不为新副本猜测地区或属性。原图、OCR文件及输出均记录SHA-256。游戏标题栏以浅灰底、原图标及文字显示；本地扩展目录的未知归属放在“其他副本”，不影响游戏执行中的实时识别。
 
 旷宇纷争素材见[universe/sources.json](universe/sources.json)，记录源图哈希、1920×1080归一化坐标、整块移除范围、中央数字连通域蒙版及输出哈希。[prepare_universe_assets.py](../../tools/prepare_universe_assets.py)接收`--du`和`--cw`两张既有原图，裁出966×639入口；被旧状态遮挡的部分使用OpenCV Telea局部颜色延展，未调用生成模型。这些补全区域并非原始背景像素，仍有纹理差异。插图按比例显示，文字、按钮、禁用和键盘焦点实时绘制；不能称为整屏逐像素相同。完整原图不分发，没有读取当前游戏画面。
 

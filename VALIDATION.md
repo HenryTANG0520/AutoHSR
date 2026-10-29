@@ -1,5 +1,19 @@
 # AutoHSR 0.1 验证记录
 
+## 2026-10-29：生存索引按游戏分组浏览
+
+只读对照AutoZZZ本地`51f236e`的页面与明确选择入口，以及2026-10-20既有CN 4.6.0生存索引采集帧。移除副本列表下方重复的委托、实训、邮件和勋礼开关，这些任务继续通过首页卡片与“每日任务”设置调整；副本自己的“加入计划”与已选目标放在同一行，原次数、费用、预算、授权与显式保存约定不变。
+
+金色花萼按5个地区、赤色花萼按9个命途、凝滞虚影按7个属性显示灰底标题及原图标，共21组、64条已有副本归属。依据同屏标题与连续滚动帧中的重叠行核对，不按名称猜地区；本地新增条目没有分组证据时显示“其他副本”。其余40条目录仍按原列表显示。搜索可匹配分组、名称、地点，标题不承担选择动作；方向键和浏览不改计划，完整行点击或Enter才选用，半露行先完整展开。没有修改游戏执行目录或识别阈值。
+
+从`a58b4cf`原模块和本轮源码分别运行相同假后端窗口，1920×1080、比例1.25、同一目录起点，列表宽均为911像素，高度由320增至442，完整可见副本由2条增至3条；原图与数值分别为`runs/survival-groups-before.png/json`、`survival-groups-after.png/json`。临时配置字节均未变，未调用游戏后端。这是特定窗口的前后对照，不外推为用户测试结果。
+
+**803项界面检查通过**：144项生存索引、42项原生表单、225项设置、121项任务入口、108项缩放、55项输入纠错、24项计划、84项GUI。生存索引覆盖100%、125%、150%、200%，其他项目按各自既有比例核验；包括分组搜索、同名地点、标题非动作、半露行、未知归属、费用限制、禁用开关、手动配置、缩放恢复和原报告保留。日志为`runs/survival-groups-ui-initial.log`、`survival-groups-form_feedback_smoke.log`、`survival-groups-settings_ui_smoke.log`、`survival-groups-entry_clarity_smoke.log`及`survival-groups-final-*.log`，各脚本独立进程运行。GUI结果另归档到`runs/survival-groups-final-gui_smoke/`。
+
+初次离线提取因部分标题OCR框包含图标而漏项，覆盖断言中止；按实际标题区域校正后完成64条映射，原日志`runs/survival-groups-preparation.log`与成功日志`survival-groups-preparation-verified.log`保留。缩放检查最初在设置页尚未显示时模拟编辑，默认入口聚焦随后把模拟焦点移到周常开关；诊断证明缩放前焦点已不在编辑框，光标与文本选择仍被保留。测试现先显示页面再模拟编辑，并新增缩放前焦点断言；原失败、诊断和trace为`runs/survival-groups-responsive_ui_smoke.log`、`survival-groups-resize-diagnostic.log`和`survival-groups-resize-trace.json`，未为此修改生产焦点逻辑或放宽恢复断言。
+
+21幅图标已逐一查看；`runs/survival-groups-asset-verification.json`核对原图、OCR及输出哈希，分组清单SHA-256为`1359589505826ac653567b90ec856c8eed0deb75a25269e334bc06623d813532`。新增素材及复现脚本见`assets/ui/survival/groups.json`、`tools/prepare_survival_groups.py`及署名文件；原始截图与账号区域不分发。未启动、检测或操作游戏，未扩大资源授权；整屏一致性、最终玩家体验与组合计划实机尚未验收。
+
 ## 2026-10-29：启动路径错误直接定位到设置
 
 沿用当前AutoZZZ的明确动作入口和显式保存约定，继续处理首次配置路径。原实现只在表单中检查文件名格式：路径以StarRail.exe结尾但文件不存在时，后端会报告一般失败，用户需自行找到设置。现在启动文件检查返回带字段的SettingsError，直接启动事件、普通Runner和日常／周常合并报告保留`input_error_field`；桌面在工作线程结束后打开游戏连接、选中路径，并显示必要原因。没有增加重复教程或自动打开文件选择器。

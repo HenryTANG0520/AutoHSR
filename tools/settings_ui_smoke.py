@@ -173,11 +173,11 @@ def main():
                 root.update()
                 check(f"{scale}_enabled_battle_still_opens_dungeon", ui.active_page == "tasks"
                       and root.focus_get() == ui.dungeon_list)
-                ui.task_controls["mail"].invoke()
-                ui._show_daily_tasks("mail")
+                ui.battle_checkbox.invoke()
+                ui._show_daily_tasks("battle")
                 root.update()
-                check(f"{scale}_existing_checkbox_and_settings_stay_in_sync", ui.daily_task_controls["mail"].get() == "开启")
-                choose(root, ui.daily_task_controls["mail"], 1)
+                check(f"{scale}_battle_checkbox_and_settings_stay_in_sync", ui.daily_task_controls["battle"].get() == "关闭")
+                choose(root, ui.daily_task_controls["battle"], 0)
                 ui.settings.allow_stamina_spend = False
                 ui._form_changed()
                 root.update()

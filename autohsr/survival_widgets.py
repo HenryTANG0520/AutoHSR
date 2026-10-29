@@ -21,14 +21,36 @@ def artwork():
         return {}
 
 
+@lru_cache(maxsize=1)
+def group_metadata():
+    try:
+        data = json.loads((t.UI_ASSETS/"survival/groups.json").read_text("utf-8"))
+        groups = {g["id"]: g for g in data["groups"]}
+        members = {(m["category"], m["name"], m["location"]): groups[m["group"]] for m in data["memberships"]}
+        return groups, members
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}, {}
+
+
+def display_group(mission):
+    groups, members = group_metadata()
+    group = members.get((mission.category, mission.name, mission.location))
+    if group is None and any(g["category"] == mission.category for g in groups.values()):
+        return dict(id="other", label="其他副本")
+    return group
+
+
 class DungeonList(Surface):
     ROW_HEIGHT = 100
+    HEADER_HEIGHT = 40
 
     def __init__(self, parent, ui, scrollbar):
         super().__init__(parent, ui.ui_scale, bg="white", takefocus=True, height=round(220*ui.ui_scale))
         self.ui, self.scrollbar = ui, scrollbar
         self.offset, self.cursor, self.hover = 0., 0, None
         self.rows, self.hitboxes = [], {}
+        self.row_tops, self.headers, self.header_hitboxes = [], [], {}
+        self.total_height = 0
         self._selection = None
         self._category = None
         self._follow_cursor = True
@@ -63,7 +85,8 @@ class DungeonList(Surface):
         query = normalize(self.ui.dungeon_search.get())
         previous = self.rows
         self.rows = [m for m in self.ui.dungeon_catalogue if m.category == category.key
-                     and (not query or query in normalize(m.name+" "+m.location))]
+                     and (not query or query in normalize(m.name+" "+m.location+" "+(display_group(m) or {}).get("label", "")))]
+        self._layout_rows()
         changed = self._selection != self.selection
         if self.rows != previous or self._category != category.key:
             self.offset, self.cursor, self.hover = 0., 0, None
@@ -81,6 +104,24 @@ class DungeonList(Surface):
         label = next(c.label for c in CATEGORIES if c.key == mission.category)
         return self.selection == (label, mission.name, mission.location)
 
+    def _layout_rows(self):
+        self.row_tops, self.headers = [], []
+        self.total_height = 0
+        previous = None
+        for mission in self.rows:
+            group = display_group(mission)
+            key = group["id"] if group else None
+            if group and key != previous:
+                self.headers.append((self.total_height, group))
+                self.total_height += self.HEADER_HEIGHT
+            self.row_tops.append(self.total_height)
+            self.total_height += self.ROW_HEIGHT
+            previous = key
+
+    def row_bounds(self, index):
+        top = self.row_tops[index]
+        return top, top+self.ROW_HEIGHT
+
     def reveal_selection(self):
         self._follow_cursor = True
         self.ui.dungeon_browse_category.set(self.ui.dungeon_category.get())
@@ -90,8 +131,12 @@ class DungeonList(Surface):
         self.yview()
 
     def _reveal(self):
-        top, bottom = self.cursor*self.ROW_HEIGHT, (self.cursor+1)*self.ROW_HEIGHT
+        if not self.rows:
+            return
+        top, bottom = self.row_bounds(self.cursor)
         height = self.winfo_height()/self.scale
+        if height >= self.ROW_HEIGHT+self.HEADER_HEIGHT and any(y+self.HEADER_HEIGHT == top for y, _ in self.headers):
+            top -= self.HEADER_HEIGHT
         if top < self.offset:
             self.offset = top
         elif bottom > self.offset+height:
@@ -116,7 +161,7 @@ class DungeonList(Surface):
 
     def yview(self, *args):
         height = self.winfo_height()/self.scale
-        total = len(self.rows)*self.ROW_HEIGHT
+        total = self.total_height
         if args:
             self._follow_cursor = False
         if args and args[0] == "moveto":
@@ -144,7 +189,13 @@ class DungeonList(Surface):
     def _click(self, event):
         self.focus_set()
         target = self._target(event)
-        if target is not None:
+        if target is not None and not self.locked:
+            top, bottom = self.row_bounds(target)
+            if top < self.offset-.5 or bottom > self.offset+self.winfo_height()/self.scale+.5:
+                self.cursor, self._follow_cursor = target, True
+                self._reveal()
+                self.yview()
+                return
             self.choose(target)
 
     def _hover(self, index):
@@ -158,13 +209,23 @@ class DungeonList(Surface):
 
     def paint(self, p):
         w, h = p.width, p.height
-        self.hitboxes = {}
+        self.hitboxes, self.header_hitboxes = {}, {}
         if not self.rows:
             p.text((w/2, h/2), "没有匹配的副本", 17, t.MUTED, "mm")
             return
         ink = t.MUTED if self.locked else t.TEXT
+        for top, group in self.headers:
+            y = top-self.offset
+            if y+self.HEADER_HEIGHT <= 0 or y >= h:
+                continue
+            self.header_hitboxes[group["id"]] = (0, max(0, y), w, min(h, y+self.HEADER_HEIGHT))
+            with p.clip(self.header_hitboxes[group["id"]]):
+                p.box((0, y, w, y+self.HEADER_HEIGHT), "#f1f1f1")
+                if group.get("file"):
+                    p.asset("survival/"+group["file"], (14, y+5, 42.5, y+35))
+                p.text((54 if group.get("file") else 14, y+9), group["label"], 20, ink)
         for i, mission in enumerate(self.rows):
-            y = i*self.ROW_HEIGHT-self.offset
+            y = self.row_tops[i]-self.offset
             if y+self.ROW_HEIGHT <= 0 or y >= h:
                 continue
             selected = self.matches(mission)

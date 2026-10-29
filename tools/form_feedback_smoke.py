@@ -46,19 +46,20 @@ def main():
             ui = Window(root, config)
             try:
                 ui._show_page("tasks")
+                ui.tasks["battle"].set(False)
                 root.update()
-                checkbox = ui.task_controls["mail"]
+                checkbox = ui.battle_checkbox
                 click(checkbox, *part(checkbox, "indicator"))
                 root.update()
-                check(f"{scale}_indicator_changes_value", ui.tasks["mail"].get())
+                check(f"{scale}_indicator_changes_value", ui.tasks["battle"].get())
                 click(checkbox, checkbox.winfo_width()-5, checkbox.winfo_height()//2)
                 root.update()
-                check(f"{scale}_label_changes_same_value", not ui.tasks["mail"].get())
+                check(f"{scale}_label_changes_same_value", not ui.tasks["battle"].get())
                 checkbox.focus_force()
                 checkbox.event_generate("<KeyPress-space>")
                 checkbox.event_generate("<KeyRelease-space>")
                 root.update()
-                check(f"{scale}_keyboard_toggle", ui.tasks["mail"].get())
+                check(f"{scale}_keyboard_toggle", ui.tasks["battle"].get())
                 ui.challenge_count.set("2")
                 spin = ui.challenge_entry
                 click(spin, *part(spin, "uparrow"))

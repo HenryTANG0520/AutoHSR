@@ -113,11 +113,13 @@ def main():
                 ui.weekly_enabled.set(True)
                 ui.weekly_time.set("05:30")
                 ui._show_weekly_plan()
+                root.update()
                 root.focus_force()
                 ui.weekly_time_entry.focus_set()
                 ui.weekly_time_entry.icursor(3)
                 ui.weekly_time_entry.selection_range(0, 2)
                 root.update()
+                check(prefix+"editing_field_focused_before_resize", root.focus_get() is ui.weekly_time_entry)
                 ui._log("保留滚动与错误颜色", "error")
                 signature, events = ui._form_signature(), ui.events
                 log = ui.log.get("1.0", "end-1c")
