@@ -4,7 +4,7 @@
 
 ## 计划与本次预算
 
-`Settings.power_plan`为最多1000项的有序列表，每项必须有明确分类、名称、地点与1～9999的整数次数。例如：
+`Settings.power_plan`为最多1000项的有序列表，每项必须有明确分类、名称、地点与1～9999的整数次数；启用[历战优先周计划](echo-of-war-plan.md)后允许空列表，只执行到期历战与已开启的默认补刷。例如：
 
 ```json
 [
@@ -17,7 +17,7 @@
 
 | 设置 | 默认值 | 行为 |
 | --- | --- | --- |
-| `power_plan` | `[]` | 原始目标；空列表不能显式执行体力计划 |
+| `power_plan` | `[]` | 原始目标；空列表须配合历战优先周计划才可显式执行 |
 | `power_plan_keep` | `false` | 跨运行扣除已核实次数，完成条目不再刷；设置中的原次数不变 |
 | `power_plan_fill` | `true` | 计划处理后按原默认副本、地点与本次`challenge_count`继续补刷；关闭后不执行默认副本 |
 | `stamina_limit` | `240` | 整个日常刷本共用的已有开拓力上限，不是每项各有240 |
@@ -60,6 +60,8 @@
 - 固定重复：同一目标摘要下的`repeat/<运行ID>.json`。
 - 消耗模式的`current.json`锚定目标ID及最近归档的路径／SHA-256；归档以连续序号、前件引用及逐项累计数组成链。
 
+10月30日后新目录的账号／目标键各采用完整摘要的前32个十六进制字符，完整64字符仍保留在账本并逐份核对，避免普通Windows用户目录下超过路径长度限制。已存在的完整摘要目录继续原位读写；同一归属出现新旧两个目录则停止，不猜测哪一份进度应当保留。没有移动或删除旧证据。
+
 原账本、资源截图、每批前后截图、目标索引或归档丢失／变化时停止，不凭空重建剩余次数。截图与原始账号信息只留本地忽略目录，进度事件不含UID、账号摘要或本机路径。
 
 ## 界面对接
@@ -68,7 +70,7 @@
 
 原始报告的`power_plan`保留目标、`before`、本次`done`、初始资源、本次支付、剩余状态及分项结果；父计划报告复制日常原件。`before[i]+done[i]`是当前目标的已核实累计数。首页在未核实当前账号前只展示原计划，不把历史账号的剩余次数当作当前状态。
 
-运行事件`type='power_plan_progress'`包含`stage`（ready／resources／item／confirmed／complete／partial）、`rows`、`active_row`、`active_count`、全局完成及资源字段。每个row含原条目、`before`、`done`和`remaining`；`active_row=-1`表示默认补刷。confirmed事件只在账本成功提交后发送，事件为快照；PlanRunner继续附加daily阶段，不覆盖周常或原日常结果。此接口不要求更换现有GUI框架。
+运行事件`type='power_plan_progress'`包含`stage`（ready／resources／weekly／item／confirmed／complete／partial）、`rows`、`active_row`、`active_count`、全局完成及资源字段。每个row含原条目、`before`、`done`和`remaining`；`active_row=-1`表示默认补刷，`-2`表示到期历战优先阶段。可选`weekly_echo`提供原目标周、状态、当前已知余数和本次完成，未开启时为null；`goal_complete`只指用户长期条目。confirmed事件只在账本成功提交后发送，事件为快照；PlanRunner继续附加daily阶段，不覆盖周常或原日常结果。此接口不要求更换现有GUI框架。
 
 ## 来源与验证边界
 

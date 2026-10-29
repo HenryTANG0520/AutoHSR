@@ -3,7 +3,7 @@ from dataclasses import replace
 import time
 import uuid
 
-from .models import AutomationError,DungeonQuotaExhausted,Scene,TaskResult
+from .models import AutomationError,DungeonQuotaExhausted,InputInterrupted,Scene,TaskResult
 from .power_plan import PowerItem,plan_spec,row_keys,digest
 from .power_plan_store import folder,write,prior,file_ref,pointer
 
@@ -54,18 +54,59 @@ class PowerRun:
             fallback=fallback,fallback_requested=self.settings.challenge_count if fallback else None,
             configured_limit=self.settings.stamina_limit,stamina_initial=None,effective_limit=None,
             immersifiers_initial=None,immersifiers_limit=None,resources_evidence=None,results=[])
+        from .echo_weekly import create
+        self.data['weekly_echo']=create(self.settings,started_at=self.report.started_at)
         self.ctx=ctx;self.report.power_plan=self.data;self.budget.power_plan=self
         self.budget._write()
         self.publish('ready')
 
     def remaining(self,index):return self.items[index].count-self.data['before'][index]-self.data['done'][index]
 
+    def item(self,index):
+        if index>=0:return self.items[index]
+        if index==-2:
+            from .echo_weekly import target
+            return target(self.data['weekly_echo'])
+        return PowerItem(**dict(self.data['fallback'],count=1))
+
+    def quota_proof(self,ctx,scene,remaining):
+        from .dungeon_workflow import weekly_rewards
+        if type(remaining) is not int or not 0<=remaining<=3 or weekly_rewards(scene)!=remaining:
+            raise AutomationError('历战周次数缺少原指南画面来源。')
+        evidence=self.witness(ctx,scene,'power_plan_quota_source')
+        return dict(remaining=remaining,epoch=ctx.runner.input_epoch,account=self.data['account'],
+                    completed=self.report.battle_completed,evidence=evidence)
+
+    def observe_echo(self,ctx,scene,remaining,*,proof=None):
+        from .echo_weekly import require_week,remaining as quota
+        echo=self.data['weekly_echo'];require_week(echo)
+        available=quota(echo)
+        if type(remaining) is not int or not 0<=remaining<=3 or available is not None and remaining>available:
+            raise AutomationError('历战当前周次数未核实，或超过原冻结额度。')
+        if proof is None:proof=self.quota_proof(ctx,scene,remaining)
+        if type(proof) is not dict or any(type(proof.get(k)) is not int for k in ('remaining','epoch','completed')):
+            raise AutomationError('历战周次数来源字段无效。')
+        if proof['epoch']!=ctx.runner.input_epoch:
+            raise InputInterrupted('历战周次数读取后输入代次已变化，需要重新核实指南。')
+        if (account(ctx,scene)!=self.data['account'] or proof.get('remaining')!=remaining
+                or proof.get('account')!=self.data['account']
+                or proof.get('completed')!=self.report.battle_completed):
+            raise AutomationError('历战周次数来源的账号、代次或支付进度已变化。')
+        echo['observations'].append(dict(remaining=remaining,completed=echo['completed'],evidence=dict(proof['evidence'])))
+        echo['state']='complete' if remaining==0 else 'active'
+        self.budget._write();self.publish('weekly')
+
     def publish(self,stage):
         emit=getattr(self.parent.runner,'emit',None)
         if not callable(emit):return
         rows=[dict(item.to_dict(),before=self.data['before'][i],done=self.data['done'][i],remaining=self.remaining(i))
               for i,item in enumerate(self.items)]
-        emit(dict(type='power_plan_progress',stage=stage,rows=rows,active_row=self.data['active_row'],
+        echo=self.data.get('weekly_echo');weekly=None
+        if echo is not None:
+            from .echo_weekly import remaining
+            weekly={k:echo[k] for k in ('week','due','target','maximum','completed','state')}
+            weekly=dict(weekly,remaining=remaining(echo),target=dict(weekly['target']))
+        emit(dict(type='power_plan_progress',stage=stage,rows=rows,active_row=self.data['active_row'],weekly_echo=weekly,
             active_count=self.data['active_count'],keep=self.data['keep'],fill=self.data['fill'],
             battle_completed=self.report.battle_completed,stamina_spent=self.report.stamina_spent,
             stamina_pending=self.report.stamina_pending,immersifiers_spent=self.report.immersifiers_spent,
@@ -111,7 +152,7 @@ class PowerRun:
 
     def reserve(self,cost,immersifiers):
         self.check();row=self.data['active_row']
-        item=self.items[row] if row is not None and row>=0 else PowerItem(**dict(self.data['fallback'],count=1)) if row==-1 else None
+        item=self.item(row) if row is not None else None
         if item is None or (self.ctx.settings.dungeon_category,self.ctx.settings.target_name,self.ctx.settings.target_location)!=(item.category,item.target,item.location):
             raise AutomationError('体力计划当前目标与冻结条目不同。')
         if self.data['effective_limit'] is None or self.report.stamina_spent+cost>self.data['effective_limit']:
@@ -121,6 +162,11 @@ class PowerRun:
         nominal=cost+40*immersifiers
         if nominal<=0 or nominal%item.dungeon.cost:raise AutomationError('体力计划价格与副本单价不同。')
         count=nominal//item.dungeon.cost
+        if row==-2:
+            from .echo_weekly import remaining,require_week
+            echo=self.data['weekly_echo'];require_week(echo)
+            if remaining(echo) is None or count>remaining(echo) or any(c['row']!=-2 for c in self.data['charges']):
+                raise AutomationError('历战缺少本次可用周次数，或优先阶段已经结束。')
         if not 1<=count<=item.dungeon.batch or self.report.battle_completed-self.data['active_before']+count>self.data['active_count']:
             raise AutomationError('体力计划批量或本项次数超过冻结目标。')
         if row>=0 and count>self.remaining(row):raise AutomationError('体力计划条目已完成，未重复支付。')
@@ -138,6 +184,7 @@ class PowerRun:
         charge.update(evidence=evidence,before_epoch=intent['epoch'],epoch=self.ctx.runner.input_epoch)
         self.data['charges'].append(charge)
         if intent['row']>=0:self.data['done'][intent['row']]+=intent['count']
+        if intent['row']==-2:self.data['weekly_echo']['completed']+=intent['count']
         self.report.battle_completed=intent['before_completed']+intent['count']
         self.data['intent']=None
 
@@ -162,6 +209,8 @@ class PowerWorkflow:
 
     def resources(self,state):
         planned=[item for i,item in enumerate(state.items) if state.remaining(i)]
+        echo=state.data.get('weekly_echo')
+        if echo is not None and echo['due']:planned.insert(0,state.item(-2))
         if state.data['fallback'] is not None:planned.append(PowerItem(**dict(state.data['fallback'],count=1)))
         if not planned:return
         probe=next((item for item in planned if item.category=='planar'),
@@ -179,11 +228,18 @@ class PowerWorkflow:
 
     def execute(self,state,item,index,requested):
         state.check()
-        if state.data['effective_limit'] is not None and state.data['effective_limit']-state.report.stamina_spent<item.dungeon.cost:
+        if index==-2:
+            from .echo_weekly import require_week
+            require_week(state.data['weekly_echo'])
+        if index!=-2 and state.data['effective_limit'] is not None and state.data['effective_limit']-state.report.stamina_spent<item.dungeon.cost:
             if item.category!='planar' or state.data['immersifiers_limit']==state.report.immersifiers_spent:return None
         view,workflow=self.view(state,item,1)
         try:scene=workflow._open_calyx()
         except DungeonQuotaExhausted as error:
+            if index==-2:
+                state.observe_echo(view,error.scene,0)
+                self.ctx.last_scene,self.ctx.scene_epoch=view.last_scene,view.scene_epoch
+                return None
             proof=state.witness(view,error.scene,'power_plan_weekly_exhausted')
             state.data['results'].append(dict(row=index,requested=requested,completed=0,stamina=0,immersifiers=0,
                 status='deferred',reason='weekly_exhausted',detail=str(error),evidence=proof))
@@ -198,23 +254,57 @@ class PowerWorkflow:
             from .planar_resources import inventory
             tokens=state.tokens(inventory(scene))
         count=min(requested,remaining//item.dungeon.cost+tokens)
-        if item.dungeon.weekly_limit:count=min(count,item.dungeon.weekly_limit)
+        if item.dungeon.weekly_limit:
+            quota=getattr(workflow,'_weekly_rewards',None)
+            if type(quota) is not int or not 0<=quota<=3:raise AutomationError('历战当前周次数未核实。')
+            if index==-2:state.observe_echo(view,scene,quota,proof=getattr(workflow,'_weekly_rewards_proof',None))
+            count=min(count,quota)
         if count<=0:return None
         view.settings=replace(view.settings,challenge_count=count);workflow.settings=view.settings
         state.bind(view,index,count);base=state.report.battle_completed
         before=state.report.stamina_spent;immersifiers=state.report.immersifiers_spent
-        try:result=workflow.battle(completed_base=base,aggregate=True)
+        try:
+            try:result=workflow.battle(completed_base=base,aggregate=True)
+            except DungeonQuotaExhausted as error:
+                state.check()
+                if index==-2:state.observe_echo(view,error.scene,0)
+                else:state.witness(view,error.scene,'power_plan_weekly_exhausted')
+                result=TaskResult('battle','ok','已核实本周额度用尽，未完成的原次数保留。')
         finally:self.ctx.last_scene,self.ctx.scene_epoch=view.last_scene,view.scene_epoch
         state.data['results'].append(dict(row=index,requested=count,completed=state.report.battle_completed-base,
             stamina=state.report.stamina_spent-before,immersifiers=state.report.immersifiers_spent-immersifiers,status=result.status,detail=result.detail))
         state.budget._write();return result
+
+    def weekly(self,state):
+        echo=state.data.get('weekly_echo')
+        if echo is None or not echo['due']:return False
+        if echo['state'] in ('complete','limited','partial'):return echo['state']=='partial'
+        item=state.item(-2);result=self.execute(state,item,-2,3-echo['completed'])
+        if echo['state']!='complete' and result is not None:
+            from .echo_weekly import require_week
+            require_week(echo)
+            view,workflow=self.view(state,item,1)
+            try:
+                try:scene=workflow._open_calyx();quota=getattr(workflow,'_weekly_rewards',None)
+                except DungeonQuotaExhausted as error:scene,quota=error.scene,0
+                state.observe_echo(view,scene,quota,proof=getattr(workflow,'_weekly_rewards_proof',None))
+            finally:self.ctx.last_scene,self.ctx.scene_epoch=view.last_scene,view.scene_epoch
+        if echo['state']!='complete':
+            echo['state']='limited' if result is None or result.status=='ok' else 'partial'
+            state.budget._write();state.publish('weekly')
+        return result is not None and result.status!='ok'
 
     def run(self):
         if not self.ctx.settings.allow_stamina_spend:return TaskResult('battle','skipped','未授权资源消耗，体力计划未执行。')
         state=getattr(self.ctx.battle_budget,'power_plan',None)
         if state is None:state=PowerRun(self.ctx,new_goal=self.new_goal)
         state.check();partial=False
+        if (state.data.get('weekly_echo') is not None and state.data['weekly_echo']['due']
+                and state.data['weekly_echo']['state'] in ('waiting','active')):
+            from .echo_weekly import require_week
+            require_week(state.data['weekly_echo'])
         if state.data['effective_limit'] is None:self.resources(state)
+        partial=self.weekly(state)
         for i,item in enumerate(state.items):
             if state.remaining(i)==0:continue
             result=self.execute(state,item,i,state.remaining(i))
@@ -232,5 +322,11 @@ class PowerWorkflow:
         state.finish(partial)
         total=sum(state.remaining(i) for i in range(len(state.items)))
         deferred='历战本周额度已用尽，原次数保留；' if any(r.get('reason')=='weekly_exhausted' for r in state.data['results']) else ''
+        echo=state.data.get('weekly_echo')
+        if echo is not None:
+            from .echo_weekly import remaining
+            if not echo['due']:deferred='历战周计划尚未到期；'+deferred
+            elif echo['state']=='complete':deferred=f'已核实历战目标周（{echo["week"]}起）额度用尽，本次确认{echo["completed"]}次；'+deferred
+            else:deferred=f'历战本次确认{echo["completed"]}次，目标周剩余{remaining(echo)}次；'+deferred
         return TaskResult('battle','partial' if partial else 'ok',
             f'{deferred}本次确认{state.report.battle_completed}次挑战，{state.report.stamina_spent}开拓力、{state.report.immersifiers_spent}沉浸器；原计划剩余{total}次。')

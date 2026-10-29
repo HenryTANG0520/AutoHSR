@@ -50,6 +50,9 @@ class World:
         if category.key=='planar' and self.mode=='team':
             tokens.extend([Token('位面饰品提取',.99,(.01,.02,.2,.08)),
                            Token('下载角色',.99,(.32,.67,.45,.72))])
+        if self.mode=='quota':
+            tokens.extend([Token('本周可领取奖励次数',.99,(.42,.27,.66,.31)),
+                           Token(f'{self.weekly_left}/3',.99,(.46,.33,.55,.37))])
         if self.mode=='success':
             tokens.extend([Token('挑战成功',.99,(.4,.2,.6,.3)),
                            Token(f'本次挑战波次{self.count}',.99,(.4,.41,.65,.45))])
@@ -120,6 +123,14 @@ class Screens(DailyWorkflow):
         self.ctx.world.settings=self.settings
         self.ctx.world.opened.append(self.settings.target_name)
         if self.ctx.world.on_open:self.ctx.world.on_open(self.ctx.world)
+        if category_for(self.settings).weekly_limit:
+            mode=self.ctx.world.mode;self.ctx.world.mode='quota'
+            guide=self.ctx.snapshot();self._weekly_rewards=self.ctx.world.weekly_left;self._weekly_rewards_proof=None
+            state=getattr(self.ctx.battle_budget,'power_plan',None)
+            if state is not None and self._weekly_rewards is not None:
+                self._weekly_rewards_proof=state.quota_proof(self.ctx,guide,self._weekly_rewards)
+            if self._weekly_rewards==0:raise DungeonQuotaExhausted(guide)
+            self.ctx.world.mode=mode
         if category_for(self.settings).weekly_limit and self.ctx.world.weekly_left==0:
             raise DungeonQuotaExhausted(self.ctx.snapshot())
         return self.ctx.snapshot()

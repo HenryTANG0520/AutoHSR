@@ -23,6 +23,12 @@
   ],
   "sources": [
     {
+      "path": "tasks/weekly/echoofwar.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "9c40ef6f57d90aa47ebb5a6569992d07d059569f",
+      "sha256": "b687c08ee5d8dafe151f60c400c7ba678cb707e20dfbd31cf629a1307ad05496"
+    },
+    {
       "path": "tasks/power/power.py",
       "git_blob": "cf046174fe2f80992e8808d620f34165790ce238",
       "sha256": "c9880986f720c0ec25626db7314a82036a73375a5d6ae9899126694081bc9e39"
@@ -58,6 +64,14 @@
     }
   ],
   "adaptations": [
+    {
+      "path": "autohsr/echo_weekly.py",
+      "native_files": ["autohsr/power_plan_run.py", "autohsr/power_plan_store.py", "autohsr/dungeon_workflow.py"],
+      "reference_source": "tasks/weekly/echoofwar.py",
+      "reference_functions": ["Echoofwar.start"],
+      "additional_references": [{"source": "tasks/daily/daily.py", "functions": ["Daily.prepare_daily"]}],
+      "kind": "native optional weekly Echo priority within the existing power-plan input owner and resource budget, followed by manual items/default fill; starts from the frozen daily-start game-week/day and observes actual 0-3 remaining game rewards, caps every allocation and requires a fresh zero-quota proof for complete. Keeps this-run victories separate from already-exhausted or externally decreased quota, never updates configuration timestamps, freezes the prelude across week changes and does not restart a closed prelude when normal farming resumes. Payment and quota counters commit atomically with existing unknown-payment guards. Explicit power-plan opt-in remains required; no scheduler, refill, upstream IO, build-target reader or GUI imported. New archive directories use 128-bit path keys with full hashes in records and preserve existing full-key layouts; duplicate layouts stop without merging"
+    },
     {
       "path": "autohsr/power_plan_run.py",
       "native_files": ["autohsr/power_plan.py", "autohsr/power_plan_store.py", "autohsr/recovery.py", "autohsr/workflows.py", "autohsr/planar_resources.py", "autohsr/app.py", "autohsr/plan_runner.py"],

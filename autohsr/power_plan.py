@@ -53,7 +53,8 @@ def row_keys(value):
 def plan_spec(settings):
     from .config import SettingsError
     value=items(settings.power_plan)
-    if not value:raise SettingsError('power_plan','请先配置至少一项体力计划。')
+    if not value and not settings.echo_of_war_enabled:
+        raise SettingsError('power_plan','请先配置体力计划条目，或启用历战周计划。')
     for name in ('power_plan_keep','power_plan_fill'):
         if type(getattr(settings,name)) is not bool:raise SettingsError(name,'保留体力计划和补刷默认副本开关必须为布尔值。')
     return value,spec_digest([item.to_dict() for item in value])

@@ -64,6 +64,10 @@ class Settings:
     power_plan: list[dict] = field(default_factory=list)
     power_plan_keep: bool = False
     power_plan_fill: bool = True
+    echo_of_war_enabled: bool = False
+    echo_of_war_start_day: int = 1
+    echo_of_war_target: str = '毁灭的开端'
+    echo_of_war_location: str = '支援舱段'
 
     def __post_init__(self):
         from copy import deepcopy
@@ -72,6 +76,8 @@ class Settings:
         self.power_plan=deepcopy(self.power_plan)
 
     def validate(self, operation: str = "daily") -> None:
+        from .echo_weekly import validate_settings as validate_echo
+        validate_echo(self)
         if operation in ('save','power_plan'):
             from .power_plan import items,plan_spec
             items(self.power_plan)

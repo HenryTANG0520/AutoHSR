@@ -69,6 +69,10 @@ def select_category(workflow, category):
             scene = scroll_list(workflow, scene, 60000)
             if category.weekly_limit:
                 workflow._weekly_rewards = weekly_rewards(scene)
+                workflow._weekly_rewards_proof = None
+                plan=getattr(getattr(workflow.ctx,'battle_budget',None),'power_plan',None)
+                if plan is not None and workflow._weekly_rewards is not None:
+                    workflow._weekly_rewards_proof=plan.quota_proof(workflow.ctx,scene,workflow._weekly_rewards)
             return scene
         scene = scroll_list(workflow, scene, -1440, left=True)
     raise AutomationError(f"生存索引未找到{category.label}；可能尚未解锁。")

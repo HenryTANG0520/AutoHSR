@@ -51,7 +51,14 @@ def read_ref(root,ref):
 
 def folder(root,account,spec):
     if not hex_id(account,64) or not hex_id(spec,64):raise AutomationError('体力计划账号或目标标识无效。')
-    return Path(root)/'power-plans'/account/spec
+    # Two full SHA-256 directory names exceed MAX_PATH in ordinary Windows
+    # user-data locations once the goal and archive IDs are appended. Records
+    # retain the full digests; use 128-bit path keys for new folders and keep
+    # existing layouts exactly where they are.
+    legacy=Path(root)/'power-plans'/account/spec
+    current=Path(root)/'power-plans'/account[:32]/spec[:32]
+    if legacy.exists() and current.exists():raise AutomationError('体力计划新旧目录同时存在，未合并或重建进度。')
+    return legacy if legacy.exists() else current
 
 
 def pointer(root,directory):
@@ -72,7 +79,7 @@ def validate(root,data,*,settled=False):
                 or any(type(data.get(k)) is not int or data[k]<0 for k in ('spent','pending','completed','limit'))
                 or not 10<=data['limit']<=240 or data['spent']+data['pending']>data['limit']
                 or any(type(data.get(k,0)) is not int or not 0<=data.get(k,0)<=12 for k in ('immersifiers_spent','immersifiers_pending'))):raise ValueError('资源账本无效')
-        if (type(plan['schema']) is not int or plan['schema']!=1 or not spec
+        if (type(plan['schema']) is not int or plan['schema']!=1 or not spec and plan.get('weekly_echo') is None
                 or spec_digest([p.to_dict() for p in spec])!=plan['spec']
                 or not hex_id(plan['account'],64) or not hex_id(plan['goal'],32) or not hex_id(plan['run'],32)
                 or type(plan['keep']) is not bool or type(plan['fill']) is not bool
@@ -81,6 +88,8 @@ def validate(root,data,*,settled=False):
                 or any(type(plan[k]) is not list or len(plan[k])!=count or any(type(v) is not int or v<0 for v in plan[k]) for k in ('before','done'))
                 or any(plan['before'][i]>spec[i].count for i in range(count))):raise ValueError('目标、归属或计数无效')
         run_dir=inside(root,data['run_dir'])
+        from .echo_weekly import validate as validate_echo,remaining as echo_remaining
+        weekly=validate_echo(plan.get('weekly_echo'),lambda ref:inside(run_dir,read_ref(root,ref)))
         fallback=items([dict(plan['fallback'],count=1)])[0] if plan['fill'] else None
         if not plan['fill'] and plan['fallback'] is not None:raise ValueError('补刷目标与开关不同')
         requested=plan['fallback_requested']
@@ -99,19 +108,21 @@ def validate(root,data,*,settled=False):
                     or data.get('immersifiers_spent',0)+data.get('immersifiers_pending',0)>token_limit):raise ValueError('支付超过冻结已有资源')
             inside(run_dir,read_ref(root,plan['resources_evidence']))
         active=plan['active_row']
-        if active is not None and (type(active) is not int or not -1<=active<count
+        if active is not None and (type(active) is not int or not -2<=active<count
                 or active==-1 and not plan['fill']
+                or active==-2 and weekly is None
                 or type(plan['active_count']) is not int or plan['active_count']<1
                 or type(plan['active_before']) is not int or not 0<=plan['active_before']<=data['completed']):raise ValueError('执行条目无效')
         totals=[0]*count;stamina=immersifiers=completed=0
         if type(plan['charges']) is not list or len(plan['charges'])>1000:raise ValueError('支付记录无效')
         for i,charge in enumerate(plan['charges']):
             if (type(charge) is not dict or charge['id']!=i or type(charge['id']) is not int
-                    or type(charge['row']) is not int or not -1<=charge['row']<count
+                    or type(charge['row']) is not int or not -2<=charge['row']<count
                     or any(type(charge[k]) is not int or charge[k]<0 for k in ('stamina','immersifiers','count','epoch','before_epoch'))
                     or charge['epoch']<charge['before_epoch']
                     or charge['count']<1 or charge['account']!=plan['account']):raise ValueError('支付来源或数量无效')
-            item=spec[charge['row']] if charge['row']>=0 else fallback
+            if charge['row']==-2 and any(c['row']!=-2 for c in plan['charges'][:i]):raise ValueError('历战优先阶段已结束')
+            item=spec[charge['row']] if charge['row']>=0 else weekly if charge['row']==-2 else fallback
             if item is None or charge['count']>item.dungeon.batch or charge['stamina']+charge['immersifiers']*40!=charge['count']*item.dungeon.cost or charge['immersifiers'] and item.category!='planar':raise ValueError('支付资源与次数不符')
             if charge['row']>=0:totals[charge['row']]+=charge['count']
             stamina+=charge['stamina'];immersifiers+=charge['immersifiers'];completed+=charge['count']
@@ -119,21 +130,25 @@ def validate(root,data,*,settled=False):
             inside(run_dir,read_ref(root,charge['before']))
         if totals!=plan['done'] or any(plan['before'][i]+totals[i]>spec[i].count for i in range(count)):raise ValueError('已完成计划计数不符')
         if stamina!=data['spent'] or immersifiers!=data.get('immersifiers_spent',0):raise ValueError('计划与资源账单不符')
+        validate_echo(plan.get('weekly_echo'),lambda ref:inside(run_dir,read_ref(root,ref)),
+                      completed=sum(c['count'] for c in plan['charges'] if c['row']==-2))
         intent=plan['intent']
         if intent is None:
             if data['pending'] or data.get('immersifiers_pending',0) or data['completed']!=completed:raise ValueError('支付或完成数尚未核实')
         else:
             if (settled or type(intent) is not dict or type(intent['id']) is not int or intent['id']!=len(plan['charges'])
-                    or type(intent['row']) is not int or not -1<=intent['row']<count
+                    or type(intent['row']) is not int or not -2<=intent['row']<count
                     or intent['row']!=active or intent['account']!=plan['account']
                     or any(type(intent[k]) is not int or intent[k]<0 for k in ('stamina','immersifiers','count','epoch','before_completed'))
                     or intent['stamina']!=data['pending'] or intent['immersifiers']!=data.get('immersifiers_pending',0)
                     or intent['before_completed']!=completed or data['completed'] not in (completed,completed+intent['count'])):raise ValueError('原支付意图尚未结束')
-            item=spec[active] if active>=0 else fallback
+            item=spec[active] if active>=0 else weekly if active==-2 else fallback
             if (item is None or not 1<=intent['count']<=item.dungeon.batch
                     or intent['stamina']+40*intent['immersifiers']!=intent['count']*item.dungeon.cost
                     or intent['immersifiers'] and item.category!='planar'
                     or active>=0 and plan['before'][active]+plan['done'][active]+intent['count']>spec[active].count
+                    or active==-2 and (echo_remaining(plan['weekly_echo']) is None or intent['count']>echo_remaining(plan['weekly_echo']))
+                    or active==-2 and any(c['row']!=-2 for c in plan['charges'])
                     or completed-plan['active_before']+intent['count']>plan['active_count']):raise ValueError('支付意图超过当前条目')
             inside(run_dir,read_ref(root,intent['before']))
         fallback_count=sum(c['count'] for c in plan['charges'] if c['row']==-1)

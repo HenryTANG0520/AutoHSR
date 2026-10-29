@@ -770,3 +770,9 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 参考固定March7thAssistant的`Power.run`、`Power.execute_power_plan`、`Power.process`及副本执行结构，将有序条目、剩余次数、固定重复和默认副本补刷适配为[AutoHSR原生计划](../autohsr/power_plan_run.py)。源码的Git blob、SHA-256、固定提交及GPL v3许可记在[source.json](upstream/March7thAssistant/source.json)，已与此前取得的固定目录树核对。没有复制上游GUI、输入框架或配置自动扣减写回行为；本项目仍只在保存设置时写配置，运行进度使用独立本地账本。
 
 一份已有资源预算、同账号新鲜画面、原生逐批支付核验、原子计数及不可覆盖归档属于AutoHSR实现。没有新增公开游戏素材、训练模型或采集画面；新增检查使用合成窗口与场景，账号数字为虚构测试值。培养目标、资源补充及遗器清理均未在本轮接入，界面与实机边界见[计划说明](../docs/power-plan.md)。
+
+## 2026-10-30 历战优先周计划
+
+参考固定March7thAssistant的`Echoofwar.start`及`Daily.prepare_daily`，将当前0～3次周额度与清体力前的优先执行适配为[原生历战周计划](../autohsr/echo_weekly.py)。源码Git blob、SHA-256、固定提交和GPL v3来源见[清单](upstream/March7thAssistant/source.json)。本项目使用日常开始时间、04:00游戏周和单份冻结预算，独立核实周额度、可见结算与本次实际完成，不迁入上游配置时间戳写回、输入或定时器。
+
+没有新增图像、模型或游戏采集，检查沿用合成窗口与场景。缩短新归档目录键并保留完整账本摘要是本项目对Windows路径长度的修复，既有目录不迁移或覆盖。培养目标和支援角色偏好仅完成源码核对，尚未适配，不在本轮署为已实现；交互、运行证据及实机边界见[说明](../docs/echo-of-war-plan.md)。

@@ -72,11 +72,15 @@ def main(argv: list[str] | None = None) -> int:
                         help="接续当前用户已启动的周期演算时提供页面已选难度（1～10）；会将该局计入请求局数")
     parser.add_argument("--reward-only", action="store_true", help="本次仅验证并补领每日实训；不刷本，不保存配置")
     parser.add_argument("--new-battle-run", action="store_true", help="明确开始新的刷本预算；先人工核对上次已确认及待核对消耗")
-    parser.add_argument('--power-plan',action='store_true',help='本次日常使用多副本体力计划，统一资源预算；仅配合 --run 或 --plan')
+    parser.add_argument('--power-plan',action='store_true',help='本次日常使用多副本／历战体力计划，统一资源预算；仅配合 --run 或 --plan')
     parser.add_argument('--power-plan-file',type=Path,help='本次体力计划JSON列表，不保存配置')
     parser.add_argument('--new-power-plan',action='store_true',help='明确建立相同内容的新体力目标；不核销未知支付，不保存配置')
     parser.add_argument('--keep-power-plan',action=argparse.BooleanOptionalAction,default=None,help='本次固定重复原计划；默认沿用设置，不保存配置')
     parser.add_argument('--fill-power-plan',action=argparse.BooleanOptionalAction,default=None,help='计划后以默认副本补刷剩余已有资源，不保存配置')
+    parser.add_argument('--echo-of-war',action=argparse.BooleanOptionalAction,default=None,help='启用历战优先周计划；仅配合 --power-plan，不保存配置')
+    parser.add_argument('--echo-start-day',type=int,help='历战从游戏周的星期几04:00开始到期，1～7；仅用于体力计划')
+    parser.add_argument('--echo-target',help='本次历战周计划副本名称；仍须实时核实')
+    parser.add_argument('--echo-location',help='本次历战周计划副本地点')
     parser.add_argument("--resume-active-currency", action="store_true", help="仅配合标准开发入口，接续有记录且已核实开始的货币战争")
     parser.add_argument('--currency-runs', type=int, help='循环局数；积分目标启用时为新局上限，0表示无局数上限；仅用于 --currency-wars-loop，不保存配置')
     parser.add_argument('--resume-currency-loop', action='store_true', help='明确接续原循环的剩余局数与原设置；仅用于 --currency-wars-loop')
@@ -92,6 +96,8 @@ def main(argv: list[str] | None = None) -> int:
     if (args.power_plan and (not (args.run or args.plan) or args.reward_only or args.resume_weekly_currency)
             or not args.power_plan and (args.power_plan_file is not None or args.new_power_plan or args.keep_power_plan is not None or args.fill_power_plan is not None)):
         parser.error('体力计划覆盖仅用于 --run/--plan --power-plan，不能用于仅补领奖或只接续周常。')
+    if not args.power_plan and (args.echo_of_war is not None or args.echo_start_day is not None or args.echo_target is not None or args.echo_location is not None):
+        parser.error('历战周计划参数仅用于 --run/--plan --power-plan。')
     station_options=(args.du_custom_stations is not None or args.du_station_priority is not None or args.du_station_disabled is not None)
     if station_options and not (args.differential_universe or args.plan):
         parser.error('站点偏好仅用于 --differential-universe 或差分 --plan。')
@@ -209,6 +215,9 @@ def main(argv: list[str] | None = None) -> int:
                 settings.power_plan=json.loads(args.power_plan_file.read_text(encoding='utf-8-sig'))
             if args.keep_power_plan is not None:settings.power_plan_keep=args.keep_power_plan
             if args.fill_power_plan is not None:settings.power_plan_fill=args.fill_power_plan
+            for value,field in ((args.echo_of_war,'echo_of_war_enabled'),(args.echo_start_day,'echo_of_war_start_day'),
+                                (args.echo_target,'echo_of_war_target'),(args.echo_location,'echo_of_war_location')):
+                if value is not None:setattr(settings,field,value)
         for argument, field in (("game_path", "game_path"), ("target", "target_name"), ("location", "target_location"), ("stamina", "stamina_limit"), ("rounds", "rounds"), ("category", "dungeon_category"), ("count", "challenge_count")):
             value = getattr(args, argument)
             if value is not None:
