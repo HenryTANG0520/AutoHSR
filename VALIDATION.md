@@ -17,6 +17,8 @@
 
 主题修复后的**102项缩放、186项设置、165个布局场景与15项布局交互再次通过**，日志为`runs/task-settings-theme-responsive_ui_smoke.log`、`task-settings-theme-settings_ui_smoke.log`、`task-settings-theme-ui_layout_smoke.log`。反复缩放复用旧主题元素，图片与回调数量有界；草稿、焦点、运行锁定、暂停停止和结果保持。最终离线证据另存于`runs/task-settings-theme-transition-ui/`、`runs/task-settings-theme-ui/`和`runs/task-settings-theme-responsive-ui/`。
 
+最终源码`383e99b`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/task-settings-theme-final-build.log`。以`--no-admin-launch`实查邮件卡直达对应开关、最大化、还原、Esc返回原卡片和正常关闭，退出码0。放大与还原后首次返回的截图均显示完整行、正常字号及邮件开关焦点；这两帧不替代连续过渡验收。未点击保存、检测或运行，239份用户文件哈希未变；125个UI素材、4份清单、23个上游文件一致。核对记录`runs/task-settings-theme-final-package-verification.json`，备份`build/userdata-task-settings-theme-final-20261029_083010/`；EXE SHA-256为`18f28d0a60fa85319b97e0f0cda128ef97fd0830a24fe3cfc54a34f015286441`。正式截图为`runs/task-settings-theme-final-package-home.png`、`task-settings-theme-final-package-mail.png`、`task-settings-theme-final-package-maximized.png`、`task-settings-theme-final-package-restored.png`及`task-settings-theme-final-package-return.png`。
+
 离线回归使用假后端，正式版检查仅操作助手界面；未启动、检测或操作游戏。上述结果证明入口与状态行为，不证明真实玩家学习／注意力成本，也不代表整屏与游戏逐像素一致；日常周常组合实机、货币战争周常和周积分领奖仍未验收或接入。
 
 ## 2026-10-29：缩放切换时保留旧控件
