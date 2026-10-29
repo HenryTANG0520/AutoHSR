@@ -365,11 +365,22 @@ def preserve_widget_theme(root, style, widgets, next_scale):
         widget.configure(style=prefix+name)
 
 
+def choice_navigation(root):
+    """Use first/last rows for Home/End only in an expanded choice list."""
+    for key in ("Home", "End"):
+        # Reuse Tk's own row-selection action. Entry caret bindings and normal
+        # Listboxes retain their defaults; Return/Escape still own commit/cancel.
+        native = str(root.tk.call("bind", "Listbox", "<Control-"+key+">"))
+        if native:
+            root.tk.call("bind", "ComboboxListbox", "<"+key+">", native+"\nbreak")
+
+
 def apply_theme(root, scale):
     load_font(root)
     root._hsr_scale = scale
     d = lambda n: round(n*scale)
     style = ttk.Style(root)
+    choice_navigation(root)
     root._hsr_theme_name = f"AutoHSR{round(scale*1000)}"
     if root._hsr_theme_name not in style.theme_names():
         style.theme_create(root._hsr_theme_name, parent="clam")
