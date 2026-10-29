@@ -471,6 +471,8 @@ class TaskBoard(Surface):
         return "break"
 
     def action_label(self, key):
+        if self.records[key]['values'][1] == '本次不执行':
+            return '查看安排'
         if self.records[key]["has_result"]:
             return "查看进度" if self.records[key]["values"][1] == "进行中" else "查看结果"
         if self.ui.busy:
@@ -487,7 +489,7 @@ class TaskBoard(Surface):
                 and (key != "battle" or self.ui.settings.allow_stamina_spend))
 
     def resource_metrics(self, key):
-        if self.records[key]["values"][1] in ("未加入", "跳过", "未执行"):
+        if self.records[key]["values"][1] in ("未加入", "跳过", "未执行", "本次不执行"):
             return None
         if key == "daily":
             return ("500", "活跃目标") if self.ui.tasks[key].get() or self.records[key]["has_result"] else None

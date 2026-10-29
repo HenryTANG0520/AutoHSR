@@ -9,7 +9,7 @@ from autohsr.plan_runner import PlanRunner
 from autohsr.tests.test_plan_feedback import report
 from autohsr.tests.test_currency_wars_weekly_plan import Factory, runtime, settings, points
 from autohsr.ux import plan_result
-from autohsr.weekly_feedback import currency_weekly_caption, pending_currency_week
+from autohsr.weekly_feedback import _daily_preview, currency_weekly_caption, pending_currency_week
 
 
 def currency_report(**changes):
@@ -25,6 +25,19 @@ def hashes(root):
 
 
 class WeeklyFeedbackTests(unittest.TestCase):
+    def test_daily_preview_keeps_receipt_metrics_without_account_or_path_fields(self):
+        original = dict(operation='daily', run_dir='private-path', account_key='private-account',
+                        daily_verified=True, battle_completed=12, battle_requested=12, stamina_spent=120,
+                        results=[dict(task='battle', status='ok', detail='挑战完成', account_key='private-account'),
+                                 dict(task='daily', status='partial'), dict(task='close_game', status='ok')])
+        before = copy.deepcopy(original)
+        preview = _daily_preview(original)
+        self.assertEqual(preview['battle']['metrics'], ('12/12 次', '已用 120 开拓力'))
+        self.assertEqual(set(preview), {'battle', 'daily'})
+        self.assertEqual(preview['daily']['status'], 'ok')
+        self.assertNotIn('private-', str(preview))
+        self.assertEqual(original, before)
+
     def test_zero_matches_can_complete_points_and_rewards_without_claiming_three_wins(self):
         data = currency_report()
         label, text = plan_result(data)
@@ -103,7 +116,16 @@ class WeeklyFeedbackTests(unittest.TestCase):
                 result=pending_currency_week(root/'runs')
             self.assertTrue(result['resume']);self.assertEqual(result['maximum'],2);self.assertEqual(result['completed'],1)
             self.assertIn('沿用原日常报告',result['caption'])
+            self.assertEqual(set(result['daily_preview']), {'daily'})
             self.assertNotIn('account',result);self.assertEqual(before,hashes(root))
+            from autohsr.currency_wars_loop_store import LoopStore
+            store=LoopStore(root/'runs');store.load()
+            daily=Path(store.data['weekly_plan']['daily']['path'])
+            daily.write_bytes(daily.read_bytes()+b' ')
+            damaged=hashes(root)
+            invalid=pending_currency_week(root/'runs')
+            self.assertFalse(invalid['resume']);self.assertNotIn('daily_preview',invalid)
+            self.assertEqual(damaged,hashes(root))
 
     def test_committed_completion_is_not_offered_as_another_run(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -537,7 +537,17 @@ class AutoHSRWindow:
             hint = "仅用已有开拓力，不补充燃料或星琼。"
         self.battle_hint.set(hint)
         if not self._has_run:
+            pending = getattr(self, '_weekly_currency_recovery', None)
+            original = pending if pending and pending.get('resume') else None
             for name, label in TASK_NAMES.items():
+                if original:
+                    row = original.get('daily_preview', {}).get(name)
+                    status = row['status'] if row else 'skipped'
+                    tag = 'success' if status in ('success', 'ok', 'completed', 'done') else status
+                    self.table.item(name, values=(label, '原日常'+STATUS_NAMES.get(status, status) if row else '本次不执行',
+                                                  row['detail'] if row else '继续原周常，不执行这项日常任务。'),
+                                    tags=(tag,), has_result=True, metrics=row.get('metrics') if row else None)
+                    continue
                 selected = self.tasks[name].get()
                 detail = "开拓力刷本未授权" if name == "battle" and not allowed else ""
                 self.table.item(name, values=(label, "待执行" if selected else "未加入", detail), tags=() if selected else ("skipped",), has_result=False, metrics=None)

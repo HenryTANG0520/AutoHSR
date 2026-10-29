@@ -2,13 +2,32 @@
 from __future__ import annotations
 
 
+def _daily_preview(report):
+    """Only task presentation fields; never expose the receipt's account or paths."""
+    from .ux import reported_battle_metrics
+    rows = {}
+    for row in report.get('results', []):
+        if not isinstance(row, dict) or not isinstance(row.get('task'), str):
+            continue
+        task = row['task']
+        if task not in ('assignments', 'battle', 'daily', 'mail', 'battlepass'):
+            continue
+        rows[task] = dict(status=row.get('status') if isinstance(row.get('status'), str) else 'partial',
+                          detail=row.get('detail') if isinstance(row.get('detail'), str) else '')
+    if report.get('daily_verified') is True:
+        rows['daily'] = dict(status='ok', detail='每日实训奖励已核实领取。')
+    if 'battle' in rows:
+        rows['battle']['metrics'] = reported_battle_metrics(report)
+    return rows
+
+
 def pending_currency_week(root):
     """Offer an explicit continuation only after local source checks; never write."""
     from pathlib import Path
     if not (Path(root)/'currency-loop-current.json').exists():
         return None
     from .currency_wars_loop_store import LoopStore
-    from .currency_wars_weekly import check_complete, check_sources, unfinished
+    from .currency_wars_weekly import check_complete, check_sources, read_ref, unfinished
     from .models import AutomationError
     try:
         store = LoopStore(root)
@@ -25,9 +44,10 @@ def pending_currency_week(root):
         caption = (f"原周常 · {plan['week']} · 货币战争 · 已完成 {data['completed']} 局／上限 {plan['maximum']} 局")
         if plan['daily'] is not None:
             caption += ' · 沿用原日常报告'
+        daily_preview = _daily_preview(read_ref(store.root, plan['daily'])[1]) if plan['daily'] is not None else {}
         return dict(resume=True, action='补存周常结果' if audit else '继续周常', caption=caption,
                     week=plan['week'], due_at=plan['due_at'], maximum=plan['maximum'], completed=data['completed'],
-                    daily_reused=plan['daily'] is not None)
+                    daily_reused=plan['daily'] is not None, daily_preview=daily_preview)
     except AutomationError as error:
         return dict(resume=False, caption='原周常待核对：'+str(error))
     except OSError:
