@@ -8,8 +8,8 @@ import tkinter as tk
 import types
 from unittest.mock import patch
 
-from PIL import ImageGrab
-from ux_smoke import ROOT, Settings, Window, module
+from PIL import ImageGrab, ImageTk
+from ux_smoke import ROOT, Settings, Window, module, pump
 from ui_layout_smoke import check_layout
 from autohsr.dungeon_ui import select_mission, show_advanced, show_manual
 from autohsr.dungeons import CATEGORIES, Dungeon, load_catalogue
@@ -53,6 +53,26 @@ def main():
             ui = Window(root, config)
             try:
                 ui._show_page("tasks")
+                root.update()
+                original_draft = ui._form_signature()
+                ui.dungeon_search.set("回忆")
+                button = ui.category_buttons["饰品提取"]
+                button.event_generate("<ButtonPress-1>", x=button.winfo_width()//2, y=button.winfo_height()//2)
+                button.event_generate("<ButtonRelease-1>", x=button.winfo_width()//2, y=button.winfo_height()//2)
+                root.update()
+                check(f"{scale}_category_card_click_browses_without_changing_plan", ui.dungeon_browse_category.get() == "饰品提取"
+                      and not ui.dungeon_search.get() and ui._form_signature() == original_draft)
+                button = ui.category_buttons["拟造花萼（赤）"]
+                button.focus_force()
+                root.update()
+                button.event_generate("<KeyPress-space>")
+                button.event_generate("<KeyRelease-space>")
+                pump(root, lambda: ui.dungeon_browse_category.get() == "拟造花萼（赤）")
+                check(f"{scale}_category_card_keeps_native_keyboard_and_focus", ui.dungeon_browse_category.get() == "拟造花萼（赤）"
+                      and root.focus_get() is button and ui._form_signature() == original_draft)
+                check(f"{scale}_only_browsed_category_is_highlighted", [name for name, item in ui.category_buttons.items()
+                      if item.instate(("selected",))] == ["拟造花萼（赤）"])
+                ui.category_buttons["拟造花萼（金）"].invoke()
                 root.update()
                 check(f"{scale}_initial_excluded_count_matches_editable_slider", ui.challenge_count.get() == "24"
                       and ui.challenge_scale.get() == 24 and not ui.challenge_scale.instate(("disabled",)))
@@ -251,6 +271,9 @@ def main():
                 check(f"{scale}_planar_cost_retains_existing_immersifiers", "已有沉浸器优先" in ui.battle_cost.get()
                       and "最多" in ui.battle_cost.get() and "余量使用开拓力" in ui.battle_hint.get())
                 before = ui._form_signature()
+                category_before = ui.dungeon_browse_category.get()
+                category_button = ui.category_buttons[category_before]
+                enabled_pixels = ImageTk.getimage(category_button._photo).tobytes()
                 ui._set_busy(True)
                 board.event_generate("<End>")
                 board.event_generate("<Return>")
@@ -258,7 +281,13 @@ def main():
                 ui.category_buttons["拟造花萼（金）"].invoke()
                 root.update()
                 check(f"{scale}_busy_gestures_cannot_change_target", ui._form_signature() == before)
+                check(f"{scale}_busy_category_cannot_navigate_and_shows_disabled", ui.dungeon_browse_category.get() == category_before
+                      and category_button.instate(("selected", "disabled"))
+                      and ImageTk.getimage(category_button._photo).tobytes() != enabled_pixels)
                 ui._set_busy(False)
+                root.update()
+                check(f"{scale}_idle_category_restores_selected_appearance", category_button.instate(("selected", "!disabled"))
+                      and ImageTk.getimage(category_button._photo).tobytes() == enabled_pixels)
                 show_advanced(ui)
                 ui.category_buttons["历战余响"].invoke()
                 root.update()
@@ -291,6 +320,10 @@ def main():
                         root.update()
                         check_layout(root)
                         check(f"{scale}_{size}_{manual}_{advanced}_layout", ui.start_button.winfo_ismapped())
+                        cards = list(ui.category_buttons.values())
+                        check(f"{scale}_{size}_{manual}_{advanced}_all_categories_visible", all(b.winfo_ismapped() for b in cards)
+                              and cards[-1].winfo_y()+cards[-1].winfo_height() <= cards[-1].master.winfo_height()
+                              and max(b.winfo_height() for b in cards)-min(b.winfo_height() for b in cards) <= 1)
                 show_advanced(ui, False)
                 show_manual(ui, False)
                 ui.category_buttons["凝滞虚影"].invoke()

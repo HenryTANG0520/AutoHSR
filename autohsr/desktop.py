@@ -93,7 +93,8 @@ def _home(ui, names):
 
 
 def _tasks(ui):
-    from .dungeons import CATEGORIES
+    from .dungeons import BY_KEY
+    from .survival_widgets import CATEGORY_NAVIGATION, CategoryButton
     s = ui.ui_scale
     d = lambda n: round(n*s)
     page = ui.pages["tasks"]
@@ -111,10 +112,12 @@ def _tasks(ui):
         show_browser(ui)
     def selected(*_):
         for label, button in ui.category_buttons.items():
-            button.configure(style="Selected.Option.TButton" if label == ui.dungeon_browse_category.get() else "Option.TButton")
-    for row, category in enumerate(CATEGORIES):
-        button = ttk.Button(menu, text=category.label, style="Option.TButton", command=lambda category=category: choose(category))
-        button.grid(row=row, column=0, sticky="ew", pady=(0, d(10)))
+            button.state(("selected" if label == ui.dungeon_browse_category.get() else "!selected",))
+    for row, (key, subtitle) in enumerate(CATEGORY_NAVIGATION):
+        category = BY_KEY[key]
+        menu.rowconfigure(row, weight=1, uniform="category", minsize=d(64))
+        button = CategoryButton(menu, s, category, subtitle, command=lambda category=category: choose(category))
+        button.grid(row=row, column=0, sticky="nsew", pady=(0, d(10)))
         ui.category_buttons[category.label] = button
         ui.setting_controls.append(button)
     token = ui.dungeon_browse_category.trace_add("write", selected)

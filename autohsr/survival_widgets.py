@@ -4,11 +4,79 @@ from __future__ import annotations
 from functools import lru_cache
 import json
 import tkinter as tk
+from tkinter import ttk
+
+from PIL import Image, ImageTk
 
 from . import theme as t
 from .dungeons import CATEGORIES
-from .game_widgets import Surface
+from .game_widgets import SceneButton, Surface
 from .models import normalize
+
+
+# The guide's display order is independent of workflow/catalogue scan order.
+CATEGORY_NAVIGATION = (
+    ("planar", "位面饰品"),
+    ("calyx_golden", "经验材料/信用点"),
+    ("calyx_crimson", "行迹材料"),
+    ("stagnant_shadow", "角色晋阶材料"),
+    ("cavern", "遗器"),
+    ("echo_of_war", "行迹高级材料/光锥"),
+)
+
+
+class CategoryButton(SceneButton):
+    """Two-line game category card, retaining the native button's input states."""
+
+    def __init__(self, parent, scale, category, subtitle, command):
+        self.category, self.subtitle = category, subtitle
+        super().__init__(parent, scale, text=category.label, command=command)
+        style = ttk.Style(parent)
+        style.layout("Category.TButton", [("Button.label", {"sticky": "nsew"})])
+        style.configure("Category.TButton", padding=0)
+        self._photo = ImageTk.PhotoImage(Image.new("RGBA", (round(208*scale), round(64*scale)), t.CARD), master=self)
+        self.configure(image=self._photo, compound="none", style="Category.TButton")
+
+    def configure(self, cnf=None, **kwargs):
+        changes_state = "state" in kwargs or isinstance(cnf, dict) and "state" in cnf
+        previous = self.state() if changes_state else None
+        result = super().configure(cnf, **kwargs)
+        if changes_state and self.state() != previous:
+            self.redraw()
+        return result
+
+    config = configure
+
+    def _render(self):
+        self._paint_job = None
+        w, h = self.winfo_width(), self.winfo_height()
+        if w < 2 or h < 2 or not self.winfo_ismapped():
+            return
+        selected = self.instate(("selected",))
+        disabled = self.instate(("disabled",))
+        active = not disabled and self.instate(("active",))
+        p = t.Painter(w, h, self.scale, t.RAIL if selected else t.CARD)
+        rail = t.GOLD if selected else "#aaa9a9"
+        title = t.GOLD if selected else t.TEXT
+        subtitle = "#a18e62" if selected else "#555555"
+        if disabled:
+            title = subtitle = "#8c8c8c"
+            rail = "#777777" if selected else "#bdbdbd"
+        if not disabled and self.instate(("pressed",)):
+            p.box((4, 0, p.width, p.height), "#31302e" if selected else "#e7e5df")
+        if selected:
+            p.asset("card-watermark.png", (p.width-99, p.height/2-47, p.width-3, p.height/2+59), "#302e2a")
+        p.box((0, 0, 4, p.height), rail)
+        # The side notch repeats the guide's dotted selection marker.
+        for x, y in ((5, -5), (8, -3), (9, 0), (8, 3), (5, 5)):
+            p.ellipse((x-1, p.height/2+y-1, x+1, p.height/2+y+1), rail)
+        if active or not disabled and self.instate(("focus",)):
+            p.box((1, 1, p.width-1, p.height-1), None, outline=t.GOLD, width=1.5)
+        p.text((22, p.height/2-26), self.category.label, 24, title)
+        p.text((22, p.height/2+8), self.subtitle, 16, subtitle)
+        photo = ImageTk.PhotoImage(p.finish(), master=self)
+        self.configure(image=photo)
+        self._photo = photo
 
 
 @lru_cache(maxsize=1)
