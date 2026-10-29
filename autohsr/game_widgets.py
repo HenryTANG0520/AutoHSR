@@ -16,6 +16,8 @@ class Surface(tk.Canvas):
         self.scale=scale
         self.paint_height=paint_height
         self._paint_job=None
+        self._content_dirty=True
+        self._rendered_geometry=None
         self.scene=scene
         self._scene_size=None
         self._scene_binding=None
@@ -37,15 +39,31 @@ class Surface(tk.Canvas):
 
     def _scene_resize(self,event):
         if event.widget is self._scene_root and (event.width,event.height)!=self._scene_size:
-            self.redraw()
+            self.redraw(event)
 
     def watch(self,*variables):
-        tokens=[(v,v.trace_add("write",lambda *_:self.redraw())) for v in variables]
+        values={v._name:v.get() for v in variables}
+        def changed(variable):
+            value=variable.get()
+            if values[variable._name]!=value:
+                values[variable._name]=value
+                self.redraw()
+        tokens=[(v,v.trace_add("write",lambda *_,v=v:changed(v))) for v in variables]
         self.bind("<Destroy>",lambda e:[v.trace_remove("write",token) for v,token in tokens] if e.widget is self else None,add="+")
 
-    def redraw(self,_event=None):
+    def redraw(self,_event=None,*,layout=False):
+        if not layout and (_event is None or _event.type not in (tk.EventType.Configure,tk.EventType.Map)):
+            self._content_dirty=True
         if self._paint_job is None and not getattr(self,"_suspended",False):
             self._paint_job=self.after_idle(self._render)
+
+    def _geometry_key(self):
+        key=(self.winfo_width(),self.winfo_height())
+        if self.scene:
+            root=self._scene_root
+            key+= (root.winfo_width(),root.winfo_height(),
+                   self.winfo_rootx()-root.winfo_rootx(),self.winfo_rooty()-root.winfo_rooty())
+        return key
 
     def _render(self):
         self._paint_job=None
@@ -75,6 +93,8 @@ class Surface(tk.Canvas):
             self.tag_lower("art")
         # Keep the previous bitmap alive until the canvas references its replacement.
         self._photo=photo
+        self._rendered_geometry=self._geometry_key()
+        self._content_dirty=False
 
 
 class Backdrop(Surface):

@@ -95,6 +95,18 @@ def main():
                     root.update()
                 ui._show_page("home")
                 root.update()
+                normal_shell = ui.shell
+                # Warm both retained layouts before measuring their resource bound.
+                root.state("zoomed")
+                settle()
+                for page in ui.pages:
+                    ui._show_page(page)
+                    root.update()
+                ui._show_page("home")
+                root.state("normal")
+                root.geometry(normal)
+                settle()
+                check(prefix+"return_reuses_previous_controls", ui.shell is normal_shell)
                 gc.collect()
                 image_count = len(root.tk.call("image", "names"))
                 bindings = sum(bool(line.strip()) for line in root.bind("<Configure>").splitlines())

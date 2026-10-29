@@ -49,7 +49,7 @@ def build_window(ui, task_names, server_names, *, scale=None):
             ui.guide.art_right = min(d(44), max(0, margin-d(2)))
             ui.guide.grid_configure(padx=(margin-ui.guide.art_left, margin-ui.guide.art_right), pady=(top_gap, 0))
             ui.guide._position()
-            ui.guide.redraw()
+            ui.guide.redraw(layout=True)
     ui.position_guide = position_guide
     if getattr(ui, "_guide_position_binding", None):
         window.unbind("<Configure>", ui._guide_position_binding)

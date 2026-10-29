@@ -73,11 +73,13 @@ class SettingsShell(Surface):
         return "break"
 
     def select(self, key):
+        changed = self.section != key
         self.section = key
         for name, button in self.buttons.items():
             button.configure(image=self.photos[name, name == key],
                 style="Settings.Selected.Nav.TButton" if name == key else "Settings.Nav.TButton")
-        self.redraw()
+        if changed:
+            self.redraw()
 
     def position(self, _=None):
         d = lambda n: round(n*self.scale)

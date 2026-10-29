@@ -7,6 +7,7 @@ import tempfile
 import time
 import tkinter as tk
 import types
+import traceback
 from unittest.mock import patch
 import sys
 
@@ -36,7 +37,10 @@ def main():
             root = tk.Tk()
             root.tk.call("tk", "scaling", dpi*96/72)
             errors = []
-            root.report_callback_exception = lambda kind, value, tb: errors.append(repr(value))
+            def callback_error(kind, value, tb):
+                errors.append(repr(value))
+                traceback.print_exception(kind, value, tb)
+            root.report_callback_exception = callback_error
             ui = Window(root, config)
             try:
                 root.update()
@@ -60,11 +64,13 @@ def main():
                     prefix = f"{dpi}_{view}_{name}_"
                     old_shell, old_primary = ui.shell, ui.start_button
                     old_paints = []
+                    presenters = {}
                     for _, widget in _widgets(old_shell):
                         if isinstance(widget, Surface):
                             present = widget._present
-                            def track_present(image, widget=widget, present=present):
-                                old_paints.append(type(widget).__name__)
+                            presenters[widget] = present
+                            def track_present(image, widget=widget, present=present, paints=old_paints):
+                                paints.append(type(widget).__name__)
                                 return present(image)
                             widget._present = track_present
                     old_metrics = old_primary.winfo_reqwidth(), old_primary.winfo_reqheight(), font_width(old_primary)
@@ -72,9 +78,9 @@ def main():
                                 and w.winfo_ismapped()]
                     caption_fonts = [(w, font_width(w)) for w in captions]
                     photos = tuple(str(photo) for photo in root._hsr_images)
-                    destroy = old_shell.destroy
+                    retire = ui.responsive_layout._retire_view
                     replaced = []
-                    def inspect_swap():
+                    def inspect_swap(parked_view):
                         check(prefix+"old_action_stays_mapped", old_shell.winfo_ismapped() and old_primary.winfo_ismapped())
                         check(prefix+"old_action_is_complete", old_primary.winfo_width() >= old_primary.winfo_reqwidth()
                               and old_primary.winfo_height() >= old_primary.winfo_reqheight())
@@ -91,8 +97,8 @@ def main():
                         if dpi == 1.5:
                             ImageGrab.grab(window=root.winfo_id()).save(out/(view+"-"+name+"-before-swap.png"))
                         replaced.append(True)
-                        destroy()
-                    old_shell.destroy = inspect_swap
+                        retire(parked_view)
+                    ui.responsive_layout._retire_view = inspect_swap
                     started = time.perf_counter()
                     root.state("zoomed" if maximized else "normal")
                     if not maximized:
@@ -101,11 +107,15 @@ def main():
                     while not replaced and time.monotonic() < deadline:
                         root.update()
                     root.update()
+                    ui.responsive_layout._retire_view = retire
+                    for widget, present in presenters.items():
+                        widget._present = present
                     timings.append(dict(dpi=dpi, action=name, elapsed_ms=round((time.perf_counter()-started)*1000, 2)))
                     check(prefix+"automatic_resize_completed", bool(replaced) and not errors)
                     check(prefix+"previous_artwork_is_not_repainted", not old_paints)
-                    check(prefix+"previous_controls_released", not old_shell.winfo_exists()
-                          and root.winfo_children() == [ui.shell])
+                    check(prefix+"one_previous_layout_is_parked", old_shell.winfo_exists() and not old_shell.winfo_ismapped()
+                          and len(root.winfo_children()) == 2
+                          and [w for w in root.winfo_children() if w.winfo_ismapped()] == [ui.shell])
                     check(prefix+"native_button_entry_and_log_text_scale", all(abs(a-b) < 2 for a, b in zip(normal_text, text_sizes())))
                 check(f"{dpi}_no_config_write", config.read_bytes() == original)
             finally:

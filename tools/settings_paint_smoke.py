@@ -37,7 +37,10 @@ def main():
             try:
                 root.update()
                 ui._show_daily_tasks("mail")
-                for size in ("normal", "zoomed"):
+                for sample, (size, label) in enumerate((("normal", "normal"), ("zoomed", "zoomed"), ("normal", "restored"))):
+                    ui.stamina.set(str(120+sample*10))
+                    ui.elapsed_seconds = 65+sample
+                    ui._clock()
                     root.state(size)
                     root.update()
                     ui.responsive_layout.fit()
@@ -45,9 +48,6 @@ def main():
                     for section, *_ in SECTIONS:
                         ui.settings_buttons[section].invoke()
                         # Include the changing run metrics in the comparison.
-                        ui.stamina.set("120")
-                        ui.elapsed_seconds = 65
-                        ui._clock()
                         root.update()
                         shell = ui.settings_shell
                         width, height = shell.winfo_width(), shell.winfo_height()
@@ -58,16 +58,16 @@ def main():
                         shell.paint(painter)
                         expected = painter.finish().convert("RGB")
                         difference = ImageChops.difference(actual, expected)
-                        prefix = f"{dpi}_{size}_{section}"
+                        prefix = f"{dpi}_{label}_{section}"
                         if difference.getbbox():
                             actual.save(out/(prefix+"-actual.png"))
                             expected.save(out/(prefix+"-expected.png"))
                             difference.save(out/(prefix+"-difference.png"))
                         check(prefix+"_pixels_match_full_render", difference.getbbox() is None)
                         check(prefix+"_solid_background_is_not_rasterized", pixels.height < height/2)
-                    check(f"{dpi}_{size}_covered_scene_is_not_mapped", not ui.backdrop.winfo_ismapped())
+                    check(f"{dpi}_{label}_covered_scene_is_not_mapped", not ui.backdrop.winfo_ismapped())
                     if dpi == 1.5:
-                        ImageGrab.grab(window=root.winfo_id()).save(out/(size+".png"))
+                        ImageGrab.grab(window=root.winfo_id()).save(out/(label+".png"))
                 ui._leave_settings()
                 root.update()
                 check(f"{dpi}_return_restores_scene", ui.backdrop.winfo_ismapped() and ui.backdrop._photo is not None)

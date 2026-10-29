@@ -169,8 +169,8 @@ def focus_widget(root):
 
 
 def _theme_image(root, image):
-    # Stable names let an inactive theme release its pixels and recreate them
-    # when revisited. Only the current scale's bitmap objects stay resident.
+    # Stable names let an evicted layout release its pixels and recreate them
+    # when revisited. Each of the two retained layouts owns its bitmap objects.
     photo = ImageTk.PhotoImage(image, master=root,
         name=f"{root._hsr_theme_name}_{len(root._hsr_images)}")
     root._hsr_images.append(photo)
