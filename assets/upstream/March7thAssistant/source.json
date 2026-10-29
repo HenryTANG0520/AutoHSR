@@ -37,6 +37,11 @@
   ],
   "adaptations": [
     {
+      "path": "autohsr/currency_wars_standard_budget.py",
+      "reference_functions": ["start_war", "identify_current_stage"],
+      "kind": "whole-match execution with bounded per-phase technical work, inspired by upstream's ongoing stage monitoring; resets use AutoHSR's verified continuation or completed cross-node supply receipt, never OCR alone, while retaining total action bounds, explicit resume, unknown-input protection and independent settlement; does not port abandon/restart or the five-identical-stage heuristic"
+    },
+    {
       "path": "autohsr/currency_wars_standard_popup.py",
       "reference_functions": ["move_character", "check_festival_star_popup"],
       "kind": "native deferred movement custody for the observed festival-star popup: complete details/name association, current selected-card proof, separate single selection/confirmation and full fresh roster verification; preserves AutoHSR Sparkle preference, scoped visual stability and immutable ledger lineage rather than upstream fixed first-card clicks or cached-list swapping"

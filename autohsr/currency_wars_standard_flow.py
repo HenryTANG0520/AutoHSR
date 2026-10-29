@@ -391,7 +391,10 @@ def run_standard(c):
     c.report.currency_wars = store.data
     guard = CurrencyWarsWorkflow(c)
     scene = c.snapshot()
-    for _ in range(512):
+    from .currency_wars_standard_budget import StandardBudget
+    from .currency_wars_session import MAX_ACTIONS
+    budget=StandardBudget(store.data)
+    for _ in range(MAX_ACTIONS+1):
         c.checkpoint()
         if store.data['completion_verified']:
             break
@@ -421,6 +424,10 @@ def run_standard(c):
             store.data.update(action_status='readonly_reconciled',screenshot=previous['reconciled_after'])
             store.persist()
             c.log('已观察核实上次打开标准商店，本次没有重发开店点击。')
+        limited=budget.check(store.data)
+        if limited:
+            store.data.update(action_status='step_limit',reason=limited)
+            store.persist();break
         collection = store.data.get('collection',{})
         if collection.get('run_dir') != c.report.run_dir or collection.get('input_epoch') != c.runner.input_epoch:
             collection = dict(run_dir=c.report.run_dir,input_epoch=c.runner.input_epoch,units={},complete=False)
@@ -779,7 +786,7 @@ def run_standard(c):
         if store.data['completion_verified']:
             break
     else:
-        store.data.update(action_status='step_limit', reason='本次标准开发达到步骤上限。')
+        store.data.update(action_status='step_limit', reason='本次标准观察达到本局动作上限对应的轮数，已停止并保留记录。')
         store.persist()
     c.report.currency_wars = store.data
     c.runner.emit(dict(type=TASK, data=store.data))

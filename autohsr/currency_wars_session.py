@@ -11,6 +11,17 @@ from .currency_wars_state import strict_json
 from .models import AutomationError
 from .storage import replace_file
 
+MAX_ACTIONS = 4096
+MAX_SESSION_BYTES = 64*1024*1024
+
+
+def read_session(path):
+    # Bound the actual read too: the file may grow after a stat check.
+    with path.open('rb') as stream:
+        raw=stream.read(MAX_SESSION_BYTES+1)
+    if len(raw)>MAX_SESSION_BYTES:raise ValueError('对局记录超过64 MiB大小限制')
+    return strict_json(raw.decode('utf-8'))
+
 
 class StandardSession:
     def __init__(self, path):
@@ -18,9 +29,7 @@ class StandardSession:
         self.data = None
         if self.path.exists():
             try:
-                if self.path.stat().st_size > 4*1024*1024:
-                    raise ValueError('对局记录超过大小限制')
-                self.data = strict_json(self.path.read_text(encoding='utf-8'))
+                self.data = read_session(self.path)
                 self.validate(self.data)
             except (OSError, ValueError, KeyError, TypeError) as error:
                 raise AutomationError('标准对局记录需核对，未开始新对局：' + str(error)) from error
@@ -32,7 +41,7 @@ class StandardSession:
                 or data.get('mode') != 'standard_development'
                 or data.get('rank') != 8 or data.get('wealth') != 40
                 or data.get('status') not in ('start_pending', 'active', 'settled', 'failed')
-                or type(data.get('actions')) is not list or len(data['actions']) > 4096
+                or type(data.get('actions')) is not list or len(data['actions']) > MAX_ACTIONS
                 or type(data.get('completion_verified')) is not bool
                 or not isinstance(data.get('run_dir'), str)):
             raise ValueError('标准对局记录结构或难度无效')
@@ -50,9 +59,12 @@ class StandardSession:
 
     def persist(self):
         self.validate(self.data)
+        raw=json.dumps(self.data,ensure_ascii=False,indent=2,allow_nan=False).encode('utf-8')
+        if len(raw)>MAX_SESSION_BYTES:
+            raise AutomationError('标准对局记录达到64 MiB上限，原文件保留，未提交新输入。')
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix('.tmp')
-        temporary.write_text(json.dumps(self.data, ensure_ascii=False, indent=2, allow_nan=False), encoding='utf-8')
+        temporary.write_bytes(raw)
         replace_file(temporary, self.path)
 
     def begin(self, run_dir, entry):
@@ -66,6 +78,8 @@ class StandardSession:
     def pending(self, action, epoch, before, expected):
         if self.data['actions'] and self.data['actions'][-1]['status'] != 'verified':
             raise AutomationError('上一步标准对局输入未核实，未发送后续动作。')
+        if len(self.data['actions'])>=MAX_ACTIONS:
+            raise AutomationError('标准对局动作记录达到本局上限，未追加或发送新动作。')
         item = dict(id=len(self.data['actions']), action=action, input_epoch=epoch, before=str(before),
                     expected=expected, status='pending')
         self.data['actions'].append(item)
@@ -76,7 +90,7 @@ class StandardSession:
     def require_pending(self, action, epoch):
         # Read back the actual durable write, not only an in-memory intention.
         try:
-            data = strict_json(self.path.read_text(encoding='utf-8'))
+            data = read_session(self.path)
             self.validate(data)
         except (OSError, ValueError, KeyError, TypeError) as error:
             raise AutomationError('标准对局输入记录未写入，未输入。') from error

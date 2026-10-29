@@ -730,3 +730,7 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 ## 2026-10-29 全局阵容整理与空位移动
 
 参考固定March7thAssistant的`deploy_and_optimize`及`move_character`，将全体持有角色的区域规划改写为[原生全局整理](../autohsr/currency_wars_standard_reorder.py)。保留本项目评分，固定与位置无关的目标，逐步核验真实身份和资源；新增另一侧空位移动，并处理其盛会之星接续。来源函数、固定Git blob与GPL v3许可见[source.json](upstream/March7thAssistant/source.json)，未直接移植上游金额排序、输入框架或缓存即成功的判定。没有新增公开图像、模型或游戏采集；测试沿用既有署名图标和合成棋盘，局部外观证明仅保存到忽略的本地记录，不加入模型载荷。
+
+## 2026-10-29 整局执行与有界存档
+
+参考固定March7thAssistant的`start_war`及`identify_current_stage`的整局执行与阶段监测，将本项目总512步实验循环改写为[原生分段执行上限](../autohsr/currency_wars_standard_budget.py)。计数刷新依赖本项目的胜利继续／补给交付来源，原未知输入保护继续使用；不迁入自动放弃与重开，也不以OCR变化作为额度刷新。64 MiB有界存档、写入前容量检查及总4096动作限制属于AutoHSR原生设计。源码blob、引用函数和GPL v3继续记在[source.json](upstream/March7thAssistant/source.json)；没有新增公开素材、模型或游戏采集，检查使用合成记录与已有署名素材。
