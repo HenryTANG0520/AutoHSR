@@ -9,6 +9,7 @@ from PIL import ImageTk
 from . import theme as t
 from .game_widgets import PlanRibbon, Surface, paint_run_metrics
 from .weekly_plan import DAYS, MODES
+from .setting_choices import SettingChoice
 
 
 SECTIONS = (("game", "游戏连接", "客户端", "guide-mark.png"),
@@ -123,7 +124,7 @@ class SettingsShell(Surface):
             p.line((x+8, 84, x+width-8, 84), t.LIGHT, 2)
 
 
-class BooleanSetting(ttk.Combobox):
+class BooleanSetting(SettingChoice):
     """Display an existing BooleanVar as a native, keyboard-accessible choice."""
 
     def __init__(self, parent, variable):
@@ -211,7 +212,7 @@ def build_settings(ui):
         return field
 
     def combo(target, variable, values, name):
-        field = ttk.Combobox(target.value, textvariable=variable, values=values,
+        field = SettingChoice(target.value, textvariable=variable, values=values,
             style="Settings.TCombobox", width=10, font=t.native_font(target.value, 12), justify="center", state="readonly")
         target.place_control(field)
         setattr(ui, name, field)

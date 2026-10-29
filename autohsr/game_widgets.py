@@ -278,7 +278,7 @@ class Guide(Surface):
         self._refresh_tabs()
 
     def _refresh_tabs(self):
-        focus=self.focus_get()
+        focus=t.focus_widget(self.winfo_toplevel())
         for key,button in self.buttons.items():
             if key == "settings":
                 button.configure(image=self.photos[key,False,key==self.hovered_page or button==focus])
