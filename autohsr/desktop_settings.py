@@ -193,8 +193,10 @@ def build_settings(ui):
         ui.settings_sections[key] = section
 
     def selected(_):
-        key = next(key for key, section in ui.settings_sections.items() if tabs.select() == str(section))
-        ui.settings_shell.select(key)
+        if tabs is ui.settings_tabs:
+            key = next((key for key, section in ui.settings_sections.items() if tabs.select() == str(section)), None)
+            if key is not None:
+                ui.settings_shell.select(key)
     tabs.bind("<<NotebookTabChanged>>", selected)
 
     def row(section, index, name, **kwargs):

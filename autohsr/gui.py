@@ -95,6 +95,8 @@ class AutoHSRWindow:
         root.configure(bg=self.BG)
         root.protocol("WM_DELETE_WINDOW", self._close)
         self._variables()
+        from .desktop_focus import InputFocus
+        self.input_focus = InputFocus(self)
         self._build()
         self._saved_signature = self._form_signature()
         self._loading = False
@@ -215,6 +217,7 @@ class AutoHSRWindow:
             self.settings_return_page = getattr(self, "active_page", "home")
             self.settings_return_focus = theme.focus_widget(self.root)
         self.active_page = name
+        self.input_focus.cancel_if_obsolete()
         self.page_title.set(PAGE_TITLES[name])
         for key, page in self.pages.items():
             if key == "settings":
@@ -240,7 +243,10 @@ class AutoHSRWindow:
 
     def _focus_settings_entry(self):
         """Move focus out of hidden pages without overriding an explicit target."""
+        self.input_focus.cancel_if_obsolete()
         if self.active_page != "settings":
+            return
+        if self.input_focus.owns_current_page():
             return
         key, section = next((key, section) for key, section in self.settings_sections.items()
                             if str(section) == self.settings_tabs.select())
@@ -556,6 +562,7 @@ class AutoHSRWindow:
             raise SettingsError(field, title+("请填写整数。" if convert is int else "请填写有效数字。")) from exc
 
     def _clear_input_error(self):
+        self.input_focus.cancel()
         self.input_error.set("")
         self.input_error_field = None
         if self._input_error_status is not None and self.status.get() == "● 请检查输入":
@@ -580,19 +587,13 @@ class AutoHSRWindow:
         self._configure_primary_action()
         self._refresh_controls()
         self._restore()
-        widget = getattr(self, control)
         if self.input_error_field in ("target_name", "target_location"):
             from .dungeon_ui import show_manual
             show_manual(self)
         if self.input_error_field == "stamina_limit":
             from .dungeon_ui import show_advanced
             show_advanced(self)
-        def focus():
-            if widget.winfo_exists():
-                widget.focus_set()
-                if hasattr(widget, "selection_range"):
-                    widget.selection_range(0, "end")
-        self.root.after_idle(focus)
+        self.input_focus.request(self.input_error_field, page, section, control)
 
     def _input_failed(self, error):
         self.input_error_field = error.field
@@ -703,6 +704,8 @@ class AutoHSRWindow:
 
     def _set_busy(self, busy: bool, running: bool = False) -> None:
         self.busy, self.running = busy, running
+        if busy:
+            self.input_focus.cancel()
         if not running:
             self.paused = self.stopping = False
         self._refresh_controls()

@@ -102,6 +102,7 @@ class ResponsiveLayout:
             self.view_size = width, height
         finally:
             self.resizing = False
+            self.ui.input_focus.queue()
         return True
 
     def _view(self):
@@ -133,6 +134,19 @@ class ResponsiveLayout:
     def _retire_view(self, view):
         view["fields"]["shell"].place_forget()
         self.cached_view = view
+
+    def _restore_navigation(self, navigation):
+        ui = self.ui
+        for key, value in navigation.items():
+            if value is not None:
+                setattr(ui, key, value)
+        ui._show_page(navigation["active_page"])
+        # An error may display a different page while keeping Start Plan as
+        # its original action. Showing that page must not replace the action.
+        if ui.action_page != navigation["action_page"]:
+            ui.action_page = navigation["action_page"]
+            ui._configure_primary_action()
+            ui._refresh_controls()
 
     def _rebuild(self, scale):
         ui, root = self.ui, self.root
@@ -207,10 +221,7 @@ class ResponsiveLayout:
             from .desktop_modes import show_mode_view
             for key, view in mode_views.items():
                 show_mode_view(ui, key, view)
-            for key, value in navigation.items():
-                if value is not None:
-                    setattr(ui, key, value)
-            ui._show_page(navigation["active_page"])
+            self._restore_navigation(navigation)
             ui.settings_return_focus = current.get(return_focus)
             if (ui.table.records, ui.table.offset, ui.table.selected) != cards:
                 ui.table.records, ui.table.offset, ui.table.selected = cards
@@ -260,10 +271,7 @@ class ResponsiveLayout:
             if root._hsr_images is not old_view["images"]:
                 root._hsr_images.clear()
             self._restore_view(old_view)
-            for key, value in navigation.items():
-                if value is not None:
-                    setattr(ui, key, value)
-            ui._show_page(navigation["active_page"])
+            self._restore_navigation(navigation)
             for widget in previous.values():
                 if isinstance(widget, (Surface, SceneButton)):
                     widget._suspended = False
