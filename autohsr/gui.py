@@ -15,7 +15,7 @@ from tkinter.scrolledtext import ScrolledText
 from typing import Any
 
 from .config import CONFIG_PATH, ROOT, Settings, SettingsError
-from .ux import report_context, recovery_text, exit_text, immersifier_text, issue_text, standard_activity, standard_run_verified, universe_result, planned_battle_metrics, reported_battle_metrics
+from .ux import report_context, recovery_text, exit_text, immersifier_text, issue_text, standard_activity, standard_run_verified, universe_result, planned_battle_metrics, reported_battle_metrics, plan_result
 from . import theme
 from .currency_feedback import observation as currency_observation_text, result as currency_result
 
@@ -943,9 +943,12 @@ class AutoHSRWindow:
             for name, label in TASK_NAMES.items():
                 enabled = getattr(settings, name)
                 detail = "开拓力刷本未授权" if name == "battle" and not settings.allow_stamina_spend else ("" if enabled else "未加入计划")
-                self.table.item(name, values=(label, "等待" if enabled else "跳过", detail), tags=() if enabled else ("skipped",), has_result=False, metrics=None)
-        self._log("开始标准A8-40开发；未知页面和反馈停下留证。" if currency_standard else "开始货币战争启动准备，不开始对局。" if currency_prepare else "开始差分宇宙自动演算。助手将最小化，让游戏保持前台。" if differential_universe else "开始货币战争流程推进验证。" if flow_test else "开始货币战争当前节点战斗验证。" if node_test else "开始货币战争单次部署验证。" if deploy_test else "开始货币战争单次拖动验证。" if drag_test else "开始货币战争只读识别。" if currency_wars else "开始执行每日任务。助手将最小化，让游戏保持前台。")
-        self.root.iconify()
+                self.table.item(name, values=(label, "等待" if enabled else "未加入", detail), tags=() if enabled else ("skipped",), has_result=False, metrics=None)
+        if operation == "plan":
+            self._log("核对本次计划。")
+        else:
+            self._log("开始标准A8-40开发；未知页面和反馈停下留证。" if currency_standard else "开始货币战争启动准备，不开始对局。" if currency_prepare else "开始差分宇宙自动演算。助手将最小化，让游戏保持前台。" if differential_universe else "开始货币战争流程推进验证。" if flow_test else "开始货币战争当前节点战斗验证。" if node_test else "开始货币战争单次部署验证。" if deploy_test else "开始货币战争单次拖动验证。" if drag_test else "开始货币战争只读识别。" if currency_wars else "开始执行每日任务。助手将最小化，让游戏保持前台。")
+            self.root.iconify()
 
         def work() -> None:
             def send(event: dict[str, Any]) -> None:
@@ -1201,6 +1204,7 @@ class AutoHSRWindow:
             if isinstance(result, dict):
                 self._task(result, log=False)
         status = str(report.get("status", "partial"))
+        plan_label = None
         currency = report.get("operation", self.active_operation).startswith("currency_wars")
         standard_completed = (report.get("operation", self.active_operation) == "currency_wars_standard"
                               and standard_run_verified(report.get("currency_wars") or {}))
@@ -1254,7 +1258,12 @@ class AutoHSRWindow:
             # Keep the frozen report's week explicit in the retained result.
             # The preview may advance to a new week while this window stays open.
             result_message = message.replace("本周", week+" 当周") if valid_week else message
-            self.summary.set(self.summary.get()+"\n"+result_message)
+            scoped = plan_result(report)
+            if scoped is None:
+                self.summary.set(self.summary.get()+"\n"+result_message)
+            else:
+                plan_label, summary = scoped
+                self.summary.set(summary)
         self.result_alert.set(issue_text(report))
         if report.get("report_saved") is False:
             self.summary.set("报告未保存\n"+self.summary.get())
@@ -1264,8 +1273,9 @@ class AutoHSRWindow:
         if report.get("report_saved") is False:
             self.history_context.set("本次报告未写入磁盘 · " + self.history_context.get())
         self._replace_text(self.report_text, json.dumps(report, ensure_ascii=False, indent=2))
-        self.current_task.set(STATUS_NAMES.get(status, status))
-        self._log(self.summary.get(), "success" if status in ("success", "completed", "done") else "warning")
+        self.current_task.set(plan_label or STATUS_NAMES.get(status, status))
+        self._log(self.summary.get(), "success" if status in ("success", "completed", "done")
+                  and plan_label != "结果待核对" else "warning")
         if report.get("run_dir"):
             self.last_run_dir = Path(report["run_dir"])
             self.last_report_file = self.last_run_dir / "report.json"
@@ -1274,7 +1284,7 @@ class AutoHSRWindow:
         self._set_busy(False)
         self.focus_waiting = False
         self._refresh_recovery()
-        label = STATUS_NAMES.get(status, status)
+        label = plan_label or STATUS_NAMES.get(status, status)
         if standard_completed and status == "success":
             label = "开发局结算已核实"
         elif currency and not standard_completed and status not in ("failed", "stopped"):
@@ -1376,6 +1386,9 @@ class AutoHSRWindow:
                     self._currency_observed(event.get("data", {}))
                 elif kind == "plan_phase":
                     self.plan_phase = event.get("phase", "")
+                    if (self.active_operation == "plan" and self.plan_phase in ("daily", "weekly")
+                            and self.running and not self.paused and not self.stopping):
+                        self.root.iconify()
                     self.current_task.set("核对本周演算记录" if self.plan_phase == "weekly" else "准备日常")
                 elif kind == "plan_daily_result":
                     self._plan_daily_result(event.get("report", {}))

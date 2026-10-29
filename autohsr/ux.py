@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import re
 
 OPERATIONS = {"plan": "日常与周常计划", "daily": "每日", "reward_only": "仅补领奖", "enter_game": "进入游戏", "check": "窗口检测",
               "currency_wars": "货币战争只读识别", "currency_wars_drag_test": "货币战争单次换位",
@@ -114,6 +115,75 @@ def issue_text(report: dict) -> str:
     if error:
         parts.append(" ".join(str(error).split()))
     return " · ".join(parts)
+
+
+def plan_result(report: dict) -> tuple[str, str] | None:
+    """Use the frozen task scope; missing legacy context retains its old view."""
+    if report.get("operation") != "plan":
+        return None
+    weekly = report.get("weekly_plan")
+    tasks = weekly.get("daily_tasks") if isinstance(weekly, dict) else None
+    if (not isinstance(tasks, list) or any(not isinstance(name, str) or name not in
+            ("assignments", "battle", "daily", "mail", "battlepass") for name in tasks)
+            or len(tasks) != len(set(tasks))):
+        return None
+    status = report.get("status")
+    label = {"success": "全部完成", "partial": "部分完成", "failed": "失败",
+             "stopped": "已停止", "cancelled": "已停止"}.get(status, "运行结束")
+    if status == "success" and report.get("report_saved") is not True:
+        label = "结果待核对"
+    weekly_status = weekly.get("status")
+    if tasks and status == "success" and report.get("report_saved") is True and weekly_status in ("disabled", "not_due"):
+        label = "日常已完成"
+    elif not tasks and status == "success" and report.get("report_saved") is True:
+        label = {"not_due": "本次无需执行", "complete": "周常演算完成" if weekly.get("mode") == "differential_universe" else "周常完成",
+                 "already_complete": "周常已完成", "disabled": "本次未执行任务"}.get(weekly_status, label)
+    parts = [label]
+    if not tasks and weekly_status == "not_due":
+        parts.append("周常未到期")
+    resources = (("stamina_spent", "stamina_pending", "开拓力"),
+                 ("immersifiers_spent", "immersifiers_pending", "沉浸器"))
+    unexpected_cost = any(key in report and (type(report[key]) is not int or report[key] != 0)
+                          for pair in resources for key in pair[:2])
+    if label == "本次无需执行" and (unexpected_cost or report.get("daily_verified") is True):
+        label = parts[0] = "结果待核对"
+    if "battle" in tasks or unexpected_cost:
+        if "battle" in tasks:
+            value, _ = reported_battle_metrics(report)
+            parts.append("副本 "+value)
+        for spent, pending, name in resources:
+            amount, unknown = report.get(spent), report.get(pending, 0)
+            if spent == "stamina_spent" or amount or unknown or (spent in report and type(amount) is not int):
+                parts.append(f"已确认 {amount} {name}" if type(amount) is int and amount >= 0 else name+"消耗未记录")
+            if pending in report and (type(unknown) is not int or unknown < 0):
+                parts.append(name+"待核对")
+            elif type(unknown) is int and unknown > 0:
+                parts.append(f"{unknown} {name}待核对")
+    if "daily" in tasks or report.get("daily_verified") is True:
+        parts.append("实训奖励已核实" if report.get("daily_verified") is True else "实训奖励未核实")
+    if any(isinstance(row, dict) and row.get("task") == "close_game" for row in report.get("results", [])):
+        parts.append(exit_text(report))
+    lines = [" · ".join(parts)]
+    message = weekly.get("message")
+    if weekly_status == "not_due":
+        try:
+            due = datetime.fromisoformat(weekly["due_at"])
+            if due.tzinfo is None:
+                raise ValueError("Missing time zone")
+            from .weekly_plan import CHINA
+            lines.append(("周常未到期 · " if tasks else "")+"计划时间："+
+                         due.astimezone(CHINA).strftime("%Y-%m-%d %H:%M")+"（北京时间）")
+        except (KeyError, TypeError, ValueError):
+            if isinstance(message, str) and message:
+                lines.append(message)
+    elif weekly_status != "disabled" and isinstance(message, str) and message and message != report.get("error"):
+        week = weekly.get("week")
+        lines.append(message.replace("本周", week+" 当周") if isinstance(week, str) and
+                     re.fullmatch(r"\d{4}-\d{2}-\d{2}", week) else message)
+    recovery = recovery_text(report)
+    if recovery:
+        lines.append(recovery)
+    return label, "\n".join(lines)
 
 
 def universe_result(report: dict) -> tuple[str, str]:

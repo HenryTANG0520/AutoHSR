@@ -76,9 +76,30 @@ class PlanTests(unittest.TestCase):
         runner = self.runner()
         self.settings.weekly_mode = "currency_wars"
         self.settings.stamina_limit = 10
+        self.settings.assignments = self.settings.battle = self.settings.daily = False
         report = runner.run()
         self.assertEqual(report.weekly_plan["mode"], "differential_universe")
+        self.assertEqual(report.weekly_plan["daily_tasks"], ["assignments", "battle", "daily"])
         self.assertEqual(self.calls[0][0].stamina_limit, 240)
+
+    def test_future_weekly_only_freezes_empty_daily_scope_without_a_child(self):
+        self.settings = replace(self.settings, assignments=False, battle=False, daily=False,
+                                mail=False, battlepass=False, weekly_day=7)
+        report = self.runner().run()
+        self.assertEqual(self.calls, [])
+        self.assertEqual(report.weekly_plan["daily_tasks"], [])
+        self.assertEqual(report.weekly_plan["status"], "not_due")
+        self.assertTrue(report.report_saved)
+        self.assertEqual(report.status, "success")
+
+    def test_due_weekly_only_does_not_claim_a_daily_result(self):
+        self.settings = replace(self.settings, assignments=False, battle=False, daily=False,
+                                mail=False, battlepass=False, weekly_mode="currency_wars")
+        report = self.runner().run()
+        self.assertEqual(self.calls, [])
+        self.assertEqual(report.weekly_plan["daily_tasks"], [])
+        self.assertNotIn("日常结果", report.weekly_plan["message"])
+        self.assertEqual(report.status, "partial")
 
     def test_daily_proof_is_published_before_weekly_can_finish(self):
         observed = []

@@ -93,6 +93,8 @@ class PlanRunner:
         report.run_dir, report.started_at, report.source = str(directory), started.isoformat(), str(self.root.parent)
         report.weekly_plan = dict(week=self.slot.week, due_at=self.slot.due_at.isoformat(),
                                  mode=self.settings.weekly_mode, requested_runs=self.settings.weekly_runs,
+                                 daily_tasks=[name for name in ("assignments", "battle", "daily", "mail", "battlepass")
+                                              if getattr(self.settings, name)],
                                  status="waiting", score_rewards_verified=False, children=[])
         try:
             self._checkpoint()
@@ -119,7 +121,8 @@ class PlanRunner:
                 self._weekly_result("not_due", "周常未到计划时间。")
             elif self.settings.weekly_mode == "currency_wars":
                 report.status = "partial"
-                self._weekly_result("unavailable", "货币战争周积分奖励尚未接入；日常结果已保留。")
+                self._weekly_result("unavailable", "货币战争周积分奖励尚未接入"+
+                                    ("；日常结果已保留。" if daily_selected else "。"))
             else:
                 self.emit(dict(type="task", task="weekly", status="running", detail="核对本周演算记录"))
                 guard = WeeklyGuard(self.root, self.settings, self.slot)
