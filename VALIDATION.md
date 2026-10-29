@@ -11,6 +11,8 @@
 
 已查看到期及跨周后的截图，首页继续显示计划与真实状态，没有添加提示段落或新的启动入口。这次修复时间提示过期，不证明真实玩家的学习／注意力成本或整屏游戏复刻已经验收；日常周常组合实机、货币战争周常与积分奖励的既有边界不变。未启动、检测或操作游戏。
 
+源码`6b56d52`通过`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，构建日志`runs/weekly-preview-build.log`。使用独立临时配置和`--no-admin-launch`，11:27打开窗口并保持首页不动；实际跨过11:29后，提示从“差分宇宙 · 1 局 · 周四 11:29 后”自动变为“差分宇宙 · 1 局 · 到期，运行时核对”。没有修改系统时间、点击运行／保存、切页或操作游戏。截图`runs/weekly-preview-package-before-due.png`与`weekly-preview-package-after-due.png`、观察记录`runs/weekly-preview-native-observation.json`保留。正常关闭退出码0，239份正式用户文件和独立配置哈希未变；125项UI素材、4份清单、23个上游文件与源码一致。发布记录`runs/weekly-preview-package-verification.json`，备份`build/userdata-weekly-preview-20261029_112657/`，EXE SHA-256为`27112aa12e1c2e309acd7781c209da4402f1699efebdea925313363dd7fa95a5`。本轮计划与首页结果分别归档为`runs/weekly-preview-plan-ui/`和`weekly-preview-home-feedback-ui/`。
+
 ## 2026-10-29：校正指南图标与任务卡静态素材
 
 以`1d3bc55`为修改前基线，对照同一批已保存的CN 4.6.0画面，发现每日实训图标混入原指针，活跃标记含放射纹且失去渐变，任务水印被拉伸并叠在偏黄的内页上。此次重提取五项既有素材：三个页签改取未选中且无遮挡的区域，连续计算透明度并保持原比例；活跃标记改取任务卡区域，保留金色渐变、白色内环和抗锯齿；水印保留原色及比例，内页改为白色。源图、裁切、方法和输出哈希见`assets/ui/sources.json`，未新增素材数量或分发整图。
