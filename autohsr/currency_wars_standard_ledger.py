@@ -102,11 +102,19 @@ def valid_receipt(action):
     return gained == 4
 
 
-def ledger_status(actions, *, investment_projection=None):
+def ledger_status(actions, *, investment_projection=None, popup_projection=None):
     for index,action in enumerate(actions):
         if action.get('status') != 'verified':
             return 'pending' if action.get('status') == 'pending' else 'unknown'
         name = action.get('action', '')
+        if action.get('movement_popup') is not None:
+            from .currency_wars_standard_popup import valid_parent
+            if not valid_parent(action,actions):return 'unknown'
+            if action.get('popup_verified') is not True and index!=popup_projection:return 'pending'
+        from .currency_wars_standard_popup import ACTIONS as POPUP_ACTIONS,valid_child
+        if name in POPUP_ACTIONS:
+            if not valid_child(action,actions):return 'unknown'
+            continue
         if name=='refresh_standard_supply':
             from .currency_wars_standard_supply_refresh import valid_receipt as valid_supply_refresh,valid_prefix
             if not valid_supply_refresh(action,actions) or not valid_prefix(action,actions):return 'unknown'

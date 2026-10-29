@@ -702,3 +702,9 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 ## 2026-10-29 记忆开拓者配置名策略适配
 
 同一March7thAssistant固定提交的`get_remembrance_trailblazer_name`及购买、保留、聘用书、顾问和补给调用，改写为AutoHSR的本局名称协议、原生策略偏好和一致身份核验。保留上游署名、固定源码Git blob及完整GPL v3许可，具体文件见[source.json](upstream/March7thAssistant/source.json)。名称配置不作图像素材，不引入上游固定费用或输入代码；本地实读名不发送给模型。本轮没有新增游戏素材或模型，真实字体及游戏路径尚未验收，见[开发记录](../docs/currency-wars-development.md)。
+
+## 2026-10-29 标准盛会之星弹窗与文字校准
+
+固定March7thAssistant提交的`move_character`、`check_festival_star_popup`改写为原生部署／换人后的弹窗来源、一次选择／确认及完整角色交付协议，保留上游署名和GPL v3许可，见[source.json](upstream/March7thAssistant/source.json)。AutoHSR原有花火偏好继续保留，没有复制固定首项或上游输入代码。
+
+[两卡文字夹具](../autohsr/tests/fixtures/currency_wars_star_two.json)来自既有4.6画面119／121，仅保留弹窗区域原OCR、原图及清单SHA-256，不修改识别文字，不含UID、账号或完整图像。游戏UI文字与角色内容归HoYoverse及相应权利人；来源记录不授予额外再许可。本轮未新增公开游戏图像或模型，119／121／169原图与清单保持本地忽略；用于查看的裁图和运行时局部图像来源不进入模型请求。布局、选中反例与未验收范围见[开发记录](../docs/currency-wars-development.md)。

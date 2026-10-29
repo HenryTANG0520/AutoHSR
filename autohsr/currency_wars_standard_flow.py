@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -42,12 +43,15 @@ def next_action(scene, confidence=.65, *, session=None):
     prior = dict(session, actions=actions[:-1], rederiving_action=pending) if pending else session
     choice = _next_action(scene, confidence, session=prior)
     if pending and (choice.intent != pending.get('action') or choice.expected != pending.get('expected')
-                    or list(choice.payload) != pending.get('target', [])):
+                    or json.dumps(list(choice.payload),sort_keys=True,allow_nan=False)!=json.dumps(pending.get('target', []),sort_keys=True,allow_nan=False)):
         raise AutomationError('当前页面推导结果与已落盘意图不同，未替换或重放动作。')
     return choice
 
 
 def _next_action(scene, confidence=.65, *, session=None):
+    from .currency_wars_standard_popup import active_action as popup_action
+    popup=popup_action(scene,session or {},confidence)
+    if popup is not None:return popup
     from .currency_wars_standard_consumables import active_action as consumable_action
     consumable=consumable_action(scene,session or {},confidence)
     if consumable is not None:return consumable
@@ -215,6 +219,9 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None, session=None):
+    if choice.expected in ('standard_movement_star_selected','standard_movement_star_returned','standard_popup_unit_board'):
+        from .currency_wars_standard_popup import feedback
+        return session is not None and feedback(choice,scene,session,confidence)
     if choice.expected=='standard_supply_refreshed':
         from .currency_wars_standard_supply_refresh import feedback
         return before is not None and session is not None and feedback(choice,before,scene,session,confidence)
@@ -435,7 +442,9 @@ def run_standard(c):
         from .currency_wars_standard_rewards import panel_stale as reward_stale
         from .currency_wars_standard_consumables import panel_stale as consumable_stale
         from .currency_wars_standard_collection import stale as collection_stale,ordinary,profile as current_profile
-        if kind == 'character' and not panel_stale(store.data) and not sale_stale(store.data) and not equipment_stale(store.data) and not reward_stale(store.data) and not consumable_stale(store.data) and not collection_stale(store.data):
+        from .currency_wars_standard_popup import panel_stale as popup_stale,profile as popup_profile,require_panel_account
+        if kind == 'character' and not panel_stale(store.data) and not sale_stale(store.data) and not equipment_stale(store.data) and not reward_stale(store.data) and not consumable_stale(store.data) and not collection_stale(store.data) and not popup_stale(store.data):
+            require_panel_account(scene,store.data,c.settings.ocr_confidence)
             from .currency_wars_collector import owned_profile
             try:
                 profile = (current_profile(scene,store.data,c.settings.ocr_confidence) if ordinary(store.data)
@@ -453,6 +462,7 @@ def run_standard(c):
                     inspection_action_id=inspecting.get('inspection_action_id'))
                 problem = record_profile(store.data,profile,inspecting,profile_source,c.runner.input_epoch)
                 problem = problem or equipment_profile(store.data,profile,inspecting,profile_source,c.runner.input_epoch)
+                problem = problem or popup_profile(store.data,profile,inspecting,profile_source,c.runner.input_epoch,scene,c.settings.ocr_confidence)
                 store.persist()
                 if problem:
                     raise AutomationError(problem)
@@ -534,6 +544,11 @@ def run_standard(c):
         if choice.payload:
             action['target'] = list(choice.payload)
             store.persist()
+        from .currency_wars_standard_popup import bind_move,bind_intent as bind_popup
+        bind_move(store.data,choice,scene,c.settings.ocr_confidence)
+        bind_popup(store.data,choice,scene,c.settings.ocr_confidence)
+        if choice.intent in ('deploy_standard_owned','stage_standard_exchange','select_standard_movement_star','confirm_standard_movement_star','inspect_standard_popup_unit','close_standard_popup_unit','close_standard_popup_stale_panel'):
+            store.persist()
         if choice.intent=='refresh_standard_supply':
             from .currency_wars_standard_supply_refresh import bind_intent
             bind_intent(store.data,choice,scene,c.settings.ocr_confidence)
@@ -578,7 +593,7 @@ def run_standard(c):
         c.report.currency_wars = store.data
         c.log('标准A8-40开发：' + choice.intent)
         c.currency_standard_input(scene, choice)
-        elapsed, after, stable = 0., None, 0
+        elapsed, after, stable, previous_popup = 0., None, 0, None
         while elapsed < 60:
             started, inactive = time.monotonic(), c.runner.inactive_duration
             try:
@@ -595,7 +610,11 @@ def run_standard(c):
                 else:
                     if observed_account != store.data.get('account_key'):
                         raise AutomationError('标准动作反馈账号来源不一致，原意图保留待核对。')
-                    ready = transition_ready(choice, after, c.settings.ocr_confidence, before=scene,session=store.data)
+                    from .currency_wars_standard_popup import arrival as popup_arrival
+                    popup_stamp=popup_arrival(choice,after,store.data,c.settings.ocr_confidence)
+                    ready = bool(popup_stamp) or transition_ready(choice, after, c.settings.ocr_confidence, before=scene,session=store.data)
+                    if popup_stamp!=previous_popup:stable=0
+                    previous_popup=popup_stamp
                 stable = stable+1 if ready else 0
                 required = 2 if choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable',
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
@@ -603,9 +622,16 @@ def run_standard(c):
                                                     'standard_reward_returned','standard_supply_selected','standard_supply_refreshed',
                                                     'standard_investment_selected','standard_investment_applied',
                                                     'standard_stale_unit_board','standard_collected_unit_board',
+                                                    'standard_movement_star_selected','standard_movement_star_returned','standard_popup_unit_board',
                                                     'standard_consumable_applied','standard_consumable_returned','standard_consumable_board') else 1
                 if stable >= required:
                     after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
+                    if previous_popup:
+                        action.update(status='verified',after=after_path)
+                        from .currency_wars_standard_popup import opened
+                        opened(store.data,choice,after,c.settings.ocr_confidence)
+                        store.persist();scene=after
+                        break
                     if choice.intent in FINANCIAL_ACTIONS:
                         from .currency_wars_standard_trading import financial_feedback
                         from .currency_wars_standard_ledger import valid_receipt
@@ -625,7 +651,7 @@ def run_standard(c):
                         store.data.pop('expected_board', None)
                     if choice.intent == 'start_standard_node':
                         store.data['node_attempt']['status']='observing'
-                    if choice.intent in ('inspect_standard_unit','inspect_standard_exchange_unit','inspect_standard_equipment_unit','inspect_standard_reward_unit','inspect_standard_consumable_unit'):
+                    if choice.intent in ('inspect_standard_unit','inspect_standard_exchange_unit','inspect_standard_equipment_unit','inspect_standard_reward_unit','inspect_standard_consumable_unit','inspect_standard_popup_unit'):
                         action['inspection_run_dir']=c.report.run_dir
                         store.data['inspecting'] = dict(zone=choice.payload[0],slot=choice.payload[1],
                                                         node=choice.payload[2],signature=choice.payload[3],
@@ -671,6 +697,9 @@ def run_standard(c):
                     elif choice.intent in ('close_standard_consumable_unit','close_standard_consumable_stale_panel'):
                         if choice.intent=='close_standard_consumable_stale_panel':
                             store.data.pop('inspecting',None);store.data.pop('collection',None)
+                    elif choice.intent in ('confirm_standard_movement_star','close_standard_popup_unit','close_standard_popup_stale_panel'):
+                        from .currency_wars_standard_popup import returned as popup_returned
+                        popup_returned(store.data,choice,after,c.settings.ocr_confidence)
                     elif choice.intent == 'inspect_standard_sale_unit':
                         store.data['inspecting'] = dict(zone='bench',slot=choice.payload[4],node=choice.payload[0],
                                                         signature=choice.payload[8],input_epoch=c.runner.input_epoch,
@@ -689,7 +718,7 @@ def run_standard(c):
                         from .currency_wars_standard_deployment import transfer_collection, deployment_feedback
                         action['feedback'] = deployment_feedback(scene,after,choice.target,c.settings.ocr_confidence)
                         transfer_collection(store.data,scene,after,choice.target,action['after'],c.settings.ocr_confidence)
-                    elif choice.intent not in ('close_standard_unit','open_standard_shop','close_standard_shop',
+                    elif choice.intent not in ('close_standard_unit','open_standard_shop','close_standard_shop','select_standard_movement_star',
                                                 'buy_standard_experience','refresh_standard_shop','sell_standard_owned'):
                         store.data.pop('collection',None)
                     if choice.intent == 'close_standard_shop':

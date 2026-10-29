@@ -12,7 +12,7 @@ STALE_CLOSE='close_standard_stale_unit'
 
 
 def ordinary(session):
-    for key in ('equipment','sale','exchange','consumable'):
+    for key in ('equipment','sale','exchange','consumable','movement_popup'):
         data=session.get(key,{})
         if data and data.get('status')!='verified':return False
     return session.get('reward',{}).get('status') not in ('unit_verifying','unit_mismatch')

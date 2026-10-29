@@ -29,6 +29,11 @@
   ],
   "adaptations": [
     {
+      "path": "autohsr/currency_wars_standard_popup.py",
+      "reference_functions": ["move_character", "check_festival_star_popup"],
+      "kind": "native deferred movement custody for the observed festival-star popup: complete details/name association, current selected-card proof, separate single selection/confirmation and full fresh roster verification; preserves AutoHSR Sparkle preference, scoped visual stability and immutable ledger lineage rather than upstream fixed first-card clicks or cached-list swapping"
+    },
+    {
       "path": "autohsr/currency_wars_names.py",
       "reference_functions": ["get_remembrance_trailblazer_name", "buy_aglaea", "buy_seele", "sell_characters_aglaea_strategy", "sell_characters_seele_strategy", "_check_hiring_book", "_check_expert_invitation", "check_supply_phase"],
       "kind": "configured remembrance display-name preference rewritten across native buying, deployment, exchange, bench cleanup and rewards; frozen per match, literal current OCR proof, observed prices and complete identity receipts; local name metadata is masked from model payloads, no upstream fixed character fee or IO"
