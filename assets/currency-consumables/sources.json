@@ -131,13 +131,13 @@
       "sample": "runs/currency-wars-live-20261018-rules/67-tutorial-reforge-1.sample.json",
       "manifest_sha256": "59183b9df54ccc2ac2d35d01b5ba980bdad574dbccc1d59434200d4061709296",
       "image_sha256": "f52591b2847d54d35d026c45ac95366066e3412ec2a9e28dd3e1540ecef872f9",
-      "scope": "equipment reforge preserves quality; inventory basic equipment supported"
+      "scope": "same-quality reforge rule, used for inventory basics and the quality-count contract of recognized worn gear"
     },
     {
       "sample": "runs/currency-wars-live-20261018-rules/68-tutorial-reforge-2.sample.json",
       "manifest_sha256": "8979ef9119bd2db0b8c1ac112de999ffbc902288d45b612c2de4fed7ef1d2fd3",
       "image_sha256": "907b316f1a07a1541e7d3136a7a7cc42461e7ff442dae20dd35e935eb52445b7",
-      "scope": "role-wide reforge is distinct and remains unsupported"
+      "scope": "role-wide reforge tutorial and three-to-three worn-icon illustration; native named-core extension re-reads all roles and records observed changed/unchanged results; no live action acceptance"
     },
     {
       "sample": "runs/currency-wars-live-20261018-rules/69-tutorial-duplicator.sample.json",

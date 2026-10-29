@@ -82,16 +82,20 @@ def proposal(scene,session,confidence=.65):
         preserve={'shoe'} if prior['strategy']=='aglaea' else {'shoe','knife','star'}
         target=next((c for c in cells if c.slot<12 and c.name in BASICS-preserve),None)
         if target:source=by_name['stove'][0]
+        else:
+            from .currency_wars_worn_reforge import eligible
+            if eligible(prior['strategy'],core,snapshot.node,prior['actions']):source=by_name['stove'][0]
     if source is None:return None
     role=next(c for c in roster_cells(scene,confidence) if (c.zone,c.slot)==(core.zone,core.slot))
     target=target or role
     target_point=target.point
-    target_kind=target.name if EFFECTS[source.name]=='reroll' else core.name
+    inventory_target=EFFECTS[source.name]=='reroll' and target is not role
+    target_kind=target.name if inventory_target else core.name
     target_id=target.slot
     payload=(snapshot.node,snapshot.gold,snapshot.hp,snapshot.level,source.name,source.slot,source.quantity,source.signature,
-             'inventory' if EFFECTS[source.name]=='reroll' else core.zone,target_id,target_kind,target.signature,digest(dict(bank)))
+             'inventory' if inventory_target else core.zone,target_id,target_kind,target.signature,digest(dict(bank)))
     return StandardAction(STAGE,'standard_consumable_applied',EquipmentPlan(source.point,target_point,
-        'inventory' if EFFECTS[source.name]=='reroll' else core.zone,target_id,source.slot),
+        'inventory' if inventory_target else core.zone,target_id,source.slot),
         details=(source.name,EFFECTS[source.name],core.name,POLICY),payload=payload)
 
 
@@ -109,6 +113,8 @@ def bind_intent(session,choice,scene,confidence=.65):
                 count_mode=source.quantity_source,
                 run_dir=prior['collection']['run_dir'],input_epoch=prior['collection']['input_epoch'],
                 strategy=prior['strategy'],records=json.loads(json.dumps(prior['collection']['units'])))
+    from .currency_wars_worn_reforge import worn_target,bind as bind_worn
+    if worn_target(choice.payload):bind_worn(origin,scene,choice,confidence)
     session['actions'][-1]['consumable_origin']=origin
     session['actions'][-1]['consumable_verified']=False
     session['consumable']=json.loads(json.dumps(origin))
@@ -208,6 +214,8 @@ def feedback(choice,before,after,session,confidence=.65):
         unit=next(u for u in raw['before']['roster'] if (u['zone'],u['slot'])==tuple(raw['target'][8:10]))
         expected.update(unit['equipment'])
     elif effect=='reroll':
+        from .currency_wars_worn_reforge import worn_target
+        if worn_target(raw['target']):return actual==expected
         expected[raw['target'][10]]-=1;expected=+expected
         extra=actual-expected
         return not expected-actual and sum(extra.values())==1 and all(k in BASICS and k!=raw['target'][10] for k in extra)
@@ -227,7 +235,7 @@ def applied(session,choice,scene,confidence=.65):
     data.update(status='verifying',after_stock=dict(counts(stock(scene,confidence))),
                 after_board=[state.node,state.gold,state.hp,state.level,state.experience,list(state.deployment)])
     if choice.intent==SELECT:data['selected_item']=choice.payload[2]
-    if EFFECTS[data['target'][4]]=='reroll':
+    if EFFECTS[data['target'][4]]=='reroll' and data['target'][8]=='inventory':
         base=spent(data);base[data['target'][10]]-=1
         data['selected_item']=next(iter(Counter(data['after_stock'])-(+base)))
     session.pop('collection',None)
@@ -278,6 +286,13 @@ def verify(session,scene,epoch,confidence=.65):
         signature=session['collection']['units'][u.zone+':'+str(u.slot)]['signature'],
         source=session['collection']['units'][u.zone+':'+str(u.slot)]['source'],
         run_dir=session['collection']['run_dir'],input_epoch=epoch) for u in snapshot.roster]
+    from .currency_wars_worn_reforge import worn_target,publish,same
+    if worn_target(data['target']):
+        publish(effect,snapshot,data['target'])
+        changed=not same(data['worn_reforge']['equipment_before'],effect['worn_after'])
+        effect['worn_result']='changed_observed' if changed else 'unchanged_observed'
+        if data['target'][6]=='infinite' and not changed:
+            data['observation_pending']='无限全身重铸后的穿戴没有独立变化，未认定实际使用或重发。';return None
     if not valid_effect(session['actions'][data['action_id']],session['actions'],require_complete=True):
         data['status']='mismatch';return '消耗品的实际角色、装备或物品结果不符，未重发。'
     data['status']='verified'
@@ -311,8 +326,13 @@ def valid_effect(action,actions,*,require_complete=False):
                 or origin.get('strategy') not in ('aglaea','seele')
                 or any(type(v) is not int or v<0 for v in origin['stock_before'].values())):return False
         old=canonical(origin['before']['roster']);kind=EFFECTS[target[4]]
-        if kind=='reroll':
-            if target[8]!='inventory' or target[9]>=12 or target[10] not in BASICS or not origin['stock_before'].get(target[10]):return False
+        from .currency_wars_worn_reforge import worn_target,valid_prefix,valid_result
+        worn=worn_target(target)
+        if kind=='reroll' and not worn:
+            if (target[8]!='inventory' or target[9]>=12 or target[10] not in BASICS
+                    or not origin['stock_before'].get(target[10]) or origin.get('worn_reforge') is not None):return False
+        elif worn:
+            if not valid_prefix(action,actions):return False
         else:
             if target[8]=='inventory':return False
             unit=next(u for u in old if (u['zone'],u['slot'])==tuple(target[8:10]))
@@ -346,6 +366,7 @@ def valid_effect(action,actions,*,require_complete=False):
                     or inspection.get('target')!=[proof['zone'],proof['slot'],target[0],proof['signature'],action['id']]
                     or not proof.get('source')):return False
         base=spent(origin);bank=Counter(effect['stock_after'])
+        if worn:return valid_result(action,actions,old,new)
         if kind=='copy':
             name=target[10];a=[u for u in old if u['name']==name];b=[u for u in new if u['name']==name]
             core=next(u for u in new if (u['zone'],u['slot'])==tuple(target[8:10]))

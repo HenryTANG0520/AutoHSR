@@ -5,6 +5,14 @@
   "license": "GNU GPL version 3",
   "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
   "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json"],
+  "native_extensions": [
+    {
+      "path": "autohsr/currency_wars_worn_reforge.py",
+      "mechanic_manifest": "assets/currency-consumables/sources.json",
+      "native_samples": ["67-tutorial-reforge-1.sample.json", "68-tutorial-reforge-2.sample.json"],
+      "kind": "AutoHSR-authored role-wide reforge extension of the native tool protocol, based on existing local game tutorials rather than upstream role-wide IO; protects wanted gear, limits each role/node, verifies complete identities and ordered worn results, keeps unchanged finite consumption distinct from changed gear"
+    }
+  ],
   "mechanic_references": [
     {
       "url": "https://sr.mihoyo.com/news/162649?nav=home&type=news_all",
@@ -134,7 +142,7 @@
         "equip_aglaea",
         "equip_seele"
       ],
-      "kind": "named-core one-input native tool protocol with observed stock delta and independently recollected complete roster: copies/upgrades, equipment removal, basic inventory reforge and separate four-option token selection; durable origins, scoped profile proofs and no unknown replay; no upstream blind retry or fixed first-option fallback"
+      "kind": "named-core one-input native tool protocol with observed stock delta and independently recollected complete roster: copies/upgrades, equipment removal, basic inventory reforge, native-tutorial role-wide reforge extension and separate four-option token selection; durable origins, scoped profile proofs and no unknown replay; no upstream blind retry or fixed first-option fallback"
     },
     {
       "path": "autohsr/currency_wars_supply_policy.py",

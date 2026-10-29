@@ -462,6 +462,8 @@ def run_standard(c):
                     inspection_action_id=inspecting.get('inspection_action_id'))
                 problem = record_profile(store.data,profile,inspecting,profile_source,c.runner.input_epoch)
                 problem = problem or equipment_profile(store.data,profile,inspecting,profile_source,c.runner.input_epoch)
+                from .currency_wars_worn_reforge import record_profile as worn_reforge_profile
+                problem = problem or worn_reforge_profile(store.data,profile,inspecting,profile_source,c.runner.input_epoch)
                 problem = problem or popup_profile(store.data,profile,inspecting,profile_source,c.runner.input_epoch,scene,c.settings.ocr_confidence)
                 store.persist()
                 if problem:

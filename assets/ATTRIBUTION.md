@@ -720,3 +720,9 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 参考固定March7thAssistant的`check_main_screen`、`sell_characters_seele_strategy`和`_sell_single_character`，将取得希儿后的场上非策略角色整理改写为AutoHSR前台／后台的独立查看与信用回执。来源函数、固定Git blob及GPL v3许可继续记在[source.json](upstream/March7thAssistant/source.json)，没有移植上游输入代码或缓存删除即成功的判定。
 
 复用既有2026-10-26三份角色面板的当前`+5／+1／+2`返还文字与原图／清单哈希，未修改原图、重新取得游戏画面或公开账号区域；这些画面只校准返还字段，不能证明新增场上出售动作已通过实机。游戏素材权利仍归HoYoverse及相应权利人，来源记录不授予额外再许可。新增公开检查只生成合成槽位，使用既有署名图标构造空装备面板；场上来源及有界局部图像只保存到本地对局记录，不进入模型。验证与未实现的携装返回效果见[开发记录](../docs/currency-wars-development.md)。
+
+## 2026-10-29 原生全身重铸扩展
+
+[全身重铸协议](../autohsr/currency_wars_worn_reforge.py)由AutoHSR根据既有CN 4.6游戏教程67／68号原生编写，原图及清单哈希仍见[消耗品来源](currency-consumables/sources.json)。67号说明冶金炉的同品质重铸，68号明确对角色全部穿戴装备重新随机；已查看排除账号区域的旧教程裁图，其中示意角色前后三个装备格均保留。此为规则校准，不是新实机动作或独立留出。
+
+上游`equip_aglaea`、`equip_seele`提供仓库重铸及命名工具策略参考，全身目标及结果核验属于本项目新增扩展，分别记在[source.json](upstream/March7thAssistant/source.json)。没有添加新公开游戏图像或模型，测试使用既有署名图标与合成槽位。旧教程、离线QA裁图、角色有界来源与新回放保持本地忽略，QA查看排除账号区域，对局图像来源不加入策略模型载荷；游戏内容权利归HoYoverse及相应权利人，来源记录不授予额外再许可。
