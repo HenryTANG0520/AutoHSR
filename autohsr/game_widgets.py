@@ -183,8 +183,9 @@ class Header(Surface):
         ui.plan_ribbon.grid(row=0, column=0, sticky="ew")
         ui.weekly_button = SceneButton(self.plan, scale, text="周常计划", command=ui._show_weekly_plan)
         ui.weekly_button.grid(row=0, column=1, padx=(round(10*scale), 0))
+        self.bind("<Configure>", self.position_plan, add="+")
 
-    def position_plan(self):
+    def position_plan(self, _event=None):
         if getattr(self.ui, "action_page", "home") in ("home", "tasks"):
             d = lambda n: round(n*self.scale)
             self.plan.place(x=d(200), y=d(18), width=max(1, self.winfo_width()-d(550)), height=d(46))
@@ -192,7 +193,6 @@ class Header(Surface):
             self.plan.place_forget()
 
     def paint(self,p):
-        self.position_plan()
         p.asset("guide-mark.png",(24,23,62,59),t.GOLD)
         p.text((73,21),"星际和平指南",14,t.GOLD)
         p.text((73,43),self.ui.page_title.get(),17,t.LIGHT)
