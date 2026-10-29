@@ -468,11 +468,11 @@ class AutoHSRWindow:
         self.battle_checkbox.configure(state="normal" if allowed and not self.busy else "disabled")
         battle_enabled = allowed and self.tasks["battle"].get()
         for control in self.stamina_controls:
-            control.configure(state="normal" if battle_enabled and not self.busy else "disabled")
+            control.configure(state="normal" if allowed and not self.busy else "disabled")
         for control in self.dungeon_browse_controls:
             control.configure(state="normal" if allowed and not self.busy else "disabled")
         self.dungeon_list.redraw()
-        self.dungeon_category_combo.configure(state="readonly" if battle_enabled and not self.busy else "disabled")
+        self.dungeon_category_combo.configure(state="readonly" if allowed and not self.busy else "disabled")
         if not allowed:
             hint = "开拓力刷本未授权，当前仅收取委托与奖励"
         elif not battle_enabled:
@@ -526,7 +526,7 @@ class AutoHSRWindow:
         self.refresh_feedback()
 
     def _preset(self, stamina: int, rounds: int) -> None:
-        if self.busy or not self.settings.allow_stamina_spend or not self.tasks["battle"].get():
+        if self.busy or not self.settings.allow_stamina_spend:
             return
         self.stamina_limit.set(str(stamina))
         self.rounds.set(str(rounds))
@@ -634,7 +634,7 @@ class AutoHSRWindow:
                     values["differential_universe_team"] = self.du_team.get().strip()
                 if operation == "reward_only":
                     values.update(assignments=False, battle=False, daily=True, mail=False, battlepass=False)
-                if values["battle"] and self.settings.allow_stamina_spend:
+                if (save or values["battle"]) and self.settings.allow_stamina_spend:
                     values.update(target_name=self.target_name.get().strip(), target_location=self.target_location.get().strip(),
                                   stamina_limit=self._number("stamina_limit", int), use_support=self.use_support.get())
                     from .dungeon_ui import selected_category

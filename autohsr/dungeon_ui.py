@@ -231,7 +231,7 @@ def select_name(ui):
 
 
 def set_count(ui, count):
-    if ui.busy or not ui.settings.allow_stamina_spend or not ui.tasks["battle"].get():
+    if ui.busy or not ui.settings.allow_stamina_spend:
         return
     value = str(max(1, min(count_limit(selected_category(ui)), count)))
     if ui.challenge_count.get() != value:

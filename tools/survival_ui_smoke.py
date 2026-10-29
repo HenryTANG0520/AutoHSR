@@ -54,8 +54,8 @@ def main():
             try:
                 ui._show_page("tasks")
                 root.update()
-                check(f"{scale}_initial_excluded_count_matches_disabled_slider", ui.challenge_count.get() == "24"
-                      and ui.challenge_scale.get() == 24 and ui.challenge_scale.instate(("disabled",)))
+                check(f"{scale}_initial_excluded_count_matches_editable_slider", ui.challenge_count.get() == "24"
+                      and ui.challenge_scale.get() == 24 and not ui.challenge_scale.instate(("disabled",)))
                 check(f"{scale}_initial_excluded_thumb_matches_maximum", thumb_fraction(ui.challenge_scale) > .9)
                 ui.battle_checkbox.invoke()
                 root.update()
@@ -77,7 +77,7 @@ def main():
                 inactive = ui._form_signature()
                 check(f"{scale}_unjoined_dungeon_can_be_browsed", not ui.tasks["battle"].get() and not board.locked
                       and all(str(w.cget("state")) != "disabled" for w in ui.dungeon_browse_controls)
-                      and ui.challenge_entry.instate(("disabled",)))
+                      and not ui.challenge_entry.instate(("disabled",)))
                 check(f"{scale}_unjoined_dungeon_has_no_active_cost", ui.battle_cost.get() == "本次不刷本"
                       and ui.dungeon_target_caption.get().startswith("未加入")
                       and all(board.action_label(m) == "加入计划" for m in board.rows))
