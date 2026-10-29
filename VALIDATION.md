@@ -12,6 +12,8 @@
 
 已查看同尺寸1920×1080的修改前后首页，以及更新后的生存索引和旷宇纷争截图（`runs/guide-artwork-before-*.png`、`guide-artwork-final-*.png`）与`runs/guide-artwork-card-comparison.png`。对照图单独标明游戏参考、修改前和修改后，任务文本及状态各自独立。这些证据证明局部素材及交互改进，不代表整屏像素一致或真实玩家学习／注意力成本已经验收。原水印上端被标题遮挡的部分尚未恢复，纸面边饰等重绘部分仍有差异；日常周常组合实机、货币战争周常和周积分奖励的既有边界不变。未启动、检测或操作游戏。
 
+源码`861df90`通过`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，构建日志`runs/guide-artwork-build.log`。用`--no-admin-launch`打开，按当前画面依次进入生存索引、旷宇纷争并返回每日实训；核对新的图标、焦点、任务卡和计划入口后正常关闭，退出码0。未点击保存、检测或运行。239份用户文件哈希未变，125项UI素材、4份清单及23个上游文件与源码一致；记录`runs/guide-artwork-package-verification.json`，备份`build/userdata-guide-artwork-20261029_105058/`，EXE SHA-256为`69d9c28c0aa55ada8947834f7abafb1a4b475894b45677197dca503b1f972e4c`。正式截图为`runs/guide-artwork-package-home.png`、`guide-artwork-package-tasks.png`、`guide-artwork-package-universe.png`及`guide-artwork-package-return.png`。参考、缩放和还原结果分别归档为`runs/guide-artwork-reference-ui/`、`guide-artwork-responsive-ui/`及`guide-artwork-header-ui/`。
+
 ## 2026-10-29：还原窗口后保持周常入口可见
 
 上一轮正式截图记录了还原后周常按钮未出现、切页后恢复。本轮在`d3b8d01`上使用假后端复现：不切换页面，直接最大化再还原缓存布局，周常按钮落到可见范围之外；原失败`runs/header-restore-before.log`与截图`runs/header-restore-before.png`保留。原来的调用按钮测试仍能打开设置，不能证明玩家看得到或点得到按钮。
