@@ -23,6 +23,8 @@ def client(c):
 def current(c,scene,data=None):
     c.checkpoint();CurrencyWarsWorkflow(c)._require_current_scene(scene)
     identity=account_key(scene,max(.85,c.settings.ocr_confidence))
+    weekly=getattr(c.runner,'currency_weekly_guard',None)
+    if weekly is not None:weekly.require_observation(identity,game_week(local_now()))
     if data is not None:
         if identity!=data['account_key']:raise AutomationError('当前账号与积分领奖记录不同。')
         if game_week(local_now())!=data['game_week']:raise AutomationError('积分领奖已跨游戏周，未使用旧目标继续输入。')
@@ -132,7 +134,10 @@ def inspect_rewards(c):
         observed=dict(account_key=identity,game_week=game_week(now),observed_at=now.isoformat(),current=points.current,
                       confidence=confidence,period=period,evidence=evidence(c,scene,'initial'))
         metadata=client(c);current(c,scene)
-        store.begin(observed,metadata,c.report.run_dir)
+        weekly=getattr(c.runner,'currency_weekly_guard',None)
+        if weekly is not None:weekly.require_observation(identity,game_week(now),points.current)
+        store.begin(observed,metadata,c.report.run_dir,weekly_owner=weekly.owner if weekly is not None else None)
+        if weekly is not None:weekly.bind_reward(store)
     try:
         for _ in range(6):
             current(c,scene,store.data)

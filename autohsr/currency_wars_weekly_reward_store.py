@@ -48,6 +48,10 @@ class RewardStore:
             raise AutomationError('积分领奖周完成字段不符。')
         if data['status']=='complete' and (data['phase']!='returned' or data['rewards_verified'] is not True):
             raise AutomationError('积分领奖完成记录缺少返回核实。')
+        owner=data.get('weekly_owner')
+        if owner is not None and (type(owner) is not dict or set(owner)!={'loop_id','account','week'}
+                or not _hex(owner['loop_id']) or owner['account']!=data['account_key'] or owner['week']!=data['game_week']):
+            raise AutomationError('积分领奖周常归属无效。')
         for index,action in enumerate(data['actions']):
             if (type(action) is not dict or type(action.get('id')) is not int or action['id']!=index or type(action.get('epoch')) is not int
                     or action.get('status') not in ('pending','unknown','verified')
@@ -85,7 +89,7 @@ class RewardStore:
     def save(self):
         self.validate(self.data);_write(self.path,self.data)
 
-    def begin(self,observation,client,run_dir):
+    def begin(self,observation,client,run_dir,*,weekly_owner=None):
         self.preflight()
         identity=uuid.uuid4().hex
         self.path=self.root/'currency-weekly-rewards'/identity/'session.json'
@@ -94,6 +98,7 @@ class RewardStore:
             current=observation['current'],client=client,run_dir=str(self.inside(run_dir)),continuations=[],
             confidence=observation['confidence'],
             initial=observation,rewards_verified=False,weekly_rewards_verified=False,claimed_now=False,completion_verified=False,match_started=False)
+        if weekly_owner is not None:self.data['weekly_owner']=deepcopy(weekly_owner)
         self.save();_write(self.pointer,dict(id=identity))
 
     def pending(self,choice,epoch,evidence):

@@ -15,9 +15,14 @@ from .weekly_plan import CHINA, WeeklyGuard, weekly_slot
 
 
 class PlanRunner:
-    def __init__(self, settings, emit=None, *, new_battle_run=False, runner_factory=None, root=None, now=None):
+    def __init__(self, settings, emit=None, *, new_battle_run=False, runner_factory=None, root=None, now=None, resume_weekly_currency=False):
         from .app import Runner
+        if (type(resume_weekly_currency) is not bool or resume_weekly_currency and
+                (not settings.weekly_enabled or settings.weekly_mode!='currency_wars' or new_battle_run)):
+            raise ValueError('接续货币战争周常须选择该周常，且不新增日常预算。')
         self.settings = replace(settings)
+        if resume_weekly_currency:
+            self.settings=replace(self.settings,assignments=False,battle=False,daily=False,mail=False,battlepass=False)
         self.settings.validate("plan")
         if not self.settings.weekly_enabled and not any(getattr(self.settings, name) for name in
                                                        ("assignments", "battle", "daily", "mail", "battlepass")):
@@ -27,6 +32,7 @@ class PlanRunner:
         self.root = Path(root) if root is not None else ROOT/"runs"
         self.slot = weekly_slot(self.settings, now)
         self.new_battle_run = new_battle_run
+        self.resume_weekly_currency=resume_weekly_currency
         self.child = None
         self._lock = threading.RLock()
         self._stop = threading.Event()
@@ -61,10 +67,10 @@ class PlanRunner:
         if event.get("type") != "finished":
             self.emit(dict(event, phase=phase))
 
-    def _run(self, settings, *, phase, **options):
+    def _run(self, settings, *, phase, factory=None, **options):
         self._checkpoint()
         self.emit(dict(type="plan_phase", phase=phase))
-        child = self.factory(settings, lambda event: self._send(event, phase), **options)
+        child = (factory or self.factory)(settings, lambda event: self._send(event, phase), **options)
         with self._lock:
             self.child = child
             if self._stop.is_set():
@@ -76,6 +82,10 @@ class PlanRunner:
             return result.to_dict() if hasattr(result, "to_dict") else result
         finally:
             with self._lock:
+                if hasattr(self,'_control_hwnd'):
+                    hwnd=getattr(child,'_control_hwnd',None)
+                    if not isinstance(hwnd,int):hwnd=getattr(getattr(child,'_window',None),'hwnd',None)
+                    if isinstance(hwnd,int):self._control_hwnd=hwnd
                 self.child = None
 
     def _weekly_result(self, status, message):
@@ -84,6 +94,19 @@ class PlanRunner:
                             "skipped" if status in ("disabled", "not_due") else "partial", message)
         self.report.results.append(result)
         self.emit(dict(type="task", **result.__dict__))
+
+    def _copy_daily(self,daily,*,reused=False):
+        report=self.report
+        report.weekly_plan['children'].append(dict(operation='daily',run_dir=daily.get('run_dir',''),reused=reused))
+        for name in ('stamina_spent','stamina_limit','stamina_pending','immersifiers_spent','immersifiers_pending',
+                     'battle_completed','battle_requested','daily_verified','daily_synthesis','engagement','game_day',
+                     'error','safe_next','failure_task'):
+            if name in daily:setattr(report,name,daily[name])
+        report.results.extend(TaskResult(r['task'],r['status'],r.get('detail','')) for r in daily.get('results',[]))
+        if reused:
+            report.weekly_plan['daily_reused']=True
+            report.budget_scope='original_daily_run'
+        self.emit(dict(type='plan_daily_result',report=daily,reused=reused))
 
     def run(self):
         started = datetime.now(CHINA)
@@ -96,21 +119,46 @@ class PlanRunner:
                                  status="waiting", score_rewards_verified=False, children=[])
         try:
             self._checkpoint()
+            daily_reference=None
+            if self.settings.weekly_enabled and self.settings.weekly_mode=='currency_wars':
+                from .currency_wars_weekly import preflight,read_ref
+                try:existing=preflight(self.root,self.resume_weekly_currency)
+                except Exception:
+                    from .currency_wars_loop_store import LoopStore
+                    from .currency_wars_weekly import check_sources,unfinished
+                    old=LoopStore(self.root)
+                    if old.load() is not None and unfinished(old):
+                        ref=old.data['weekly_plan']['daily']
+                        if ref is not None:
+                            _,original=read_ref(self.root,ref);self._copy_daily(original,reused=True)
+                        check_sources(old)
+                        target=old.data['weekly_plan']
+                        report.currency_wars=dict(mode='weekly_currency',loop_id=old.data['loop_id'],week=target['week'],
+                            maximum=target['maximum'],completed=old.data['completed'],state=target['state'],phase=target['phase'],
+                            loop_record=str(old.path),score_rewards_verified=False,reused_result=True,current_account_verified=False,
+                            acceptance_runs=0,development_only=True)
+                        report.weekly_plan.update(week=target['week'],due_at=target['due_at'],requested_runs=target['maximum'],
+                            maximum_runs=target['maximum'],completed_runs=old.data['completed'])
+                    raise
+                if self.resume_weekly_currency:
+                    from .weekly_plan import WeeklySlot
+                    target=existing.data['weekly_plan']
+                    self.slot=WeeklySlot(target['week'],datetime.fromisoformat(target['due_at']),True)
+                    report.weekly_plan.update(week=target['week'],due_at=target['due_at'],requested_runs=target['maximum'],daily_reused=True)
+                    daily_reference=target['daily']
+                    if daily_reference is not None:
+                        _,original=read_ref(self.root,daily_reference);self._copy_daily(original,reused=True)
             daily_selected = any(getattr(self.settings, name) for name in ("assignments", "battle", "daily", "mail", "battlepass"))
             if daily_selected:
                 daily = self._run(self.settings, phase="daily", operation="daily", new_battle_run=self.new_battle_run)
-                report.weekly_plan["children"].append(dict(operation="daily", run_dir=daily.get("run_dir", "")))
-                for name in ("stamina_spent", "stamina_limit", "stamina_pending", "immersifiers_spent",
-                             "immersifiers_pending", "battle_completed", "battle_requested", "daily_verified",
-                             "daily_synthesis", "engagement", "game_day", "error", "safe_next", "failure_task"):
-                    if name in daily:
-                        setattr(report, name, daily[name])
-                report.results.extend(TaskResult(r["task"], r["status"], r.get("detail", "")) for r in daily.get("results", []))
-                self.emit(dict(type="plan_daily_result", report=daily))
+                self._copy_daily(daily)
                 if daily.get("status") != "success" or daily.get("report_saved") is not True:
                     report.status = "stopped" if daily.get("status") == "stopped" else "partial"
                     self._weekly_result("not_started", "日常未完整结束；周常未开始。")
                     return report
+                if self.settings.weekly_enabled and self.settings.weekly_mode=='currency_wars':
+                    from .currency_wars_weekly import saved_report
+                    daily_reference=saved_report(self.root,daily,'daily')
             self._checkpoint()
             report.status = "success"
             if not self.settings.weekly_enabled:
@@ -118,8 +166,22 @@ class PlanRunner:
             elif not self.slot.due:
                 self._weekly_result("not_due", "周常未到计划时间。")
             elif self.settings.weekly_mode == "currency_wars":
-                report.status = "partial"
-                self._weekly_result("unavailable", "货币战争周积分奖励尚未接入；日常结果已保留。")
+                from .currency_wars_weekly_run import CurrencyWeekRunner
+                weekly=self._run(self.settings,phase='weekly',factory=CurrencyWeekRunner,slot=self.slot,root=self.root,
+                                 runner_factory=self.factory,resume=self.resume_weekly_currency,daily=daily_reference)
+                data=weekly.get('currency_wars',{});report.currency_wars=data
+                report.weekly_plan['children'].append(dict(operation='currency_wars_weekly',run_dir=weekly.get('run_dir','')))
+                report.weekly_plan.update(score_rewards_verified=(weekly.get('status')=='success' and weekly.get('report_saved') is True
+                    and data.get('score_rewards_verified') is True),
+                    completed_runs=data.get('completed',0),maximum_runs=data.get('maximum',self.settings.weekly_runs),
+                    requested_runs=data.get('maximum',self.settings.weekly_runs))
+                report.error,report.safe_next=weekly.get('error',''),weekly.get('safe_next','')
+                if weekly.get('status')=='success' and weekly.get('report_saved') is True and data.get('score_rewards_verified') is True:
+                    self._weekly_result('already_complete' if data.get('already_complete') else 'complete','本周货币战争积分及奖励已核实。')
+                else:
+                    report.status='stopped' if weekly.get('status')=='stopped' else 'partial'
+                    self._weekly_result(data.get('state') if data.get('state') in ('exhausted','expired') else 'needs_review',
+                                        '货币战争周常尚未完整结束；原日常结果和目标已保留。')
             else:
                 self.emit(dict(type="task", task="weekly", status="running", detail="核对本周演算记录"))
                 guard = WeeklyGuard(self.root, self.settings, self.slot)

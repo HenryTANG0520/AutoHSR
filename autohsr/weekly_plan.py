@@ -67,7 +67,7 @@ def plan_caption(settings, now=None):
     if settings.weekly_mode == "differential_universe":
         target += f" · {settings.weekly_runs} 局"
     else:
-        target += " · 待接入"
+        target += f" · 周积分及奖励，最多 {settings.weekly_runs} 局"
     when = "到期，运行时核对" if slot.due else f"{DAYS[settings.weekly_day-1]} {settings.weekly_time} 后"
     return f"{target} · {when}"
 

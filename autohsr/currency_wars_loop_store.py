@@ -160,15 +160,27 @@ class LoopStore:
         elif (data['status'] in ('exhausted', 'expired')
               or data['status'] == 'complete' and (not options['runs'] or data['completed'] != options['runs'])):
             raise AutomationError('循环完成计数或终态无效。')
+        from .currency_wars_weekly import validate_week
+        validate_week(data)
 
     def save(self):
         self.validate(self.data)
         _write(self.path, self.data)
 
-    def begin(self, options):
+    def begin(self, options, *, weekly=None):
         previous = self.load()
+        from .currency_wars_weekly import WeekSpec, check_complete, ensure_index, index_path, unfinished
+        if previous is not None and unfinished(self):
+            raise AutomationError('原货币战争周常尚未结束，未覆盖为新循环。')
+        if previous is not None and previous.get('weekly_plan',{}).get('state')=='complete':check_complete(self)
         if previous is not None and previous['status'] == 'active':
             raise AutomationError('已有未结束循环；请明确接续，未创建第二份目标。')
+        if weekly is not None:
+            from .currency_wars_points import game_week,local_now
+            if not isinstance(weekly,WeekSpec) or weekly.week!=game_week(local_now()):
+                raise AutomationError('周常目标类型无效或已跨周，未建立新循环。')
+            if index_path(self.root,weekly.account,weekly.week).exists():
+                raise AutomationError('该账号本周已有目标，未新增局数预算。')
         loop_id = uuid.uuid4().hex
         self.path = self.root/'currency-loops'/loop_id/'loop.json'
         self.data = dict(schema=1, loop_id=loop_id, options=deepcopy(options), status='active',
@@ -176,8 +188,13 @@ class LoopStore:
         if options.get('until_points', False):
             from .currency_wars_points_goal import begin
             self.data['points_goal'] = begin()
+        if weekly is not None:
+            self.data['weekly_plan']=weekly.metadata()
+            self.data['account_key']=weekly.account
+            self.data['points_goal']['week']=weekly.week
         self.save()
         _write(self.pointer, dict(loop_id=loop_id))
+        if weekly is not None:ensure_index(self)
 
     def reserve(self):
         if self.data['active'] is None:
@@ -397,6 +414,7 @@ class LoopGuard:
         self.store = store
         self.owner = deepcopy(store.data['active']['owner'])
         self.week = store.data.get('points_goal', {}).get('week')
+        self.weekly = deepcopy(store.data.get('weekly_plan'))
 
     def current(self):
         data = _read(self.store.path)
@@ -405,6 +423,8 @@ class LoopGuard:
                 or data['options'] != self.store.data['options']
                 or data.get('points_goal', {}).get('week') != self.week):
             raise AutomationError('循环归属或冻结设置改变，未继续输入。')
+        if data.get('weekly_plan')!=self.weekly:
+            raise AutomationError('周常冻结目标在本局期间改变，未继续输入。')
         self.store.data.clear()
         self.store.data.update(data)
         return self.store.data

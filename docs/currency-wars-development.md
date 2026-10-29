@@ -1,5 +1,28 @@
 # 货币战争重启开发记录
 
+## 2026-10-29：原生货币战争周常、固定预算与日常结果接续
+
+参考固定上游`Daily.start`的按周资格／积分检查，以及`CurrencyWars.start`的对局与奖励分离，新增[周目标归属](../autohsr/currency_wars_weekly.py)与[周常组合Runner](../autohsr/currency_wars_weekly_run.py)，接入原[PlanRunner](../autohsr/plan_runner.py)。不迁入上游定时器或输入框架，显式开始计划才执行。底层仍为标准A8财富造物主40开发流程及默认策略，其他模式、满额清理和真实完整玩法仍待完成；界面工作独立整合新CW路径。
+
+- 日常完整保存后先核对当前账号、积分、客户端与游戏周；原游戏周、每周1～10局上限及账号进入同一原生循环账本，同账号／周索引不可覆盖。已有满分可0局，但仍核对奖励。改时间或上限不重建预算；上限耗尽后领奖并记partial，积分后来增加则保留旧领奖回执，只补新增奖励，局数不增长，也不推断新增积分由谁取得。
+- 原循环的逐局归属、UID、窗口、代次、支付意图、胜利／结算和归档门禁保持；周常另核对全部已完成归档及连续回执链。领奖有同目标归属、原报告及独立回执，完整周回执在周常报告成功保存后提交；不把局数、当前满分或一个成功字段当作全部完成。
+- `--plan --resume-weekly-currency`明确接续原目标，复用原日常成功报告，标记daily_reused与original_daily_run，不再执行日常或新预算。普通开始遇到原周常未结束，也保留原日常及已核实局数后停止。旧单局在日常前拦截，不把历史开发局纳入新目标。其他输入Runner不能越过未完成周常，所属子流程和明确原生接续保留；只读识别可用。
+- 对局、领奖、周常、整体报告分别留存。终态循环原报告失败可只读补存循环审计，原生领奖已提交可只读挂回，周常报告／回执失败可只读补存周审计；原失败、路径及存在时的哈希保留。整体计划报告失败不抹掉独立周完成。父层score_rewards_verified只接受成功子报告和完整周回执；暂停／停止覆盖子流程及交接间隙，不创建后台定时任务。
+
+新增[17项机制检查](../autohsr/tests/test_currency_wars_weekly_plan.py)，以正式Runner、Context、报告及账本配合假窗口、合成最终节点和合成领奖图像，验证完整编排、零局、同周／跨账号去重、预算耗尽、后续积分只领奖、明确接续复用日常、账号变化、跨周停止创建目标、全部归档复查、旧单局与其他任务阻止、循环／周／总体保存失败恢复、原失败不变以及CLI不保存配置。最初6项通过`runs/currency-weekly-plan-first.log`；补查44项中的2个失败保留于`runs/currency-weekly-plan-integration-first.log`：后续积分曾挂回旧部分领奖记录，已按历史ID排除；循环报告写盘失败夹具原来钩错模块，已对准实际写入函数。原“CW尚不可用”的计划测试改为原日常报告缺失时不得开周常，未删保存门禁。
+
+最终118项相关通过`runs/currency-weekly-plan-final.log`（68.380秒），包括原计划／日历、循环、积分目标和领奖；已有64项循环／积分／领奖回归也通过`runs/currency-weekly-plan-legacy-first.log`。84项假后端GUI通过`runs/currency-weekly-plan-gui.log`；24项原计划界面检查串行通过`runs/currency-weekly-plan-ui-sequential.log`。首轮并行运行两套GUI检查导致焦点检查失败，原`runs/currency-weekly-plan-ui.log`保留。这些原界面检查仍使用旧CW待接入夹具，不能作为新CW界面已接通的证据。
+
+随后补充普通开始被旧周常阻止时的结果投影：原日常验证、消耗和已核实开发局数保留，明确标注复用且未重新核实当前账号；不把停止误报为零局。47项计划／日历／CW周常复核通过`runs/currency-weekly-plan-result-preservation.log`（29.262秒）。首轮全量运行1487项出现55个错误，均来自同一旧标准流程夹具缺少新增检查点；夹具现调用真实检查点，生产门禁没有放宽，原`runs/currency-weekly-plan-all.log`保留。
+
+第二轮裸`python`命令命中缺少ONNX Runtime与RapidOCR的Conda环境，1487项出现87个依赖相关错误；原`runs/currency-weekly-plan-all-final.log`保留。确认项目`.venv`依赖齐全后，改用显式项目解释器重新执行全量，未把该轮环境错误计作通过。
+
+最终使用`.\.venv\Scripts\python.exe -m unittest discover -s autohsr/tests -v`，**1497项全量通过**（676.032秒），见`runs/currency-weekly-plan-venv-all.log`，包括现有差分及日常回归；最后只补验证说明，`git diff --check`通过。
+
+六份固定上游blob及树归属、三个周常参考函数、GPL许可、18幅原素材、三份旧图／清单与22条白名单核对不变；八份文档195条相对链接、CLI计划及周常接续帮助通过`runs/currency-weekly-plan-source-check.json`。配置、原截图、失败报告、日志、账本、回执和检查脚本保持忽略。
+
+本轮未启动、检测或控制真实游戏，没有真实资源消耗、新游戏截图或EXE构建。独立通关仍为0/10，旧十场目标未恢复。接口、完成范围及待验证事项见[周常计划](weekly-plan.md)与[积分领奖边界](currency-wars-weekly-notes.md)。
+
 ## 2026-10-29：独立普通积分领奖与原图回执核验
 
 参考固定March7thAssistant的`get_reward`与周期奖励辅助，新增[领奖控件](../autohsr/currency_wars_weekly_rewards.py)、[独立Runner流程](../autohsr/currency_wars_weekly_reward_run.py)和[意图／回执](../autohsr/currency_wars_weekly_reward_store.py)。CLI为`--currency-wars-rewards`，明确接续为`--resume-currency-rewards`；不自动加入旧循环／周常，不保存设置，当前没有新增清理或购买输入。详细字段与边界见[积分及领奖说明](currency-wars-weekly-notes.md)。

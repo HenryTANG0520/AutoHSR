@@ -112,6 +112,7 @@ class StandardFlowTests(unittest.TestCase):
         c = SimpleNamespace(settings=Settings(), report=RunReport(operation='currency_wars_standard', run_dir=str(attempt)),
                             runner=SimpleNamespace(currency_resume=resume, input_epoch=0, inactive_duration=0, emit=Mock()),
                             scene_epoch=0, last_scene=None, checkpoint=Mock(), log=Mock(), sleep=Mock())
+        c._currency_weekly_checkpoint = lambda: Context._currency_weekly_checkpoint(c)
         pending = list(states)
         def snapshot():
             c.last_scene = pending.pop(0) if pending else c.last_scene

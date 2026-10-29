@@ -110,13 +110,13 @@ class PlanTests(unittest.TestCase):
                 self.assertEqual(report.weekly_plan["status"], status)
                 self.assertEqual(report.status, "success")
 
-    def test_unsupported_currency_does_not_start_development_mode(self):
+    def test_currency_requires_saved_original_daily_before_starting_weekly(self):
         self.settings.weekly_mode = "currency_wars"
         report = self.runner().run()
         self.assertEqual(len(self.calls), 1)
         self.assertEqual(report.status, "partial")
         self.assertTrue(report.daily_verified)
-        self.assertEqual(report.weekly_plan["status"], "unavailable")
+        self.assertEqual(report.weekly_plan["status"], "needs_review")
 
     def test_daily_failure_or_unsaved_report_does_not_start_weekly(self):
         for values in (dict(status="partial"), dict(status="stopped"), dict(report_saved=False)):

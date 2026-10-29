@@ -21,7 +21,7 @@ from .models import AutomationError, RunReport, Stopped, TaskResult
 
 class CurrencyLoopRunner:
     def __init__(self, settings, emit=None, *, runs=None, resume=False, currency_strategy=None,
-                 currency_remembrance_name=None, currency_fast_mode=None, until_points=None, runner_factory=None, root=None):
+                 currency_remembrance_name=None, currency_fast_mode=None, until_points=None, runner_factory=None, root=None, weekly_plan=None):
         from .app import Runner
         from .currency_wars_names import resolve_name, validate_name
         from .currency_wars_equipment_mode import resolve_fast_mode
@@ -42,6 +42,11 @@ class CurrencyLoopRunner:
                             remembrance_name=resolve_name(settings, currency_remembrance_name),
                             equipment_fast_mode=resolve_fast_mode(settings, currency_fast_mode),
                             until_points=settings.currency_until_points if until_points is None else until_points)
+        from .currency_wars_weekly import WeekSpec
+        if weekly_plan is not None and (not isinstance(weekly_plan,WeekSpec) or resume
+                or self.options['until_points'] is not True or self.options['runs']!=weekly_plan.maximum):
+            raise ValueError('周常新目标须使用冻结周、账号、积分目标与原局数上限。')
+        self.weekly_plan=weekly_plan
         self.resume = resume
         self.root = Path(root) if root is not None else ROOT/'runs'
         self.factory = runner_factory or Runner
@@ -110,7 +115,7 @@ class CurrencyLoopRunner:
         data = store.data
         if data is None:
             return
-        children = {key: self.report.currency_wars[key] for key in ('last_child','last_points_child')
+        children = {key: self.report.currency_wars[key] for key in ('last_child','last_points_child','read_only_recovery','original_report')
                     if key in self.report.currency_wars}
         self.report.currency_wars = dict(mode='standard_loop', loop_id=data['loop_id'],
             requested_runs=data['options']['runs'], completed=data['completed'], status=data['status'],
@@ -118,6 +123,7 @@ class CurrencyLoopRunner:
             acceptance_runs=0, **children, **{k: v for k, v in data['options'].items() if k != 'runs'})
         if points_goal.enabled(data):
             self.report.currency_wars.update(points_goal=deepcopy(data['points_goal']), rewards_verified=False)
+        if data.get('weekly_plan') is not None:self.report.currency_wars['weekly_plan']=deepcopy(data['weekly_plan'])
 
     def _run_child(self, guard, resume):
         self._checkpoint()
@@ -127,10 +133,14 @@ class CurrencyLoopRunner:
                              currency_fast_mode=options['equipment_fast_mode'], currency_loop_guard=guard)
         return self._run_bound_child(child)
 
-    def _run_points(self):
+    def _run_points(self,store):
         self._checkpoint()
         self.emit(dict(type='currency_loop_points', message='核对本周积分与倒计时；奖励不自动领取。'))
-        child = self.factory(self.settings, self._send, operation='currency_wars_points')
+        options={}
+        if store.data.get('weekly_plan') is not None:
+            from .currency_wars_weekly import WeekGuard
+            options['currency_weekly_guard']=WeekGuard(store,'points')
+        child = self.factory(self.settings, self._send, operation='currency_wars_points',**options)
         return self._run_bound_child(child)
 
     def _run_bound_child(self, child):
@@ -153,8 +163,22 @@ class CurrencyLoopRunner:
     def _execute(self, store):
         self._checkpoint()
         if self.resume:
-            if store.load() is None or store.data['status'] != 'active':
+            if store.load() is None:
                 raise AutomationError('没有可接续的未结束货币战争循环。')
+            if store.data['status']!='active':
+                plan=store.data.get('weekly_plan')
+                if plan is None or plan['state']!='active' or plan['phase']!='points':
+                    raise AutomationError('没有可接续的未结束货币战争循环。')
+                from .currency_wars_weekly import check_sources,ensure_index,file_ref
+                check_sources(store);ensure_index(store)
+                if store.data['status'] in ('complete','exhausted'):points_goal.observation(store)
+                attempts=plan['loop_attempts']
+                original=Path(attempts[-1])/'report.json' if attempts else None
+                self.report.currency_wars.update(read_only_recovery=True,
+                    original_report=file_ref(store.root,original) if original is not None and original.is_file() else None)
+                self.report.status='success' if store.data['status']=='complete' else 'partial'
+                self.report.safe_next='原循环已结束；只读核对逐局及积分原证据，补存新审计报告，没有重开或输入。'
+                return
             for key, value in self.overrides.items():
                 saved = store.data['options'].get(key, False) if key == 'until_points' else store.data['options'][key]
                 if value is not None and value != saved:
@@ -164,7 +188,13 @@ class CurrencyLoopRunner:
             session = StandardSession(store.journal).data
             if session is not None and (session['status'] != 'settled' or session.get('loop_owner') is not None):
                 raise AutomationError('已有未核对或其他循环所属对局；未创建新循环。')
-            store.begin(self.options)
+            store.begin(self.options,weekly=self.weekly_plan)
+        if store.data.get('weekly_plan') is not None:
+            from .currency_wars_weekly import ensure_index
+            ensure_index(store)
+            plan=store.data['weekly_plan']
+            if plan['state']!='active' or plan['phase']!='points':raise AutomationError('本周目标不在对局积分阶段。')
+            plan['loop_attempts'].append(self.report.run_dir);store.save()
         store.check_tail()
         if store.data.get('archive_intent') is not None:
             store.archive(count=store.data['archive_intent']['count'])
@@ -201,7 +231,7 @@ class CurrencyLoopRunner:
                     self._finish_goal(store, 'expired', '周积分目标已跨游戏周；已保留旧目标，未开始新局。')
                     return
                 self._summary(store)
-                child = self._run_points()
+                child = self._run_points(store)
                 self.report.currency_wars['last_points_child'] = dict(run_dir=child.get('run_dir',''), status=child.get('status'))
                 if child.get('status') != 'success' or child.get('report_saved') is not True:
                     self.report.status = 'stopped' if child.get('status') == 'stopped' else 'partial'

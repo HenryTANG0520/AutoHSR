@@ -121,6 +121,10 @@ class Context:
         if self.report.operation.startswith("currency_wars"):
             raise AutomationError("货币战争当前仅允许只读识别，禁止发送游戏输入。")
 
+    def _currency_weekly_checkpoint(self):
+        guard=getattr(self.runner,'currency_weekly_guard',None)
+        if guard is not None:guard.current()
+
     def currency_prepare_click(self, scene, intent, target):
         from .currency_wars_prepare import PREPARATION_OPERATIONS
         if self.report.operation not in PREPARATION_OPERATIONS:
@@ -128,6 +132,7 @@ class Context:
         from .currency_wars import CurrencyWarsWorkflow
         from .currency_wars_prepare import click_target
         self.checkpoint()
+        self._currency_weekly_checkpoint()
         CurrencyWarsWorkflow(self)._require_current_scene(scene)
         if click_target(scene, self.settings.ocr_confidence) != (intent, target):
             raise AutomationError('启动准备目标已改变，未输入。')
@@ -146,6 +151,7 @@ class Context:
         from .currency_wars_prepare import key_allowed
         from .workflows import DailyWorkflow
         self.checkpoint()
+        self._currency_weekly_checkpoint()
         CurrencyWarsWorkflow(self)._require_current_scene(scene)
         workflow = DailyWorkflow(self)
         if (not key_allowed(scene, self.settings.ocr_confidence) and not workflow._world(scene)
@@ -165,6 +171,7 @@ class Context:
         from .currency_wars import CurrencyWarsWorkflow
         from .currency_wars_navigation import next_action
         self.checkpoint()
+        self._currency_weekly_checkpoint()
         CurrencyWarsWorkflow(self)._require_current_scene(scene)
         if next_action(scene, self) != choice:
             raise AutomationError('入口导航目标改变，未发送旧输入。')
@@ -208,6 +215,7 @@ class Context:
         from .currency_wars import CurrencyWarsWorkflow
         from .currency_wars_standard_flow import next_action
         self.checkpoint()
+        self._currency_weekly_checkpoint()
         guard = CurrencyWarsWorkflow(self)
         guard._require_current_scene(scene)
         store = getattr(self, 'currency_standard_session', None)
@@ -1237,7 +1245,7 @@ class Runner:
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
                  currency_configure=False, currency_resume=False, weekly_plan=None, currency_strategy=None,
-                 currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None,currency_rewards_resume=False):
+                 currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None,currency_rewards_resume=False,currency_weekly_guard=None):
         from .weekly_plan import WeeklyGuard
         if weekly_plan is not None and (not isinstance(weekly_plan, WeeklyGuard) or operation != "differential_universe"):
             raise ValueError("周常记录核验仅用于计划中的差分宇宙。")
@@ -1246,6 +1254,11 @@ class Runner:
         if currency_loop_guard is not None and (operation != 'currency_wars_standard' or not isinstance(currency_loop_guard, LoopGuard)):
             raise ValueError('循环逐局记录仅用于原生标准货币战争。')
         self.currency_loop_guard = currency_loop_guard
+        from .currency_wars_weekly import WeekGuard
+        if currency_weekly_guard is not None and (not isinstance(currency_weekly_guard,WeekGuard)
+                or (operation,currency_weekly_guard.stage) not in (('currency_wars_points','points'),('currency_wars_rewards','rewards'))):
+            raise ValueError('货币战争周常归属仅允许对应积分／领奖子流程。')
+        self.currency_weekly_guard=currency_weekly_guard
         if type(currency_rewards_resume) is not bool or currency_rewards_resume and operation!='currency_wars_rewards':
             raise ValueError('积分领奖接续仅用于独立积分领奖入口。')
         self.currency_rewards_resume=currency_rewards_resume
@@ -1587,6 +1600,9 @@ class Runner:
                 from .currency_wars_weekly_reward_store import RewardStore
                 rewards=RewardStore(directory.parent)
                 saved_rewards=rewards.preflight(self.currency_rewards_resume if self.report.operation=='currency_wars_rewards' else False)
+                from .currency_wars_weekly import native_gate
+                self.currency_weekly_guard=native_gate(directory.parent,self.report.operation,self.currency_loop_guard,
+                    self.currency_weekly_guard,standard_resume=self.currency_resume,rewards_resume=self.currency_rewards_resume)
                 if (self.report.operation=='currency_wars_rewards' and self.currency_rewards_resume and saved_rewards
                         and saved_rewards['phase']=='returned' and saved_rewards['rewards_verified'] is True):
                     from copy import deepcopy

@@ -39,11 +39,22 @@
       "git_blob": "f1dc22ae0f755c81ccc948520bb7fd02520ea751"
     },
     {
+      "path": "tasks/daily/daily.py",
+      "git_blob": "de81520c412ca07ad8316cde1c95dbb0b3031898"
+    },
+    {
       "path": "assets/config/config.example.yaml",
       "git_blob": "8bd288efd8282a4c45e1ae6a1b915c9bd9c0569e"
     }
   ],
   "adaptations": [
+    {
+      "path": "autohsr/currency_wars_weekly.py",
+      "native_files": ["autohsr/currency_wars_weekly_run.py", "autohsr/plan_runner.py"],
+      "reference_functions": ["start", "check_currency_wars_score"],
+      "additional_references": [{"source": "tasks/daily/daily.py", "functions": ["start"]}],
+      "kind": "native weekly plan composition of existing points, bounded standard-loop and reward Runners; explicit game-week/account target and immutable per-account weekly index, one frozen match ceiling, original daily report reuse on explicit resume, same-goal native ownership, all-match archive audits and post-report weekly receipts; already-full score still checks rewards, later observed score growth only claims additional rewards without increasing match allowance; no upstream scheduler or input framework imported; GUI integration, full-inventory cleanup, additional modes and real gameplay remain unverified"
+    },
     {
       "path": "autohsr/currency_wars_weekly_rewards.py",
       "native_files": ["autohsr/currency_wars_weekly_reward_run.py", "autohsr/currency_wars_weekly_reward_store.py"],

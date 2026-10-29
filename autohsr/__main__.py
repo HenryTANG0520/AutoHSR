@@ -36,6 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
     mode.add_argument("--run", action="store_true", help="按配置执行每日任务；F10 紧急停止")
     mode.add_argument("--plan", action="store_true", help="执行日常和到期周常计划；不登记定时任务")
+    parser.add_argument('--resume-weekly-currency',action='store_true',help='仅配合 --plan，接续原货币战争周常；复用原日常报告，不新增日常预算')
     mode.add_argument("--differential-universe", action="store_true", help="自动演算差分宇宙；不消耗每日刷本预算")
     mode.add_argument("--self-test", action="store_true", help="运行离线单元测试（仅源码版，不操作游戏）")
     mode.add_argument("--admin-launch", choices=("status", "enable", "disable"),
@@ -77,6 +78,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    if args.resume_weekly_currency and (not args.plan or args.new_battle_run):
+        parser.error('--resume-weekly-currency 仅用于 --plan，且不能与 --new-battle-run 混用。')
     if args.resume_active_currency and not args.currency_wars_standard:
         parser.error('--resume-active-currency 仅用于 --currency-wars-standard。')
     if args.resume_currency_rewards and not args.currency_wars_rewards:
@@ -224,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
                 currency_fast_mode=args.currency_fast_mode, until_points=args.currency_until_points)
         elif args.plan:
             from .plan_runner import PlanRunner
-            runner = PlanRunner(settings, emit, new_battle_run=args.new_battle_run)
+            runner = PlanRunner(settings, emit, new_battle_run=args.new_battle_run,resume_weekly_currency=args.resume_weekly_currency)
         else:
             runner = Runner(settings, emit, new_battle_run=args.new_battle_run,
                             operation="dungeon_catalogue" if args.scan_dungeons else "currency_wars_rewards" if args.currency_wars_rewards else "currency_wars_points" if args.currency_wars_points else "currency_wars_standard" if args.currency_wars_standard else "currency_wars_prepare" if args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure else "currency_wars" if args.currency_wars_check else "differential_universe" if args.differential_universe else "reward_only" if args.reward_only else "daily",

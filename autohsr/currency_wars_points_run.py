@@ -77,6 +77,8 @@ def inspect_points(c):
             last_error=error;c.sleep(.2)
     else:raise last_error
     now=local_now()
+    weekly=getattr(c.runner,'currency_weekly_guard',None)
+    if weekly is not None:weekly.require_observation(identity,game_week(now),points.current)
     period=period_evidence(scene,now,c.settings.ocr_confidence)
     guard._require_current_scene(scene)
     screenshot=Path(c.evidence(scene,'currency_weekly_points'))
