@@ -370,7 +370,7 @@ class AutoHSRWindow:
         self._weekly_result_summary = None
         self._refresh_weekly_caption(force=True)
         self.weekly_boundary.set("周期演算按局数完成；周积分奖励尚未接入。" if self.weekly_mode.get() == "差分宇宙" else
-                                 "周积分奖励尚未接入；到期时仅执行日常并保留未完成状态。")
+                                 "货币战争周常尚未接入。")
 
     def _refresh_weekly_caption(self, *, force=False):
         # This is a read-only clock refresh, not a scheduler or an account check.
