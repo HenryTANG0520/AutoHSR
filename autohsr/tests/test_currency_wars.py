@@ -448,7 +448,8 @@ class GuiLifecycleTests(unittest.TestCase):
         events.put(dict(type="finished", report=dict(status="partial", operation="currency_wars")))
         worker = Mock()
         worker.is_alive.return_value = True
-        ui = SimpleNamespace(events=events, worker=worker, _finish=Mock(), _clock=Mock(), _drain=Mock(), closing=False, root=Mock())
+        ui = SimpleNamespace(events=events, worker=worker, _finish=Mock(), _clock=Mock(),
+                             _refresh_weekly_caption=Mock(), _drain=Mock(), closing=False, root=Mock())
         AutoHSRWindow._drain(ui)
         ui._finish.assert_not_called()
         self.assertFalse(events.empty())

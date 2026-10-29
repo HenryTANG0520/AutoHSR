@@ -8,7 +8,7 @@ from pathlib import Path
 import threading
 import uuid
 
-from .config import ROOT
+from .config import ROOT, SettingsError
 from .models import RunReport, Stopped, TaskResult
 from .storage import replace_file
 from .weekly_plan import CHINA, WeeklyGuard, weekly_slot
@@ -102,7 +102,7 @@ class PlanRunner:
                 report.weekly_plan["children"].append(dict(operation="daily", run_dir=daily.get("run_dir", "")))
                 for name in ("stamina_spent", "stamina_limit", "stamina_pending", "immersifiers_spent",
                              "immersifiers_pending", "battle_completed", "battle_requested", "daily_verified",
-                             "daily_synthesis", "engagement", "game_day", "error", "safe_next", "failure_task"):
+                             "daily_synthesis", "engagement", "game_day", "error", "input_error_field", "safe_next", "failure_task"):
                     if name in daily:
                         setattr(report, name, daily[name])
                 report.results.extend(TaskResult(r["task"], r["status"], r.get("detail", "")) for r in daily.get("results", []))
@@ -135,6 +135,7 @@ class PlanRunner:
                 if weekly.get("status") != "success":
                     report.status = "stopped" if weekly.get("status") == "stopped" else "partial"
                     report.error, report.safe_next = weekly.get("error", ""), weekly.get("safe_next", "")
+                    report.input_error_field = weekly.get("input_error_field", "")
                     self._weekly_result("needs_review", "周常演算未完成；核对原报告后再处理。")
                 else:
                     guard.complete(weekly)
@@ -147,6 +148,9 @@ class PlanRunner:
         except Exception as exc:
             report.status, report.error = "partial" if report.results else "failed", str(exc)
             report.safe_next = "查看日常与周常各自的原始报告；未核实的开局不自动重放。"
+            if isinstance(exc, SettingsError):
+                report.input_error_field = exc.field
+                report.safe_next = "请修改对应设置，再次开始。"
             self._weekly_result("needs_review", str(exc))
         finally:
             report.finished_at = datetime.now(CHINA).isoformat()

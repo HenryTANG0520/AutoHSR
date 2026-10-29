@@ -10,7 +10,7 @@ import threading
 import time
 from datetime import datetime
 
-from .config import ROOT, RESOURCE_ROOT, Settings
+from .config import ROOT, RESOURCE_ROOT, Settings, SettingsError
 from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, RunReport, Scene, Stopped, TaskResult, Token, normalize
 from .vision import Vision, save_scene,helper_overlay
 from .ocr_isolation import IsolatedVision
@@ -1600,6 +1600,9 @@ class Runner:
             self.report.safe_next = ("货币战争操作失败；核对动作记录与前后截图，不自动重放。" if self.report.operation.startswith("currency_wars") else
                                      "差分宇宙自动演算失败；核对当前页面、动作记录与截图后再决定如何处理存档。" if self.report.operation == "differential_universe" else
                                      "请人工核对当前界面和消耗；返回主界面后仅补领奖，新增刷本预算需明确确认。")
+            if isinstance(error, SettingsError):
+                self.report.input_error_field = error.field
+                self.report.safe_next = "请修改对应设置，再次开始。"
             self.log(str(error), "error")
             if context and context.last_scene:
                 try:

@@ -113,6 +113,7 @@ class RunReport:
     team_selections: list[dict] = field(default_factory=list)
     failure_task: str = ""
     error: str = ""
+    input_error_field: str = ""
     safe_next: str = ""
     exit_status: str = "not_requested"
     currency_wars: dict = field(default_factory=dict)

@@ -9,6 +9,7 @@ import subprocess
 import time
 
 from .models import AutomationError, FocusLost
+from .config import SettingsError
 
 user32 = C.WinDLL("user32", use_last_error=True)
 kernel32 = C.WinDLL("kernel32", use_last_error=True)
@@ -145,7 +146,7 @@ def find_game(expected_path: str | None = None) -> GameWindow:
 def launch(path: str) -> str:
     executable = Path(path)
     if not executable.is_file() or executable.name.casefold() != "starrail.exe":
-        raise AutomationError("游戏路径无效，请选择实际的 StarRail.exe。")
+        raise SettingsError("game_path", "未找到 StarRail.exe，请重新选择游戏路径。")
     try:
         existing = find_game(path)
         existing.focus()

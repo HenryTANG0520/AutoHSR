@@ -586,6 +586,11 @@ class AutoHSRWindow:
         self._log(str(error), "error")
         self._focus_input_error()
 
+    def _runtime_input_failed(self, field, message):
+        # Only structured backend errors may redirect to an editable field.
+        if isinstance(field, str) and field in INPUT_FIELDS and isinstance(message, str) and message.strip():
+            self._input_failed(SettingsError(field, message))
+
     def _read_settings(self, save=False, operation="daily") -> Settings | None:
         try:
             values = dict(game_path=self.game_path.get().strip(), overlay_logs=self.overlay_logs.get(),
@@ -736,7 +741,8 @@ class AutoHSRWindow:
                 else:
                     self.emit({"type": "launched", "message": launch_game(settings)})
             except Exception as exc:
-                self.emit({"type": "operation_error", "message": str(exc)})
+                self.emit({"type": "operation_error", "message": str(exc),
+                           "input_error_field": exc.field if isinstance(exc, SettingsError) else ""})
         self.worker = threading.Thread(target=work, name=f"autohsr-{action}", daemon=True)
         self.worker.start()
 
@@ -937,7 +943,8 @@ class AutoHSRWindow:
                 report = runner.run()
                 self.emit({"type": "finished", "report": report.to_dict() if hasattr(report, "to_dict") else report})
             except Exception as exc:
-                self.emit({"type": "run_error", "message": str(exc)})
+                self.emit({"type": "run_error", "message": str(exc),
+                           "input_error_field": exc.field if isinstance(exc, SettingsError) else ""})
         self.worker = threading.Thread(target=work, name="autohsr-run", daemon=True)
         self.worker.start()
 
@@ -1246,6 +1253,8 @@ class AutoHSRWindow:
         self.refresh_feedback()
         self._restore()
 
+        self._runtime_input_failed(report.get("input_error_field"), self.result_alert.get())
+
     def _finalize_task_rows(self, status: str, *, reason: str = "") -> None:
         for name in TASK_NAMES:
             label, previous, _ = self.table.item(name, "values")
@@ -1389,6 +1398,7 @@ class AutoHSRWindow:
                     self._log(self.summary.get(), "error")
                     self.output_tabs.select(0)
                     self._restore()
+                    self._runtime_input_failed(event.get("input_error_field"), self.summary.get())
         except queue.Empty:
             pass
         self._clock()
