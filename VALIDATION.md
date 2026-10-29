@@ -10,6 +10,8 @@
 
 首版原生浏览另发现，货币周常说明“到期时仅执行日常”不适用于未选择日常的情况，现精简为“货币战争周常尚未接入”，24项计划界面重查通过，结果`runs/plan-scope-boundary-plan-ui/`。首版原生End／Enter尝试没有改变玩法选择，随后鼠标选中货币战争；保留`runs/plan-scope-package-keyboard-attempt.png`，未核实是输入路由还是控件行为，不将该尝试写为键盘选择通过。
 
+最终源码`53e14dc`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。独立默认配置、`--no-admin-launch`下核对首页3项日常、24次／预计240开拓力及“开始计划”，打开周常页仍保留开关、时间格式和演算边界；鼠标选择货币战争后，明确显示精简后的未接入提示，局数与预设表单按原逻辑隐藏。选择“不保存退出”后退出码0，独立配置与239份原有用户文件哈希不变，147项素材、5份清单及23份上游文件一致。截图前缀`runs/plan-scope-boundary-package-`，元数据`runs/plan-scope-boundary-package-verification.json`，EXE SHA-256为`33d6547b423651836d574709612689c5a3f829f6a1015903bab2930f348b9bae`，备份`build/userdata-plan-scope-boundary-20261029_203428/`，构建日志`runs/plan-scope-boundary-build.log`。首版`8c4cd97`的原生画面及核对记录也保留，前后证据归档至正式项目`runs/plan-scope-*`，索引`runs/plan-scope-evidence-archive.json`。原生仅启动和浏览助手，没有点击开始、检测或游戏入口；本次新结果和最小化路径的执行验证为上述假后端检查。
+
 ## 2026-10-29：恢复指南底边的全宽星图纹样
 
 对照已保存4.6每日实训原图，`feaed4a`的书页底纹仍只有左下329×72裁块，且被不透明任务画布遮住大半；右侧另用一条直线代替纹样。原状态为`runs/paper-strip-before-{home,tasks,differential_universe}.png`。现在同源提取1458×72底边星图，书页与任务画布按同一书页坐标绘制，恢复左、中、右可见部分并移除替代直线；原图倒计时与挂饰重叠区清除RGBA，不补画未知背景。没有修改任务文字、位置、主操作或后台行为。
