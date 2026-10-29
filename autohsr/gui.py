@@ -112,10 +112,9 @@ class AutoHSRWindow:
         root.bind_all("<F10>", lambda _: self._stop())
         root.bind("<Escape>", self._page_escape, add="+")
         root.after(100, self._drain)
-        self._log("准备就绪。选择任务与副本，然后检测窗口。")
-        self._log("仅使用已有开拓力；首次验证建议选择“设为 1 次”，核对副本与预计消耗。")
+        self._log("准备就绪。")
         if not self.settings.allow_stamina_spend:
-            self._log("开拓力刷本未授权，当前仅收取委托与奖励。", "warning")
+            self._log("开拓力刷本未授权。", "warning")
         if config_error:
             root.after(200, lambda: messagebox.showwarning("配置读取失败", config_error, parent=root))
         from .desktop_scale import ResponsiveLayout
@@ -501,7 +500,7 @@ class AutoHSRWindow:
         self.dungeon_list.redraw()
         self.dungeon_category_combo.configure(state="readonly" if allowed and not self.busy else "disabled")
         if not allowed:
-            hint = "开拓力刷本未授权，当前仅收取委托与奖励"
+            hint = "开拓力刷本未授权"
         elif not battle_enabled:
             hint = ""
         elif not self.use_support.get():
@@ -871,7 +870,7 @@ class AutoHSRWindow:
                 if not new_battle_run:
                     return
         if not catalogue and not currency_wars and not differential_universe and not any(getattr(settings, key) for key in TASK_NAMES) and not (operation == "plan" and settings.weekly_enabled):
-            messagebox.showinfo("未选择任务", "请至少勾选一项每日任务。", parent=self.root)
+            messagebox.showinfo("未选择任务", "请开启至少一项每日任务。", parent=self.root)
             return
         self.runner = None
         self.active_operation = operation
@@ -943,7 +942,7 @@ class AutoHSRWindow:
         if daily_operation:
             for name, label in TASK_NAMES.items():
                 enabled = getattr(settings, name)
-                detail = "开拓力刷本未授权" if name == "battle" and not settings.allow_stamina_spend else ("" if enabled else "未勾选")
+                detail = "开拓力刷本未授权" if name == "battle" and not settings.allow_stamina_spend else ("" if enabled else "未加入计划")
                 self.table.item(name, values=(label, "等待" if enabled else "跳过", detail), tags=() if enabled else ("skipped",), has_result=False, metrics=None)
         self._log("开始标准A8-40开发；未知页面和反馈停下留证。" if currency_standard else "开始货币战争启动准备，不开始对局。" if currency_prepare else "开始差分宇宙自动演算。助手将最小化，让游戏保持前台。" if differential_universe else "开始货币战争流程推进验证。" if flow_test else "开始货币战争当前节点战斗验证。" if node_test else "开始货币战争单次部署验证。" if deploy_test else "开始货币战争单次拖动验证。" if drag_test else "开始货币战争只读识别。" if currency_wars else "开始执行每日任务。助手将最小化，让游戏保持前台。")
         self.root.iconify()
