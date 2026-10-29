@@ -4,7 +4,7 @@
   "retrieved": "2026-10-28",
   "license": "GNU GPL version 3",
   "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json"],
+  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json"],
   "mechanic_references": [
     {
       "url": "https://sr.mihoyo.com/news/162649?nav=home&type=news_all",
@@ -124,6 +124,27 @@
         "equip_seele"
       ],
       "kind": "named-core one-input native tool protocol with observed stock delta and independently recollected complete roster: copies/upgrades, equipment removal, basic inventory reforge and separate four-option token selection; durable origins, scoped profile proofs and no unknown replay; no upstream blind retry or fixed first-option fallback"
+    },
+    {
+      "path": "autohsr/currency_wars_supply_policy.py",
+      "reference_functions": [
+        "check_supply_phase"
+      ],
+      "kind": "named-core supply priorities rewritten from observed worn/banked gear, missing recipe parts and actual owned stars; default strategy unchanged"
+    },
+    {
+      "path": "autohsr/currency_wars_standard_supply_refresh.py",
+      "reference_functions": [
+        "check_supply_phase"
+      ],
+      "kind": "native one-click refresh quota protocol with observed Q control, independent counter grammar and immutable complete candidate/HUD chain through separate selection, confirmation and actual delivery; hidden balances remain unknown, no gold receipt or unknown replay"
+    },
+    {
+      "path": "autohsr/currency_wars_supply_fields.py",
+      "reference_functions": [
+        "check_supply_phase"
+      ],
+      "kind": "native four/five-column association from the complete equipment row, bounded dual name reads and retained image identities for unreadable unselected roles; no fixed first/middle candidate fallback"
     }
   ]
 }

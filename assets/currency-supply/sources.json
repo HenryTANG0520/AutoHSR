@@ -1,0 +1,187 @@
+{
+  "schema": 1,
+  "reviewed": "2026-10-29",
+  "game_version_context": "existing local CN 4.6 calibration; no new live acceptance",
+  "calibration": true,
+  "independent_acceptance": false,
+  "model_training": false,
+  "source": "runs/currency-wars-live-20261018-rules/129-supply-options.png",
+  "source_sha256": "c2f5f0788020c4cd9b330cd0fd121fb703d7fca65c2c3a32dfcf4f78468f88ae",
+  "source_manifest_sha256": "42c70d2aef2aef3ff85398c363bc96755411ed796f6fa84310cac62b14ffae99",
+  "items": [
+    {
+      "file": "../templates/currency_supply_refresh_4_6.png",
+      "role": "native supply refresh Q control; excludes count, account and full frame",
+      "crop_xyxy": [
+        1718,
+        1276,
+        1790,
+        1347
+      ],
+      "transforms": [
+        "crop only; no scaling"
+      ],
+      "sha256": "b17fcccb43e4253abce32072a180f65d5a128f2430f7678a96c5c9a3ff093647"
+    }
+  ],
+  "rights": "Game art belongs to HoYoverse and its rights holders; this source record grants no additional license",
+  "counter_calibration": [
+    {
+      "sample": "runs/currency-wars-live-20261018-rules/129-supply-options.sample.json",
+      "manifest_sha256": "42c70d2aef2aef3ff85398c363bc96755411ed796f6fa84310cac62b14ffae99",
+      "image_sha256": "c2f5f0788020c4cd9b330cd0fd121fb703d7fca65c2c3a32dfcf4f78468f88ae",
+      "controls": [
+        {
+          "text": "已选择0/1",
+          "confidence": 0.9892,
+          "box": [
+            0.8546875,
+            0.8435185185185186,
+            0.9083333333333333,
+            0.8694444444444445
+          ]
+        },
+        {
+          "text": "剩余次数：1",
+          "confidence": 0.9986,
+          "box": [
+            0.7005208333333334,
+            0.8953703703703704,
+            0.7729166666666667,
+            0.9259259259259259
+          ]
+        },
+        {
+          "text": "确认",
+          "confidence": 0.9991,
+          "box": [
+            0.8765625,
+            0.8953703703703704,
+            0.9057291666666667,
+            0.9259259259259259
+          ]
+        }
+      ]
+    },
+    {
+      "sample": "runs/currency-wars-live-20261018-rules/158-supply-2-2.sample.json",
+      "manifest_sha256": "94144c243f36129bd6b6aa60c06b7adb38e3f94bf9d0dd5330daecc6b2f241d4",
+      "image_sha256": "b15393d74e595ba09c57052cb9bca51788c30cf5df59ef86e259b1703f146625",
+      "controls": [
+        {
+          "text": "已选择0/1",
+          "confidence": 0.9892,
+          "box": [
+            0.8546875,
+            0.8435185185185186,
+            0.9083333333333333,
+            0.8694444444444445
+          ]
+        },
+        {
+          "text": "剩余次数：1",
+          "confidence": 0.9986,
+          "box": [
+            0.7005208333333334,
+            0.8953703703703704,
+            0.7729166666666667,
+            0.9259259259259259
+          ]
+        },
+        {
+          "text": "确认",
+          "confidence": 0.9992,
+          "box": [
+            0.8765625,
+            0.8953703703703704,
+            0.9057291666666667,
+            0.9259259259259259
+          ]
+        }
+      ]
+    },
+    {
+      "sample": "runs/currency-wars-live-20261018-rules/167-supply-3-2-advanced.sample.json",
+      "manifest_sha256": "8dd18bbb7bd883238b869583c16745e31699703d20582beb45ca52103a900e70",
+      "image_sha256": "05aafa851b792e5ef0a134c08d8dbbec5e99b3106047f6064df6f6bee02135e7",
+      "controls": [
+        {
+          "text": "已选择0/1",
+          "confidence": 0.9957,
+          "box": [
+            0.8541666666666666,
+            0.8425925925925926,
+            0.9083333333333333,
+            0.8703703703703703
+          ]
+        },
+        {
+          "text": "剩余次数：1",
+          "confidence": 0.9986,
+          "box": [
+            0.7005208333333334,
+            0.8953703703703704,
+            0.7729166666666667,
+            0.9259259259259259
+          ]
+        },
+        {
+          "text": "确认",
+          "confidence": 0.9992,
+          "box": [
+            0.8765625,
+            0.8953703703703704,
+            0.9057291666666667,
+            0.9259259259259259
+          ]
+        }
+      ]
+    }
+  ],
+  "layout_observations": [
+    {
+      "sample": "runs/currency-wars-live-20261018-rules/129-supply-options.sample.json",
+      "columns": 5,
+      "remaining": 1,
+      "control_verified": true,
+      "unknown_role_slots": [
+        0
+      ],
+      "unknown_item_slots": [],
+      "local_role_reads": {
+        "currency_supply_role_0_raw": [
+          null
+        ],
+        "currency_supply_role_0_binary": [
+          {
+            "text": "藿藿",
+            "confidence": 0.8729
+          }
+        ]
+      }
+    },
+    {
+      "sample": "runs/currency-wars-live-20261018-rules/158-supply-2-2.sample.json",
+      "columns": 5,
+      "remaining": 1,
+      "control_verified": true,
+      "unknown_role_slots": [],
+      "unknown_item_slots": [],
+      "local_role_reads": {}
+    },
+    {
+      "sample": "runs/currency-wars-live-20261018-rules/167-supply-3-2-advanced.sample.json",
+      "columns": 5,
+      "remaining": 1,
+      "control_verified": true,
+      "unknown_role_slots": [],
+      "unknown_item_slots": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "local_role_reads": {}
+    }
+  ]
+}

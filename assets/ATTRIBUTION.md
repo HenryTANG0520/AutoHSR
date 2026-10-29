@@ -692,3 +692,9 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 `assets/templates/currency_wrench2_native_4_6.png`从既有本地4.6画面`146-boss-ready-loot-cleared.png`静态裁出75×70金色扳手图标，裁切坐标、原图及原清单SHA-256、输出哈希记录在[消耗品来源清单](currency-consumables/sources.json)。图标排除次数、UID、账号和完整画面；原始截图保持忽略，没有启动游戏取新图。游戏美术归HoYoverse及相应权利人，不纳入原创代码GPL声明，来源不授予额外再许可。
 
 工具初始参考继续使用上一节固定提交的18幅上游原PNG及完整GPL v3许可，没有改写这些字节。六种工具的命名核心优先思路改写为本项目Context、账号／输入代次、库存及完整角色效果核验；上游来源与具体适配文件继续记录于[source.json](upstream/March7thAssistant/source.json)。三份既有画面及五份工具教程仅记录脱离账号的局部事实、原哈希与本地标识；没有分发整图、更新模型或建立独立实机验收集。识别与执行边界见[工具说明](currency-consumables/README.md)。
+
+## 2026-10-29 货币战争补给刷新控件
+
+`assets/templates/currency_supply_refresh_4_6.png`从既有4.6补给画面静态裁出72×71的Q控件，排除次数、UID与完整画面；原图、原清单、坐标、变换、SHA-256及三份旧补给控件校准记录见[补给来源清单](currency-supply/sources.json)。游戏美术归HoYoverse及相应权利人，不纳入原创代码GPL声明，来源不授予额外再许可。没有启动游戏取材、公开整图或训练模型。
+
+命名策略的补给偏好和有界刷新参考同一March7thAssistant固定提交的`check_supply_phase`，经原生Context、独立次数回执、完整候选链和原奖励到账核验改写；保留上游署名与GPL v3许可。旧图缺失名字保留未知列，不从视觉人工读数伪造OCR通过；没有将局部校准或合成场景写成实机刷新成功。范围见[补给说明](currency-supply/README.md)。

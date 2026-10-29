@@ -107,6 +107,10 @@ def ledger_status(actions, *, investment_projection=None):
         if action.get('status') != 'verified':
             return 'pending' if action.get('status') == 'pending' else 'unknown'
         name = action.get('action', '')
+        if name=='refresh_standard_supply':
+            from .currency_wars_standard_supply_refresh import valid_receipt as valid_supply_refresh,valid_prefix
+            if not valid_supply_refresh(action,actions) or not valid_prefix(action,actions):return 'unknown'
+            continue
         if name=='confirm_standard_investment':
             from .currency_wars_standard_investment import valid_effect
             if not valid_effect(action,actions):return 'unknown'

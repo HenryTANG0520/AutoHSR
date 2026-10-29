@@ -35,6 +35,10 @@ def _ocr_job(input_path: str, output_path: str, confidence: float):
         scene = supplement_refresh_price(scene, reader)
         from .currency_wars_consumables import supplement_counts
         scene = supplement_counts(scene, reader)
+        from .currency_wars_supply_fields import supplement_supply_fields
+        scene = supplement_supply_fields(scene, reader)
+        from .currency_wars_standard_supply_refresh import supplement_remaining
+        scene = supplement_remaining(scene, reader)
         from .currency_wars_node_ocr import refine_battle_node
         scene = refine_battle_node(scene, reader)
         result = dict(status="ok", tokens=[asdict(token) for token in scene.tokens],

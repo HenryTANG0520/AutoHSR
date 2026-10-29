@@ -153,18 +153,11 @@ def _options(scene, kind, confidence):
             raise AutomationError('邀请函实际金币数未独立核实，未按旧常量领取。')
         return ((0,'现金为王',None,None,int(next(iter(amounts))),cash[0]),)
     if kind=='supply_selection':
-        names = sorted([t for t in clean.tokens if t.within((.03,.50,.97,.55))
-                        and re.fullmatch(r'[\u4e00-\u9fffa-z0-9·.]{1,40}',normalize(t.text))],key=lambda t:t.center[0])
-        if len(names) not in (4,5) or len({unit_name(t.text) for t in names})!=len(names):
-            raise AutomationError('补给四／五组角色名称不完整或重复。')
-        for i,name in enumerate(names):
-            x = name.center[0]
-            items = [t for t in clean.tokens if t.within((x-.085,.61,x+.085,.67))
-                     and re.fullmatch(r'[\u4e00-\u9fff]{2,20}',normalize(t.text))]
-            if len(items)!=1 or i and x-names[i-1].center[0]<.12:
-                raise AutomationError('补给角色与装备未成对唯一识别。')
-            item = normalize(items[0].text)
-            result.append((i,unit_name(name.text),ITEM_IDS.get(item),unit_name(name.text),0,name))
+        from .currency_wars_supply_fields import rows
+        for i,name,equipment in rows(scene,confidence):
+            item = normalize(equipment.text)
+            unknown=name.text.startswith('unknown:')
+            result.append((i,name.text if unknown else unit_name(name.text),ITEM_IDS.get(item),None if unknown else unit_name(name.text),0,name))
     else:
         for i,x in enumerate((.346,.497,.647,.799)):
             names = [t for t in clean.tokens if t.within((x-.065,.25,x+.065,.29))
@@ -207,12 +200,16 @@ def _chosen(scene, data, strategy, confidence):
     options = _options(scene,data['page'],confidence)
     if data['page']=='expert_selection':
         return options[0],options
+    if data['page']=='supply_selection':
+        from .currency_wars_supply_policy import preferred
+        selected=preferred(options,data,strategy)
+        if selected is not None:return selected,options
     priorities = _priority(data,strategy)
     units = data['basis']['snapshot'].get('roster',[])
     owned = {unit['name'] for unit in units}
     ranking = []
     for option in options:
-        if option[2] is None:
+        if option[2] is None or data['page']=='supply_selection' and option[3] is None:
             continue  # Unidentified effects cannot become a default first choice.
         score = 100-5*priorities.index(option[2]) if option[2] in priorities else 5
         if option[3] and strategy!='default' and option[3] in PREFERRED[strategy]:
@@ -260,6 +257,10 @@ def active_action(scene, session, confidence=.65):
     state = _hud(scene,confidence)
     if state.page!=data['page'] or state.node!=data['basis']['node'] or state.gold not in (None,data['basis']['gold']):
         raise AutomationError('奖励候选的页面、节点或已观察余额已变。')
+    if data['page']=='supply_selection':
+        from .currency_wars_standard_supply_refresh import refresh_action
+        refresh=refresh_action(scene,prior,data,confidence)
+        if refresh is not None:return refresh
     option,options = _chosen(scene,data,prior.get('strategy','default'),confidence)
     if data['page']=='expert_selection' and not option[3] and (not data['money_observed'] or state.gold is None):
         raise AutomationError('邀请函领取前当前金币不可见，未用旧余额推断到账。')
@@ -487,11 +488,13 @@ def _valid_effect(action, actions):
         return False
     kind = target[2]
     if kind=='supply_selection':
+        from .currency_wars_standard_supply_refresh import valid_claim_chain
         previous = actions[action['id']-1]
         if (len(target)!=9 or action.get('action')!='confirm_standard_supply' or not isinstance(target[6],str)
                 or target[4]!=target[6] or target[5] not in GEAR or target[7]!=0
                 or previous.get('action')!='select_standard_supply' or previous.get('status')!='verified'
-                or previous.get('target')!=list(target) or not previous.get('before') or not previous.get('after')):
+                or previous.get('target')!=list(target) or not previous.get('before') or not previous.get('after')
+                or not valid_claim_chain(action,actions)):
             return False
     elif action.get('action')!='choose_standard_reward':
         return False

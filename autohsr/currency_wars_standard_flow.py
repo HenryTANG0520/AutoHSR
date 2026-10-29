@@ -215,6 +215,9 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None, session=None):
+    if choice.expected=='standard_supply_refreshed':
+        from .currency_wars_standard_supply_refresh import feedback
+        return before is not None and session is not None and feedback(choice,before,scene,session,confidence)
     if choice.expected in ('standard_consumable_applied','standard_consumable_returned'):
         from .currency_wars_standard_consumables import feedback
         return before is not None and session is not None and feedback(choice,before,scene,session,confidence)
@@ -506,6 +509,9 @@ def run_standard(c):
         elif choice.intent=='stage_standard_consumable':
             action['decision']=dict(item=choice.details[0],effect=choice.details[1],name=choice.details[2],policy=choice.details[3])
             store.persist()
+        elif choice.intent=='refresh_standard_supply':
+            action['decision']=dict(strategy=choice.details[0],remaining=choice.details[1],need=list(choice.details[2]),policy=choice.details[3])
+            store.persist()
         elif choice.intent in ('choose_standard_reward','select_standard_supply','confirm_standard_supply'):
             action['decision'] = dict(name=choice.details[0],item=choice.details[1],unit=choice.details[2],
                                       gold=choice.details[3],policy=choice.details[4])
@@ -524,6 +530,14 @@ def run_standard(c):
             store.persist()
         if choice.payload:
             action['target'] = list(choice.payload)
+            store.persist()
+        if choice.intent=='refresh_standard_supply':
+            from .currency_wars_standard_supply_refresh import bind_intent
+            bind_intent(store.data,choice,scene,c.settings.ocr_confidence)
+            store.persist()
+        if choice.intent in ('select_standard_supply','confirm_standard_supply'):
+            from .currency_wars_standard_supply_refresh import bind_choice
+            bind_choice(store.data,choice,scene,c.settings.ocr_confidence)
             store.persist()
         if choice.intent in ('stage_standard_exchange','inspect_standard_exchange_unit'):
             from .currency_wars_standard_exchange import record_intent
@@ -583,7 +597,7 @@ def run_standard(c):
                 required = 2 if choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable',
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
                                                     'standard_sale_panel','standard_owned_sold','standard_equipment_inspectable',
-                                                    'standard_reward_returned','standard_supply_selected',
+                                                    'standard_reward_returned','standard_supply_selected','standard_supply_refreshed',
                                                     'standard_investment_selected','standard_investment_applied',
                                                     'standard_stale_unit_board','standard_collected_unit_board',
                                                     'standard_consumable_applied','standard_consumable_returned','standard_consumable_board') else 1
@@ -648,6 +662,9 @@ def run_standard(c):
                         from .currency_wars_standard_consumables import applied
                         applied(store.data,choice,after,c.settings.ocr_confidence)
                         store.data['action_status']='consumable_identity_pending'
+                    elif choice.intent=='refresh_standard_supply':
+                        from .currency_wars_standard_supply_refresh import refreshed
+                        refreshed(store.data,choice,after,c.settings.ocr_confidence)
                     elif choice.intent in ('close_standard_consumable_unit','close_standard_consumable_stale_panel'):
                         if choice.intent=='close_standard_consumable_stale_panel':
                             store.data.pop('inspecting',None);store.data.pop('collection',None)
