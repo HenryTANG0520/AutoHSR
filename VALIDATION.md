@@ -12,6 +12,8 @@
 
 本轮没有新增界面提示段落，没有改变开始、保存、暂停、停止或资源授权。未启动、检测或操作游戏；整屏一致性、玩家体验与日常周常组合实机仍未验收。
 
+源码`42c37ab`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/mode-navigation-build.log`。独立配置、`--no-admin-launch`下，原生鼠标打开演算设置后不按Tab，直接按Down即可展开局数；第一次Esc收起下拉框、保持原3局，第二次Esc返回玩法入口。再打开结果，Esc同样返回。没有选择新值、保存、检测或执行任务；标题栏关闭后退出码0。截图为`runs/mode-navigation-package-home.png`、`package-editor.png`、`package-choice.png`、`package-choice-closed.png`、`package-return.png`、`package-result.png`与`package-result-return.png`（后六项均同`mode-navigation-`前缀）。239份用户文件及独立配置哈希不变，147项UI素材、5份清单及23个上游文件与源码一致；记录`runs/mode-navigation-package-verification.json`，备份`build/userdata-mode-navigation-20261029_152908/`。EXE SHA-256为`47e3f04f6393f76783f5c867496e7eae88a98f18d63b4a5ab46024779a3cf2b9`；本轮证据归档在正式项目`runs/mode-navigation-*`。
+
 ## 2026-10-29：生存索引按游戏分组浏览
 
 只读对照AutoZZZ本地`51f236e`的页面与明确选择入口，以及2026-10-20既有CN 4.6.0生存索引采集帧。移除副本列表下方重复的委托、实训、邮件和勋礼开关，这些任务继续通过首页卡片与“每日任务”设置调整；副本自己的“加入计划”与已选目标放在同一行，原次数、费用、预算、授权与显式保存约定不变。
