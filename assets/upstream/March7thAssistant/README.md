@@ -4,6 +4,8 @@
 
 上游使用GNU GPL v3；保留的原许可见[LICENSE](LICENSE)，具体源文件的Git blob及许可文件SHA-256见[source.json](source.json)。AutoHSR本身也使用GPL v3。游戏角色名及相关游戏内容仍归各自权利人所有。
 
+2026-10-29另将`check_currency_wars_score`的当前值／18000上限判断改写为[独立积分核对](../../../autohsr/currency_wars_points.py)。原生流程另核实当前账号、游戏周与可见倒计时，保存原图及报告哈希，不迁入上游全局时间戳或领奖点击。三份旧OCR白名单仅用于字段校准，不含UID、无关余额或图像；循环积分目标、领奖和完整周常仍待接入，见[积分说明](../../../docs/currency-wars-weekly-notes.md)。
+
 2026-10-29另参考固定`main.py`的`run_sub_task`及局部`_run_loop_task_with_telemetry`／`currencywars`，适配为[原生循环Runner](../../../autohsr/currency_wars_loop.py)。增加指定局数、冻结目标、账号与单局归属、原报告及证据核验、只读归档恢复；每局调用原生Runner，没有迁入上游输入框架或遥测。支持直到停止，未知／失败会停下核对；其他模式、周期目标／领奖与真实多局仍待完成，见[循环说明](../../../docs/currency-wars-loop.md)。
 
 本轮将上游`tasks/weekly/currency_wars.py`中的核心角色优先、取得核心后切换成长阶段、按完整一级经验判断余额、购买后更新角色信息等思路，改写为本项目的`currency_wars_standard_policy.py`与`currency_wars_standard_trading.py`。阿格莱雅／希儿的角色偏好和成长阶段来自这份固定源码；实际售价、星级、费用、位置适配、余额、经验及阵容来自AutoHSR当前画面和本局记录。

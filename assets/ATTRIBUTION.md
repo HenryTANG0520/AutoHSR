@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-10-29 积分核对与旧OCR白名单
+
+参考固定March7thAssistant的`check_currency_wars_score`，将积分当前值／上限判断改写为[原生解析](../autohsr/currency_wars_points.py)及账号／游戏周观察回执；函数、Git blob和GPL v3见[source.json](upstream/March7thAssistant/source.json)。未迁入全局时间戳或领取实现，未新增图像或模型。[文字夹具](../autohsr/tests/fixtures/currency_wars_points.json)由三份既有游戏截图的原OCR筛选，仅保留22条菜单、积分与倒计时字段及来源哈希，不带UID、图像和无关余额；它们是旧校准材料，不是新实机留出。游戏界面及文字归HoYoverse和相应权利人所有。
+
 ## 2026-10-29 逐局连续运行
 
 参考固定March7thAssistant的`main.py`中`run_sub_task`及其局部循环／货币战争调用，将连续运行改写为[原生组合Runner](../autohsr/currency_wars_loop.py)。逐局归属、冻结目标、账号输入门禁、原报告核验和可恢复归档属于AutoHSR原生适配；失败／未知停止，不迁入上游false返回后继续或遥测实现。Git blob及GPL v3许可见[source.json](upstream/March7thAssistant/source.json)。未新增公开图像、模型或真实采集；检查使用合成最终节点、假窗口与既有原生结算协议。

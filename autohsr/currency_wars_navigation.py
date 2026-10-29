@@ -65,6 +65,10 @@ def next_action(scene, context):
     if clean.has(('密码', '验证码', '扫码登录', '用户协议', '资源下载', '更新游戏')):
         raise AutomationError('导航出现账号验证、协议或更新，未输入。')
     kind = page_kind(scene, confidence)
+    if getattr(getattr(context,'report',None),'operation',None)=='currency_wars_points':
+        if kind=='lobby':return None
+        if kind=='standard_difficulty':return NavigationAction('points_back_from_rank',('mode_select','lobby'),key='esc')
+        if kind=='mode_select':return NavigationAction('points_back_from_mode',('lobby',),key='esc')
     if kind == 'points_rewards':
         return NavigationAction('close_points_rewards', ('lobby',), key='esc')
     if kind == 'phone':
@@ -122,7 +126,9 @@ def standard_selected(scene, confidence=.65):
             and clean.has('进入标准博弈', (.75, .85, .96, .94), exact=True))
 
 
-def locate(c):
+def locate(c, *, stop_at_lobby=False):
+    if type(stop_at_lobby) is not bool or stop_at_lobby and c.report.operation!='currency_wars_points':
+        raise AutomationError('仅独立积分核对可请求主页定位。')
     if c.report.operation not in PREPARATION_OPERATIONS or not c.runner.currency_locate:
         raise AutomationError('定位入口需要显式的货币战争导航操作。')
     result = prepare(c)
@@ -149,6 +155,10 @@ def locate(c):
     for _ in range(24):
         c.checkpoint()
         guard._require_current_scene(scene)
+        if stop_at_lobby and page_kind(scene,c.settings.ocr_confidence)=='lobby':
+            data.update(entry_ready=True,page_kind='lobby',action_status='points_lobby_ready',
+                        screenshot=evidence(scene,'currency_points_lobby_ready'))
+            persist();break
         if getattr(c.runner, 'currency_configure', False) and page_kind(scene, c.settings.ocr_confidence) == 'standard_difficulty':
             from .currency_wars_standard import selected_rank
             try:
@@ -161,7 +171,7 @@ def locate(c):
                             screenshot=evidence(scene, 'currency_rank_40_ready'))
                 persist()
                 break
-        if standard_selected(scene, c.settings.ocr_confidence) and not getattr(c.runner, 'currency_configure', False):
+        if not stop_at_lobby and standard_selected(scene, c.settings.ocr_confidence) and not getattr(c.runner, 'currency_configure', False):
             data.update(entry_ready=True, page_kind='standard_selected', action_status='entry_ready',
                         screenshot=evidence(scene, 'currency_navigation_ready'))
             persist()
@@ -226,6 +236,9 @@ def locate(c):
         data.update(action_status='step_limit', reason='入口导航超过步骤上限。')
         persist()
     c.runner.emit(dict(type=TASK, data=data))
+    if stop_at_lobby:
+        c.report.safe_next='仅核对当前主页积分；不开始对局或领取积分奖励。'
+        return TaskResult(TASK,'partial','已到达积分主页。' if data['entry_ready'] else data.get('reason','主页定位未完成。'))
     c.report.safe_next = '核对标准博弈难度与A8-40控制；本次未提交新对局。'
     return TaskResult(TASK, 'partial', '已核实标准A8财富造物主40，未开始对局。' if data.get('rank_verified') else
                       '已定位标准博弈配置，未开始对局。' if data['entry_ready'] else

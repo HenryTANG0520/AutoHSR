@@ -97,7 +97,10 @@ def settled(root, guard=None):
 @contextmanager
 def real_runtime(root):
     """Keep Runner.run/dispatch/report saving and Context IO; replace OS/vision."""
-    window=Mock();window.hwnd=44;window.path=str(root/'fake-game'/'StarRail.exe')
+    game=root/'fake-game';game.mkdir(exist_ok=True)
+    (game/'StarRail.exe').write_bytes(b'synthetic test marker; never executed')
+    (game/'config.ini').write_text('[General]\ngame_version=4.6.0\n',encoding='utf-8')
+    window=Mock();window.hwnd=44;window.path=str(game/'StarRail.exe')
     def snapshot(c):
         state=c.runner._loop_test_scenes.pop(0)
         state.tokens=[t for t in state.tokens if not normalize(t.text).startswith('uid')]

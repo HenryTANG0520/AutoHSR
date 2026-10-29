@@ -1,5 +1,24 @@
 # 货币战争重启开发记录
 
+## 2026-10-29：原生积分核对、游戏周一致性和独立观察回执
+
+参考固定March7thAssistant的`check_currency_wars_score`，新增[积分字段解析](../autohsr/currency_wars_points.py)和[独立核对流程](../autohsr/currency_wars_points_run.py)，CLI为`--currency-wars-points`。复用准备与导航，到主页即停；已识别难度／模式／积分面板只返回，不开始对局或领取积分奖励。原标准、日常及差分入口不改为积分模式，配置不自动保存。接口、字段和边界见[积分说明](currency-wars-weekly-notes.md)。
+
+- 当前值、上限和门槛分别读取，支持一／二／三框、合法千分位、全角文字及边界反例；重复或低置信度疑似片段不会因被过滤而变成完整满分。只接受已核对18000上限与0～18000当前值，不用指南、教程或奖励行数字替代。
+- 正式流程在当前新鲜主页核实账号，按北京时间周一04:00分周，另将可见本期倒计时与该周核对。缺倒计时、格式冲突或跨周旧显示保留未核实。当前显示满分与本周目标已核实独立；积分奖励仍为未核实，始终不是对局完成或独立验收记录。
+- 每次观察另存账号／周／随机ID回执，绑定原图、限定文字和已成功保存报告；latest仅更新指针，旧观察和旧报告保留。读取时复查哈希、语义、周期及归属。客户端仅保留从当前进程目录读到的版本、类型和哈希，不保存安装路径，限定文字不含UID和无关余额。
+- 积分入口的正式Runner在报告和回执处理后才释放运行锁；保存失败保持失败／部分完成，不产生可用完成证据。已有未核实标准会话在游戏准备、检测和热键前拒绝，完整结算旧会话不改。核对入口没有开放未知对局退出、通用确认、积分领取或清理。
+
+新增[20项机制检查](../autohsr/tests/test_currency_wars_points.py)，覆盖真实Runner与存储、零／满分、字段变体、导航与旧对局隔离、跨周旧显示、配置阈值一致、同周历史保留、缺进程版本、截图后代次变化、失败及篡改、CLI范围和不保存配置。初版19项通过`runs/currency-points-final.log`，67项新旧积分／导航／准备／循环回归通过`runs/currency-points-related.log`。
+
+接入客户端版本记录后首次1433项全量因假窗口的游戏路径没有临时`game_version`文件而产生12个失败和1个错误，均在积分检查。已为假窗口创建从不执行的标记EXE和4.6.0配置，保持实际版本读取规则；新增当前进程配置缺失时不得借用设置中另一安装目录的反例。原全量`runs/currency-points-all.log`及随后同因的专项`runs/currency-points-period-final.log`保留。补齐后68项通过`runs/currency-points-related-fixed.log`；截图和版本读取后另复核原画面代次，防止暂停期间把旧画面发布到新代次，68项最终通过`runs/currency-points-release.log`（10.860秒）。倒计时另覆盖拆开的标签、天／小时／分钟五框，不改变积分值三框上限。
+
+三份旧清单的22条允许字段导出为[脱敏文字夹具](../autohsr/tests/fixtures/currency_wars_points.json)，原文、框和置信度不改，记录原图与清单哈希。首轮生成遗漏带「」的开始入口，导致重建主页证据不足；已沿用导航的括号归一化，只修正字段筛选，不改OCR，原失败日志`runs/currency-points-fixture-first.log`保留。三份旧图另经真实隔离OCR重读，分别为主页18000、主页0和面板0，原文件哈希不变，见`runs/currency-points-existing-replay.json`。这些是旧校准，未作为独立实机留出或通关。
+
+本轮未启动、检测或操作真实游戏，未新采集、消耗资源或构建EXE。GUI交既有界面工作整合；循环积分目标、周常自动流程、正常领奖及满额处理仍待接入，历史独立验收0/10不变。
+
+最终**1434项全量通过**（652.725秒），见`runs/currency-points-all-fixed.log`；84项假后端GUI通过`runs/currency-points-gui.log`。画面代次发布补查后的20项通过`runs/currency-points-final-release.log`（1.274秒），68项整合通过`runs/currency-points-release.log`。四份固定上游blob、一个参考方法、GPL许可、18幅原图、三份旧源图／清单、22条OCR白名单以及六份文档156个相对链接核对通过`runs/currency-points-source-check.json`。真实CLI帮助与范围已核对，`git diff --check`通过；原始图、配置、回执、日志与检查脚本保持忽略。
+
 ## 2026-10-29：修复正式Runner结果传递，补齐循环生命周期检查
 
 核对周常接入前的正式运行链时发现：`run_standard`已核实胜利、四步结算并返回success，但`Runner._inspect_currency_wars`最后仍无条件将报告标为partial。上一轮循环夹具直接调用标准流程后手动设置成功报告，因此没有覆盖此差异；实际循环会在第一局后停止，不能据1411项旧全量声称正式Runner已完成两局闭环。

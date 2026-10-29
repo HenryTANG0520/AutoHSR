@@ -41,6 +41,12 @@
   ],
   "adaptations": [
     {
+      "path": "autohsr/currency_wars_points.py",
+      "native_files": ["autohsr/currency_wars_points_run.py"],
+      "reference_functions": ["check_currency_wars_score"],
+      "kind": "native independent observed-score operation; fixed 18000 cap with one/two/three-box field grammar, current account and Monday-04:00 game-week evidence, visible countdown consistency, immutable observations and source/report hashes; excludes UID and inventory from text proofs, preserves native navigation and report lifecycle, does not claim rewards or start matches; score-target loops and complete weekly workflow remain pending"
+    },
+    {
       "path": "autohsr/currency_wars_loop.py",
       "reference_source": "main.py",
       "reference_functions": ["run_sub_task", "_run_loop_task_with_telemetry", "currencywars"],

@@ -1235,12 +1235,12 @@ class Runner:
         self.input_epoch = 0
         self.inactive_duration = 0.0
         self.new_battle_run = new_battle_run
-        preparation_operations = ('currency_wars_prepare', 'currency_wars_standard')
+        preparation_operations = ('currency_wars_prepare', 'currency_wars_standard', 'currency_wars_points')
         if type(currency_locate) is not bool or currency_locate and operation not in preparation_operations:
             raise ValueError('货币战争入口导航仅允许独立准备操作。')
         self.currency_locate = currency_locate
         if (type(currency_configure) is not bool or currency_configure and
-                (operation not in preparation_operations or not currency_locate)):
+                (operation not in ('currency_wars_prepare','currency_wars_standard') or not currency_locate)):
             raise ValueError('标准A8-40配置仅允许独立入口导航操作。')
         self.currency_configure = currency_configure
         if type(currency_resume) is not bool or currency_resume and operation != 'currency_wars_standard':
@@ -1260,6 +1260,8 @@ class Runner:
         self.currency_fast_mode=None if currency_fast_mode is None else validate_fast_mode(currency_fast_mode)
         if operation == 'currency_wars_standard':
             self.currency_locate = self.currency_configure = True
+        if operation == 'currency_wars_points':
+            self.currency_locate = True
         self.currency_source_slot,self.currency_zone = currency_source_slot,currency_zone
         if type(currency_target_level) is not int or not 0<=currency_target_level<=10:
             raise ValueError('货币战争目标等级必须为0到10的整数。')
@@ -1346,7 +1348,10 @@ class Runner:
         self.report.failure_task = TASK
         self.report.safe_next = SAFE_NEXT
         self.emit(dict(type="task", task=TASK, status="running", detail="标准A8-40开发：核实开局与当前局面" if self.report.operation == 'currency_wars_standard' else "启动准备：进入游戏，不开始对局" if self.report.operation == 'currency_wars_prepare' else "连续战斗与结算推进验证" if self.report.operation == "currency_wars_flow_test" else "当前节点战斗验证" if self.report.operation == "currency_wars_node_test" else "单次部署验证" if self.report.operation == "currency_wars_deploy_test" else "单次前台拖动验证" if self.report.operation == "currency_wars_drag_test" else "只读识别与证据保存"))
-        if self.report.operation == 'currency_wars_standard':
+        if self.report.operation == 'currency_wars_points':
+            from .currency_wars_points_run import inspect_points
+            result = inspect_points(context)
+        elif self.report.operation == 'currency_wars_standard':
             from .currency_wars_standard_flow import run_standard
             result = run_standard(context)
         elif self.report.operation == 'currency_wars_prepare':
@@ -1380,8 +1385,11 @@ class Runner:
         completed = (self.report.operation == 'currency_wars_standard' and result.status == 'success'
                      and data.get('status') == 'settled' and data.get('completion_verified') is True
                      and data.get('settlement_verified') is True)
-        self.report.status = 'success' if completed else 'partial'
-        if completed:
+        points_checked=(self.report.operation=='currency_wars_points' and result.status=='ok'
+                        and data.get('mode')=='weekly_points' and data.get('points_verified') is True
+                        and data.get('completion_verified') is False)
+        self.report.status = 'success' if completed or points_checked else 'partial'
+        if completed or points_checked:
             self.report.failure_task = ''
 
     def stop(self):
@@ -1530,13 +1538,17 @@ class Runner:
         try:
             if not mutex or already_running:
                 raise AutomationError("另一个 AutoHSR 任务正在运行，请先停止后重试。")
-            currency_wars = self.report.operation in ("currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test")
+            currency_wars = self.report.operation in ("currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test")
             differential_universe = self.report.operation == "differential_universe"
             catalogue = self.report.operation == "dungeon_catalogue"
-            if self.report.operation not in ("daily", "reward_only", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
+            if self.report.operation not in ("daily", "reward_only", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
                 raise AutomationError("未知运行类型，未访问游戏。")
             self.settings.validate("check" if catalogue else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "daily")
             configured_name=''
+            if self.report.operation=='currency_wars_points':
+                from .currency_wars_points_run import require_no_active_match
+                from .currency_wars_session import StandardSession
+                require_no_active_match(StandardSession(directory.parent/'currency-standard-session.json').data)
             if self.report.operation=='currency_wars_standard':
                 from .currency_wars_names import resolve_name
                 from .currency_wars_session import StandardSession,require_session_access
@@ -1558,7 +1570,7 @@ class Runner:
             monitor = threading.Thread(target=self._hotkeys, name="AutoHSR-hotkeys", daemon=True)
             monitor.start()
             monitor_started = True
-            if (not catalogue and not currency_wars and not differential_universe) or self.weekly_plan is not None or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard'):
+            if (not catalogue and not currency_wars and not differential_universe) or self.weekly_plan is not None or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard', 'currency_wars_points'):
                 self._prepare_daily_game()
             self._window = self._window or find_game(self.settings.game_path)
             if self.report.operation != "currency_wars" and is_elevated(self._window.hwnd) is True and not is_admin():
@@ -1661,7 +1673,7 @@ class Runner:
                     self.report.status = "partial"
                     self.report.error = f"刷本记录保存失败：{error}"
                     self.report.safe_next = "保留现有记录，人工核对消耗；不要直接开始新一轮刷本。"
-            if mutex:
+            if mutex and self.report.operation!='currency_wars_points':
                 kernel32.CloseHandle(mutex)
             try:
                 self.report.report_saved = True
@@ -1677,6 +1689,24 @@ class Runner:
                                          "差分宇宙报告保存失败；保留当前目录，人工核对当前存档和动作。" if self.report.operation == "differential_universe" else
                                          "报告未保存；保留当前证据与刷本记录，人工核对消耗，不要直接重跑刷本。")
                 self.log(f"报告保存失败：{error}", "error")
+            if self.report.operation=='currency_wars_points':
+                try:
+                    if self.report.report_saved and self.report.status=='success':
+                        from .currency_wars_points_run import finalize
+                        finalize(self.report)
+                except Exception as error:
+                    self.report.status='partial'
+                    self.report.error='积分回执保存或核验失败：'+str(error)
+                    self.report.safe_next='保留原报告和积分截图，重新核对；本次未开始对局或领取积分奖励。'
+                    self.log(self.report.error,'error')
+                    try:
+                        temporary=directory/'report.tmp'
+                        temporary.write_text(json.dumps(self.report.to_dict(),ensure_ascii=False,indent=2),encoding='utf-8')
+                        replace_file(temporary,directory/'report.json')
+                    except OSError as report_error:
+                        self.report.report_saved=False;self.report.report_write_error=str(report_error)
+                finally:
+                    if mutex:kernel32.CloseHandle(mutex)
             if self.report.report_saved and self.report.operation == "differential_universe":
                 try:
                     files = [path for path in directory.rglob("*") if path.is_file()
