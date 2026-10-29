@@ -32,6 +32,8 @@
 
 可用[prepare_guide_assets.py](https://github.com/HenryTANG0520/AutoHSR/blob/main/tools/prepare_guide_assets.py)的`--daily`、`--guide`、`--universe`、`--font`参数提供对应本地原始文件，重新生成素材。字体采用进程私有注册，不安装到Windows字体目录；Pillow绘图也使用同一字体文件。
 
+2026-10-29，`paper-pattern.png`由左下329×72裁块扩展为同一原图的1458×72底边星图条带。以暖色与连续透明度分离中性纸面，按原纸色恢复颜色；倒计时`[1326,902,1666,950]`和`x≥1638`挂饰区整体清除RGBA，不恢复遮挡下的未知纹样。书页与任务画布共用书页坐标绘制，保留左右和中间实际可见的星图，移除原先代替右侧纹样的直线。仅更新该素材与清单条目，可用`prepare_guide_assets.py --daily <已登记原图> --paper-only`重现，要求原图哈希与清单一致；未增加素材文件数或复制倒计时。参考检查增加三个未遮挡区域的原图颜色对照，仍只证明局部色彩和位置。
+
 ## 版权与许可
 
 游戏美术、名称与商标归HoYoverse及其相应权利人所有。字体保留原始name/copyright/license表，版权字段为`(c) Copyright 2013-2022 Beijing Hanyi Innovation Technology Co.,Ltd`，许可相关字段指向`http://hanyi.com.cn/law.php`。未修改、重命名字体内部信息或将其声明为开源字体；随客户端提供这一来源事实不代表额外的再许可授权。

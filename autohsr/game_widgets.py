@@ -295,6 +295,21 @@ class Guide(Surface):
         self.buttons["settings"].place(x=self.art_left+w-d(330),y=d(24),width=d(122),height=d(52))
         self.content.place(x=self.art_left+d(90),y=d(90),width=max(1,w-d(173)),height=max(1,h-d(130)))
 
+    def paint_paper(self, p, surface):
+        # The task canvas is opaque. Reuse the book's coordinates so the chart
+        # continues across it instead of disappearing at the canvas boundary.
+        scale = self.scale
+        dx = (self.winfo_rootx()-surface.winfo_rootx()+self.art_left)/scale
+        dy = (self.winfo_rooty()-surface.winfo_rooty())/scale
+        w = (self.winfo_width()-self.art_left-self.art_right)/scale
+        h = self.winfo_height()/scale
+        origin = p.origin
+        p.origin = (0, 0)
+        try:
+            p.asset("paper-pattern.png", (dx+60,dy+h-78,dx+w-51,dy+h-20))
+        finally:
+            p.origin = origin
+
     def paint(self,p):
         left,right=self.art_left/self.scale,self.art_right/self.scale
         w,h=p.width-left-right,p.height
@@ -306,8 +321,7 @@ class Guide(Surface):
         p.box((60,88,w-51,111),t.PANEL)
         # The static paper pattern is isolated from the reference's live text.
         with p.clip((60,88,w-51,h-20),16):
-            p.asset("paper-pattern.png",(60,h-78,323,h-20))
-            p.line((w-185,92,w-260,h-20),"#d1cec3")
+            self.paint_paper(p, self)
         p.box((w-159,42,w-51,66),"#222222",12,"#6f654a")
         p.ellipse((w-150,52,w-147,55),t.GOLD)
         p.asset("guide-seal.png",(w-119,32,w-70,73),t.GOLD)
@@ -514,6 +528,7 @@ class TaskBoard(Surface):
 
     def paint(self,p):
         w,h=p.width,p.height
+        self.ui.guide.paint_paper(p, self)
         self.visible_count=4 if w>=850 else 3
         self.offset=min(self.offset,len(self.names)-self.visible_count)
         self.hitboxes={}

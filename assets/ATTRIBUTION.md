@@ -7,6 +7,10 @@ and, where stated below, desktop UI materials.
 Honkai: Star Rail artwork and names belong to their respective rights holders;
 the upstream software licenses do not grant ownership of those game assets.
 
+## 2026-10-29 指南底纹
+
+更新既有指南的`ui/paper-pattern.png`：仍取自已登记4.6每日实训原图（SHA-256 `6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11`），范围扩为`[236,892,1694,964]`，以连续暖色透明度提取静态底边星图，清除倒计时与挂饰遮挡区，不补全未知像素。处理与输出哈希见`ui/sources.json`；游戏美术权利归原权利人，不纳入代码GPL许可。
+
 ## 2026-10-29 设置页布局参考
 
 设置行的左右分区、细分隔线和下拉箭头参考 [GameWith 发布的游戏「其他」设置截图](https://img.gamewith.jp/img/original_ff63c82b79444430e3f32cae5029b920.png)，所在[原文](https://gamewith.jp/houkaistarrail/article/show/447025)。本次读取的原始响应为1200×630 JPEG，SHA-256为`8e6c0f13f458454da06a14570c37e8decec5c764eaa543f288da1846b0894d0f`；原截图游戏版本未标明，不能视作当前客户端逐像素验收。图片只用于本地视觉对照，未作为分发素材；界面以代码绘制，沿用下文已登记的字体。未复制博主的标记箭头、教程或截图像素，也未取得该图片的再分发许可。

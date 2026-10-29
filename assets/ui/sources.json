@@ -181,11 +181,11 @@
       "crop": [
         236,
         892,
-        565,
+        1694,
         964
       ],
-      "transform": "static paper map texture luminance matte; no labels or counters",
-      "sha256": "a8541be84c7f1938e7f65be3f3372ee1d4f7c12608b5d4e20c201edac357a23a",
+      "transform": "full-width visible bottom star-chart strip; continuous warm-chroma alpha with neutral paper removed and source color recovered over #e1e1e1; neutral ink excluded; timer [1326,902,1666,950] and ornament x>=1638 cleared in RGBA; no reconstruction",
+      "sha256": "803721f574454c6ee92a3b5105ee559fbe3dc6cf2a55f48f231d609f064a86d7",
       "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
     },
     "card-watermark.png": {

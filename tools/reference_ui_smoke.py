@@ -37,6 +37,28 @@ def panel_origin_and_width(image):
     return [int(columns[0]), y, int(columns[-1]-columns[0]+1)]
 
 
+def paper_color_errors(image, reference):
+    """Compare visible chart ink with the source, independent of asset masks.
+
+    The three regions avoid the live timer, cards, pagination and ornaments.
+    Permit the same four reference-pixel layout tolerance as the geometry check.
+    These samples prove local color/placement only, not whole-screen parity.
+    """
+    pixels = np.asarray(image.convert("RGB").resize(
+        (reference.width, round(image.height*reference.width/image.width)), Image.Resampling.LANCZOS)).astype(int)
+    source = np.asarray(reference.convert("RGB")).astype(int)
+    regions = ((260,897,565,960), (575,892,1000,915), (1350,951,1620,962))
+    errors = []
+    for x1,y1,x2,y2 in regions:
+        expected = source[y1:y2,x1:x2]
+        ink = (expected[:,:,0]-expected[:,:,2] >= 5) & (expected.min(2)>170)
+        assert ink.sum() > 50, ("Reference lacks chart ink", (x1,y1,x2,y2))
+        error = min(float(np.abs(pixels[y1+dy:y2+dy,x1+dx:x2+dx][ink]-expected[ink]).mean())
+                    for dx in range(-4,5) for dy in range(-4,5))
+        errors.append(error)
+    return errors
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--reference", type=Path, required=True)
@@ -82,8 +104,12 @@ def main():
                         check(f"{scale}_reference_card_positions_and_sizes", len(rectangles) == len(scene_cards) and
                               all(abs(a-b*factor) <= tolerance for actual,expected in zip(sorted(rectangles),scene_cards)
                                   for a,b in zip(actual,expected)))
+                        colors = paper_color_errors(screenshot, scene_reference)
+                        for region, error in enumerate(colors):
+                            check(f"{scale}_reference_paper_color_{region}", error < 4.5)
                     check_layout(root)
-                    cases.append(dict(scale=scale, size=size, paper_rectangles=rectangles))
+                    cases.append(dict(scale=scale, size=size, paper_rectangles=rectangles,
+                                      paper_color_errors=colors if scene_reference and size == "default" else None))
                     if scale == 1.5 and size == "default":
                         screenshot.save(OUT/"home.png")
                 board = ui.table

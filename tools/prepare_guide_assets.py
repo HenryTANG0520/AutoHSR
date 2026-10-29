@@ -101,15 +101,44 @@ def guide_details(frames):
     yield "card-watermark.png", watermark, "daily", box, "static motif below fourth card title; warm tint and continuous alpha over white, gold emblem and dark ink excluded; native aspect retained at render time"
 
 
+def paper_pattern(frame):
+    """Retain the visible full-width star chart, without the live reset timer."""
+    box = (236, 892, 1694, 964)
+    pixels = np.array(frame.crop(box).convert("RGB"))
+    # Paper and timer ink are neutral; the static chart is warm gold. Remove
+    # the neutral surround with continuous alpha, retaining the source color
+    # when composited on the same #e1e1e1 paper without opaque edge halos.
+    channels = pixels.astype(float)
+    chroma = channels[:, :, 0] - channels[:, :, 2]
+    visible = (chroma > 0) & (channels.min(2) > 160)
+    # Exclude the complete timer and hanging ornament, including their edges.
+    visible[10:58, 1090:1430] = False
+    visible[:, 1402:] = False
+    alpha = np.clip(np.maximum(chroma/40, np.maximum((225-channels.min(2))/225,
+                    (channels.max(2)-225)/30)), 0, 1)
+    alpha[~visible] = 0
+    rgb = np.clip(225+(channels-225)/np.maximum(alpha[:, :, None], .001), 0, 255)
+    rgb[~visible] = 0
+    image = Image.fromarray(np.rint(np.dstack((rgb, alpha*255))).astype("uint8"))
+    return "paper-pattern.png", image, "daily", box, (
+        "full-width visible bottom star-chart strip; continuous warm-chroma alpha "
+        "with neutral paper removed and source color recovered over #e1e1e1; neutral ink excluded; timer "
+        "[1326,902,1666,950] and ornament x>=1638 cleared in RGBA; no reconstruction")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    for name in ("daily", "guide", "universe", "font"):
-        parser.add_argument("--"+name, type=Path, required=True)
+    parser.add_argument("--daily", type=Path, required=True)
+    for name in ("guide", "universe", "font"):
+        parser.add_argument("--"+name, type=Path)
+    parser.add_argument("--paper-only", action="store_true", help="Update only the existing daily-reference paper strip and its manifest")
     args = parser.parse_args()
+    if not args.paper_only and any(getattr(args, name) is None for name in ("guide", "universe", "font")):
+        parser.error("--guide, --universe and --font are required unless --paper-only is used")
     out = ROOT/"assets"/"ui"
     out.mkdir(exist_ok=True)
     frames = {name: Image.open(getattr(args, name)).convert("RGB").resize((1920, 1080), Image.Resampling.LANCZOS)
-              for name in ("daily", "guide", "universe")}
+              for name in (("daily",) if args.paper_only else ("daily", "guide", "universe"))}
     hashes = {name: hashlib.sha256(getattr(args, name).read_bytes()).hexdigest() for name in frames}
     sources = {}
 
@@ -119,6 +148,17 @@ def main():
                              baseline=[1920, 1080], crop=box, transform=method,
                              sha256=hashlib.sha256((out/name).read_bytes()).hexdigest(),
                              rights="HoYoverse game artwork; not relicensed under source-code GPL")
+
+    if args.paper_only:
+        manifest = json.loads((out/"sources.json").read_text("utf-8"))
+        if hashes["daily"] != manifest["assets"]["paper-pattern.png"]["source_sha256"]:
+            parser.error("The daily reference hash differs from the recorded paper source")
+        save(*paper_pattern(frames["daily"]))
+        manifest["assets"].update(sources)
+        manifest["updated"] = "2026-10-29"
+        (out/"sources.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2)+"\n", "utf-8")
+        print("Prepared the recorded paper strip only; other assets unchanged.")
+        return
 
     def glyph(name, source, box, kind="dark"):
         crop = frames[source].crop(box)
@@ -157,13 +197,7 @@ def main():
     save("card-footer.png", Image.fromarray(clean), "daily", box,
          "static footer texture; bright action-label color mask, 2px mask dilation and 5px Telea inpainting; live label rendered separately")
 
-    box = (236, 892, 565, 964)
-    crop = frames["daily"].crop(box)
-    a = np.asarray(crop).astype(float)
-    alpha = np.clip((224-a.mean(axis=2))*6,0,100).astype("uint8")
-    paper = Image.new("RGBA", crop.size, "#c9c5b6")
-    paper.putalpha(Image.fromarray(alpha))
-    save("paper-pattern.png", paper, "daily", box, "static paper map texture luminance matte; no labels or counters")
+    save(*paper_pattern(frames["daily"]))
 
     # Hand-traced outlines isolate the two ornaments from the blurred world.
     for name, box, points in (
