@@ -12,6 +12,8 @@
 
 本轮不新增提示文案、控件或键位，不改变日常与周常的执行、资源或保存约定；只修复导航后的焦点。真人体验反馈仍按用户安排留待开发完成后，不能以这些离线检查证明学习与注意力成本接近零。
 
+源码`3ab3e16`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/settings-focus-build.log`。独立配置、`--no-admin-launch`下，鼠标打开周常后不按Tab，直接按Down即展开“开启／关闭”；Esc收起，下次Esc回到首页周常入口。再从齿轮打开设置，保留周常分类，同样直接按Down展开选择。全程未选择新值、保存、检测或启动任务，正常关闭退出码0。截图`runs/settings-focus-package-weekly.png`、`settings-focus-package-choice-screenshot-0.png`、`settings-focus-package-return.png`与`settings-focus-package-gear-choice-screenshot-0.png`保留完整原生路径。239份用户文件与独立配置哈希不变；126项UI素材、4份清单及23个上游文件与源码一致。记录`runs/settings-focus-package-verification.json`，备份`build/userdata-settings-focus-20261029_140018/`，EXE SHA-256为`30199af8941ea202c73497fe37a8ccbcf3f0b4b4e4f35813ca3fee10f302f76f`。本轮证据归档于正式项目`runs/settings-focus-*`及`runs/settings-entry-focus-*`。
+
 ## 2026-10-29：任务卡使用原纸面纹样与边框
 
 保留当前任务卡、设置入口与开始计划的交互。只读对照AutoZZZ本地`8511c1b`的`interface.py`、`desktop.py`、`game_widgets.py`和`gui.py`，继续采用整卡点击、鼠标与键盘同一动作、切页保留状态及单独保存设置的原则；没有操作AutoZZZ窗口或迁入其源码。
