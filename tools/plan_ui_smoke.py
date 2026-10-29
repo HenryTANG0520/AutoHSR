@@ -158,7 +158,7 @@ def main():
                 check("display_preferences_keep_daily_results", ui.table.action_label("battle") == "查看结果")
                 ui.challenge_count.set("1")
                 check("changed_daily_plan_returns_to_settings_actions", ui.table.action_label("battle") == "副本设置" and
-                      ui.table.item("battle", "values")[1] == "等待" and ui.table.item("battle", "metrics") is None and
+                      ui.table.item("battle", "values")[1] == "待执行" and ui.table.item("battle", "metrics") is None and
                       ui.training_meter.verified and ui.summary.get() == summary)
                 ui.table.activate()
                 root.update()

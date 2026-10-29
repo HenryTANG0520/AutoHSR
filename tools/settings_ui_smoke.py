@@ -87,7 +87,7 @@ def main():
                     original_value = ui.tasks[task].get()
                     choose(root, control, 1 if original_value else 0)
                     check(f"{scale}_{task}_choice_updates_plan", ui.tasks[task].get() != original_value and ui.dirty
-                          and ui.table.item(task, "values")[1] == ("跳过" if original_value else "等待"))
+                          and ui.table.item(task, "values")[1] == ("未加入" if original_value else "待执行"))
                     choose(root, control, 0 if original_value else 1)
                     ui.settings_shell.back.invoke()
                     root.update()

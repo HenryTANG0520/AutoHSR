@@ -1,5 +1,16 @@
 # AutoHSR 0.1 验证记录
 
+## 2026-10-29：区分任务安排与未执行结果
+
+在`5d0d73e`上用假后端复现：计划在委托阶段停止后，副本卡显示“未执行”，按钮仍是“副本设置”，点击会进入生存索引，无法直接查看这项为何未执行。运行前未启用的任务也显示“跳过”，与实际执行结果混淆。原记录`runs/task-card-state-baseline.json`、`task-card-state-before-home.png`和`task-card-state-before-stopped.png`保留。同次检查确认最小窗口的每日设置选项均在完整祖先可见范围内，没有据此改动布局。
+
+现在运行前显示“待执行／未加入”；后端实际报告的“跳过”不变。已结束流程中尚未开始的任务成为本次结果，按钮显示“查看结果”；一击打开该项原因，包含原报告提供的错误、未保存和资源待核对提示，不再跳到设置。状态已写“未执行”时，详情不再重复“此项未执行”。正在执行的任务若意外中断，也保留具体原因及“未确认完成”，不再要求另找日志。修改下一次每日计划后恢复设置入口，原报告、总摘要与已核实结果不被单项查看覆盖。没有改变后端任务、默认选择或主按钮。
+
+- **169项专项检查通过**，`runs/task-card-state-release-task_card_state_smoke.log`与`runs/task-card-state-ui/`。覆盖100%、125%、150%、200%最小窗口、停止、启动失败和运行异常、鼠标一击打开副本及实训的本次详情、真实跳过与未加入区分、费用与错误保留、设置入口可见性、显示偏好不清结果、下一次计划恢复设置入口；12次启动均为显式调用主按钮产生的假后端，没有游戏调用，配置和原始报告未变。
+- **186项设置、24项计划、60项首页反馈、84项GUI检查通过**。日志为`runs/task-card-state-settings_ui_smoke.log`、`task-card-state-final-plan_ui_smoke.log`、`task-card-state-home_feedback_smoke.log`与`task-card-state-release-gui_smoke.log`；补充错误原因后重跑了专项、计划与GUI检查，扩展运行异常时再次核对专项与GUI。没有改后端或重跑全量后端单元测试。
+
+专项脚本前三次分别误将规范化运行配置与未展开默认值整体比较、未进入ScrolledText的外层容器、在尚有重绘回调时用根窗口取消子控件回调，日志`runs/task-card-state-smoke.log`、`task-card-state-smoke-final.log`和`task-card-state-smoke-final-v2.log`保留。修正测试方法后通过；`task-card-state-smoke-final-v3.log`为精简重复详情前的105项通过记录。已查看最终预览、停止及失败详情截图。这些检查证明状态与按钮去向一致，不代替真实玩家使用测试或整屏复刻验收；未启动、检测或操作游戏。
+
 ## 2026-10-29：周常提示随计划时间与游戏周刷新
 
 在`62b4ec8`上用临时配置和假时钟复现：助手从周四10:59:59保持打开至11:00，后端资格已到期，首页却仍显示“周四11:00后”，直到修改表单才更新。原记录`runs/weekly-preview-baseline.json`、`weekly-preview-before-due.png`和`weekly-preview-after-due-baseline.png`保留，配置字节未变，没有调用游戏后端。

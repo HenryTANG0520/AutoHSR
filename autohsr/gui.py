@@ -447,8 +447,8 @@ class AutoHSRWindow:
         if not self._has_run:
             for name, label in TASK_NAMES.items():
                 selected = self.tasks[name].get()
-                detail = "开拓力刷本未授权" if name == "battle" and not allowed else ("" if selected else "未勾选")
-                self.table.item(name, values=(label, "等待" if selected else "跳过", detail), tags=() if selected else ("skipped",), has_result=False, metrics=None)
+                detail = "开拓力刷本未授权" if name == "battle" and not allowed else ""
+                self.table.item(name, values=(label, "待执行" if selected else "未加入", detail), tags=() if selected else ("skipped",), has_result=False, metrics=None)
         for button in (self.save_button, self.check_button, self.launch_button):
             button.configure(state=state)
         currency_page = getattr(self, "action_page", "") == "currency_wars"
@@ -1012,7 +1012,7 @@ class AutoHSRWindow:
             self.training_result.set("verified")
         self._progress(report.get("stamina_spent"))
         self._battle_result(report)
-        self._finalize_task_rows(str(report.get("status", "partial")))
+        self._finalize_task_rows(str(report.get("status", "partial")), reason=issue_text(report))
 
     def _battle_result(self, report):
         self.table.item("battle", metrics=reported_battle_metrics(report))
@@ -1123,7 +1123,7 @@ class AutoHSRWindow:
             self._task(dict(task="daily", status="ok", detail="每日实训奖励已核实领取。"), log=False)
             self.training_result.set("verified")
         if report.get("operation", self.active_operation) in ("daily", "plan", "reward_only"):
-            self._finalize_task_rows(status)
+            self._finalize_task_rows(status, reason=issue_text(report))
             self._battle_result(report)
         self._progress(report.get("stamina_spent"))
         self._freeze_clock()
@@ -1199,14 +1199,16 @@ class AutoHSRWindow:
         self.refresh_feedback()
         self._restore()
 
-    def _finalize_task_rows(self, status: str) -> None:
+    def _finalize_task_rows(self, status: str, *, reason: str = "") -> None:
         for name in TASK_NAMES:
             label, previous, _ = self.table.item(name, "values")
             if previous == "进行中":
                 final = "stopped" if status in ("stopped", "cancelled") else ("failed" if status in ("failed", "error") else "partial")
-                self._task({"task": name, "status": final, "detail": "执行中断，未确认完成；请查看日志与报告。"}, log=False)
+                detail = "执行中断，未确认完成。" + ("\n"+reason if reason else "")
+                self._task({"task": name, "status": final, "detail": detail}, log=False)
             elif previous == "等待":
-                self.table.item(name, values=(label, "未执行", "流程已结束，此项未执行。"), tags=("skipped",))
+                detail = reason or ("计划已停止。" if status in ("stopped", "cancelled") else "流程已结束。")
+                self.table.item(name, values=(label, "未执行", detail), tags=("skipped",), has_result=True)
 
     def _checked(self, data: dict[str, Any]) -> None:
         title = str(data.get("title") or "已找到游戏窗口")
@@ -1328,7 +1330,7 @@ class AutoHSRWindow:
                     if kind == "run_error":
                         self._freeze_clock()
                         if self.active_operation in ("daily", "plan", "reward_only"):
-                            self._finalize_task_rows("failed")
+                            self._finalize_task_rows("failed", reason=str(event.get("message", "未知错误")))
                         self.current_task.set("执行失败")
                     self._set_busy(False)
                     self.status.set("● 执行失败")

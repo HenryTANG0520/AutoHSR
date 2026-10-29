@@ -429,7 +429,7 @@ class TaskBoard(Surface):
                 "mail":"邮件设置", "battlepass":"勋礼设置"}[key]
 
     def resource_metrics(self, key):
-        if self.records[key]["values"][1] in ("跳过", "未执行"):
+        if self.records[key]["values"][1] in ("未加入", "跳过", "未执行"):
             return None
         if key == "daily":
             return ("500", "活跃目标") if self.ui.tasks[key].get() or self.records[key]["has_result"] else None
