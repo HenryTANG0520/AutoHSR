@@ -56,6 +56,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--du-runs", type=int, help="差分宇宙局数，1～10；仅配合 --differential-universe")
     parser.add_argument("--du-team", help="每次开局从预设编队选择此名称；默认哈哈哈哈")
     parser.add_argument("--du-mode", choices=('periodic','normal'), help="演算模式；默认 periodic 周期演算")
+    parser.add_argument('--du-custom-stations',action=argparse.BooleanOptionalAction,default=None,
+                        help='启用自定义站点偏好；关闭沿用原策略，仅用于差分或差分周计划，不保存配置')
+    parser.add_argument('--du-station-priority',action='append',metavar='名称=整数',
+                        help='本次站点优先级0～100，小值优先；可重复指定不同名称，并启用自定义站点')
+    parser.add_argument('--du-station-disabled',metavar='名称,名称',
+                        help='本次禁用站点列表，空字符串清空；不能禁用必经站点，不自动重抽')
     parser.add_argument("--du-save", action="store_true", help="通关后保存为 AutoHSR 编号存档；默认不保存")
     parser.add_argument("--du-rewards", action="store_true", help="运行前后检查并领取差分宇宙红点奖励；默认关闭")
     parser.add_argument("--du-daily", action="store_true", help="每天首次通关后领奖并刷浴火钢心位面饰品；不补充资源，默认关闭")
@@ -78,6 +84,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    station_options=(args.du_custom_stations is not None or args.du_station_priority is not None or args.du_station_disabled is not None)
+    if station_options and not (args.differential_universe or args.plan):
+        parser.error('站点偏好仅用于 --differential-universe 或差分 --plan。')
     if args.resume_weekly_currency and (not args.plan or args.new_battle_run):
         parser.error('--resume-weekly-currency 仅用于 --plan，且不能与 --new-battle-run 混用。')
     if args.resume_active_currency and not args.currency_wars_standard:
@@ -195,6 +204,22 @@ def main(argv: list[str] | None = None) -> int:
             settings.differential_universe_team = args.du_team.strip()
         if args.du_mode is not None:
             settings.differential_universe_mode = args.du_mode
+        if station_options:
+            if args.plan and (not settings.weekly_enabled or settings.weekly_mode!='differential_universe'):
+                raise ValueError('计划中的站点偏好仅用于已启用的差分周常。')
+            specified=args.du_station_priority is not None or args.du_station_disabled is not None
+            if specified and args.du_custom_stations is False:
+                raise ValueError('站点覆盖不能与 --no-du-custom-stations 同时使用。')
+            settings.differential_universe_station_custom=specified or args.du_custom_stations is True
+            seen=set()
+            for value in args.du_station_priority or []:
+                name,separator,number=value.partition('=');name=name.strip()
+                if not separator or name in seen or not number.strip().isascii() or not number.strip().isdigit():
+                    raise ValueError('站点优先级须为不重复的 名称=0～100整数。')
+                seen.add(name);settings.differential_universe_station_priority[name]=int(number.strip())
+            if args.du_station_disabled is not None:
+                value=args.du_station_disabled.strip().replace('，',',')
+                settings.differential_universe_station_disabled=[name.strip() for name in value.split(',')] if value else []
         if args.du_save:
             settings.differential_universe_save = True
         if args.du_rewards:

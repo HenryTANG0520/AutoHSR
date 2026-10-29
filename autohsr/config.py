@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import math
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from .storage import replace_file
+from .du_station_policy import default_priorities
 
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
 RESOURCE_ROOT = Path(getattr(sys, "_MEIPASS", ROOT))
@@ -48,6 +49,9 @@ class Settings:
     differential_universe_daily_from: str = ""
     differential_universe_team: str = "哈哈哈哈"
     differential_universe_mode: str = "periodic"
+    differential_universe_station_custom: bool = False
+    differential_universe_station_priority: dict[str,int] = field(default_factory=default_priorities)
+    differential_universe_station_disabled: list[str] = field(default_factory=list)
     weekly_enabled: bool = False
     weekly_mode: str = "differential_universe"
     weekly_day: int = 1
@@ -58,7 +62,14 @@ class Settings:
     currency_runs: int = 1  # Only the explicit loop entry uses this; 0 = until stopped.
     currency_until_points: bool = False  # Optional weekly target; runs remains the new-game ceiling.
 
+    def __post_init__(self):
+        from copy import deepcopy
+        self.differential_universe_station_priority=deepcopy(self.differential_universe_station_priority)
+        self.differential_universe_station_disabled=deepcopy(self.differential_universe_station_disabled)
+
     def validate(self, operation: str = "daily") -> None:
+        from .du_station_policy import StationPreferences
+        StationPreferences.from_settings(self)
         from .weekly_plan import validate_schedule
         validate_schedule(self)
         from .currency_wars_loop_store import runs_value

@@ -1246,6 +1246,8 @@ class Runner:
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
                  currency_configure=False, currency_resume=False, weekly_plan=None, currency_strategy=None,
                  currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None,currency_rewards_resume=False,currency_weekly_guard=None):
+        from dataclasses import replace
+        settings=replace(settings)
         from .weekly_plan import WeeklyGuard
         if weekly_plan is not None and (not isinstance(weekly_plan, WeeklyGuard) or operation != "differential_universe"):
             raise ValueError("周常记录核验仅用于计划中的差分宇宙。")

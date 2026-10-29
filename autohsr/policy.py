@@ -504,7 +504,8 @@ def guard_differential_universe_click(scene: Scene, target: Token | tuple[float,
     if intent in ("station_select","station_confirm"):
         # A station named 商店 is a route choice; it does not purchase an item.
         context=normalize(scene.text)
-        labels={"战斗","精英","首领","奖励","空白","休整","异常","事件","财富","冒险","铸造","商店"}
+        from .du_station_policy import LABELS
+        labels=set(LABELS)
         if "选择下一站" not in context:
             raise AutomationError("未核实差分宇宙下一站选择页，未点击。")
         if intent=="station_select":
