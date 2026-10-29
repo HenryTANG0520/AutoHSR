@@ -469,6 +469,8 @@ class AutoHSRWindow:
         battle_enabled = allowed and self.tasks["battle"].get()
         for control in self.stamina_controls:
             control.configure(state="normal" if battle_enabled and not self.busy else "disabled")
+        for control in self.dungeon_browse_controls:
+            control.configure(state="normal" if allowed and not self.busy else "disabled")
         self.dungeon_list.redraw()
         self.dungeon_category_combo.configure(state="readonly" if battle_enabled and not self.busy else "disabled")
         if not allowed:

@@ -44,7 +44,7 @@ def build_fields(ui, parent):
     ui.dungeon_advanced_button = ttk.Button(header, text="挑战设置", style="Compact.TButton", command=lambda: show_advanced(ui, not ui.dungeon_advanced_visible))
     ui.dungeon_advanced_button.grid(row=0, column=4)
     ui.setting_controls.extend((ui.dungeon_search_entry, clear, ui.dungeon_manual_button, ui.dungeon_advanced_button))
-    ui.stamina_controls.extend((ui.dungeon_search_entry, clear, ui.dungeon_manual_button, ui.dungeon_advanced_button))
+    ui.stamina_controls.extend((ui.dungeon_manual_button, ui.dungeon_advanced_button))
     browser = ui.dungeon_browser = ttk.Frame(parent, style="Card.TFrame")
     browser.grid(row=1, column=0, sticky="nsew")
     browser.columnconfigure(0, weight=1)
@@ -55,7 +55,7 @@ def build_fields(ui, parent):
     scroll.grid(row=0, column=1, sticky="ns")
     scroll.configure(command=ui.dungeon_list.yview)
     ui.setting_controls.append(ui.dungeon_list)
-    ui.stamina_controls.append(ui.dungeon_list)
+    ui.dungeon_browse_controls = (*ui.category_buttons.values(), ui.dungeon_search_entry, clear, ui.dungeon_list)
     fields = ttk.Frame(parent, style="Panel.TFrame")
     ui.dungeon_manual_fields = fields
     fields.grid(row=1, column=0, sticky="new")
@@ -164,7 +164,7 @@ def _show_editor(ui):
 
 
 def select_mission(ui, mission):
-    if ui.busy or not ui.settings.allow_stamina_spend or not ui.tasks["battle"].get():
+    if ui.busy or not ui.settings.allow_stamina_spend:
         return
     loading = ui._loading
     ui._loading = True
@@ -172,6 +172,7 @@ def select_mission(ui, mission):
         ui.dungeon_category.set(BY_KEY[mission.category].label)
         ui.target_name.set(mission.name)
         ui.target_location.set(mission.location)
+        ui.tasks["battle"].set(True)
         try:
             count = int(ui.challenge_count.get())
         except ValueError:
@@ -264,4 +265,7 @@ def refresh_count(ui):
             ui.battle_cost.set(f"{count} 次 × {category.cost} 开拓力 = 预计 {cost} 开拓力 · 上限 {ui.stamina_limit.get()}" + suffix)
     except ValueError:
         ui.battle_cost.set(f"请输入 1～{maximum} 次；每次 {category.cost} 开拓力。")
-    ui.dungeon_target_caption.set("已选 · "+(ui.target_name.get() or "名称待填写")+" · "+(ui.target_location.get() or "地点待填写"))
+    joined = ui.tasks["battle"].get() and ui.settings.allow_stamina_spend
+    if not joined:
+        ui.battle_cost.set("本次不刷本")
+    ui.dungeon_target_caption.set(("已选 · " if joined else "未加入 · ")+(ui.target_name.get() or "名称待填写")+" · "+(ui.target_location.get() or "地点待填写"))

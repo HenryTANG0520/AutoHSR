@@ -74,7 +74,14 @@ class DungeonList(Surface):
 
     @property
     def locked(self):
-        return self.ui.busy or not self.ui.settings.allow_stamina_spend or not self.ui.tasks["battle"].get()
+        return self.ui.busy or not self.ui.settings.allow_stamina_spend
+
+    def action_label(self, mission):
+        if not self.ui.settings.allow_stamina_spend:
+            return "未授权"
+        if not self.ui.tasks["battle"].get():
+            return "未加入" if self.ui.busy else "加入计划"
+        return "已选" if self.matches(mission) else "选用"
 
     @property
     def selection(self):
@@ -228,7 +235,7 @@ class DungeonList(Surface):
             y = self.row_tops[i]-self.offset
             if y+self.ROW_HEIGHT <= 0 or y >= h:
                 continue
-            selected = self.matches(mission)
+            selected = self.matches(mission) and self.ui.tasks["battle"].get() and self.ui.settings.allow_stamina_spend
             self.hitboxes[i] = (0, max(0, y), w, min(h, y+self.ROW_HEIGHT))
             with p.clip((0, max(0, y), w, min(h, y+self.ROW_HEIGHT))):
                 p.box((0, y, w, y+self.ROW_HEIGHT), "white")
@@ -251,7 +258,7 @@ class DungeonList(Surface):
                 p.asset("stamina.png", (w-163, y+39, w-138, y+64))
                 p.text((w-130, y+51), cost, 18, ink, "lm")
                 p.box((w-100, y+34, w-12, y+68), t.RAIL if selected else t.CARD, 17, t.GOLD if selected else t.LINE, 1.5)
-                p.text((w-56, y+51), "已选" if selected else "选用", 16, t.GOLD if selected else ink, "mm")
+                p.text((w-56, y+51), self.action_label(mission), 16, t.GOLD if selected else ink, "mm")
                 if mission.category == "planar":
                     p.text((w-14, y+78), "已有沉浸器优先", 11, t.MUTED, "rt")
                 p.line((12, y+99, w-12, y+99), "#e5e5e5", 1.3)

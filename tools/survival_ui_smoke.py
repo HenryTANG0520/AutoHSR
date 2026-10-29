@@ -11,7 +11,7 @@ from unittest.mock import patch
 from PIL import ImageGrab
 from ux_smoke import ROOT, Settings, Window, module
 from ui_layout_smoke import check_layout
-from autohsr.dungeon_ui import show_advanced, show_manual
+from autohsr.dungeon_ui import select_mission, show_advanced, show_manual
 from autohsr.dungeons import CATEGORIES, Dungeon, load_catalogue
 from autohsr.survival_widgets import artwork, group_metadata, display_group
 
@@ -51,6 +51,104 @@ def main():
                 root.focus_force()
                 root.update()
                 board = ui.dungeon_list
+                initial = ui._form_signature()
+                original_mission = next(m for m in board.rows if board.matches(m))
+                original_count = ui.challenge_count.get()
+                ui.battle_checkbox.invoke()
+                root.update()
+                inactive = ui._form_signature()
+                check(f"{scale}_unjoined_dungeon_can_be_browsed", not ui.tasks["battle"].get() and not board.locked
+                      and all(str(w.cget("state")) != "disabled" for w in ui.dungeon_browse_controls)
+                      and ui.challenge_entry.instate(("disabled",)))
+                check(f"{scale}_unjoined_dungeon_has_no_active_cost", ui.battle_cost.get() == "本次不刷本"
+                      and ui.dungeon_target_caption.get().startswith("未加入")
+                      and all(board.action_label(m) == "加入计划" for m in board.rows))
+                for category in CATEGORIES:
+                    ui.category_buttons[category.label].invoke()
+                    root.update()
+                    check(f"{scale}_{category.key}_unjoined_browse_keeps_draft", ui._form_signature() == inactive
+                          and all(m.category == category.key for m in board.rows))
+                ui.category_buttons["拟造花萼（金）"].invoke()
+                ui.dungeon_search.set("回忆")
+                root.update()
+                board.focus_force()
+                board.event_generate("<Home>")
+                board.event_generate("<Down>")
+                root.update()
+                check(f"{scale}_unjoined_search_and_keys_do_not_join", len(board.rows) == 5
+                      and ui._form_signature() == inactive)
+                board.yview("moveto", str(50/board.total_height))
+                root.update()
+                partial = next(i for i, box in board.hitboxes.items() if 10 < box[3]-box[1] < board.ROW_HEIGHT-2)
+                mission = board.rows[partial]
+                box = board.hitboxes[partial]
+                board.event_generate("<Button-1>", x=round((box[2]-55)*ui.ui_scale), y=round((box[1]+box[3])/2*ui.ui_scale))
+                root.update()
+                check(f"{scale}_unjoined_partial_row_reveals_before_join", ui._form_signature() == inactive
+                      and board.row_bounds(partial)[0] >= board.offset-1
+                      and board.row_bounds(partial)[1] <= board.offset+board.winfo_height()/ui.ui_scale+1)
+                if scale == 1.25:
+                    ImageGrab.grab(window=root.winfo_id()).save(OUT/"unjoined-browser.png")
+                box = board.hitboxes[partial]
+                board.event_generate("<Button-1>", x=round((box[2]-55)*ui.ui_scale), y=round((box[1]+box[3])/2*ui.ui_scale))
+                root.update()
+                check(f"{scale}_one_click_joins_exact_target", ui.tasks["battle"].get()
+                      and board.matches(mission) and board.action_label(mission) == "已选"
+                      and not ui.challenge_entry.instate(("disabled",)) and not ui.busy
+                      and config.read_bytes() == original)
+                ui.battle_checkbox.invoke()
+                root.update()
+                snapshot = ui._read_settings(operation="plan")
+                check(f"{scale}_removal_excludes_battle_from_run_snapshot", snapshot is not None and not snapshot.battle
+                      and ui.target_location.get() == mission.location and ui.battle_cost.get() == "本次不刷本")
+                ui.category_buttons["历战余响"].invoke()
+                root.update()
+                board.focus_force()
+                board.event_generate("<Home>")
+                root.update()
+                mission = board.rows[board.cursor]
+                board.event_generate("<Return>")
+                root.update()
+                snapshot = ui._read_settings(operation="plan")
+                check(f"{scale}_keyboard_join_applies_exact_category_and_limit", snapshot is not None and snapshot.battle
+                      and board.matches(mission) and ui.challenge_count.get() == "3"
+                      and "90" in ui.battle_cost.get() and "90" in ui.daily_caption.get())
+                ui.battle_checkbox.invoke()
+                ui.battle_checkbox.invoke()
+                root.update()
+                check(f"{scale}_checkbox_rejoin_preserves_target", board.matches(mission)
+                      and ui.tasks["battle"].get() and ui.challenge_count.get() == "3")
+                ui.battle_checkbox.invoke()
+                root.update()
+                inactive = ui._form_signature()
+                ui._set_busy(True)
+                board.event_generate("<Return>")
+                select_mission(ui, original_mission)
+                ui.category_buttons["拟造花萼（金）"].invoke()
+                root.update()
+                check(f"{scale}_busy_unjoined_dungeon_stays_excluded", ui._form_signature() == inactive
+                      and board.locked and board.action_label(mission) == "未加入")
+                ui._set_busy(False)
+                ui.settings.allow_stamina_spend = False
+                ui._form_changed()
+                root.update()
+                before = ui._form_signature()
+                board.event_generate("<Return>")
+                select_mission(ui, original_mission)
+                ui.battle_checkbox.invoke()
+                root.update()
+                check(f"{scale}_unauthorized_browser_cannot_join", ui._form_signature() == before and board.locked
+                      and board.action_label(mission) == "未授权"
+                      and all(str(w.cget("state")) == "disabled" for w in ui.dungeon_browse_controls)
+                      and ui.battle_checkbox.instate(("disabled",)))
+                ui.settings.allow_stamina_spend = True
+                ui._form_changed()
+                select_mission(ui, original_mission)
+                ui.challenge_count.set(original_count)
+                ui.dungeon_list.reveal_selection()
+                root.update()
+                check(f"{scale}_join_checks_leave_original_plan_intact", ui._form_signature() == initial
+                      and config.read_bytes() == original)
                 current = next(i for i, m in enumerate(board.rows) if board.matches(m))
                 top, bottom = board.row_bounds(current)
                 check(f"{scale}_current_target_is_fully_visible", top >= board.offset-1 and

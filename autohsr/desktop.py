@@ -117,7 +117,6 @@ def _tasks(ui):
         button.grid(row=row, column=0, sticky="ew", pady=(0, d(10)))
         ui.category_buttons[category.label] = button
         ui.setting_controls.append(button)
-        ui.stamina_controls.append(button)
     token = ui.dungeon_browse_category.trace_add("write", selected)
     menu.bind("<Destroy>", lambda e: ui.dungeon_browse_category.trace_remove("write", token) if e.widget is menu else None, add="+")
     selected()
