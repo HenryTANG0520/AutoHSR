@@ -14,6 +14,8 @@
 
 本轮不启动、检测或操作游戏；原日常周常组合实机、货币战争周常和积分奖励边界不变。玩家体验按用户安排留待开发完成后反馈，离线检查不代替体验验收。
 
+源码`b9b8682`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/startup-feedback-build.log`。独立配置指向专门核实为不存在的StarRail.exe，用`--no-admin-launch`启动助手，原生鼠标打开设置、点击“进入游戏”：文件检查即阻止启动，路径自动全选，错误只在底栏显示一处；Tab到“浏览”，Esc返回首页后错误仍保留。没有执行游戏窗口检测、游戏进程启动、保存或重试；正常关闭退出码0。截图为`runs/startup-feedback-package-home.png`、`startup-feedback-package-settings.png`、`startup-feedback-package-error.png`、`startup-feedback-package-browse-focus.png`与`startup-feedback-package-return.png`。239份用户文件及独立配置哈希不变，126项UI素材、4份清单、23个上游文件与源码一致；记录`runs/startup-feedback-package-verification.json`，备份`build/userdata-startup-feedback-20261029_141933/`。EXE SHA-256为`a97bb0220e4e0167843b66d7fd416fa17a9e482227005edd9b5e56bc593a644a`，本轮证据归档在正式项目`runs/startup-feedback-*`。
+
 ## 2026-10-29：设置入口直接聚焦当前选项
 
 以`9731bf0`为基线，用临时配置和假后端重现：从首页打开周常或设置，焦点仍在已隐藏的首页按钮；第一次Tab转到分类栏的第一个入口，而非正在显示的周常选项。记录`runs/settings-entry-focus-before.json`，两条路径的焦点`visible=false`，未修改配置、未运行游戏。
