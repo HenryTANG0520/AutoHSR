@@ -267,6 +267,23 @@
       "source_sha256": "0d49951c017c299ca9bcb12c6e8283649ec100d34f367f4b567e5ab9a2b6b52e",
       "sha256": "0d49951c017c299ca9bcb12c6e8283649ec100d34f367f4b567e5ab9a2b6b52e",
       "rights": "Beijing Hanyi Innovation Technology; original font license and metadata retained"
+    },
+    "card-frame.png": {
+      "source": "local Star Rail 4.6.0 daily reference",
+      "source_sha256": "6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11",
+      "baseline": [
+        1920,
+        1080
+      ],
+      "crop": [
+        278,
+        404,
+        566,
+        776
+      ],
+      "transform": "static paper map, dotted border and perforated trim; outer 3px sides/8px top/6px bottom luminance matte; status [0,12,163,49] and content [16,65,271,352] cleared in RGBA; source task, counters and rewards excluded",
+      "sha256": "bcb327404434c124170b195456fd4e179ee01d02be30d011bd6f901e5432e8ff",
+      "rights": "HoYoverse game artwork; not relicensed under source-code GPL"
     }
   },
   "updated": "2026-10-29"

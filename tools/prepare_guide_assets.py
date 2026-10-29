@@ -17,6 +17,33 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def card_frame(daily):
+    """Keep the paper trim; discard every source task/status/reward pixel."""
+    box = (278, 404, 566, 776)
+    pixels = np.asarray(daily.crop(box).convert("RGB")).copy()
+    alpha = np.full(pixels.shape[:2], 255, dtype="uint8")
+    # Only the outer edge needs a matte. The gold dotted border and pale map
+    # inside it retain their original color, including their antialiasing.
+    edge = np.zeros(alpha.shape, dtype=bool)
+    edge[:8] = True
+    edge[:, :3] = edge[:, -3:] = True
+    edge[-6:] = True
+    background = np.full(alpha.shape, 225.)
+    background[-6:] = 135.  # Shadow at the perforated paper/footer seam.
+    coverage = np.clip((pixels.min(2)-background)/(246-background), 0, 1)
+    alpha[edge] = np.rint(coverage[edge]*255).astype("uint8")
+    # Clear RGB too: hidden source labels must not remain in transparent PNGs.
+    for left, top, right, bottom in ((0, 12, 163, 49), (16, 65, 271, 352)):
+        alpha[top:bottom, left:right] = 0
+        pixels[top:bottom, left:right] = 0
+    pixels[alpha == 0] = 0
+    frame = Image.fromarray(np.dstack((pixels, alpha)), "RGBA")
+    return "card-frame.png", frame, "daily", box, (
+        "static paper map, dotted border and perforated trim; outer 3px sides/"
+        "8px top/6px bottom luminance matte; status [0,12,163,49] and content "
+        "[16,65,271,352] cleared in RGBA; source task, counters and rewards excluded")
+
+
 def guide_details(frames):
     """Use unobstructed static regions, retaining antialiasing and icon color."""
     for name, source, box in (
@@ -108,6 +135,7 @@ def main():
         save(name, rgba, source, box, "static glyph alpha mask; recolored at render time")
 
     glyph("guide-mark.png", "daily", (43, 42, 94, 89), "gold")
+    save(*card_frame(frames["daily"]))
     for name, im, source, box, method in guide_details(frames):
         save(name, im, source, box, method)
     glyph("tab-records.png", "daily", (690, 187, 750, 239), "light")

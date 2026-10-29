@@ -534,17 +534,10 @@ class TaskBoard(Surface):
             bottom=q(480)
             selected=key in (self.selected,self.hover)
             p.box((x+q(10),q(10),right+q(10),bottom+q(10)),"#c7c7c7",q(7))
-            p.box((x,1,right,card_bottom),"#fbfaf7",q(7),t.GOLD if selected else "#eeede8",2 if selected else 1)
-            for dx in (-40,20,90,160):
-                p.line((max(x,x+q(dx)),2,min(right,x+q(dx+70)),q(60)),"#efede5",1)
+            p.box((x,q(12),x+q(165),q(49)),"#fbf9f6")
             p.box((x+q(14),q(64),right-q(14),card_bottom-q(16)),"white")
+            p.asset("card-frame.png",(x,1,right,card_bottom))
             p.asset("card-watermark.png",(x+q(36),q(107),x+q(248),q(276)))
-            for xx in range(round(x+q(14)),round(right-q(14)),max(3,round(q(4)))):
-                for yy in (q(64),card_bottom-q(16)):
-                    p.box((xx,yy,xx+1,yy+1),"#d4bc8b")
-            for yy in range(round(q(64)),round(card_bottom-q(16)),max(3,round(q(4)))):
-                for xx in (x+q(14),right-q(14)):
-                    p.box((xx,yy,xx+1,yy+1),"#d4bc8b")
             _,state,_=self.records[key]["values"]
             excluded = state == "未加入"
             p.box((x+1,q(16),x+q(162),q(47)),"#dedede" if excluded else "#e9dbbd",0,"#bdbdbd" if excluded else "#d7bd8b")
@@ -556,7 +549,7 @@ class TaskBoard(Surface):
             metrics = self.resource_metrics(key)
             if metrics is not None:
                 value, sub = metrics
-                p.box((x+q(15),q(278),right-q(15),card_bottom-q(17)),"#f4f4f4")
+                p.box((x+q(17),q(278),right-q(18),card_bottom-q(22)),"#f4f4f4")
                 if key=="daily":
                     p.asset("activity.png",(x+q(55),q(262),x+q(119),q(352)))
                 else:
