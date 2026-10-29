@@ -12,6 +12,10 @@
 
 专项初轮保留了预算错误缩放后`action_page`变化的失败，见`runs/input-focus-initial.log`、`input-focus-layout-probe.log`；未放宽原启动操作的断言。修复导航恢复后176项通过，再补立即取消尚未显示请求的边界，184项及输入、设置回归通过。此前`action_delay_focus_nan`偶发失败缺少当时的映射状态，不能仅凭本轮复现认定其原因；旧记录原样保留。整体视觉一致性、玩家体验与日常周常组合实机仍未验收。
 
+源码`59b41a8`已构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/input-focus-build.log`。独立默认配置、`--no-admin-launch`下，先在演算设置清空编队名，再回首页点击保存；校验定位到编队，主按钮保持“开始计划”。最大化后不再点击字段，直接输入“哈哈哈哈”即可纠正，还原后名称与计划按钮仍保留。另将识别设置第二项战斗超时改为50，保存校验选中50；最大化后选区仍在第二项，直接输入900完整替换，操作间隔仍为1.0、OCR仍为0.65，原启动操作未变。
+
+截图为`runs/input-focus-package-{home,team-error,team-maximized,team-corrected,team-restored,timeout-error,timeout-maximized,timeout-corrected,timeout-restored}.png`。没有执行开始、检测或进入游戏；无效保存未写入，纠正后也未保存，关闭退出码0。独立配置及239份原有用户文件哈希不变，147项素材、5份清单与23份上游文件一致，详见`runs/input-focus-package-verification.json`。EXE SHA-256为`382cb056cb5bd5233fa1cace7e6cf18916686c5c7778dfe7d28ddf530fb522ce`，备份`build/userdata-input-focus-20261029_185127/`。全部原始与最终证据归档至正式项目`runs/input-focus-*`，索引`runs/input-focus-evidence-archive.json`。
+
 ## 2026-10-29：选用副本后直接形成预算内计划
 
 在`09c528e`、120开拓力预算、花萼12次与假后端下复现：选用侵蚀隧洞后变成6次／预计240，计划读取随即因超出120预算失败。原始截图与状态为`runs/selection-budget-before.png/json`。只读核对AutoZZZ本地`338951d`的明确动作及预算边界，未修改其工作区。
