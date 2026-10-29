@@ -11,6 +11,8 @@
 
 专项脚本前三次分别误将规范化运行配置与未展开默认值整体比较、未进入ScrolledText的外层容器、在尚有重绘回调时用根窗口取消子控件回调，日志`runs/task-card-state-smoke.log`、`task-card-state-smoke-final.log`和`task-card-state-smoke-final-v2.log`保留。修正测试方法后通过；`task-card-state-smoke-final-v3.log`为精简重复详情前的105项通过记录。已查看最终预览、停止及失败详情截图。这些检查证明状态与按钮去向一致，不代替真实玩家使用测试或整屏复刻验收；未启动、检测或操作游戏。
 
+源码`d0f9558`通过`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/task-card-state-build.log`。用独立配置和`--no-admin-launch`打开，核对“待执行／未加入”、邮件卡一击进入对应设置及返回后的原卡片位置；没有修改选项、保存、检测或运行任务，正常关闭退出码0。截图`runs/task-card-state-package-home.png`、`task-card-state-package-settings.png`和`task-card-state-package-return.png`保留；提前结束和异常详情由上述假后端专项验证。239份正式用户文件与独立配置哈希未变，125项UI素材、4份清单和23个上游文件一致。记录`runs/task-card-state-package-verification.json`，备份`build/userdata-task-card-state-20261029_114913/`，EXE SHA-256为`b1cad3671689e6caab5019ccee9141e0d5729eadc6fb6a76480295f1a3de5145`。设置、计划与首页结果归档为`runs/task-card-state-settings-ui/`、`task-card-state-plan-ui/`和`task-card-state-home-feedback-ui/`。
+
 ## 2026-10-29：周常提示随计划时间与游戏周刷新
 
 在`62b4ec8`上用临时配置和假时钟复现：助手从周四10:59:59保持打开至11:00，后端资格已到期，首页却仍显示“周四11:00后”，直到修改表单才更新。原记录`runs/weekly-preview-baseline.json`、`weekly-preview-before-due.png`和`weekly-preview-after-due-baseline.png`保留，配置字节未变，没有调用游戏后端。
