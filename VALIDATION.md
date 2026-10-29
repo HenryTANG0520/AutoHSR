@@ -8,6 +8,10 @@
 
 初版小屏纵排时提醒被裁切，截图复核后调整标题与底栏占比，并增加“提醒无需滚动且完整可见”检查；诊断及原图保留在`runs/save-dialog-compact-probe.log`、`save-dialog-ui/compact-clipped.png`。初轮测试还修正了聚焦事件未处理、误从历史摘要读取输入错误、销毁后查询Tk窗口的测试假设；旧日志`save-dialog-initial.log`、`save-dialog-focus-recheck.log`、`save-dialog-validation-probe.log`、`save-dialog-verified.log`未覆盖。多Tk实例的测试退出时仅清理根窗口自己的轮询回调，最后三套检查没有回调报错。整体视觉一致性、玩家体验和日常周常组合实机仍未验收。
 
+源码`a02448b`已构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/save-dialog-build.log`。原生窗口使用两份独立配置、`--no-admin-launch`核验：第一次将24次改为12，Alt+F4打开提示，Esc返回仍为12，再关闭并选择“不保存退出”，原文件哈希不变；第二次输入`abc`，关闭后按Enter触发保存校验，窗口保留、原因可见、错误字段选中，直接输入12纠正。纠正尚未提交时配置仍未写入；再次关闭按Enter，独立配置保存12次、240上限并正常退出。两个进程退出码均为0，未启动或检测游戏。
+
+原有239份用户文件哈希不变，147项素材、5份清单及23份上游文件与源码一致。记录`runs/save-dialog-package-verification.json`、`save-dialog-native-validation-check.json`，原生截图为`save-dialog-package-{prompt,returned,discard-prompt,invalid-prompt,error,corrected,save-prompt}.png`。EXE SHA-256为`075bce0397660c99955e817d9046e2162a05024921f5da12316d83d58a7ed55a`，备份`build/userdata-save-dialog-20261029_175250/`。本轮原始与最终证据归档至正式项目`runs/save-dialog-*`，索引`runs/save-dialog-evidence-archive.json`；保存只作用于专用测试配置。
+
 ## 2026-10-29：就地调整挑战设置并保留副本上下文
 
 在`feee947`、独立配置与假后端下核对：打开“挑战设置”会隐藏整张副本列表，预算区与次数区之间留下大片空白，Esc不能返回；未加入时还重复显示“副本挑战未启用”。原图及状态为`runs/challenge-inline-before.png/json`。只读参考AutoZZZ本地`338951d`的直接操作、草稿与显式保存边界，未修改其工作区。
