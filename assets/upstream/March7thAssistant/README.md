@@ -1,5 +1,11 @@
 # March7thAssistant 参考来源与适配
 
+2026-10-30另核对固定`tasks/daily/redemption.py`的在线获取／本地回退、`cn`／`global`与到期筛选、逐码输入／确认／结果，以及成功后邮件和通知行为；原生接口与实际范围见[兑换码说明](../../../docs/redemption-codes.md)。同提交的[离线码表](redemption_codes.json)按原始2054字节分发，17条记录包含历史过期项，不代表当前可兑换。两份原件的Git blob、SHA-256、字节数和公开路径见[source.json](source.json)，作者及[GPL v3许可](LICENSE)保持；本轮没有访问实时码表、真实兑换或新增实机截图。
+
+同轮页面参考含`assets/config/screens.json`和`module/screen/screen.py`；五幅原始标题／控件局部图以[redemption-ui](redemption-ui/)分发，分别命名`title`、`more`、`paste`、`clear`、`confirm`，无裁改或重编码。原路径、公开路径、尺寸和两种hash逐份记在source.json；没有公开游戏整图、账号内容或新实机截图。这些图仅作为局部识别来源，不代表完整表单／结果布局、导航或真实输入已验收。
+
+`redemption_codes.py`、`redemption_pages.py`与`redemption_run.py`分别署名改写码表、页面关系及逐码行为；在线请求顺序、有界JSON与取消、原生Context授权、账号／服务器／原码回执、当前双capture读回与反馈、无剪贴板Unicode输入和保存／预览／运行分离均按AutoHSR契约实现，原生部分另记native_extensions。没有迁入上游全局配置、已用列表、注册表服务器推断、通用页面图执行、输入框架、成功码直发通知或GUI；逐码新成功、复用旧终态、邮件与原生报告分别保留，未知不重放。当前测试以兑换码说明内实际日志为准，真实兑换仍未验收。
+
 2026-10-30另接[初始环境选择接受、post_choice现状及专用免费收店](../../../docs/currency-wars-initial-environment.md)。效果读取仍沿用已署名的固定`tasks/weekly/currency_wars.py::check_investment_environment`参考，新增来源托管与返回协议属于AutoHSR原生扩展，见[source.json](source.json)的native_extensions；没有新增上游源码迁入或素材。原动作／前缀、两不同capture、当前角色查看与库存unknown均独立留证，不复制缓存赠角计数或假定初始零库存。选择接受不等于赠品，实际记录为post_choice_observation，库存可partial，声明始终unattributed／delivery_verified=false。专用初始收店不伪造普通开店或跨节点来源，不开放交易；真实路径与独立整局未验收。
 
 2026-10-30另核对`tasks/weekly/currency_wars.py::check_auto_battle`及其`share/base/not_auto.png`，发现黄色C仅为提示图，左下搜索ROI不能证明真实CW开关位置。这部分仅作区别研究，原blob／SHA-256与`assets_adopted=false`见[CW状态来源](../../currency-auto/sources.json)，没有迁入该PNG或热键。旧CW右上控制组经本地独立观察及既有真实DU-on／planar-disabled／暂停图形交叉校准，接为[原生只读状态检测](../../../autohsr/currency_wars_auto.py)与标准节点观察，另记[source.json](source.json)的native_extensions。两份不同capture时间、同节点／账号／输入代次的新鲜on观察才记录已核实on，后续unknown／disabled不抹掉先前证据或胜利；不提供off或开启动作。裁片分组、未知版本及历史／邻近回放均单独标注，没有独立真实留出、真实切换或整局验收。

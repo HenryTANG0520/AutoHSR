@@ -1,5 +1,15 @@
 # AutoHSR resource attribution
 
+## 2026-10-30 March7thAssistant兑换码参考与离线表
+
+固定参考版本为March7thAssistant `7cf6c6bed474539485d3b1504077ac352866829f`，作者为moesnow及其贡献者，保留[GPL v3原许可](upstream/March7thAssistant/LICENSE)。`tasks/daily/redemption.py`与`assets/config/redemption_codes.json`已按固定Git tree核对Git blob、字节数与SHA-256，见[source.json](upstream/March7thAssistant/source.json)。[离线码表](upstream/March7thAssistant/redemption_codes.json)原样保留2054字节，没有重排、筛选或改写原码；它是固定版本回退数据，含历史到期记录，不证明当前有效。
+
+页面参考另含固定`assets/config/screens.json`与`module/screen/screen.py`；[redemption-ui](upstream/March7thAssistant/redemption-ui/)原样保存五幅最小标题／控件图，分别来自`screen/redemption.png`、`share/menu/more.png`、`share/redemption/paste.png`、`share/redemption/clear.png`及`zh_CN/base/confirm.png`。没有裁改、放大或重编码；各原路径、公开路径、尺寸、Git blob、SHA-256和字节数均在同一清单。逐张查看仅含标题／图形，无UID、账号内容或整图；这些局部模板不证明完整表单或结果布局已实机校准。
+
+在线获取／回退、精确服务器与到期筛选、逐码输入及反馈分别改写为[码表解析](../autohsr/redemption_codes.py)、[只读页面](../autohsr/redemption_pages.py)和[原生流程](../autohsr/redemption_run.py)，函数及范围记在adaptations。账号＋服务器＋原码意图／回执、严格JSON与锁、当前Context目标重核、精确双capture读回／反馈、无剪贴板Unicode输入及配置／CLI分离属于AutoHSR原生扩展，另记native_extensions；没有迁入上游全局已用列表、注册表服务器推断、通用输入／页面路由或GUI。实际接口与验证状态见[兑换码说明](../docs/redemption-codes.md)。
+
+本轮固定原件下载不请求实时码表、账号API或真实兑换；未新增实机截图或模型。游戏界面与图形权利仍归HoYoverse及相应权利人，GPL源码许可不授予额外游戏美术权利。
+
 ## 2026-10-30 初始环境接受与确认后现状
 
 [初始来源](../autohsr/currency_wars_initial.py)、[专用免费收店](../autohsr/currency_wars_initial_shop.py)及正式Flow／Context接线为AutoHSR原生扩展。固定上游`check_investment_environment`的效果解析参考及GPL v3署名继续保留，未迁入其缓存增角色计数，也不把上游列表清空当作初始零基线；文件和范围记在[source.json](upstream/March7thAssistant/source.json)的native_extensions。

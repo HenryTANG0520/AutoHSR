@@ -155,13 +155,18 @@ class NativeScheduleExecutor:
                     ('resume', 'resume_active', 'resume_weekly_currency')):
                 raise ScheduleError('定时接续需要专用旧局版本协议；请先用手动原生入口核对。')
             try:
-                _, options = task_spec(self.settings, node, recipe.base_dir)
+                current, options = task_spec(self.settings, node, recipe.base_dir)
             except Exception:
                 raise ScheduleError('计划任务与冻结设置不兼容。') from None
             if node['task'] not in GAME_TASKS:
                 for path in options.get('imports', []):
                     entry = _fingerprint(path)
                     dependencies[entry['path']] = entry
+            if node['task'] in ('daily', 'plan') and current.redemption_enabled and current.redemption_source == 'file':
+                from .config import ROOT
+                path = Path(current.redemption_catalog)
+                entry = _fingerprint(path if path.is_absolute() else ROOT / path, maximum=256 * 1024)
+                dependencies[entry['path']] = entry
         versions = {}
         if self.settings.notification_enabled:
             from .notify_runtime import NotificationService, validate_settings

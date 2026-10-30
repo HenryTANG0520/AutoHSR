@@ -107,6 +107,8 @@ class Context:
                         self.vision.refine_du_reward_balance(scene)
                 elif self.report.operation == 'daily' and self.settings.daily_synthesis:
                     self.vision.refine_daily_synthesis(scene)
+                if self.report.operation == 'redemption' or self.report.operation == 'daily' and self.settings.redemption_enabled:
+                    self.vision.refine_redemption(scene)
                 scene.captured_at = captured_at
                 self.checkpoint()
                 if capture_epoch != self.runner.input_epoch:
@@ -139,6 +141,35 @@ class Context:
     def _currency_weekly_checkpoint(self):
         guard=getattr(self.runner,'currency_weekly_guard',None)
         if guard is not None:guard.current()
+
+    def redemption_input(self, scene, action):
+        if not (self.report.operation == 'redemption' or self.report.operation == 'daily' and self.settings.redemption_enabled):
+            raise AutomationError('当前任务未启用兑换码流程。')
+        workflow = getattr(self, 'redemption_workflow', None)
+        if workflow is None or workflow.c is not self:
+            raise AutomationError('缺少本次兑换流程与落盘意图。')
+        self.checkpoint()
+        workflow.authorize(scene, action)
+        self.window.guard(scene.geometry)
+        workflow._fresh(scene)
+        self.last_scene, self._scroll_anchor = None, None
+        try:
+            if action.text:
+                typing_epoch = self.runner.input_epoch
+                def typing_checkpoint():
+                    self.checkpoint()
+                    if self.runner.input_epoch != typing_epoch or self.scene_epoch != typing_epoch:
+                        raise InputInterrupted('兑换码输入代次已改变，未继续输入剩余字符。')
+                self.window.type_redemption_code(action.text, scene.geometry, checkpoint=typing_checkpoint)
+            elif action.key == 'esc':
+                self.window.key('esc')
+            elif action.target is not None:
+                self.window.click(*action.target.center, scene.geometry)
+            else:
+                raise AutomationError('兑换动作没有已核实的输入目标。')
+        except FocusLost:
+            self._focus_interrupted()
+        self.sleep(self.settings.action_delay)
 
     def currency_prepare_click(self, scene, intent, target):
         from .currency_wars_prepare import PREPARATION_OPERATIONS
@@ -1369,8 +1400,9 @@ class Runner:
         self.du_periodic_rank = du_periodic_rank
 
     def _run_tasks(self, context, workflow):
-        selected = [name for name in ("assignments", "battle", "daily", "mail", "battlepass")
-                    if getattr(self.settings, name)]
+        selected = [name for name in ("assignments", "battle", "daily", "redemption", "mail", "battlepass")
+                    if ((self.settings.redemption_enabled and self.report.operation == 'daily')
+                        if name == 'redemption' else getattr(self.settings, name))]
         if not selected:
             raise AutomationError("至少选择一个任务。")
         power=None
@@ -1406,6 +1438,12 @@ class Runner:
             self.report.results.append(result)
             self.emit(dict(type="task", **result.__dict__))
             self.log(f"{result.task}：{result.detail}")
+            if name == 'redemption' and result.status != 'ok':
+                for remaining in selected[index + 1:]:
+                    skipped = TaskResult(remaining, 'skipped', '兑换页面或附件尚未核实，未继续输入。')
+                    self.report.results.append(skipped)
+                    self.emit(dict(type='task', **skipped.__dict__))
+                break
         else:
             self.report.failure_task = ""
         self.report.status = "success" if all(r.status == "ok" for r in self.report.results) else "partial"
@@ -1578,6 +1616,8 @@ class Runner:
                 return action()
             except InputInterrupted:
                 self.checkpoint()
+                if name == 'redemption':
+                    raise AutomationError('兑换操作已中断，原提交与逐码结果保留；未重启整批或重放确认。')
                 if name == "battle" and (self.report.stamina_pending or self.report.immersifiers_pending):
                     raise AutomationError("挑战输入已中断且消耗待核对；保留本轮预算，不重复开始挑战。")
                 if name == 'daily' and self.report.daily_synthesis.get('status') == 'pending':
@@ -1633,9 +1673,10 @@ class Runner:
             currency_wars = self.report.operation in ("currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test")
             differential_universe = self.report.operation == "differential_universe"
             catalogue = self.report.operation == "dungeon_catalogue"
-            if self.report.operation not in ("daily", "reward_only", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
+            redemption = self.report.operation == 'redemption'
+            if self.report.operation not in ("daily", "reward_only", "redemption", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
                 raise AutomationError("未知运行类型，未访问游戏。")
-            self.settings.validate("check" if catalogue else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "power_plan" if self.use_power_plan else "daily")
+            self.settings.validate("check" if catalogue else "currency_wars" if currency_wars else "differential_universe" if differential_universe else 'redemption' if redemption else "power_plan" if self.use_power_plan else "daily")
             configured_name=''
             if self.report.operation in ('currency_wars_points','currency_wars_rewards'):
                 from .currency_wars_points_run import require_no_active_match
@@ -1668,7 +1709,7 @@ class Runner:
                     require_session_access(saved,self.currency_resume)
                 configured_name=resolve_name(self.settings,self.currency_remembrance_name,saved,resume=self.currency_resume)
                 resolve_fast_mode(self.settings,self.currency_fast_mode,saved,resume=self.currency_resume)
-            if not catalogue and not currency_wars and not differential_universe and self.settings.battle and self.settings.allow_stamina_spend:
+            if not catalogue and not currency_wars and not differential_universe and not redemption and self.settings.battle and self.settings.allow_stamina_spend:
                 from .recovery import BattleBudget
                 self.battle_budget = BattleBudget(ROOT / "runs", self.settings, self.report)
                 from .workflow_identity import active as workflow_identity_active
@@ -1711,6 +1752,15 @@ class Runner:
                 result = scan_catalogue(DailyWorkflow(context))
                 self.report.results.append(result)
                 self.report.status = "success" if result.status == "ok" else "partial"
+            elif redemption:
+                from .redemption_run import run_redemption
+                self.report.failure_task = 'redemption'
+                self.emit(dict(type='task', task='redemption', status='running', detail='核对并处理兑换码批次'))
+                result = run_redemption(context)
+                self.report.results.append(result)
+                self.report.status = 'success' if result.status == 'ok' else 'partial'
+                self.report.failure_task = '' if result.status == 'ok' else 'redemption'
+                self.emit(dict(type='task', **result.__dict__))
             elif currency_wars:
                 self._inspect_currency_wars(context)
             elif differential_universe:
@@ -1755,13 +1805,15 @@ class Runner:
             self.report.status = "stopped"
             self.report.error = str(error)
             self.report.safe_next = ("货币战争操作已停止；核对画面和本次动作记录后重新识别。" if self.report.operation.startswith("currency_wars") else
+                                     '兑换已停止；已核实逐码结果保留，先核对未知提交，不重复确认。' if self.report.operation == 'redemption' else
                                      "差分宇宙自动演算已停止；核对本次截图、OCR 与动作记录。不要继续现有未完成存档。" if self.report.operation == "differential_universe" else
                                      "停止请求已生效；核对当前战斗及消耗后，可选择仅补领奖。")
             self.log(str(error), "warning")
         except Exception as error:
-            self.report.status = "partial" if self.report.daily_verified else "failed"
+            self.report.status = "partial" if self.report.daily_verified or self.report.redemption.get('results') else "failed"
             self.report.error = str(error)
             self.report.safe_next = ("积分领奖未完成；保留原报告和领奖记录，未知领取不重发；仅已核实步骤可明确接续。" if self.report.operation=='currency_wars_rewards' else
+                                     '兑换批次未完成；先核对逐码结果和未知提交，已保存成功不重试。' if self.report.operation == 'redemption' else
                                      "货币战争操作失败；核对动作记录与前后截图，不自动重放。" if self.report.operation.startswith("currency_wars") else
                                      "差分宇宙自动演算失败；核对当前页面、动作记录与截图后再决定如何处理存档。" if self.report.operation == "differential_universe" else
                                      "请人工核对当前界面和消耗；返回主界面后仅补领奖，新增刷本预算需明确确认。")

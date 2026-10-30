@@ -1,5 +1,7 @@
 # Preserve the upstream license bytes recorded in its source manifest.
 assets/upstream/March7thAssistant/LICENSE -text
+# Keep the pinned fallback catalog byte-for-byte on Windows checkouts.
+assets/upstream/March7thAssistant/redemption_codes.json -text
 assets/upstream/openpyxl-LICENSE -text
 assets/upstream/et_xmlfile-LICENSE -text
 assets/upstream/et_xmlfile-PYTHON-LICENSE -text

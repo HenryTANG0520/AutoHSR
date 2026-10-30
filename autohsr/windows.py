@@ -320,6 +320,35 @@ class GameWindow:
             self.send([down,up],expected)
             time.sleep(.025)
 
+    def type_redemption_code(self, code: str, expected: Geometry, *, checkpoint):
+        """Replace only a caller-verified game form; never use the clipboard."""
+        import re
+        if (not isinstance(code, str) or re.fullmatch(r'[A-Za-z0-9\u3400-\u9fff]{1,64}', code) is None):
+            raise AutomationError('兑换码须为1至64个字母、数字或汉字。')
+        ctrl_down = INPUT(type=1, ki=KEYBDINPUT(0x11, 0, 0, 0, 0))
+        ctrl_up = INPUT(type=1, ki=KEYBDINPUT(0x11, 0, 2, 0, 0))
+        a_down = INPUT(type=1, ki=KEYBDINPUT(0x41, 0, 0, 0, 0))
+        a_up = INPUT(type=1, ki=KEYBDINPUT(0x41, 0, 2, 0, 0))
+        checkpoint()
+        try:
+            self.send([ctrl_down, a_down], expected)
+            time.sleep(.08)
+        finally:
+            releases = (INPUT * 2)(a_up, ctrl_up)
+            if user32.SendInput(2, releases, C.sizeof(INPUT)) != 2:
+                raise AutomationError('兑换码全选按键释放失败。')
+        for char in code:
+            checkpoint()
+            down = INPUT(type=1, ki=KEYBDINPUT(0, ord(char), 4, 0, 0))
+            up = INPUT(type=1, ki=KEYBDINPUT(0, ord(char), 6, 0, 0))
+            try:
+                self.send([down, up], expected)
+            finally:
+                if user32.SendInput(1, C.byref(up), C.sizeof(INPUT)) != 1:
+                    raise AutomationError('兑换码字符按键释放失败。')
+            time.sleep(.025)
+        checkpoint()
+
     def key_hold(self, name: str, duration_ms: int, expected: Geometry, *, checkpoint=lambda: None) -> None:
         """Hold one field-navigation key for a bounded interval, then always release it."""
         import math

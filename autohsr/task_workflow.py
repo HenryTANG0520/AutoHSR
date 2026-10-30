@@ -20,7 +20,7 @@ MAX_EXECUTIONS = 10000
 GAME_TASKS = {'daily', 'plan', 'differential_universe', 'currency_wars_loop',
               'currency_wars_points', 'currency_wars_rewards'}
 TASKS = GAME_TASKS | {'warp_analysis', 'warp_export'}
-DAILY_TASKS = ('assignments', 'battle', 'daily', 'mail', 'battlepass')
+DAILY_TASKS = ('assignments', 'battle', 'daily', 'redemption', 'mail', 'battlepass')
 FIELDS = {'status': str, 'daily_verified': bool, 'completed_runs': int,
           'victories': int, 'defeats': int, 'points_verified': bool, 'rewards_verified': bool}
 
@@ -121,7 +121,8 @@ def _condition(value, previous):
 def _params(task, params):
     allowed = {
         'daily': {'tasks', 'use_power_plan', 'stamina_limit', 'rounds', 'target_name', 'target_location',
-                  'dungeon_category', 'challenge_count', 'use_support'},
+                  'dungeon_category', 'challenge_count', 'use_support', 'redemption_source', 'redemption_server',
+                  'redemption_codes', 'redemption_catalog', 'redemption_claim_mail'},
         'plan': {'use_power_plan', 'resume_weekly_currency'},
         'differential_universe': {'runs', 'mode', 'team', 'save', 'rewards', 'resume_active', 'periodic_rank'},
         'currency_wars_loop': {'runs', 'resume', 'strategy', 'until_points', 'continue_after_defeat'},
@@ -315,16 +316,18 @@ def task_spec(settings: Settings, node, base_dir):
     current = replace(settings)
     options = {}
     if task == 'daily':
-        selected = params.pop('tasks', [name for name in DAILY_TASKS if getattr(current, name)])
+        selected = params.pop('tasks', [name for name in DAILY_TASKS if getattr(current, 'redemption_enabled' if name == 'redemption' else name)])
         if not selected:
             raise WorkflowError('日常需要选择任务；体力计划需要刷本。')
         for key in DAILY_TASKS:
-            setattr(current, key, key in selected)
+            setattr(current, 'redemption_enabled' if key == 'redemption' else key, key in selected)
         options['use_power_plan'] = params.pop('use_power_plan', False)
         if options['use_power_plan'] and 'battle' not in selected:
             raise WorkflowError('体力计划需要选择日常刷本。')
         for key, value in params.items():
             setattr(current, key, value)
+        if current.redemption_enabled and current.redemption_source == 'file':
+            current.redemption_catalog = str((base_dir / current.redemption_catalog).resolve())
         current.validate('power_plan' if options['use_power_plan'] else 'daily')
         options['operation'] = 'daily'
     elif task == 'plan':

@@ -1212,6 +1212,10 @@ class DailyWorkflow:
             self._dismiss_reward(after)
         return self._result("daily", "partial", "已识别500活跃，但五档奖励的领取状态尚未核实；请采集奖励礼盒和完成图标模板。", scene)
 
+    def redemption(self) -> TaskResult:
+        from .redemption_run import run_redemption
+        return run_redemption(self.ctx)
+
     def mail(self) -> TaskResult:
         from .free_rewards import mailbox,mail_claimed,claim_enabled,reward_overlay
         scene=self._snapshot()

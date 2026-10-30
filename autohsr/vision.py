@@ -71,6 +71,24 @@ class Vision:
         value=self._read_field(image,r'.{1,80}')
         return value if value is not None and unit_name(value.text)==expected else None
 
+    def refine_redemption(self, scene):
+        from .redemption_pages import field_region
+        region = field_region(scene, self.confidence)
+        if region is None or scene.image is None:
+            return
+        import cv2
+        height, width = scene.image.shape[:2]
+        left, top, right, bottom = (round(value * size) for value, size in zip(region, (width, height, width, height)))
+        if not 0 <= left < right <= width or not 0 <= top < bottom <= height:
+            return
+        patch = scene.image[top:bottom, left:right]
+        readings = []
+        for scale in (1., 1.6):
+            crop = cv2.resize(patch, None, fx=scale, fy=scale) if scale != 1 else patch
+            value = self._read_field(crop, r'[A-Za-z0-9\u3400-\u9fff]{1,64}')
+            readings.append(Token(value.text, value.score, tuple(region)) if value is not None else None)
+        scene.field_reads['redemption.code'] = tuple(readings)
+
     def refine_daily_synthesis(self, scene):
         from .daily_synthesis import selected, quantity
         if scene.image is None or not selected(scene) or quantity(scene) is not None:

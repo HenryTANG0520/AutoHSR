@@ -7,6 +7,12 @@
   "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json", "assets/currency-investment/sources.json", "assets/currency-auto/sources.json"],
   "native_extensions": [
     {
+      "path": "autohsr/redemption_store.py",
+      "native_files": ["autohsr/redemption_settings.py", "autohsr/redemption_cli.py", "autohsr/app.py", "autohsr/windows.py", "autohsr/vision.py", "autohsr/workflow_identity.py", "autohsr/task_workflow.py", "autohsr/schedule_dispatch.py"],
+      "tests": ["autohsr/tests/test_redemption_codes.py", "autohsr/tests/test_redemption_store.py", "autohsr/tests/test_redemption_run.py", "autohsr/tests/test_redemption_integration.py"],
+      "kind": "AutoHSR-authored opt-in custody around the separately attributed redemption behavior: exact local account/server/raw-code scopes, durable pending-before-submit and immutable terminal/unknown receipts, strict bounded JSON with exclusive locks and original in-run PNG byte/pixel proofs, no replay after interrupted or unknown submission. Native Context rederives fresh targets and verifies durable session/claim content, current RGB pixel hash/shape, form digest and same-run/action identity, exact two-capture code echo and same-result feedback before closing. Dedicated Unicode input replaces only a verified field without clipboard access and remains behind the native identity input proxy. Configuration saving, read-only local preview, explicit online preview, actual game run, mail and outer notification remain separate. Explicit task-tree selection excludes unselected redemption and resolves its local catalog relative to the workflow; schedule enablement freezes that bounded dependency for later recheck. No upstream global used-code list, registry server inference, input framework or GUI imported."
+    },
+    {
       "path": "autohsr/currency_wars_initial.py",
       "native_files": ["autohsr/currency_wars_initial_shop.py", "autohsr/currency_wars_standard_flow.py", "autohsr/currency_wars_standard_ledger.py", "autohsr/app.py"],
       "native_references": ["autohsr/currency_wars_collector.py", "autohsr/currency_wars_consumables.py", "autohsr/currency_wars_environment.py", "autohsr/currency_wars_session.py"],
@@ -94,6 +100,86 @@
     }
   ],
   "sources": [
+    {
+      "path": "assets/config/screens.json",
+      "retrieved": "2026-10-30",
+      "git_blob": "bc8d8f10e8cf6431b57b094dd5808fd9eb8c0012",
+      "sha256": "11848d7a9a550fc24dca6f87c24922e2d99f7220c7602e0b73d9b46a4269d0db",
+      "bytes": 39505
+    },
+    {
+      "path": "module/screen/screen.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "dfca8f310ec966a823705f445d130d8d4a7aaf7c",
+      "sha256": "728e2035d09269a613afb66618d5b18f04dd49d1af08ed506a3c3300131fbdfa",
+      "bytes": 19116
+    },
+    {
+      "path": "assets/images/screen/redemption.png",
+      "retrieved": "2026-10-30",
+      "git_blob": "f7d826737a5f8aecbed429f2b9b61a463fcbf933",
+      "sha256": "ce1aaed2d948099704694f1ea23edac6d9d0490d3ef61b5408513e51866dff3a",
+      "bytes": 4096,
+      "dimensions": [107, 48],
+      "distributed_path": "assets/upstream/March7thAssistant/redemption-ui/title.png",
+      "transformation": "none; original minimal title crop, bytes unchanged"
+    },
+    {
+      "path": "assets/images/share/menu/more.png",
+      "retrieved": "2026-10-30",
+      "git_blob": "4efdac5013ac3e9cf5584aec06c2215d594f0f69",
+      "sha256": "b382583d7e01d5e197232b3629f5e873c05afc2a38b91e4df255b1167cefa0b4",
+      "bytes": 327,
+      "dimensions": [35, 15],
+      "distributed_path": "assets/upstream/March7thAssistant/redemption-ui/more.png",
+      "transformation": "none; original minimal control crop, bytes unchanged"
+    },
+    {
+      "path": "assets/images/share/redemption/paste.png",
+      "retrieved": "2026-10-30",
+      "git_blob": "ad6f978c09aecb5d7d1d8a1366090aac83491f2f",
+      "sha256": "91759b298da27844a960bdfb74aef19c8b0f50a6b7846b9e0f6cc5f633f3767d",
+      "bytes": 261,
+      "dimensions": [18, 22],
+      "distributed_path": "assets/upstream/March7thAssistant/redemption-ui/paste.png",
+      "transformation": "none; original minimal control crop, bytes unchanged"
+    },
+    {
+      "path": "assets/images/share/redemption/clear.png",
+      "retrieved": "2026-10-30",
+      "git_blob": "94df66df8a53a78b33d400bfb9d2a84241a2f031",
+      "sha256": "c3b520b09db5d5d1d1854b52d0a97ef92b195426ddb4ba3e9b3ce657bded76ed",
+      "bytes": 201,
+      "dimensions": [16, 22],
+      "distributed_path": "assets/upstream/March7thAssistant/redemption-ui/clear.png",
+      "transformation": "none; original minimal control crop, bytes unchanged"
+    },
+    {
+      "path": "assets/images/zh_CN/base/confirm.png",
+      "retrieved": "2026-10-30",
+      "git_blob": "32d4010068d547356b2d165729a5a5b1fd87c392",
+      "sha256": "fca9cb914730336a2c8c58a8c969f329825b3e367d23372e649b49918cb2ad9e",
+      "bytes": 3264,
+      "dimensions": [91, 29],
+      "distributed_path": "assets/upstream/March7thAssistant/redemption-ui/confirm.png",
+      "transformation": "none; original minimal control crop, bytes unchanged"
+    },
+    {
+      "path": "tasks/daily/redemption.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "91668a3b8392223ee7136e64a543f632afc44dec",
+      "sha256": "242c6ba6eacf129524013a0b5adc23b16c2e1c7b04e1c62480d864b476007eae",
+      "bytes": 9131
+    },
+    {
+      "path": "assets/config/redemption_codes.json",
+      "retrieved": "2026-10-30",
+      "git_blob": "038bb6a48fe050a185bd80a203ceae7b175c6a2d",
+      "sha256": "9d5bbfd367f435338b7d9522545ac2f0c7f9878e1f0cbe874df6409107e37c65",
+      "bytes": 2054,
+      "distributed_path": "assets/upstream/March7thAssistant/redemption_codes.json",
+      "transformation": "none; original bytes retained as a versioned offline fallback, not a claim of current code validity"
+    },
     {
       "path": "app/common/schedule.py",
       "retrieved": "2026-10-30",
@@ -394,6 +480,25 @@
     "scope": "Star Rail import/export only; v4.2 output and strict legacy SRGF output, extended legacy collaboration imports are explicitly noted. Official schemas and the third-party jsonschema package are not redistributed or runtime dependencies; the AutoHSR offline QA wrapper checks their pinned hashes and uses synthetic data. Verification evidence, not certification; no real player data or auth used"
   },
   "adaptations": [
+    {
+      "path": "autohsr/redemption_codes.py",
+      "reference_source": "tasks/daily/redemption.py",
+      "reference_functions": ["load_codes", "load_codes_from_url", "valid_codes_for_server", "Redemption.get"],
+      "kind": "Fixed four HTTPS catalog sources, local fallback concept and exact cn/global/expiry filtering rewritten as bounded strict UTF-8 JSON, sequential nonredirected requests, explicit cancellation and pure local parsing. Original code strings and case remain unchanged, invalid/expired/other-server/duplicate rows retain reasons, naive expiry is explicit UTC with diagnostics, and no account or game access occurs during parsing. No upstream concurrent executor, global cfg or registry dependency imported."
+    },
+    {
+      "path": "autohsr/redemption_pages.py",
+      "reference_sources": ["tasks/daily/redemption.py", "assets/config/screens.json", "module/screen/screen.py"],
+      "reference_functions": ["Redemption.start", "Screen.get_current_screen", "Screen.get_operations", "Screen.change_to"],
+      "tests": ["autohsr/tests/test_redemption_pages.py"],
+      "kind": "Pinned menu-to-redemption navigation relationships and five unchanged title/control crops adapted to read-only fresh Scene contracts. Full title/cancel/confirm relationships, current bounded field component, independent exact field reads, explicit result words and associated dismissal control are required; missing/ambiguous/disabled or payment/login content remains unknown. A form submit button is not an inline-error dismissal target. No generic screen graph execution, raw coordinates, action retry, upstream input code or complete-layout calibration imported."
+    },
+    {
+      "path": "autohsr/redemption_run.py",
+      "reference_source": "tasks/daily/redemption.py",
+      "reference_functions": ["Redemption.get", "Redemption.start"],
+      "kind": "Manual/downloaded batches, per-code form submission, exact success/expired/invalid/already-used outcomes and success-only mail behavior adapted to native Flow/Context and original Runner lifecycle. Current account/epoch, immutable batch source, durable intent, two distinct exact-code captures and two terminal feedback captures precede one verified result close; known results survive later page/mail failures. Reused terminal receipts are separate from new submissions and successes; no unknown replay, clipboard paste, global used-code config writes, direct per-code notifications or broad reward helper imported."
+    },
     {
       "path": "autohsr/schedule_plan.py",
       "reference_source": "app/common/schedule.py",

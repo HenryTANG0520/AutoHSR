@@ -77,6 +77,12 @@ class Settings:
     notification_statuses: list[str] = field(default_factory=lambda: ['success', 'partial', 'failed'])
     notification_title: str = 'AutoHSR · {operation} · {status}'
     notification_body: str = '{summary}'
+    redemption_enabled: bool = False
+    redemption_source: str = 'online'
+    redemption_server: str = 'cn'
+    redemption_codes: list[str] = field(default_factory=list)
+    redemption_catalog: str = ''
+    redemption_claim_mail: bool = True
 
     def __post_init__(self):
         from copy import deepcopy
@@ -86,8 +92,11 @@ class Settings:
         self.support_preferences=deepcopy(self.support_preferences)
         self.notification_profiles=deepcopy(self.notification_profiles)
         self.notification_statuses=deepcopy(self.notification_statuses)
+        self.redemption_codes=deepcopy(self.redemption_codes)
 
     def validate(self, operation: str = "daily") -> None:
+        from .redemption_settings import validate_settings as validate_redemption
+        validate_redemption(self, requested=operation == 'redemption')
         from .notify_runtime import validate_settings as validate_notifications
         if operation not in ('check', 'launch'):
             validate_notifications(self, strict=operation == 'save')
