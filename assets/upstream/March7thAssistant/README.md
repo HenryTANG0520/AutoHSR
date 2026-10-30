@@ -1,5 +1,7 @@
 # March7thAssistant 参考来源与适配
 
+2026-10-30另接[明确高难计划与有限混沌备战](../../../docs/challenges.md)。14幅挑战局部图的原始内容、哈希、变换及许可见[challenge-ui](challenge-ui/README.md)；固定挑战源码来源记入[source.json](source.json)。仅沿用关卡／星条和准备页的局部关系，原生输入协议不迁入上游重置、选角、固定直行、秘技、开战、失败交换或领奖。本轮仍无完整角色反馈、战斗／半场／结果和实机验收，完整高难目标保持。
+
 2026-10-30另核对固定`utils/registry/star_rail_setting.py`，原件Git blob／SHA-256／字节数见[source.json](source.json)，GPL v3与原作者署名保持。本轮服务器`auto`仅参考`get_game_path`的两HYP包与`GameInstallPath`命名，以原生只读解析替代“存在国服键便优先国服”的推断；默认仍为显式`cn`，实际API及验证见[兑换码说明](../../../docs/redemption-codes.md)。未导入原模块，其导入时注册表探测及FPS、分辨率、战斗设置读写均未迁入；本轮没有读取真实注册表／进程或修改系统设置。
 
 2026-10-30另核对固定`tasks/daily/redemption.py`的在线获取／本地回退、`cn`／`global`与到期筛选、逐码输入／确认／结果，以及成功后邮件和通知行为；原生接口与实际范围见[兑换码说明](../../../docs/redemption-codes.md)。同提交的[离线码表](redemption_codes.json)按原始2054字节分发，17条记录包含历史过期项，不代表当前可兑换。两份原件的Git blob、SHA-256、字节数和公开路径见[source.json](source.json)，作者及[GPL v3许可](LICENSE)保持；本轮没有访问实时码表、真实兑换或新增实机截图。

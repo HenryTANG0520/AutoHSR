@@ -4,8 +4,36 @@
   "retrieved": "2026-10-28",
   "license": "GNU GPL version 3",
   "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json", "assets/currency-investment/sources.json", "assets/currency-auto/sources.json"],
+  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json", "assets/currency-investment/sources.json", "assets/currency-auto/sources.json", "assets/upstream/March7thAssistant/challenge-ui/sources.json"],
   "native_extensions": [
+    {
+      "path": "autohsr/challenge_plan.py",
+      "reference_source": "tasks/challenge/__init__.py",
+      "native_files": [
+        "autohsr/challenge_cli.py",
+        "autohsr/config.py",
+        "autohsr/__main__.py"
+      ],
+      "tests": [
+        "autohsr/tests/test_challenge_plan.py",
+        "autohsr/tests/test_challenge_integration.py"
+      ],
+      "kind": "AutoHSR-authored explicit two-team configuration for three challenge modes. Strict four-field JSON, fixed mode/level bounds, four exact known asset IDs or unique full display names per team, canonical-ID duplicates rejected and immutable digest. The existing 105-image catalogue supplies identity names only, not ownership, different-form unit equivalence, selected slots or challenge calibration. No techniques, default teams, retry, battle or reward authority. File preview never loads settings or creates a Runner; only explicit settings saving persists."
+    },
+    {
+      "path": "autohsr/challenge_prepare.py",
+      "reference_source": "tasks/challenge/memoryofchaos.py",
+      "native_files": [
+        "autohsr/app.py",
+        "autohsr/models.py",
+        "autohsr/notify_runtime.py"
+      ],
+      "tests": [
+        "autohsr/tests/test_challenge_prepare.py"
+      ],
+      "asset_manifest": "assets/upstream/March7thAssistant/challenge-ui/sources.json",
+      "kind": "AutoHSR-authored independent preparation Runner, not a complete challenge executor. Current-window only, no daily startup or spending budget. Freeze plan/account/epoch, require distinct fresh observations, durable same-run source PNG byte/pixel/shape proof and intent, derive the current first-level target again at the dedicated Context boundary, click at most once and require two same-level preparation returns. Unknown/interrupted selection is retained, never replayed; existing verified setup is observed without input. No reset, selected-team claim, movement, technique, combat, rewards, arbitrary coordinates or imported upstream input framework."
+    },
     {
       "path": "autohsr/redemption_server.py",
       "reference_source": "utils/registry/star_rail_setting.py",
@@ -108,6 +136,41 @@
     }
   ],
   "sources": [
+    {
+      "path": "tasks/challenge/__init__.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "233e9da7b23c2acbe7762ebdbe57bc61ba50d9c9",
+      "sha256": "f2498a176b2b24a3fea36b6f601564ee482b7d8a095c21db59c0640987a89c7d",
+      "bytes": 1506
+    },
+    {
+      "path": "tasks/challenge/basechallenge.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "5d7f4b7ff1a73ee40db16225fa3d2286c06f1ae9",
+      "sha256": "4bf7a5855682af3aa36c1719968b937148884189e143342f50249cd34ebb1706",
+      "bytes": 5206
+    },
+    {
+      "path": "tasks/challenge/memoryofchaos.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "6d84252e7ff255dff63ce2efc73a8332a2019977",
+      "sha256": "831ee7dc4467a8bf6138a26146f2bff27b6c1602e9fcc811d4a94267d26adafb",
+      "bytes": 9866
+    },
+    {
+      "path": "tasks/challenge/purefiction.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "42715d66274e18d3e8f6976bbc3b0ade67059fde",
+      "sha256": "632d72eec31a2153f90b4438c5664a4149f648c35ad102b4c47aa0dd3d018429",
+      "bytes": 10453
+    },
+    {
+      "path": "tasks/challenge/apocalyptic.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "41ac3d50243786543c646deda1e285af0dfd2f6d",
+      "sha256": "782b942eca36cc3b752a5ea4baf6f58028b48b829029831651d50e3c3acbd05c",
+      "bytes": 16401
+    },
     {
       "path": "utils/registry/star_rail_setting.py",
       "retrieved": "2026-10-30",
@@ -495,6 +558,16 @@
     "scope": "Star Rail import/export only; v4.2 output and strict legacy SRGF output, extended legacy collaboration imports are explicitly noted. Official schemas and the third-party jsonschema package are not redistributed or runtime dependencies; the AutoHSR offline QA wrapper checks their pinned hashes and uses synthetic data. Verification evidence, not certification; no real player data or auth used"
   },
   "adaptations": [
+    {
+      "path": "autohsr/challenge_pages.py",
+      "reference_source": "tasks/challenge/memoryofchaos.py",
+      "reference_functions": [
+        "find_level",
+        "judge_stars",
+        "prepare_level"
+      ],
+      "kind": "Limited current-scene observation using the separately attributed original challenge crops, source level region and gold-star colour/shape relationship. Original mode image plus exact OCR/header/counter and independent per-level positive star sources; absent stars, availability, full selected teams, halves, combat and results remain unknown. Team number/reset/switch/caption crops corroborate preparation only and never authorize those controls. Full real-page calibration is outstanding; original-crop composites are synthetic mechanism tests."
+    },
     {
       "path": "autohsr/redemption_codes.py",
       "reference_source": "tasks/daily/redemption.py",

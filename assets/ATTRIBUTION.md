@@ -1,5 +1,11 @@
 # AutoHSR resource attribution
 
+## 2026-10-30 高难计划与有限混沌备战
+
+固定March7thAssistant `7cf6c6bed474539485d3b1504077ac352866829f`的挑战源码作为模式／层数、名单及局部页面关系参考，作者moesnow及其贡献者与[GPL v3](upstream/March7thAssistant/LICENSE)保持，原件哈希与原生适配范围记入[source.json](upstream/March7thAssistant/source.json)。14幅最小原图逐份查看并按固定tree／Git blob／SHA-256／大小核对，原样分发于[challenge-ui](upstream/March7thAssistant/challenge-ui/README.md)；没有重编码或发布游戏整图／账号内容。游戏美术权利归HoYoverse及相应权利人。
+
+新双队计划及准备意图／反馈协议为AutoHSR原生实现；现有105头像只作已知标识目录，不沿用好友列表几何或宣称已选。只接有限正星关联选层与备战观察，没有导入上游选角点击、重置／交换重试、固定直行／秘技／攻击、开战或领奖，实际API及检查见[高难说明](../docs/challenges.md)。完整高难和真实页面仍未完成验收。
+
 ## 2026-10-30 兑换服务器自动解析参考
 
 固定March7thAssistant `utils/registry/star_rail_setting.py`已原样缓存在既有研究目录，Git blob为`156538a8313020a4bd9aedfd780d9025a820a736`、SHA-256为`84d6a44693888b610cd65476a5c1093b36626cad403ca52b2301f9c7298184a2`，11538字节，已核对固定tree。作者与[GPL v3许可](upstream/March7thAssistant/LICENSE)保持，来源加入[source.json](upstream/March7thAssistant/source.json)。本轮只参考`get_game_path`的两份HYP包名及`GameInstallPath`字段，原生实现／验证状态见[兑换说明](../docs/redemption-codes.md)；没有分发原模块或导入其模块级探测、FPS／分辨率／自动战斗读写功能，没有读取真实用户注册表或进程。

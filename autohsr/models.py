@@ -103,6 +103,7 @@ class RunReport:
     daily_verified: bool = False
     daily_synthesis: dict = field(default_factory=dict)
     redemption: dict = field(default_factory=dict)
+    challenge: dict = field(default_factory=dict)
     engagement: int | None = None
     run_dir: str = ""
     operation: str = "daily"

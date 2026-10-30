@@ -22,7 +22,8 @@ TEMPLATE_FIELDS = {'operation', 'status', 'summary'}
 OPERATIONS = {'daily': '日常', 'reward_only': '补领奖', 'plan': '日常与周常计划',
               'differential_universe': '差分宇宙', 'currency_wars_loop': '货币战争循环',
               'currency_wars_standard': '货币战争', 'currency_wars_points': '货币战争积分',
-              'currency_wars_rewards': '货币战争领奖', 'task_workflow': '任务流程'}
+              'currency_wars_rewards': '货币战争领奖', 'task_workflow': '任务流程',
+              'challenge_prepare': '高难备战'}
 STATUS_LABELS = dict(success='完成', partial='部分完成', failed='失败', stopped='停止')
 
 

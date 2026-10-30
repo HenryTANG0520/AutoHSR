@@ -1,0 +1,197 @@
+{
+  "repository": "https://github.com/moesnow/March7thAssistant",
+  "commit": "7cf6c6bed474539485d3b1504077ac352866829f",
+  "retrieved": "2026-10-30",
+  "license": "Upstream software GPL-3.0; game artwork remains owned by HoYoverse and respective rights holders; no additional artwork rights granted",
+  "license_file": "../LICENSE",
+  "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+  "images": [
+    {
+      "file": "forgottenhall/team1.png",
+      "source_path": "assets/images/forgottenhall/team1.png",
+      "git_blob": "ba0613879927e2398180bf0de8865ab3bb0620d3",
+      "sha256": "b47cefb48b3df4a4f7522d1bcad3877d64c96fab79dd8e974bd068c4ed06bdc6",
+      "bytes": 1718,
+      "size": [
+        26,
+        44
+      ],
+      "transform": "unchanged original bytes",
+      "usage": "limited page/level corroboration; no team selection or start authority"
+    },
+    {
+      "file": "forgottenhall/team2.png",
+      "source_path": "assets/images/forgottenhall/team2.png",
+      "git_blob": "2e166c22df7dfbc3e7ecd7bc1161c969107aa758",
+      "sha256": "69b67d8e7f985fc79dd830806a73d2704425df52f4bfd7e633da67de39ed2a3b",
+      "bytes": 2367,
+      "size": [
+        28,
+        52
+      ],
+      "transform": "unchanged original bytes",
+      "usage": "limited page/level corroboration; no team selection or start authority"
+    },
+    {
+      "file": "forgottenhall/start.png",
+      "source_path": "assets/images/forgottenhall/start.png",
+      "git_blob": "ce72d55e8aa9e3b6cb169555294e9d46a5ccb9d2",
+      "sha256": "0f8bc303e60c56ca5d8f3383f1c771ca530a106c561e2c843a929f5ccf67d031",
+      "bytes": 3168,
+      "size": [
+        119,
+        25
+      ],
+      "transform": "unchanged original bytes",
+      "usage": "limited page/level corroboration; no team selection or start authority"
+    },
+    {
+      "file": "forgottenhall/reset.png",
+      "source_path": "assets/images/forgottenhall/reset.png",
+      "git_blob": "42f37911a9fc76f77a96c574d23c0df7a0565b81",
+      "sha256": "84d8bc4f6bae35d242721f353b0d414571a29950e18b9b64186d9e06ab887032",
+      "bytes": 431,
+      "size": [
+        24,
+        26
+      ],
+      "transform": "unchanged original bytes",
+      "usage": "limited page/level corroboration; no team selection or start authority"
+    },
+    {
+      "file": "forgottenhall/switch.png",
+      "source_path": "assets/images/forgottenhall/switch.png",
+      "git_blob": "45aebf2fc0adbd0e396190758f0f295b41ae8683",
+      "sha256": "755a291709111ad4f340c55bd36b5f684369dbbd419caf89c7a012653e485a91",
+      "bytes": 448,
+      "size": [
+        26,
+        24
+      ],
+      "transform": "unchanged original bytes",
+      "usage": "limited page/level corroboration; no team selection or start authority"
+    },
+    {
+      "file": "forgottenhall/back.png",
+      "source_path": "assets/images/forgottenhall/back.png",
+      "git_blob": "ddf1ebd6859fe5c547250b98bc7a1e776e040653",
+      "sha256": "82f0ba244f6b33aa40f79424e146b6b6abe88e489268bd7720d4bcf58099b67b",
+      "bytes": 3573,
+      "size": [
+        143,
+        23
+      ],
+      "transform": "unchanged original bytes",
+      "usage": "research-only graphic meaning; no action or result authority"
+    },
+    {
+      "file": "forgottenhall/again.png",
+      "source_path": "assets/images/forgottenhall/again.png",
+      "git_blob": "cd6f7886c7f7208327fdc3f449b800f8c1587652",
+      "sha256": "ecbfe284edd3402c8c8cb1af89c241070efcb975c8ae1352552ddb02febf4757",
+      "bytes": 3251,
+      "size": [
+        95,
+        22
+      ],
+      "transform": "unchanged original bytes",
+      "usage": "research-only graphic meaning; no action or result authority"
+    },
+    {
+      "file": "forgottenhall/pause.png",
+      "source_path": "assets/images/forgottenhall/pause.png",
+      "git_blob": "7d2f5b91a91d4cf160f81779f5cf44ad45e00e98",
+      "sha256": "b6149b8802f6a77fdff5c3570444544df55d209b2aa74691f3d57d9fee7df418",
+      "bytes": 3642,
+      "size": [
+        48,
+        52
+      ],
+      "transform": "unchanged original bytes",
+      "usage": "research-only graphic meaning; no action or result authority"
+    },
+    {
+      "file": "forgottenhall/star.png",
+      "source_path": "assets/images/forgottenhall/star.png",
+      "git_blob": "e94b8868bf5521551bcecbfb5ee21044baa78211",
+      "sha256": "88eed2945f375bbd983dd52e5d7c8ff8a99b7e5b8b21bba7b335063fc57e728e",
+      "bytes": 250,
+      "size": [
+        17,
+        17
+      ],
+      "transform": "unchanged original bytes",
+      "usage": "limited page/level corroboration; no team selection or start authority"
+    },
+    {
+      "file": "forgottenhall/prepare_fight.png",
+      "source_path": "assets/images/forgottenhall/prepare_fight.png",
+      "git_blob": "cda9a55c88f4e34d3d5a510b80fce52ab309ecaf",
+      "sha256": "9054a4af3ab264f389dde60d3fb7c388d5774469e57f076cae26ecefcda5f3d8",
+      "bytes": 4441,
+      "size": [
+        77,
+        22
+      ],
+      "transform": "unchanged original bytes",
+      "usage": "research-only graphic meaning; no action or result authority"
+    },
+    {
+      "file": "forgottenhall/memory_of_chaos.png",
+      "source_path": "assets/images/forgottenhall/memory_of_chaos.png",
+      "git_blob": "ac58d9f5c0b210fd12bb0ff9178d174c5cd8cccc",
+      "sha256": "088a04dde8b7e779e0fcd3d4ebe23ca3148d1cb6950c87269c95c80606100767",
+      "bytes": 3263,
+      "size": [
+        38,
+        35
+      ],
+      "transform": "unchanged original bytes",
+      "usage": "research-only graphic meaning; no action or result authority"
+    },
+    {
+      "file": "forgottenhall/start2.png",
+      "source_path": "assets/images/forgottenhall/start2.png",
+      "git_blob": "3708518809881be4d566056c2095a2baa48c85bd",
+      "sha256": "c81502d08b7dd4e7f817945bec9e61d7e8fc634d8e0d4b650c65a7f62c27cd32",
+      "bytes": 2003,
+      "size": [
+        90,
+        34
+      ],
+      "transform": "unchanged original bytes",
+      "usage": "limited page/level corroboration; no team selection or start authority"
+    },
+    {
+      "file": "purefiction/prepare_fight.png",
+      "source_path": "assets/images/purefiction/prepare_fight.png",
+      "git_blob": "d1ea8dba884fb79a8b4be2cc7e2067225933610c",
+      "sha256": "3cb60e57557a0c4a413a1d9125b5468d75583754be9d2b76772608c4769adfc4",
+      "bytes": 675,
+      "size": [
+        36,
+        53
+      ],
+      "transform": "unchanged original bytes",
+      "usage": "research-only graphic meaning; no action or result authority"
+    },
+    {
+      "file": "screen/forgottenhall/memory_of_chaos.png",
+      "source_path": "assets/images/screen/forgottenhall/memory_of_chaos.png",
+      "git_blob": "c70d20ae23946a10e1c5f7246cf41d4aa1bc20b8",
+      "sha256": "ae954987947ac37732b76e9da7e3e9dea1ff9200b6af08ea387effeb0708c5b4",
+      "bytes": 10326,
+      "size": [
+        104,
+        47
+      ],
+      "transform": "unchanged original bytes",
+      "usage": "limited page/level corroboration; no team selection or start authority"
+    }
+  ],
+  "limitations": [
+    "No full real challenge page or selected/full-team feedback reference.",
+    "No real upper/lower-half, field/battle/result calibration.",
+    "Support character originals are existing candidate identity references only; no friend-row geometry or selected-state meaning is reused."
+  ]
+}

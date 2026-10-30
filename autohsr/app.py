@@ -135,6 +135,8 @@ class Context:
         raise InputInterrupted("焦点恢复后须重新识别，旧输入目标已丢弃。")
 
     def _require_gameplay_input(self):
+        if self.report.operation == 'challenge_prepare':
+            raise AutomationError('高难备战只允许专用层数核验入口，不能使用通用点击或按键。')
         if self.report.operation.startswith("currency_wars"):
             raise AutomationError("货币战争当前仅允许只读识别，禁止发送游戏输入。")
 
@@ -168,6 +170,23 @@ class Context:
                 self.window.click(*action.target.center, scene.geometry)
             else:
                 raise AutomationError('兑换动作没有已核实的输入目标。')
+        except FocusLost:
+            self._focus_interrupted()
+        self.sleep(self.settings.action_delay)
+
+    def challenge_prepare_input(self, scene, action):
+        if self.report.operation != 'challenge_prepare':
+            raise AutomationError('当前任务不允许高难备战选择。')
+        workflow = getattr(self, 'challenge_preparation', None)
+        if workflow is None or workflow.c is not self:
+            raise AutomationError('缺少本次高难备战流程和落盘意图。')
+        self.checkpoint()
+        workflow.authorize(scene, action)
+        self.window.guard(scene.geometry)
+        workflow._fresh(scene)
+        self.last_scene, self._scroll_anchor = None, None
+        try:
+            self.window.click(*action.target.center, scene.geometry)
         except FocusLost:
             self._focus_interrupted()
         self.sleep(self.settings.action_delay)
@@ -1675,9 +1694,10 @@ class Runner:
             differential_universe = self.report.operation == "differential_universe"
             catalogue = self.report.operation == "dungeon_catalogue"
             redemption = self.report.operation == 'redemption'
-            if self.report.operation not in ("daily", "reward_only", "redemption", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
+            challenge_prepare = self.report.operation == 'challenge_prepare'
+            if self.report.operation not in ("daily", "reward_only", "redemption", "challenge_prepare", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
                 raise AutomationError("未知运行类型，未访问游戏。")
-            self.settings.validate("check" if catalogue else "currency_wars" if currency_wars else "differential_universe" if differential_universe else 'redemption' if redemption else "power_plan" if self.use_power_plan else "daily")
+            self.settings.validate('challenge_prepare' if challenge_prepare else "check" if catalogue else "currency_wars" if currency_wars else "differential_universe" if differential_universe else 'redemption' if redemption else "power_plan" if self.use_power_plan else "daily")
             configured_name=''
             if self.report.operation in ('currency_wars_points','currency_wars_rewards'):
                 from .currency_wars_points_run import require_no_active_match
@@ -1710,7 +1730,7 @@ class Runner:
                     require_session_access(saved,self.currency_resume)
                 configured_name=resolve_name(self.settings,self.currency_remembrance_name,saved,resume=self.currency_resume)
                 resolve_fast_mode(self.settings,self.currency_fast_mode,saved,resume=self.currency_resume)
-            if not catalogue and not currency_wars and not differential_universe and not redemption and self.settings.battle and self.settings.allow_stamina_spend:
+            if not catalogue and not currency_wars and not differential_universe and not redemption and not challenge_prepare and self.settings.battle and self.settings.allow_stamina_spend:
                 from .recovery import BattleBudget
                 self.battle_budget = BattleBudget(ROOT / "runs", self.settings, self.report)
                 from .workflow_identity import active as workflow_identity_active
@@ -1722,7 +1742,7 @@ class Runner:
             monitor = threading.Thread(target=self._hotkeys, name="AutoHSR-hotkeys", daemon=True)
             monitor.start()
             monitor_started = True
-            if (not catalogue and not currency_wars and not differential_universe) or self.weekly_plan is not None or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard', 'currency_wars_points', 'currency_wars_rewards'):
+            if (not catalogue and not currency_wars and not differential_universe and not challenge_prepare) or self.weekly_plan is not None or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard', 'currency_wars_points', 'currency_wars_rewards'):
                 self._prepare_daily_game()
             self._window = self._window or find_game(self.settings.game_path)
             if self.report.operation != "currency_wars" and is_elevated(self._window.hwnd) is True and not is_admin():
@@ -1753,6 +1773,15 @@ class Runner:
                 result = scan_catalogue(DailyWorkflow(context))
                 self.report.results.append(result)
                 self.report.status = "success" if result.status == "ok" else "partial"
+            elif challenge_prepare:
+                from .challenge_prepare import prepare_challenge
+                self.report.failure_task = 'challenge_prepare'
+                self.emit(dict(type='task', task='challenge_prepare', status='running', detail='核实当前混沌主页与首个目标层备战；不开战'))
+                result = prepare_challenge(context)
+                self.report.results.append(result)
+                self.report.status = 'success' if result.status == 'ok' else 'partial'
+                self.report.failure_task = '' if result.status == 'ok' else 'challenge_prepare'
+                self.emit(dict(type='task', **result.__dict__))
             elif redemption:
                 from .redemption_run import run_redemption
                 self.report.failure_task = 'redemption'
@@ -1806,14 +1835,16 @@ class Runner:
             self.report.status = "stopped"
             self.report.error = str(error)
             self.report.safe_next = ("货币战争操作已停止；核对画面和本次动作记录后重新识别。" if self.report.operation.startswith("currency_wars") else
+                                     '高难备战已停止；保留层数选择记录，重新核对当前页面；本次未开战。' if self.report.operation == 'challenge_prepare' else
                                      '兑换已停止；已核实逐码结果保留，先核对未知提交，不重复确认。' if self.report.operation == 'redemption' else
                                      "差分宇宙自动演算已停止；核对本次截图、OCR 与动作记录。不要继续现有未完成存档。" if self.report.operation == "differential_universe" else
                                      "停止请求已生效；核对当前战斗及消耗后，可选择仅补领奖。")
             self.log(str(error), "warning")
         except Exception as error:
-            self.report.status = "partial" if self.report.daily_verified or self.report.redemption.get('results') else "failed"
+            self.report.status = "partial" if self.report.daily_verified or self.report.redemption.get('results') or self.report.challenge.get('actions') else "failed"
             self.report.error = str(error)
             self.report.safe_next = ("积分领奖未完成；保留原报告和领奖记录，未知领取不重发；仅已核实步骤可明确接续。" if self.report.operation=='currency_wars_rewards' else
+                                     '高难备战未完整核实；查看原层数选择和页面证据，不自动重发；本次未开战。' if self.report.operation == 'challenge_prepare' else
                                      '兑换批次未完成；先核对逐码结果和未知提交，已保存成功不重试。' if self.report.operation == 'redemption' else
                                      "货币战争操作失败；核对动作记录与前后截图，不自动重放。" if self.report.operation.startswith("currency_wars") else
                                      "差分宇宙自动演算失败；核对当前页面、动作记录与截图后再决定如何处理存档。" if self.report.operation == "differential_universe" else
@@ -1856,6 +1887,7 @@ class Runner:
                 self.report.status = "partial" if self.report.daily_verified else "failed"
                 self.report.error = (self.report.error + "；" if self.report.error else "") + f"报告保存失败：{error}"
                 self.report.safe_next = ("报告未保存；保留动作记录和截图，人工核对后重新识别。" if self.report.operation.startswith("currency_wars") else
+                                         '高难备战报告未保存；保留原选择与页面证据，核对当前层数；本次未开战。' if self.report.operation == 'challenge_prepare' else
                                          "差分宇宙报告保存失败；保留当前目录，人工核对当前存档和动作。" if self.report.operation == "differential_universe" else
                                          "报告未保存；保留当前证据与刷本记录，人工核对消耗，不要直接重跑刷本。")
                 self.log(f"报告保存失败：{error}", "error")

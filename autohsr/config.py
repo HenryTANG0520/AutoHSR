@@ -83,6 +83,7 @@ class Settings:
     redemption_codes: list[str] = field(default_factory=list)
     redemption_catalog: str = ''
     redemption_claim_mail: bool = True
+    challenge_plan: dict = field(default_factory=dict)
 
     def __post_init__(self):
         from copy import deepcopy
@@ -93,8 +94,11 @@ class Settings:
         self.notification_profiles=deepcopy(self.notification_profiles)
         self.notification_statuses=deepcopy(self.notification_statuses)
         self.redemption_codes=deepcopy(self.redemption_codes)
+        self.challenge_plan=deepcopy(self.challenge_plan)
 
     def validate(self, operation: str = "daily") -> None:
+        from .challenge_cli import validate_settings as validate_challenge
+        validate_challenge(self, requested=operation == 'challenge_prepare')
         from .redemption_settings import validate_settings as validate_redemption
         validate_redemption(self, requested=operation == 'redemption')
         from .notify_runtime import validate_settings as validate_notifications
