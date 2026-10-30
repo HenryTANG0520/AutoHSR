@@ -77,8 +77,8 @@ class UniversePoster(Surface):
             p.text((924, 156), mode, 29, "#ebd997", "rt")
             p.box((746, 58, 939, 91), "#1f211b", 17)
             p.text((842, 60), "接续当前进度" if self.ui.du_resume_active.get() else "新开演算", 23, "#ebd997", "mt")
-            p.text((600, 217), "预设编队", 20, "#535a3c")
-            p.text((600, 248), p.wrap(self.ui.du_team.get() or "待填写", 338, 23, 3), 23, ink)
+            p.text((688, 217), "预设编队", 20, "#535a3c")
+            p.text((688, 248), p.wrap(self.ui.du_team.get() or "待填写", 250, 23, 4), 23, ink)
             p.text((427, 375), "通关后", 25, ink)
             p.line((427, 409, 938, 409), "#777f5c", 1.5)
             options = [label for variable, label in ((self.ui.du_save, "保存到空槽"), (self.ui.du_rewards, "领取红点奖励"),
