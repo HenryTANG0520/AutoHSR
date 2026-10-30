@@ -69,6 +69,10 @@ def select_category(workflow, category):
             scene = scroll_list(workflow, scene, 60000)
             if category.weekly_limit:
                 workflow._weekly_rewards = weekly_rewards(scene)
+                workflow._weekly_rewards_proof = None
+                plan=getattr(getattr(workflow.ctx,'battle_budget',None),'power_plan',None)
+                if plan is not None and workflow._weekly_rewards is not None:
+                    workflow._weekly_rewards_proof=plan.quota_proof(workflow.ctx,scene,workflow._weekly_rewards)
             return scene
         scene = scroll_list(workflow, scene, -1440, left=True)
     raise AutomationError(f"生存索引未找到{category.label}；可能尚未解锁。")
@@ -96,7 +100,8 @@ def open_dungeon(workflow):
     if category.weekly_limit and getattr(workflow, "_weekly_rewards", None) is None:
         raise AutomationError("未核实历战余响本周剩余领奖次数，未开始挑战。")
     if category.weekly_limit and workflow._weekly_rewards == 0:
-        raise AutomationError("历战余响本周领奖次数已用完，未进行无奖励挑战。")
+        from .models import DungeonQuotaExhausted
+        raise DungeonQuotaExhausted(scene)
     target = normalize(workflow.settings.target_name)
     location = normalize(workflow.settings.target_location)
     previous = None

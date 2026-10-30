@@ -69,6 +69,13 @@ class EmptyCapture(AutomationError):
     pass
 
 
+class DungeonQuotaExhausted(AutomationError):
+    """A positively observed zero weekly allowance, never an unread counter."""
+    def __init__(self,scene):
+        super().__init__('历战余响本周领奖次数已用完，未进行无奖励挑战。')
+        self.scene=scene
+
+
 class Stopped(AutomationError):
     pass
 
@@ -111,6 +118,7 @@ class RunReport:
     battle_requested: int | None = None
     dungeon_catalogue: dict = field(default_factory=dict)
     team_selections: list[dict] = field(default_factory=list)
+    support_selections: list[dict] = field(default_factory=list)
     failure_task: str = ""
     error: str = ""
     input_error_field: str = ""
@@ -119,6 +127,7 @@ class RunReport:
     currency_wars: dict = field(default_factory=dict)
     differential_universe: dict = field(default_factory=dict)
     weekly_plan: dict = field(default_factory=dict)
+    power_plan: dict = field(default_factory=dict)
     report_saved: bool = False
     report_write_error: str = ""
 

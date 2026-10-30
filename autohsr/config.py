@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import math
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from .storage import replace_file
+from .du_station_policy import default_priorities
 
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
 RESOURCE_ROOT = Path(getattr(sys, "_MEIPASS", ROOT))
@@ -48,6 +49,9 @@ class Settings:
     differential_universe_daily_from: str = ""
     differential_universe_team: str = "哈哈哈哈"
     differential_universe_mode: str = "periodic"
+    differential_universe_station_custom: bool = False
+    differential_universe_station_priority: dict[str,int] = field(default_factory=default_priorities)
+    differential_universe_station_disabled: list[str] = field(default_factory=list)
     weekly_enabled: bool = False
     weekly_mode: str = "differential_universe"
     weekly_day: int = 1
@@ -57,8 +61,38 @@ class Settings:
     currency_fast_mode: bool = False
     currency_runs: int = 1  # Only the explicit loop entry uses this; 0 = until stopped.
     currency_until_points: bool = False  # Optional weekly target; runs remains the new-game ceiling.
+    currency_continue_after_defeat: bool = False
+    power_plan: list[dict] = field(default_factory=list)
+    power_plan_keep: bool = False
+    power_plan_fill: bool = True
+    echo_of_war_enabled: bool = False
+    echo_of_war_start_day: int = 1
+    echo_of_war_target: str = '毁灭的开端'
+    echo_of_war_location: str = '支援舱段'
+    support_preferences: list[dict] = field(default_factory=list)
+    support_scroll_pages: int = 10
+    support_fallback: str = 'stop'
+
+    def __post_init__(self):
+        from copy import deepcopy
+        self.differential_universe_station_priority=deepcopy(self.differential_universe_station_priority)
+        self.differential_universe_station_disabled=deepcopy(self.differential_universe_station_disabled)
+        self.power_plan=deepcopy(self.power_plan)
+        self.support_preferences=deepcopy(self.support_preferences)
 
     def validate(self, operation: str = "daily") -> None:
+        from .support_profiles import validate as validate_support
+        validate_support(self)
+        from .echo_weekly import validate_settings as validate_echo
+        validate_echo(self)
+        if operation in ('save','power_plan'):
+            from .power_plan import items,plan_spec
+            items(self.power_plan)
+            if operation=='power_plan':plan_spec(self)
+        for name in ('power_plan_keep','power_plan_fill'):
+            if type(getattr(self,name)) is not bool:raise SettingsError(name,f'{name}必须为布尔值。')
+        from .du_station_policy import StationPreferences
+        StationPreferences.from_settings(self)
         from .weekly_plan import validate_schedule
         validate_schedule(self)
         from .currency_wars_loop_store import runs_value
@@ -69,25 +103,26 @@ class Settings:
         except ValueError as error:raise SettingsError('currency_remembrance_name',str(error)) from error
         if not isinstance(self.game_path, str) or not self.game_path.lower().endswith("starrail.exe"):
             raise SettingsError("game_path", "请选择 StarRail.exe 游戏程序。")
-        if operation == "save" or (operation in ("daily", "plan") and self.battle and self.allow_stamina_spend):
-            if not isinstance(self.target_name, str) or len(self.target_name.strip()) < 2:
+        if operation == "save" or (operation in ("daily", "plan") and self.battle and self.allow_stamina_spend) or operation=='power_plan':
+            use_default=operation!='power_plan' or self.power_plan_fill
+            if use_default and (not isinstance(self.target_name, str) or len(self.target_name.strip()) < 2):
                 raise SettingsError("target_name", "请选择副本，例如：回忆之蕾。")
-            if not isinstance(self.target_location, str):
+            if use_default and not isinstance(self.target_location, str):
                 raise SettingsError("target_location", "副本地点必须是文字；留空时仅允许唯一匹配目标。")
-            if operation in ("daily", "plan") and not self.target_location.strip():
+            if use_default and operation in ("daily", "plan",'power_plan') and not self.target_location.strip():
                 raise SettingsError("target_location", "请填写副本地点，以区分同名花萼。")
             if isinstance(self.stamina_limit, bool) or not isinstance(self.stamina_limit, int) or not 10 <= self.stamina_limit <= 240 or self.stamina_limit % 10:
                 raise SettingsError("stamina_limit", "本次开拓力上限应为 10～240 之间的 10 的倍数。")
             if isinstance(self.rounds, bool) or not isinstance(self.rounds, int) or not 1 <= self.rounds <= 6:
                 raise SettingsError("rounds", "每次挑战轮数应为 1～6。")
             from .dungeons import category_for, count_limit
-            category = category_for(self)
-            if self.challenge_count is not None:
+            category = category_for(self) if use_default else None
+            if use_default and self.challenge_count is not None:
                 if type(self.challenge_count) is not int or not 1 <= self.challenge_count <= count_limit(category):
                     raise SettingsError("challenge_count", f"{category.label}本次挑战次数应为 1～{count_limit(category)}。")
                 if self.challenge_count * category.cost > self.stamina_limit:
                     raise SettingsError("challenge_count", "所选次数的预计消耗超过本次开拓力上限，请减少次数或调整上限。")
-        for name in ("use_support", "assignments", "battle", "allow_stamina_spend", "daily", "mail", "battlepass", "auto_launch", "overlay_logs", "daily_synthesis", "differential_universe_save", "differential_universe_rewards", "differential_universe_daily", "currency_fast_mode", "currency_until_points"):
+        for name in ("use_support", "assignments", "battle", "allow_stamina_spend", "daily", "mail", "battlepass", "auto_launch", "overlay_logs", "daily_synthesis", "differential_universe_save", "differential_universe_rewards", "differential_universe_daily", "currency_fast_mode", "currency_until_points", "currency_continue_after_defeat"):
             if type(getattr(self, name)) is not bool:
                 raise SettingsError(name, f"{name} 必须是布尔值。")
         for name, title, low, high in (("action_delay", "操作间隔（秒）", 0.3, 5),

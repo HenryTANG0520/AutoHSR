@@ -72,15 +72,20 @@ def active_action(scene, session, confidence=.65):
         raise AutomationError('投资策略来源与期望节点不同。')
     if data.get('status')=='reward_verifying':
         return _reward_action(scene,session,confidence)
+    if data.get('status')=='unit_verifying':
+        from .currency_wars_investment_units import action
+        return action(scene,session,confidence)
     if data.get('status')!='awaiting' or kind!='investment_selection':
         raise AutomationError('投资策略选择或交付未核实，未继续其他操作。')
     _scope(session)
     choices=options(scene,confidence)
     existing,_,_=refresh_bonus(session,node=data['expected_node'])
-    eligible=tuple(c for c in choices if not existing or c.kind!='refresh_experience')
-    option=choose(eligible,session.get('strategy','default'))
+    from .currency_wars_investment_units import eligible,baseline
+    candidates=tuple(c for c in choices if (not existing or c.kind!='refresh_experience') and eligible(c,session))
+    option=choose(candidates,session.get('strategy','default'))
     payload=(data['expected_node'],data['origin_action_id'],option.slot,normalize(option.name.text),
              option.kind,normalize(option.effect),option_digest(choices),dict(option.parameters).get('boxes',0))
+    if option.kind=='unit_gift':payload+=(digest(baseline(session)),)
     selected=selected_slot(scene,choices)
     if selected is None:
         return StandardAction(SELECT,'standard_investment_selected',option.name,
@@ -139,7 +144,10 @@ def confirmed(session, choice, scene, confidence=.65):
     action['investment_verified']=False
     data.update(claim_action_id=action['id'],choice=list(choice.payload),reward_slots=slots,completed_slots=[])
     session.pop('collection',None)
-    if slots:data['status']='reward_verifying'
+    if choice.payload[4]=='unit_gift':
+        from .currency_wars_investment_units import begin
+        begin(session,choice,scene,confidence)
+    elif slots:data['status']='reward_verifying'
     else:_finish(session)
 
 
@@ -153,7 +161,10 @@ def _finish(session):
 
 
 def _claim(session):
-    data=session['investment'];claim=session['actions'][data['claim_action_id']]
+    data=session['investment'];index=data.get('claim_action_id');actions=session.get('actions',[])
+    if type(index) is not int or not 0<=index<len(actions):
+        raise AutomationError('投资策略缺少实际已核实确认，未重发或读取旧交付。')
+    claim=actions[index]
     if not valid_effect(claim,session['actions']):raise AutomationError('投资策略待交付记录损坏，未领物或清账。')
     return claim
 
@@ -189,7 +200,9 @@ def _reward_action(scene, session, confidence):
 def reward_scope(session, intent):
     """Project one validated gift obligation only for its typed reward protocol."""
     data=session.get('investment',{})
-    if data.get('status')!='reward_verifying':return dict(session,reward_investment_scope=None)
+    if data.get('status')=='unit_verifying':
+        if intent!='close_standard_stale_unit':raise AutomationError('角色赠送核验范围只允许收起过期查看面板。')
+    elif data.get('status')!='reward_verifying':return dict(session,reward_investment_scope=None)
     if intent not in ('open_standard_bench_reward','choose_standard_reward','close_standard_stale_unit'):
         raise AutomationError('投资策略赠品未核实，当前动作不能借用领取范围。')
     claim=_claim(session)
@@ -229,7 +242,7 @@ def valid_effect(action, actions):
 def _valid_effect(action, actions):
     target,effect=action.get('target',[]),action.get('investment_effect',{})
     if (action.get('action')!=CONFIRM or action.get('status')!='verified' or not action.get('before') or not action.get('after')
-            or not isinstance(target,(list,tuple)) or len(target)!=8 or not isinstance(effect,dict)
+            or not isinstance(target,(list,tuple)) or len(target) not in (8,9) or not isinstance(effect,dict)
             or _origin(actions,target[1])!=target[0] or type(target[2]) is not int or not 0<=target[2]<=2
             or not isinstance(target[3],str) or not 0<len(target[3])<=80 or target[3] in AVOID
             or not isinstance(target[5],str) or not 0<len(target[5])<=1000
@@ -249,6 +262,10 @@ def _valid_effect(action, actions):
     if (score is None or kind!=target[4] or params.get('boxes',0)!=target[7]
             or [effect.get(k) for k in ('node','origin_action_id','slot','name','kind','options')]
               !=[target[0],target[1],target[2],target[3],target[4],target[6]] or effect.get('parameters')!=params):return False
+    if kind=='unit_gift':
+        from .currency_wars_investment_units import valid
+        if not valid(action,actions):return False
+    elif len(target)!=8 or 'unit_delivery' in effect:return False
     board=effect.get('board')
     if (not isinstance(board,list) or len(board)!=6 or board[0]!=target[0]
             or type(board[1]) is not int or not 0<=board[1]<=99999

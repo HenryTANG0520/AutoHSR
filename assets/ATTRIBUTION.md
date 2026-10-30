@@ -1,5 +1,31 @@
 # AutoHSR resource attribution
 
+## 2026-10-30 任务流程账号连续性
+
+[账号作用域](../autohsr/workflow_identity.py)是AutoHSR原生扩展，复用本仓库`currency_wars_identity.account_key`的严格解析，不新增第三方素材或模型。两帧当前捕获、输入代次、跨步骤绑定、原生输入代理、预算延后建立、私人UID区域证据及来源完整性检查为本项目实现；旧DU与CW账本键不重写。依赖仅用已有OpenCV／NumPy，未新增运行包、真实账号或图像采集。测试图片和UID均为临时虚构输入，不作为真实校准或训练数据；私人运行裁剪继续忽略，范围见[账号连续性](../docs/workflow-account-continuity.md)，原生扩展记录见[清单](upstream/March7thAssistant/source.json)。
+
+## 2026-10-30 正式任务流程编排
+
+参考固定March7thAssistant的`module/workflow/__init__.py`及`assets/docs/Workflow.md`，在[任务树](../autohsr/task_workflow.py)、[执行器](../autohsr/task_workflow_run.py)和[独立CLI](../autohsr/task_workflow_cli.py)中适配步骤树、条件、有界循环与选中子步骤的概念。任务级Runner组合、单预算静态预留、已保存原报告核对、Windows跨进程执行归属、先写意图、未知停止和游戏失败后仅本地继续为AutoHSR实现。没有迁入Qt编辑器、坐标／键鼠／模板动作、上游YAML解析、消息推送或官方示例养成流程；详细差距见[任务流程](../docs/task-workflows.md)。两份固定源码／教程的blob和SHA-256及函数记录在[原清单](upstream/March7thAssistant/source.json)，GPL v3原件保留。没有新增玩家样本、图像素材、模型或运行时依赖。
+
+## 2026-10-30 记录窗口统计与Excel
+
+参考固定March7thAssistant的`WarpExport.data_to_html`与`WarpInterface.__onExportExcelBtnClicked`，新增[本地窗口统计](../autohsr/warp_statistics.py)和[Excel序列化](../autohsr/warp_xlsx.py)。保留分池星级和高星着色，同时将首段不完整、缺失星级及物品数量与记录数分开；未知间隔不构造均值，全部统计仍为已导入窗口。UID／ID按文本、显示文字原样保存，按账号分表，停止和错误清理自有临时文件，经原服务发布新文件。源码／函数与适配边界见[原清单](upstream/March7thAssistant/source.json)，没有新增游戏素材、模型或玩家记录。
+
+Excel采用延迟加载的openpyxl 3.1.5与et_xmlfile 2.0.0，均按包声明保留MIT许可；et_xmlfile随附的Python许可文本亦原样保留。[依赖清单](upstream/openpyxl-source.json)记录PyPI固定版本、wheel与许可SHA-256，对应原件为[openpyxl许可](upstream/openpyxl-LICENSE)、[et_xmlfile许可](upstream/et_xmlfile-LICENSE)、[随附Python许可](upstream/et_xmlfile-PYTHON-LICENSE)。新依赖用于Excel序列化，JSON与只分析不加载引擎；未迁入上游Qt界面，实际Excel桌面和GUI图表仍待验收，见[范围与检查](../docs/warp-statistics-xlsx.md)。
+
+## 2026-10-30 跃迁记录获取与交换格式
+
+参考固定March7thAssistant的`app/tools/warp_export.py`和`app/warp_interface.py`，将缓存／链接读取、六类卡池分页、导入及SRGF／UIGF转换改写为[原生记录模块](../autohsr/warp_records.py)、[只读获取](../autohsr/warp_fetch.py)及[独立工具服务](../autohsr/warp_service.py)。多账号显式选择、字符串ID数字排序、跨时区合并、冲突拒绝、原件保留、取消及新文件原子发布属于AutoHSR适配。没有复制Qt控件、自动扫描本机用户目录、上传统计、明文链接输出或覆盖式修复。三份上游源码／测试的固定Git blob及SHA-256、GPL v3和函数范围见[source.json](upstream/March7thAssistant/source.json)。
+
+格式按[UIGF组织](https://uigf.org/)的[UIGF](https://uigf.org/zh/standards/uigf.html)与[SRGF](https://uigf.org/zh/standards/srgf.html)规范实现星铁数据读取和导出；旧SRGF中的联动扩展另作提示，严格旧格式输出拒绝联动记录。官方验证Schema的版本和哈希仅作为本地检查来源，不分发原Schema或第三方验证器包，也不声明认证；本仓库仅提供使用指定离线文件及虚构数据的QA脚本。没有新增游戏图像、模型或玩家记录，所有示例及网络检查为虚构，详见[功能与验证](../docs/warp-records.md)。
+
+## 2026-10-30 整局失败结算与有界循环
+
+参考固定March7thAssistant的`_check_battle_result`与`main.py`循环入口，将普通节点继续与终局失败分开，改写为[原生失败协议](../autohsr/currency_wars_defeat.py)。同局出战、两帧终局、零生命与失败总览、四步独立反馈、原partial报告、逐局胜负计数和原局数上限属于AutoHSR适配；默认失败停止，明确接续只确认该次原回执，自动继续须在循环开始时冻结。未迁入上游输入框架、遥测、放弃旧局或未知失败后重开。源文件blob与GPL v3见[source.json](upstream/March7thAssistant/source.json)。未新增图像、模型或真实采集；失败页面使用已有胜利几何的合成变体，未声称真实布局已校准或失败结算已实机验收，见[范围](../docs/currency-wars-defeat-loop.md)。
+
+2026-10-29差分站点偏好参考固定March7thAssistant `process_next_station`及默认配置，按行为适配为[原生冻结偏好](../autohsr/du_station_policy.py)。保留本项目默认顺序、输入门禁及危险信标检查，没有复制坐标、重抽循环或禁用项兜底。两个原源码blob、GPL v3许可哈希及范围见[站点来源说明](upstream/March7thAssistant/du/README.md)和[清单](upstream/March7thAssistant/du/source.json)；未新增图像、模型或游戏采集，检查使用模拟卡片及已有脱敏回放。
+
 ## 2026-10-29 货币战争周常编排
 
 参考固定March7thAssistant的日常`Daily.start`与`CurrencyWars.start`／`check_currency_wars_score`，将积分、原生有限循环及独立领奖接入[周常归属](../autohsr/currency_wars_weekly.py)与[顺序Runner](../autohsr/currency_wars_weekly_run.py)。每账号／游戏周索引、固定对局上限、原日常报告复用、逐局来源审计和只读恢复为AutoHSR适配；没有迁入上游定时器、全局时间戳、遥测或输入框架。源文件blob与GPL v3见[source.json](upstream/March7thAssistant/source.json)。本次没有新增素材或真实采集，检查使用假窗口与合成最终节点。
@@ -18,7 +44,7 @@
 
 ## 2026-10-29 逐局连续运行
 
-参考固定March7thAssistant的`main.py`中`run_sub_task`及其局部循环／货币战争调用，将连续运行改写为[原生组合Runner](../autohsr/currency_wars_loop.py)。逐局归属、冻结目标、账号输入门禁、原报告核验和可恢复归档属于AutoHSR原生适配；失败／未知停止，不迁入上游false返回后继续或遥测实现。Git blob及GPL v3许可见[source.json](upstream/March7thAssistant/source.json)。未新增公开图像、模型或真实采集；检查使用合成最终节点、假窗口与既有原生结算协议。
+参考固定March7thAssistant的`main.py`中`run_sub_task`及其局部循环／货币战争调用，将连续运行改写为[原生组合Runner](../autohsr/currency_wars_loop.py)。逐局归属、冻结目标、账号输入门禁、原报告核验和可恢复归档属于AutoHSR原生适配；最初失败／未知停止，10月30日另接同源已核实失败的可选继续，技术异常／未知仍停止，不按任意false结果重开，也不迁入遥测实现。Git blob及GPL v3许可见[source.json](upstream/March7thAssistant/source.json)。未新增公开图像、模型或真实采集；检查使用合成最终节点、假窗口与既有原生结算协议。
 
 AutoHSR is distributed under the GNU General Public License version 3. The full
 license is in [../LICENSE](../LICENSE). The resources below retain their upstream
@@ -793,3 +819,31 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 ## 2026-10-29 指南场景与关闭符号
 
 新增`assets/ui/guide/`两幅图像，复用既有CN 4.6.0每日实训源图，原图SHA-256与首批指南素材一致。背景移除标题、整本指南、关闭符号及整个底部HUD区，遮挡区域用低分辨率邻近颜色插值、放大并在蒙版内侧羽化；这些区域不代表原始景物。关闭符号单独裁出静态白色图形。来源哈希、1920×1080坐标、蒙版、变换及输出哈希见[来源清单](ui/guide/sources.json)，未分发原始整图、UID或安装路径，未启动游戏取材。游戏美术归HoYoverse及相应权利人，不纳入原创代码GPL许可，署名不构成额外再许可。
+
+## 2026-10-29 携装角色出售与装备返还
+
+参考固定March7thAssistant的`_sell_single_character`及三种出售调用关系，将携装角色处理适配为[原生库存返还协议](../autohsr/currency_wars_sale_equipment.py)。保留本项目已校准图标和角色面板，增加版本化目标、完整库存来源、逐项返还及售后完整重采，未移植点击成功即完成的判断。来源函数、Git blob及GPL v3许可继续记录于[source.json](upstream/March7thAssistant/source.json)。本轮没有新增图像、模型或游戏采集；正向售出及返还均为合成画面机制检查，来源及边界见[开发记录](../docs/currency-wars-development.md)。
+
+## 2026-10-30 多副本体力计划
+
+参考固定March7thAssistant的`Power.run`、`Power.execute_power_plan`、`Power.process`及副本执行结构，将有序条目、剩余次数、固定重复和默认副本补刷适配为[AutoHSR原生计划](../autohsr/power_plan_run.py)。源码的Git blob、SHA-256、固定提交及GPL v3许可记在[source.json](upstream/March7thAssistant/source.json)，已与此前取得的固定目录树核对。没有复制上游GUI、输入框架或配置自动扣减写回行为；本项目仍只在保存设置时写配置，运行进度使用独立本地账本。
+
+一份已有资源预算、同账号新鲜画面、原生逐批支付核验、原子计数及不可覆盖归档属于AutoHSR实现。没有新增公开游戏素材、训练模型或采集画面；新增检查使用合成窗口与场景，账号数字为虚构测试值。培养目标、资源补充及遗器清理均未在本轮接入，界面与实机边界见[计划说明](../docs/power-plan.md)。
+
+## 2026-10-30 历战优先周计划
+
+参考固定March7thAssistant的`Echoofwar.start`及`Daily.prepare_daily`，将当前0～3次周额度与清体力前的优先执行适配为[原生历战周计划](../autohsr/echo_weekly.py)。源码Git blob、SHA-256、固定提交和GPL v3来源见[清单](upstream/March7thAssistant/source.json)。本项目使用日常开始时间、04:00游戏周和单份冻结预算，独立核实周额度、可见结算与本次实际完成，不迁入上游配置时间戳写回、输入或定时器。
+
+没有新增图像、模型或游戏采集，检查沿用合成窗口与场景。缩短新归档目录键并保留完整账本摘要是本项目对Windows路径长度的修复，既有目录不迁移或覆盖。培养目标和支援角色偏好仅完成源码核对，尚未适配，不在本轮署为已实现；交互、运行证据及实机边界见[说明](../docs/echo-of-war-plan.md)。
+
+## 2026-10-30 支援角色与好友偏好
+
+参考固定March7thAssistant的`Character.borrow`及角色／好友查找、角标遮罩检查，适配为[原生支援选择](../autohsr/support_selection.py)。固定代码、角色名称来源的Git blob及SHA-256见[父清单](upstream/March7thAssistant/source.json)，上游代码使用GPL v3。另引入105幅未改变字节的角色头像，逐幅路径、尺寸、哈希和原Git blob见[头像清单](upstream/March7thAssistant/support/sources.json)，[说明](upstream/March7thAssistant/support/README.md)区分源码许可与HoYoverse等原权利人的游戏美术权利。
+
+有界逐页查找、精确好友名、角色形态分差、左侧星魂遮罩、明确回退和原生逐次反馈属于本项目适配。没有迁入上游输入框架、满员移除自身角色或借用即完成实训的行为；没有训练模型或新增游戏采集。合成变体与两份既有列表仅用于机制／局部校准，不代表独立真实留出或实机通过，见[功能与验证边界](../docs/support-preferences.md)。
+
+## 2026-10-30 投资策略角色赠送
+
+继续参考固定March7thAssistant的`check_investment_environment`和`check_special_characters`，将角色赠送接入[原生核验](../autohsr/currency_wars_investment_units.py)。固定源码及GPL v3署名保留在[上游清单](upstream/March7thAssistant/source.json)。原末节点完整阵容、直接位面来源、确认后全部重采、显式数量／星级／费用、装备守恒与逐角色关闭回执是AutoHSR实现，没有迁入上游缓存加计数或默认首项的行为。
+
+效果文本来自既有4.6的150号匿名字段样本，记录“黑塔、缇宝、0.15%”，未由标题猜测星级。原样本和PNG的SHA-256、校准范围及权利说明见[机制清单](currency-investment/sources.json)与[README](currency-investment/README.md)。没有新增、复制或公开原游戏画面，没有训练模型或独立真实留出；其他变体和输入链为合成检查，真实赠送尚未验收，见[说明](../docs/currency-wars-investment-units.md)。

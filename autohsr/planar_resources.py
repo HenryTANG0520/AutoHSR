@@ -39,7 +39,9 @@ def limit_batch(workflow, scene, remaining):
     if available is None or tokens is None:
         raise AutomationError('饰品提取缺少体力或沉浸器余额，未调整次数。')
     requested = workflow.settings.challenge_count
-    remaining_count = 6 if requested is None else requested - workflow.ctx.report.battle_completed
+    remaining_count = 6 if requested is None else requested - (workflow.ctx.report.battle_completed-getattr(workflow,'_battle_completed_base',0))
+    goal=getattr(getattr(workflow.ctx,'battle_budget',None),'power_plan',None)
+    if goal is not None:tokens=goal.tokens(tokens)
     desired = min(6, workflow.settings.rounds, remaining_count,
                   tokens + min(remaining, available) // 40)
     if desired <= 0:

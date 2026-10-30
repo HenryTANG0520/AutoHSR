@@ -1,8 +1,24 @@
 # March7thAssistant 参考来源与适配
 
+2026-10-30另参考`module/workflow/__init__.py`和`assets/docs/Workflow.md`，接通[正式任务级流程](../../../docs/task-workflows.md)。保留步骤树、条件、有界for／while、break／continue和单步概念，以AutoHSR原生Runner、单预算预留、原始报告核对及逐次意图重新实现；执行归属覆盖进程间和任务间隙。未迁入上游GUI、图文／坐标／键鼠动作、模板、推送或原版YAML，不把任务级适配视为完整流程编辑器。两份来源的固定blob／SHA-256及函数见[source.json](source.json)，GPL v3保持；无新增游戏素材、模型或实机采集。
+
+2026-10-30另将`app/tools/warp_export.py`的缓存／URL读取、六池分页和SRGF／UIGF转换，及`app/warp_interface.py`的导入导出行为，适配为[原生独立记录工具](../../../docs/warp-records.md)。原件保留、数字ID去重、时区核对、明确多账号选择、冲突停止、匿名事件和新文件发布继续使用本项目语义；未迁入Qt、遥测、自动账号目录扫描或覆盖式修复。三份上游源码／测试和GPL来源见[source.json](source.json)；现行UIGF格式另按组织规范检查，没有分发官方Schema或真实玩家数据。后续另接[窗口统计、只分析与Excel](../../../docs/warp-statistics-xlsx.md)，参考`data_to_html`和`__onExportExcelBtnClicked`，通过首段／未知字段及文本ID规则改写，固定依赖与原许可独立记账。GUI图形和真实缓存／API／Excel桌面仍待验收。
+
+2026-10-30另参考`_check_battle_result`与`main.py`循环入口，将终局失败与普通节点继续分开，接入[原生失败结算及循环规则](../../../docs/currency-wars-defeat-loop.md)。失败须有同局出战、两帧终局、零生命、失败总览、四步反馈及原partial报告；胜利与失败分列，失败消耗原局数，默认停止，明确接续仅确认该次原回执。源码blob与适配范围见[source.json](source.json)，没有迁入上游输入或遥测，也没有新增游戏采集；失败页面几何是既有胜利布局的合成变体，真实校准及整局仍待验收。
+
+2026-10-30另补[投资策略角色赠送](../../../docs/currency-wars-investment-units.md)，继续参考`check_investment_environment`和特殊角色计数的处理思路。实际到账使用AutoHSR原末节点完整阵容来源、独立确认、逐角色重读／关闭及装备守恒，不通过缓存增加角色计数认定成功。既有150号效果文本与哈希见[机制说明](../../currency-investment/README.md)，没有新增图像、模型或游戏采集；满席／溢出、其他物品改造和真实赠送仍待验证。
+
+2026-10-30另将`Character.borrow`及卡片内角色／好友匹配、角标重试适配为[支援偏好](../../../docs/support-preferences.md)。有序偏好、逐页查找与明确回退继续使用AutoHSR原生Context和入队反馈，满员不移除自身预设，借用不直接标记实训完成。新增105幅未改字节的[固定参考头像](support/README.md)，逐幅Git blob、SHA-256及游戏美术权利说明单独保存；没有新增玩家画面，GUI和真实借用仍待验收。
+
+2026-10-30另参考`Echoofwar.start`和`Daily.prepare_daily`，接入[历战优先周计划](../../../docs/echo-of-war-plan.md)。在既有原生日常输入和资源预算内先核对周额度、有限挑战，再执行用户条目与默认副本；冻结04:00游戏周及开始星期，已用完与本次完成次数分开，周资格及进度不写配置时间戳。源文件blob及SHA-256见[source.json](source.json)，没有迁入上游输入、定时器或培养目标读取，未新增游戏采集或实机验收。
+
+2026-10-30新增[多副本体力计划](../../../docs/power-plan.md)适配，参考固定`tasks/power/power.py`和`tasks/power/instance.py`。有序条目、剩余次数、固定重复和默认补刷使用AutoHSR原生单一输入所有者、共享资源预算及逐批回执；运行进度独立于保存设置，原账本在替换前归档并锚定历史。固定源码的Git blob及SHA-256见[source.json](source.json)，没有迁入上游输入、GUI、资源补充、培养目标或遗器清理逻辑；当前仅离线机制与模拟窗口验证，GUI接线和实机仍待完成。
+
 来源：[moesnow/March7thAssistant](https://github.com/moesnow/March7thAssistant)，维护者moesnow及其贡献者。核对日期2026-10-28，固定提交`7cf6c6bed474539485d3b1504077ac352866829f`。
 
 上游使用GNU GPL v3；保留的原许可见[LICENSE](LICENSE)，具体源文件的Git blob及许可文件SHA-256见[source.json](source.json)。AutoHSR本身也使用GPL v3。游戏角色名及相关游戏内容仍归各自权利人所有。
+
+2026-10-29另参考`_sell_single_character`和三种出售调用关系，补入[携装出售返还协议](../../../autohsr/currency_wars_sale_equipment.py)。沿用原保留规则，只处理一至三件已校准装备；14格可见库存、空位、当前角色、金币返还、装备逐项归库和售后完整重采分开核对。旧空装备目标保留，新增目标带版本标记，未知库存跳过此扩展，未知出售不重发。没有迁入上游点击成功即返回成功的判断，正向仍为合成图像机制检查，见[开发记录](../../../docs/currency-wars-development.md)。
 
 2026-10-29另参考`Daily.start`的按周资格与当前积分判断，以及`CurrencyWars.start`的对局／领奖分离，将现有原生Runner接成[货币战争周常计划](../../../docs/weekly-plan.md)。增加账号／游戏周去重、固定上限、明确接续与原日常报告复用；已有满分仍核对奖励，积分后来增加时只补领奖、不增加对局预算。没有迁入定时器或输入框架，底层仍限标准A8-40开发流程，真实整局、满额清理及新界面路径仍待验证。
 

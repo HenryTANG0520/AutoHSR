@@ -1,3 +1,5 @@
 rapidocr-onnxruntime==1.4.4
 mss==10.1.0
 Pillow==11.3.0
+openpyxl==3.1.5
+et_xmlfile==2.0.0

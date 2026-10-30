@@ -126,7 +126,7 @@ def preflight(root,resume=False):
         if data is None or data.get('weekly_plan') is None:raise AutomationError('没有可接续的货币战争周常目标。')
         ensure_index(store);check_sources(store)
         return store
-    if data is not None and (unfinished(store) or data['status']=='active'):
+    if data is not None and (unfinished(store) or data['status'] in ('active','defeated')):
         raise AutomationError('已有未结束循环或货币战争周常；未开始日常或新增预算，请明确接续原目标。')
     from .currency_wars_points_run import require_no_active_match
     from .currency_wars_session import StandardSession
@@ -144,7 +144,7 @@ def check_sources(store):
         receipt=_read(receipt_path);digest=_hash(receipt_path)
         if receipt.get('previous')!=previous:raise AutomationError('周常逐局回执链不连续。')
         audit=LoopStore(store.root);audit.path=store.path
-        audit.data=dict(store.data,completed=slot,last_receipt=digest)
+        audit.data=dict(store.data,completed=slot,last_receipt=digest,defeats=receipt.get('defeats_after',0))
         audit.check_tail();previous=digest
     if previous!=store.data['last_receipt']:raise AutomationError('周常末次回执与逐局来源不符。')
     path,_=read_ref(store.root,plan['initial_points']);receipt=read_receipt(store.root,path)

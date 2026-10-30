@@ -1,0 +1,30 @@
+{
+  "repository": "https://github.com/moesnow/March7thAssistant",
+  "commit": "7cf6c6bed474539485d3b1504077ac352866829f",
+  "license": "GPL-3.0",
+  "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+  "reference_functions": [
+    "process_next_station"
+  ],
+  "sources": [
+    {
+      "path": "tasks/weekly/divergent_universe.py",
+      "git_blob": "4f9cb812018f4c03b35655c10c64f1887ad53e51",
+      "sha256": "1e2e3f96652aefa5361c3010c346efdf673bbdd7a96b16b59f0171095b31219c"
+    },
+    {
+      "path": "assets/config/config.example.yaml",
+      "git_blob": "8bd288efd8282a4c45e1ae6a1b915c9bd9c0569e",
+      "sha256": "8d883ad2403e92bf36246e23fa4463d692d0a9ca3df3f59fff76de4ce49a49b9"
+    }
+  ],
+  "native_files": [
+    "autohsr/du_station_policy.py",
+    "autohsr/differential_universe.py",
+    "autohsr/policy.py",
+    "autohsr/config.py",
+    "autohsr/app.py",
+    "autohsr/__main__.py"
+  ],
+  "kind": "Native behavior adaptation: optional custom priorities and disabled labels; required stations preserved; legacy default unchanged; no copied coordinates, redraw loop or disabled fallback; no new media"
+}

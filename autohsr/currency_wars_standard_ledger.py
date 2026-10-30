@@ -19,6 +19,8 @@ FREE_ACTIONS = frozenset((
     'stage_standard_exchange','stage_standard_relocate','inspect_standard_exchange_unit','close_standard_exchange_unit','close_standard_exchange_stale_panel',
     'settle_standard_final_victory', 'settle_standard_match_rating',
     'settle_standard_match_summary', 'settle_standard_match_statistics',
+    'settle_standard_defeat_match_defeat','settle_standard_defeat_defeat_rating',
+    'settle_standard_defeat_defeat_summary','settle_standard_defeat_match_statistics',
 ))
 PAID_ACTIONS = frozenset(('buy_standard_offer', 'buy_standard_experience', 'refresh_standard_shop'))
 CREDIT_ACTIONS = frozenset(('sell_standard_owned','sell_standard_field_owned'))
@@ -38,6 +40,13 @@ def valid_receipt(action):
         return False
     expected_length = (13 if action['action']=='sell_standard_field_owned' else 12 if action['action'] in CREDIT_ACTIONS else 8 if action['action']=='buy_standard_offer'
                        else 11 if action['action']=='refresh_standard_shop' and len(target)==11 else 7)
+    if action['action'] in CREDIT_ACTIONS:
+        from .currency_wars_sale_equipment import equipment
+        from .currency_wars_standard_sale import target_zone
+        try:
+            if equipment(target):expected_length=14
+            if (target_zone(target)!='bench')!=(action['action']=='sell_standard_field_owned'):return False
+        except (IndexError,TypeError,ValueError):return False
     if (len(target) != expected_length or any(type(value) is not int for value in target[1:4])
             or not 0 <= target[1] <= 99999 or not 0 < target[2] <= 100 or not 1 <= target[3] <= 10):
         return False
@@ -154,7 +163,8 @@ def ledger_status(actions, *, investment_projection=None, popup_projection=None)
                     return 'unknown'
                 inspection = actions[source]
                 field=name=='sell_standard_field_owned'
-                expected_target=action['target'][:10]+action['target'][12:] if field else action['target'][:10]
+                from .currency_wars_standard_sale import inspection_target
+                expected_target=inspection_target(action['target'])
                 if (inspection.get('id') != source or inspection.get('action') != ('inspect_standard_field_sale_unit' if field else 'inspect_standard_sale_unit')
                         or inspection.get('status') != 'verified' or not inspection.get('before') or not inspection.get('after')
                         or inspection.get('target') != expected_target
@@ -167,6 +177,8 @@ def ledger_status(actions, *, investment_projection=None, popup_projection=None)
                         if not same_target(inspection.get('target'),expected_target):return 'unknown'
                     except (TypeError,ValueError):return 'unknown'
                     if not valid_field_source(action,inspection):return 'unknown'
+                from .currency_wars_sale_equipment import valid_source
+                if not valid_source(action,inspection):return 'unknown'
         elif name not in FREE_ACTIONS and not re.fullmatch(r'(?:select|confirm)_standard_environment_[0-2]', name):
             return 'unknown'
     return 'clear'
@@ -174,9 +186,11 @@ def ledger_status(actions, *, investment_projection=None, popup_projection=None)
 
 def _valid_sale_receipt(receipt, target):
     from .currency_wars_standard_sale import board_digest,target_zone
-    field=len(target)==13
     try:zone=target_zone(target)
     except ValueError:return False
+    field=zone!='bench'
+    from .currency_wars_sale_equipment import valid_return
+    if not valid_return(receipt,target):return False
     if target[3]==10:
         if (receipt.get('max_level_verified') is not True or 'experience_before' not in receipt or 'experience_after' not in receipt
                 or receipt['experience_before'] is not None or receipt['experience_after'] is not None):return False

@@ -17,6 +17,7 @@ from .currency_wars_standard_policy import PREFERRED,preferred_names
 from .currency_wars_standard_hud import experience_observed
 from .currency_wars_state import StrategySnapshot
 from .models import AutomationError, Token, normalize
+from . import currency_wars_sale_equipment as gear_sale
 
 POLICY = 'owned-sale-v1'
 FIELD_POLICY = 'owned-field-sale-v1'
@@ -29,13 +30,14 @@ POSITIONS = frozenset([f'front:{i}' for i in range(1,5)]+[f'back:{i}' for i in r
 
 
 def target_zone(target):
+    if gear_sale.equipment(target):return target[-2]
     if len(target) in (10,12):return 'bench'
     if len(target) in (11,13) and target[-1] in ('front','back'):return target[-1]
     raise ValueError('出售来源区域无效')
 
 
 def inspection_target(target):
-    return list(target[:10])+(list(target[12:]) if len(target)==13 else [])
+    return list(target[:10])+(list(target[12:]) if len(target) in (13,14) else [])
 
 
 def same_target(left,right):
@@ -57,10 +59,12 @@ def board_cells(scene, confidence=.65):
     return result
 
 
-def choose_sale(snapshot, strategy='default'):
+def choose_sale(snapshot, strategy='default', *, equipped_capacity=0):
     from .currency_wars_standard_exchange import choose_exchange
     if strategy not in PREFERRED:
         raise AutomationError('出售策略不在已冻结范围内。')
+    if type(equipped_capacity) is not int or not 0<=equipped_capacity<=3:
+        raise AutomationError('携装出售可核实的库存空位无效。')
     if not snapshot.roster_complete or snapshot.capacity is None:
         raise AutomationError('出售需要完整持有阵容。')
     field = tuple(unit for unit in snapshot.roster if unit.zone != 'bench')
@@ -71,10 +75,10 @@ def choose_sale(snapshot, strategy='default'):
     keep = set(preferred_names(strategy,snapshot_name(snapshot))) | ({'昔涟','瓦尔特'} if strategy == 'aglaea' else set())
     keep |= {'开拓者','记忆开拓者'}
     # March7th starts its on-field cleanup only after acquiring Seele.
-    # Empty gear is independently read; an equipped/unknown unit needs its own
-    # dismantling protocol before it may enter this sale path.
+    def supported(unit):
+        return unit.equipment==() or gear_sale.known(unit.equipment) and len(unit.equipment)<=equipped_capacity
     if strategy=='seele' and any(unit.name=='希儿' for unit in snapshot.roster):
-        field_candidates=[unit for unit in field if unit.name not in keep and unit.equipment==()
+        field_candidates=[unit for unit in field if unit.name not in keep and supported(unit)
             and unit.star is not None and unit.tier is not None]
         if field_candidates:
             return min(field_candidates,key=lambda u:(u.star,u.tier,u.zone!='back',u.slot)),'field_out_of_strategy'
@@ -82,7 +86,7 @@ def choose_sale(snapshot, strategy='default'):
         return None  # Deploy useful units before discarding a possible bench improvement.
     candidates = []
     for unit in snapshot.roster:
-        if unit.zone != 'bench' or unit.equipment != () or unit.star is None or unit.tier is None:
+        if unit.zone != 'bench' or not supported(unit) or unit.star is None or unit.tier is None:
             continue
         same = [other for other in field if other.name == unit.name and other.star >= unit.star]
         reason = None
@@ -114,7 +118,7 @@ def proposal(scene, session, confidence=.65):
             or snapshot.hp is None or snapshot.hp <= 0 or not experience_observed(scene,snapshot,confidence)
             or backend_layout(scene.image)[0] != 6 or overclock_board(scene)):
         raise AutomationError('出售缺少当前标准局、版本、余额、经验或完整阵容来源。')
-    chosen = choose_sale(snapshot,prior.get('strategy','default'))
+    chosen = choose_sale(snapshot,prior.get('strategy','default'),equipped_capacity=gear_sale.capacity(scene,snapshot,confidence))
     if chosen is None:
         return None
     unit,reason = chosen
@@ -128,7 +132,8 @@ def proposal(scene, session, confidence=.65):
                           Token('查看待整理角色',1.,(x-.01,y-.01,x+.01,y+.01)),
                           details=(prior.get('strategy','default'),0.,(reason,),FIELD_POLICY if field else POLICY),
                           payload=(snapshot.node,snapshot.gold,snapshot.hp,snapshot.level,unit.slot,
-                                   unit.name,unit.star,unit.tier,cell.signature,board_digest(signatures))+((unit.zone,) if field else ()))
+                                   unit.name,unit.star,unit.tier,cell.signature,board_digest(signatures))+
+                                  (gear_sale.suffix(unit.zone,unit.equipment) if unit.equipment else (unit.zone,) if field else ()))
 
 
 def bind_intent(session, choice, scene, confidence=.65):
@@ -145,6 +150,11 @@ def bind_intent(session, choice, scene, confidence=.65):
                            unit=json.loads(json.dumps(asdict(unit))),snapshot=asdict(snapshot),cells=cells,
                            input_epoch=prior['collection']['input_epoch'],run_dir=prior['collection']['run_dir'],
                            shape=list(scene.image.shape),reason=choice.details[2][0],max_level_verified=snapshot.level==10)
+    if gear_sale.equipment(choice.payload):
+        bank=gear_sale.inventory(scene,confidence)
+        if bank['capacity']<len(unit.equipment):raise AutomationError('当前可核实库存空位不足，未出售携装角色。')
+        session['sale']['inventory']=bank
+        action['equipped_sale_basis']=deepcopy(dict(session['sale'],strategy=prior.get('strategy','default')))
     if zone!='bench':
         action['field_sale_basis']=deepcopy(dict(session['sale'],strategy=prior.get('strategy','default')))
         action['field_sale_basis']['appearances']={c.zone+':'+str(c.slot):appearance(scene,c.roi)
@@ -153,8 +163,8 @@ def bind_intent(session, choice, scene, confidence=.65):
 
 def _expected_profile(scene, target, confidence):
     profile = owned_profile(scene,dict(zone=target_zone(target),slot=target[4],node=target[0]),confidence)
-    if (profile.name,profile.star,profile.tier,profile.equipment) != (target[5],target[6],target[7],()):
-        raise AutomationError('待整理角色的当前名字、星级、费用或空装备不符。')
+    if (profile.name,profile.star,profile.tier,profile.equipment) != (target[5],target[6],target[7],gear_sale.equipment(target)):
+        raise AutomationError('待整理角色的当前名字、星级、费用或冻结装备不符。')
     return profile
 
 
@@ -201,10 +211,11 @@ def _sale(session):
     actions = session.get('actions',[])
     try:
         valid_board = board_digest(sale.get('cells')) == sale.get('inspect_target',[None]*10)[9]
+        zone=target_zone(sale.get('inspect_target',[]))
     except (ValueError,IndexError,TypeError):
-        valid_board = False
+        valid_board = False;zone=None
     if (sale.get('status') != 'inspecting' or type(index) is not int or not 0 <= index < len(actions)
-            or actions[index].get('action') != (FIELD_INSPECT if len(sale.get('inspect_target',[]))==11 else 'inspect_standard_sale_unit')
+            or actions[index].get('action') != (FIELD_INSPECT if zone in ('front','back') else 'inspect_standard_sale_unit')
             or actions[index].get('target') != sale.get('inspect_target')
             or not valid_board):
         raise AutomationError('出售查看链不完整，未继续输入。')
@@ -274,11 +285,16 @@ def active_action(scene, session, confidence=.65):
     if json.loads(json.dumps(asdict(profile))) != expected:
         raise AutomationError('当前待整理角色与原始位置适配或标签不一致。')
     snapshot = StrategySnapshot.from_dict(json.loads(json.dumps(sale['snapshot'])))
-    chosen = choose_sale(snapshot,prior.get('strategy','default'))
+    if gear_sale.equipment(target):
+        bank=sale.get('inventory');gear_sale.validate_inventory(bank)
+        if bank['capacity']<len(gear_sale.equipment(target)) or not same_target(
+                prior['actions'][index].get('equipped_sale_basis'),dict(sale,strategy=prior.get('strategy','default'))):
+            raise AutomationError('携装出售缺少冻结库存与原始查看来源。')
+    chosen = choose_sale(snapshot,prior.get('strategy','default'),equipped_capacity=sale.get('inventory',{}).get('capacity',0))
     if chosen is None or asdict(chosen[0]) != asdict(profile) or chosen[1] != sale['reason']:
         raise AutomationError('原始整理决策已不适用，未出售。')
     refund,button = refund_target(scene,confidence)
-    payload=tuple(target[:10])+(refund,index)+((target[-1],) if field else ())
+    payload=tuple(target[:10])+(refund,index)+(tuple(target[10:]) if gear_sale.equipment(target) or field else ())
     return StandardAction(FIELD_SELL if field else 'sell_standard_owned',
                           'standard_field_owned_sold' if field else 'standard_owned_sold',button,
                           details=(prior.get('strategy','default'),0.,(sale['reason'],),FIELD_POLICY if field else POLICY),payload=payload)
@@ -321,6 +337,8 @@ def sale_feedback(choice, before, after, session, confidence=.65):
                 appearances_before=deepcopy(original),appearances_after=appearances)
         if state.level==10:
             receipt.update(max_level_verified=True,experience_before=None,experience_after=None)
+        if gear_sale.equipment(choice.payload):
+            receipt['equipment_return']=gear_sale.return_proof(sale['inventory'],gear_sale.inventory(after,confidence),gear_sale.equipment(choice.payload))
         return receipt
     except (AutomationError,ValueError,KeyError,TypeError):
         return None
@@ -351,6 +369,9 @@ def finish(session, *, cancelled=False):
         nodes = session.get('shop_observed_nodes',[])
         if sale['inspect_target'][0] in nodes:
             nodes.remove(sale['inspect_target'][0])
+        if gear_sale.equipment(sale['inspect_target']):
+            # A returned inventory is not a new inspection of every survivor.
+            session.pop('collection',None)
 
 
 def valid_field_source(action, inspection):
@@ -372,7 +393,8 @@ def valid_field_source(action, inspection):
                 or snapshot.input_epoch!=basis['input_epoch'] or [snapshot.node,snapshot.gold,snapshot.hp,snapshot.level]!=target[:4]
                 or action['receipt']['experience_before']!=(list(snapshot.experience) if snapshot.experience is not None else None)
                 or action['receipt']['deployment_before']!=[sum(u.zone!='bench' for u in snapshot.roster),snapshot.capacity]):return False
-        chosen=choose_sale(snapshot,basis['strategy'])
+        equipped=inspection.get('equipped_sale_basis',{}).get('inventory',{})
+        chosen=choose_sale(snapshot,basis['strategy'],equipped_capacity=equipped.get('capacity',0))
         if chosen is None:return False
         unit,reason=chosen
         return (reason==basis['reason'] and same_target(asdict(unit),basis['unit'])

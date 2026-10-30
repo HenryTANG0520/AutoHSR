@@ -71,6 +71,11 @@ class StandardSession:
                 raise ValueError('标准对局动作记录无效')
         if data['completion_verified'] and data['status'] != 'settled':
             raise ValueError('未结算记录不能标记整局完成')
+        if 'defeat_settlement_verified' in data:
+            if type(data['defeat_settlement_verified']) is not bool:raise ValueError('失败结算标志无效')
+            if data['defeat_settlement_verified']:
+                from .currency_wars_defeat import settled
+                if not settled(data):raise ValueError('失败结算缺少完整来源，不能标记结束')
 
     def persist(self):
         self.validate(self.data)

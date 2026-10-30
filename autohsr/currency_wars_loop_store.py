@@ -126,16 +126,23 @@ class LoopStore:
         from .currency_wars_standard_policy import STRATEGIES
         from .currency_wars_equipment_mode import validate_fast_mode
         if (type(data) is not dict or data.get('schema') != 1 or not _hex(data.get('loop_id'))
-                or data.get('status') not in ('active', 'complete', 'cancelled', 'exhausted', 'expired')
+                or data.get('status') not in ('active', 'complete', 'cancelled', 'exhausted', 'expired','defeated')
                 or type(data.get('completed')) is not int or data['completed'] < 0
                 or type(data.get('options')) is not dict):
             raise AutomationError('循环记录结构无效。')
         options = data['options']
         required = {'runs', 'strategy', 'remembrance_name', 'equipment_fast_mode'}
-        if not required <= set(options) or set(options)-required-{'until_points'}:
+        if not required <= set(options) or set(options)-required-{'until_points','continue_after_defeat'}:
             raise AutomationError('循环设置结构无效。')
         if type(options.get('until_points', False)) is not bool:
             raise AutomationError('周积分循环开关须为布尔值。')
+        if (type(options.get('continue_after_defeat',False)) is not bool or type(data.get('defeats',0)) is not int
+                or not 0<=data.get('defeats',0)<=data['completed']
+                or data['status']=='defeated' and (not data.get('defeats') or options.get('continue_after_defeat',False)
+                                                 or data.get('active') is not None)):
+            raise AutomationError('失败局计数或失败后继续设置不符。')
+        if data.get('defeat_resume_receipt') is not None and (not _hex(data['defeat_resume_receipt'],64) or not data.get('defeats')):
+            raise AutomationError('失败后明确接续的原回执无效。')
         runs_value(options['runs']); validate_name(options['remembrance_name']); validate_fast_mode(options['equipment_fast_mode'])
         if (options['strategy'] not in STRATEGIES or options['runs'] and data['completed'] > options['runs']
                 or data.get('account_key') is not None and not _hex(data['account_key'], 64)
@@ -173,7 +180,7 @@ class LoopStore:
         if previous is not None and unfinished(self):
             raise AutomationError('原货币战争周常尚未结束，未覆盖为新循环。')
         if previous is not None and previous.get('weekly_plan',{}).get('state')=='complete':check_complete(self)
-        if previous is not None and previous['status'] == 'active':
+        if previous is not None and previous['status'] in ('active','defeated'):
             raise AutomationError('已有未结束循环；请明确接续，未创建第二份目标。')
         if weekly is not None:
             from .currency_wars_points import game_week,local_now
@@ -184,7 +191,7 @@ class LoopStore:
         loop_id = uuid.uuid4().hex
         self.path = self.root/'currency-loops'/loop_id/'loop.json'
         self.data = dict(schema=1, loop_id=loop_id, options=deepcopy(options), status='active',
-                         completed=0, last_receipt=None, account_key=None, active=None, development_only=True)
+                         completed=0, defeats=0,last_receipt=None, account_key=None, active=None, development_only=True)
         if options.get('until_points', False):
             from .currency_wars_points_goal import begin
             self.data['points_goal'] = begin()
@@ -268,12 +275,26 @@ class LoopStore:
         path = self.path.parent/(str(self.data['completed'])+'.session.receipt.json')
         receipt = _read(path)
         if (receipt.get('slot') != self.data['completed'] or receipt.get('count') is not True
-                or hashlib.sha256(path.read_bytes()).hexdigest() != self.data['last_receipt']):
+                or hashlib.sha256(path.read_bytes()).hexdigest() != self.data['last_receipt']
+                or receipt.get('defeats_after',0)!=self.data.get('defeats',0)):
             raise AutomationError('上一局回执被改动，未继续循环。')
         archive = self._inside(receipt['archive'])
         if hashlib.sha256(archive.read_bytes()).hexdigest() != receipt['session_sha256']:
             raise AutomationError('上一局归档被改动，未继续循环。')
         session = StandardSession(archive).data
+        outcome='defeat' if session.get('match_outcome')=='defeat' else 'victory'
+        before,after=receipt.get('defeats_before',0),receipt.get('defeats_after',0)
+        if (receipt.get('outcome','victory')!=outcome or type(before) is not int or type(after) is not int
+                or before<0 or after!=before+int(outcome=='defeat')):
+            raise AutomationError('逐局胜负与累计失败数不一致。')
+        if self.data['completed']>1:
+            previous_path=self.path.parent/(str(self.data['completed']-1)+'.session.receipt.json')
+            previous=_read(previous_path)
+            if (hashlib.sha256(previous_path.read_bytes()).hexdigest()!=receipt.get('previous')
+                    or before!=previous.get('defeats_after',0)):
+                raise AutomationError('逐局回执前序或累计失败数不连续。')
+        elif before!=0 or receipt.get('previous') is not None:
+            raise AutomationError('第一局存在不符的前序计数。')
         owner = session.get('loop_owner', {})
         if (owner.get('loop_id') != self.data['loop_id'] or owner.get('slot') != self.data['completed']
                 or session['match_id'] != receipt['match_id'] or session.get('account_key') != self.data['account_key']):
@@ -284,6 +305,9 @@ class LoopStore:
 
     def proof(self, session, report_path, *, recovery=False, candidate=None):
         """Require native final-node provenance, all four transitions and files."""
+        if session.get('match_outcome')=='defeat' or session.get('defeat_settlement_verified'):
+            from .currency_wars_defeat import archive_proof
+            return archive_proof(self,session,report_path,recovery=recovery,candidate=candidate)
         from .currency_wars_ending import ENDING_STEPS
         from .currency_wars_standard_progress import verified_attempt
         from .currency_wars_standard_ledger import ledger_status
@@ -355,7 +379,7 @@ class LoopStore:
                 original = str(report_path)
                 original_hash = hashlib.sha256(report_path.read_bytes()).hexdigest() if report_path.is_file() else None
                 report_path = self.path.parent/(session['match_id']+'.recovery.json')
-                audit = dict(operation='currency_wars_standard_recovery', status='success', report_saved=True,
+                audit = dict(operation='currency_wars_standard_recovery', status='partial' if session.get('match_outcome')=='defeat' else 'success', report_saved=True,
                              currency_wars=session, original_report=original, original_report_sha256=original_hash,
                              read_only=True, development_only=True)
                 # Validate all native evidence before creating a recovery file.
@@ -370,6 +394,8 @@ class LoopStore:
                 raise AutomationError('归档目标已存在但尚无提交意图，未覆盖。')
             intent = dict(count=count, archive=str(destination), session_sha256=hashlib.sha256(self.journal.read_bytes()).hexdigest(),
                           match_id=session['match_id'], slot=slot, previous=data['last_receipt'], **proof)
+            if count and (data.get('defeats',0) or proof.get('outcome')=='defeat'):
+                intent.update(defeats_before=data.get('defeats',0),defeats_after=data.get('defeats',0)+int(proof.get('outcome')=='defeat'))
             data['archive_intent'] = intent
             self.save()
         elif intent['count'] is not count:
@@ -395,6 +421,10 @@ class LoopStore:
         proof = self.proof(session, intent['report'], recovery=intent['recovered'])
         if any(proof[key] != intent[key] for key in proof):
             raise AutomationError('归档证据在提交期间改变，未计数。')
+        if count and (data.get('defeats',0) or proof.get('outcome')=='defeat'):
+            if (intent.get('defeats_before')!=data.get('defeats',0)
+                    or intent.get('defeats_after')!=data.get('defeats',0)+int(proof.get('outcome')=='defeat')):
+                raise AutomationError('失败局归档计数与原意图不同。')
         if source_exists:
             # Path.rename refuses an existing destination on Windows.
             self.journal.rename(destination)
@@ -402,10 +432,16 @@ class LoopStore:
         _immutable(receipt_path, dict(schema=1, development_only=True, **intent))
         if count:
             data['completed'] += 1
+            data['defeats']=data.get('defeats',0)+int(proof.get('outcome')=='defeat')
             data['last_receipt'] = hashlib.sha256(receipt_path.read_bytes()).hexdigest()
             data['active'] = None
         data.pop('archive_intent')
         self.save()
+
+    def last_outcome(self):
+        if not self.data['completed']:return None
+        self.check_tail()
+        return _read(self.path.parent/(str(self.data['completed'])+'.session.receipt.json')).get('outcome','victory')
 
 
 class LoopGuard:

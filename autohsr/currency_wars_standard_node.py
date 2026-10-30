@@ -10,6 +10,7 @@ from .models import AutomationError, EmptyCapture
 def entry_feedback(scene, node, confidence=.65):
     kind = observe(scene,confidence).page_kind
     return ((kind=='battle' and battle_node(scene,confidence)==node)
+            or (kind=='match_defeat' and result_node(scene,confidence)==node)
             or (kind in ('node_result','final_victory') and result_node(scene,confidence)==node
                 and (kind != 'final_victory' or node.startswith('3-'))))
 
@@ -27,6 +28,7 @@ def observe_started_node(c, store, scene):
         raise AutomationError('当前战斗缺少已核实标准出战来源，未执行战斗输入。')
     guard = CurrencyWarsWorkflow(c)
     elapsed, unseen = 0., 0.
+    defeat_frames=[]
     limit = min(180,c.settings.battle_timeout)
     while elapsed < limit:
         c.checkpoint()
@@ -38,6 +40,7 @@ def observe_started_node(c, store, scene):
             if account_key(scene,max(.85,c.settings.ocr_confidence)) != store.data.get('account_key'):
                 raise AutomationError('节点观察账号来源不一致。')
             kind = observe(scene,c.settings.ocr_confidence).page_kind
+            if kind!='match_defeat':defeat_frames=[]
             unreadable = kind in ('unknown','preparation')
             if kind=='battle':
                 actual = battle_node(scene,c.settings.ocr_confidence)
@@ -51,6 +54,16 @@ def observe_started_node(c, store, scene):
                     attempt.update(battle_observed=True,battle=evidence(c,scene,'currency_standard_battle'))
                     store.persist()
                     c.log('标准节点'+attempt['node']+'正在自动战斗，仅观察日志。')
+            elif kind=='match_defeat':
+                if result_node(scene,c.settings.ocr_confidence)!=attempt['node'] or store.data.get('match_victory_observed') is True:
+                    attempt.update(status='unknown',reason='整局结束与本次出战或原胜利状态不符。');break
+                defeat_frames.append(evidence(c,scene,'currency_standard_defeat_frame_'+str(len(defeat_frames)+1)))
+                if len(defeat_frames)==2:
+                    attempt.update(status='defeated',node_verified=False,defeat_observed=True,result_kind='match_defeat',
+                        result=defeat_frames[-1],defeat_frames=defeat_frames,verification='matching_terminal_defeat_after_start')
+                    store.data.update(match_defeat_observed=True,defeat_start_action_id=action_id)
+                    store.persist();c.log('标准节点'+attempt['node']+'整局结束已观察；等待零生命与独立失败结算核验。')
+                    return scene,True
             elif kind in ('node_result','final_victory'):
                 same = (result_node(scene,c.settings.ocr_confidence)==attempt['node']
                         and (kind != 'final_victory' or attempt['node'].startswith('3-')))

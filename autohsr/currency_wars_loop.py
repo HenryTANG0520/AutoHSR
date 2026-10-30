@@ -1,7 +1,7 @@
 """Finite or until-stopped composition of existing, separately reported Runners.
 
 Inspired by March7thAssistant run_sub_task/currencywars (pinned 7cf6c6b).
-Only verified victories may advance; native unknown/failure is never a restart.
+Verified terminal defeats may continue only under an explicit frozen preference.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from .models import AutomationError, RunReport, Stopped, TaskResult
 
 class CurrencyLoopRunner:
     def __init__(self, settings, emit=None, *, runs=None, resume=False, currency_strategy=None,
-                 currency_remembrance_name=None, currency_fast_mode=None, until_points=None, runner_factory=None, root=None, weekly_plan=None):
+                 currency_remembrance_name=None, currency_fast_mode=None, until_points=None, continue_after_defeat=None, runner_factory=None, root=None, weekly_plan=None):
         from .app import Runner
         from .currency_wars_names import resolve_name, validate_name
         from .currency_wars_equipment_mode import resolve_fast_mode
@@ -30,18 +30,21 @@ class CurrencyLoopRunner:
             raise ValueError('循环接续开关必须为布尔值。')
         if until_points is not None and type(until_points) is not bool:
             raise ValueError('周积分循环开关必须为布尔值。')
+        if continue_after_defeat is not None and type(continue_after_defeat) is not bool:
+            raise ValueError('失败结算后继续开关必须为布尔值。')
         if currency_strategy is not None and currency_strategy not in STRATEGIES:
             raise ValueError('货币战争策略须为 default、aglaea 或 seele。')
         self.settings = replace(settings)
         self.settings.validate('currency_wars')
         self.overrides = dict(runs=runs, strategy=currency_strategy,
                               remembrance_name=None if currency_remembrance_name is None else validate_name(currency_remembrance_name),
-                              equipment_fast_mode=currency_fast_mode, until_points=until_points)
+                              equipment_fast_mode=currency_fast_mode, until_points=until_points,continue_after_defeat=continue_after_defeat)
         self.options = dict(runs=runs_value(settings.currency_runs if runs is None else runs),
                             strategy=currency_strategy or 'default',
                             remembrance_name=resolve_name(settings, currency_remembrance_name),
                             equipment_fast_mode=resolve_fast_mode(settings, currency_fast_mode),
-                            until_points=settings.currency_until_points if until_points is None else until_points)
+                            until_points=settings.currency_until_points if until_points is None else until_points,
+                            continue_after_defeat=settings.currency_continue_after_defeat if continue_after_defeat is None else continue_after_defeat)
         from .currency_wars_weekly import WeekSpec
         if weekly_plan is not None and (not isinstance(weekly_plan,WeekSpec) or resume
                 or self.options['until_points'] is not True or self.options['runs']!=weekly_plan.maximum):
@@ -115,10 +118,11 @@ class CurrencyLoopRunner:
         data = store.data
         if data is None:
             return
-        children = {key: self.report.currency_wars[key] for key in ('last_child','last_points_child','read_only_recovery','original_report')
+        children = {key: self.report.currency_wars[key] for key in ('last_child','last_points_child','read_only_recovery','original_report','defeat_resumed')
                     if key in self.report.currency_wars}
         self.report.currency_wars = dict(mode='standard_loop', loop_id=data['loop_id'],
             requested_runs=data['options']['runs'], completed=data['completed'], status=data['status'],
+            defeats=data.get('defeats',0),victories=data['completed']-data.get('defeats',0),settled_games=data['completed'],
             active=deepcopy(data['active']), loop_record=str(store.path), development_only=True,
             acceptance_runs=0, **children, **{k: v for k, v in data['options'].items() if k != 'runs'})
         if points_goal.enabled(data):
@@ -165,6 +169,15 @@ class CurrencyLoopRunner:
         if self.resume:
             if store.load() is None:
                 raise AutomationError('没有可接续的未结束货币战争循环。')
+            if store.data['status']=='defeated':
+                for key,value in self.overrides.items():
+                    if value is not None and value!=store.data['options'].get(key,False):
+                        raise AutomationError('已停止循环的冻结设置不同，未重建目标或预算。')
+                store.check_tail()
+                if store.last_outcome()!='defeat':raise AutomationError('失败停止记录与原局回执不符。')
+                store.data['defeat_resume_receipt']=store.data['last_receipt']
+                store.data['status']='active';store.save()
+                self.report.currency_wars['defeat_resumed']=True
             if store.data['status']!='active':
                 plan=store.data.get('weekly_plan')
                 if plan is None or plan['state']!='active' or plan['phase']!='points':
@@ -180,7 +193,7 @@ class CurrencyLoopRunner:
                 self.report.safe_next='原循环已结束；只读核对逐局及积分原证据，补存新审计报告，没有重开或输入。'
                 return
             for key, value in self.overrides.items():
-                saved = store.data['options'].get(key, False) if key == 'until_points' else store.data['options'][key]
+                saved = store.data['options'].get(key, False) if key in ('until_points','continue_after_defeat') else store.data['options'][key]
                 if value is not None and value != saved:
                     raise AutomationError('显式设置与循环冻结设置不同，未中途改写目标。')
         else:
@@ -207,10 +220,17 @@ class CurrencyLoopRunner:
             self._checkpoint()
             data = store.data
             until_points = points_goal.enabled(data)
+            if (not data['options'].get('continue_after_defeat',False) and data.get('defeats',0)
+                    and store.last_outcome()=='defeat' and data.get('defeat_resume_receipt')!=data['last_receipt']):
+                data['status']='complete' if not until_points and data['options']['runs'] and data['completed']==data['options']['runs'] else 'defeated'
+                store.save();self.report.status='partial'
+                self.report.safe_next='本局失败及结算已核实并留档；未启用失败后自动继续，明确接续仅使用原目标剩余局数。'
+                return
             if not until_points and data['options']['runs'] and data['completed'] >= data['options']['runs']:
                 data['status'] = 'complete'
                 store.save()
-                self.report.status = 'success'
+                self.report.status = 'partial' if data.get('defeats',0) else 'success'
+                if data.get('defeats',0):self.report.safe_next='指定局数已全部结算，包含已核实失败；胜场与结束局数分开，未追加对局。'
                 return
             store.check_tail()
             session = StandardSession(store.journal).data
@@ -265,7 +285,9 @@ class CurrencyLoopRunner:
                            requested_runs=data['options']['runs']))
             child = self._run_child(guard, resume)
             self.report.currency_wars['last_child'] = dict(run_dir=child.get('run_dir', ''), status=child.get('status'))
-            if child.get('status') != 'success' or child.get('report_saved') is not True:
+            from .currency_wars_defeat import settled as settled_defeat
+            defeated=settled_defeat(child.get('currency_wars',{}))
+            if (child.get('status') != 'success' and not (defeated and child.get('status')=='partial')) or child.get('report_saved') is not True:
                 self.report.status = 'stopped' if child.get('status') == 'stopped' else 'partial'
                 self.report.error = child.get('error', '')
                 self.report.safe_next = '本局未完整结束或报告未保存；核对原报告，明确接续本循环，未知动作不重放。'
@@ -308,7 +330,8 @@ class CurrencyLoopRunner:
             report.safe_next = report.safe_next or '核对逐局记录；循环为开发运行，不计作独立验收，不自动领取周积分或开启饰品任务。'
             report.finished_at = datetime.now().astimezone().isoformat()
             report.results.append(TaskResult('currency_wars_loop', report.status,
-                                             str(report.currency_wars.get('completed', 0))+'局结算已核实并留档。'))
+                                             str(report.currency_wars.get('completed', 0))+'局结算已核实并留档；胜利'+
+                                             str(report.currency_wars.get('victories',0))+'局，失败'+str(report.currency_wars.get('defeats',0))+'局。'))
             try:
                 report.report_saved = True
                 _write(directory/'report.json', report.to_dict())

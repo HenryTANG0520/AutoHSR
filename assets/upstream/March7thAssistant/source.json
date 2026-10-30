@@ -4,13 +4,33 @@
   "retrieved": "2026-10-28",
   "license": "GNU GPL version 3",
   "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json"],
+  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json", "assets/currency-investment/sources.json"],
   "native_extensions": [
+    {
+      "path": "autohsr/currency_wars_investment_units.py",
+      "mechanic_manifest": "assets/currency-investment/sources.json",
+      "native_samples": ["150-investment-options.sample.json"],
+      "kind": "AutoHSR-authored investment role delivery: exact complete count/star/tier grammar and old named-role decimal-effect text; original last-node prebattle roster is bound by a direct verified victory/plane chain and frozen digest, confirmation only opens a pending obligation, current full roster inspection/close receipts prove actual gains and unchanged other units, merged gear is conserved. Unknown declared star stays unknown; explicit four-star grants are direct only, not inferred merges. Full benches, overflow and other role/item transformations remain unsupported; no game input framework or special-role counter cache imported"
+    },
     {
       "path": "autohsr/currency_wars_worn_reforge.py",
       "mechanic_manifest": "assets/currency-consumables/sources.json",
       "native_samples": ["67-tutorial-reforge-1.sample.json", "68-tutorial-reforge-2.sample.json"],
       "kind": "AutoHSR-authored role-wide reforge extension of the native tool protocol, based on existing local game tutorials rather than upstream role-wide IO; protects wanted gear, limits each role/node, verifies complete identities and ordered worn results, keeps unchanged finite consumption distinct from changed gear"
+    },
+    {
+      "path": "autohsr/workflow_identity.py",
+      "native_references": [
+        "autohsr/currency_wars_identity.py",
+        "autohsr/app.py",
+        "autohsr/recovery.py",
+        "autohsr/task_workflow_run.py"
+      ],
+      "tests": [
+        "autohsr/tests/test_workflow_identity.py",
+        "autohsr/tests/test_task_workflow.py"
+      ],
+      "kind": "AutoHSR-authored cross-step account continuity: strict existing UID parser, two fresh captures in one input epoch, first known login preparation only, immutable per-workflow binding, pause/focus rechecks, private UID crops and source integrity at boundaries, native input proxy, old-budget read-only preflight then begin only after current identity. Public identity metadata has no UID, account digest, image or installation path; original DU/CW ledger keys unchanged. Synthetic tests only, no real account calibration or complete multi-account switch support."
     }
   ],
   "mechanic_references": [
@@ -23,8 +43,25 @@
   ],
   "sources": [
     {
+      "path": "tasks/weekly/echoofwar.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "9c40ef6f57d90aa47ebb5a6569992d07d059569f",
+      "sha256": "b687c08ee5d8dafe151f60c400c7ba678cb707e20dfbd31cf629a1307ad05496"
+    },
+    {
+      "path": "tasks/power/power.py",
+      "git_blob": "cf046174fe2f80992e8808d620f34165790ce238",
+      "sha256": "c9880986f720c0ec25626db7314a82036a73375a5d6ae9899126694081bc9e39"
+    },
+    {
+      "path": "tasks/power/instance.py",
+      "git_blob": "0859381134b79de365345b813d49f2b6a779a13b",
+      "sha256": "d0928d6044e249f2fc89a74e453c1fdc53cf90e902dc69b59a9913418f8547f3"
+    },
+    {
       "path": "main.py",
-      "git_blob": "feab0b158e1f80c2b7a0c85c6cc276479d710bf4"
+      "git_blob": "feab0b158e1f80c2b7a0c85c6cc276479d710bf4",
+      "sha256": "790391e9552763e1568c2c3165447d1c237a5ba4acabb0eff0fc2a04ff333211"
     },
     {
       "path": "LICENSE",
@@ -32,7 +69,8 @@
     },
     {
       "path": "tasks/weekly/currency_wars.py",
-      "git_blob": "52507ccfa8bf7977f8a8be9eca24050a6c16990d"
+      "git_blob": "52507ccfa8bf7977f8a8be9eca24050a6c16990d",
+      "sha256": "1a26a0339439204281e34a2fbc8cdec3aa46b61f0589f4ab1c5d377d0397ef54"
     },
     {
       "path": "tasks/weekly/weekly_reward.py",
@@ -45,9 +83,143 @@
     {
       "path": "assets/config/config.example.yaml",
       "git_blob": "8bd288efd8282a4c45e1ae6a1b915c9bd9c0569e"
+    },
+    {
+      "path": "tasks/power/character.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "30c9451c641622d816609b9ba8be0ff65ed916d8",
+      "sha256": "eb65c7af1b30493adb359b906644b95059e988ada16bfd7edb9b1be86bb3c0ea"
+    },
+    {
+      "path": "tests/test_tasks/test_support_character.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "79b2cf8f03588f1b9655cc71af9b6053643efdee",
+      "sha256": "fba38fdc33ba91a26103aa54a73d78f55e28acd4bbe11d5c3d9c6f6ad2732d2b"
+    },
+    {
+      "path": "assets/config/character_names.json",
+      "retrieved": "2026-10-30",
+      "git_blob": "d2d65935605c86ef84925541ded8d9f6087be3cc",
+      "sha256": "e52b802c6c3dd64c7843d008c558de705f22ca2a199967a9a24955ee4e85bc5e"
+    },
+    {
+      "path": "app/tools/warp_export.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "13f386a8eb6d9bbe32684f77fa9ab5544db74cfe",
+      "sha256": "d71aaf00355a99fe21632856457d96a339e9d221b9f891e77ac9cb1f2228459c"
+    },
+    {
+      "path": "app/warp_interface.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "42d14fae06034f61a555185408ca695d3dcdba10",
+      "sha256": "e50d08878e40cbb1bcd091396189c367d697d67c7ea692a8bc866d06af7b3350"
+    },
+    {
+      "path": "tests/test_app/test_warp_export.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "05aa79f50b00fcf6feeaac72c57955ca0a2fc8d4",
+      "sha256": "d130d0797468e35080ba1d6821ef33486d90e1ea646b0414f83693c499e2f50f"
+    },
+    {
+      "path": "module/workflow/__init__.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "60e122213d9bfc3cabbd2db7ea60ce60f0bc3ccb",
+      "sha256": "26905df9f12bc88ea467dcc9a271bc227838574971fb5f9a6dda7afb0885b2f2"
+    },
+    {
+      "path": "assets/docs/Workflow.md",
+      "retrieved": "2026-10-30",
+      "git_blob": "8c9d802f4aedbbe3c0137dfa19529f24fdfb0239",
+      "sha256": "8a12e5fe09e471c3ebb2ce9861a7d4daf083a1f94b802d460338c7314c8b95e5"
     }
   ],
+  "warp_format_references": {
+    "reviewed": "2026-10-30",
+    "uigf": "https://uigf.org/zh/standards/uigf.html",
+    "srgf": "https://uigf.org/zh/standards/srgf.html",
+    "verification_repository": "https://github.com/UIGF-org/UIGF-SchemaVerify",
+    "verification_commit": "3f87dbfa4ae690b56237f867c13d4fcb0c4c4ac2",
+    "uigf_schema_git_blob": "48138c3966327e353e9fd530bb970a46bb14967e",
+    "uigf_schema_sha256": "4cfe8552707ba86fefc26daa79340d1067d63faa0a5ea69e5f34de9d1c17e134",
+    "srgf_schema_git_blob": "ff9e278f8debdb308403f82223f2b8d012527f17",
+    "srgf_schema_sha256": "53ae458aa3241f1f2ceb6776818141ef9bb7174e04f1bc3bb01840844833d5c8",
+    "scope": "Star Rail import/export only; v4.2 output and strict legacy SRGF output, extended legacy collaboration imports are explicitly noted. Official schemas and the third-party jsonschema package are not redistributed or runtime dependencies; the AutoHSR offline QA wrapper checks their pinned hashes and uses synthetic data. Verification evidence, not certification; no real player data or auth used"
+  },
   "adaptations": [
+    {
+      "path": "autohsr/warp_statistics.py",
+      "reference_source": "app/tools/warp_export.py",
+      "reference_functions": ["data_to_html"],
+      "kind": "per-account/per-pool observed window statistics and local five-star history. Prefix before the first observed five, missing ranks, unknown quantities and absent intervals stay explicit; unknown-rank segments are excluded from bounded interval means, item count is not record count, ID/time disagreements are flagged and all results retain history_complete=false. Private history is separated from detached public allowlisted metrics; no UI HTML or actual pity/lifetime guarantee"
+    },
+    {
+      "path": "autohsr/warp_xlsx.py",
+      "reference_source": "app/warp_interface.py",
+      "reference_functions": ["__onExportExcelBtnClicked"],
+      "native_files": ["autohsr/warp_service.py", "autohsr/warp_cli.py", "autohsr/tests/test_warp_statistics_xlsx.py"],
+      "dependency_manifest": "assets/upstream/openpyxl-source.json",
+      "kind": "styled streamed workbook adapted from upstream Excel export: account-separated records and pool summaries, observed-window scope, unknown cells, exact text IDs and literal display values, gold/purple high-rank rows, filters and frozen headers. Lazy pinned engine is checked before source reads; private streaming XML and unpublished workbook are cleaned on stop/error, atomic new-file publication is shared with JSON. Independent analysis-only mode does not save a file or load the Excel engine; native GUI/Excel desktop visual acceptance remain pending"
+    },
+    {
+      "path": "autohsr/warp_records.py",
+      "reference_source": "app/tools/warp_export.py",
+      "reference_functions": ["srgf_to_uigf_hkrpg", "uigf_to_srgf_hkrpg", "detect_format"],
+      "native_files": ["autohsr/warp_service.py", "autohsr/warp_cli.py", "autohsr/tests/test_warp_records.py", "tools/warp_schema_check.py"],
+      "kind": "UI-neutral Star Rail interchange rewritten around the published formats: exact required types, optional unknown fields remain unknown, numeric string IDs, multi-account UIGF, explicit single-account SRGF, timezone-preserving merge and conflict rejection. Current v4.2 and collaboration pools are distinguished from legacy SRGF rather than exporting invalid legacy enums or taking the first UID. New-file atomic publication, bounded input, anonymous events and no settings writes are AutoHSR-native; Excel/statistics have separate native adapters, while GUI/chart integration remains pending"
+    },
+    {
+      "path": "autohsr/warp_fetch.py",
+      "reference_source": "app/tools/warp_export.py",
+      "reference_functions": ["detect_game_locale", "get_url_from_cache_text", "remove_query_params", "get_gacha_log", "init_info", "get_gacha_logs", "fetch_data"],
+      "kind": "explicit user-selected log/cache or URL source, official CN/global GET-only endpoints and separate collaboration endpoint, bounded numeric-ID pagination to an empty terminal page, current UID/language/timezone custody, no redirects, finite retry/cancellation and auth-free events/exports. Does not port automatic profile scanning, Qt worker, telemetry, exposed warplink, overwrite-based repair or any game input. Real cache/API paths remain unverified; all tests use synthetic data and mocked requests"
+    },
+    {
+      "path": "autohsr/currency_wars_defeat.py",
+      "reference_source": "tasks/weekly/currency_wars.py",
+      "reference_functions": ["_check_battle_result"],
+      "native_files": ["autohsr/currency_wars_standard_node.py", "autohsr/currency_wars_loop.py", "autohsr/tests/test_currency_wars_defeat.py"],
+      "kind": "native terminal-defeat provenance and four-step settlement: same dispatched node, two terminal observations, zero life, explicit failed/unfinished summary and separate statistics/lobby feedback. Defeats remain partial with completion_verified=false, consume the original frozen loop ceiling and have independent chained outcome counts. Default stops, explicit resume acknowledges only that receipt, optional frozen auto-continuation never retries unknown IO or adds games. Defeat screen geometry is synthetic from existing victory layouts and has no real-screen acceptance; no upstream IO, telemetry or cached result flag imported"
+    },
+    {
+      "path": "autohsr/support_selection.py",
+      "native_files": [
+        "autohsr/support_profiles.py",
+        "autohsr/support_portraits.py",
+        "autohsr/workflows.py",
+        "autohsr/plan_runner.py"
+      ],
+      "reference_source": "tasks/power/character.py",
+      "reference_functions": [
+        "Character.borrow"
+      ],
+      "additional_references": [
+        {
+          "source": "tests/test_tasks/test_support_character.py",
+          "scope": "corner-mask retry variations"
+        },
+        {
+          "source": "assets/config/character_names.json",
+          "scope": "exact catalogue display names"
+        }
+      ],
+      "kind": "Native ordered per-page support role and optional exact friend preferences, bounded scroll pages and explicit stop/friend/skip fallback. Uses unchanged upstream portrait references with SHA-256 verification, local card binding, original then corner-mask retry; adds star-count mask and all-catalogue rival margin while retaining 0.90 threshold. Each input uses fresh native Context, full-team toast must clear, ambiguous feedback stops, own preset slots never removed. Borrow confirmation remains separate from daily battle proof. Default empty preferences keep legacy friend flow, runtime overrides do not save settings. GUI, task-only borrowing condition and live preferred borrowing remain pending."
+    },
+    {
+      "path": "autohsr/echo_weekly.py",
+      "native_files": ["autohsr/power_plan_run.py", "autohsr/power_plan_store.py", "autohsr/dungeon_workflow.py"],
+      "reference_source": "tasks/weekly/echoofwar.py",
+      "reference_functions": ["Echoofwar.start"],
+      "additional_references": [{"source": "tasks/daily/daily.py", "functions": ["Daily.prepare_daily"]}],
+      "kind": "native optional weekly Echo priority within the existing power-plan input owner and resource budget, followed by manual items/default fill; starts from the frozen daily-start game-week/day and observes actual 0-3 remaining game rewards, caps every allocation and requires a fresh zero-quota proof for complete. Keeps this-run victories separate from already-exhausted or externally decreased quota, never updates configuration timestamps, freezes the prelude across week changes and does not restart a closed prelude when normal farming resumes. Payment and quota counters commit atomically with existing unknown-payment guards. Explicit power-plan opt-in remains required; no scheduler, refill, upstream IO, build-target reader or GUI imported. New archive directories use 128-bit path keys with full hashes in records and preserve existing full-key layouts; duplicate layouts stop without merging"
+    },
+    {
+      "path": "autohsr/power_plan_run.py",
+      "native_files": ["autohsr/power_plan.py", "autohsr/power_plan_store.py", "autohsr/recovery.py", "autohsr/workflows.py", "autohsr/planar_resources.py", "autohsr/app.py", "autohsr/plan_runner.py"],
+      "reference_source": "tasks/power/power.py",
+      "reference_functions": ["Power.run", "Power.execute_power_plan", "Power.process"],
+      "additional_references": [{"source": "tasks/power/instance.py", "functions": ["Instance.run"]}],
+      "kind": "AutoHSR-authored ordered multi-dungeon plan, consumed remaining counts or fixed repeat and optional default-dungeon fill, explicitly enabled per invocation; uses existing native battle flow with one input owner and one frozen owned-stamina/immersifier budget. Settings remain save-only; canonical payment and per-item counters commit together, prior budgets are hash-bound archived with an anchored goal index before replacement, reorder preserves per-occurrence progress, unknown payment blocks new goals and new budgets. No upstream input framework, resource replenishment, relic cleanup or build-target reader imported. GUI integration and live acceptance remain pending; tests use synthetic windows and scenes only"
+    },
     {
       "path": "autohsr/currency_wars_weekly.py",
       "native_files": ["autohsr/currency_wars_weekly_run.py", "autohsr/plan_runner.py"],
@@ -72,7 +244,7 @@
       "path": "autohsr/currency_wars_loop.py",
       "reference_source": "main.py",
       "reference_functions": ["run_sub_task", "_run_loop_task_with_telemetry", "currencywars"],
-      "kind": "sequential composition of AutoHSR native standard Runners, finite or until stopped, with an optional weekly score goal bounded by the requested new-game count; frozen options and game week, explicit remaining-goal resume, local account and match ownership, verified terminal settlement, original reports and recoverable hash-bound archives; native failure or unknown stops; rewards, weekly-plan integration, other modes and live acceptance remain pending"
+      "kind": "sequential composition of AutoHSR native standard Runners, finite or until stopped, with an optional weekly score goal bounded by the requested new-game count; frozen options and game week, explicit remaining-goal resume, local account and match ownership, verified terminal settlement, original reports and recoverable hash-bound archives. Verified defeats count against the original ceiling and stop by default, with one-receipt explicit resume or frozen optional auto-continuation; unknown and technical failure always stop. Independent rewards and weekly composition have separate native adapters; other modes and live acceptance remain pending"
     },
     {
       "path": "autohsr/currency_wars_equipment_mode.py",
@@ -152,7 +324,12 @@
         "sell_characters",
         "_sell_single_character"
       ],
-      "kind": "native observed-credit cleanup for bench units and Seele-owned on-field non-strategy units with independently empty gear; legacy bench targets remain separate from typed front/back credits, frozen roster/HUD/local appearances, actual refunds and deployment decrease; all-slot feedback and immutable source checks replace cached-list deletion as success"
+      "kind": "native observed-credit cleanup for bench units and Seele-owned on-field non-strategy units; legacy empty-gear targets remain valid, equipped units use a separate typed gear-return target, complete known inventory and visible room before inspection, exact returned counts and full roster recollection; frozen roster/HUD/local appearances, actual refunds and deployment decrease remain independent proofs"
+    },
+    {
+      "path": "autohsr/currency_wars_sale_equipment.py",
+      "reference_functions": ["sell_characters_aglaea_strategy", "sell_characters_seele_strategy", "sell_characters", "_sell_single_character"],
+      "kind": "native one-to-three known worn items, 14 visible stock cells, zero/finite/infinite tools kept separate, canonical versioned targets and exact inventory deltas; inspected source and credit receipt are bound to the original policy, full roster and input epoch; unknown stock skips this extension, missing returns never authorize replay; no new images or copied blind-success fallback"
     },
     {
       "path": "autohsr/currency_wars_equipment_catalog.py",
@@ -182,6 +359,7 @@
     {
       "path": "autohsr/currency_wars_standard_investment.py",
       "reference_functions": ["check_investment_environment", "check_box"],
+      "native_files": ["autohsr/currency_wars_investment_units.py"],
       "kind": "verified victory/map/plane origin, fresh selected-card proof and separate confirmation; declared weapon boxes remain a ledger obligation until their type and inventory delivery are independently verified; future experience modifiers require original verified receipts"
     },
     {
@@ -220,6 +398,36 @@
         "check_supply_phase"
       ],
       "kind": "native four/five-column association from the complete equipment row, bounded dual name reads and retained image identities for unreadable unselected roles; no fixed first/middle candidate fallback"
+    },
+    {
+      "path": "autohsr/task_workflow.py",
+      "reference_source": "module/workflow/__init__.py",
+      "reference_functions": [
+        "parse_workflow_step_path",
+        "WorkflowRunner._execute_steps",
+        "WorkflowRunner._execute_step"
+      ],
+      "kind": "AutoHSR-authored strict JSON task tree, finite for/while and if/else, previous-result conditions and selected subtree paths. Conservative single daily/DU/CW reservations; no upstream YAML, template, keyboard, coordinates or scripts."
+    },
+    {
+      "path": "autohsr/task_workflow_run.py",
+      "reference_source": "module/workflow/__init__.py",
+      "reference_functions": [
+        "parse_workflow_step_path",
+        "WorkflowRunner._execute_steps",
+        "WorkflowRunner._execute_step"
+      ],
+      "kind": "AutoHSR-authored task-level adaptation of control-tree execution using existing native Runners; durable per-execution intent, one parent completion, exact saved child report and hash, inherited disabled daily flags, stop/pause propagation, failed game tasks block later game input, no retry or automatic resume."
+    },
+    {
+      "path": "autohsr/workflow_lease.py",
+      "reference_source": "module/workflow/__init__.py",
+      "reference_functions": [
+        "parse_workflow_step_path",
+        "WorkflowRunner._execute_steps",
+        "WorkflowRunner._execute_step"
+      ],
+      "kind": "AutoHSR-authored Windows named sequence marker with thread-local ownership; all native Runner and standalone launch entries reject other sequence owners during task gaps. No game-input framework copied."
     }
   ]
 }

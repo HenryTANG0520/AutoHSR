@@ -40,6 +40,7 @@ class CurrencyWeekRunner(PlanRunner):
         self.report.currency_wars=dict(mode='weekly_currency',loop_id=data['loop_id'],week=plan['week'],
             account_key=plan['account'],state=plan['state'],phase=plan['phase'],maximum=plan['maximum'],
             completed=data['completed'],loop_record=str(self.store.path),score_rewards_verified=plan['state']=='complete',
+            settled_games=data['completed'],defeats=data.get('defeats',0),victories=data['completed']-data.get('defeats',0),
             acceptance_runs=0,development_only=True,daily=deepcopy(plan['daily']),
             children=previous.get('children',[]),already_complete=previous.get('already_complete',False),
             later_points_observed=bool(plan.get('reward_history')),
@@ -58,6 +59,7 @@ class CurrencyWeekRunner(PlanRunner):
         if (body.get('loop_id')!=data['loop_id'] or body.get('completed')!=data['completed']
                 or body.get('requested_runs')!=plan['maximum'] or body.get('until_points') is not True
                 or body.get('status')!=data['status']):raise AutomationError('周常循环汇总与原账本不符。')
+        if body.get('defeats',0)!=data.get('defeats',0):raise AutomationError('周常循环失败数与原回执不符。')
         check_sources(store)
         if data['status'] in ('complete','exhausted'):
             from .currency_wars_points_goal import observation
@@ -162,6 +164,8 @@ class CurrencyWeekRunner(PlanRunner):
             if data['status']=='active':
                 self.report.status='stopped' if result.get('status')=='stopped' else 'partial'
                 self.report.error=result.get('error','');self.report.safe_next=result.get('safe_next','');return
+            if data['status']=='defeated':
+                self.report.status='partial';self.report.safe_next=result.get('safe_next','失败结算已核实，待明确接续原周目标剩余局数。');return
             if data['status']=='expired':
                 plan.update(phase='done',state='expired');store.save();self.report.status='partial'
                 self.report.safe_next='原周目标已过期；原局及证据保留，没有领取新周奖励。';return

@@ -15,15 +15,21 @@ from .weekly_plan import CHINA, WeeklyGuard, weekly_slot
 
 
 class PlanRunner:
-    def __init__(self, settings, emit=None, *, new_battle_run=False, runner_factory=None, root=None, now=None, resume_weekly_currency=False):
+    def __init__(self, settings, emit=None, *, new_battle_run=False, runner_factory=None, root=None, now=None, resume_weekly_currency=False,
+                 use_power_plan=False,new_power_plan=False):
         from .app import Runner
+        if (type(use_power_plan) is not bool or type(new_power_plan) is not bool or new_power_plan and not use_power_plan
+                or use_power_plan and (resume_weekly_currency or not settings.battle)):
+            raise ValueError('体力计划需要本次日常刷本任务，不能混入只接续原周常。')
+        self.use_power_plan=use_power_plan;self.new_power_plan=new_power_plan
+        if use_power_plan:settings.validate('power_plan')
         if (type(resume_weekly_currency) is not bool or resume_weekly_currency and
                 (not settings.weekly_enabled or settings.weekly_mode!='currency_wars' or new_battle_run)):
             raise ValueError('接续货币战争周常须选择该周常，且不新增日常预算。')
         self.settings = replace(settings)
         if resume_weekly_currency:
             self.settings=replace(self.settings,assignments=False,battle=False,daily=False,mail=False,battlepass=False)
-        self.settings.validate("plan")
+        self.settings.validate("power_plan" if use_power_plan else "plan")
         if not self.settings.weekly_enabled and not any(getattr(self.settings, name) for name in
                                                        ("assignments", "battle", "daily", "mail", "battlepass")):
             raise ValueError("请选择日常任务或加入周常。")
@@ -100,8 +106,9 @@ class PlanRunner:
         report.weekly_plan['children'].append(dict(operation='daily',run_dir=daily.get('run_dir',''),reused=reused))
         for name in ('stamina_spent','stamina_limit','stamina_pending','immersifiers_spent','immersifiers_pending',
                      'battle_completed','battle_requested','daily_verified','daily_synthesis','engagement','game_day',
-                     'error','input_error_field','safe_next','failure_task'):
+                     'error','input_error_field','safe_next','failure_task','support_selections'):
             if name in daily:setattr(report,name,daily[name])
+        if 'power_plan' in daily:report.power_plan=daily['power_plan']
         report.results.extend(TaskResult(r['task'],r['status'],r.get('detail','')) for r in daily.get('results',[]))
         if reused:
             report.weekly_plan['daily_reused']=True
@@ -137,10 +144,13 @@ class PlanRunner:
                         target=old.data['weekly_plan']
                         report.currency_wars=dict(mode='weekly_currency',loop_id=old.data['loop_id'],week=target['week'],
                             maximum=target['maximum'],completed=old.data['completed'],state=target['state'],phase=target['phase'],
+                            settled_games=old.data['completed'],defeats=old.data.get('defeats',0),
+                            victories=old.data['completed']-old.data.get('defeats',0),
                             loop_record=str(old.path),score_rewards_verified=False,reused_result=True,current_account_verified=False,
                             acceptance_runs=0,development_only=True)
                         report.weekly_plan.update(week=target['week'],due_at=target['due_at'],requested_runs=target['maximum'],
-                            maximum_runs=target['maximum'],completed_runs=old.data['completed'])
+                            maximum_runs=target['maximum'],completed_runs=old.data['completed'],
+                            defeats=old.data.get('defeats',0),victories=old.data['completed']-old.data.get('defeats',0))
                     raise
                 if self.resume_weekly_currency:
                     from .weekly_plan import WeeklySlot
@@ -152,7 +162,8 @@ class PlanRunner:
                         _,original=read_ref(self.root,daily_reference);self._copy_daily(original,reused=True)
             daily_selected = any(getattr(self.settings, name) for name in ("assignments", "battle", "daily", "mail", "battlepass"))
             if daily_selected:
-                daily = self._run(self.settings, phase="daily", operation="daily", new_battle_run=self.new_battle_run)
+                daily = self._run(self.settings, phase="daily", operation="daily", new_battle_run=self.new_battle_run,
+                    **(dict(use_power_plan=True,new_power_plan=self.new_power_plan) if self.use_power_plan else {}))
                 self._copy_daily(daily)
                 if daily.get("status") != "success" or daily.get("report_saved") is not True:
                     report.status = "stopped" if daily.get("status") == "stopped" else "partial"
@@ -176,6 +187,7 @@ class PlanRunner:
                 report.weekly_plan.update(score_rewards_verified=(weekly.get('status')=='success' and weekly.get('report_saved') is True
                     and data.get('score_rewards_verified') is True),
                     completed_runs=data.get('completed',0),maximum_runs=data.get('maximum',self.settings.weekly_runs),
+                    victories=data.get('victories',data.get('completed',0)),defeats=data.get('defeats',0),
                     requested_runs=data.get('maximum',self.settings.weekly_runs))
                 report.error,report.safe_next=weekly.get('error',''),weekly.get('safe_next','')
                 if weekly.get('status')=='success' and weekly.get('report_saved') is True and data.get('score_rewards_verified') is True:

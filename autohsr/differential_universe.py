@@ -255,6 +255,8 @@ class DifferentialUniverseWorkflow:
         if periodic_rank is not None and runs != 1:
             raise ValueError("周期演算接续仅完成当前 1 局。")
         self.ctx, self.settings, self.runs = context, context.settings, runs
+        from .du_station_policy import StationPreferences
+        self.station_preferences=StationPreferences.from_settings(self.settings)
         self.resume_active = resume_active
         self.periodic_rank = periodic_rank
         self.report = context.report.differential_universe
@@ -265,6 +267,7 @@ class DifferentialUniverseWorkflow:
                            fuel_used=False)
         self.session_id = str(uuid.uuid4())
         self.report["session_id"] = self.session_id
+        self.report['station_preferences']=self.station_preferences.to_dict()
         self._daily = DailyWorkflow(context)
         self._pages = 0
         self._action_no = 0
@@ -965,12 +968,12 @@ class DifferentialUniverseWorkflow:
                                                   token.center[0], token.center[1]))
 
     @staticmethod
-    def _station_choice_target(scene: Scene) -> Token | None:
-        for label in ("战斗","精英","首领","奖励","空白","休整","异常","事件","财富","冒险","铸造","商店"):
-            target=scene.find(label,(.20,.54,.73,.82),exact=True)
-            if target is not None:
-                return target
-        return None
+    def _station_choice_target(scene: Scene, preferences=None) -> Token | None:
+        if preferences is None:
+            from .du_station_policy import StationPreferences
+            from .config import Settings
+            preferences=StationPreferences.from_settings(Settings())
+        return preferences.text_target(scene)
 
     def _loaded_area_choice(self,scene):
         target=self._area_choice_target(scene)
@@ -1032,14 +1035,7 @@ class DifferentialUniverseWorkflow:
         return candidates[0] if candidates else None
 
     def _station_target(self,scene):
-        text_target=self._station_choice_target(scene)
-        if text_target is not None and normalize(text_target.text)=="战斗":
-            return text_target,"station_select"
-        match=self.ctx.template(scene,"du_station_combat",(.20,.32,.73,.73),threshold=.90)
-        if isinstance(match,(tuple,list)) and len(match)==3 and match[2]>=.90:
-            x,y,score=match
-            return Token("差分宇宙战斗站点卡图标",score,(x-.02,y-.02,x+.02,y+.02)),"station_icon_select"
-        return (text_target,"station_select") if text_target is not None else None
+        return self.station_preferences.select(scene,self.ctx.template)
 
     @staticmethod
     def _station_hazard(scene):
@@ -1049,7 +1045,6 @@ class DifferentialUniverseWorkflow:
     def _safer_station_preview(self,scene,target):
         """Inspect the selected card before committing a dangerous beacon."""
         visited=[target.center[0]]
-        labels=('战斗','精英','首领','奖励','空白','休整','异常','事件','财富','冒险','铸造','商店')
         for _ in range(6):
             if scene.image is not None:
                 previous=None
@@ -1069,12 +1064,11 @@ class DifferentialUniverseWorkflow:
                 return scene,'station_choice'
             self.report.setdefault('station_decisions',[]).append({'run':self.report['current_run'],
                 'action':'avoid','hazard':hazard,'card_x':visited[-1]})
-            candidates=[t for t in scene.tokens if normalize(t.text) in labels
-                        and t.within((.20,.54,.73,.82))
-                        and all(abs(t.center[0]-x)>.065 for x in visited)]
+            candidates=self.station_preferences.ordered([t for t in self.station_preferences.candidates(scene)
+                        if all(abs(t.center[0]-x)>.065 for x in visited)])
             if not candidates:
-                raise AutomationError('可识别站点均带有敌人死亡伤害全队的危险信标，未强行进入。')
-            target=min(candidates,key=lambda t:(labels.index(normalize(t.text)),-t.score))
+                raise AutomationError('无其他允许的站点可避开危险信标，未强行进入。')
+            target=candidates[0]
             self.ctx.log('避开敌人死亡自爆信标，检查其他站点：'+target.text)
             visited.append(target.center[0])
             scene,kind=self._click(scene,target,intent='station_select',label='station_hazard_alternative')
@@ -2338,6 +2332,10 @@ class DifferentialUniverseWorkflow:
                         action=self._station_target(scene)
                     target,intent=action
                     station_name = normalize(target.text)
+                    if self.station_preferences.enabled:
+                        name='战斗' if intent=='station_icon_select' else station_name
+                        self.report.setdefault('station_decisions',[]).append(dict(run=self.report['current_run'],
+                            action='preference',station=name,priority=self.station_preferences.rank(name),source=intent))
                     scene, kind = self._click(scene, target, intent=intent,
                                               label=station_name + "_station_selected")
                     self._fresh_field_entry=True

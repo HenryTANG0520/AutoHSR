@@ -60,31 +60,50 @@ class BattleBudget:
         self.runs, self.settings, self.report = Path(runs), settings, report
         self.path = self.runs / "battle-session.json"
         self.active = False
+        self.limit=settings.stamina_limit
+        self.power_plan=None
 
     def _write(self, status="active"):
         self.runs.mkdir(parents=True, exist_ok=True)
         data = dict(version=1, status=status, spent=self.report.stamina_spent,
-                    pending=self.report.stamina_pending, limit=self.settings.stamina_limit,
+                    pending=self.report.stamina_pending, limit=self.limit,
                     run_dir=self.report.run_dir, updated_at=datetime.now().astimezone().isoformat(),
                     target=self.settings.target_name, location=self.settings.target_location)
         data.update(category=self.settings.dungeon_category, requested=self.report.battle_requested,
                     completed=self.report.battle_completed,
                     immersifiers_spent=self.report.immersifiers_spent,
                     immersifiers_pending=self.report.immersifiers_pending)
+        if getattr(self.report,'power_plan',None):
+            from .power_plan_store import validate
+            data['power_plan']=self.report.power_plan
+            validate(self.runs,data)
         temp = self.path.with_suffix(".tmp")
         temp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         replace_file(temp,self.path)
 
-    def begin(self, *, new_run=False):
+    def preflight(self, *, new_run=False,protect_pending=False):
+        """Read-only checks shared by ordinary begin and workflow identity prep."""
         state = recovery_state(self.runs)
         if state["corrupt"]:
             raise AutomationError(state["reason"])
+        if protect_pending and (state.get('pending') or state.get('immersifiers_pending')):
+            raise AutomationError('原支付仍待核对；新增预算不重置体力计划。')
+        if state.get('power_plan'):
+            from .power_plan_store import validate
+            validate(self.runs,state,settled=True)
         if state["blocked"] and not new_run:
             pending = state['pending'] if state['pending'] is not None else '未记录'
             from .ux import immersifier_text
             raise AutomationError(f"上次刷本未完整结束（已确认{state['spent']}，待核对{pending}开拓力{immersifier_text(state)}）。"
                                   "请先仅补领奖；开始新一轮刷本须明确确认新增预算。")
+        return state
+
+    def begin(self, *, new_run=False,protect_pending=False):
+        state = self.preflight(new_run=new_run, protect_pending=protect_pending)
         self.report.budget_scope = "run"
+        if state.get('power_plan'):
+            from .power_plan_store import archive
+            archive(self.runs,{k:v for k,v in state.items() if k not in ('blocked','source','corrupt')})
         self.report.stamina_limit = self.settings.stamina_limit
         self._write()
         self.active = True
@@ -96,8 +115,9 @@ class BattleBudget:
                 or (immersifiers and self.settings.dungeon_category != 'planar')
                 or self.report.stamina_pending or self.report.immersifiers_pending
                 or self.report.immersifiers_spent + immersifiers > 12
-                or self.report.stamina_spent + cost > self.settings.stamina_limit):
+                or self.report.stamina_spent + cost > self.limit):
             raise AutomationError("挑战预算无法核实，禁止再次开始挑战。")
+        if self.power_plan is not None:self.power_plan.reserve(cost,immersifiers)
         self.report.stamina_pending = cost
         self.report.immersifiers_pending = immersifiers
         # Must complete before any Start Challenge input; an I/O failure stops.
@@ -108,11 +128,27 @@ class BattleBudget:
                 or self.report.stamina_pending != cost or cost < 0
                 or self.report.immersifiers_pending != immersifiers or cost + immersifiers <= 0):
             raise AutomationError("本次结算没有唯一待核对消耗，禁止重复记账。")
-        self.report.stamina_spent += cost
-        self.report.stamina_pending = 0
-        self.report.immersifiers_spent += immersifiers
-        self.report.immersifiers_pending = 0
-        self._write()
+        previous=None
+        if self.power_plan is not None:
+            from copy import deepcopy
+            previous=(deepcopy(self.report.power_plan),self.report.stamina_spent,self.report.stamina_pending,
+                self.report.immersifiers_spent,self.report.immersifiers_pending,self.report.battle_completed)
+        try:
+            if self.power_plan is not None:self.power_plan.confirm(cost,immersifiers)
+            self.report.stamina_spent += cost
+            self.report.stamina_pending = 0
+            self.report.immersifiers_spent += immersifiers
+            self.report.immersifiers_pending = 0
+            self._write()
+        except Exception:
+            if previous is not None:
+                plan,spent,pending,tokens,token_pending,completed=previous
+                self.report.power_plan.clear();self.report.power_plan.update(plan)
+                self.report.stamina_spent,self.report.stamina_pending=spent,pending
+                self.report.immersifiers_spent,self.report.immersifiers_pending=tokens,token_pending
+                self.report.battle_completed=completed
+            raise
+        if self.power_plan is not None:self.power_plan.publish('confirmed')
 
     def finish(self):
         if self.active:
