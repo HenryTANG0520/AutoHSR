@@ -6,7 +6,7 @@ FREE_ACTIONS = frozenset((
     'start_standard_a8_40', 'advance_standard_preview', 'advance_standard_plane',
     'collect_standard_loot', 'inspect_standard_unit', 'close_standard_unit',
     'open_standard_shop', 'close_standard_shop', 'deploy_standard_owned', 'start_standard_node',
-    'continue_standard_node', 'advance_standard_next_plane', 'close_standard_arrival_shop',
+    'continue_standard_node', 'advance_standard_next_plane', 'close_standard_arrival_shop', 'close_standard_initial_shop',
     'close_standard_shop_after_purchase',
     'inspect_standard_sale_unit','inspect_standard_field_sale_unit','close_standard_sale_stale_panel',
     'stage_standard_equipment','inspect_standard_equipment_unit','close_standard_equipment_unit',

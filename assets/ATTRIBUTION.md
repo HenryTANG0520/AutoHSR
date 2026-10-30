@@ -1,5 +1,11 @@
 # AutoHSR resource attribution
 
+## 2026-10-30 初始环境接受与确认后现状
+
+[初始来源](../autohsr/currency_wars_initial.py)、[专用免费收店](../autohsr/currency_wars_initial_shop.py)及正式Flow／Context接线为AutoHSR原生扩展。固定上游`check_investment_environment`的效果解析参考及GPL v3署名继续保留，未迁入其缓存增角色计数，也不把上游列表清空当作初始零基线；文件和范围记在[source.json](upstream/March7thAssistant/source.json)的native_extensions。
+
+沿用既有4.6环境匿名文字夹具、当前十九格与14格库存读取，没有新增公开素材、模型或真实采集。原动作／PNG／像素来源、两次独立capture、选择接受、首次post_choice现状及unattributed声明分别记录；库存unknown保留partial，delivery_verified始终false。原失败与旧格式不补成功，未知不重放；实际API、兼容和验证边界见[说明](../docs/currency-wars-initial-environment.md)。
+
 ## 2026-10-30 货币战争自动状态只读观察
 
 [CW状态检测](../autohsr/currency_wars_auto.py)及[标准节点观察接线](../autohsr/currency_wars_standard_node.py)为AutoHSR原生实现。新公开范围仅为[最小控制组说明](currency-auto/README.md)、[来源清单](currency-auto/sources.json)、12份右上局部裁片及2幅CW控件图形；没有重新采集游戏、分发原始整图或公开调查临时目录。清单保留匿名样本ID、原图／裁片SHA-256、裁剪坐标、版本或unverified、变换及分组，不含UID、账号指纹、原始文件名或安装路径。游戏美术归HoYoverse及相应权利人，不授予额外游戏素材许可。

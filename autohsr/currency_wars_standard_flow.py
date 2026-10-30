@@ -79,6 +79,11 @@ def _next_action(scene, confidence=.65, *, session=None):
         return StandardAction('start_standard_a8_40', 'boss_preview',
                               unique(clean, '开始对局', (.75, .82, .99, .97)))
     kind = observe(scene, confidence).page_kind
+    if kind == 'shop':
+        from .currency_wars_initial_shop import proposal as initial_shop_proposal
+        initial_shop = initial_shop_proposal(scene, session or {}, confidence)
+        if initial_shop is not None:
+            return initial_shop
     from .currency_wars_standard_reorder import active as reordering,proposal as reorder_proposal
     if reordering(session or {}):
         if kind not in ('preparation','character'):
@@ -138,6 +143,16 @@ def _next_action(scene, confidence=.65, *, session=None):
         return StandardAction('confirm_standard_environment_'+str(choice.slot), 'initial_board', target, details,
                               payload=(expected_board,) if expected_board else ())
     if kind == 'preparation':
+        initial = (session or {}).get('initial_environment')
+        if initial and initial.get('post_choice_observation') is None:
+            from .currency_wars_initial import validate_origin
+            validate_origin(session, require_accepted=True)
+            probe = _preparation_probe(scene, confidence, session.get('collection', {}).get('units'), session)
+            if probe is None:
+                raise AutomationError('初始环境确认后的当前阵容尚未留证，未领取掉落、开箱或交易。')
+            cell, target = probe
+            return StandardAction('inspect_standard_unit', 'character', target,
+                                  payload=(cell.zone, cell.slot, cell.node, cell.signature))
         from .currency_wars_node import loot_centers
         if 'strategy' in (session or {}) and (loot_centers(scene) or any(
                 normalize(t.text)=='开启' and t.within((.18,.78,.80,.92)) for t in clean.tokens)):
@@ -234,6 +249,9 @@ def evidence(c, scene, label):
 
 
 def transition_ready(choice, scene, confidence=.65, *, before=None, session=None):
+    if choice.expected == 'standard_initial_shop_closed':
+        from .currency_wars_initial_shop import feedback
+        return session is not None and feedback(choice, scene, session, confidence, before=before)
     from .currency_wars_defeat import INTENTS as DEFEAT_INTENTS,feedback as defeat_feedback
     if choice.intent in DEFEAT_INTENTS:return session is not None and defeat_feedback(choice,scene,session,confidence)
     if choice.expected in ('standard_movement_star_selected','standard_movement_star_returned','standard_popup_unit_board'):
@@ -452,6 +470,17 @@ def run_standard(c):
             except AutomationError:
                 collection['complete'] = False
             store.persist()
+            initial = store.data.get('initial_environment')
+            if initial and initial.get('post_choice_observation') is None and collection['complete']:
+                from .currency_wars_initial import capture_current
+                observation = capture_current(store.data, scene,
+                    evidence=evidence(c, scene, 'currency_standard_initial_post_choice'),
+                    run_dir=c.report.run_dir, epoch=c.runner.input_epoch, confidence=c.settings.ocr_confidence)
+                store.persist()
+                if observation is not None:
+                    c.log('初始环境：确认后当前阵容已留证；库存' +
+                          ('完整' if observation['inventory_complete'] else '仍有未读格') +
+                          '，环境声明交付仍未归因。')
             from .currency_wars_standard_rewards import verify_unit
             verifying_reward = store.data.get('reward',{}).get('status')=='unit_verifying'
             problem = verify_unit(store.data,scene,c.runner.input_epoch,c.settings.ocr_confidence)
@@ -585,6 +614,14 @@ def run_standard(c):
         if choice.payload:
             action['target'] = list(choice.payload)
             store.persist()
+        if choice.intent.startswith('confirm_standard_environment_') and (not choice.payload or choice.payload == ('1-1',)):
+            from .currency_wars_initial import begin as begin_initial
+            begin_initial(store.data, action['id'], run_dir=c.report.run_dir, epoch=c.runner.input_epoch)
+            store.persist()
+        if choice.intent == 'close_standard_initial_shop':
+            from .currency_wars_initial_shop import bind_intent as bind_initial_shop
+            bind_initial_shop(store.data, choice, scene, c.settings.ocr_confidence)
+            store.persist()
         if choice.intent=='inspect_standard_unit':
             from .currency_wars_standard_collection import bind_inspection
             bind_inspection(store.data,choice,scene,c.settings.ocr_confidence)
@@ -639,6 +676,7 @@ def run_standard(c):
         c.log('标准A8-40开发：' + choice.intent)
         c.currency_standard_input(scene, choice)
         elapsed, after, stable, previous_popup = 0., None, 0, None
+        initial_return_frames, initial_return_paths = [], []
         while elapsed < 60:
             started, inactive = time.monotonic(), c.runner.inactive_duration
             try:
@@ -660,7 +698,27 @@ def run_standard(c):
                     ready = bool(popup_stamp) or transition_ready(choice, after, c.settings.ocr_confidence, before=scene,session=store.data)
                     if popup_stamp!=previous_popup:stable=0
                     previous_popup=popup_stamp
-                stable = stable+1 if ready else 0
+                    initial = store.data.get('initial_environment', {})
+                    if ready and choice.expected == 'initial_board' and initial.get('action_id') == action['id']:
+                        from .currency_wars_initial import record_arrival
+                        frames = initial['arrival_frames']
+                        if frames and after.captured_at <= frames[-1]['captured_at']:
+                            ready = False
+                        else:
+                            ready = record_arrival(store.data, after,
+                                evidence=evidence(c, after, 'currency_standard_initial_arrival_'+str(len(frames)+1)),
+                                run_dir=c.report.run_dir, epoch=c.runner.input_epoch, confidence=c.settings.ocr_confidence)
+                            store.persist()
+                    if choice.expected == 'standard_initial_shop_closed':
+                        if not ready:
+                            initial_return_frames, initial_return_paths = [], []
+                        elif initial_return_frames and after.captured_at <= initial_return_frames[-1].captured_at:
+                            ready = False
+                        else:
+                            initial_return_frames.append(after)
+                            initial_return_paths.append(evidence(c, after, 'currency_standard_initial_shop_return_'+str(len(initial_return_frames))))
+                stable = (len(initial_return_frames) if choice.expected == 'standard_initial_shop_closed'
+                          else stable+1) if ready else 0
                 from .currency_wars_defeat import INTENTS as DEFEAT_INTENTS
                 required = 2 if choice.intent in DEFEAT_INTENTS or choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable','standard_relocate_inspectable',
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
@@ -669,7 +727,8 @@ def run_standard(c):
                                                     'standard_investment_selected','standard_investment_applied',
                                                     'standard_stale_unit_board','standard_collected_unit_board',
                                                     'standard_movement_star_selected','standard_movement_star_returned','standard_popup_unit_board',
-                                                    'standard_consumable_applied','standard_consumable_returned','standard_consumable_board') else 1
+                                                    'standard_consumable_applied','standard_consumable_returned','standard_consumable_board',
+                                                    'standard_initial_shop_closed') else 1
                 if stable >= required:
                     after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
                     if previous_popup:
@@ -695,6 +754,25 @@ def run_standard(c):
                     if choice.intent.startswith('confirm_standard_environment_'):
                         store.data['environment'] = action['decision']
                         store.data.pop('expected_board', None)
+                        if store.data.get('initial_environment', {}).get('action_id') == action['id']:
+                            from .currency_wars_initial import accepted as accept_initial
+                            try:
+                                accept_initial(store.data, action['id'])
+                            except AutomationError as error:
+                                action['status'] = 'unknown'
+                                store.data.update(action_status='unknown', reason=str(error))
+                                store.persist()
+                                raise
+                    if choice.intent == 'close_standard_initial_shop':
+                        from .currency_wars_initial_shop import closed as initial_shop_closed
+                        try:
+                            initial_shop_closed(store.data, choice, scene, initial_return_frames, initial_return_paths,
+                                                c.settings.ocr_confidence)
+                        except AutomationError as error:
+                            action['status'] = 'unknown'
+                            store.data.update(action_status='unknown', reason=str(error))
+                            store.persist()
+                            raise
                     if choice.intent == 'start_standard_node':
                         store.data['node_attempt']['status']='observing'
                     if choice.intent in ('inspect_standard_unit','inspect_standard_exchange_unit','inspect_standard_equipment_unit','inspect_standard_reward_unit','inspect_standard_consumable_unit','inspect_standard_popup_unit'):

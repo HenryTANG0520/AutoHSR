@@ -7,6 +7,14 @@
   "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json", "assets/currency-investment/sources.json", "assets/currency-auto/sources.json"],
   "native_extensions": [
     {
+      "path": "autohsr/currency_wars_initial.py",
+      "native_files": ["autohsr/currency_wars_initial_shop.py", "autohsr/currency_wars_standard_flow.py", "autohsr/currency_wars_standard_ledger.py", "autohsr/app.py"],
+      "native_references": ["autohsr/currency_wars_collector.py", "autohsr/currency_wars_consumables.py", "autohsr/currency_wars_environment.py", "autohsr/currency_wars_session.py"],
+      "native_samples": ["autohsr/tests/fixtures/currency_wars_standard_environment.json"],
+      "tests": ["autohsr/tests/test_currency_wars_initial.py", "autohsr/tests/test_currency_wars_initial_shop.py", "autohsr/tests/test_currency_wars_initial_flow.py"],
+      "kind": "AutoHSR-authored initial-environment custody: bind this run's pending 1-1 confirmation and verified start/preview/plane prefix, bounded within-run PNG byte/pixel proofs, two distinct arrival captures and original verified after, separate selection_accepted from unattributed declarations and delivery_verified=false. Freeze first post_choice observation from actual post-confirm role inspect/close, nineteen cells and fourteen raw stock cells; roster_complete may coexist with inventory_complete=false and partial, never a zero initial inventory or inferred gift. Dedicated free initial auto-shop close uses the original confirm, current account/run/epoch/HUD/control, durable private intent and two preparation returns without open_standard_shop, pre_shop_snapshot or continue-node provenance. Context compares durable JSON content including removed-memory negatives. Old missing records are not reconstructed; unknown input/failed evidence is not replayed. Existing pinned environment-choice reference remains attributed, but no upstream cache-gift counters, fixed starting inventory or input framework is imported."
+    },
+    {
       "path": "autohsr/run_control.py",
       "native_files": ["autohsr/app.py", "autohsr/plan_runner.py", "autohsr/currency_wars_loop.py", "autohsr/task_workflow_run.py", "autohsr/notify_runtime.py", "autohsr/schedule_runtime.py", "autohsr/schedule_dispatch.py"],
       "tests": ["autohsr/tests/test_run_control.py", "autohsr/tests/test_schedule_core.py", "autohsr/tests/test_schedule_dispatch.py"],
@@ -29,7 +37,7 @@
     {
       "path": "autohsr/notify_runtime.py",
       "native_files": ["autohsr/notify_profiles.py", "autohsr/notify_http.py", "autohsr/notify_cli.py"],
-      "tests": ["autohsr/tests/test_notifications.py", "autohsr/tests/test_notify_gocq.py"],
+      "tests": ["autohsr/tests/test_notifications.py", "autohsr/tests/test_notify_provider_contract.py"],
       "kind": "AutoHSR-authored opt-in end-of-run layer: current-user Windows DPAPI profiles, explicit import and encrypted replacement backup, frozen credential versions, sanitized allowlisted report templates, bounded single-attempt HTTP, no redirects, durable per-report/profile authorization and send intents, strict receipt reuse without unknown replay, independent notification events and pause/stop boundaries after native game input release. Only the outermost Runner is wrapped; original game report and exit semantics remain unchanged. Real delivery remains unverified; GUI, images, Bark ciphertext, Matrix E2EE, QQ ID discovery and PAC remain unimplemented."
     },
     {

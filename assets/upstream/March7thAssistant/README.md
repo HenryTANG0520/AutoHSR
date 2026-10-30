@@ -1,5 +1,7 @@
 # March7thAssistant 参考来源与适配
 
+2026-10-30另接[初始环境选择接受、post_choice现状及专用免费收店](../../../docs/currency-wars-initial-environment.md)。效果读取仍沿用已署名的固定`tasks/weekly/currency_wars.py::check_investment_environment`参考，新增来源托管与返回协议属于AutoHSR原生扩展，见[source.json](source.json)的native_extensions；没有新增上游源码迁入或素材。原动作／前缀、两不同capture、当前角色查看与库存unknown均独立留证，不复制缓存赠角计数或假定初始零库存。选择接受不等于赠品，实际记录为post_choice_observation，库存可partial，声明始终unattributed／delivery_verified=false。专用初始收店不伪造普通开店或跨节点来源，不开放交易；真实路径与独立整局未验收。
+
 2026-10-30另核对`tasks/weekly/currency_wars.py::check_auto_battle`及其`share/base/not_auto.png`，发现黄色C仅为提示图，左下搜索ROI不能证明真实CW开关位置。这部分仅作区别研究，原blob／SHA-256与`assets_adopted=false`见[CW状态来源](../../currency-auto/sources.json)，没有迁入该PNG或热键。旧CW右上控制组经本地独立观察及既有真实DU-on／planar-disabled／暂停图形交叉校准，接为[原生只读状态检测](../../../autohsr/currency_wars_auto.py)与标准节点观察，另记[source.json](source.json)的native_extensions。两份不同capture时间、同节点／账号／输入代次的新鲜on观察才记录已核实on，后续unknown／disabled不抹掉先前证据或胜利；不提供off或开启动作。裁片分组、未知版本及历史／邻近回放均单独标注，没有独立真实留出、真实切换或整局验收。
 
 2026-10-30另参考`app/common/schedule.py`的当前分钟匹配、未来时刻与任务链，以及`app/log_interface.py`的启动分钟跳过、时钟检查、冲突和完成生命周期，改写为[应用内定时与有限重复](../../../docs/schedules.md)。严格JSON、固定北京时间、不可变版本、同分钟意图／回执、当前进程显式启用、原生Runner与唯一执行权、暂停／停止及安全状态事件属于AutoHSR适配；保存不启用，未知／失败不续跑，不通过时钟扩大资源预算。两份实际参考源码及改写函数的Git blob／SHA-256见[source.json](source.json)，GPL v3与原作者署名保留，没有迁入Qt／QProcess GUI或任意程序执行。

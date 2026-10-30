@@ -1,5 +1,17 @@
 # 货币战争重启开发记录
 
+## 2026-10-30：初始环境接受、post_choice现状及专用免费收店
+
+新增[初始来源](../autohsr/currency_wars_initial.py)和[免费初始收店](../autohsr/currency_wars_initial_shop.py)，接入正式标准Flow、免费动作账本与Context。新pending确认在输入前绑定原start→preview→plane前缀、声明与PNG／像素来源；两份不同capture与证据路径、原动作verified和对应after才记selection_accepted。自动商店独立绑定原confirm和当前HUD／控件，两个preparation返回后记免费收据，不伪造open_standard_shop、pre_shop_snapshot或节点continue来源，也不授权交易。
+
+初始现状先于开箱／晶矿：须原生十九格、确认后实际角色查看／关闭和14格stock，首次冻结实际字段`post_choice_observation`。roster_complete=true不等于库存完整；inventory_complete可false、status=partial，unknown不补零或随后升级。声明义务保持unattributed／delivery_verified=false，不凭二星二费匹配归因环境，也不新增金币收入或通关计数。旧无字段记录不补来源，原失败不变、未知不重放。详细API与边界见[说明](currency-wars-initial-environment.md)。
+
+阶段38项通过`runs/cw-initial-related-first.log`（33.908秒）：initial12、shop18、实际run_standard／Context假IO8。首轮Root17项的2失败1错误保留于`runs/cw-initial-flow-first.log`，夹具停止边界与旧cache发布预期已修正，不放宽来源。Context同时按严格JSON比较tuple／list存读语义与完整内容，覆盖只删内存来源的拒绝反例。最终**1921项全量通过**`runs/cw-initial-all.log`（813.028秒），驱动813.782秒、退出0；`runs/cw-initial-full-result.json`与`runs/cw-initial-full-snapshot.json`核对312份Python／requirements源文件、重新枚举的完整清单及前后哈希均一致。前轮1883属于旧快照，原日志保留。
+
+提交前6份说明326处本地链接、45份固定上游源码Git blob／其中41份声明SHA-256、GPL许可哈希及8组原生扩展51处文件引用核对通过，见`runs/cw-initial-final-verification.json`。来源清单原有通知测试的过期路径改为实际`test_notify_provider_contract.py`；没有改通知实现或测试，私人目录保持忽略。
+
+本轮没有启动、检测或操作游戏，没有新实机截图、模型、真实外部通知、系统任务、GUI改动或EXE构建；真实初始布局、动画、查看／收店组合及赠品归因仍未验收，历史独立0/10和已终止的旧十场目标保持。
+
 ## 2026-10-30：自动状态只读检测与标准节点两帧观察
 
 新增[只读检测器](../autohsr/currency_wars_auto.py)，接入[标准节点观察](../autohsr/currency_wars_standard_node.py)。同日复核修正先前位置推断：固定上游`check_auto_battle`是在左下搜索黄色C提示，不能据此认定实际开关在左下；旧CW右上确有双三角自动、倍速与暂停控制。先前误判与更正保留在[差距审查](currency-wars-gap-review-2026-10-30.md)，没有改写已推历史。

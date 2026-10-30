@@ -8,17 +8,17 @@
 
 建议先补**初始环境的独立交付协议**，再扩展纯赠武装箱及双装备补给。它们可以拆成有界的离线机制工作，但现有证据不足以把新增效果、真实布局或实际到账一并验收。自动战斗开关也是明确缺口，需要单独校准CW控制，不能未经核实直接沿用日常或差分的状态授权。
 
-原审查阶段仅记录差距，没有完成修复、OCR或模板校准、游戏输入、资源消耗、实机验收或EXE构建；同日后续的位置更正与CW只读状态观察另见下文，不把它们外推为自动开启动作或整局通过。没有新增游戏授权、接续旧开发局或恢复已终止的十场A8-40目标；历史独立整局验收仍为**0/10**。
+原审查阶段仅记录差距，没有完成修复、OCR或模板校准、游戏输入、资源消耗、实机验收或EXE构建；后续初始环境接受／现状／免费收店、位置更正与CW只读状态观察另见下文，不把它们外推为赠品归因、自动开启动作或整局通过。没有新增游戏授权、接续旧开发局或恢复已终止的十场A8-40目标；历史独立整局验收仍为**0/10**。
 
 ## 已有能力与新增发现
 
 当前已经接通标准节点识别与推进、分步终局结算、逐张购买、经验支付、受限刷新和出售收据、三种策略、满员交换与全局候选整理、14类装备及已读配方、六种工具的部分规则、命名核心全身重铸、奖励与补给选择、补给刷新、部分投资效果及赠角，以及失败结算、循环、积分、普通领奖和周常编排。这些能力的离线检查与各自实机边界见[开发记录](currency-wars-development.md)、[总体清单](development-roadmap.md)和[货币战争验收](../CURRENCY_WARS.md)，不能把历史条目中的“尚未接通”重新当作当前完整缺口。
 
-本次补充指出以下源码边界；它们是审查发现，不是本轮新增能力：
+下表保留原审查边界并补后续现状；局部接受／观察不等于完整交付：
 
 | 未闭环点 | 具体源码事实 | 影响 |
 | --- | --- | --- |
-| 初始环境声明的赠品缺独立交付协议 | [环境解析](../autohsr/currency_wars_environment.py)能读出`growing_unit`的数量、星级与费用；[标准流程](../autohsr/currency_wars_standard_flow.py)的`transition_ready`对`initial_board`只核对目标节点和备战／商店页，确认后保存环境决定 | 页面转换通过不能进一步证明声明角色或物品到账；这里缺少类似位面投资赠角的独立完成回执 |
+| 初始环境声明的赠品仍缺实际归因 | 原审查时initial_board只核对节点／页面；后续已接[专用来源](../autohsr/currency_wars_initial.py)的两帧接受、确认后角色／库存现状及独立免费收店，声明仍unattributed | 选择接受与post_choice不证明初始赠品到账；仍缺可归因的原始前态和独立交付回执 |
 | 纯赠箱环境没有可执行语法和初始来源 | 同一环境解析未支持上游“火药味”的纯赠箱文本；[投资解析](../autohsr/currency_wars_investment_policy.py)当前支持的是减伤附赠箱等已定义效果 | 已有开箱能力不等于初始环境赠箱已经接通 |
 | 补给候选与回执只表达一件装备 | [补给字段](../autohsr/currency_wars_supply_fields.py)的`_items`按每列一个装备词核对四／五卡；[奖励协议](../autohsr/currency_wars_standard_rewards.py)的`_options`保存单个物品，`feedback`只增加一件库存，`returned`也记录单个`item` | 不能覆盖上游明确提到的双装备补给，漏读第二件也不能当作单件已完整识别 |
 | 标准节点没有开启自动战斗协议 | 原审查时[节点观察](../autohsr/currency_wars_standard_node.py)只识别战斗与结果；同日后续已补on／disabled／unknown只读检测及两帧观察，仍没有off或开启动作 | 只读on证据不等于本程序开启过开关；缺少真实关闭与切换反馈链，完整自动开启仍待交付 |
@@ -29,7 +29,7 @@
 
 上游参考为[`check_investment_environment`](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/weekly/currency_wars.py#L2709)的环境选择与[`check_special_characters`](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/weekly/currency_wars.py#L2676)的特殊赠送处理；后者的缓存计数不直接移植。本地入口为`parse_environment_effect`、`standard_environment_choice`及标准流程的环境确认／`initial_board`分支。
 
-已有[脱敏环境字段](../autohsr/tests/fixtures/currency_wars_standard_environment.json)记录4.6“战力飙升”的完整数量、星级和费用，另有[环境机制检查](../autohsr/tests/test_currency_wars_standard_environment.py)、[角色采集](../autohsr/currency_wars_collector.py)及[位面投资赠角协议](../autohsr/currency_wars_investment_units.py)可参考。可以离线设计确认后的`delivery_pending`、当前十九格／完整角色重读、独立查看与关闭来源，以及错误数量／星级／费用、旧面板、换代次和写盘失败的反例。环境确认只应完成页面转换，声明交付另记结果。
+已有[脱敏环境字段](../autohsr/tests/fixtures/currency_wars_standard_environment.json)记录4.6“战力飙升”的完整数量、星级和费用，另有[环境机制检查](../autohsr/tests/test_currency_wars_standard_environment.py)、[角色采集](../autohsr/currency_wars_collector.py)及[位面投资赠角协议](../autohsr/currency_wars_investment_units.py)可参考。本轮已接选择接受、确认后十九格／逐角色查看与库存现状及专用初始免费收店，实际接口与假IO验证见[初始环境说明](currency-wars-initial-environment.md)。这些元数据没有完成初始赠品归因，不能记为delivery_verified。
 
 **不能复用位面赠角的旧基线。** `currency_wars_investment_units.baseline`要求本局末节点出战前的完整角色、装备和库存，且与胜利继续、下一位面来源直接相邻；`currency_wars_standard_investment._origin`也核对这条跨位面链。初始环境处于开局阶段，没有这条前置出战链，也没有现成确认前完整阵容。不能借用旧局、旧节点或不完整缓存补齐，更不能只因结果阵容出现一个匹配的二星二费角色就归因“赠品已到账”。
 
@@ -37,18 +37,18 @@
 
 `StandardSession.begin`只保存开局entry，`snapshot_from_scene`不补初始roster／inventory。后续基线应使用完整十九格与逐角色查看来源，以及[14格库存读取](../autohsr/currency_wars_consumables.py)保留的unknown；未取得完整库存来源时，`inventory_counts`返回空Counter不能证明初始库存为空。
 
-后续编码建议分开表达以下状态，**尚未实现**：
+原四分建议现按以下实际字段落地；**初始交付归因仍未实现**。`current_state_observed`是先前的语义命名，不是当前新增字段：
 
-| 建议状态 | 需要证明的事实 |
+| 当前记录／剩余缺口 | 需要证明的事实 |
 | --- | --- |
-| `selection_accepted` | 环境选择／确认的独立页面反馈被接受；只完成选择转换 |
-| `current_state_observed`，`baseline_scope=post_choice` | 确认后新鲜的角色／装备／库存现状已完整观察；只能作为之后晶矿／箱子等独立交付的当前前态，不能追认环境之前的来源 |
-| `declared_obligations` | 按已读完整效果保留声明数量／星级／费用／箱种等待核实义务，未声明的字段不补造 |
-| `delivery_verified` | 有本次专用前后来源及逐项实际变化，才能证明对应义务交付；现有post_choice阵容相符本身不够 |
+| `selection_accepted` | 原确认、两不同capture及after来源证明选择被接受；不证明收入 |
+| `post_choice_observation`，`baseline_scope=post_choice` | roster_complete=true；14格库存原样保存，inventory_complete可false且status=partial，只能作后续独立交付的前态，不能追认环境来源 |
+| `declared_obligations` | 按已读完整效果保留kind／parameters，始终unattributed／delivery_verified=false，未声明字段不补造 |
+| 实际`delivery_verified` | 仍缺可归因的本次前后来源与逐项变化；当前声明和观察中的此字段均false，现状相符本身不够 |
 
-还需环境确认专用的免费收店来源。[`initial_board`反馈](../autohsr/currency_wars_standard_flow.py)允许shop或preparation，而[普通收店](../autohsr/currency_wars_standard_market.py)经`shop_return_values`要求已核实`open_standard_shop`／交易链及`pre_shop_snapshot`；[节点到达收店](../autohsr/currency_wars_standard_progress.py)又只认`continue_standard_node`来源。不能伪造普通开店前快照或借跨节点到达记录。下一步应从本次已核实环境确认、同账号／节点／代次、新鲜可用收起控件建立独立无消耗意图和返回核验，再采集post_choice现状；这条专用协议仍待编码，不开放交易、不补环境交付成功。
+[`initial_board`反馈](../autohsr/currency_wars_standard_flow.py)允许shop或preparation，而[普通收店](../autohsr/currency_wars_standard_market.py)经`shop_return_values`要求已核实`open_standard_shop`／交易链及`pre_shop_snapshot`；[节点到达收店](../autohsr/currency_wars_standard_progress.py)又只认`continue_standard_node`来源。本轮新增的初始免费收店只绑定原confirm直接延续、当前账号／节点／run／epoch与新鲜可用收起控件，独立写意图及两帧返回收据；不伪造上述来源、不开放交易，返回后才采集post_choice。正式Flow／Context假IO已覆盖，真实动画与输入路径未验收。
 
-因此首项工作必须先定义并证明初始专用来源：哪些是可核实的开局原有角色，哪些是声明新增，能证明数量、身份、装备与库存的哪些变化。缺少基线时只能保存当前观察和未核实义务，不能构造收入或完成回执。既有字段只是文本校准，不是这条来源及真实交付的证明；相应规则或真图缺口仍需补证。此项优先是因为后续初始赠箱、其他初始角色／物品效果都需要同一来源基础。
+剩余第一项仍是可归因的初始交付：哪些是开局原有角色，哪些是声明新增，以及数量、身份、装备和库存的实际变化。缺少基线时只保留现状与unattributed义务，不构造收入。新post_choice只能为之后的晶矿／箱子建立当前前态；初始赠箱、其他初始角色／物品的归因仍须专门规则或证据，不能由本次接受与收店协议外推。
 
 ### 2. 纯赠武装箱环境的逐箱交付
 
@@ -84,4 +84,4 @@
 
 原审查阶段只读核对上述源码、脱敏夹具、来源说明和固定上游缓存；没有读取或外发真实UID、账号私密记录。该阶段文档检查限两份文档的差异、相对链接、固定源码的Git blob／SHA-256及树归属，没有运行单元测试、项目CLI、GUI／字幕模拟或游戏。后续只读检测与标准节点的专项、夹具失败及修正记录另见[开发记录](currency-wars-development.md)，不以其他并行工作通过替代本功能证据。
 
-本审查初版仅新增本文并在[开发记录](currency-wars-development.md)末尾追加入口。上列前三项交付方案仍未实现；同日后续只读CW状态观察没有新增off或切换动作，也没有新增实机、独立留出或成功整局。旧失败、旧账本与已终止目标保持原状，历史独立验收仍为0/10。
+本审查初版仅新增本文并在[开发记录](currency-wars-development.md)末尾追加入口。后续已接初始环境接受／post_choice现状／免费收店和CW只读状态观察，但完整初始交付归因、赠箱及双装备目标仍未实现；没有新增off、切换动作、实机、独立留出或成功整局。旧失败、旧账本与已终止目标保持原状，历史独立验收仍为0/10。

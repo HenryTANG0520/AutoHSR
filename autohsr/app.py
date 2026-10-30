@@ -245,6 +245,17 @@ class Context:
                 raise AutomationError('标准开局已有提交记录，未重复开始。')
         elif data['status'] != 'active':
             raise AutomationError('尚未核实标准对局已开始。')
+        if any(key in store.data or key in data for key in ('initial_environment', 'initial_shop_return')):
+            from .currency_wars_initial import validate_origin, evidence_ref
+            for key in ('initial_environment', 'initial_shop_return'):
+                if json.dumps(data.get(key), sort_keys=True, allow_nan=False) != json.dumps(store.data.get(key), sort_keys=True, allow_nan=False):
+                    raise AutomationError('初始环境来源尚未与落盘记录一致，未发送输入。')
+            origin = validate_origin(data)
+            if choice.intent.startswith('confirm_standard_environment_') and origin['action_id'] == data['actions'][-1]['id']:
+                if evidence_ref(scene, data['actions'][-1]['before'], origin['run_dir']) != origin['origin']['before']:
+                    raise AutomationError('初始环境确认前画面与落盘来源不一致。')
+        elif choice.intent.startswith('confirm_standard_environment_') and (not choice.payload or choice.payload == ('1-1',)):
+            raise AutomationError('初始环境确认尚未保存专用来源，未发送输入。')
         if next_action(scene, self.settings.ocr_confidence,session=store.data) != choice:
             raise AutomationError('标准开发动作与当前页面不符。')
         if choice.payload and data['actions'][-1].get('target') != list(choice.payload):
