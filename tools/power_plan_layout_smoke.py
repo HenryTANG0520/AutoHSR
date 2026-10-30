@@ -65,6 +65,38 @@ def main():
                     confirm=next(widget for widget in dialog.winfo_children() if isinstance(widget,DetailClose) and widget.symbol=='confirm')
                     confirm.invoke();root.update()
                     check(f'{scale}_echo_preferences_do_not_enable_execution',ui.echo_day.get()=='周五' and not ui.echo_enabled.get() and ui.echo_target.get()=='毁灭的开端')
+                    original_fallback=(ui.dungeon_category.get(),ui.target_name.get(),ui.target_location.get(),ui.challenge_count.get())
+                    plan=ui.power_rows.get();ui.power_fill.set(False);ui.tasks['battle'].set(False)
+                    ui.power_fill_config_button.invoke();root.update();dialog=ui.power_dialog
+                    check(f'{scale}_fallback_has_direct_game_dialog',dialog.title()=='补刷副本' and dialog.grab_current() is dialog)
+                    frame=next(widget for widget in dialog.winfo_children() if isinstance(widget,ttk.Frame))
+                    choices=[widget for widget in frame.winfo_children() if isinstance(widget,ttk.Combobox)]
+                    count=next(widget for widget in frame.winfo_children() if isinstance(widget,ttk.Entry) and not isinstance(widget,ttk.Combobox))
+                    count.delete(0,'end');count.insert(0,'2')
+                    cancel=next(widget for widget in dialog.winfo_children() if isinstance(widget,DetailClose) and widget.symbol=='cancel')
+                    cancel.invoke();root.update()
+                    check(f'{scale}_fallback_cancel_preserves_draft',ui.power_dialog is None and original_fallback==(ui.dungeon_category.get(),ui.target_name.get(),ui.target_location.get(),ui.challenge_count.get()))
+                    ui.power_fill_config_button.invoke();root.update();dialog=ui.power_dialog
+                    frame=next(widget for widget in dialog.winfo_children() if isinstance(widget,ttk.Frame))
+                    choices=[widget for widget in frame.winfo_children() if isinstance(widget,ttk.Combobox)]
+                    count=next(widget for widget in frame.winfo_children() if isinstance(widget,ttk.Entry) and not isinstance(widget,ttk.Combobox))
+                    confirm=next(widget for widget in dialog.winfo_children() if isinstance(widget,DetailClose) and widget.symbol=='confirm')
+                    for name,maximum in (('拟造花萼（金）',24),('拟造花萼（赤）',24),('凝滞虚影',8),('侵蚀隧洞',6),('历战余响',3),('饰品提取',6)):
+                        choices[0].set(name);choices[0].event_generate('<<ComboboxSelected>>');root.update()
+                        count.delete(0,'end');count.insert(0,str(maximum+1));confirm.invoke();root.update()
+                        check(f'{scale}_fallback_limit_{name}',dialog.winfo_exists() and ui.power_rows.get()==plan and any(f'1～{maximum}' in str(widget.cget('text')) for widget in frame.winfo_children() if isinstance(widget,ttk.Label)))
+                        check_layout(root)
+                    choices[0].set('拟造花萼（金）');choices[0].event_generate('<<ComboboxSelected>>')
+                    choices[1].set('回忆之蕾');choices[1].event_generate('<<ComboboxSelected>>');root.update()
+                    choices[2].set(choices[2].cget('values')[-1]);count.delete(0,'end');count.insert(0,'2')
+                    location=choices[2].get();confirm.invoke();root.update()
+                    check(f'{scale}_fallback_updates_target_and_count',ui.power_dialog is None and ui.target_name.get()=='回忆之蕾' and ui.target_location.get()==location and ui.challenge_count.get()=='2')
+                    check(f'{scale}_fallback_does_not_enable_or_change_plan',not ui.power_fill.get() and not ui.tasks['battle'].get() and ui.power_rows.get()==plan)
+                    ui.power_fill.set(True);root.update()
+                    check(f'{scale}_fallback_summary_uses_new_draft',location in ui.power_editor.caption.get() and '最多2次' in ui.power_editor.caption.get())
+                    ui.busy=True;ui.power_fill_config_button.invoke();root.update()
+                    check(f'{scale}_fallback_refuses_busy_edit',ui.power_dialog is None)
+                    ui.busy=False
                     check(f'{scale}_controls_leave_saved_config',config.read_bytes()==saved)
                     check(f'{scale}_no_callback_errors',not errors)
                 finally:

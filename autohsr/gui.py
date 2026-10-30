@@ -638,6 +638,9 @@ class AutoHSRWindow:
         page, section, _, control, _ = INPUT_FIELDS[self.input_error_field]
         if self.input_error_field == 'stamina_limit' and self.power_mode.get() == '体力计划':
             page, section, control = 'settings', 'power', 'power_budget_entry'
+        elif (self.power_mode.get() == '体力计划' and self.power_fill.get()
+              and self.input_error_field in ('target_name','target_location','challenge_count','dungeon_category')):
+            page, section, control = 'settings', 'power', 'power_fill_config_button'
         operation_page = self.action_page
         if (self.input_error_field == "differential_universe_team" and self.weekly_enabled.get()
                 and self.weekly_mode.get() == "差分宇宙" and operation_page in ("home", "tasks")):
@@ -652,10 +655,10 @@ class AutoHSRWindow:
         self._configure_primary_action()
         self._refresh_controls()
         self._restore()
-        if self.input_error_field in ("target_name", "target_location"):
+        if page == 'tasks' and self.input_error_field in ("target_name", "target_location"):
             from .dungeon_ui import show_manual
             show_manual(self)
-        if self.input_error_field == "stamina_limit":
+        if page == 'tasks' and self.input_error_field == "stamina_limit":
             from .dungeon_ui import show_advanced
             show_advanced(self)
         self.input_focus.request(self.input_error_field, page, section, control)

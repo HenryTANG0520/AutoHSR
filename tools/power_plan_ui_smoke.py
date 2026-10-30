@@ -98,6 +98,8 @@ def main():
                 check('planar_preview_keeps_separate_existing_immersifier_hint','已有沉浸器另计' in ui.table.resource_metrics('battle')[1] and '已有沉浸器另计' in ui.power_editor.budget_note.get())
                 ui.power_fill.set(True)
                 check('fallback_preview_is_a_bounded_request','最多24次' in ui.power_editor.caption.get())
+                ui.tasks['battle'].set(True);ui.challenge_count.set('bad')
+                check('fallback_error_is_located_in_power_plan',ui._read_settings(operation='plan') is None and ui.input_error_field=='challenge_count' and ui.input_focus.pending[3]=='power_fill_config_button' and ui.settings_tabs.select()==str(ui.settings_sections['power']) and ui.start_button.cget('text')=='开始计划')
                 check('no_callback_errors',not errors)
             finally:
                 ui.closing=True

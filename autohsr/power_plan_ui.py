@@ -163,9 +163,12 @@ class PowerPlanEditor(ttk.Frame):
         field = ttk.Entry(budget.value, textvariable=ui.stamina_limit, width=10, style='Settings.TEntry', justify='center')
         budget.place_control(field); ui.power_budget_entry = field; ui.setting_controls.append(field)
         choice(2, '次数处理', ui.power_repeat, REPEATS, 'power_repeat_combo')
-        fill = SettingRow(self, ui.ui_scale, 3, '计划后补刷默认副本')
-        field = BooleanSetting(fill.value, ui.power_fill); fill.place_control(field)
+        fill = SettingRow(self, ui.ui_scale, 3, '计划后补刷默认副本',wide=True)
+        field = BooleanSetting(fill.value, ui.power_fill); field.grid(row=0,column=0,sticky='nsew')
         ui.power_fill_combo = field; ui.setting_controls.append(field)
+        button = ttk.Button(fill.value,text='更换副本',command=self.edit_fallback,style='Settings.TButton')
+        button.grid(row=0,column=1,padx=d(8));ui.setting_controls.append(button)
+        ui.power_fill_config_button=button
         body = ttk.Frame(self, style='Footer.TFrame'); body.grid(row=4, column=0, sticky='nsew', pady=d(8))
         body.columnconfigure(0, weight=1); body.rowconfigure(0, weight=1)
         ui.style.configure('Power.Treeview',background=theme.SETTING_VALUE,fieldbackground=theme.SETTING_VALUE,
@@ -263,10 +266,30 @@ class PowerPlanEditor(ttk.Frame):
     def commit_echo(self,item,day):
         self.ui.echo_target.set(item['target']);self.ui.echo_location.set(item['location']);self.ui.echo_day.set(day)
 
-    def dialog(self, value, accept, *, echo=False):
+    def edit_fallback(self):
+        ui=self.ui
+        if ui.busy:return
+        from .dungeon_ui import selected_category
+        value=dict(category=selected_category(ui).key,target=ui.target_name.get(),
+                   location=ui.target_location.get(),count=ui.challenge_count.get())
+        self.dialog(value,self.commit_fallback,fallback=True)
+
+    def commit_fallback(self,item):
+        from .dungeon_ui import update_options
+        ui=self.ui;loading=ui._loading;ui._loading=True
+        try:
+            ui.dungeon_category.set(BY_KEY[item['category']].label)
+            ui.target_name.set(item['target']);ui.target_location.set(item['location'])
+            ui.challenge_count.set(str(item['count']));update_options(ui)
+        finally:ui._loading=loading
+        if ui.input_error_field in ('target_name','target_location','challenge_count','dungeon_category'):
+            ui._clear_input_error()
+        ui._form_changed()
+
+    def dialog(self, value, accept, *, echo=False, fallback=False):
         from .desktop_dialogs import DetailClose,DetailSurface,FRAME,FOOTER_HEIGHT,PAPER,TRANSPARENT,place_dialog
         ui=self.ui; window=ui.power_dialog=tk.Toplevel(ui.root); window.withdraw();window.transient(ui.root)
-        title='历战优先' if echo else '编辑副本' if value else '添加副本';window.title(title)
+        title='历战优先' if echo else '补刷副本' if fallback else '编辑副本' if value else '添加副本';window.title(title)
         d=lambda n:round(n*ui.ui_scale)
         window._hsr_scale=ui.ui_scale;window.overrideredirect(True);window.configure(bg=TRANSPARENT)
         import sys
@@ -284,9 +307,11 @@ class PowerPlanEditor(ttk.Frame):
         target=tk.StringVar(value=value['target'] if value else '')
         location=tk.StringVar(value=value['location'] if value else '')
         count=tk.StringVar(value=str(value['count']) if value else '1');day=tk.StringVar(value=ui.echo_day.get())
+        count_caption=tk.StringVar(value='最多次数' if fallback else '目标次数（1～9999）')
         fields=[]
-        for index,(name,variable) in enumerate((('分类',category),('副本',target),('地点',location),('开始星期（04:00）' if echo else '目标次数（1～9999）',day if echo else count))):
-            ttk.Label(frame,text=name,style='Power.Dialog.TLabel').grid(row=index,column=0,sticky='w',padx=(0,d(16)),pady=d(8))
+        for index,(name,variable) in enumerate((('分类',category),('副本',target),('地点',location),('开始星期（04:00）' if echo else None,day if echo else count))):
+            label=ttk.Label(frame,textvariable=count_caption,style='Power.Dialog.TLabel') if name is None else ttk.Label(frame,text=name,style='Power.Dialog.TLabel')
+            label.grid(row=index,column=0,sticky='w',padx=(0,d(16)),pady=d(8))
             field = ttk.Entry(frame,textvariable=variable) if index==3 and not echo else SettingChoice(frame,textvariable=variable,state='readonly')
             field.grid(row=index,column=1,sticky='ew',pady=d(8));fields.append(field)
         fields[0].configure(values=[c.label for c in CATEGORIES],state='disabled' if echo else 'readonly')
@@ -302,15 +327,24 @@ class PowerPlanEditor(ttk.Frame):
             fields[1].configure(values=available)
             if target.get() not in available:target.set('')
             locations()
+            if fallback:
+                from .dungeon_ui import available_count
+                try:count_caption.set(f'最多次数（1～{available_count(ui,BY_KEY[key])}）')
+                except SettingsError:count_caption.set('最多次数')
         fields[0].bind('<<ComboboxSelected>>',targets);fields[1].bind('<<ComboboxSelected>>',locations);targets()
         error=tk.StringVar();theme.wrapped_label(frame,textvariable=error,style='Power.Dialog.TLabel').grid(row=4,column=0,columnspan=2,sticky='ew')
         def close():
             ui.power_dialog=None;window.destroy();self.table.focus_set()
         def apply():
             try:
+                maximum=9999
+                if fallback:
+                    from .dungeon_ui import available_count
+                    maximum=available_count(ui,next(c for c in CATEGORIES if c.label==category.get()))
+                count_name='最多次数' if fallback else '目标次数'
                 try:amount=3 if echo else int(count.get())
-                except ValueError:raise ValueError('目标次数须为1～9999的整数。') from None
-                if not 1<=amount<=9999:raise ValueError('目标次数须为1～9999的整数。')
+                except ValueError:raise ValueError(f'{count_name}须为1～{maximum}的整数。') from None
+                if not 1<=amount<=maximum:raise ValueError(f'{count_name}须为1～{maximum}的整数。')
                 if not target.get() or not location.get():raise ValueError('请选择副本及明确地点。')
                 item=dict(category=next(c.key for c in CATEGORIES if c.label==category.get()),target=target.get(),location=location.get(),count=amount)
                 from .power_plan import items
