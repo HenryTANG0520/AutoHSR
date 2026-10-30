@@ -70,6 +70,8 @@ class SupportDialog:
             rowheight=d(46),font=theme.native_font(window,12))
         ui.style.configure('Support.Treeview.Heading',background=theme.SETTING_ROW,
             foreground=theme.TEXT,font=theme.native_font(window,11),padding=d(6))
+        ui.style.configure('Support.Empty.TLabel',background=theme.SETTING_VALUE,
+            foreground=theme.MUTED,font=theme.native_font(window,12))
         body=ttk.Frame(window,style='Support.Dialog.TFrame');body.grid(row=1,column=0,sticky='nsew',padx=d(34),pady=d(10))
         window.columnconfigure(0,weight=1);window.rowconfigure(0,minsize=d(82));window.rowconfigure(1,weight=1)
         window.rowconfigure(2,minsize=d(FRAME+FOOTER_HEIGHT));body.columnconfigure(1,weight=1);body.rowconfigure(1,weight=1)
@@ -82,13 +84,18 @@ class SupportDialog:
         for name,label in (('role','角色'),('friend','好友')):
             self.table.heading(name,text=label,anchor='w');self.table.column(name,width=d(240),minwidth=d(100))
         self.table.grid(row=0,column=0,sticky='nsew')
+        self.empty=ttk.Label(self.table,text='自动选择好友',style='Support.Empty.TLabel')
         scroll=ttk.Scrollbar(listing,orient='vertical',command=self.table.yview);scroll.grid(row=0,column=1,sticky='ns')
         self.table.configure(yscrollcommand=scroll.set);self.table.bind('<<TreeviewSelect>>',self.selected)
         self.character=tk.StringVar();self.friend=tk.StringVar();self.pages=tk.StringVar(value=ui.support_pages.get())
         self.fallback=tk.StringVar(value=ui.support_fallback.get());self.error=tk.StringVar(value=initial_error)
         self.labels={row['name']:key for key,row in catalogue().items()};self.form_snapshot=('','')
         self.role=self.field(body,2,'角色（可选）',self.character,tuple(self.labels),editable=True)
-        self.character.trace_add('write',lambda *_:self.role.configure(values=tuple(name for name in self.labels if self.character.get().strip() in name)))
+        def filter_roles(*_):
+            self.role.configure(values=tuple(name for name in self.labels if self.character.get().strip() in name))
+            self.refresh_empty()
+        self.character.trace_add('write',filter_roles)
+        self.friend.trace_add('write',lambda *_:self.refresh_empty())
         self.field(body,3,'好友昵称（完整，可选）',self.friend)
         actions=ttk.Frame(body,style='Support.Dialog.TFrame');actions.grid(row=4,column=0,columnspan=2,sticky='w',pady=d(6))
         self.buttons={}
@@ -138,6 +145,10 @@ class SupportDialog:
                 ('上移',index is not None and index>0),('下移',index is not None and index<len(self.rows)-1)):
             self.buttons[label].configure(state='normal' if enabled else 'disabled')
 
+    def refresh_empty(self):
+        if self.rows or self.character.get().strip() or self.friend.get().strip():self.empty.place_forget()
+        else:self.empty.place(relx=.5,rely=.62,anchor='center')
+
     def refresh(self,index=None):
         from PIL import Image,ImageTk
         from .config import RESOURCE_ROOT
@@ -154,6 +165,7 @@ class SupportDialog:
                 values=(catalogue()[key]['name'] if key else '任意角色',row['friend'] or '任意好友'))
         if index is not None and self.table.exists(str(index)):
             self.table.selection_set(str(index));self.table.see(str(index))
+        self.refresh_empty()
         self.update_buttons()
 
     def candidate(self):
