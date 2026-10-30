@@ -503,7 +503,7 @@ class TaskBoard(Surface):
             from .power_plan_ui import display_rows,has_planar
             count=len(display_rows(self.ui))
             return (f'{count} 项' if count else '历战优先' if self.ui.echo_enabled.get() else '— 项',
-                    f'上限 {self.ui.stamina_limit.get()} 开拓力\n已有沉浸器另计' if has_planar(self.ui) else f'共用上限 {self.ui.stamina_limit.get()} 开拓力')
+                    f'上限 {self.ui.stamina_limit.get()} 开拓力\n已有沉浸器另计' if has_planar(self.ui) else f'上限 {self.ui.stamina_limit.get()} 开拓力')
         from .dungeon_ui import selected_category
         from .ux import planned_battle_metrics
         return planned_battle_metrics(selected_category(self.ui), self.ui.challenge_count.get(), self.ui.tasks[key].get())

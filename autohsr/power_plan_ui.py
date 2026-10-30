@@ -168,10 +168,15 @@ class PowerPlanEditor(ttk.Frame):
         ui.power_fill_combo = field; ui.setting_controls.append(field)
         body = ttk.Frame(self, style='Footer.TFrame'); body.grid(row=4, column=0, sticky='nsew', pady=d(8))
         body.columnconfigure(0, weight=1); body.rowconfigure(0, weight=1)
+        ui.style.configure('Power.Treeview',background=theme.SETTING_VALUE,fieldbackground=theme.SETTING_VALUE,
+            foreground=theme.TEXT,rowheight=d(44),font=theme.native_font(self,14))
+        ui.style.configure('Power.Treeview.Heading',background=theme.SETTING_ROW,foreground=theme.TEXT,
+            font=theme.native_font(self,12),padding=d(8))
         self.table = ui.power_plan_list = ttk.Treeview(body, columns=('category','target','location','count'),
-            show='headings', selectmode='browse', height=4)
+            show='headings', selectmode='browse', height=4,style='Power.Treeview')
         for key, title, width in (('category','分类',170),('target','副本',210),('location','地点',230),('count','目标次数',100)):
-            self.table.heading(key, text=title); self.table.column(key, width=d(width), minwidth=d(65), stretch=True)
+            self.table.heading(key, text=title,anchor='center' if key=='count' else 'w')
+            self.table.column(key, width=d(width), minwidth=d(65), stretch=True,anchor='center' if key=='count' else 'w')
         self.table.grid(row=0, column=0, sticky='nsew')
         scroll = ttk.Scrollbar(body, orient='vertical', command=self.table.yview)
         scroll.grid(row=0, column=1, sticky='ns'); self.table.configure(yscrollcommand=scroll.set)
