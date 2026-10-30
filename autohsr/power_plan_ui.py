@@ -334,7 +334,11 @@ class PowerPlanEditor(ttk.Frame):
         fields[0].bind('<<ComboboxSelected>>',targets);fields[1].bind('<<ComboboxSelected>>',locations);targets()
         error=tk.StringVar();theme.wrapped_label(frame,textvariable=error,style='Power.Dialog.TLabel').grid(row=4,column=0,columnspan=2,sticky='ew')
         def close():
-            ui.power_dialog=None;window.destroy();self.table.focus_set()
+            focused=theme.focus_widget(ui.root)
+            owned_focus=focused is not None and focused.winfo_toplevel() is window
+            ui.power_dialog=None;window.destroy()
+            (self.table.focus_force if owned_focus else self.table.focus_set)()
+            return 'break'
         def apply():
             try:
                 maximum=9999
@@ -367,4 +371,4 @@ class PowerPlanEditor(ttk.Frame):
         window.update_idletasks()
         height=frame.winfo_reqheight()+d(82+FOOTER_HEIGHT+FRAME+20)
         place_dialog(window,ui.root,(d(774.4),height),(d(460),d(300)),padding=d(12))
-        window.deiconify();window.grab_set();fields[1].focus_set()
+        window.deiconify();window.wait_visibility();window.grab_set();fields[1].focus_force()
