@@ -58,9 +58,12 @@ def has_planar(ui):
     return any(item['category']=='planar' for item in display_rows(ui)) or ui.power_fill.get() and ui.dungeon_category.get()=='饰品提取'
 
 
-def show(ui):
-    ui._show_daily_tasks()
+def show(ui, *, return_page='home', return_focus=None):
+    ui._show_page('settings')
     ui.settings_tabs.select(ui.settings_sections['power'])
+    ui.settings_return_page=return_page
+    ui.settings_return_action='home' if return_page=='home' else ui.action_page
+    ui.settings_return_focus=return_focus or ui.table
     ui.root.after_idle(ui.power_plan_list.focus_set)
 
 
@@ -261,6 +264,23 @@ class PowerPlanEditor(ttk.Frame):
         value = rows(self.ui)[index] if index is not None else None
         self.dialog(value, lambda item:self.commit(item,index))
 
+    def browse(self, mission):
+        ui=self.ui
+        if ui.busy or not ui.settings.allow_stamina_spend:return
+        try:values=rows(ui)
+        except SettingsError as error:ui._input_failed(error);return
+        index=next((i for i,item in enumerate(values) if (item['category'],item['target'],item['location'])==
+                    (mission.category,mission.name,mission.location)),None)
+        value=values[index] if index is not None else dict(category=mission.category,target=mission.name,location=mission.location,count=1)
+        def accept(item):
+            if ui.busy or ui.power_mode.get()!='体力计划' or not ui.settings.allow_stamina_spend:
+                raise ValueError('当前无法修改体力计划。')
+            self.commit(item,index)
+            ui.tasks['battle'].set(True)
+        self.dialog(value,accept,return_focus=ui.dungeon_list,
+                    title='编辑计划副本' if index is not None else '添加计划副本',
+                    confirm_text='应用' if index is not None else '加入计划',focus_count=True)
+
     def commit(self, item, index):
         values=rows(self.ui)
         if index is None:values.append(item);index=len(values)-1
@@ -296,10 +316,10 @@ class PowerPlanEditor(ttk.Frame):
             ui._clear_input_error()
         ui._form_changed()
 
-    def dialog(self, value, accept, *, echo=False, fallback=False):
+    def dialog(self, value, accept, *, echo=False, fallback=False, return_focus=None, title=None, confirm_text=None, focus_count=False):
         from .desktop_dialogs import DetailClose,DetailSurface,FRAME,FOOTER_HEIGHT,PAPER,TRANSPARENT,place_dialog
         ui=self.ui; window=ui.power_dialog=tk.Toplevel(ui.root); window.withdraw();window.transient(ui.root)
-        title='历战优先' if echo else '补刷副本' if fallback else '编辑副本' if value else '添加副本';window.title(title)
+        title=title or ('历战优先' if echo else '补刷副本' if fallback else '编辑副本' if value else '添加副本');window.title(title)
         d=lambda n:round(n*ui.ui_scale)
         window._hsr_scale=ui.ui_scale;window.overrideredirect(True);window.configure(bg=TRANSPARENT)
         import sys
@@ -347,7 +367,9 @@ class PowerPlanEditor(ttk.Frame):
             focused=theme.focus_widget(ui.root)
             owned_focus=focused is not None and focused.winfo_toplevel() is window
             ui.power_dialog=None;window.destroy()
-            (self.table.focus_force if owned_focus else self.table.focus_set)()
+            origin=return_focus or self.table
+            if origin.winfo_exists() and origin.winfo_ismapped():
+                (origin.focus_force if owned_focus else origin.focus_set)()
             return 'break'
         def apply():
             try:
@@ -369,7 +391,12 @@ class PowerPlanEditor(ttk.Frame):
             except (ValueError,TypeError) as exc:error.set(str(exc));return
             close()
         cancel=DetailClose(window,ui.ui_scale,close,text='取消')
-        confirm=DetailClose(window,ui.ui_scale,apply,text='加入计划' if value is None else '应用',symbol='confirm')
+        confirm=DetailClose(window,ui.ui_scale,apply,text=confirm_text or ('加入计划' if value is None else '应用'),symbol='confirm')
+        if focus_count:
+            def confirm_count(_):
+                apply()
+                return 'break'
+            fields[3].bind('<Return>',confirm_count)
         def layout(event):
             if event.widget is not window:return
             available=event.width-d(98);width=min(d(288),available//2)
@@ -381,4 +408,7 @@ class PowerPlanEditor(ttk.Frame):
         window.update_idletasks()
         height=frame.winfo_reqheight()+d(82+FOOTER_HEIGHT+FRAME+20)
         place_dialog(window,ui.root,(d(774.4),height),(d(460),d(300)),padding=d(12))
-        window.deiconify();window.wait_visibility();window.grab_set();fields[1].focus_force()
+        window.deiconify();window.wait_visibility();window.grab_set()
+        initial=fields[3] if focus_count else fields[1]
+        initial.focus_force()
+        if focus_count:initial.selection_range(0,'end')

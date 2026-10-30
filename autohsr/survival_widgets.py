@@ -121,6 +121,7 @@ class DungeonList(Surface):
         self.row_tops, self.headers, self.header_hitboxes = [], [], {}
         self.total_height = 0
         self._selection = None
+        self._plan_targets = set()
         self._category = None
         self._follow_cursor = True
         self.bind("<Button-1>", self._click)
@@ -136,7 +137,8 @@ class DungeonList(Surface):
         self.bind("<FocusIn>", self.redraw)
         self.bind("<FocusOut>", self.redraw)
         self.bind("<Configure>", self._resize, add="+")
-        variables = (ui.dungeon_browse_category, ui.dungeon_search, ui.dungeon_category, ui.target_name, ui.target_location)
+        variables = (ui.dungeon_browse_category, ui.dungeon_search, ui.dungeon_category, ui.target_name, ui.target_location,
+                     ui.power_mode, ui.power_rows)
         tokens = [(v, v.trace_add("write", lambda *_: self.refresh())) for v in variables]
         self.bind("<Destroy>", lambda e: [v.trace_remove("write", token) for v, token in tokens] if e.widget is self else None, add="+")
         self.refresh()
@@ -148,6 +150,9 @@ class DungeonList(Surface):
     def action_label(self, mission):
         if not self.ui.settings.allow_stamina_spend:
             return "未授权"
+        if self.ui.power_mode.get()=='体力计划':
+            included=self.matches(mission)
+            return '已加入' if self.ui.busy and included else '未加入' if self.ui.busy else '编辑次数' if included else '加入计划'
         if not self.ui.busy:
             from .dungeon_ui import available_count
             try:
@@ -163,6 +168,8 @@ class DungeonList(Surface):
         return self.ui.dungeon_category.get(), self.ui.target_name.get(), self.ui.target_location.get()
 
     def refresh(self):
+        from .power_plan_ui import display_rows
+        self._plan_targets={(row['category'],row['target'],row['location']) for row in display_rows(self.ui)}
         category = next(c for c in CATEGORIES if c.label == self.ui.dungeon_browse_category.get())
         query = normalize(self.ui.dungeon_search.get())
         previous = self.rows
@@ -183,6 +190,8 @@ class DungeonList(Surface):
         self.yview()
 
     def matches(self, mission):
+        if self.ui.power_mode.get()=='体力计划':
+            return (mission.category,mission.name,mission.location) in self._plan_targets
         label = next(c.label for c in CATEGORIES if c.key == mission.category)
         return self.selection == (label, mission.name, mission.location)
 

@@ -59,6 +59,11 @@ def build_fields(ui, parent):
     ui.dungeon_manual_button.grid(row=0, column=3, padx=d(8))
     ui.dungeon_advanced_button = ttk.Button(header, text="挑战设置", style="Compact.TButton", command=lambda: show_advanced(ui, not ui.dungeon_advanced_visible, focus=True))
     ui.dungeon_advanced_button.grid(row=0, column=4)
+    from .power_plan_ui import show as show_power_plan
+    ui.dungeon_plan_button = ttk.Button(header, text='调整计划', style='Compact.TButton',
+        command=lambda:show_power_plan(ui, return_page='tasks', return_focus=ui.dungeon_list))
+    ui.dungeon_plan_button.grid(row=0,column=5,padx=(d(8),0))
+    ui.setting_controls.append(ui.dungeon_plan_button)
     ui.setting_controls.extend((ui.dungeon_search_entry, clear, ui.dungeon_manual_button, ui.dungeon_advanced_button))
     ui.stamina_controls.extend((ui.dungeon_manual_button, ui.dungeon_advanced_button))
     browser = ui.dungeon_browser = ttk.Frame(parent, style="Card.TFrame")
@@ -103,7 +108,7 @@ def build_fields(ui, parent):
     ui.battle_checkbox.grid(row=0, column=1, padx=(d(12), 0))
     ui.task_controls = {"battle": ui.battle_checkbox}
     ui.setting_controls.append(ui.battle_checkbox)
-    numbers = ttk.Frame(parent, style="Panel.TFrame")
+    numbers = ui.dungeon_count_controls = ttk.Frame(parent, style="Panel.TFrame")
     numbers.grid(row=3, column=0, sticky="ew")
     numbers.columnconfigure(2, weight=1)
     ttk.Label(numbers, text="次数", style="Muted.TLabel").grid(row=0, column=0, sticky="w", padx=(0, d(8)))
@@ -214,6 +219,9 @@ def _show_editor(ui):
 def select_mission(ui, mission):
     if ui.busy or not ui.settings.allow_stamina_spend:
         return
+    if ui.power_mode.get() == '体力计划':
+        ui.power_editor.browse(mission)
+        return
     try:
         available_count(ui, BY_KEY[mission.category])
     except SettingsError as error:
@@ -305,6 +313,22 @@ def change_count(ui, delta):
 
 
 def refresh_count(ui):
+    if hasattr(ui,'dungeon_count_controls'):
+        planned=ui.power_mode.get()=='体力计划'
+        ui.dungeon_count_controls.grid_remove() if planned else ui.dungeon_count_controls.grid()
+        ui.dungeon_plan_button.grid() if planned else ui.dungeon_plan_button.grid_remove()
+        for button in (ui.dungeon_manual_button,ui.dungeon_advanced_button):
+            button.grid_remove() if planned else button.grid()
+        if planned:
+            ui.dungeon_manual_visible=ui.dungeon_advanced_visible=False
+            _show_editor(ui)
+        ui.battle_checkbox.configure(text='执行体力计划' if planned else '加入计划')
+        if planned:
+            from .power_plan_ui import preview,has_planar
+            joined=ui.tasks['battle'].get() and ui.settings.allow_stamina_spend
+            ui.dungeon_target_caption.set(preview(ui)+('' if joined else ' · 未加入'))
+            ui.battle_cost.set(f'共用上限 {ui.stamina_limit.get()} 开拓力'+(' · 已有沉浸器另计' if has_planar(ui) else '') if joined else '本次不刷本')
+            return
     category = selected_category(ui)
     try:
         maximum = available_count(ui)
