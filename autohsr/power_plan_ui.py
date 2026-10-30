@@ -185,6 +185,7 @@ class PowerPlanEditor(ttk.Frame):
         scroll.grid(row=0, column=1, sticky='ns'); self.table.configure(yscrollcommand=scroll.set)
         self.table.bind('<Double-1>', lambda _: self.edit())
         self.table.bind('<Return>', lambda _: self.edit())
+        self.table.bind('<<TreeviewSelect>>',lambda _:self.refresh_actions())
         actions = ttk.Frame(self, style='Footer.TFrame'); actions.grid(row=5, column=0, sticky='w')
         self.buttons = []
         for index, (title, command) in enumerate((('添加副本',lambda:self.edit(new=True)),('编辑',self.edit),
@@ -221,6 +222,14 @@ class PowerPlanEditor(ttk.Frame):
         if self.ui.echo_enabled.get():info.append(f'历战：{self.ui.echo_day.get()}04:00起 · {self.ui.echo_target.get()} · {self.ui.echo_location.get()}')
         self.caption.set('\n'.join(info))
         self.budget_note.set('所有条目共用 · 10～240，10的倍数'+(' · 已有沉浸器另计' if has_planar(self.ui) else ''))
+        self.refresh_actions()
+
+    def refresh_actions(self):
+        index=self.selected();count=len(self.table.get_children())
+        available=(True,index is not None,index is not None,
+                   index is not None and index>0,index is not None and index<count-1)
+        for button,enabled in zip(self.buttons,available):
+            button.configure(state='normal' if enabled and not self.ui.busy else 'disabled')
 
     def selected(self):
         selection = self.table.selection()
@@ -230,6 +239,7 @@ class PowerPlanEditor(ttk.Frame):
         self.ui.power_rows.set(json.dumps(values,ensure_ascii=False))
         if selected is not None and self.table.exists(str(selected)):
             self.table.selection_set(str(selected));self.table.see(str(selected))
+        self.refresh_actions()
 
     def remove(self):
         if self.ui.busy:return
