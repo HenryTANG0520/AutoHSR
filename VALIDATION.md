@@ -6,6 +6,10 @@
 
 144项四缩放布局／交互、28项真实PlanRunner配模拟子流程及84项旧UX回归通过，结果分别为`runs/power-actions-layout/result.json`、`power-actions-execution/result.json`、`power-actions-ux-disabled/result.json`。检查覆盖空表、未选中、首末行、执行中与恢复、排序／删除及不自动保存，没有调用原生Runner或共享任务执行锁；没有启动游戏。新包原生状态待核对。另新增[界面验收表](docs/ui-acceptance.md)，逐项区分已有证据与完整视觉、原生缩放、真实组合和玩家体验的缺项，不把历史或局部检查写成最终目标已完成。
 
+源码`86e173d`重新构建后，在双条目独立配置下原生确认：未选中时仅添加可用；选中首行后编辑／移除／下移可用、上移置灰；下移后选择跟随该条目至末行，上移可用、下移置灰；上移恢复原顺序和原目标8／2。随后通过标题栏关闭，进程消失，独立配置及正式239份用户文件哈希不变，见`runs/power-actions-native-final.json`与`power-actions-native-unselected.png`、`power-actions-native-first.png`、`power-actions-native-moved-down.png`、`power-actions-native-restored.png`。关闭后的观察工具报告窗口已不可用，结合进程消失核对退出；未出现需丢弃的改动，未点击运行、保存、检测或游戏入口。此次仅证明默认原生窗口的上述状态，执行中与恢复仍为模拟证据。
+
+正式包已更新为该源码构建，EXE SHA-256为`d8ad27092e615e059c08bcb59f2bfac7af6edc9fd518727fdc0724744ac364c6`。1868项包文件核对一致，22份说明齐全；239份原配置／运行证据未变，备份`D:\Projects\AutoHSR\build\userdata-power-actions-20261030_123829\`，记录`runs/power-actions-publication.json`。包内说明、相关本地链接及用户文件复查见`power-actions-package-docs-final.json`；检查、构建与原生画面归档主项目`runs/`，索引`power-actions-evidence-archive.json`。本轮未合入并行后端的新功能，不把其测试或接口计入当前UI完成度。
+
 ## 2026-10-30：支援偏好接入每日任务界面
 
 原桌面只有支援开关，已接入的角色／好友偏好需手改配置。本轮在“设置 → 每日任务 → 借用好友支援”提供“选择角色”，沿用纸面标题、角色头像列表和应用／取消底栏。中文角色名可筛选，好友昵称要求完整；支持角色／好友单独指定、多候选添加更新与排序、每轮1～20页及明确未找到处理。直接应用可提交当前角色／昵称，不必先执行添加；应用不自动启用支援或刷本，不写配置。取消保留原草稿，显式保存后重开保持偏好与关闭状态，错误定位同页入口。删除了关闭支援后仍要求勾选的旧提示，保留资源和格式的必要提示。
