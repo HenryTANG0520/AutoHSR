@@ -8,6 +8,10 @@
 
 原生首轮确认“更换副本”直达、选项样式、以太之蕾／边缘通路／最多2次应用并重开保留，计划两条原目标及关闭状态未变。第一次Esc取消返回成功，但应用后重开的一次Esc仍显示弹窗，保留`power-fallback-native-esc-unclosed-*.png`，不推定工具焦点或产品根因已定位。用取消按钮退出编辑后“不保存退出”，独立配置及正式239份文件未变，见`power-fallback-native-initial.json`。随后将计划弹窗的显示／键盘焦点交接与现有退出弹窗一致：等待窗口可见、抓取输入、将键盘焦点交给副本字段；关闭时只在焦点属于该弹窗时恢复原生焦点，Esc处理停止传播。调整后120项布局／弹窗及28项执行检查通过，结果`power-fallback-focus-layout/result.json`、`power-fallback-focus-execution/result.json`；原生复核和发布待续。
 
+`61a0133`重新构建后，在独立配置中原生复核首次打开→Esc，以及修改最多次数为2→应用→重开→Esc两条路径，均返回原计划页；返回首页仍为“开始计划”，计划原目标8／2及补刷关闭未变。选择“不保存退出”后进程退出，独立配置与正式239份用户文件哈希一致。对应画面`power-fallback-native-focus-return-1.png`、`power-fallback-native-focus-reopened-*.png`、`power-fallback-native-focus-return-2.png`、`power-fallback-native-final-home.png`，元数据`power-fallback-native-final.json`。该复核只证明观察到的两条原生路径，不将首轮未关闭归因写成已确定，也不外推为所有焦点／IME组合通过。
+
+正式包已更新为源码`61a0133`，EXE SHA-256为`4efd05c05d653e16cf4bb2b01f5f1c52305458d9b03a7168eaf351659fcc65c9`。1867项包文件核对一致，21份功能说明保留，239份用户配置／运行记录未变；备份`D:\Projects\AutoHSR\build\userdata-power-fallback-20261030_085529\`，记录`runs/power-fallback-publication.json`。检查、首轮未关闭画面、修整后的原生复核与构建另归档主项目`runs/`，索引`power-fallback-evidence-archive.json`；包内说明同步与链接复查见`power-fallback-package-docs.json`。未执行日常、周常、检测或游戏入口，也未占用真实资源；完整像素一致性与玩家体验仍待验收。
+
 ## 2026-10-30：体力计划与历战优先接入桌面
 
 本轮在现有游戏风格桌面中加入“设置 → 体力计划”，由首页副本卡的“调整计划”进入；主按钮继续为“开始计划”。原单副本默认不变，明确选用计划后才向正式日常／PlanRunner传入`use_power_plan`；保存过非空列表或开启过偏好不替本次选择授权执行。条目按分类、名称和地点添加，可编辑、移除和排序，保留原目标次数；次数处理、默认补刷、历战副本与开始星期使用同页设置，添加弹窗沿用纸面、标题和确认／取消底栏。所有条目共用本次已有开拓力上限，饰品已有沉浸器另计。首页预览不读历史账号次数，运行和回执区分此前、本次、本目标剩余；预算内本次结束不误标全部长期目标完成，原日常与原周额度带来源语境。货币周常的结束局数与胜负分别呈现，失败后停止不写成胜利。
