@@ -14,6 +14,14 @@
 
 `3811007`已构建，独立配置／隔离目录原生观察首页、从“调整计划”进入体力计划及打开添加弹窗，再取消并用标题栏关闭。目标仍为两项，独立配置和正式239份用户文件哈希未变，进程已退出，未点击开始、保存或检测；见`runs/power-plan-ui-native-initial.json`及`power-plan-ui-native-*-initial*.png`。此轮实际观察发现首页资源说明末字换行，计划列表默认字号偏小；将卡片文字精简为“上限 … 开拓力”，列表沿用设置灰色、提高字号与行距，并对齐表头和次数列。修整后72项四缩放布局、27项执行／保存及7项结果文案检查通过，分别见`power-plan-layout-native-fixed/result.json`、`power-plan-ui-native-fixed/result.json`和`power-plan-feedback-native-fixed.log`。这两处只改排版，1808项全量结果对应此前`3811007`，没有将其写成修整后全量重跑；新版原生复核与发布结果待续。
 
+### 修整后原生复核与正式包更新
+
+`9b693f6`经`tools/build.ps1`构建，在独立双条目配置下原生复核：首页“上限240开拓力”完整成行，设置入口进入游戏连接，从导航切至体力计划后列表字号／行距及次数对齐正常；历战选择展示固定分类、副本、地点及周一04:00，Esc取消后关闭状态与两条原目标保持；设置返回首页仍为“开始计划”。标题栏关闭后进程退出，配置与正式239份文件哈希不变。初轮的“调整计划”直达及添加／取消同样有原生证据；未将其外推为新版全部交互、四种原生缩放或全像素一致。最终截图`runs/power-plan-ui-native-*-final*.png`，数据`power-plan-ui-native-final.json`，未点击运行、保存、检测、游戏或真实资源操作。
+
+已更新正式`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，SHA-256为`63b1cfbeb370035dc0cda4b100a4342b278bedac84d01fbcff75ecb097b12224`。1866项包文件逐项哈希一致，21份功能说明齐全；239份原配置／运行证据未变，恢复副本在`D:\Projects\AutoHSR\build\userdata-power-plan-ui-20261030_082953\`，记录`runs/power-plan-ui-publication.json`。源码、单元／界面检查、失败记录、构建和两轮原生证据另存`power-plan-ui-evidence-archive.json`索引并归档主项目`runs/`。本轮交付体力计划UI，不代表真实多副本／历战／到期周常组合、玩家体验或全部HSR界面一致性已验收。
+
+包内文档后检查另修复原有源码链接：改为固定源码提交的仓库页面，补入根目录货币战争操作指南；71条当前首页／体力／历战／进度说明中的本地链接存在，构建脚本语法检查通过。更新说明后再次核对整包和239份用户文件，记录`runs/power-plan-ui-package-docs.json`；EXE哈希保持不变。原生画面中的目标来自独立测试配置，不是用户账号计划或真实执行回执。
+
 ## 2026-10-30：用户置前后核对原生接续首页与卡片详情
 
 用户明确回复已置前并继续后，使用仍在运行的同一隔离副本（EXE哈希`0717f5ab39887157eddd57cb43ea517e8ae4ffd2c57a1e4930350ee52281999b`）核验，没有重开目标。无遮挡首页确认原日常状态、12/12次／已用120开拓力、未请求项“本次不执行”、原周常1局／上限2局和“继续周常”；实训表仍为未核实。点击日常副本卡片打开详情，确认“原日常完成”及明确标记为模拟回执的原内容。截图为`runs/native-home-review-resumed-home.png`、`native-home-review-battle-detail.png`及`native-home-review-battle-dialog.png`。

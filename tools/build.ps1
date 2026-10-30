@@ -61,17 +61,20 @@ try {
         Copy-Item -LiteralPath $taskPackageFile.FullName -Destination $taskTargetPath -Force
     }
     Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE') -Destination (Join-Path $taskOutputDirectory 'LICENSE') -Force
-    foreach ($taskDocument in @('README.md', 'DAILY_FLOW.md', 'VALIDATION.md', 'CURRENCY_WARS.md', 'LICENSE_NOTICE.md')) {
+    $taskSourceRevision = (& git rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or $taskSourceRevision -notmatch '^[0-9a-f]{40}$') { throw 'Cannot resolve the source revision for packaged documentation.' }
+    $taskSourceUrl = 'https://github.com/HenryTANG0520/AutoHSR/blob/' + $taskSourceRevision + '/'
+    foreach ($taskDocument in @('README.md', 'DAILY_FLOW.md', 'VALIDATION.md', 'CURRENCY_WARS.md', 'CURRENCY_WARS_GUIDE.md', 'LICENSE_NOTICE.md')) {
         $taskDocumentPath = Join-Path $projectRoot $taskDocument
         if (Test-Path -LiteralPath $taskDocumentPath -PathType Leaf) {
-            $taskDocumentText = (Get-Content -LiteralPath $taskDocumentPath -Raw -Encoding UTF8).Replace('](assets/', '](_internal/assets/').Replace('](runs/', '](../../runs/').Replace('](dist/AutoHSR/runs/', '](runs/')
+            $taskDocumentText = (Get-Content -LiteralPath $taskDocumentPath -Raw -Encoding UTF8).Replace('](assets/', '](_internal/assets/').Replace('](runs/', '](../../runs/').Replace('](dist/AutoHSR/runs/', '](runs/').Replace('](autohsr/', '](' + $taskSourceUrl + 'autohsr/').Replace('](AGENTS.md)', '](' + $taskSourceUrl + 'AGENTS.md)')
             Set-Content -LiteralPath (Join-Path $taskOutputDirectory $taskDocument) -Value $taskDocumentText -Encoding UTF8
         }
     }
     $taskDocsDirectory = Join-Path $taskOutputDirectory 'docs'
     New-Item -ItemType Directory -Path $taskDocsDirectory -Force | Out-Null
     foreach ($taskModeDocument in Get-ChildItem -LiteralPath (Join-Path $projectRoot 'docs') -File -Filter '*.md') {
-        $taskModeDocumentText = (Get-Content -LiteralPath $taskModeDocument.FullName -Raw -Encoding UTF8).Replace('](../assets/', '](../_internal/assets/').Replace('](../runs/', '](../../../runs/')
+        $taskModeDocumentText = (Get-Content -LiteralPath $taskModeDocument.FullName -Raw -Encoding UTF8).Replace('](../assets/', '](../_internal/assets/').Replace('](../runs/', '](../../../runs/').Replace('](../autohsr/', '](' + $taskSourceUrl + 'autohsr/')
         Set-Content -LiteralPath (Join-Path $taskDocsDirectory $taskModeDocument.Name) -Value $taskModeDocumentText -Encoding UTF8
     }
     Write-Host "Build complete: $(Join-Path $taskOutputDirectory 'AutoHSR.exe')"
