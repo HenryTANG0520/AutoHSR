@@ -40,6 +40,7 @@ class PlanRunner:
         self.new_battle_run = new_battle_run
         self.resume_weekly_currency=resume_weekly_currency
         self.child = None
+        self._control_hwnd = None
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._paused = False

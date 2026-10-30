@@ -26,6 +26,8 @@ def main(argv: list[str] | None = None) -> int:
     add_warp_arguments(mode,parser)
     from .task_workflow_cli import add_arguments as add_workflow_arguments
     add_workflow_arguments(mode, parser)
+    from .notify_cli import add_arguments as add_notify_arguments
+    add_notify_arguments(mode, parser)
     mode.add_argument("--currency-wars-replay", type=Path, help="离线回放 .sample.json；不访问游戏或加载每日配置")
     mode.add_argument("--currency-wars-check", action="store_true", help="货币战争只读识别与证据保存；自动玩法尚未开放")
     mode.add_argument("--currency-wars-prepare", action="store_true", help="启动或复用游戏，进入已有登录及主界面；不开始对局")
@@ -102,12 +104,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    from .notify_cli import dispatch as dispatch_notify
+    notify_result = dispatch_notify(args, parser, raw_args)
+    if notify_result is not None:return notify_result
     from .warp_cli import dispatch as dispatch_warp
     warp_result=dispatch_warp(args,parser,raw_args)
     if warp_result is not None:return warp_result
     from .task_workflow_cli import dispatch as dispatch_workflow
     workflow_result = dispatch_workflow(args, parser, raw_args)
     if workflow_result is not None:return workflow_result
+    if (args.notify is not None or args.notify_profile is not None) and not any((args.run, args.plan,
+            args.differential_universe, args.currency_wars_check, args.currency_wars_prepare,
+            args.currency_wars_locate, args.currency_wars_configure, args.currency_wars_standard,
+            args.currency_wars_loop, args.currency_wars_points, args.currency_wars_rewards, args.scan_dungeons)):
+        parser.error('本次通知选项需要明确的运行入口；检测、启动和工具操作不隐式发送。')
     if (args.support_preferences_file is not None or args.support_scroll_pages is not None or args.support_fallback is not None) and (
             not (args.run or args.plan) or args.reward_only or args.resume_weekly_currency):
         parser.error('支援偏好参数仅用于 --run/--plan 的本次日常，不能用于仅补领奖或只接续周常。')
@@ -226,6 +236,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         settings = Settings.load(args.config)
+        from .notify_cli import override as override_notify
+        override_notify(args, settings)
         if args.support_preferences_file is not None:
             if args.support_preferences_file.stat().st_size>4*1024*1024:raise ValueError('支援偏好文件过大。')
             settings.support_preferences=json.loads(args.support_preferences_file.read_text(encoding='utf-8-sig'))
@@ -293,6 +305,8 @@ def main(argv: list[str] | None = None) -> int:
             kind = event.get("type", event.get("event", event.get("kind", "log")))
             if kind != "finished":
                 print(json.dumps(event, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
+        from .notify_runtime import hooks as notification_hooks
+        emit, wrap_notifications = notification_hooks(settings, emit)
         if args.currency_wars_loop:
             from .currency_wars_loop import CurrencyLoopRunner
             runner = CurrencyLoopRunner(settings, emit, runs=args.currency_runs, resume=args.resume_currency_loop,
@@ -317,6 +331,7 @@ def main(argv: list[str] | None = None) -> int:
                             **(dict(du_runs=settings.differential_universe_runs,
                                     du_resume_active=args.resume_active_du,
                                     du_periodic_rank=args.du_periodic_rank) if args.differential_universe else {}))
+        runner = wrap_notifications(runner)
         try:
             report = runner.run()
         except KeyboardInterrupt:

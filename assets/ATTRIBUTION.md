@@ -1,5 +1,11 @@
 # AutoHSR resource attribution
 
+## 2026-10-30 March7thAssistant文字通知适配
+
+固定March7thAssistant提交`7cf6c6bed474539485d3b1504077ac352866829f`，作者moesnow及其贡献者，GPL v3。`module/notification/__init__.py`、`notification.py`、`notifier.py`及23个渠道源文件的文字参数、端点／请求结构、合并文字、钉钉／飞书签名及自定义替换改写为[原生文字适配](../autohsr/notify_providers.py)和[SMTP／本机传输](../autohsr/notify_local.py)。共26份实际参考源码的Git blob、SHA-256及字节数见[source.json](upstream/March7thAssistant/source.json)，完整原许可继续保留于[LICENSE](upstream/March7thAssistant/LICENSE)。没有迁入`pac.py`、上游GUI、全局配置或输入框架，也未引入上游通知依赖。
+
+当前用户DPAPI凭据、显式导入与加密覆盖备份、运行版本冻结、摘要允许字段、独立有界HTTP、意图／回执去重及游戏报告隔离是AutoHSR原生实现；Toast为本项目隐藏PowerShell／WinRT实现。当前仅23渠道的文字路径，图片／截图、Bark密文、Matrix E2EE、QQ接收ID发现和PAC／代理高级项尚未接入。没有新增游戏图像、玩家数据、模型或真实采集，检查使用虚构配置、假传输和本地机制；真实渠道和本机Toast尚未验收，详见[通知说明](../docs/notifications.md)。
+
 ## 2026-10-30 任务流程账号连续性
 
 [账号作用域](../autohsr/workflow_identity.py)是AutoHSR原生扩展，复用本仓库`currency_wars_identity.account_key`的严格解析，不新增第三方素材或模型。两帧当前捕获、输入代次、跨步骤绑定、原生输入代理、预算延后建立、私人UID区域证据及来源完整性检查为本项目实现；旧DU与CW账本键不重写。依赖仅用已有OpenCV／NumPy，未新增运行包、真实账号或图像采集。测试图片和UID均为临时虚构输入，不作为真实校准或训练数据；私人运行裁剪继续忽略，范围见[账号连续性](../docs/workflow-account-continuity.md)，原生扩展记录见[清单](upstream/March7thAssistant/source.json)。

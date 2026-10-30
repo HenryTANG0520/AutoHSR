@@ -7,6 +7,12 @@
   "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json", "assets/currency-investment/sources.json"],
   "native_extensions": [
     {
+      "path": "autohsr/notify_runtime.py",
+      "native_files": ["autohsr/notify_profiles.py", "autohsr/notify_http.py", "autohsr/notify_cli.py"],
+      "tests": ["autohsr/tests/test_notifications.py", "autohsr/tests/test_notify_gocq.py"],
+      "kind": "AutoHSR-authored opt-in end-of-run layer: current-user Windows DPAPI profiles, explicit import and encrypted replacement backup, frozen credential versions, sanitized allowlisted report templates, bounded single-attempt HTTP, no redirects, durable per-report/profile authorization and send intents, strict receipt reuse without unknown replay, independent notification events and pause/stop boundaries after native game input release. Only the outermost Runner is wrapped; original game report and exit semantics remain unchanged. Real delivery remains unverified; GUI, images, Bark ciphertext, Matrix E2EE, QQ ID discovery and PAC remain unimplemented."
+    },
+    {
       "path": "autohsr/currency_wars_investment_units.py",
       "mechanic_manifest": "assets/currency-investment/sources.json",
       "native_samples": ["150-investment-options.sample.json"],
@@ -42,6 +48,188 @@
     }
   ],
   "sources": [
+    {
+      "path": "module/notification/__init__.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "a2dbd593f55563f26647713816c39b3ee4c264a6",
+      "sha256": "a0bd94d6d7d3bd1b42e75e8fc110692f07b12560475a8b3119ea5125f41753db",
+      "bytes": 5096
+    },
+    {
+      "path": "module/notification/bark.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "00413b88adbb6da90a7ac1df925dc8a3b16015ff",
+      "sha256": "d096c3fc76b50260cae3167ccdb366225ab890d6f88da6c458b77a6774659d6f",
+      "bytes": 3915
+    },
+    {
+      "path": "module/notification/custom.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "e7d9bde94cf14e27fd727c2c4a52d381387559f7",
+      "sha256": "ceff2537f33eb5909cf696dd4783dd9f1c5a385ec5934e2ceaccfd651637d90f",
+      "bytes": 2918
+    },
+    {
+      "path": "module/notification/dingtalk.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "2d18a8d4a1d3671a8f50ea54454757c583ca073e",
+      "sha256": "0029a4be8882e3fcc5db51176fed152f5be5c906865051c397a15ba4e164ffe8",
+      "bytes": 2447
+    },
+    {
+      "path": "module/notification/discord.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "69b45f5ef15f7e1465d4879cd752f952436f54b8",
+      "sha256": "278c84714f02ae1beb4c9360517cca6c0e822b7461c72317e960c22916575109",
+      "bytes": 2166
+    },
+    {
+      "path": "module/notification/gocqhttp.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "569eb7875c2797cf32859db5aa2f38abfe012691",
+      "sha256": "5d5112773f7747e5b4b7b1041f194b8476082f27c3518109014c64accea530e4",
+      "bytes": 1710
+    },
+    {
+      "path": "module/notification/gotify.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "a2ac21f92651eef4abc00c618505f47d0a3b40f8",
+      "sha256": "e11f9d68b68a84f1b249385077daa8a04f9acdc498a69bbcaac9e5cd92f86075",
+      "bytes": 1642
+    },
+    {
+      "path": "module/notification/kook.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "1dffad6d2df4bc8b63dacfa500f6104021c69035",
+      "sha256": "5c13d5fcb9aaeb508866f0175cd146a6bc54db1e8cc500b7748635251e8c8209",
+      "bytes": 5183
+    },
+    {
+      "path": "module/notification/lark.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "b246e999fb287dac22831a906bb923cdfcfe542b",
+      "sha256": "09b27e202503f0437e27555c60695a12c4841a99c974d721a5621bb06453b062",
+      "bytes": 5033
+    },
+    {
+      "path": "module/notification/matrix.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "b16a2fd5f2104a5d7a1f87d76c9e13d127772623",
+      "sha256": "1b2146dbd90261a04b4ac1a463e364404784fd6835e83704dee58d2c9d638fec",
+      "bytes": 3380
+    },
+    {
+      "path": "module/notification/meow.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "eae9b1a11729970786ca17e8845729333d9ae468",
+      "sha256": "641676db7bb4fb72aebb3f1a712c2eb4f723e223ac69b5f2bfc58d46b47bb856",
+      "bytes": 1695
+    },
+    {
+      "path": "module/notification/notification.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "21cf0509d6c69c322d902a65e8e75c1ecb2f788e",
+      "sha256": "64c946a0a0fa5414bda6adccf632fee8bcd7a2d8a3b5c72dc8ebe35c6372439d",
+      "bytes": 13806
+    },
+    {
+      "path": "module/notification/notifier.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "0f88ad2913d80809e4d36e2b35e4300f1a4d8d35",
+      "sha256": "d150cd6852fe090bb5dc0d72fbcb05c8963572356bb31532a00f6979a8d03a7f",
+      "bytes": 1729
+    },
+    {
+      "path": "module/notification/onebot.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "8f12ca4edf3fb6a32b11e3857a02c66e895170e7",
+      "sha256": "ce9dc383ec7914b372a4417e1323a90257722bb4024e4f4b13b80abc233e2468",
+      "bytes": 2621
+    },
+    {
+      "path": "module/notification/pushdeer.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "9c43571c447c6c648485d90c3bd0f82a478466f1",
+      "sha256": "5419e4e3a78096f5ca0aa76dac6f01c51e75fecb5f31019e5ceca4966286f935",
+      "bytes": 1686
+    },
+    {
+      "path": "module/notification/pushplus.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "08790d96e978904473f8491b6e66065df03829b1",
+      "sha256": "62ba598f354a426aae271fc369be7f3b8ba3877289ecb82b1f01826ab239a9c0",
+      "bytes": 1765
+    },
+    {
+      "path": "module/notification/qmsg.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "19d9a24f35bfb4f554451b3025f788892579394c",
+      "sha256": "caf2bc00cd311775bfdc9f777e29156b6848c99ec1751c56789f39facf2ddcf8",
+      "bytes": 1408
+    },
+    {
+      "path": "module/notification/qqbot.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "3c498570e581f91f15b48cf0bf206157d8abaa60",
+      "sha256": "f949f8e8b0569d1535fad82e0e9291c465fa53e8761bb5d59215340529de69d1",
+      "bytes": 17125
+    },
+    {
+      "path": "module/notification/serverchan3.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "dbc056696bc611543740a1df840a373834e5e55d",
+      "sha256": "4d6d152f55fa8a9497ca5d60170ad8195c4f271a17e7da9079a22a49afd164d9",
+      "bytes": 2209
+    },
+    {
+      "path": "module/notification/serverchanturbo.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "72464b5a7ea7941e6a20becceb259145f1c1a203",
+      "sha256": "e1d4a77327f29b823ac54c323ec43472288798472974974fdccb88f1b8277afe",
+      "bytes": 1756
+    },
+    {
+      "path": "module/notification/smtp.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "965b59aa42532952bf435e1590156aad2e0a1c7d",
+      "sha256": "a22cb8cbfb065177da1a721ba6750544a52efdb42a5bfdaa8774368356798c45",
+      "bytes": 2485
+    },
+    {
+      "path": "module/notification/telegram.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "5c4991053fcc46121a680b7e42dd0027f794cb04",
+      "sha256": "cced25980fcf5bf52cfccea44466dc12297a5f3783edd2be139e9d0c51f606e8",
+      "bytes": 1564
+    },
+    {
+      "path": "module/notification/webhook.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "fe69843b5409bee4fb6f7bebc18f292eab09a42f",
+      "sha256": "d8517b4cf24a250d65d81adfc5ba8b40645e7524301a1923fa1151afe7421131",
+      "bytes": 5974
+    },
+    {
+      "path": "module/notification/wechatworkapp.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "d9e0353123d1430d9e81fac7ff51edaf39a06cc9",
+      "sha256": "cc434154ba8c375c28ca93865a03c87ef32031d29e0e03258e64cacab9dd0534",
+      "bytes": 3865
+    },
+    {
+      "path": "module/notification/wechatworkbot.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "2aee9a5b178511069b65dccc3bbe85d93637b9dd",
+      "sha256": "1d7f6749053e03ad033ea395c3585b6439e109149ebc0370b8177f39d3f94481",
+      "bytes": 3183
+    },
+    {
+      "path": "module/notification/winotify.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "186cb60fc68b1c3596c7d8f849abde97d3f6a2fe",
+      "sha256": "143c0956f8f109110884d75b10b1d6ea30b2ed9b1c74547df09f2643818f4f35",
+      "bytes": 559
+    },
     {
       "path": "tasks/weekly/echoofwar.py",
       "retrieved": "2026-10-30",
@@ -146,6 +334,18 @@
     "scope": "Star Rail import/export only; v4.2 output and strict legacy SRGF output, extended legacy collaboration imports are explicitly noted. Official schemas and the third-party jsonschema package are not redistributed or runtime dependencies; the AutoHSR offline QA wrapper checks their pinned hashes and uses synthetic data. Verification evidence, not certification; no real player data or auth used"
   },
   "adaptations": [
+    {
+      "path": "autohsr/notify_providers.py",
+      "reference_sources": ["module/notification/__init__.py", "module/notification/bark.py", "module/notification/custom.py", "module/notification/dingtalk.py", "module/notification/discord.py", "module/notification/gocqhttp.py", "module/notification/gotify.py", "module/notification/kook.py", "module/notification/lark.py", "module/notification/matrix.py", "module/notification/meow.py", "module/notification/notification.py", "module/notification/notifier.py", "module/notification/onebot.py", "module/notification/pushdeer.py", "module/notification/pushplus.py", "module/notification/qmsg.py", "module/notification/qqbot.py", "module/notification/serverchan3.py", "module/notification/serverchanturbo.py", "module/notification/smtp.py", "module/notification/telegram.py", "module/notification/webhook.py", "module/notification/wechatworkapp.py", "module/notification/wechatworkbot.py", "module/notification/winotify.py"],
+      "reference_functions": ["NotifierFactory.notifier_classes", "Notifier.merge_message", "Notification.notify", "Notification.start_batch", "Notification.flush_batch", "Notifier.send", "DingTalkNotifier.gen_sign", "LarkNotifier.gen_sign", "WebhookNotifier._replace_placeholders", "QqBotNotifier._get_access_token"],
+      "kind": "Pinned registry, provider parameter names, text endpoint/payload shapes, DingTalk/Lark signatures and simple text templates rewritten for strict native profiles and sanitized single-attempt receipts. Only 23 text transports are adapted; notification levels, image batching/uploads, Bark encryption, Matrix E2EE, QQ event-based OpenID binding and pac.py are not ported. Business acknowledgements, unencrypted Matrix room verification and durable authorization boundaries use the native protocol. No upstream module import, GUI, global configuration or logger is used."
+    },
+    {
+      "path": "autohsr/notify_local.py",
+      "reference_sources": ["module/notification/smtp.py", "module/notification/winotify.py", "module/notification/notifier.py"],
+      "reference_functions": ["SMTPNotifier.send", "WinotifyNotifier.send", "Notifier.merge_message"],
+      "kind": "SMTP text parameter conventions and local text notification concept adapted to standard-library SMTP with SSL/STARTTLS, explicit address validation and partial-recipient results; Windows Toast submission is a native hidden PowerShell/WinRT implementation rather than the upstream winotify dependency. No attachments, image transport, or verified real SMTP/Toast delivery."
+    },
     {
       "path": "autohsr/warp_statistics.py",
       "reference_source": "app/tools/warp_export.py",

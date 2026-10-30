@@ -1,5 +1,9 @@
 # March7thAssistant 参考来源与适配
 
+2026-10-30另将`module/notification/`固定注册表的23个渠道适配为[运行结束文字通知](../../../docs/notifications.md)。参考范围为`__init__.py`、`notification.py`、`notifier.py`及23份渠道源码的文字参数、端点／请求结构、标题正文合并、钉钉／飞书签名与自定义文本替换，共26份；逐份Git blob、SHA-256、字节数和改写文件见[source.json](source.json)。作者仍为moesnow及其贡献者，原[GPL v3许可](LICENSE)保留，不把上游贡献署为AutoHSR原创。没有直接导入上游模块、全局配置或GUI，也没有移植`pac.py`。
+
+当前用户DPAPI配置／覆盖备份、配置版本冻结、受限摘要模板、无重定向的有界单次HTTP、发送前意图／回执、未知不重发与原游戏报告隔离属于AutoHSR原生实现。SMTP沿用文字参数约定，Toast用隐藏PowerShell调用Windows原生WinRT而非迁入winotify依赖。渠道仅覆盖文字路径；截图／图片上传、Bark密文、Matrix E2EE、QQ接收ID发现、PAC／代理高级项、上游通知等级及图片合并尚未实现。所有真实渠道、Toast可见性、GUI及游戏后通知组合仍未验收，本轮没有实际通知或新增游戏素材／模型。
+
 2026-10-30另参考`module/workflow/__init__.py`和`assets/docs/Workflow.md`，接通[正式任务级流程](../../../docs/task-workflows.md)。保留步骤树、条件、有界for／while、break／continue和单步概念，以AutoHSR原生Runner、单预算预留、原始报告核对及逐次意图重新实现；执行归属覆盖进程间和任务间隙。未迁入上游GUI、图文／坐标／键鼠动作、模板、推送或原版YAML，不把任务级适配视为完整流程编辑器。两份来源的固定blob／SHA-256及函数见[source.json](source.json)，GPL v3保持；无新增游戏素材、模型或实机采集。
 
 2026-10-30另将`app/tools/warp_export.py`的缓存／URL读取、六池分页和SRGF／UIGF转换，及`app/warp_interface.py`的导入导出行为，适配为[原生独立记录工具](../../../docs/warp-records.md)。原件保留、数字ID去重、时区核对、明确多账号选择、冲突停止、匿名事件和新文件发布继续使用本项目语义；未迁入Qt、遥测、自动账号目录扫描或覆盖式修复。三份上游源码／测试和GPL来源见[source.json](source.json)；现行UIGF格式另按组织规范检查，没有分发官方Schema或真实玩家数据。后续另接[窗口统计、只分析与Excel](../../../docs/warp-statistics-xlsx.md)，参考`data_to_html`和`__onExportExcelBtnClicked`，通过首段／未知字段及文本ID规则改写，固定依赖与原许可独立记账。GUI图形和真实缓存／API／Excel桌面仍待验收。

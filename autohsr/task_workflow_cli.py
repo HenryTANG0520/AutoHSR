@@ -20,7 +20,7 @@ def dispatch(args, parser, raw_args):
         return None
     allowed = {'--task-workflow', '--task-workflow-check', '--workflow-step-path'}
     if args.task_workflow is not None:
-        allowed.add('--config')
+        allowed.update(('--config', '--notify', '--no-notify', '--notify-profile'))
     if any(arg.split('=', 1)[0] not in allowed for arg in raw_args if arg.startswith('--')):
         parser.error('任务流程不能混用其他运行或资源覆盖参数；每步参数在流程JSON中明确配置。')
     runner = None
@@ -35,11 +35,16 @@ def dispatch(args, parser, raw_args):
             from .config import Settings
             from .task_workflow_run import TaskWorkflowRunner
             settings = Settings.load(args.config)
+            from .notify_cli import override as override_notify
+            override_notify(args, settings)
             def emit(event):
                 if event.get('type') != 'finished':
                     print(json.dumps(event, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
+            from .notify_runtime import hooks
+            emit, wrap_notifications = hooks(settings, emit)
             runner = TaskWorkflowRunner(settings, document, emit, selected_path=args.workflow_step_path,
                                         base_dir=selected.resolve().parent)
+            runner = wrap_notifications(runner)
             data = runner.run().to_dict()
         print(json.dumps(data, ensure_ascii=False, indent=2))
         return 0 if data['status'] == 'success' else 130 if data['status'] == 'stopped' else 1

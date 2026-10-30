@@ -72,6 +72,11 @@ class Settings:
     support_preferences: list[dict] = field(default_factory=list)
     support_scroll_pages: int = 10
     support_fallback: str = 'stop'
+    notification_enabled: bool = False
+    notification_profiles: list[str] = field(default_factory=list)
+    notification_statuses: list[str] = field(default_factory=lambda: ['success', 'partial', 'failed'])
+    notification_title: str = 'AutoHSR · {operation} · {status}'
+    notification_body: str = '{summary}'
 
     def __post_init__(self):
         from copy import deepcopy
@@ -79,8 +84,13 @@ class Settings:
         self.differential_universe_station_disabled=deepcopy(self.differential_universe_station_disabled)
         self.power_plan=deepcopy(self.power_plan)
         self.support_preferences=deepcopy(self.support_preferences)
+        self.notification_profiles=deepcopy(self.notification_profiles)
+        self.notification_statuses=deepcopy(self.notification_statuses)
 
     def validate(self, operation: str = "daily") -> None:
+        from .notify_runtime import validate_settings as validate_notifications
+        if operation not in ('check', 'launch'):
+            validate_notifications(self, strict=operation == 'save')
         from .support_profiles import validate as validate_support
         validate_support(self)
         from .echo_weekly import validate_settings as validate_echo
