@@ -130,6 +130,13 @@ class SupportDialog:
             row=self.rows[index]
             self.character.set(catalogue()[row['character']]['name'] if row['character'] else '')
             self.friend.set(row['friend']);self.form_snapshot=(self.character.get(),self.friend.get());self.error.set('')
+        self.update_buttons()
+
+    def update_buttons(self):
+        index=self.index()
+        for label,enabled in (('更新选中',index is not None),('移除',index is not None),
+                ('上移',index is not None and index>0),('下移',index is not None and index<len(self.rows)-1)):
+            self.buttons[label].configure(state='normal' if enabled else 'disabled')
 
     def refresh(self,index=None):
         from PIL import Image,ImageTk
@@ -147,6 +154,7 @@ class SupportDialog:
                 values=(catalogue()[key]['name'] if key else '任意角色',row['friend'] or '任意好友'))
         if index is not None and self.table.exists(str(index)):
             self.table.selection_set(str(index));self.table.see(str(index))
+        self.update_buttons()
 
     def candidate(self):
         name=self.character.get().strip()

@@ -37,6 +37,7 @@ def main():
                     ui.support_config_button.invoke();root.update();editor=ui.support_editor
                     check_layout(root);check_layout(editor.window)
                     check(f'{scale}_dialog_grab_and_chinese_roles',editor.window.grab_current() is editor.window and '黄泉' in editor.labels and len(editor.labels)==105)
+                    check(f'{scale}_unselected_actions_are_disabled',all(editor.buttons[name].instate(('disabled',)) for name in ('更新选中','移除','上移','下移')))
                     editor.character.set('黄');root.update()
                     check(f'{scale}_role_search_filters_names',tuple(editor.role.cget('values'))==('黄泉',))
                     editor.character.set('黄泉');editor.friend.set('示例好友甲');editor.apply();root.update()
@@ -45,6 +46,7 @@ def main():
                     ui.use_support.set(False);show(ui);root.update();editor=ui.support_editor
                     editor.character.set('符玄');editor.friend.set('');editor.add();root.update()
                     check(f'{scale}_portrait_list_and_order',len(editor.photos)==2 and editor.table.item('1','values')[0]=='符玄')
+                    check(f'{scale}_edge_move_actions_match_selection',not editor.buttons['上移'].instate(('disabled',)) and editor.buttons['下移'].instate(('disabled',)))
                     editor.buttons['上移'].invoke();root.update();check(f'{scale}_reorders_without_saving',editor.rows[0]['character']=='FuXuan' and config.read_bytes()==original_config)
                     editor.buttons['下移'].invoke();root.update();editor.buttons['更新选中'].invoke();root.update()
                     editor.character.set('黄泉');editor.friend.set('示例好友甲');editor.add();root.update()
