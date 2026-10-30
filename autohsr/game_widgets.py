@@ -460,7 +460,11 @@ class TaskBoard(Surface):
         return "break"
 
     def scroll(self,delta):
+        previous=self.offset
         self.offset=max(0,min(len(self.names)-self.visible_count,self.offset+delta))
+        if self.offset!=previous:
+            self.hover=None
+            self.configure(cursor="")
         visible=list(self.names)[self.offset:self.offset+self.visible_count]
         if self.selected not in visible:
             self.selected=None

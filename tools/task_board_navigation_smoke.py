@@ -45,9 +45,11 @@ def main():
                         prefix = f'{scale}_{size}_'
                         keys = list(board.names)
                         visible = board.visible_count
+                        board._set_hover(keys[2])
                         board.event_generate('<MouseWheel>', delta=-120)
                         root.update()
                         check(prefix+'one_wheel_reveals_next_card', board.offset == 1 and keys[visible] in board.hitboxes and board.hitboxes[keys[visible]][2]-board.hitboxes[keys[visible]][0] >= board.card_width-1)
+                        check(prefix+'scroll_removes_old_card_hover', board.hover is None)
                         board.event_generate('<MouseWheel>', delta=120)
                         root.update()
                         check(prefix+'reverse_wheel_returns_first_page', board.offset == 0)
