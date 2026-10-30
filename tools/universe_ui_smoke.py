@@ -42,7 +42,7 @@ def main():
         config = Path(folder)/"config.json"
         Settings().save(config)
         original = config.read_bytes()
-        for scale in (1., 1.5, 2.):
+        for scale in (1., 1.25, 1.5, 2.):
             root = tk.Tk()
             root.tk.call("tk", "scaling", scale*96/72)
             root.report_callback_exception = lambda kind, value, traceback: (_ for _ in ()).throw(value.with_traceback(traceback))
@@ -65,12 +65,35 @@ def main():
                     deck["back_editor"].event_generate("<KeyRelease-space>")
                     root.update()
                     check(f"{scale}_{page}_keyboard_returns_to_entrance", deck["shown"] == "hero" and one_primary(ui))
+                    check(f"{scale}_{page}_empty_results_are_unavailable",deck['hero'].result_button.instate(('disabled',)))
+                    report_attribute='du_result_report' if page=='differential_universe' else 'currency_result_report'
+                    setattr(ui,report_attribute,dict(status='stopped'))
+                    ui._refresh_controls()
                     click(deck["hero"].result_button)
                     root.update()
                     check(f"{scale}_{page}_results_open_without_running", deck["shown"] == "result" and not ui.busy)
                     deck["back_result"].invoke()
                     root.update()
+                    setattr(ui,report_attribute,None)
+                    ui._refresh_controls()
                 check(f"{scale}_navigation_does_not_change_or_save_plan", initial == ui._form_signature() and config.read_bytes() == original)
+                painted=[]
+                draw_text=module.theme.Painter.text
+                def record_text(painter,point,text,*args,**kwargs):
+                    painted.append(str(text))
+                    return draw_text(painter,point,text,*args,**kwargs)
+                with patch.object(module.theme.Painter,'text',record_text):
+                    ui.weekly_enabled.set(True);ui.weekly_mode.set('货币战争');ui.weekly_runs.set('7')
+                    root.update();ui.mode_decks['currency_wars']['hero'].redraw();root.update()
+                    text=''.join(painted).replace(' ','').replace('\n','')
+                    check(f'{scale}_poster_renders_actual_currency_weekly_plan','周常计划' in text and '最多7局' in text and '尚未接入' not in text)
+                    painted.clear();ui.weekly_enabled.set(False);root.update()
+                    check(f'{scale}_poster_renders_disabled_weekly_plan','周常未加入' in ''.join(painted))
+                    painted.clear();ui.weekly_enabled.set(True);ui.weekly_mode.set('差分宇宙');root.update()
+                    check(f'{scale}_poster_identifies_other_weekly_mode','差分宇宙' in ''.join(painted))
+                    painted.clear();ui._show_page('differential_universe');root.update()
+                    check(f'{scale}_independent_runs_are_named_current','本次局数' in painted)
+                ui.weekly_enabled.set(False);ui.weekly_mode.set('差分宇宙');ui.weekly_runs.set(str(ui.settings.weekly_runs))
                 ui._show_page("differential_universe")
                 ui.du_team.set("")
                 before = len(FakeRunner.instances)
@@ -129,6 +152,7 @@ def main():
                     root.update()
                     check(f"{scale}_{page}_running_controls_visible", ui.pause_button.winfo_ismapped() and ui.stop_button.winfo_ismapped()
                           and str(ui.start_button.cget("state")) == "disabled")
+                    check(f'{scale}_{page}_running_link_names_progress',ui.mode_decks[page]['hero'].result_button.cget('text')=='查看进度' and not ui.mode_decks[page]['hero'].result_button.instate(('disabled',)))
                     click(ui.mode_decks[page]["hero"].editor_button)
                     root.update()
                     check(f"{scale}_{page}_busy_editor_remains_locked", ui.start_button is ui.footer_start_button
@@ -142,6 +166,33 @@ def main():
                     ui.stop_button.invoke()
                     pump(root, lambda: not ui.busy)
                     check(f"{scale}_{page}_stop_finishes_fake_worker", runner.stopped and not ui.worker.is_alive())
+                    check(f'{scale}_{page}_finished_link_names_result',ui.mode_decks[page]['hero'].result_button.cget('text')=='查看结果')
+                for page in ui.mode_decks:
+                    ui._show_page(page)
+                    report_attribute='du_result_report' if page=='differential_universe' else 'currency_result_report'
+                    setattr(ui,report_attribute,None)
+                    ui.active_operation=page
+                    ui._set_busy(True,True)
+                    ui.events.put(dict(type='run_error',message='离线模拟：页面未核实'))
+                    pump(root,lambda:not ui.busy)
+                    root.update()
+                    check(f'{scale}_{page}_failure_links_to_status',ui.mode_decks[page]['hero'].result_button.cget('text')=='查看状态' and '页面未核实' in (ui.du_observation.get() if page=='differential_universe' else ui.currency_observation.get()))
+                    check(f'{scale}_{page}_failure_does_not_claim_running_or_report',getattr(ui,report_attribute) is None and (ui.du_status.get() if page=='differential_universe' else ui.currency_status.get()) in ('演算中断','只读识别失败'))
+                    retained=dict(operation=page,status='partial',verified_count=2)
+                    setattr(ui,report_attribute,retained)
+                    status=ui.du_status if page=='differential_universe' else ui.currency_status
+                    status.set('已核实部分结果')
+                    ui._set_busy(True,True)
+                    ui.events.put(dict(type='run_error',message='离线模拟：后续写盘失败'))
+                    pump(root,lambda:not ui.busy);root.update()
+                    check(f'{scale}_{page}_late_failure_preserves_known_report',getattr(ui,report_attribute)==retained and status.get()=='已核实部分结果' and ui.mode_decks[page]['hero'].result_button.cget('text')=='查看结果')
+                    setattr(ui,report_attribute,None)
+                    ui.active_operation='plan';ui.plan_phase='weekly';ui._active_weekly_mode=page
+                    ui._set_busy(True,True)
+                    ui.events.put(dict(type='run_error',message='离线模拟：周常反馈未核实'))
+                    pump(root,lambda:not ui.busy);root.update()
+                    ui._refresh_weekly_caption(force=True);root.update()
+                    check(f'{scale}_{page}_weekly_failure_updates_frozen_mode',ui.weekly_status.get().startswith('周常中断') and status.get() in ('周常中断','演算中断') and '周常反馈未核实' in (ui.du_observation.get() if page=='differential_universe' else ui.currency_observation.get()))
                 ui._show_page("differential_universe")
                 show_mode_view(ui, "differential_universe", "hero")
                 root.update()

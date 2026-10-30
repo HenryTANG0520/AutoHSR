@@ -547,6 +547,8 @@ class AutoHSRWindow:
         for control in self.dungeon_browse_controls:
             control.configure(state="normal" if allowed and not self.busy else "disabled")
         self.dungeon_list.redraw()
+        for deck in self.mode_decks.values():
+            deck['hero'].refresh_actions()
         self.dungeon_category_combo.configure(state="readonly" if allowed and not self.busy else "disabled")
         if not allowed:
             hint = "开拓力刷本未授权"
@@ -1604,9 +1606,20 @@ class AutoHSRWindow:
                     self.status.set("● 执行失败")
                     self.summary.set(str(event.get("message", "未知错误")))
                     self.result_alert.set(self.summary.get())
-                    if kind == "run_error" and self.active_operation.startswith("currency_wars"):
-                        self.currency_status.set("只读识别失败：" + self.summary.get())
-                        self.currency_observation.set("本次未生成有效观察记录；自动玩法仍未开放。")
+                    failed_mode=self.active_operation
+                    if kind=='run_error' and self.active_operation=='plan' and self.plan_phase=='weekly':
+                        failed_mode=self._active_weekly_mode or ''
+                        self._weekly_caption_source='result'
+                        self._weekly_result_week=None
+                        self._weekly_result_summary=self.summary.get()
+                        self.weekly_status.set('周常中断 · '+self.summary.get())
+                    if kind == 'run_error' and failed_mode.startswith('currency_wars') and self.currency_result_report is None:
+                        label='周常中断' if self.active_operation=='plan' else '只读识别失败' if failed_mode=='currency_wars' else '执行中断'
+                        self.currency_status.set(label)
+                        self.currency_observation.set(self.summary.get())
+                    if kind == 'run_error' and failed_mode=='differential_universe' and self.du_result_report is None:
+                        self.du_status.set('演算中断')
+                        self.du_observation.set(self.summary.get())
                     self._log(self.summary.get(), "error")
                     self.output_tabs.select(0)
                     self._restore()

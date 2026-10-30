@@ -25,7 +25,8 @@ def universe_page(ui, key):
                    command=choose).grid(row=row, column=0, sticky="ew", pady=(0, d(10)))
     weekly = ttk.Button(menu, text="周常计划", style="Panel.TButton", command=ui._show_weekly_plan)
     weekly.grid(row=3, column=0, sticky="ew")
-    note(menu, variable=ui.weekly_status, row=4, style="Hint.TLabel", scale=ui.ui_scale)
+    if key=='differential_universe':
+        note(menu, variable=ui.weekly_status, row=4, style="Hint.TLabel", scale=ui.ui_scale)
     body = ttk.Frame(page)
     body.grid(row=0, column=1, sticky="nsew")
     body.columnconfigure(0, weight=1)

@@ -25,7 +25,21 @@ class UniversePoster(Surface):
             button.bind("<Configure>", self.redraw, add="+")
         self.bind("<Configure>", self.position, add="+")
         self.watch(ui.differential_universe_runs, ui.du_team, ui.du_mode, ui.du_resume_active,
-                   ui.du_resume_mode, ui.du_save, ui.du_rewards, ui.du_daily, ui.du_status, ui.currency_status)
+                   ui.du_resume_mode, ui.du_save, ui.du_rewards, ui.du_daily, ui.du_status, ui.currency_status,
+                   ui.weekly_status)
+
+    def refresh_actions(self):
+        ui=self.ui
+        operation=getattr(ui,'active_operation','')
+        active=ui.busy and (operation==self.key or not self.du and operation.startswith('currency_wars') or
+            operation=='plan' and ui.plan_phase=='weekly' and ui._active_weekly_mode==self.key)
+        report=ui.du_result_report if self.du else ui.currency_result_report
+        status=ui.du_status.get() if self.du else ui.currency_status.get()
+        known=bool(status.strip()) and status not in ('尚未运行','开发中 · 整局未验收')
+        label='查看进度' if active else '查看结果' if report is not None else '查看状态' if known else '查看结果'
+        state='normal' if active or report is not None or known else 'disabled'
+        if self.result_button.cget('text')!=label or str(self.result_button.cget('state'))!=state:
+            self.result_button.configure(text=label,state=state)
 
     def geometry(self):
         width, height = self.winfo_width()/self.scale, self.winfo_height()/self.scale
@@ -42,6 +56,7 @@ class UniversePoster(Surface):
             button.place(x=d(x+bx*ratio), y=d(y+by*ratio), anchor=anchor)
 
     def paint(self, outer):
+        self.refresh_actions()
         x, y, ratio = self.geometry()
         if ratio <= 0:
             return
@@ -52,7 +67,7 @@ class UniversePoster(Surface):
         if light:
             p.text((213, 209), self.ui.differential_universe_runs.get(), 66, "#e8f578", "mt")
             p.box((56, 347, 370, 387), "#20211a")
-            p.text((213, 349), "计划局数", 29, "#b9c743", "mt")
+            p.text((213, 349), "本次局数", 29, "#b9c743", "mt")
             p.box((600, 101, 938, 134), "#1e211d")
             for dx, dy in ((610,110), (624,110), (610,124)):
                 p.box((dx,dy,dx+8,dy+8), "#b53576")
@@ -89,7 +104,8 @@ class UniversePoster(Surface):
             p.box((662, 157, 938, 197), "#151631")
             p.text((924, 161), "只读观察", 29, "#a1d5e9", "rt")
             p.box((423, 257, 940, 366), "#171631")
-            p.text((440, 274), "周常自动运行尚未接入", 27, "#ebd997")
+            p.text((440, 271), "周常计划", 25, "#ebd997")
+            p.text((440, 310),p.wrap(self.ui.weekly_status.get(), 480, 21, 2),21,ink)
             p.text((427, 379), "最近结果", 25, ink)
             p.line((427, 410, 938, 410), "#8888ad", 1.5)
             status_text = self.ui.currency_status.get()
