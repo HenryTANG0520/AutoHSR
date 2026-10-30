@@ -277,6 +277,11 @@ class NotificationRunner:
     def __getattr__(self, name):
         return getattr(self.runner, name)
 
+    @property
+    def stop_requested(self):
+        from .run_control import stop_requested
+        return self.control._stop.is_set() or stop_requested(self.runner)
+
     def stop(self):
         self.control._stop.set()
         self.control._paused.clear()

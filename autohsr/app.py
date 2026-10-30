@@ -1466,6 +1466,10 @@ class Runner:
         if completed or points_checked or rewards_checked:
             self.report.failure_task = ''
 
+    @property
+    def stop_requested(self) -> bool:
+        return self._stop.is_set()
+
     def stop(self):
         self._stop.set()
         self._pause.clear()
@@ -1736,6 +1740,7 @@ class Runner:
                 self._run_tasks(context, workflow)
             self.log("任务已结束；请查看报告中的验证状态与证据。")
         except Stopped as error:
+            self.stop()
             self.report.status = "stopped"
             self.report.error = str(error)
             self.report.safe_next = ("货币战争操作已停止；核对画面和本次动作记录后重新识别。" if self.report.operation.startswith("currency_wars") else

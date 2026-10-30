@@ -17,6 +17,7 @@ from .currency_wars_loop_store import LoopStore, _write, loop_lock, runs_value
 from . import currency_wars_points_goal as points_goal
 from .currency_wars_session import StandardSession
 from .models import AutomationError, RunReport, Stopped, TaskResult
+from .run_control import stop_requested
 
 
 class CurrencyLoopRunner:
@@ -87,6 +88,14 @@ class CurrencyLoopRunner:
                             self.emit(dict(type='paused', paused=paused))
                     previous[key] = pressed
 
+    @property
+    def stop_requested(self) -> bool:
+        if self._stop.is_set():
+            return True
+        with self._lock:
+            child = self.child
+        return child is not self and stop_requested(child)
+
     def stop(self):
         self._stop.set()
         with self._lock:
@@ -154,15 +163,22 @@ class CurrencyLoopRunner:
                 child.stop()
             if self._paused:
                 child.toggle_pause()
+        result = None
         try:
             result = child.run()
+            with self._lock:
+                if self.child is child and stop_requested(child, result) and not self._stop.is_set():
+                    self.stop()
             return result.to_dict() if hasattr(result, 'to_dict') else result
         finally:
             with self._lock:
-                hwnd = getattr(getattr(child, '_window', None), 'hwnd', None)
-                if isinstance(hwnd, int):
-                    self._control_hwnd = hwnd
-                self.child = None
+                if self.child is child:
+                    if stop_requested(child, result) and not self._stop.is_set():
+                        self.stop()
+                    hwnd = getattr(getattr(child, '_window', None), 'hwnd', None)
+                    if isinstance(hwnd, int):
+                        self._control_hwnd = hwnd
+                    self.child = None
 
     def _execute(self, store):
         self._checkpoint()
@@ -322,6 +338,7 @@ class CurrencyLoopRunner:
                     self._monitor_end.set()
                     monitor.join(timeout=1)
         except Stopped as error:
+            self.stop()
             report.status, report.error = 'stopped', str(error)
         except Exception as error:
             report.status, report.error = 'partial' if store.data and store.data['completed'] else 'failed', str(error)

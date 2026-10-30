@@ -4,6 +4,8 @@ __pycache__/
 runs/
 config.json
 /notifications.local/
+/schedules.local/
+/assets/currency-auto/audit/
 dungeons.local.json
 build/
 dist/

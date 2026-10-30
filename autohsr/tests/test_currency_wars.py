@@ -281,6 +281,24 @@ class CoordinatorTests(unittest.TestCase):
             self.assertFalse(runner._logger.handlers)
             self.assertEqual(events[-1]["type"], "finished")
 
+    def test_native_stopped_exception_keeps_control_intent_when_report_save_fails(self):
+        with tempfile.TemporaryDirectory() as folder:
+            window,*_=self.fixture(Path(folder))
+            original=Path.write_text
+            def fail_report(path,*args,**kwargs):
+                if path.name in ('report.json','report.tmp'):
+                    raise OSError('synthetic stopped report unavailable')
+                return original(path,*args,**kwargs)
+            runner=Runner(Settings(),operation='currency_wars')
+            with (patch('autohsr.currency_wars.CurrencyWarsWorkflow.inspect',side_effect=Stopped('synthetic control stop')),
+                  patch.object(Path,'write_text',fail_report)):
+                report=runner.run()
+            self.assertIs(runner.stop_requested,True)
+            self.assertFalse(report.report_saved)
+            self.assertEqual(report.status,'failed')
+            for method in (window.click,window.key,window.move,window.scroll):
+                method.assert_not_called()
+
     def test_report_replace_failure_never_exposes_partial_report_json(self):
         with tempfile.TemporaryDirectory() as folder:
             self.fixture(Path(folder))

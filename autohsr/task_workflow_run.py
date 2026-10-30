@@ -92,6 +92,17 @@ class TaskWorkflowRunner:
         self._directory = None
         self._identity = None
 
+    @property
+    def stop_requested(self):
+        """Control intent survives a partial or unsaved final report."""
+        from .run_control import stop_requested
+        return self._stop.is_set() or stop_requested(self.child)
+
+    def _notice_stopped(self, report):
+        from .run_control import stop_requested
+        if stop_requested(self.child, report):
+            self.stop()
+
     def stop(self):
         self._stop.set()
         with self._lock:
@@ -251,12 +262,14 @@ class TaskWorkflowRunner:
                     if self._paused:
                         child.toggle_pause()
                 result = child.run()
+                self._notice_stopped(result)
                 result = result.to_dict() if hasattr(result, 'to_dict') else result
             else:
                 from .warp_service import run
                 _, options = self.specs[node['id']]
                 result = (self.warp_service or run)(**deepcopy(options), cancel=lambda: self.checkpoint(),
                                                    emit=lambda event: self._send(event, node))
+                self._notice_stopped(result)
                 result = dict(result, operation=node['task'], report_saved=True,
                               run_dir=str(self._directory / ('tool-' + str(entry['sequence']))))
                 Path(result['run_dir']).mkdir()
@@ -281,6 +294,9 @@ class TaskWorkflowRunner:
             with self._lock:
                 if self.child is not None:
                     child = self.child
+                    from .run_control import stop_requested
+                    if stop_requested(child):
+                        self.stop()
                     hwnd = getattr(child, '_control_hwnd', None)
                     if not isinstance(hwnd, int):
                         hwnd = getattr(getattr(child, '_window', None), 'hwnd', None)

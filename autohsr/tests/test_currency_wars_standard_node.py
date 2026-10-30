@@ -62,6 +62,75 @@ class StandardNodeTests(unittest.TestCase):
                 self.assertFalse(store.data['completion_verified'])
                 self.assertEqual(len(store.data['actions']),1)
 
+    def test_auto_on_requires_two_distinct_fresh_observations_without_adding_input(self):
+        from autohsr.currency_wars_auto import AutoObservation
+        with tempfile.TemporaryDirectory() as folder:
+            store=self.store(folder)
+            c=self.context([current('battle'),current('battle'),current('node_result')])
+            snapshot=c.snapshot
+            captured=[time.monotonic()-1]
+            def fresh_snapshot():
+                page=snapshot()
+                captured[0]+=.01
+                page.captured_at=captured[0]
+                return page
+            c.snapshot=fresh_snapshot
+            c.evidence.side_effect=lambda scene,label:label+'.png'
+            on=AutoObservation('on',.99,(('off_calibrated',False),))
+            with patch('autohsr.currency_wars_replay.save_sample'),patch('autohsr.currency_wars_auto.read_auto',return_value=on):
+                _,verified=observe_started_node(c,store,c.snapshot())
+            attempt=store.data['node_attempt']
+            self.assertTrue(verified)
+            self.assertTrue(attempt['auto_on_observed'])
+            self.assertTrue(attempt['auto_observation']['verified_on'])
+            self.assertEqual(len(attempt['auto_on_evidence']),2)
+            self.assertLess(attempt['auto_on_evidence'][0]['captured_at'],attempt['auto_on_evidence'][1]['captured_at'])
+            self.assertEqual(len(store.data['actions']),1)
+            self.assertFalse(store.data['completion_verified'])
+
+    def test_repeated_capture_timestamp_does_not_count_as_two_auto_observations(self):
+        from autohsr.currency_wars_auto import AutoObservation
+        with tempfile.TemporaryDirectory() as folder:
+            store=self.store(folder)
+            c=self.context([current('battle'),current('battle'),current('node_result')])
+            snapshot=c.snapshot;captured=time.monotonic()-1
+            def same_capture_time():
+                page=snapshot();page.captured_at=captured
+                return page
+            c.snapshot=same_capture_time
+            with patch('autohsr.currency_wars_replay.save_sample'),patch('autohsr.currency_wars_auto.read_auto',return_value=AutoObservation('on',.99,())):
+                _,verified=observe_started_node(c,store,c.snapshot())
+            self.assertTrue(verified)
+            self.assertFalse(store.data['node_attempt']['auto_on_observed'])
+            self.assertEqual(len(store.data['actions']),1)
+
+    def test_disabled_or_unknown_breaks_auto_confirmation_without_discarding_node_result(self):
+        from autohsr.currency_wars_auto import AutoObservation
+        for middle in ('disabled','unknown'):
+            with self.subTest(middle=middle),tempfile.TemporaryDirectory() as folder:
+                store=self.store(folder)
+                c=self.context([current('battle'),current('battle'),current('battle'),current('node_result')])
+                states=[AutoObservation(state,.99,()) for state in ('on',middle,'on')]
+                with patch('autohsr.currency_wars_replay.save_sample'),patch('autohsr.currency_wars_auto.read_auto',side_effect=states):
+                    _,verified=observe_started_node(c,store,c.snapshot())
+                self.assertTrue(verified)
+                self.assertFalse(store.data['node_attempt']['auto_on_observed'])
+                self.assertFalse(store.data['node_attempt']['auto_observation']['verified_on'])
+                self.assertEqual(len(store.data['actions']),1)
+
+    def test_auto_reader_interruption_cannot_save_stale_on_proof(self):
+        from autohsr.currency_wars_auto import AutoObservation
+        from autohsr.models import InputInterrupted
+        with tempfile.TemporaryDirectory() as folder:
+            store=self.store(folder);c=self.context([current('battle')])
+            def interrupted(*args):
+                c.runner.input_epoch+=1
+                return AutoObservation('on',.99,())
+            with patch('autohsr.currency_wars_replay.save_sample'),patch('autohsr.currency_wars_auto.read_auto',side_effect=interrupted):
+                with self.assertRaises(InputInterrupted):observe_started_node(c,store,c.snapshot())
+            self.assertNotIn('auto_observation',store.data['node_attempt'])
+            self.assertEqual(len(store.data['actions']),1)
+
     def test_wrong_result_different_battle_and_unknown_start_never_grant_success(self):
         for kind in ('battle','node_result'):
             with tempfile.TemporaryDirectory() as folder:

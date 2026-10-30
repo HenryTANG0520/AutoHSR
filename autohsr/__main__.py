@@ -28,6 +28,8 @@ def main(argv: list[str] | None = None) -> int:
     add_workflow_arguments(mode, parser)
     from .notify_cli import add_arguments as add_notify_arguments
     add_notify_arguments(mode, parser)
+    from .schedule_cli import add_arguments as add_schedule_arguments
+    add_schedule_arguments(mode, parser)
     mode.add_argument("--currency-wars-replay", type=Path, help="离线回放 .sample.json；不访问游戏或加载每日配置")
     mode.add_argument("--currency-wars-check", action="store_true", help="货币战争只读识别与证据保存；自动玩法尚未开放")
     mode.add_argument("--currency-wars-prepare", action="store_true", help="启动或复用游戏，进入已有登录及主界面；不开始对局")
@@ -104,6 +106,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    from .schedule_cli import dispatch as dispatch_schedule
+    schedule_result = dispatch_schedule(args, parser, raw_args)
+    if schedule_result is not None:return schedule_result
     from .notify_cli import dispatch as dispatch_notify
     notify_result = dispatch_notify(args, parser, raw_args)
     if notify_result is not None:return notify_result

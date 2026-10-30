@@ -317,6 +317,7 @@ class NotificationTests(unittest.TestCase):
             return Reply(200, b'{}')
         service.request = Mock(side_effect=response)
         self.assertEqual(wrapped.run().status, 'success')
+        self.assertIs(wrapped.stop_requested, True)
         child.stop.assert_not_called()
         self.assertEqual(service.request.call_count, 1)
         self.assertTrue(any(e['type'] == 'notification_summary' and e['status'] == 'cancelled' for e in events))

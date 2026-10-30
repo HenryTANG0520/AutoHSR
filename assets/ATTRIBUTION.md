@@ -1,5 +1,17 @@
 # AutoHSR resource attribution
 
+## 2026-10-30 货币战争自动状态只读观察
+
+[CW状态检测](../autohsr/currency_wars_auto.py)及[标准节点观察接线](../autohsr/currency_wars_standard_node.py)为AutoHSR原生实现。新公开范围仅为[最小控制组说明](currency-auto/README.md)、[来源清单](currency-auto/sources.json)、12份右上局部裁片及2幅CW控件图形；没有重新采集游戏、分发原始整图或公开调查临时目录。清单保留匿名样本ID、原图／裁片SHA-256、裁剪坐标、版本或unverified、变换及分组，不含UID、账号指纹、原始文件名或安装路径。游戏美术归HoYoverse及相应权利人，不授予额外游戏素材许可。
+
+状态还与本仓库已有真实DU开启图形、暂停控件及饰品禁用图形交叉核对，旧素材署名保持。1份4.6.0完整CW组用于on校准，两份10月18日斜杠组用于disabled校准／历史回放，其余未知及同局邻近遮挡分别保留；未知版本不补为当前版本，合成缩放／遮挡／灰度不当作真实off或独立留出。上游固定`check_auto_battle`及黄色C图片仅作区别研究，blob／SHA-256记在清单的`upstream_research_only`，未移植其图像、搜索位置或热键。来源总表另记[原生扩展](upstream/March7thAssistant/source.json)。当前仅on／disabled／unknown只读观察，无off、开启动作、真实切换或整局验收，范围见[开发记录](../docs/currency-wars-development.md)。
+
+## 2026-10-30 March7thAssistant应用内定时参考
+
+固定March7thAssistant提交`7cf6c6bed474539485d3b1504077ac352866829f`，作者moesnow及其贡献者，GPL v3。`app/common/schedule.py`的分钟时隙／下次时刻与`app/log_interface.py`的启动分钟、定时检查和冲突生命周期，改写为[原生计划](../autohsr/schedule_plan.py)及[调度控制器](../autohsr/schedule_runtime.py)。两份源码的Git blob、SHA-256及字节数、具体参考函数见[source.json](upstream/March7thAssistant/source.json)，完整原许可继续保留于[LICENSE](upstream/March7thAssistant/LICENSE)。不迁入上游Qt／QProcess GUI、任意程序参数、默认失败续链或完成后系统操作。
+
+[本地版本与时隙回执](../autohsr/schedule_store.py)、固定北京时间、显式当前进程启用、原生Runner与预算／账号门禁、唯一执行权和公共事件允许字段是AutoHSR实现。[共享只读控制意图](../autohsr/run_control.py)及原生／计划／CW循环／任务树／通知wrapper的`stop_requested`也是本项目原生扩展；它跨报告保存错误传播停止，控制器／slot／原游戏／通知分别保留结果，不迁入上游输入或控制框架。`utils/schedule.py`及`tasks/game/__init__.py::after_finish_is_loop`只作区别研究，在清单中明确标记`research_only_not_ported`；系统自启、无限体力循环及管理员任意参数桥没有迁入。没有新增游戏素材、模型或真实采集，没有登记真实系统任务或启用真实计划；当前范围及后续实际验证见[定时说明](../docs/schedules.md)。
+
 ## 2026-10-30 March7thAssistant文字通知适配
 
 固定March7thAssistant提交`7cf6c6bed474539485d3b1504077ac352866829f`，作者moesnow及其贡献者，GPL v3。`module/notification/__init__.py`、`notification.py`、`notifier.py`及23个渠道源文件的文字参数、端点／请求结构、合并文字、钉钉／飞书签名及自定义替换改写为[原生文字适配](../autohsr/notify_providers.py)和[SMTP／本机传输](../autohsr/notify_local.py)。共26份实际参考源码的Git blob、SHA-256及字节数见[source.json](upstream/March7thAssistant/source.json)，完整原许可继续保留于[LICENSE](upstream/March7thAssistant/LICENSE)。没有迁入`pac.py`、上游GUI、全局配置或输入框架，也未引入上游通知依赖。

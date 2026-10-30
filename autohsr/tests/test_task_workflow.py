@@ -139,6 +139,50 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaises(WorkflowError):
             runner.run()
 
+    def test_unsaved_stopped_child_halts_flow_before_source_validation_can_mask_stop(self):
+        first=task('first',tasks=['daily']);first['on_failure']='continue'
+        self.responses=[dict(status='stopped',report_saved=False)]
+        runner=self.runner(recipe(first,dict(id='after',type='wait',seconds=0)))
+        report=runner.run()
+        self.assertTrue(runner.stop_requested)
+        self.assertEqual(report.status,'stopped')
+        self.assertTrue(report.report_saved)
+        self.assertEqual(len(report.workflow['steps']),1)
+        self.assertEqual(report.workflow['steps'][0]['status'],'partial')
+        original=json.loads((self.root/'child-1'/'report.json').read_text('utf8'))
+        self.assertEqual(original['status'],'stopped')
+        self.assertFalse(original['report_saved'])
+
+    def test_parent_save_failure_keeps_stop_control_intent_separate_from_partial_report(self):
+        self.responses=[dict(status='stopped')]
+        runner=self.runner(recipe(task('first',tasks=['daily'])))
+        save=runner._save
+        def fail_final_save():
+            if runner.report.finished_at:
+                raise OSError('synthetic final report write failure')
+            save()
+        with patch.object(runner,'_save',side_effect=fail_final_save):
+            report=runner.run()
+        self.assertTrue(runner.stop_requested)
+        self.assertEqual(report.status,'partial')
+        self.assertFalse(report.report_saved)
+        self.assertEqual(json.loads((self.root/'child-1'/'report.json').read_text('utf8'))['status'],'stopped')
+
+    def test_child_control_intent_survives_partial_unsaved_status(self):
+        self.responses=[dict(status='partial',report_saved=False)]
+        self.after_child=lambda child,result:setattr(child,'stop_requested',True)
+        runner=self.runner(recipe(task('first',tasks=['daily']),dict(id='after',type='wait',seconds=0)))
+        report=runner.run()
+        self.assertTrue(runner.stop_requested)
+        self.assertEqual(report.status,'partial')
+        self.assertTrue(report.report_saved)
+        self.assertEqual(len(report.workflow['steps']),1)
+        self.assertEqual(report.workflow['steps'][0]['status'],'partial')
+        self.assertTrue(report.workflow['steps'][0].get('error'))
+        original=json.loads((self.root/'child-1'/'report.json').read_text('utf8'))
+        self.assertEqual(original['status'],'partial')
+        self.assertFalse(original['report_saved'])
+
     def test_budget_cannot_be_multiplied_by_repeated_or_nested_tasks(self):
         invalid = [recipe(task('a'), task('b')),
                    recipe(dict(id='loop', type='for', count=2, steps=[task('a')])),

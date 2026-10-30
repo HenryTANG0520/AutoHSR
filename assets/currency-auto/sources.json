@@ -1,0 +1,428 @@
+{
+  "schema": 1,
+  "reviewed": "2026-10-30",
+  "live_acceptance": false,
+  "independent_real_holdout": false,
+  "model_training": false,
+  "off_state_calibrated": false,
+  "input_authorized": false,
+  "rights": "Game imagery belongs to HoYoverse and its respective rights holders. Minimal local technical-regression crops only; no additional art license is granted.",
+  "samples": [
+    {
+      "id": "cw_on_01",
+      "file": "samples/cw_on_01.png",
+      "group": "calibration",
+      "expected": "on",
+      "state_evidence": "CW glyph plus independent real DU-on shape reference and pause group",
+      "captured_local": "2026-10-26T12:22:59.133583+08:00",
+      "client_version": "4.6.0",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "source_sha256": "7775906a35ae7e637867130ac59bb524626bac4e8e759200aa8b7299d0d8d7b4",
+      "crop_xyxy": [
+        3220,
+        60,
+        3780,
+        150
+      ],
+      "sha256": "b9809665b0dd311816e00a46d977f99211bbd53a98fecc7fd3c713f7a51a5061",
+      "transforms": [
+        "crop only; no scaling or editing"
+      ],
+      "excludes_identifiers": true
+    },
+    {
+      "id": "cw_dim_01",
+      "file": "samples/cw_dim_01.png",
+      "group": "cross_reference_calibration",
+      "expected": "disabled",
+      "state_evidence": "CW slashed glyph and independent real planar-disabled reference; no toggle proof",
+      "captured_local": "2026-10-18T11:18:36.095539+08:00",
+      "client_version": "unverified",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "source_sha256": "27d9bfa5661eec7d89a2fef7367ac3410ef5555546101f5b458e20dde2738455",
+      "crop_xyxy": [
+        3220,
+        60,
+        3780,
+        150
+      ],
+      "sha256": "d892f0059864c94ef0b566743a251b500d8d6baa51ea4cd3d7c86c297f35f61a",
+      "transforms": [
+        "crop only; no scaling or editing"
+      ],
+      "excludes_identifiers": true
+    },
+    {
+      "id": "cw_dim_02",
+      "file": "samples/cw_dim_02.png",
+      "group": "historical_replay",
+      "expected": "disabled",
+      "state_evidence": "CW slashed glyph and independent real planar-disabled reference; no toggle proof",
+      "captured_local": "2026-10-18T11:51:31.847674+08:00",
+      "client_version": "unverified",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "source_sha256": "15d87c8ceea20637f581b815dca2f45af107cb2fb028e587cac0bd4ba11ee9bd",
+      "crop_xyxy": [
+        3220,
+        60,
+        3780,
+        150
+      ],
+      "sha256": "4eb981f7988b985942c040cd3118ea29b6a68f783d61b1c59f038bae7822b740",
+      "transforms": [
+        "crop only; no scaling or editing"
+      ],
+      "excludes_identifiers": true
+    },
+    {
+      "id": "cw_dim_03",
+      "file": "samples/cw_dim_03.png",
+      "group": "historical_replay",
+      "expected": "unknown",
+      "state_evidence": "Slashed appearance matches planar reference, but native CW reference is insufficient; keep unknown",
+      "captured_local": "2026-10-18T11:59:14.674108+08:00",
+      "client_version": "unverified",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "source_sha256": "36b116fda0bd19c46d69f4445ccfc59d2083dd94f837424ea96f80916c667617",
+      "crop_xyxy": [
+        3220,
+        60,
+        3780,
+        150
+      ],
+      "sha256": "ad818bd485b4d44efb27ca81a963990da201bdddab3dc33b4494de9ddf064d36",
+      "transforms": [
+        "crop only; no scaling or editing"
+      ],
+      "excludes_identifiers": true
+    },
+    {
+      "id": "cw_ambiguous_01",
+      "file": "samples/cw_ambiguous_01.png",
+      "group": "historical_counterexample",
+      "expected": "unknown",
+      "state_evidence": "missing group context, animation, or insufficient independent state evidence",
+      "captured_local": "2026-10-18T11:04:27.345255+08:00",
+      "client_version": "unverified",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "source_sha256": "4eff2651e8c002785a18268062bccd01c3216e8a824492e723c61cb9d74dcd1c",
+      "crop_xyxy": [
+        3220,
+        60,
+        3780,
+        150
+      ],
+      "sha256": "a105aba3366be508f231ece41530cc174002ae585369a324e27c7354389247bb",
+      "transforms": [
+        "crop only; no scaling or editing"
+      ],
+      "excludes_identifiers": true
+    },
+    {
+      "id": "cw_ambiguous_02",
+      "file": "samples/cw_ambiguous_02.png",
+      "group": "historical_counterexample",
+      "expected": "unknown",
+      "state_evidence": "missing group context, animation, or insufficient independent state evidence",
+      "captured_local": "2026-10-18T11:21:56.405239+08:00",
+      "client_version": "unverified",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "source_sha256": "420a8586bdda74402aa6451700fbce1185ae06e4be7934c75de07b0d3c4e0625",
+      "crop_xyxy": [
+        3220,
+        60,
+        3780,
+        150
+      ],
+      "sha256": "d83a7b0a21fa8e39cc1b6520d69d12b90180de46ec6e19236e69d7b1d830245c",
+      "transforms": [
+        "crop only; no scaling or editing"
+      ],
+      "excludes_identifiers": true
+    },
+    {
+      "id": "cw_ambiguous_03",
+      "file": "samples/cw_ambiguous_03.png",
+      "group": "historical_counterexample",
+      "expected": "unknown",
+      "state_evidence": "missing group context, animation, or insufficient independent state evidence",
+      "captured_local": "2026-10-18T11:57:16.886817+08:00",
+      "client_version": "unverified",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "source_sha256": "498f66065f944f1f3eef1fb8268a84f245c013c82e43dd3a7153f526cb0c40a8",
+      "crop_xyxy": [
+        3220,
+        60,
+        3780,
+        150
+      ],
+      "sha256": "ed3b02d6e858e3e9e01bf3db7d17dad9d87ccd042f359ccc0985b68e6897343d",
+      "transforms": [
+        "crop only; no scaling or editing"
+      ],
+      "excludes_identifiers": true
+    },
+    {
+      "id": "cw_ambiguous_04",
+      "file": "samples/cw_ambiguous_04.png",
+      "group": "historical_counterexample",
+      "expected": "unknown",
+      "state_evidence": "missing group context, animation, or insufficient independent state evidence",
+      "captured_local": "2026-10-18T12:21:39.754409+08:00",
+      "client_version": "unverified",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "source_sha256": "95eab02d289a884834a0aa8efa87977f0acf7f04dbc8b0d59a51480c417c0c15",
+      "crop_xyxy": [
+        3220,
+        60,
+        3780,
+        150
+      ],
+      "sha256": "da877b8b5b40d7f275ace28fbb2aa953eaf79e9ac969a4fe73b59874eac7698a",
+      "transforms": [
+        "crop only; no scaling or editing"
+      ],
+      "excludes_identifiers": true
+    },
+    {
+      "id": "cw_occluded_01",
+      "file": "samples/cw_occluded_01.png",
+      "group": "same_run_neighbor",
+      "expected": "unknown",
+      "state_evidence": "missing group context, animation, or insufficient independent state evidence",
+      "captured_local": "2026-10-26T12:22:54.776045+08:00",
+      "client_version": "4.6.0",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "source_sha256": "511a8b42a5dcac6177f2ed5ecb283878024e32e219d78a266ae34cb225a71077",
+      "crop_xyxy": [
+        3220,
+        60,
+        3780,
+        150
+      ],
+      "sha256": "2eea9a15c4db2c83258d06344c6f08b0829108428ca79678c9cce1f24d463b59",
+      "transforms": [
+        "crop only; no scaling or editing"
+      ],
+      "excludes_identifiers": true
+    },
+    {
+      "id": "cw_occluded_02",
+      "file": "samples/cw_occluded_02.png",
+      "group": "same_run_neighbor",
+      "expected": "unknown",
+      "state_evidence": "missing group context, animation, or insufficient independent state evidence",
+      "captured_local": "2026-10-26T12:22:54.546908+08:00",
+      "client_version": "4.6.0",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "source_sha256": "511a8b42a5dcac6177f2ed5ecb283878024e32e219d78a266ae34cb225a71077",
+      "crop_xyxy": [
+        3220,
+        60,
+        3780,
+        150
+      ],
+      "sha256": "2eea9a15c4db2c83258d06344c6f08b0829108428ca79678c9cce1f24d463b59",
+      "transforms": [
+        "crop only; no scaling or editing"
+      ],
+      "excludes_identifiers": true
+    },
+    {
+      "id": "cw_transition_01",
+      "file": "samples/cw_transition_01.png",
+      "group": "historical_counterexample",
+      "expected": "unknown",
+      "state_evidence": "missing group context, animation, or insufficient independent state evidence",
+      "captured_local": "2026-10-18T10:41:29.499366+08:00",
+      "client_version": "unverified",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "source_sha256": "1d8bc29969d2e7e4bcf692380d8ac84127c758ac5a41259b0e06fb3236c5d4b5",
+      "crop_xyxy": [
+        3220,
+        60,
+        3780,
+        150
+      ],
+      "sha256": "d1b395c36095fed8c7778122e6040a3b9d5c5e4a1dfc965bb8b1bb4f3fbeac96",
+      "transforms": [
+        "crop only; no scaling or editing"
+      ],
+      "excludes_identifiers": true
+    },
+    {
+      "id": "cw_transition_02",
+      "file": "samples/cw_transition_02.png",
+      "group": "historical_counterexample",
+      "expected": "unknown",
+      "state_evidence": "missing group context, animation, or insufficient independent state evidence",
+      "captured_local": "2026-10-18T11:42:09.561378+08:00",
+      "client_version": "unverified",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "source_sha256": "89d0c46026e9ab4cf6b5f697705bbb89a3a6f588feff50da8ca1dfd928a599c0",
+      "crop_xyxy": [
+        3220,
+        60,
+        3780,
+        150
+      ],
+      "sha256": "de638f7659855b3cb6bcaad1f77a7d54b33e046612cad0db0f6a336bd4d7374b",
+      "transforms": [
+        "crop only; no scaling or editing"
+      ],
+      "excludes_identifiers": true
+    }
+  ],
+  "references": [
+    {
+      "id": "auto_on",
+      "file": "auto_on.png",
+      "source_sample": "cw_on_01",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "crop_xyxy": [
+        3480,
+        63,
+        3560,
+        125
+      ],
+      "source_sha256": "7775906a35ae7e637867130ac59bb524626bac4e8e759200aa8b7299d0d8d7b4",
+      "sha256": "9c5726bc2f89f0ee62ccbecaf1bc0c903f7c0dff6b868fd3d6a6065cc8cdfbea",
+      "transforms": [
+        "crop only; no scaling or editing"
+      ]
+    },
+    {
+      "id": "auto_dim",
+      "file": "auto_dim.png",
+      "source_sample": "cw_dim_01",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "crop_xyxy": [
+        3479,
+        63,
+        3559,
+        125
+      ],
+      "source_sha256": "27d9bfa5661eec7d89a2fef7367ac3410ef5555546101f5b458e20dde2738455",
+      "sha256": "7b731bfa15a81219e9ac88e43132c100b1f4015865a6a444eac49229381f0382",
+      "transforms": [
+        "crop only; no scaling or editing"
+      ]
+    },
+    {
+      "id": "du_on_reference",
+      "file": "../templates/du_auto_anchor.png",
+      "label": "real_on",
+      "sha256": "1755526a68729798a367b3cc62981c23f33ee4bc5e3a63d018d64508f3daebea",
+      "source_sha256": "610b1be3c6c07189d4b897a39ca608696a0e06556991f8b86ebe903b0ded65d2",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "normalized_box": [
+        0.906,
+        0.029,
+        0.927,
+        0.058
+      ],
+      "client_version_context": "existing local 4.6 calibration; source sidecar remains authoritative",
+      "transforms": [
+        "existing public crop reused without modification"
+      ]
+    },
+    {
+      "id": "pause_reference",
+      "file": "../templates/du_battle_pause.png",
+      "label": "real_battle_pause",
+      "sha256": "eec8ec6a5296ff0567276398bda21fca4cc0968820d73a4b8bd535197a27b5ef",
+      "source_sha256": "610b1be3c6c07189d4b897a39ca608696a0e06556991f8b86ebe903b0ded65d2",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "normalized_box": [
+        0.962,
+        0.028,
+        0.978,
+        0.06
+      ],
+      "client_version_context": "existing local 4.6 calibration; source sidecar remains authoritative",
+      "transforms": [
+        "existing public crop reused without modification"
+      ]
+    },
+    {
+      "id": "planar_disabled_reference",
+      "file": "../templates/planar_auto_dim.png",
+      "label": "real_disabled",
+      "sha256": "11432bf8abb34d47ccddaeb6e3bb9fbc5889d9d62b447c13aed48c8c4439b3e4",
+      "source_sha256": "b819039f1de8c525cef7c405b33d6dc831badf0350f34008fe9000ccd303fd5f",
+      "source_dimensions": [
+        3840,
+        2160
+      ],
+      "normalized_box": [
+        0.906,
+        0.029,
+        0.927,
+        0.058
+      ],
+      "client_version_context": "existing local 4.6 calibration; source sidecar remains authoritative",
+      "transforms": [
+        "existing public crop reused without modification"
+      ]
+    }
+  ],
+  "upstream_research_only": {
+    "repository": "https://github.com/moesnow/March7thAssistant",
+    "commit": "7cf6c6bed474539485d3b1504077ac352866829f",
+    "function": "tasks/weekly/currency_wars.py::check_auto_battle",
+    "source_blob": "52507ccfa8bf7977f8a8be9eca24050a6c16990d",
+    "license": "GNU GPL v3",
+    "not_auto_blob": "ee62fa9cdd958ec718e381d2a4753e219e8ecde1",
+    "not_auto_sha256": "9476db0645027b4d45ae4ec673d89d9084fba509deb492bcc90c9ebfa0a952b4",
+    "not_auto_observation": "Only a yellow letter C; no asset imported or used as a state detector.",
+    "assets_adopted": false
+  }
+}

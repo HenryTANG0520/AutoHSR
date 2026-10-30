@@ -10,6 +10,7 @@ import uuid
 
 from .config import ROOT
 from .models import RunReport, Stopped, TaskResult
+from .run_control import stop_requested
 from .storage import replace_file
 from .weekly_plan import CHINA, WeeklyGuard, weekly_slot
 
@@ -45,6 +46,14 @@ class PlanRunner:
         self._stop = threading.Event()
         self._paused = False
         self.report = RunReport(operation="plan")
+
+    @property
+    def stop_requested(self) -> bool:
+        if self._stop.is_set():
+            return True
+        with self._lock:
+            child = self.child
+        return child is not self and stop_requested(child)
 
     def stop(self):
         self._stop.set()
@@ -84,16 +93,23 @@ class PlanRunner:
                 child.stop()
             if self._paused:
                 child.toggle_pause()
+        result = None
         try:
             result = child.run()
+            with self._lock:
+                if self.child is child and stop_requested(child, result) and not self._stop.is_set():
+                    self.stop()
             return result.to_dict() if hasattr(result, "to_dict") else result
         finally:
             with self._lock:
-                if hasattr(self,'_control_hwnd'):
-                    hwnd=getattr(child,'_control_hwnd',None)
-                    if not isinstance(hwnd,int):hwnd=getattr(getattr(child,'_window',None),'hwnd',None)
-                    if isinstance(hwnd,int):self._control_hwnd=hwnd
-                self.child = None
+                if self.child is child:
+                    if stop_requested(child, result) and not self._stop.is_set():
+                        self.stop()
+                    if hasattr(self,'_control_hwnd'):
+                        hwnd=getattr(child,'_control_hwnd',None)
+                        if not isinstance(hwnd,int):hwnd=getattr(getattr(child,'_window',None),'hwnd',None)
+                        if isinstance(hwnd,int):self._control_hwnd=hwnd
+                    self.child = None
 
     def _weekly_result(self, status, message):
         self.report.weekly_plan.update(status=status, message=message)
@@ -217,6 +233,7 @@ class PlanRunner:
                                         "本周演算已完成，已跳过。" if guard.already_complete else
                                         f"本周 {self.settings.weekly_runs} 局周期演算已完成；周积分奖励未核实。")
         except Stopped as exc:
+            self.stop()
             report.status, report.error = "stopped", str(exc)
             self._weekly_result("not_started", "计划已停止；未继续下一项。")
         except Exception as exc:

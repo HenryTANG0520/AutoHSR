@@ -94,7 +94,19 @@ UTF-8 JSON顶层为`version:1`、`name`、`steps`；不接受重复JSON键、NaN
 
 失败默认停止。`on_failure:"continue"`可用于后续本地分析、等待或分支；若失败来自游戏任务，后续任何游戏任务均被阻止，即使前者已核实部分实训。整体仍为partial，不用后续本地成功覆盖旧失败。未知报告、保存失败、停止、条件未知均不触发重试；已经保存的日常、消耗和CW胜负不会因后续失败丢失。
 
-当前没有流程断点自动恢复、定时器或后台续跑。重新执行文件是一次新执行，不能当作旧预算的接续；应先查看原子报告，再使用原差分／CW／领奖接续入口核对未完成步骤。跨步骤统一账号约束另已接通：两帧新鲜证明、暂停重核、原证据检查与日常预算延后建立，见[账号连续性](workflow-account-continuity.md)。现有各子流程核验仍保持，完整多账号配置切换尚未交付，真实组合仍待验收。
+### 停止意图与未保存报告
+
+2026-10-30补统一的只读布尔`stop_requested`，由原生Runner、PlanRunner、CurrencyLoopRunner、TaskWorkflowRunner及NotificationRunner公开；它表示已经请求协作停止，独立于最终报告status。共享[run_control.stop_requested](../autohsr/run_control.py)只接受严格的runner `True`或原报告字符串`status=stopped`，不把`1`／`"true"`等真值近似当作证据，不修改报告，也不调用输入。
+
+计划／循环／任务树合并当前子Runner的意图，并在返回边界或清理当前child前锁存；原生Runner、计划与CW循环捕获Stopped异常时也显式请求stop。任务树的`_notice_stopped`在原报告来源核验及后续落盘前先传递子任务的stopped／只读停止意图；即使子报告未保存、来源不符或父报告保存失败而使整体成为partial，这个控制意图仍保留。原来源错误、未核实状态和旧报告继续记录，不能为了传播停止把partial／unknown改成已核实stopped。
+
+[应用内定时](schedules.md)的正式adapter保留该控制意图，兼容只读`schedule_stopped`来源提示；调度器在返回／异常后，以及tick认领下一due之前观察自有Runner的严格布尔，先停止未来计时并清pending，再核对来源或结果落盘。NotificationRunner还合并自身通知阶段stop，因此游戏报告仍success、通知cancelled时也能停止未来计划，不必等网络返回；实际run退出仍须等待。写回执失败保持unknown／pending，不再次触发。内部stop_owned替换已有job.cancel来源，不误当作用户全局停止。
+
+控制器停止不改写已核实结果：完整count1的slot／attempt仍可为success，另记reason=controller_stopped；有限重复只完成一部分则为partial并保留completed计数，原子stopped仍stopped、unknown仍unknown。这个布尔不证明原游戏结果、资源或报告保存成功，界面须分别呈现控制器状态、slot／attempt、原游戏报告及通知结果，并等待原run实际退出再解锁。
+
+此前两项任务树回归覆盖未保存child stopped不被来源错误盖掉停止意图，以及父报告保存失败仍保留停止标记，所在191项快照通过`runs/schedules-cw-auto-related-final.log`（9.707秒）。统一控制链的最终相关244项通过`runs/schedules-control-complete-related.log`（10.469秒），另核对正式通知Graph在fake网络held期间公开stop后，不认领下一due、原success报告字节不变及完整slot成功保留。旧故障注入复现`runs/schedules-stop-receipt-reproduction.json`保留，记录修复前“child已停止、slot unknown但controller仍运行”的问题；最终全量结果另见本轮[定时验证](schedules.md#验证记录与剩余边界)，不借用旧全量快照。
+
+当前没有流程断点自动恢复或后台续跑，流程本体不自带定时器；可由默认关闭、明确启用的[应用内调度器](schedules.md)调用。重新执行文件是一次新执行，不能当作旧预算的接续；应先查看原子报告，再使用原差分／CW／领奖接续入口核对未完成步骤。跨步骤统一账号约束另已接通：两帧新鲜证明、暂停重核、原证据检查与日常预算延后建立，见[账号连续性](workflow-account-continuity.md)。现有各子流程核验仍保持，完整多账号配置切换尚未交付，真实组合仍待验收。
 
 ## 首版验证（531da85）
 

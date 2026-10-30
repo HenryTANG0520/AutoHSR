@@ -4,8 +4,28 @@
   "retrieved": "2026-10-28",
   "license": "GNU GPL version 3",
   "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json", "assets/currency-investment/sources.json"],
+  "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json", "assets/currency-investment/sources.json", "assets/currency-auto/sources.json"],
   "native_extensions": [
+    {
+      "path": "autohsr/run_control.py",
+      "native_files": ["autohsr/app.py", "autohsr/plan_runner.py", "autohsr/currency_wars_loop.py", "autohsr/task_workflow_run.py", "autohsr/notify_runtime.py", "autohsr/schedule_runtime.py", "autohsr/schedule_dispatch.py"],
+      "tests": ["autohsr/tests/test_run_control.py", "autohsr/tests/test_schedule_core.py", "autohsr/tests/test_schedule_dispatch.py"],
+      "kind": "AutoHSR-authored read-only stop_requested protocol independent of report-save outcomes: literal runner True or an original exact stopped status only, bounded recursive-wrapper observation, no native calls or report mutation. Native/Plan/CW-loop/TaskWorkflow/Notification wrappers retain own/child intent before source validation, result writes or child cleanup; notification-stage stop is observable while original game success remains unchanged. Scheduler checks owned intent before another due claim and on return/error, clears future work while waiting for actual exit, keeps completed slot/attempt success and separate control reason, preserves partial/stopped/unknown and incomplete-repeat counts, and does not treat internal owned replacement as a global stop. No upstream control framework imported."
+    },
+    {
+      "path": "autohsr/currency_wars_auto.py",
+      "native_files": ["autohsr/currency_wars_standard_node.py"],
+      "native_references": ["autohsr/currency_wars.py", "autohsr/du_navigation.py", "autohsr/workflows.py"],
+      "asset_manifest": "assets/currency-auto/sources.json",
+      "tests": ["autohsr/tests/test_currency_wars_auto.py", "autohsr/tests/test_currency_wars_standard_node.py"],
+      "kind": "AutoHSR-authored read-only CW on/disabled/unknown observations from native minimal top-right control crops, independent existing real DU-on/planar-disabled glyph references and pause-group geometry; no real off sample, clickable location, key or toggle action. Standard-node observation binds verified original start, current node/account/input epoch and two distinct fresh capture timestamps, persists private evidence and first verified-on frames, resets the current on streak on disabled/unknown while retaining prior on history and verified victories. Yellow C upstream hint is research only, not an adopted asset or control locator; no live switching, independent real holdout or whole-run acceptance."
+    },
+    {
+      "path": "autohsr/schedule_store.py",
+      "native_files": ["autohsr/schedule_dispatch.py", "autohsr/schedule_cli.py"],
+      "tests": ["autohsr/tests/test_schedule_core.py", "autohsr/tests/test_schedule_dispatch.py"],
+      "kind": "AutoHSR-authored inert immutable schedule versions, explicit replacement with retained old definitions and optional expected revision, per-id/revision/Beijing-minute slot claims, durable pending attempt intents and ordered native results. Dispatcher freezes settings, workflow/import hashes and notification cipher versions, rejects automatic resume and game repeat above one, uses native task-tree budget/account gates, and verifies original parent report content against returned data with a 64 MiB bound before recording private SHA-256/path/size/operation references. No replay of claimed/running/unknown/corrupt receipts; public snapshots/events exclude original reports and private references. Definitions do not persist enablement; no system task, startup registration, GUI or input framework imported."
+    },
     {
       "path": "autohsr/notify_runtime.py",
       "native_files": ["autohsr/notify_profiles.py", "autohsr/notify_http.py", "autohsr/notify_cli.py"],
@@ -47,7 +67,39 @@
       "scope": "advisor unlock and later shop availability are distinct from an actual purchase; old costs, rank caps and balance values are not reused"
     }
   ],
+  "schedule_research_references": [
+    {
+      "path": "utils/schedule.py",
+      "git_blob": "f13784deb7741a2f729e08d58d0e8f62a6ca0fe0",
+      "sha256": "b29f52f12b81981169d5301ad7059fa9ef4316bd52d879a352b5a8ba5592e1ca",
+      "bytes": 4706,
+      "reference_functions": ["create_task", "apply_task_settings"],
+      "scope": "research_only_not_ported: upstream Windows logon-trigger registration and system task settings are distinct from AutoHSR in-process scheduling. No task registration, startup trigger, arbitrary argument bridge or hard termination is imported; the existing fixed admin GUI launcher remains native and unchanged."
+    },
+    {
+      "path": "tasks/game/__init__.py",
+      "git_blob": "a22423aeb25870405416b03ce052f57080897a89",
+      "sha256": "c6e0e6969efbde7df4c491d93a30f84a1f7fca6a8297b1c131644abf2c22463c",
+      "bytes": 23781,
+      "reference_functions": ["after_finish_is_loop"],
+      "scope": "research_only_not_ported: upstream CLI power/time waiting loop is rejected in its GUI branch. AutoHSR does not derive renewed spending authorization from natural stamina recovery or port game shutdown, infinite loop, system post-actions or config reload behavior."
+    }
+  ],
   "sources": [
+    {
+      "path": "app/common/schedule.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "5b5b9daa8689c9bf0d5e29c5192c91309651a335",
+      "sha256": "7ebedb8b11fbad54e67da855dd8e1ce9f8e42ad3e834dfb6ff9cceed14d81f00",
+      "bytes": 5972
+    },
+    {
+      "path": "app/log_interface.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "e228fe2719060366615b0adbd8bfbe0616dc1310",
+      "sha256": "8dec5a09d7427ce2a3c4670bab48292ae44979ba04df281164ea586b95141de5",
+      "bytes": 102247
+    },
     {
       "path": "module/notification/__init__.py",
       "retrieved": "2026-10-30",
@@ -334,6 +386,18 @@
     "scope": "Star Rail import/export only; v4.2 output and strict legacy SRGF output, extended legacy collaboration imports are explicitly noted. Official schemas and the third-party jsonschema package are not redistributed or runtime dependencies; the AutoHSR offline QA wrapper checks their pinned hashes and uses synthetic data. Verification evidence, not certification; no real player data or auth used"
   },
   "adaptations": [
+    {
+      "path": "autohsr/schedule_plan.py",
+      "reference_source": "app/common/schedule.py",
+      "reference_functions": ["scheduled_task_slot", "next_scheduled_datetime", "milliseconds_to_next_minute", "scheduled_task_chain"],
+      "kind": "Current-minute and next-time schedule concepts rewritten as strict inert JSON definitions with fixed UTC+8 time, nonempty weekday lists, immutable revision hashes, bounded finite repeat and native task/workflow targets. No Qt objects, shell argument parsing, upstream chain defaults or resource authorization imported; program arguments, startup and post-actions are not supported."
+    },
+    {
+      "path": "autohsr/schedule_runtime.py",
+      "reference_source": "app/log_interface.py",
+      "reference_functions": ["_startScheduleTimer", "_checkScheduledTime", "runScheduledTask", "_onTimeout", "_onProcessFinished"],
+      "kind": "Startup-minute skip, explicit time checks and conflict lifecycle concepts rewritten around tick-driven native Runners, current-process enablement, immutable dispatcher manifests, durable same-slot claims, one owned pending replacement and cooperative stop only after actual Runner exit. Failed/unverified repeats stop; public events project safe state only. No Qt/QProcess GUI, arbitrary external program, failure-continue default, system registration, hard kill, unlimited loop or post-action code imported."
+    },
     {
       "path": "autohsr/notify_providers.py",
       "reference_sources": ["module/notification/__init__.py", "module/notification/bark.py", "module/notification/custom.py", "module/notification/dingtalk.py", "module/notification/discord.py", "module/notification/gocqhttp.py", "module/notification/gotify.py", "module/notification/kook.py", "module/notification/lark.py", "module/notification/matrix.py", "module/notification/meow.py", "module/notification/notification.py", "module/notification/notifier.py", "module/notification/onebot.py", "module/notification/pushdeer.py", "module/notification/pushplus.py", "module/notification/qmsg.py", "module/notification/qqbot.py", "module/notification/serverchan3.py", "module/notification/serverchanturbo.py", "module/notification/smtp.py", "module/notification/telegram.py", "module/notification/webhook.py", "module/notification/wechatworkapp.py", "module/notification/wechatworkbot.py", "module/notification/winotify.py"],

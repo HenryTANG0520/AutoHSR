@@ -1,5 +1,13 @@
 # March7thAssistant 参考来源与适配
 
+2026-10-30另核对`tasks/weekly/currency_wars.py::check_auto_battle`及其`share/base/not_auto.png`，发现黄色C仅为提示图，左下搜索ROI不能证明真实CW开关位置。这部分仅作区别研究，原blob／SHA-256与`assets_adopted=false`见[CW状态来源](../../currency-auto/sources.json)，没有迁入该PNG或热键。旧CW右上控制组经本地独立观察及既有真实DU-on／planar-disabled／暂停图形交叉校准，接为[原生只读状态检测](../../../autohsr/currency_wars_auto.py)与标准节点观察，另记[source.json](source.json)的native_extensions。两份不同capture时间、同节点／账号／输入代次的新鲜on观察才记录已核实on，后续unknown／disabled不抹掉先前证据或胜利；不提供off或开启动作。裁片分组、未知版本及历史／邻近回放均单独标注，没有独立真实留出、真实切换或整局验收。
+
+2026-10-30另参考`app/common/schedule.py`的当前分钟匹配、未来时刻与任务链，以及`app/log_interface.py`的启动分钟跳过、时钟检查、冲突和完成生命周期，改写为[应用内定时与有限重复](../../../docs/schedules.md)。严格JSON、固定北京时间、不可变版本、同分钟意图／回执、当前进程显式启用、原生Runner与唯一执行权、暂停／停止及安全状态事件属于AutoHSR适配；保存不启用，未知／失败不续跑，不通过时钟扩大资源预算。两份实际参考源码及改写函数的Git blob／SHA-256见[source.json](source.json)，GPL v3与原作者署名保留，没有迁入Qt／QProcess GUI或任意程序执行。
+
+`utils/schedule.py`的Windows登录自启和`tasks/game/__init__.py::after_finish_is_loop`的CLI体力／等待循环仅用于区别研究，分别列在清单的`schedule_research_references`，不署为已移植。应用内时钟不登记系统任务、不设置开机／登录触发器、不从自然恢复推导额外授权，也不扩展现有管理员固定GUI参数桥；关机、重启、脚本和无限循环尚未实现。当前GUI、真实调度与游戏组合及长期常驻仍未验收，本轮没有实际启用计划或操作游戏。
+
+本轮另补的`run_control.stop_requested`为AutoHSR原生只读控制协议，统一贯穿原生／计划／CW循环／任务树／通知与调度wrapper，单独记入native_extensions。停止意图不依赖原报告是否保存成功，通知阶段stop也不改变原游戏success；控制器停止与已完整slot成功分开，不将partial／unknown改成已核实stopped。这部分没有迁入新的上游源码或控制框架。
+
 2026-10-30另将`module/notification/`固定注册表的23个渠道适配为[运行结束文字通知](../../../docs/notifications.md)。参考范围为`__init__.py`、`notification.py`、`notifier.py`及23份渠道源码的文字参数、端点／请求结构、标题正文合并、钉钉／飞书签名与自定义文本替换，共26份；逐份Git blob、SHA-256、字节数和改写文件见[source.json](source.json)。作者仍为moesnow及其贡献者，原[GPL v3许可](LICENSE)保留，不把上游贡献署为AutoHSR原创。没有直接导入上游模块、全局配置或GUI，也没有移植`pac.py`。
 
 当前用户DPAPI配置／覆盖备份、配置版本冻结、受限摘要模板、无重定向的有界单次HTTP、发送前意图／回执、未知不重发与原游戏报告隔离属于AutoHSR原生实现。SMTP沿用文字参数约定，Toast用隐藏PowerShell调用Windows原生WinRT而非迁入winotify依赖。渠道仅覆盖文字路径；截图／图片上传、Bark密文、Matrix E2EE、QQ接收ID发现、PAC／代理高级项、上游通知等级及图片合并尚未实现。所有真实渠道、Toast可见性、GUI及游戏后通知组合仍未验收，本轮没有实际通知或新增游戏素材／模型。

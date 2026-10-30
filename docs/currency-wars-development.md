@@ -1,5 +1,29 @@
 # 货币战争重启开发记录
 
+## 2026-10-30：自动状态只读检测与标准节点两帧观察
+
+新增[只读检测器](../autohsr/currency_wars_auto.py)，接入[标准节点观察](../autohsr/currency_wars_standard_node.py)。同日复核修正先前位置推断：固定上游`check_auto_battle`是在左下搜索黄色C提示，不能据此认定实际开关在左下；旧CW右上确有双三角自动、倍速与暂停控制。先前误判与更正保留在[差距审查](currency-wars-gap-review-2026-10-30.md)，没有改写已推历史。
+
+`read_auto(scene, confidence=.65)`先核实CW战斗页面，再匹配CW局部图形、独立真实on／disabled参考及暂停组关系，返回不可变的`on / disabled / unknown`、分数与匿名diagnostics。只在已匹配图形内部核对金色，不靠整块颜色、白色或缺少C判断关闭；没有off、点击点位、热键或开启动作。真实关闭与关闭→开启的前后证据缺失，自动开启仍未接通。
+
+标准节点必须已有本次已核实出战、同节点及账号来源，新鲜Scene通过输入代次核验后才记录：
+
+- `auto_observation`为当前state／score／匿名diagnostics，另含私人evidence、captured_at、input_epoch、verified_on和on_frames；两份capture时间严格递增、同代次on观察才核实连续on，重复使用同一捕获不凑两帧。
+- `auto_on_observed`保留本节点曾经两帧核实on的历史布尔，`auto_on_evidence`保留首份两帧证据。随后disabled／unknown清空当前连续帧，不抹旧on历史或已核实胜利；历史true不能当作之后始终开启。
+- 识别到战斗先记“战斗已观察”，再按当前状态记录已核实on、等待第二帧、暂不可用或状态未核实；不再未核实就称“正在自动战斗”。未知或disabled仅继续观察本次战斗／结算，不发送V或其他切换输入。
+
+公开范围为12份最小右上控制裁片与2幅CW图形，另复用3份既有真实DU／饰品图形，17项资产／参考哈希记录在[来源清单](../assets/currency-auto/sources.json)。1份2026-10-26标准开发局4.6.0完整控制组是on局部校准；两份10月18日斜杠组分别作disabled交叉校准／历史回放，版本仍unverified。其余过渡、含糊及同局两份大招遮挡保持unknown，不记独立留出。原始整图、调查临时目录及账号资料不公开，游戏美术权利与上游research-only边界见[素材说明](../assets/currency-auto/README.md)。
+
+阶段整合72项通过`runs/schedules-cw-auto-reviewed.log`（2.494秒）：含38项定时核心、14项dispatcher／CLI、11项纯Scene／CV和9项标准节点检查。首轮70项中有1项夹具失败，保留于`runs/schedules-cw-auto-first.log`：假窗口sleep未推进实际时间，Windows monotonic分辨率使两次capture时间相同；只修正夹具的新鲜时间递增，并增加重复capture不得凑两帧的反例，没有放宽来源门禁。
+
+统一控制链最终相关244项通过`runs/schedules-control-complete-related.log`（10.469秒），包含只读stop_requested、原生／计划／CW循环／任务树／通知wrapper、标准节点与原接口回归。原游戏／父流程status与停止意图分开，保存失败不丢停止提示，通知阶段stop也不改原success；controller停止、完整slot成功及通知cancelled分列。初次211项断言错误、后续211项通过和原故障注入均保留，详见[定时验证](schedules.md#验证记录与剩余边界)。
+
+此前186项相关`runs/schedules-cw-auto-related.log`（9.858秒）、191项相关`runs/schedules-cw-auto-related-final.log`（9.707秒）、1857项全量`runs/schedules-cw-auto-all.log`（817.511秒）及1862项全量`runs/schedules-cw-auto-all-final.log`（787.210秒、驱动787.907秒）均保留；两次全量当次305份源文件前后哈希一致，均早于统一控制意图加固，不作最终源码全量证据。独立CLI五项及正式NativeExecutor→TaskWorkflowRunner的临时wait(0)流程核验通过`runs/schedules-cli-verification.json`，同slot一次执行、原父报告哈希引用及公开／私有字段分离均核实，跨进程标记不等于系统定时任务，没有游戏、键鼠、网络或通知；应用内调度的完整接口与限制见[定时说明](schedules.md)。
+
+最终源码的**1883项全量通过**`runs/schedules-control-all.log`（813.843秒），驱动814.594秒、退出0；`runs/schedules-control-full-result.json`及`runs/schedules-control-full-snapshot.json`核对307份Python／requirements源文件与动态重新枚举后的完整清单、前后哈希一致，`snapshot_unchanged=true`。最终相关仍为上述244项。8份说明327处本地链接和17份CW公开资产／参考哈希核对通过，旧日志、故障与历史快照不改写。
+
+本轮没有启动、检测或操控真实游戏，没有实际通知、系统定时登记、新游戏采集、独立真实留出、模型训练或EXE构建。只读状态观测不等于本程序开启过自动战斗，不证明真实切换或整局通过；历史独立整局0/10和已终止的旧十场目标保持原状。
+
 ## 2026-10-30：整局失败结算、胜负计数与原目标接续
 
 参考固定上游`_check_battle_result`与`main.py`循环入口，新增[原生终局失败协议](../autohsr/currency_wars_defeat.py)，接入节点观察、标准流程、统一账本、循环与周常汇总。普通“挑战结束／继续挑战”不当作整局失败，上游“对局未完成”与合成“对局失败”变体使用相同失败链。详细用法和限制见[失败与循环接续](currency-wars-defeat-loop.md)。
@@ -595,6 +619,6 @@ CLI可在新局选择`--currency-strategy default|aglaea|seele`；不填时新�
 
 ## 2026-10-30：后端剩余差距只读审查
 
-新增[货币战争后端差距审查](currency-wars-gap-review-2026-10-30.md)，对照固定上游`7cf6c6bed474539485d3b1504077ac352866829f`与当前源码，区分已接通能力、初始环境交付协议、纯赠武装箱和双装备补给的剩余工作，并说明初始来源不能套用位面投资赠角旧基线、CW左下自动开关不能借用普通／差分右上模板。现有脱敏字段、合成机制与缺少的真实布局／到账证据分别列出。
+新增[货币战争后端差距审查](currency-wars-gap-review-2026-10-30.md)，对照固定上游`7cf6c6bed474539485d3b1504077ac352866829f`与当前源码，区分已接通能力、初始环境交付协议、纯赠武装箱和双装备补给的剩余工作，并说明初始来源不能套用位面投资赠角旧基线。自动战斗位置判断经同日旧CW画面复核更正：上游左下黄色C提示的搜索区域不能作为实际开关定位，旧CW右上也有自动／倍速／暂停控制；金／白／灰颜色本身不能授权状态，后续on／disabled只读交叉校准及两帧观察另见本篇新条目，真实off和切换来源仍缺失。原审查误判保留在历史提交及文中更正说明，定位更正本身不增加功能验收。现有脱敏字段、合成机制与缺少的真实布局／到账证据分别列出。
 
-本轮仅新增审查文档并核对差异、相对链接及固定上游源码哈希／树归属；没有修改Python、测试或GUI，没有执行单元测试、项目CLI、模拟窗、游戏或EXE构建，也没有完成建议中的修复或校准。未新增游戏授权、接续旧开发局或恢复旧十场目标，历史独立整局仍为0/10。其他并行开发与检查不作为本次审查完成上述功能的证明。
+原审查阶段仅新增文档并核对差异、相对链接及固定上游源码哈希／树归属；该阶段没有修改Python、测试或GUI，没有执行单元测试、项目CLI、模拟窗、游戏或EXE构建，也没有完成建议中的修复或校准。后续只读状态观察的实现与专项另记本篇新条目，不替初始交付、赠箱、双装备或自动开启动作补验收。未新增游戏授权、接续旧开发局或恢复旧十场目标，历史独立整局仍为0/10。

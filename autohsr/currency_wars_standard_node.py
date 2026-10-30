@@ -7,6 +7,50 @@ from .currency_wars_node import battle_node, result_node
 from .models import AutomationError, EmptyCapture
 
 
+def _observe_auto(c, store, scene, guard, tracker):
+    """Record control state only; never derive a key or click from uncertainty."""
+    from .currency_wars_auto import AutoObservation, read_auto
+    from .currency_wars_standard_flow import evidence
+    try:
+        observed = read_auto(scene, c.settings.ocr_confidence)
+    except Exception:
+        observed = AutoObservation('unknown', 0., (('reason', 'reader_unavailable'), ('off_calibrated', False)))
+    guard._require_current_scene(scene)  # Discard a result interrupted during CV.
+    attempt = store.data['node_attempt']
+    epoch = c.runner.input_epoch
+    if tracker.get('epoch') != epoch:
+        tracker.update(epoch=epoch, frames=[])
+    frames = tracker.setdefault('frames', [])
+    saved = None
+    if observed.state == 'on':
+        if len(frames) < 2 and (not frames or scene.captured_at > frames[-1]['captured_at']):
+            saved = evidence(c, scene, 'currency_standard_auto_on_' + str(len(frames) + 1))
+            frames.append(dict(captured_at=scene.captured_at, input_epoch=epoch, node=attempt['node'], evidence=saved))
+    else:
+        frames.clear()
+    verified = observed.state == 'on' and len(frames) == 2
+    key = (observed.state, verified)
+    if tracker.get('last') == key:
+        return
+    tracker['last'] = key
+    saved = saved or evidence(c, scene, 'currency_standard_auto_' + observed.state)
+    attempt['auto_observation'] = dict(observed.to_dict(), node=attempt['node'], input_epoch=epoch,
+                                      captured_at=scene.captured_at, evidence=saved, verified_on=verified,
+                                      on_frames=[dict(frame) for frame in frames])
+    attempt['auto_on_observed'] = attempt.get('auto_on_observed') is True or verified
+    if verified:
+        attempt.setdefault('auto_on_evidence', [dict(frame) for frame in frames])
+    store.persist()
+    if verified:
+        c.log('标准节点' + attempt['node'] + '两帧核实自动战斗已开启，仅观察本次战斗。')
+    elif observed.state == 'on':
+        c.log('标准节点' + attempt['node'] + '观察到开启控件，等待下一份新鲜画面核对。')
+    elif observed.state == 'disabled':
+        c.log('标准节点' + attempt['node'] + '自动控件暂不可用，继续观察本次战斗或结算。')
+    else:
+        c.log('标准节点' + attempt['node'] + '自动战斗状态未核实，仅观察本次战斗或结算。')
+
+
 def entry_feedback(scene, node, confidence=.65):
     kind = observe(scene,confidence).page_kind
     return ((kind=='battle' and battle_node(scene,confidence)==node)
@@ -29,6 +73,7 @@ def observe_started_node(c, store, scene):
     guard = CurrencyWarsWorkflow(c)
     elapsed, unseen = 0., 0.
     defeat_frames=[]
+    auto_tracker = {}
     limit = min(180,c.settings.battle_timeout)
     while elapsed < limit:
         c.checkpoint()
@@ -53,7 +98,9 @@ def observe_started_node(c, store, scene):
                 if actual == attempt['node'] and not attempt.get('battle_observed'):
                     attempt.update(battle_observed=True,battle=evidence(c,scene,'currency_standard_battle'))
                     store.persist()
-                    c.log('标准节点'+attempt['node']+'正在自动战斗，仅观察日志。')
+                    c.log('标准节点'+attempt['node']+'战斗已观察，继续核对控件与本次结算。')
+                if actual == attempt['node']:
+                    _observe_auto(c, store, scene, guard, auto_tracker)
             elif kind=='match_defeat':
                 if result_node(scene,c.settings.ocr_confidence)!=attempt['node'] or store.data.get('match_victory_observed') is True:
                     attempt.update(status='unknown',reason='整局结束与本次出战或原胜利状态不符。');break
@@ -97,7 +144,7 @@ def observe_started_node(c, store, scene):
         if unreadable:
             unseen += capture_duration
     else:
-        attempt.update(status='timeout',reason='标准节点自动战斗观察超时，未重复出战。')
+        attempt.update(status='timeout',reason='标准节点战斗观察超时，未重复出战。')
     if scene is not None:
         guard._require_current_scene(scene)
         attempt['screenshot'] = evidence(c,scene,'currency_standard_node_unknown')
