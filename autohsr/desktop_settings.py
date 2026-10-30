@@ -262,11 +262,19 @@ def build_settings(ui):
                      hint="开拓力刷本未授权" if key == "battle" and not ui.settings.allow_stamina_spend else None)
         ui.daily_task_controls[key] = toggle(target, variable, "daily_"+key+"_combo")
         index += 1
+        if key == 'battle':
+            from .support_ui import show as show_support
+            support = row('daily',index,'借用好友支援',variable=ui.support_summary,wide=True)
+            control=BooleanSetting(support.value,ui.use_support);support.place_control(control)
+            ui.support_toggle=control;ui.setting_controls.append(control)
+            ui.support_config_button=ttk.Button(support.value,text='选择角色',command=lambda:show_support(ui),style='Settings.TButton')
+            ui.support_config_button.grid(row=0,column=1,padx=d(8));ui.setting_controls.append(ui.support_config_button)
+            index += 1
         if key == "daily":
             toggle(row("daily", index, "实训合成", hint="1 个奇巧零食 · 两种普通材料各 1 个"),
                    ui.daily_synthesis, "synthesis_control")
             index += 1
-    note("daily", 6, text="仅实训未完成时合成；仅补领奖时不合成。")
+    note("daily", index, text="仅实训未完成时合成；仅补领奖时不合成。")
 
     from .power_plan_ui import PowerPlanEditor
     ui.settings_sections['power'].rowconfigure(0, weight=1)

@@ -33,6 +33,9 @@ WEEKLY_CURRENCY_STAGES = {'points': '核对周积分', 'loop': '进行周常对�
 
 # Backend field -> page, settings section, Tk variable, control, readable name.
 INPUT_FIELDS = {
+    "support_preferences": ("settings", "daily", "support_rows", "support_config_button", "支援角色"),
+    "support_scroll_pages": ("settings", "daily", "support_pages", "support_config_button", "支援查找页数"),
+    "support_fallback": ("settings", "daily", "support_fallback", "support_config_button", "未找到支援"),
     "power_plan": ("settings", "power", "power_rows", "power_plan_list", "体力计划"),
     "power_plan_enabled": ("settings", "power", "power_mode", "power_mode_combo", "刷本模式"),
     "power_plan_keep": ("settings", "power", "power_repeat", "power_repeat_combo", "次数处理"),
@@ -153,6 +156,8 @@ class AutoHSRWindow:
                                self.rounds, self.dungeon_category, self.challenge_count, self.use_support, self.auto_launch, self.overlay_logs, self.daily_synthesis, *self.tasks.values()]
         from .power_plan_ui import variables
         variables(self)
+        from .support_ui import variables as support_variables
+        support_variables(self)
         self.status = tk.StringVar(value="● 准备就绪")
         self.save_status = tk.StringVar()
         self.summary = tk.StringVar()
@@ -468,7 +473,8 @@ class AutoHSRWindow:
         return tuple(variable.get() for variable in (self.game_path, self.target_name, self.target_location,
             self.dungeon_category, self.challenge_count, self.stamina_limit, self.use_support,
             self.daily_synthesis, self.power_mode, self.power_rows, self.power_repeat, self.power_fill,
-            self.echo_enabled, self.echo_day, self.echo_target, self.echo_location, *self.tasks.values()))
+            self.echo_enabled, self.echo_day, self.echo_target, self.echo_location,
+            self.support_rows,self.support_pages,self.support_fallback,*self.tasks.values()))
 
     def _refresh_activity(self, *_):
         task = self.current_task.get() if self.running else ""
@@ -523,7 +529,7 @@ class AutoHSRWindow:
         for name in ('currency_source_combo','currency_zone_combo','currency_level_combo','du_runs_combo','du_resume_combo','du_mode_combo',
                      'weekly_mode_combo', 'weekly_day_combo', 'weekly_runs_combo', 'currency_strategy_combo',
                      'weekly_enabled_combo', 'overlay_control', 'synthesis_control', 'power_mode_combo',
-                     'power_repeat_combo','power_fill_combo','echo_enabled_combo'):
+                     'power_repeat_combo','power_fill_combo','echo_enabled_combo','support_toggle'):
             if hasattr(self,name):
                 getattr(self,name).configure(state='disabled' if self.busy else 'readonly')
         for control in self.weekly_run_controls:
@@ -544,8 +550,6 @@ class AutoHSRWindow:
             hint = "开拓力刷本未授权"
         elif not battle_enabled:
             hint = ""
-        elif not self.use_support.get():
-            hint = "好友支援已关闭；标准每日流程需勾选支援。"
         elif self.dungeon_category.get() == "饰品提取":
             hint = "使用已有差分存档；已有沉浸器优先，余量使用开拓力。"
         else:
@@ -686,6 +690,10 @@ class AutoHSRWindow:
             if save or use_power:
                 from .power_plan_ui import settings_values
                 values.update(settings_values(self))
+            if save or (not resume_weekly_currency and operation in ('daily','plan')
+                        and self.tasks['battle'].get() and self.settings.allow_stamina_spend and self.use_support.get()):
+                from .support_ui import values as support_values
+                values.update(support_values(self))
             if resume_weekly_currency and not save:
                 pending = self._weekly_currency_recovery
                 from datetime import datetime
@@ -1612,6 +1620,10 @@ class AutoHSRWindow:
 
     def _close(self) -> None:
         if self.closing:
+            return
+        support_dialog = getattr(self, 'support_dialog', None)
+        if support_dialog is not None and support_dialog.winfo_exists():
+            support_dialog.lift()
             return
         dialog = getattr(self, 'power_dialog', None)
         if dialog is not None and dialog.winfo_exists():
