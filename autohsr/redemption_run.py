@@ -29,9 +29,37 @@ def _json(value):
 class RedemptionWorkflow:
     def __init__(self, context, *, batch=None, store=None):
         self.c = context
+        if not (context.report.operation == 'redemption' or
+                context.report.operation == 'daily' and context.settings.redemption_enabled):
+            raise AutomationError('当前原生任务没有启用兑换码，未读取运行来源。')
+        run_dir = Path(context.report.run_dir)
+        if not run_dir.is_absolute() or not run_dir.is_dir():
+            raise AutomationError('兑换流程缺少本次已建立的原生运行目录。')
+        self.path = run_dir / 'redemption-session.json'
+        if self.path.exists() or context.report.redemption:
+            raise AutomationError('本次运行已有兑换记录，未覆盖或重启整批。')
         from .redemption_settings import resolve_batch
         from .redemption_store import RedemptionStore
-        self.batch = batch or resolve_batch(context.settings, cancel=context.checkpoint)
+        self.server_resolution = None
+        if context.settings.redemption_server == 'auto':
+            from .redemption_server import resolve
+            context.checkpoint()
+            self.server_resolution = resolve(context.window.current_executable())
+            context.checkpoint()
+        self.batch = batch or resolve_batch(context.settings, cancel=context.checkpoint,
+                                            server_resolution=self.server_resolution)
+        selected_server = (self.server_resolution.server if self.server_resolution is not None
+                           else context.settings.redemption_server)
+        if self.batch.server != selected_server:
+            raise AutomationError('兑换码批次与本次服务器选择不同，未隐式覆盖。')
+        if self.server_resolution is not None:
+            from .redemption_codes import CodeBatch
+            proof = self.server_resolution.to_dict()
+            prior_proof = self.batch.source.get('server_resolution')
+            if self.batch.server != self.server_resolution.server or prior_proof is not None and prior_proof != proof:
+                raise AutomationError('兑换码批次与当前原生服务器来源不同，未改写原批次。')
+            self.batch = CodeBatch(self.batch.codes, self.batch.server,
+                dict(self.batch.source, server_selection='auto', server_resolution=proof), self.batch.skipped)
         self.store = store or RedemptionStore(ROOT / 'runs/redemption-ledger.json')
         self.epoch = context.runner.input_epoch
         self.account = None
@@ -39,10 +67,9 @@ class RedemptionWorkflow:
         self.entry = None
         self.request = None
         self.echo = []
-        self.path = Path(context.report.run_dir) / 'redemption-session.json'
-        if self.path.exists() or context.report.redemption:
-            raise AutomationError('本次运行已有兑换记录，未覆盖或重启整批。')
         self.data = dict(schema=1, status='running', server=self.batch.server,
+            server_selection=context.settings.redemption_server,
+            server_resolution=self.server_resolution.to_dict() if self.server_resolution is not None else None,
             source=deepcopy(self.batch.source), codes=list(self.batch.codes), skipped=list(self.batch.skipped),
             batch_digest=hashlib.sha256(_json([self.batch.server, self.batch.codes, self.batch.source]).encode()).hexdigest(),
             input_epoch=self.epoch, actions=[], results=[], mail='not_requested')
@@ -69,6 +96,7 @@ class RedemptionWorkflow:
         c.checkpoint()
         if c.runner.input_epoch != self.epoch or c.scene_epoch != self.epoch:
             raise InputInterrupted('兑换流程输入代次已改变，旧目标与当前提交保留待核对。')
+        self.require_server_binding()
         if (scene is not c.last_scene or type(scene.captured_at) not in (int, float)
                 or not 0 <= time.monotonic() - scene.captured_at <= 8 or scene.image is None
                 or scene.geometry is None):
@@ -78,6 +106,15 @@ class RedemptionWorkflow:
             observed = account_key(scene, max(.85, c.settings.ocr_confidence))
             if observed != self.account:
                 raise AutomationError('兑换账号已改变，未发送或重放兑换码。')
+
+    def require_server_binding(self):
+        if self.server_resolution is None:
+            return
+        from .redemption_server import require_binding
+        if (self.data.get('server') != self.server_resolution.server
+                or self.data.get('server_resolution') != self.server_resolution.to_dict()):
+            raise AutomationError('本次自动服务器来源与冻结记录不符。')
+        require_binding(self.c.window.current_executable(), self.server_resolution)
 
     def _snapshot(self):
         scene = self.c.snapshot()

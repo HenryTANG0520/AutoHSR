@@ -9,7 +9,7 @@ def add_arguments(mode, parser):
     mode.add_argument('--redeem-codes', action='store_true', help='独立处理兑换码批次；不刷本、不保存本次配置')
     mode.add_argument('--redemption-check', type=Path, help='离线核对本地兑换码表与有效期；不访问游戏或联网')
     mode.add_argument('--redemption-fetch', action='store_true', help='显式联网预览当前码表；不兑换、不写配置')
-    parser.add_argument('--redemption-server', choices=('cn', 'global'), help='兑换码服务器；预览工具须显式选择')
+    parser.add_argument('--redemption-server', choices=('cn', 'global', 'auto'), help='兑换码服务器；auto只用于原生运行，预览须明确cn/global')
     parser.add_argument('--redemption-source', choices=('online', 'manual', 'file'), help='本次兑换码来源')
     parser.add_argument('--redemption-code', action='append', help='手动兑换码，可重复；保留原字符串与大小写')
     parser.add_argument('--redemption-catalog', type=Path, help='本次本地兑换码表')
@@ -23,8 +23,8 @@ def dispatch(args, parser, raw_args):
     allowed = {'--redemption-check', '--redemption-fetch', '--redemption-server'}
     if any(token.startswith('--') and token.split('=')[0] not in allowed for token in raw_args):
         parser.error('兑换码预览仅接受明确来源及服务器，不加载运行、通知或每日配置。')
-    if args.redemption_server is None:
-        parser.error('兑换码预览须明确 --redemption-server cn 或 global。')
+    if args.redemption_server not in ('cn', 'global'):
+        parser.error('兑换码预览须明确 --redemption-server cn 或 global；auto仅用于已核实原生窗口。')
     try:
         from .redemption_codes import from_file, fetch_catalog
         batch = (from_file(args.redemption_check, args.redemption_server) if args.redemption_check is not None

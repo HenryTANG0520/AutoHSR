@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-10-30 兑换服务器自动解析参考
+
+固定March7thAssistant `utils/registry/star_rail_setting.py`已原样缓存在既有研究目录，Git blob为`156538a8313020a4bd9aedfd780d9025a820a736`、SHA-256为`84d6a44693888b610cd65476a5c1093b36626cad403ca52b2301f9c7298184a2`，11538字节，已核对固定tree。作者与[GPL v3许可](upstream/March7thAssistant/LICENSE)保持，来源加入[source.json](upstream/March7thAssistant/source.json)。本轮只参考`get_game_path`的两份HYP包名及`GameInstallPath`字段，原生实现／验证状态见[兑换说明](../docs/redemption-codes.md)；没有分发原模块或导入其模块级探测、FPS／分辨率／自动战斗读写功能，没有读取真实用户注册表或进程。
+
 ## 2026-10-30 March7thAssistant兑换码参考与离线表
 
 固定参考版本为March7thAssistant `7cf6c6bed474539485d3b1504077ac352866829f`，作者为moesnow及其贡献者，保留[GPL v3原许可](upstream/March7thAssistant/LICENSE)。`tasks/daily/redemption.py`与`assets/config/redemption_codes.json`已按固定Git tree核对Git blob、字节数与SHA-256，见[source.json](upstream/March7thAssistant/source.json)。[离线码表](upstream/March7thAssistant/redemption_codes.json)原样保留2054字节，没有重排、筛选或改写原码；它是固定版本回退数据，含历史到期记录，不证明当前有效。

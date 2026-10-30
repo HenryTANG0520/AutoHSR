@@ -168,6 +168,14 @@ class GameWindow:
         self.hwnd = hwnd
         self.path = process_path(hwnd)
 
+    def current_executable(self) -> str:
+        """Read this live window's executable metadata without cached identity."""
+        self.guard()
+        value = process_path(self.hwnd)
+        if not value:
+            raise AutomationError('当前游戏窗口的可执行文件来源无法核实。')
+        return value
+
     @property
     def title(self) -> str:
         buffer = C.create_unicode_buffer(user32.GetWindowTextLengthW(self.hwnd) + 1)

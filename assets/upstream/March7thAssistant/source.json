@@ -7,6 +7,14 @@
   "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json", "assets/currency-investment/sources.json", "assets/currency-auto/sources.json"],
   "native_extensions": [
     {
+      "path": "autohsr/redemption_server.py",
+      "reference_source": "utils/registry/star_rail_setting.py",
+      "reference_functions": ["get_game_path"],
+      "native_files": ["autohsr/redemption_settings.py", "autohsr/redemption_cli.py", "autohsr/redemption_run.py", "autohsr/app.py", "autohsr/windows.py"],
+      "tests": ["autohsr/tests/test_redemption_server.py", "autohsr/tests/test_redemption_auto.py"],
+      "kind": "AutoHSR-authored read-only server proof, referring only to the pinned two HYP package key names and GameInstallPath value. Lazy KEY_READ HKCU access, strict absolute existing current StarRail.exe canonical path, complete observation of both fixed sources and exactly one executable match; absent/stale nonmatches are distinct from unreadable or malformed sources, multiple matches remain unknown and no CN priority/default is inferred. Frozen proof contains server, method and path/source digests only; public output contains server/method. Native runtime supplies freshly queried current-window executable metadata and freezes the resolved actual cn/global in batch/session; fresh-frame/input/character binding rechecks never reread the registry. Default cn, explicit cn/global, settings save/validation, task compilation and previews do not probe the registry, and previews reject auto. The resolver itself does not inspect a process, account or UID and does not import upstream module-level registry probing, FPS/resolution/battle setting readers or any writes. Runtime integration verification is documented separately from the pure injected-reader module checks."
+    },
+    {
       "path": "autohsr/redemption_store.py",
       "native_files": ["autohsr/redemption_settings.py", "autohsr/redemption_cli.py", "autohsr/app.py", "autohsr/windows.py", "autohsr/vision.py", "autohsr/workflow_identity.py", "autohsr/task_workflow.py", "autohsr/schedule_dispatch.py"],
       "tests": ["autohsr/tests/test_redemption_codes.py", "autohsr/tests/test_redemption_store.py", "autohsr/tests/test_redemption_run.py", "autohsr/tests/test_redemption_integration.py"],
@@ -100,6 +108,13 @@
     }
   ],
   "sources": [
+    {
+      "path": "utils/registry/star_rail_setting.py",
+      "retrieved": "2026-10-30",
+      "git_blob": "156538a8313020a4bd9aedfd780d9025a820a736",
+      "sha256": "84d6a44693888b610cd65476a5c1093b36626cad403ca52b2301f9c7298184a2",
+      "bytes": 11538
+    },
     {
       "path": "assets/config/screens.json",
       "retrieved": "2026-10-30",

@@ -1,6 +1,6 @@
 # 兑换码后端与逐码回执
 
-更新日期：2026-10-30。本轮将固定March7thAssistant兑换流程适配到AutoHSR原生Flow／Context、配置与CLI，完成离线整合及全量检查。没有进行真实兑换或实时码表请求，完整表单／结果布局与实际游戏组合仍待验收。
+更新日期：2026-10-30。兑换码基础后端已完成原生Flow／Context、配置／CLI的离线整合及全量检查；同日另增`auto`服务器解析，其最终接线验证另列，不能沿用基础版全量结论。没有进行真实兑换或实时码表请求，完整表单／结果布局与实际游戏组合仍待验收。
 
 ## 固定来源与离线码表
 
@@ -37,7 +37,7 @@
 | --- | --- | --- |
 | `redemption_enabled` | `false` | 是否将兑换加入启用它的运行流程 |
 | `redemption_source` | `"online"` | `online`在线码表并允许固定离线回退；`manual`手动列表；`file`本地JSON码表 |
-| `redemption_server` | `"cn"` | 明确选择`cn`或`global`；不通过账号凭据自动查询服务器 |
+| `redemption_server` | `"cn"` | `cn`／`global`明确选择；`auto`仅原生运行按当前可执行文件唯一匹配HYP安装来源；不读取账号凭据 |
 | `redemption_codes` | `[]` | 手动字符串列表，仅`manual`运行使用 |
 | `redemption_catalog` | `""` | 本地JSON路径，仅`file`运行使用 |
 | `redemption_claim_mail` | `true` | 兑换成功后的邮件阶段开关；不单独启用兑换 |
@@ -56,6 +56,25 @@
 有效期为ISO时刻或`null`；`null`仅表示码表未声明到期。无时区的兼容值按UTC解释，并在诊断中计入`naive_expiry_assumed_utc`，不按本机时区猜测。在线解析按四个固定HTTPS来源依次尝试；响应有大小限制，不跟随重定向，不接受任意用户URL。在线失败后才读取随包固定回退表；取消／停止不作为下载失败继续回退。成功解析的空表或筛选后无有效码可以得到空批次，不表示任何一次兑换成功。
 
 `CodeBatch`保存原码、所选服务器、来源摘要及逐行跳过原因；`public_summary()`仅给出数量、原因计数、来源种类和无时区日期计数，不包含原码。此解析阶段不读取游戏账号、不发送游戏输入，也不保存兑换成功回执。
+
+## `auto`服务器：当前原生窗口的安装来源
+
+默认仍为`cn`。明确选择`cn`／`global`时不读取注册表；保存设置、字段校验和任务树编译也不会探测安装来源。`auto`只在实际原生兑换流程中解析，不能用于本地或在线预览。纯码表解析仍只接受已确定的`cn`／`global`，`resolve_batch(settings, server_resolution=...)`须收到本次原生运行的解析证明，不能据`auto`先猜国服。
+
+[原生服务器模块](../autohsr/redemption_server.py)只参考固定上游[`get_game_path`](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/utils/registry/star_rail_setting.py#L88)中的两包名和字段。上游原件为11538字节，Git blob `156538a8313020a4bd9aedfd780d9025a820a736`，SHA-256 `84d6a44693888b610cd65476a5c1093b36626cad403ca52b2301f9c7298184a2`，已在研究缓存按固定tree核对并登记[source.json](../assets/upstream/March7thAssistant/source.json)。没有导入该上游模块：其模块级注册表探测、按游戏键存在选择服务器，以及FPS、分辨率和战斗设置读写均不属于本轮实现。
+
+实际原生入口从当前已核实游戏窗口重新读取可执行文件路径，要求绝对路径、文件存在且名称为`StarRail.exe`，经系统路径解析后与以下两份当前用户安装来源逐一比较。只按`KEY_READ`读取`HKCU`中固定的`GameInstallPath`，不扫描其他键或账号值，不写注册表，不修改FPS或游戏设置。
+
+| 服务器类型 | 固定HKCU子键 | 唯一读取字段 |
+| --- | --- | --- |
+| `cn` | `Software\miHoYo\HYP\1_1\hkrpg_cn` | `GameInstallPath` |
+| `global` | `Software\Cognosphere\HYP\1_0\hkrpg_global` | `GameInstallPath` |
+
+两份来源中恰好一份`安装目录/StarRail.exe`与当前路径相同才确定类型。另一包未安装或绝对路径已过时可作为不匹配；任一源权限不足、值类型／路径畸形等不可完整读取，零匹配或双匹配，都返回匿名未知原因并停止解析，不默认国服、不从“机器装过国服”推断当前窗口。此证明只说明当前进程安装包的`cn`／`global`类型，不证明账号、具体海外分区、服务器联网状态、文件签名或兑换可用性。
+
+`resolve(executable, reader=...)`返回冻结的`ServerResolution(server, method, executable_key, source_digest)`，`method="hyp_install_path_match_v1"`。`public_summary()`仅有类型和方法；私人`to_dict()`也只有类型／方法／路径摘要／两来源观察摘要，不含原始安装路径或注册表值。批次与session分别保留`server_selection="auto"`、解析后的实际`server`和该证明，后续账本仍按实际`cn`／`global`与当前账号／原码去重，不建立第三种`auto`账本scope。
+
+每次新鲜画面／输入授权及逐字符检查点经`require_binding()`重新核对当前窗口的可执行文件仍存在且路径摘要不变，不重新读注册表。可执行文件路径来源改变或冻结证明被改写会停止，不沿用旧目标；停止／输入代次中断继续沿原生协议传播。没有因为服务器已解析就跳过账号、完整码读回、提交意图或结果核验。
 
 ## CLI：预览、保存与运行
 
@@ -77,7 +96,7 @@ python -m autohsr --redeem-codes --redemption-server cn --redemption-code EXAMPL
 python -m autohsr --run --with-redemption --redemption-source file --redemption-catalog .\examples\codes.json --redemption-server cn
 ```
 
-`--redemption-source online|manual|file`、`--redemption-server`、可重复的`--redemption-code`、`--redemption-catalog`及`--redemption-mail`／`--no-redemption-mail`均是本次覆盖。提供手动码会选择`manual`，提供本地表会选择`file`；两者不能同用，显式来源冲突会拒绝。运行参数仅允许独立兑换或普通`--run`／`--plan`日常；仅补领奖、周常接续、其他玩法和无运行入口不接受它们。`reward_only`排除兑换。
+`--redemption-source online|manual|file`、`--redemption-server cn|global|auto`、可重复的`--redemption-code`、`--redemption-catalog`及`--redemption-mail`／`--no-redemption-mail`均是本次覆盖。提供手动码会选择`manual`，提供本地表会选择`file`；两者不能同用，显式来源冲突会拒绝。运行参数仅允许独立兑换或普通`--run`／`--plan`日常；仅补领奖、周常接续、其他玩法和无运行入口不接受它们。`reward_only`排除兑换。两个预览入口明确拒绝`auto`，不会为预览读取注册表或打开原生窗口。
 
 仅保存设置才持久化配置；预览、运行、日常CLI覆盖及邮件结果不自动把本次开关／码列表保存为未来默认。当前GUI编辑与新入口由现有界面工作另行接入，本后端说明不把这些字段视为已交付界面控件。
 
@@ -102,7 +121,7 @@ python -m autohsr --run --with-redemption --redemption-source file --redemption-
 
 ## 原生执行与结果边界
 
-[RedemptionWorkflow](../autohsr/redemption_run.py)由[DailyWorkflow.redemption](../autohsr/workflows.py)和独立`operation="redemption"`原生Runner调用。启用日常兑换时，它位于每日实训之后、原邮件与勋礼之前；默认关闭。独立兑换不建立刷本预算，也不因当前日常勾选项去刷本。非空批次先核实当前入口，必要时沿原生导航到手机菜单，以同输入代次的两份新鲜画面绑定账号，随后每次观察继续核对当前账号；服务器来自本次配置／覆盖，不把UID识别当作已核实服务器归属。
+[RedemptionWorkflow](../autohsr/redemption_run.py)由[DailyWorkflow.redemption](../autohsr/workflows.py)和独立`operation="redemption"`原生Runner调用。启用日常兑换时，它位于每日实训之后、原邮件与勋礼之前；默认关闭。独立兑换不建立刷本预算，也不因当前日常勾选项去刷本。非空批次先核实当前入口，必要时沿原生导航到手机菜单，以同输入代次的两份新鲜画面绑定账号，随后每次观察继续核对当前账号；服务器按本次明确选择或上述`auto`安装来源确定，不把UID识别当作已核实服务器归属。
 
 起点可为已核实手机菜单、已展开更多菜单或完整表单，复用当前阶段，不重复切换已有入口。每码按当前页面定位完整表单；输入框焦点、输入、确认、结果关闭与返回手机菜单分开记录。输入通过专用Context授权，重新推导当前目标、核对实际落盘意图与窗口，不调用上游通用点击或剪贴板。原生输入只在已核实表单中全选后以Unicode键盘事件输入有限原码；释放按键并逐字符检查停止／暂停。完整原码须在两份不同capture中精确读回，确认时再核对当前字段与原码一致，才保存逐码提交意图并点击一次。提交授权还核对当前RGB像素哈希／shape与意图原证据、表单摘要、本次run及动作ID，不只比较目标框。
 
@@ -120,16 +139,28 @@ python -m autohsr --run --with-redemption --redemption-source file --redemption-
 
 表单必须同时有标题、取消／确认关系、原局部图形及从当前可见背景恢复的闭合输入框；精确原码由同一ROI的两种局部OCR读数一致后提供，再由执行层要求两份不同capture。占位文字才证明空输入，缺少局部读数不能补为空。仅标题、原图标、一个“确认”文字、截断码或泛用白框均不能授权提交；暗淡／冲突／付款、补体力或登录验证提示优先阻断。结果必须匹配明确文字及完整关联结构；独立成功还须邮件说明正文与可用关闭确认，裸“兑换成功”仍未知。内联错误只开放已核实表单的Esc路径，不将原提交确认按钮当作结果关闭按钮。
 
-后端复用点为`resolve_batch(settings, cancel=...)`、`run_redemption(context, batch=..., store=...)`及`RunReport.redemption`；界面保存时只保存设置，开始时冻结本次Settings，线程内通过原生Runner执行。原始逐码／账号／证据数据留在私人报告，不直接放入公共事件或通知正文。独立本地预览只需`from_file`，显式在线预览才使用`fetch_catalog`；不要为编辑表单或刷新控件隐式联网、读账号或创建Runner。
+后端复用点为`resolve_batch(settings, cancel=..., server_resolution=...)`、`run_redemption(context, batch=..., store=...)`及`RunReport.redemption`；界面保存时只保存设置，开始时冻结本次Settings，线程内通过原生Runner执行。`auto`解析证明由本次原生窗口提供，不由界面或保存操作伪造。原始逐码／账号／证据数据留在私人报告，不直接放入公共事件或通知正文。独立本地预览只需`from_file`，显式在线预览才使用`fetch_catalog`；不要为编辑表单或刷新控件隐式联网、读账号或创建Runner。
 
 ## 验证记录与限制
+
+### 同日`auto`增量
+
+纯解析器18项注入来源检查通过。阶段166项相关检查通过`runs/redemption-auto-related.log`（109.641秒）；随后补齐任务范围及已建立运行目录门禁，2项定向检查通过`redemption-auto-scope.log`（4.315秒），最新91项来源／原生接线／任务树／定时边界检查通过`redemption-auto-boundaries.log`（14.083秒）。这些分组有重叠，不累加为独立用例数。最初新增测试的语法错误保留在`redemption-auto-first.log`，修正后13项接线检查通过`redemption-auto-reviewed.log`（11.135秒），没有放宽原生来源要求。
+
+实际CLI帮助及`--redemption-check ... --redemption-server auto`拒绝路径另存于`redemption-auto-help.txt`和`redemption-auto-preview-rejected.txt`，后者按预期退出2，在来源／配置／联网／原生访问前拒绝。
+
+最终**2017项全量通过**`runs/redemption-auto-all.log`（916.295秒），驱动退出0、总耗时917.047秒；`redemption-auto-full-result.json`及`redemption-auto-full-snapshot.json`核对326份Python／requirements与6份引用资源，重新枚举的完整清单及前后哈希一致，`snapshot_unchanged=true`。固定registry源码已完成Git blob／大小／SHA-256核对；没有读取真实用户注册表、真实进程安装路径或操作游戏。基础后端的下列1985项是此前快照记录，不作为真实自动检测验收。
+
+提交前6份说明246处本地链接、55份固定树源码的Git blob／其中51份已声明SHA-256、GPL许可、6份原样分发文件及73处原生文件引用核对通过，另核对高难研究11份原件，见`runs/redemption-auto-final-verification.json`。3个历史私人样本标签保留，未公开原始样本；码表Git原始字节、完整源码清单和忽略项核对通过。
+
+### 兑换码基础后端快照
 
 阶段**134项相关检查通过**`runs/redemption-related-final.log`（95.483秒），覆盖码表／存储、页面、真实Flow／Context假IO、配置／CLI、任务树、账号连续性及定时依赖。此前24项码表／存储另见`runs/redemption-codes-store.log`（1.232秒）；本地实际CLI预览见`runs/redemption-cli-preview.json`，不读运行配置、不联网、不访问游戏。早期夹具时钟、异常断言及漏导入的故障保留在`redemption-flow-first.log`、`redemption-flow-reviewed.log`及`redemption-related.log`，没有放宽页面或来源门禁；阶段21项流程／CLI通过`redemption-flow-final.log`（56.025秒）仍属于后续补强前快照。
 
 首轮全量`runs/redemption-all.log`在227.781秒主动中止，以补齐逐字符回调的输入代次检查；对应`redemption-full-result.json`退出4294967295，不能当作全量通过。F9恢复／失焦后剩余字符立即丢弃，修复后**3项专项通过**`runs/redemption-typing-generation.log`（6.189秒）。已保存结果后的session写失败、已有form／more复用及提交前PNG正反例分别保留专项日志，原始证据和失败记录未删除。
 
-最新冻结源码的**1985项全量通过**`runs/redemption-reviewed-all.log`（901.970秒），驱动902.703秒、退出0；`redemption-reviewed-full-result.json`及`redemption-reviewed-full-snapshot.json`核对323份Python／requirements与6份引用资源，重新枚举的完整清单及前后哈希一致，`snapshot_unchanged=true`。
+基础后端冻结源码的**1985项全量通过**`runs/redemption-reviewed-all.log`（901.970秒），驱动902.703秒、退出0；`redemption-reviewed-full-result.json`及`redemption-reviewed-full-snapshot.json`核对323份Python／requirements与6份引用资源，重新枚举的完整清单及前后哈希一致，`snapshot_unchanged=true`。
 
 提交前4份说明223处本地链接、54份固定树源码的Git blob／其中50份已声明SHA-256、GPL许可、6份原样分发文件及65处原生文件引用核对通过，见`runs/redemption-final-verification.json`。3个历史私人样本标签保持来源说明，不按仓库公开文件读出或发布；源码与资产清单未改变，运行数据、配置及凭据未纳入版本控制。
 
-完整form／结果组合目前只有合成机制检查，5幅原件仅证明局部标题／控件来源。没有新实机截图、真实兑换、真实外部通知或EXE构建；真实页面、账号／服务器组合及完整无人接管路径尚未验收，GUI及自动服务器检测仍待适配。
+完整form／结果组合目前只有合成机制检查，5幅原件仅证明局部标题／控件来源。没有新实机截图、真实兑换、真实外部通知或EXE构建；真实页面、账号／服务器组合及完整无人接管路径尚未验收，GUI与`auto`真实安装来源路径仍待验收。

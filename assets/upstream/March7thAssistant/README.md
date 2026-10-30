@@ -1,5 +1,7 @@
 # March7thAssistant 参考来源与适配
 
+2026-10-30另核对固定`utils/registry/star_rail_setting.py`，原件Git blob／SHA-256／字节数见[source.json](source.json)，GPL v3与原作者署名保持。本轮服务器`auto`仅参考`get_game_path`的两HYP包与`GameInstallPath`命名，以原生只读解析替代“存在国服键便优先国服”的推断；默认仍为显式`cn`，实际API及验证见[兑换码说明](../../../docs/redemption-codes.md)。未导入原模块，其导入时注册表探测及FPS、分辨率、战斗设置读写均未迁入；本轮没有读取真实注册表／进程或修改系统设置。
+
 2026-10-30另核对固定`tasks/daily/redemption.py`的在线获取／本地回退、`cn`／`global`与到期筛选、逐码输入／确认／结果，以及成功后邮件和通知行为；原生接口与实际范围见[兑换码说明](../../../docs/redemption-codes.md)。同提交的[离线码表](redemption_codes.json)按原始2054字节分发，17条记录包含历史过期项，不代表当前可兑换。两份原件的Git blob、SHA-256、字节数和公开路径见[source.json](source.json)，作者及[GPL v3许可](LICENSE)保持；本轮没有访问实时码表、真实兑换或新增实机截图。
 
 同轮页面参考含`assets/config/screens.json`和`module/screen/screen.py`；五幅原始标题／控件局部图以[redemption-ui](redemption-ui/)分发，分别命名`title`、`more`、`paste`、`clear`、`confirm`，无裁改或重编码。原路径、公开路径、尺寸和两种hash逐份记在source.json；没有公开游戏整图、账号内容或新实机截图。这些图仅作为局部识别来源，不代表完整表单／结果布局、导航或真实输入已验收。
