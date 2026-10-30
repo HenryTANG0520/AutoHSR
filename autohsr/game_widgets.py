@@ -424,7 +424,7 @@ class TaskBoard(Surface):
         self.bind("<Button-1>",self._click)
         self.bind("<Motion>",lambda e:self._set_hover(self._target(e)))
         self.bind("<Leave>",lambda _:self._set_hover(None))
-        self.bind("<MouseWheel>",lambda e:self.move(1 if e.delta<0 else -1))
+        self.bind("<MouseWheel>",lambda e:self.scroll(1 if e.delta<0 else -1 if e.delta>0 else 0))
         for key,delta in (("Right",1),("Left",-1),("Home",-9),("End",9)):
             self.bind("<"+key+">",lambda _,delta=delta:self.move(delta))
         self.bind("<Return>",lambda _:self.activate())
@@ -459,8 +459,21 @@ class TaskBoard(Surface):
         self.redraw()
         return "break"
 
+    def scroll(self,delta):
+        self.offset=max(0,min(len(self.names)-self.visible_count,self.offset+delta))
+        visible=list(self.names)[self.offset:self.offset+self.visible_count]
+        if self.selected not in visible:
+            self.selected=None
+        self.redraw()
+        return "break"
+
     def activate(self):
         self.selected=self.selected or list(self.names)[self.offset]
+        index=list(self.names).index(self.selected)
+        if not self.offset<=index<self.offset+self.visible_count:
+            self._reveal(index)
+            self.redraw()
+            return "break"
         if self.records[self.selected]["has_result"]:
             self.ui._show_task_detail()
         elif self.can_join(self.selected):
@@ -522,9 +535,7 @@ class TaskBoard(Surface):
         key=self._target(e)
         self.focus_set()
         if key in ("previous","next"):
-            self.offset=max(0,min(len(self.names)-self.visible_count,self.offset+(-1 if key=="previous" else 1)))
-            self.selected=None
-            self.redraw()
+            self.scroll(-1 if key=="previous" else 1)
         elif key:
             self.selected=key
             x1, _, x2, _ = self.hitboxes[key]
