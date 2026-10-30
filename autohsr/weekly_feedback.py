@@ -18,6 +18,10 @@ def _daily_preview(report):
         rows['daily'] = dict(status='ok', detail='每日实训奖励已核实领取。')
     if 'battle' in rows:
         rows['battle']['metrics'] = reported_battle_metrics(report)
+        from .power_plan_ui import result_text
+        text=result_text(report,reused=True)
+        if text:
+            rows['battle'].update(status='本次结束' if (report.get('power_plan') or {}).get('run_status')=='complete' else '未完整结束',detail=text)
     return rows
 
 
@@ -41,7 +45,10 @@ def pending_currency_week(root):
             return None
         check_sources(store)
         audit = plan['phase'] == 'done'
-        caption = (f"原周常 · {plan['week']} · 货币战争 · 已完成 {data['completed']} 局／上限 {plan['maximum']} 局")
+        caption = (f"原周常 · {plan['week']} · 货币战争 · 已结束 {data['completed']} 局／上限 {plan['maximum']} 局")
+        defeats=data.get('defeats',0)
+        caption+=f" · 胜 {data['completed']-defeats}／负 {defeats}"
+        if data.get('status')=='defeated':caption+=' · 上局失败已停止'
         if plan['daily'] is not None:
             caption += ' · 沿用原日常报告'
         daily_preview = _daily_preview(read_ref(store.root, plan['daily'])[1]) if plan['daily'] is not None else {}
@@ -69,10 +76,12 @@ def currency_weekly_caption(report):
     text = ('货币战争 · 原周常回执已核对' if verified and audit else
             '货币战争 · 积分及奖励已核实' if verified else
             '货币战争 · 原上限已用完' if state == 'exhausted' else
+            '货币战争 · 失败后已停止' if state == 'defeated' else
             '货币战争 · 原周目标已过期' if state == 'expired' else '货币战争 · 周常待核对')
     maximum, completed = weekly.get('maximum_runs', weekly.get('requested_runs')), weekly.get('completed_runs')
     if (type(maximum) is int and type(completed) is int and 1 <= maximum <= 10 and 0 <= completed <= maximum):
         text += f' · 开发对局 {completed} 局／上限 {maximum} 局'
+        text += outcome_caption(weekly, completed)
     week = weekly.get('week')
     if isinstance(week, str):
         from datetime import date
@@ -82,3 +91,11 @@ def currency_weekly_caption(report):
         except ValueError:
             pass
     return text
+
+
+def outcome_caption(data, completed):
+    victories,defeats=data.get('victories'),data.get('defeats')
+    if (type(completed) is int and type(victories) is int and type(defeats) is int
+            and min(completed,victories,defeats)>=0 and victories+defeats==completed):
+        return f' · 胜 {victories}／负 {defeats}'
+    return ''

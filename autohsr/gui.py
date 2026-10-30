@@ -33,6 +33,13 @@ WEEKLY_CURRENCY_STAGES = {'points': '核对周积分', 'loop': '进行周常对�
 
 # Backend field -> page, settings section, Tk variable, control, readable name.
 INPUT_FIELDS = {
+    "power_plan": ("settings", "power", "power_rows", "power_plan_list", "体力计划"),
+    "power_plan_enabled": ("settings", "power", "power_mode", "power_mode_combo", "刷本模式"),
+    "power_plan_keep": ("settings", "power", "power_repeat", "power_repeat_combo", "次数处理"),
+    "power_plan_fill": ("settings", "power", "power_fill", "power_fill_combo", "默认补刷"),
+    "echo_of_war_target": ("settings", "power", "echo_target", "echo_config_button", "历战副本"),
+    "echo_of_war_location": ("settings", "power", "echo_location", "echo_config_button", "历战地点"),
+    "echo_of_war_start_day": ("settings", "power", "echo_day", "echo_config_button", "历战开始星期"),
     "game_path": ("settings", "game", "game_path", "game_path_entry", "游戏路径"),
     "target_name": ("tasks", None, "target_name", "dungeon_name_combo", "副本名称"),
     "target_location": ("tasks", None, "target_location", "dungeon_location_combo", "副本地点"),
@@ -144,6 +151,8 @@ class AutoHSRWindow:
             self.tasks["battle"].set(False)
         self.form_variables = [self.game_path, self.target_name, self.target_location, self.stamina_limit,
                                self.rounds, self.dungeon_category, self.challenge_count, self.use_support, self.auto_launch, self.overlay_logs, self.daily_synthesis, *self.tasks.values()]
+        from .power_plan_ui import variables
+        variables(self)
         self.status = tk.StringVar(value="● 准备就绪")
         self.save_status = tk.StringVar()
         self.summary = tk.StringVar()
@@ -371,6 +380,10 @@ class AutoHSRWindow:
             self.daily_caption.set('日常 · 沿用原报告' if pending['daily_reused'] else '日常 · 本次不执行')
             return
         count = sum(variable.get() for variable in self.tasks.values())
+        if self.power_mode.get() == '体力计划' and self.tasks['battle'].get():
+            from .power_plan_ui import preview
+            self.daily_caption.set(f'日常 · {count} 项 · {preview(self)} · 共用 {self.stamina_limit.get()} 开拓力')
+            return
         from .dungeon_ui import selected_category
         metrics = planned_battle_metrics(selected_category(self), self.challenge_count.get(), self.tasks["battle"].get())
         cost = metrics[1].replace("\n", " · ")+" · "+self.target_name.get() if metrics else "不刷本"
@@ -454,7 +467,8 @@ class AutoHSRWindow:
     def _daily_form_signature(self):
         return tuple(variable.get() for variable in (self.game_path, self.target_name, self.target_location,
             self.dungeon_category, self.challenge_count, self.stamina_limit, self.use_support,
-            self.daily_synthesis, *self.tasks.values()))
+            self.daily_synthesis, self.power_mode, self.power_rows, self.power_repeat, self.power_fill,
+            self.echo_enabled, self.echo_day, self.echo_target, self.echo_location, *self.tasks.values()))
 
     def _refresh_activity(self, *_):
         task = self.current_task.get() if self.running else ""
@@ -508,7 +522,8 @@ class AutoHSRWindow:
             control.configure(state=state)
         for name in ('currency_source_combo','currency_zone_combo','currency_level_combo','du_runs_combo','du_resume_combo','du_mode_combo',
                      'weekly_mode_combo', 'weekly_day_combo', 'weekly_runs_combo', 'currency_strategy_combo',
-                     'weekly_enabled_combo', 'overlay_control', 'synthesis_control'):
+                     'weekly_enabled_combo', 'overlay_control', 'synthesis_control', 'power_mode_combo',
+                     'power_repeat_combo','power_fill_combo','echo_enabled_combo'):
             if hasattr(self,name):
                 getattr(self,name).configure(state='disabled' if self.busy else 'readonly')
         for control in self.weekly_run_controls:
@@ -621,6 +636,8 @@ class AutoHSRWindow:
         if self.input_error_field not in INPUT_FIELDS or self.busy:
             return
         page, section, _, control, _ = INPUT_FIELDS[self.input_error_field]
+        if self.input_error_field == 'stamina_limit' and self.power_mode.get() == '体力计划':
+            page, section, control = 'settings', 'power', 'power_budget_entry'
         operation_page = self.action_page
         if (self.input_error_field == "differential_universe_team" and self.weekly_enabled.get()
                 and self.weekly_mode.get() == "差分宇宙" and operation_page in ("home", "tasks")):
@@ -659,8 +676,13 @@ class AutoHSRWindow:
 
     def _read_settings(self, save=False, operation="daily", *, resume_weekly_currency=False) -> Settings | None:
         try:
+            use_power = (not resume_weekly_currency and operation in ('daily','plan') and self.tasks['battle'].get()
+                         and self.settings.allow_stamina_spend and self.power_mode.get() == '体力计划')
             values = dict(game_path=self.game_path.get().strip(), overlay_logs=self.overlay_logs.get(),
                           daily_synthesis=self.daily_synthesis.get())
+            if save or use_power:
+                from .power_plan_ui import settings_values
+                values.update(settings_values(self))
             if resume_weekly_currency and not save:
                 pending = self._weekly_currency_recovery
                 from datetime import datetime
@@ -705,9 +727,10 @@ class AutoHSRWindow:
                     values.update(target_name=self.target_name.get().strip(), target_location=self.target_location.get().strip(),
                                   stamina_limit=self._number("stamina_limit", int), use_support=self.use_support.get())
                     from .dungeon_ui import selected_category
-                    count = self._number("challenge_count", int)
-                    values.update(dungeon_category=selected_category(self).key, challenge_count=count,
-                                  rounds=max(1, min(count, selected_category(self).batch)))
+                    if save or not use_power or self.power_fill.get():
+                        count = self._number("challenge_count", int)
+                        values.update(dungeon_category=selected_category(self).key, challenge_count=count,
+                                      rounds=max(1, min(count, selected_category(self).batch)))
                 values.update(action_delay=self._number("action_delay", float), battle_timeout=self._number("battle_timeout", int),
                               ocr_confidence=self._number("ocr_confidence", float))
             elif operation == "check":
@@ -718,7 +741,9 @@ class AutoHSRWindow:
             elif operation == "plan" and not resume_weekly_currency:
                 weekly = self._weekly_values() if self.weekly_enabled.get() else dict(weekly_enabled=False)
                 settings = replace(settings, **weekly)
-            settings.validate("save" if save else operation)
+            settings.validate("save" if save else 'power_plan' if use_power else operation)
+            if save and settings.power_plan_enabled and settings.battle:
+                settings.validate('power_plan')
             if save:
                 settings.save(self.config_path)
                 self._config_load_failed = False
@@ -889,6 +914,8 @@ class AutoHSRWindow:
         settings = self._read_settings(operation=operation, **({'resume_weekly_currency': True} if resume_weekly_currency else {}))
         if settings is None:
             return
+        use_power = (operation in ('daily','plan') and not resume_weekly_currency and settings.battle
+                     and settings.allow_stamina_spend and self.power_mode.get() == '体力计划')
         du_options={}
         if differential_universe:
             resume=self.du_resume_active.get()
@@ -936,6 +963,8 @@ class AutoHSRWindow:
                       (f" · {settings.target_name} / {settings.target_location} · {settings.challenge_count} 次 · 开拓力上限 {settings.stamina_limit}" if settings.battle else " · 不刷本"))
         if catalogue:
             self.plan.set("采集生存索引副本目录 · 不开始挑战 · 不消耗资源")
+        if use_power:
+            self.plan.set(f'体力计划 · {len(settings.power_plan)} 项 · 本次共用上限 {settings.stamina_limit} 开拓力')
         if currency_prepare:
             self.plan.set('货币战争 · 配置标准A8-40 · 不开始对局' if currency_configure else
                           '货币战争 · 指南定位标准模式 · 不开始对局' if currency_locate else '货币战争 · 启动准备 · 不开始对局')
@@ -1017,9 +1046,11 @@ class AutoHSRWindow:
                 if operation == "plan":
                     from .plan_runner import PlanRunner
                     runner = PlanRunner(settings, send, new_battle_run=new_battle_run, root=ROOT/"runs",
+                                        **({'use_power_plan':True} if use_power else {}),
                                         **({'resume_weekly_currency': True} if resume_weekly_currency else {}))
                 else:
                     runner = Runner(settings, send, new_battle_run=new_battle_run, operation=operation,
+                        **({'use_power_plan':True} if use_power else {}),
                         **du_options,
                         **(dict(currency_locate=True) if currency_locate else {}),
                         **(dict(currency_configure=True) if currency_configure else {}),
@@ -1148,6 +1179,8 @@ class AutoHSRWindow:
         self._finalize_task_rows(str(report.get("status", "partial")), reason=issue_text(report))
         if reused:
             self._reused_daily_display(report)
+        from .power_plan_ui import present_result
+        present_result(self,report,reused=reused)
 
     def _reused_daily_display(self, report):
         # Original daily receipts are not a fresh account observation or payment.
@@ -1197,7 +1230,8 @@ class AutoHSRWindow:
             data = event.get('data') or {}
             completed, maximum = data.get('completed'), data.get('requested_runs')
             if type(completed) is int and type(maximum) is int and 1 <= maximum <= 10 and 0 <= completed <= maximum:
-                self.weekly_status.set(f'货币战争 · 已完成 {completed} 局／上限 {maximum} 局')
+                from .weekly_feedback import outcome_caption
+                self.weekly_status.set(f'货币战争 · 已结束 {completed} 局／上限 {maximum} 局'+outcome_caption(data,completed))
                 self.current_task.set('货币战争 · 核对本局结果')
         needs_game = ((event.get('type') == 'currency_weekly_phase' and event.get('stage') in ('points', 'rewards'))
                       or event.get('type') in ('currency_loop_points', 'currency_loop_phase'))
@@ -1222,6 +1256,10 @@ class AutoHSRWindow:
 
     def _show_task_setup(self, task):
         if task == "battle":
+            if self.power_mode.get() == '体力计划':
+                from .power_plan_ui import show
+                show(self)
+                return
             self._show_page("tasks")
             if self.tasks[task].get():
                 from .dungeon_ui import show_browser
@@ -1366,6 +1404,13 @@ class AutoHSRWindow:
                 self.summary.set(summary)
             if weekly.get('daily_reused') is True and report.get('budget_scope') == 'original_daily_run':
                 self._reused_daily_display(report)
+        from .power_plan_ui import present_result, goals_pending
+        reused = (report.get('weekly_plan') or {}).get('daily_reused') is True and report.get('budget_scope') == 'original_daily_run'
+        power_feedback = present_result(self,report,reused=reused)
+        if power_feedback:
+            self.summary.set(self.summary.get()+'\n'+power_feedback)
+            if report.get('status') == 'success' and report.get('report_saved') is True and not reused and goals_pending(report):
+                plan_label = '本次安排已结束'
         self.result_alert.set(issue_text(report))
         if report.get("report_saved") is False:
             self.summary.set("报告未保存\n"+self.summary.get())
@@ -1502,6 +1547,10 @@ class AutoHSRWindow:
                 elif kind == "progress":
                     if not (self.active_operation == "plan" and event.get("phase") == "weekly"):
                         self._progress(event.get("stamina_spent"))
+                elif kind == 'power_plan_progress':
+                    if self.active_operation == 'daily' or self.active_operation == 'plan' and event.get('phase') == 'daily':
+                        from .power_plan_ui import progress
+                        progress(self,event)
                 elif kind == "paused":
                     self._pause_state(bool(event.get("paused", False)))
                 elif kind == "focus_wait":
@@ -1560,6 +1609,10 @@ class AutoHSRWindow:
 
     def _close(self) -> None:
         if self.closing:
+            return
+        dialog = getattr(self, 'power_dialog', None)
+        if dialog is not None and dialog.winfo_exists():
+            dialog.lift()
             return
         if not self.busy and self.dirty:
             from .desktop_dialogs import ask_save_changes

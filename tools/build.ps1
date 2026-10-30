@@ -61,7 +61,7 @@ try {
         Copy-Item -LiteralPath $taskPackageFile.FullName -Destination $taskTargetPath -Force
     }
     Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE') -Destination (Join-Path $taskOutputDirectory 'LICENSE') -Force
-    foreach ($taskDocument in @('README.md', 'DAILY_FLOW.md', 'VALIDATION.md', 'LICENSE_NOTICE.md')) {
+    foreach ($taskDocument in @('README.md', 'DAILY_FLOW.md', 'VALIDATION.md', 'CURRENCY_WARS.md', 'LICENSE_NOTICE.md')) {
         $taskDocumentPath = Join-Path $projectRoot $taskDocument
         if (Test-Path -LiteralPath $taskDocumentPath -PathType Leaf) {
             $taskDocumentText = (Get-Content -LiteralPath $taskDocumentPath -Raw -Encoding UTF8).Replace('](assets/', '](_internal/assets/').Replace('](runs/', '](../../runs/').Replace('](dist/AutoHSR/runs/', '](runs/')
@@ -70,8 +70,9 @@ try {
     }
     $taskDocsDirectory = Join-Path $taskOutputDirectory 'docs'
     New-Item -ItemType Directory -Path $taskDocsDirectory -Force | Out-Null
-    foreach ($taskModeDocument in @('daily-dungeons.md','differential-universe.md','du-validation.md','weekly-plan.md')) {
-        Copy-Item -LiteralPath (Join-Path $projectRoot ('docs\' + $taskModeDocument)) -Destination $taskDocsDirectory -Force
+    foreach ($taskModeDocument in Get-ChildItem -LiteralPath (Join-Path $projectRoot 'docs') -File -Filter '*.md') {
+        $taskModeDocumentText = (Get-Content -LiteralPath $taskModeDocument.FullName -Raw -Encoding UTF8).Replace('](../assets/', '](../_internal/assets/').Replace('](../runs/', '](../../../runs/')
+        Set-Content -LiteralPath (Join-Path $taskDocsDirectory $taskModeDocument.Name) -Value $taskModeDocumentText -Encoding UTF8
     }
     Write-Host "Build complete: $(Join-Path $taskOutputDirectory 'AutoHSR.exe')"
 } finally {

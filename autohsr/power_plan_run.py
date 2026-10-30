@@ -5,7 +5,7 @@ import uuid
 
 from .models import AutomationError,DungeonQuotaExhausted,InputInterrupted,Scene,TaskResult
 from .power_plan import PowerItem,plan_spec,row_keys,digest
-from .power_plan_store import folder,write,prior,file_ref,pointer
+from .power_plan_store import folder,write,prior,file_ref,pointer,fs_path
 
 
 def account(ctx,scene):
@@ -30,11 +30,11 @@ class PowerRun:
             goal=uuid.uuid4().hex
         else:
             index=directory/'current.json'
-            if index.exists() and not new_goal:
+            if fs_path(index).exists() and not new_goal:
                 saved=pointer(self.root,directory)
                 goal=saved['goal']
             else:
-                if not new_goal and directory.exists() and any(p.is_dir() and p.name!='repeat' for p in directory.iterdir()):
+                if not new_goal and fs_path(directory).exists() and any(p.is_dir() and p.name!='repeat' for p in fs_path(directory).iterdir()):
                     raise AutomationError('体力计划原目标索引缺失，未重置已完成次数。')
                 goal=uuid.uuid4().hex;saved=dict(schema=1,goal=goal,head=None);write(index,saved)
             last,previous=prior(self.root,identity,self.spec,goal)

@@ -63,6 +63,7 @@ class Settings:
     currency_until_points: bool = False  # Optional weekly target; runs remains the new-game ceiling.
     currency_continue_after_defeat: bool = False
     power_plan: list[dict] = field(default_factory=list)
+    power_plan_enabled: bool = False  # Desktop choice only; native/CLI callers still opt in explicitly.
     power_plan_keep: bool = False
     power_plan_fill: bool = True
     echo_of_war_enabled: bool = False
@@ -89,7 +90,7 @@ class Settings:
             from .power_plan import items,plan_spec
             items(self.power_plan)
             if operation=='power_plan':plan_spec(self)
-        for name in ('power_plan_keep','power_plan_fill'):
+        for name in ('power_plan_enabled','power_plan_keep','power_plan_fill'):
             if type(getattr(self,name)) is not bool:raise SettingsError(name,f'{name}必须为布尔值。')
         from .du_station_policy import StationPreferences
         StationPreferences.from_settings(self)

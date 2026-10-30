@@ -262,11 +262,15 @@ class EchoWeeklyTests(unittest.TestCase):
         self.context(settings(power_plan_fill=False))
         plan=first.report.power_plan;current=folder(self.root,plan['account'],plan['spec'])
         self.assertEqual((len(current.parent.name),len(current.name)),(32,32))
-        # A short workspace temp path makes the original 64/64 layout usable
-        # without requiring a machine-wide long-path setting in this test.
-        with tempfile.TemporaryDirectory(dir=ROOT/'runs',prefix='echo-old-') as work:
+        # Extended IO spelling also lets TemporaryDirectory clean this legacy
+        # layout in a long worktree, without changing machine-wide settings.
+        import os
+        from autohsr.power_plan_store import normal_path
+        base=(ROOT/'runs').resolve()
+        temporary_base=Path('\\\\?\\'+str(base)) if os.name=='nt' else base
+        with tempfile.TemporaryDirectory(dir=temporary_base,prefix='echo-old-') as work:
             root=Path(work).resolve()
-            self.assertTrue(root.is_relative_to((ROOT/'runs').resolve()))
+            self.assertTrue(normal_path(root).resolve().is_relative_to(base))
             config=settings(echo_of_war_enabled=False,power_plan=[screens.row(count=4)],stamina_limit=20,power_plan_fill=False)
             old=self.context(config,root=root)
             identity=account(old,old.snapshot());_,spec=plan_spec(config)
@@ -275,6 +279,7 @@ class EchoWeeklyTests(unittest.TestCase):
             self.run_plan(old);self.finish(old)
             next_run=self.context(config,root=root);self.run_plan(next_run)
             self.assertEqual(next_run.report.power_plan['before'],[2])
+            self.assertFalse(next_run.report.power_plan['previous']['path'].startswith('\\\\?\\'))
             self.assertEqual(folder(root,identity,spec),legacy)
             self.assertFalse((root/'power-plans'/identity[:32]/spec[:32]).exists())
 

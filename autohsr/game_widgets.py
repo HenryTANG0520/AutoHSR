@@ -480,6 +480,8 @@ class TaskBoard(Surface):
         if self.can_join(key):
             return "加入计划"
         if key == "battle":
+            if self.ui.power_mode.get() == '体力计划':
+                return '调整计划'
             return "更换副本" if self.ui.tasks[key].get() else "查看限制"
         return "调整任务"
 
@@ -497,6 +499,11 @@ class TaskBoard(Surface):
             return None
         if self.records[key]["has_result"]:
             return self.records[key]["metrics"] or ("— 次", "等待消耗记录")
+        if self.ui.power_mode.get() == '体力计划':
+            from .power_plan_ui import display_rows,has_planar
+            count=len(display_rows(self.ui))
+            return (f'{count} 项' if count else '历战优先' if self.ui.echo_enabled.get() else '— 项',
+                    f'上限 {self.ui.stamina_limit.get()} 开拓力\n已有沉浸器另计' if has_planar(self.ui) else f'共用上限 {self.ui.stamina_limit.get()} 开拓力')
         from .dungeon_ui import selected_category
         from .ux import planned_battle_metrics
         return planned_battle_metrics(selected_category(self.ui), self.ui.challenge_count.get(), self.ui.tasks[key].get())
@@ -562,8 +569,15 @@ class TaskBoard(Surface):
             p.text((x+q(24),q(20)),state,q(23),"#747474" if excluded else "#6b624d")
             p.text((x+q(24),q(80)),TITLES[key],q(28),"#717171" if excluded else "#111111")
             if key == "battle" and not self.records[key]["has_result"]:
-                p.text((x+q(24),q(133)),p.wrap(self.ui.target_name.get() or "名称待填写",width-q(48),q(22),2),q(22),"#494442")
-                p.text((x+q(24),q(195)),p.wrap(self.ui.target_location.get() or "地点待填写",width-q(48),q(18),2),q(18),t.MUTED)
+                if self.ui.power_mode.get() == '体力计划':
+                    from .power_plan_ui import display_rows
+                    values=display_rows(self.ui)
+                    name=values[0]['target']+(' 等' if len(values)>1 else '') if values else '历战优先' if self.ui.echo_enabled.get() else '添加副本'
+                    location=self.ui.power_repeat.get()+(' · 默认补刷' if self.ui.power_fill.get() else '')
+                else:
+                    name,location=self.ui.target_name.get() or '名称待填写',self.ui.target_location.get() or '地点待填写'
+                p.text((x+q(24),q(133)),p.wrap(name,width-q(48),q(22),2),q(22),"#494442")
+                p.text((x+q(24),q(195)),p.wrap(location,width-q(48),q(18),2),q(18),t.MUTED)
             metrics = self.resource_metrics(key)
             if metrics is not None:
                 value, sub = metrics

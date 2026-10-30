@@ -14,6 +14,7 @@ from .setting_choices import SettingChoice
 
 SECTIONS = (("game", "游戏连接", "客户端", "guide-mark.png"),
             ("daily", "每日任务", "任务安排", "tab-daily.png"),
+            ("power", "体力计划", "任务安排", "tab-survival.png"),
             ("weekly", "周常计划", "任务安排", "tab-universe.png"),
             ("run", "运行偏好", "运行功能", "tab-settings.png"),
             ("recognition", "识别与等待", "识别参数", "tab-survival.png"),
@@ -64,6 +65,9 @@ class SettingsShell(Surface):
             self.ui._show_weekly_plan()
         elif key == "daily":
             self.ui._show_daily_tasks()
+        elif key == "power":
+            from .power_plan_ui import show
+            show(self.ui)
         else:
             self.ui.settings_tabs.select(self.ui.settings_sections[key])
             self.ui.root.after_idle(self.ui._focus_settings_entry)
@@ -263,6 +267,10 @@ def build_settings(ui):
                    ui.daily_synthesis, "synthesis_control")
             index += 1
     note("daily", 6, text="仅实训未完成时合成；仅补领奖时不合成。")
+
+    from .power_plan_ui import PowerPlanEditor
+    ui.settings_sections['power'].rowconfigure(0, weight=1)
+    PowerPlanEditor(ui.settings_sections['power'], ui).grid(row=0,column=0,sticky='nsew')
 
     toggle(row("weekly", 0, "周常计划"), ui.weekly_enabled, "weekly_enabled_combo")
     combo(row("weekly", 1, "玩法"), ui.weekly_mode, tuple(MODES.values()), "weekly_mode_combo")
