@@ -5,6 +5,7 @@ Verified terminal defeats may continue only under an explicit frozen preference.
 """
 from __future__ import annotations
 
+from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime
@@ -321,6 +322,8 @@ class CurrencyLoopRunner:
         self.report.safe_next = message
 
     def run(self):
+        from .workflow_lease import sequence_lease
+        from .workflow_identity import sequence_identity
         started = datetime.now().astimezone()
         directory = self.root/(started.strftime('%Y%m%d_%H%M%S_%f')+'_currency_loop_'+uuid.uuid4().hex[:8])
         directory.mkdir(parents=True)
@@ -328,7 +331,15 @@ class CurrencyLoopRunner:
         report.run_dir, report.started_at, report.source = str(directory), started.isoformat(), str(self.root.parent)
         store = LoopStore(self.root)
         monitor = None
+        leases = ExitStack()
+        identity = None
         try:
+            leases.enter_context(sequence_lease())
+            def publish_identity(public):
+                report.execution_identity = dict(public)
+                self.emit(dict(type='execution_identity', **public))
+            identity = leases.enter_context(sequence_identity(directory, publish=publish_identity))
+            publish_identity(identity.public())
             with loop_lock(self.root):
                 monitor = threading.Thread(target=self._gap_controls, name='AutoHSR-currency-loop-hotkeys', daemon=True)
                 monitor.start()
@@ -343,16 +354,21 @@ class CurrencyLoopRunner:
         except Exception as error:
             report.status, report.error = 'partial' if store.data and store.data['completed'] else 'failed', str(error)
         finally:
-            self._summary(store)
-            report.safe_next = report.safe_next or '核对逐局记录；循环为开发运行，不计作独立验收，不自动领取周积分或开启饰品任务。'
-            report.finished_at = datetime.now().astimezone().isoformat()
-            report.results.append(TaskResult('currency_wars_loop', report.status,
-                                             str(report.currency_wars.get('completed', 0))+'局结算已核实并留档；胜利'+
-                                             str(report.currency_wars.get('victories',0))+'局，失败'+str(report.currency_wars.get('defeats',0))+'局。'))
             try:
-                report.report_saved = True
-                _write(directory/'report.json', report.to_dict())
-            except (OSError, ValueError) as error:
-                report.report_saved, report.report_write_error, report.status = False, str(error), 'partial'
-            self.emit(dict(type='finished', report=report.to_dict()))
+                self._summary(store)
+                if identity is not None:
+                    report.execution_identity = identity.public()
+                report.safe_next = report.safe_next or '核对逐局记录；循环为开发运行，不计作独立验收，不自动领取周积分或开启饰品任务。'
+                report.finished_at = datetime.now().astimezone().isoformat()
+                report.results.append(TaskResult('currency_wars_loop', report.status,
+                                                 str(report.currency_wars.get('completed', 0))+'局结算已核实并留档；胜利'+
+                                                 str(report.currency_wars.get('victories',0))+'局，失败'+str(report.currency_wars.get('defeats',0))+'局。'))
+                try:
+                    report.report_saved = True
+                    _write(directory/'report.json', report.to_dict())
+                except (OSError, ValueError) as error:
+                    report.report_saved, report.report_write_error, report.status = False, str(error), 'partial'
+                self.emit(dict(type='finished', report=report.to_dict()))
+            finally:
+                leases.close()
         return report

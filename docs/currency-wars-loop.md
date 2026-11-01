@@ -6,6 +6,8 @@
 
 后端入口为`CurrencyLoopRunner(settings, emit, runs=None, resume=False, until_points=None, continue_after_defeat=None, ...)`。默认读取`Settings.currency_runs=1`、`currency_until_points=False`与`currency_continue_after_defeat=False`；积分目标关闭时，正整数表示请求的结束局数，胜利和已核实失败都占局数，0表示直到停止。每局仍由普通`Runner(operation='currency_wars_standard')`执行，沿用窗口、账号、资源、落盘意图及反馈协议。
 
+2026-11-01补齐独立循环的整段执行租约与账号连续性：从子任务开始前到归档、汇总报告和结束回调都持有执行权，其他原生任务不能利用局间空隙进入。嵌在周常或任务流程中时仅复用同线程的外层租约和账号约束，子循环不释放外层租约；各新原生Context须重新核实同一账号。父报告`execution_identity`只含匿名核验状态；本地只读归档恢复没有新Context时保留`not_observed`，不伪造新观察。协议见[账号连续性](workflow-account-continuity.md)，各局原有账号、账本、资源及独立验收规则仍有效。
+
 以下仅为用法说明，本轮没有执行游戏操作：
 
 ```powershell

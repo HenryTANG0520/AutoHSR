@@ -35,6 +35,33 @@ def options(runs=1):
 GAP_CONTROLS = CurrencyLoopRunner._gap_controls
 
 
+def identity_snapshot(c, read):
+    """Keep identity capture pairs separate from scripted gameplay changes.
+
+    ``read(peek=True)`` captures the unchanged current page without advancing
+    the business queue. The real identity observer and Context input proxy are
+    retained; no account key or verified flag is manufactured by this fixture.
+    """
+    from autohsr.workflow_identity import MAX_FRAMES, _scope, observe
+    for _ in range(MAX_FRAMES):
+        scope = _scope.get()
+        pending = scope is not None and scope.state(c).verified_epoch != c.runner.input_epoch
+        state = read(pending)
+        if pending and isinstance(state.image, Image.Image):
+            state.image = np.asarray(state.image).copy()
+        captured = time.monotonic()
+        while captured <= getattr(c, '_fixture_last_capture', -1):
+            time.sleep(.001)
+            captured = time.monotonic()
+        c._fixture_last_capture = state.captured_at = captured
+        c.last_scene = state
+        c.scene_epoch = c.runner.input_epoch
+        if observe(c, state):
+            return state
+        c.sleep(.02)
+    raise AutomationError('合成夹具未形成完整新鲜账号来源，未推进业务队列。')
+
+
 def seed_final_node(root, guard=None):
     """Existing start/node evidence is simulated; no game is accessed."""
     directory = root/('native_'+uuid.uuid4().hex[:8]); directory.mkdir()
@@ -69,14 +96,14 @@ def settled(root, guard=None):
                     currency_strategy=policy['strategy'], currency_remembrance_name=policy['remembrance_name'],
                     currency_fast_mode=policy['equipment_fast_mode'], currency_loop_guard=guard)
     runner.report = RunReport(operation='currency_wars_standard', run_dir=str(directory))
-    c = Context(runner, Mock(), Mock()); c.checkpoint = Mock(); c.sleep = Mock(); c.log = Mock()
+    raw_window=Mock()
+    c = Context(runner, raw_window, Mock()); c.checkpoint = Mock(); c.sleep = Mock(); c.log = Mock()
     states = [screen(k) for k in ('final_victory','match_rating','match_rating','match_summary','match_statistics','lobby')]
-    def snapshot():
-        state = states.pop(0) if states else c.last_scene
+    def read(peek):
+        state = deepcopy(states[0] if states else c.last_scene) if peek else states.pop(0) if states else c.last_scene
         if state.image is None:state.image=Image.new('RGB',(1920,1080),'gray')
         state.tokens = [t for t in state.tokens if not normalize(t.text).startswith('uid')]
         state.tokens.append(Token('UID:100000000', .99, (.01,.96,.10,.99)))
-        state.captured_at = time.monotonic(); c.last_scene = state; c.scene_epoch = runner.input_epoch
         return state
     sequence = 0
     def evidence(state, label):
@@ -84,10 +111,12 @@ def settled(root, guard=None):
         sequence += 1
         path = directory/(str(sequence)+'_'+label+'.png'); state.image.save(path)
         return path
-    c.snapshot = snapshot; c.evidence = evidence
+    c.snapshot = lambda: identity_snapshot(c, read); c.evidence = evidence
     with patch('autohsr.currency_wars_replay.save_sample'):
+        from autohsr.workflow_identity import prepare
+        prepare(c)
         runner._inspect_currency_wars(c)
-    if runner.report.status != 'success' or c.window.click.call_count != 4:
+    if runner.report.status != 'success' or raw_window.click.call_count != 4:
         raise AssertionError('native settlement did not complete')
     runner.report.report_saved = True
     _write(directory/'report.json', runner.report.to_dict())
@@ -102,13 +131,15 @@ def real_runtime(root):
     (game/'config.ini').write_text('[General]\ngame_version=4.6.0\n',encoding='utf-8')
     window=Mock();window.hwnd=44;window.path=str(game/'StarRail.exe')
     def snapshot(c):
-        state=c.runner._loop_test_scenes.pop(0)
-        state.tokens=[t for t in state.tokens if not normalize(t.text).startswith('uid')]
-        state.tokens.append(Token('UID:100000000',.99,(.01,.96,.10,.99)))
-        state.geometry=Geometry(0,0,1920,1080)
-        state.image=np.full((1080,1920,3),80,dtype=np.uint8)
-        state.captured_at=time.monotonic();c.last_scene=state;c.scene_epoch=c.runner.input_epoch
-        return state
+        def read(peek):
+            states=c.runner._loop_test_scenes
+            state=deepcopy(states[0]) if peek else states.pop(0)
+            state.tokens=[t for t in state.tokens if not normalize(t.text).startswith('uid')]
+            state.tokens.append(Token('UID:'+getattr(c.runner,'_loop_test_account','100000000'),.99,(.01,.96,.10,.99)))
+            state.geometry=Geometry(0,0,1920,1080)
+            state.image=np.full((1080,1920,3),80,dtype=np.uint8)
+            return state
+        return identity_snapshot(c, read)
     with patch('autohsr.app.ROOT',root),patch('autohsr.windows.kernel32') as kernel, \
          patch('autohsr.app.C.get_last_error',return_value=0),patch('autohsr.app.find_game',return_value=window), \
          patch('autohsr.app.is_elevated',return_value=False),patch('autohsr.app.IsolatedVision'), \

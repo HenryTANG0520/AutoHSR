@@ -32,6 +32,7 @@ class Factory:
         self.root,self.scores,self.calls=root,list(scores),[]
         self.native=loops.ActualRunnerFactory(root)
         self.reward_score=18000;self.reward_available=True
+        self.account='100000000';self.loop_points_account=None
 
     def __call__(self,config,emit,**options):
         operation=options['operation'];self.calls.append(operation)
@@ -49,6 +50,8 @@ class Factory:
             child._week_points_number=self.calls.count(operation)
         elif operation=='currency_wars_rewards':child._loop_test_scenes=rewards.stages(self.reward_score,self.reward_available)
         else:raise AssertionError(operation)
+        child._loop_test_account=(self.loop_points_account if operation=='currency_wars_points'
+            and child._week_points_number==2 and self.loop_points_account is not None else self.account)
         return child
 
 
@@ -212,17 +215,12 @@ class CurrencyWeeklyPlanTests(unittest.TestCase):
     def test_account_swap_between_initial_and_loop_points_never_starts_standard_game(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);factory=Factory(root,[0,0])
+            factory.loop_points_account='100000001'
             with runtime(root):
-                original=Context.snapshot
-                def snapshot(c):
-                    scene=original(c)
-                    if getattr(c.runner,'_week_points_number',0)==2:
-                        scene.tokens=[loops.Token(t.text.replace('100000000','100000001'),t.score,t.box) for t in scene.tokens]
-                    return scene
-                with patch.object(Context,'snapshot',snapshot):
-                    report=PlanRunner(settings(),root=root/'runs',runner_factory=factory,now=points.NOW).run()
+                report=PlanRunner(settings(),root=root/'runs',runner_factory=factory,now=points.NOW).run()
             self.assertEqual(report.status,'partial');self.assertNotIn('currency_wars_standard',factory.calls)
             self.assertTrue(report.daily_verified);self.assertFalse(report.weekly_plan['score_rewards_verified'])
+            self.assertTrue(report.execution_identity['account_changed'])
 
     def test_cross_week_after_daily_does_not_create_another_weeks_goal(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -286,14 +284,9 @@ class CurrencyWeeklyPlanTests(unittest.TestCase):
             report=self.run_plan(root,first);self.assertEqual(report.status,'success',report.error)
             old=LoopStore(root/'runs');old.load();old_id=old.data['loop_id'];old_account=old.data['account_key']
             second=Factory(root,[18000,18000]);second.reward_available=False
+            second.account='100000001'
             with runtime(root):
-                original=Context.snapshot
-                def changed(c):
-                    state=original(c)
-                    state.tokens=[loops.Token(t.text.replace('100000000','100000001'),t.score,t.box) for t in state.tokens]
-                    return state
-                with patch.object(Context,'snapshot',changed):
-                    report=PlanRunner(settings(),root=root/'runs',runner_factory=second,now=points.NOW).run()
+                report=PlanRunner(settings(),root=root/'runs',runner_factory=second,now=points.NOW).run()
             self.assertEqual(report.status,'success',report.error+' / '+report.safe_next)
             current=LoopStore(root/'runs');current.load();check_complete(current)
             self.assertNotEqual(current.data['loop_id'],old_id);self.assertNotEqual(current.data['account_key'],old_account)

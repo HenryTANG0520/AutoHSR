@@ -100,13 +100,19 @@
         "autohsr/currency_wars_identity.py",
         "autohsr/app.py",
         "autohsr/recovery.py",
-        "autohsr/task_workflow_run.py"
+        "autohsr/task_workflow_run.py",
+        "autohsr/plan_runner.py",
+        "autohsr/currency_wars_loop.py",
+        "autohsr/currency_wars_weekly_run.py"
       ],
       "tests": [
         "autohsr/tests/test_workflow_identity.py",
-        "autohsr/tests/test_task_workflow.py"
+        "autohsr/tests/test_task_workflow.py",
+        "autohsr/tests/test_sequence_scope.py",
+        "autohsr/tests/test_plan_sequence_scope.py",
+        "autohsr/tests/test_currency_sequence_scope.py"
       ],
-      "kind": "AutoHSR-authored cross-step account continuity: strict existing UID parser, two fresh captures in one input epoch, first known login preparation only, immutable per-workflow binding, pause/focus rechecks, private UID crops and source integrity at boundaries, native input proxy, old-budget read-only preflight then begin only after current identity. Public identity metadata has no UID, account digest, image or installation path; original DU/CW ledger keys unchanged. Synthetic tests only, no real account calibration or complete multi-account switch support."
+      "kind": "AutoHSR-authored cross-step account continuity: strict existing UID parser, two fresh captures in one input epoch, first known login preparation only, immutable per-sequence binding, pause/focus rechecks, private UID crops and source integrity at boundaries, native input proxy, old-budget read-only preflight then begin only after current identity. Composable same-thread scopes extend the existing protocol to standalone daily/weekly plans and currency loop/weekly controllers without replacing an outer workflow binding or publisher. No observation is inferred from entering a scope; local recovery and skipped paths remain explicitly unobserved. Public identity metadata has no UID, account digest, image or installation path; original DU/CW ledger keys unchanged. Synthetic tests only, no real account calibration or complete multi-account switch support."
     }
   ],
   "mechanic_references": [
@@ -892,7 +898,7 @@
         "WorkflowRunner._execute_steps",
         "WorkflowRunner._execute_step"
       ],
-      "kind": "AutoHSR-authored Windows named sequence marker with thread-local ownership; all native Runner and standalone launch entries reject other sequence owners during task gaps. No game-input framework copied."
+      "kind": "AutoHSR-authored Windows named sequence marker with thread-local ownership; all native Runner and standalone launch entries reject other sequence owners during task gaps. Standalone plans and currency controllers now hold the shared marker through child gaps, report saving and finished callbacks, and same-thread composing controllers may join without closing the outer handle. Nested task workflows and copied-context cross-thread ownership remain rejected. No game-input framework copied."
     }
   ]
 }

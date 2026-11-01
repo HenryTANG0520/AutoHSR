@@ -1,6 +1,7 @@
 """Plan-owned points, bounded matches and rewards using the ordinary Runners."""
 from __future__ import annotations
 
+from contextlib import ExitStack
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -174,10 +175,19 @@ class CurrencyWeekRunner(PlanRunner):
         self._checkpoint();self._reward_phase()
 
     def run(self):
+        from .workflow_lease import sequence_lease
+        from .workflow_identity import sequence_identity
         started=datetime.now().astimezone();directory=self.root/(started.strftime('%Y%m%d_%H%M%S_%f')+'_currency_weekly_'+uuid.uuid4().hex[:8])
         directory.mkdir(parents=True);self.report.run_dir=str(directory);self.report.started_at=started.isoformat()
         self.report.source=str(self.root.parent);monitor=None;locked=False;lock=loop_lock(self.root/'currency-weekly-lock')
+        leases=ExitStack();identity=None
         try:
+            leases.enter_context(sequence_lease())
+            def publish_identity(public):
+                self.report.execution_identity=dict(public)
+                self.emit(dict(type='execution_identity',**public))
+            identity=leases.enter_context(sequence_identity(directory,publish=publish_identity))
+            publish_identity(identity.public())
             lock.__enter__();locked=True
             monitor=threading.Thread(target=self._gap_controls,daemon=True);monitor.start()
             try:self._execute()
@@ -188,9 +198,13 @@ class CurrencyWeekRunner(PlanRunner):
             self.report.status,self.report.error='partial',str(error)
             self.report.safe_next='保留原目标及子报告；仅明确接续剩余步骤，未知输入不重放。'
         finally:
-            try:self._finish(directory)
+            try:
+                if identity is not None:self.report.execution_identity=identity.public()
+                self._finish(directory)
             finally:
-                if locked:lock.__exit__(None,None,None)
+                try:
+                    if locked:lock.__exit__(None,None,None)
+                finally:leases.close()
         return self.report
 
     def _finish(self,directory):

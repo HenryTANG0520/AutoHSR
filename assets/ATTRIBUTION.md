@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-11-01 本地核心序列协作
+
+执行权及账号连续性为AutoHSR原生协议，现由任务树扩展到独立日常／周常计划和货币战争循环／周常。没有迁入新上游源码、截图、输入框架或增加模型素材；已有固定[来源清单](upstream/March7thAssistant/source.json)及GPL许可保持。控制器同线程加入既有作用域，不替换外层账号或发布器，跨线程与嵌套任务树仍拒绝；实现与证据边界见[账号连续性](../docs/workflow-account-continuity.md)。
+
 ## 2026-10-30 高难计划与有限混沌备战
 
 固定March7thAssistant `7cf6c6bed474539485d3b1504077ac352866829f`的挑战源码作为模式／层数、名单及局部页面关系参考，作者moesnow及其贡献者与[GPL v3](upstream/March7thAssistant/LICENSE)保持，原件哈希与原生适配范围记入[source.json](upstream/March7thAssistant/source.json)。14幅最小原图逐份查看并按固定tree／Git blob／SHA-256／大小核对，原样分发于[challenge-ui](upstream/March7thAssistant/challenge-ui/README.md)；没有重编码或发布游戏整图／账号内容。游戏美术权利归HoYoverse及相应权利人。

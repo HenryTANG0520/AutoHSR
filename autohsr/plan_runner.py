@@ -1,6 +1,7 @@
 """One explicit start, sequential ordinary Runners, one durable combined report."""
 from __future__ import annotations
 
+from contextlib import ExitStack
 from dataclasses import replace
 from copy import deepcopy
 from datetime import datetime
@@ -148,7 +149,17 @@ class PlanRunner:
                                  mode=self.settings.weekly_mode, requested_runs=self.settings.weekly_runs,
                                  daily_tasks=_daily_tasks(self.settings),
                                  status="waiting", score_rewards_verified=False, children=[])
+        from .workflow_lease import sequence_lease
+        from .workflow_identity import sequence_identity
+        scopes = ExitStack()
+        identity = None
+        def publish_identity(public):
+            report.execution_identity = deepcopy(public)
+            self.emit(dict(type='execution_identity', **public))
         try:
+            scopes.enter_context(sequence_lease())
+            identity = scopes.enter_context(sequence_identity(directory, publish=publish_identity))
+            publish_identity(identity.public())
             self._checkpoint()
             daily_reference=None
             if self.settings.weekly_enabled and self.settings.weekly_mode=='currency_wars':
@@ -255,16 +266,21 @@ class PlanRunner:
                 report.safe_next = "请修改对应设置，再次开始。"
             self._weekly_result("needs_review", str(exc))
         finally:
-            report.finished_at = datetime.now(CHINA).isoformat()
             try:
-                report.report_saved = True
-                temp = directory/"report.tmp"
-                temp.write_text(json.dumps(report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-                replace_file(temp, directory/"report.json")
-            except OSError as exc:
-                report.report_saved = False
-                report.status = "partial"
-                report.report_write_error = str(exc)
-                report.error = (report.error+"；" if report.error else "")+"计划报告保存失败。"
-            self.emit(dict(type="finished", report=report.to_dict()))
+                if identity is not None:
+                    report.execution_identity = deepcopy(identity.public())
+                report.finished_at = datetime.now(CHINA).isoformat()
+                try:
+                    report.report_saved = True
+                    temp = directory/"report.tmp"
+                    temp.write_text(json.dumps(report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+                    replace_file(temp, directory/"report.json")
+                except OSError as exc:
+                    report.report_saved = False
+                    report.status = "partial"
+                    report.report_write_error = str(exc)
+                    report.error = (report.error+"；" if report.error else "")+"计划报告保存失败。"
+                self.emit(dict(type="finished", report=report.to_dict()))
+            finally:
+                scopes.close()
         return report

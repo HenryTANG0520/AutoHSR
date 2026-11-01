@@ -40,6 +40,24 @@ def workflow_lease():
         kernel.CloseHandle(handle)
 
 
+@contextmanager
+def sequence_lease():
+    """Join a same-thread parent, or own the complete native sequence.
+
+    Plans and currency controllers compose inside task workflows. Only these
+    controllers may join: workflow_lease itself still rejects nested workflows.
+    The joining child never closes or replaces its parent's handle.
+    """
+    owner = _owner.get()
+    if owner is not None:
+        if owner[1] != threading.get_ident():
+            raise AutomationError('执行序列属于另一线程，未继承其输入权限。')
+        yield
+    else:
+        with workflow_lease():
+            yield
+
+
 def require_workflow_access():
     """Native game entries admit only children running on the owning thread."""
     owner = _owner.get()

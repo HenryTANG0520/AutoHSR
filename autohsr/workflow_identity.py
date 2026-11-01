@@ -12,6 +12,7 @@ import hashlib
 import json
 import math
 import os
+import threading
 from pathlib import Path
 import time
 import uuid
@@ -24,6 +25,7 @@ from .models import AutomationError, InputInterrupted, normalize
 from .storage import replace_file
 
 _scope = ContextVar('autohsr_workflow_identity', default=None)
+_scope_thread = ContextVar('autohsr_workflow_identity_thread', default=None)
 MAX_FRAMES = 60
 WAIT_SECONDS = 15.
 RECHECK_DELAY = .15
@@ -71,10 +73,35 @@ def account_scope(scope):
     if _scope.get() is not None:
         raise AutomationError('任务流程账号约束不能嵌套或替换。')
     token = _scope.set(scope)
+    thread_token = _scope_thread.set(threading.get_ident())
     try:
         yield
     finally:
+        _scope_thread.reset(thread_token)
         _scope.reset(token)
+
+
+@contextmanager
+def sequence_identity(directory, *, required=True, publish=None):
+    """Compose native controllers without replacing the outer account binding.
+
+    Real Context.prepare/snapshot and its input proxy prove identity. Merely
+    entering this scope does not claim an observed account or a completed task.
+    Skipped and local receipt-recovery paths may have no native observations.
+    """
+    if type(required) is not bool or publish is not None and not callable(publish):
+        raise ValueError('执行序列账号参数无效。')
+    current = _scope.get()
+    if current is not None:
+        if _scope_thread.get() != threading.get_ident():
+            raise AutomationError('账号作用域属于另一线程，未继承原账号证明。')
+        if required and not current.required:
+            raise AutomationError('外层未声明游戏任务，不能隐式增加游戏执行范围。')
+        yield current
+    else:
+        identity = WorkflowIdentity(directory, required=required, publish=publish)
+        with account_scope(identity):
+            yield identity
 
 
 def wrap_window(context, window):

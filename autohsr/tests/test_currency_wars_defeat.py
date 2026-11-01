@@ -54,22 +54,27 @@ def finish(root,guard=None,*,node='1-4',scene_mutation=None):
                   currency_strategy=policy['strategy'],currency_loop_guard=guard,
                   currency_remembrance_name=policy['remembrance_name'],currency_fast_mode=policy['equipment_fast_mode'])
     runner.report=RunReport(operation='currency_wars_standard',run_dir=str(directory))
-    c=Context(runner,Mock(),Mock());c.checkpoint=Mock();c.sleep=Mock();c.log=Mock()
+    raw_window=Mock()
+    c=Context(runner,raw_window,Mock());c._fixture_raw_window=raw_window
+    c.checkpoint=Mock();c.sleep=Mock();c.log=Mock()
     states=[frame(k,node) for k in ('match_defeat','match_defeat','defeat_rating','defeat_rating',
                                   'defeat_summary','defeat_summary','match_statistics','match_statistics','lobby','lobby')]
     if scene_mutation:scene_mutation(states)
-    def snapshot():
-        page=states.pop(0) if states else c.last_scene
+    def read(peek):
+        page=deepcopy(states[0] if states else c.last_scene) if peek else states.pop(0) if states else c.last_scene
         if page.image is None:page.image=Image.new('RGB',(32,32),'gray')
         page.tokens=[t for t in page.tokens if not normalize(t.text).startswith('uid')]
         page.tokens.append(Token('UID:100000000',.99,(.01,.96,.1,.99)))
-        page.captured_at=time.monotonic();c.last_scene=page;c.scene_epoch=runner.input_epoch;return page
+        return page
     count=0
     def evidence(page,label):
         nonlocal count
         count+=1;path=directory/(str(count)+'_'+label+'.png');page.image.save(path);return path
-    c.snapshot=snapshot;c.evidence=evidence
-    with patch('autohsr.currency_wars_replay.save_sample'):runner._inspect_currency_wars(c)
+    c.snapshot=lambda:loops.identity_snapshot(c,read);c.evidence=evidence
+    with patch('autohsr.currency_wars_replay.save_sample'):
+        from autohsr.workflow_identity import prepare
+        prepare(c)
+        runner._inspect_currency_wars(c)
     runner.report.report_saved=True;_write(directory/'report.json',runner.report.to_dict())
     return runner.report,c
 
@@ -125,7 +130,7 @@ class DefeatTests(unittest.TestCase):
                 for page in states[:2]:page.tokens+=screen('star_selection').tokens
             report,c=finish(Path(folder),scene_mutation=conflict)
             self.assertNotEqual(report.currency_wars.get('defeat_settlement_verified'),True)
-            c.window.click.assert_not_called()
+            c._fixture_raw_window.click.assert_not_called()
 
     def test_native_four_step_defeat_never_sets_victory_or_completion(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -133,7 +138,7 @@ class DefeatTests(unittest.TestCase):
             self.assertEqual(report.status,'partial');self.assertTrue(settled(data))
             self.assertFalse(data['completion_verified']);self.assertFalse(data['node_attempt']['node_verified'])
             self.assertNotIn('match_victory_observed',data);self.assertEqual(data['match_outcome'],'defeat')
-            self.assertEqual(c.window.click.call_count,4)
+            self.assertEqual(c._fixture_raw_window.click.call_count,4)
             self.assertEqual(len(data['node_attempt']['defeat_frames']),2)
             self.assertEqual([a['action'] for a in data['actions'][-4:]],['settle_standard_defeat_'+k for k in STEPS])
             self.assertTrue(StandardSession(Path(folder)/'currency-standard-session.json').data['defeat_settlement_verified'])
@@ -146,7 +151,7 @@ class DefeatTests(unittest.TestCase):
                                  for t in page.tokens]
             report,c=finish(Path(folder),scene_mutation=wording)
             self.assertTrue(settled(report.currency_wars));self.assertEqual(report.status,'partial')
-            self.assertFalse(report.currency_wars['completion_verified']);self.assertEqual(c.window.click.call_count,4)
+            self.assertFalse(report.currency_wars['completion_verified']);self.assertEqual(c._fixture_raw_window.click.call_count,4)
 
     def test_isolated_lobby_or_failure_text_cannot_supply_original_attempt(self):
         for kind in ('match_defeat','defeat_rating','defeat_summary'):
@@ -255,7 +260,7 @@ class DefeatTests(unittest.TestCase):
         timer=count(0,80)
         with tempfile.TemporaryDirectory() as folder,patch('autohsr.currency_wars_standard_flow.time',Mock(monotonic=lambda:next(timer))):
             report,c=finish(Path(folder),scene_mutation=mutation)
-            self.assertEqual(c.window.click.call_count,1)
+            self.assertEqual(c._fixture_raw_window.click.call_count,1)
             self.assertEqual(report.currency_wars['actions'][-1]['status'],'unknown')
             self.assertFalse(settled(report.currency_wars))
             with self.assertRaises(AutomationError):require_session_access(report.currency_wars,True)
