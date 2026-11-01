@@ -1,5 +1,13 @@
 # 货币战争重启开发记录
 
+## 2026-11-01：节点账号短缺读有界重采
+
+修复[标准节点观察](../autohsr/currency_wars_standard_node.py)在一帧UID缺失时直接中止、没有进入原30秒未核实期限的问题。缺失、低可信或多UID冲突帧只记为未知，不分类为战斗／结算／自动状态；唯一明确的不同账号仍立即拒绝。处理与捕获耗时均计入原期限，超过期限后到达的结果不补成通过；停止／暂停代次／失焦控制异常原样传播，没有新增战斗输入或重发出战。
+
+缺读或EmptyCapture打断连续自动on候选与失败两帧候选，移除当前`auto_observation`，保留原`auto_on_observed`／`auto_on_evidence`历史。恢复后须用新鲜、同账号画面重建当前连续来源，不把缺读前后两帧拼接。
+
+18项节点专项通过`runs/currency-node-identity-tests-final.log`（0.671秒）；12项真实脱敏CV／旧节点回放通过`currency-node-identity-cv-replays.log`（0.854秒）。原复现`currency-node-identity-first-repro.log`和首轮假capture时间戳重复导致的断言失败保留；夹具改为严格递增，没有降阈值。旧1-1裁片／邻帧只是历史校准，不称新增实机或独立留出；历史整局0/10不变，十场目标不恢复。最终整合结果见[验证记录](../VALIDATION.md)。
+
 ## 2026-10-30：初始环境接受、post_choice现状及专用免费收店
 
 新增[初始来源](../autohsr/currency_wars_initial.py)和[免费初始收店](../autohsr/currency_wars_initial_shop.py)，接入正式标准Flow、免费动作账本与Context。新pending确认在输入前绑定原start→preview→plane前缀、声明与PNG／像素来源；两份不同capture与证据路径、原动作verified和对应after才记selection_accepted。自动商店独立绑定原confirm和当前HUD／控件，两个preparation返回后记免费收据，不伪造open_standard_shop、pre_shop_snapshot或节点continue来源，也不授权交易。
