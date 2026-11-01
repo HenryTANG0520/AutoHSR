@@ -5,7 +5,7 @@ import uuid
 
 from .models import AutomationError,DungeonQuotaExhausted,InputInterrupted,Scene,TaskResult
 from .power_plan import PowerItem,plan_spec,row_keys,digest
-from .power_plan_store import folder,write,prior,file_ref,pointer
+from .power_plan_store import folder,write,prior,file_ref,pointer,fs_path
 
 
 def account(ctx,scene):
@@ -30,11 +30,11 @@ class PowerRun:
             goal=uuid.uuid4().hex
         else:
             index=directory/'current.json'
-            if index.exists() and not new_goal:
+            if fs_path(index).exists() and not new_goal:
                 saved=pointer(self.root,directory)
                 goal=saved['goal']
             else:
-                if not new_goal and directory.exists() and any(p.is_dir() and p.name!='repeat' for p in directory.iterdir()):
+                if not new_goal and fs_path(directory).exists() and any(p.is_dir() and p.name!='repeat' for p in fs_path(directory).iterdir()):
                     raise AutomationError('体力计划原目标索引缺失，未重置已完成次数。')
                 goal=uuid.uuid4().hex;saved=dict(schema=1,goal=goal,head=None);write(index,saved)
             last,previous=prior(self.root,identity,self.spec,goal)
@@ -280,6 +280,12 @@ class PowerWorkflow:
         if echo is None or not echo['due']:return False
         if echo['state'] in ('complete','limited','partial'):return echo['state']=='partial'
         item=state.item(-2);result=self.execute(state,item,-2,3-echo['completed'])
+        if result is not None and result.status!='ok':
+            # A failed battle is not a known allowance/resource limit. Keep
+            # its settled progress and stop before navigating to another stage.
+            echo['state']='partial'
+            state.budget._write();state.publish('weekly')
+            return True
         if echo['state']!='complete' and result is not None:
             from .echo_weekly import require_week
             require_week(echo)
@@ -290,9 +296,9 @@ class PowerWorkflow:
                 state.observe_echo(view,scene,quota,proof=getattr(workflow,'_weekly_rewards_proof',None))
             finally:self.ctx.last_scene,self.ctx.scene_epoch=view.last_scene,view.scene_epoch
         if echo['state']!='complete':
-            echo['state']='limited' if result is None or result.status=='ok' else 'partial'
+            echo['state']='limited'
             state.budget._write();state.publish('weekly')
-        return result is not None and result.status!='ok'
+        return False
 
     def run(self):
         if not self.ctx.settings.allow_stamina_spend:return TaskResult('battle','skipped','未授权资源消耗，体力计划未执行。')
@@ -306,12 +312,13 @@ class PowerWorkflow:
         if state.data['effective_limit'] is None:self.resources(state)
         partial=self.weekly(state)
         for i,item in enumerate(state.items):
+            if partial:break
             if state.remaining(i)==0:continue
             result=self.execute(state,item,i,state.remaining(i))
             if result is None:break
             partial=partial or result.status!='ok'
             if result.status!='ok' or state.remaining(i)>0:break
-        if state.data['fallback'] is not None:
+        if not partial and state.data['fallback'] is not None:
             item=PowerItem(**dict(state.data['fallback'],count=1))
             completed=sum(c['count'] for c in state.data['charges'] if c['row']==-1)
             requested=state.data['fallback_requested']

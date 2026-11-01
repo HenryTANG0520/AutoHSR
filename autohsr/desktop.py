@@ -1,10 +1,11 @@
 """The game's guide book, native page hierarchy and concise operational controls."""
 from __future__ import annotations
 
+import tkinter as tk
 from tkinter import ttk
 
 from . import theme as t
-from .game_widgets import ActivityStrip, Guide, Header, SummaryStrip, TaskBoard, TrainingMeter
+from .game_widgets import ActivityStrip, Backdrop, Guide, Header, SummaryStrip, TaskBoard, TrainingMeter
 
 PAGE_TITLES = {"home": "每日实训", "tasks": "生存索引", "differential_universe": "旷宇纷争",
                "currency_wars": "旷宇纷争", "logs": "运行记录", "settings": "设置"}
@@ -17,36 +18,55 @@ def note(parent, text=None, variable=None, *, row, style="CardHint.TLabel", scal
     return label
 
 
-def build_window(ui, task_names, server_names):
-    root = ui.root
-    ui.ui_scale = max(1., float(root.tk.call("tk", "scaling"))/(96/72))
+def build_window(ui, task_names, server_names, *, scale=None):
+    window = ui.root
+    ui.ui_scale = scale if scale is not None else max(1., float(window.tk.call("tk", "scaling"))/(96/72))
     s = ui.ui_scale
     d = lambda n: round(n*s)
-    width, height = min(d(1536), root.winfo_screenwidth()-d(32)), min(d(864), root.winfo_screenheight()-d(55))
-    root.geometry(f"{width}x{height}")
-    root.minsize(min(d(1100), width), min(d(800), height))
-    root.title("AutoHSR · 开拓指南")
-    root.configure(bg=t.BG)
-    ui.style = t.apply_theme(root, s)
+    width, height = min(d(1536), window.winfo_screenwidth()-d(32)), min(d(864), window.winfo_screenheight()-d(55))
+    if scale is None:
+        window.geometry(f"{width}x{height}")
+        window.minsize(min(d(1100), width), min(d(800), height))
+    window.title("AutoHSR · 开拓指南")
+    window.configure(bg=t.BG)
+    ui.style = t.apply_theme(window, s)
+    root = ui.shell = tk.Frame(window, bg=t.BG)
+    root.place(x=0, y=0, relwidth=1, relheight=1)
     root.columnconfigure(0, weight=1)
     root.rowconfigure(1, weight=1)
+    ui.backdrop = Backdrop(root, s)
+    ui.backdrop.place(x=0, y=0, relwidth=1, relheight=1)
+    root.tk.call("lower", str(ui.backdrop))
     ui.header = Header(root, s, ui)
     ui.header.grid(row=0, column=0, sticky="ew")
     ui.guide = Guide(root, s, ui)
-    ui.guide.grid(row=1, column=0, sticky="nsew", padx=d(18))
-    root.bind("<Configure>", lambda e: ui.guide.grid_configure(padx=max(d(18), round((e.width-d(1280))/2))) if e.widget is root else None, add="+")
+    ui.guide.grid(row=1, column=0, sticky="ew", padx=d(18))
+    def position_guide(event=None):
+        if (event is None or event.widget is window) and getattr(ui, "active_page", "home") != "settings":
+            top_gap = min(d(38), max(0, round((window.winfo_height()-d(800))*38/64)))
+            margin = max(d(18), round((window.winfo_width()-d(1280))/2))
+            ui.guide.art_left = min(d(8), max(0, margin-d(2)))
+            ui.guide.art_right = min(d(44), max(0, margin-d(2)))
+            ui.guide.grid_configure(padx=(margin-ui.guide.art_left, margin-ui.guide.art_right), pady=(top_gap, 0))
+            ui.guide._position()
+            ui.guide.redraw(layout=True)
+    ui.position_guide = position_guide
+    if getattr(ui, "_guide_position_binding", None):
+        window.unbind("<Configure>", ui._guide_position_binding)
+    ui._guide_position_binding = window.bind("<Configure>", position_guide, add="+")
     body = ui.guide.content
     body.columnconfigure(0, weight=1)
     body.rowconfigure(0, weight=1)
     ui.nav_buttons = {key: ui.guide.buttons["universe" if key in ("differential_universe", "currency_wars") else key]
                       for key in PAGE_TITLES}
-    ui.pages = {key: ttk.Frame(body) for key in PAGE_TITLES}
+    ui.pages = {key: ttk.Frame(body) for key in PAGE_TITLES if key != "settings"}
     for page in ui.pages.values():
         page.grid(row=0, column=0, sticky="nsew")
         page.columnconfigure(0, weight=1)
     ui.server_combo = None
     _home(ui, task_names)
-    _tasks(ui, task_names)
+    _tasks(ui)
+    ui.mode_decks = {}
     from .desktop_modes import build_currency, build_universe
     build_universe(ui)
     build_currency(ui)
@@ -61,7 +81,7 @@ def _home(ui, names):
     d = lambda n: round(n*s)
     page = ui.pages["home"]
     ui.training_meter = TrainingMeter(page, s, ui.training_result)
-    ui.training_meter.grid(row=0, column=0, sticky="ew", pady=(0, d(10)))
+    ui.training_meter.grid(row=0, column=0, sticky="ew", pady=(0, d(4)))
     ui.table = TaskBoard(page, s, ui, names)
     ui.table.grid(row=1, column=0, sticky="nsew")
     page.rowconfigure(1, weight=1, minsize=d(250))
@@ -72,8 +92,9 @@ def _home(ui, names):
     recovery.grid_remove()
 
 
-def _tasks(ui, names):
-    from .dungeons import CATEGORIES
+def _tasks(ui):
+    from .dungeons import BY_KEY
+    from .survival_widgets import CATEGORY_NAVIGATION, CategoryButton
     s = ui.ui_scale
     d = lambda n: round(n*s)
     page = ui.pages["tasks"]
@@ -91,13 +112,14 @@ def _tasks(ui, names):
         show_browser(ui)
     def selected(*_):
         for label, button in ui.category_buttons.items():
-            button.configure(style="Selected.Option.TButton" if label == ui.dungeon_browse_category.get() else "Option.TButton")
-    for row, category in enumerate(CATEGORIES):
-        button = ttk.Button(menu, text=category.label, style="Option.TButton", command=lambda category=category: choose(category))
-        button.grid(row=row, column=0, sticky="ew", pady=(0, d(10)))
+            button.state(("selected" if label == ui.dungeon_browse_category.get() else "!selected",))
+    for row, (key, subtitle) in enumerate(CATEGORY_NAVIGATION):
+        category = BY_KEY[key]
+        menu.rowconfigure(row, weight=1, uniform="category", minsize=d(64))
+        button = CategoryButton(menu, s, category, subtitle, command=lambda category=category: choose(category))
+        button.grid(row=row, column=0, sticky="nsew", pady=(0, d(10)))
         ui.category_buttons[category.label] = button
         ui.setting_controls.append(button)
-        ui.stamina_controls.append(button)
     token = ui.dungeon_browse_category.trace_add("write", selected)
     menu.bind("<Destroy>", lambda e: ui.dungeon_browse_category.trace_remove("write", token) if e.widget is menu else None, add="+")
     selected()
@@ -108,18 +130,6 @@ def _tasks(ui, names):
     specific = ttk.Frame(content, style="Card.TFrame")
     specific.grid(row=0, column=0, sticky="nsew")
     ui._build_battle_fields(specific)
-    ttk.Separator(content).grid(row=1, column=0, sticky="ew", pady=d(10))
-    tasks = ttk.Frame(content, style="Card.TFrame")
-    tasks.grid(row=2, column=0, sticky="ew")
-    ttk.Label(tasks, text="每日任务", style="Muted.TLabel").grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, d(3)))
-    ui.task_controls = {}
-    for index, (key, label) in enumerate(names.items()):
-        check = ttk.Checkbutton(tasks, text=label, variable=ui.tasks[key], style="Card.TCheckbutton")
-        check.grid(row=1+index//3, column=index%3, sticky="w", padx=(0, d(14)))
-        ui.task_controls[key] = check
-        ui.setting_controls.append(check)
-        if key == "battle":
-            ui.battle_checkbox = check
 
 
 def _logs(ui):
@@ -146,145 +156,50 @@ def _logs(ui):
 
 
 def _settings(ui):
-    s = ui.ui_scale
-    d = lambda n: round(n*s)
-    page = ui.pages["settings"]
-    page.columnconfigure(0, weight=0)
-    page.columnconfigure(1, weight=1)
-    page.rowconfigure(0, weight=1)
-    menu = ttk.Frame(page)
-    menu.grid(row=0, column=0, sticky="ns", padx=(0, d(24)))
-    tabs = ttk.Notebook(page, style="Hidden.TNotebook")
-    tabs.grid(row=0, column=1, sticky="nsew")
-    ui.settings_tabs = tabs
-    ui.settings_sections = {}
-    buttons = {}
-    for row, (key, name) in enumerate((("game", "游戏连接"), ("weekly", "周常计划"), ("run", "运行偏好"), ("recognition", "识别与等待"), ("admin", "管理员启动"))):
-        section = ttk.Frame(tabs, style="Card.TFrame", padding=d(20))
-        section.columnconfigure(1, weight=1)
-        tabs.add(section, text=name)
-        ui.settings_sections[key] = section
-        button = ttk.Button(menu, text=name, style="Option.TButton",
-                            command=ui._show_weekly_plan if key == "weekly" else lambda section=section: tabs.select(section), width=13)
-        button.grid(row=row, column=0, sticky="ew", pady=(0, d(10)))
-        buttons[str(section)] = button
-    tabs.bind("<<NotebookTabChanged>>", lambda _: [button.configure(style="Selected.Option.TButton" if str(tabs.select())==key else "Option.TButton") for key, button in buttons.items()])
-    game = ui.settings_sections["game"]
-    ttk.Label(game, text="StarRail.exe", style="Muted.TLabel").grid(row=0, column=0, sticky="w", padx=(0, d(14)))
-    entry = ttk.Entry(game, textvariable=ui.game_path, width=15)
-    ui.game_path_entry = entry
-    entry.grid(row=0, column=1, sticky="ew")
-    browse = ttk.Button(game, text="浏览…", command=ui._choose_game)
-    browse.grid(row=0, column=2, padx=(d(10), 0))
-    label = t.wrapped_label(game, textvariable=ui.readiness, style="CardHint.TLabel")
-    label.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(d(18), 0))
-    label = t.wrapped_label(game, text="登录验证与更新需在游戏内完成。", style="CardHint.TLabel")
-    label.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(d(10), 0))
-    ui.setting_controls.extend((entry, browse))
-    connection = ttk.Frame(game, style="Card.TFrame")
-    connection.grid(row=3, column=0, columnspan=3, sticky="w", pady=d(18))
-    ui.check_button = ttk.Button(connection, text="检测窗口", command=ui._check)
-    ui.launch_button = ttk.Button(connection, text="进入游戏", command=ui._launch)
-    for button in (ui.check_button, ui.launch_button):
-        button.pack(side="left", padx=(0, d(10)))
-        ui.setting_controls.append(button)
-    weekly = ui.settings_sections["weekly"]
-    enable = ttk.Checkbutton(weekly, text="启用周常", variable=ui.weekly_enabled)
-    enable.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, d(14)))
-    ui.setting_controls.append(enable)
-    from .weekly_plan import DAYS, MODES
-    for row, label, variable, choices, name in (
-            (1, "玩法", ui.weekly_mode, tuple(MODES.values()), "weekly_mode_combo"),
-            (2, "每周", ui.weekly_day, DAYS, "weekly_day_combo"),
-            (4, "演算局数", ui.weekly_runs, tuple(str(n) for n in range(1, 11)), "weekly_runs_combo")):
-        caption = ttk.Label(weekly, text=label)
-        caption.grid(row=row, column=0, sticky="w", padx=(0, d(20)), pady=d(9))
-        combo = ttk.Combobox(weekly, textvariable=variable, values=choices, width=15, state="readonly")
-        combo.grid(row=row, column=1, sticky="w")
-        setattr(ui, name, combo)
-        ui.setting_controls.append(combo)
-        if name == "weekly_runs_combo":
-            ui.weekly_run_controls = (caption, combo)
-    ttk.Label(weekly, text="时间").grid(row=3, column=0, sticky="w", pady=d(9))
-    time_row = ttk.Frame(weekly, style="Card.TFrame")
-    time_row.grid(row=3, column=1, columnspan=2, sticky="w")
-    field = ttk.Entry(time_row, textvariable=ui.weekly_time, width=15)
-    ui.weekly_time_entry = field
-    field.pack(side="left")
-    ttk.Label(time_row, text="HH:MM · 北京时间", style="Muted.TLabel").pack(side="left", padx=d(10))
-    ui.setting_controls.append(field)
-    team_label = ttk.Label(weekly, text="预设编队")
-    team_label.grid(row=5, column=0, sticky="w", pady=d(9))
-    ui.weekly_team_entry = ttk.Entry(weekly, textvariable=ui.du_team, width=15)
-    ui.weekly_team_entry.grid(row=5, column=1, sticky="w")
-    ui.weekly_run_controls += (team_label, ui.weekly_team_entry)
-    ui.setting_controls.append(ui.weekly_team_entry)
-    for row, text, variable in ((6, "到期后随“开始计划”执行；每周一 04:00 刷新。", None),
-                                (7, None, ui.weekly_boundary)):
-        label = t.wrapped_label(weekly, text=text, textvariable=variable, style="CardHint.TLabel")
-        label.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(d(16), 0))
-    run = ui.settings_sections["run"]
-    ui.overlay_control = ttk.Checkbutton(run, text="游戏内日志字幕", variable=ui.overlay_logs)
-    ui.overlay_control.grid(row=0, column=0, columnspan=2, sticky="w", pady=d(8))
-    synthesis = ttk.Checkbutton(run, text="实训需要时合成 1 个奇巧零食", variable=ui.daily_synthesis)
-    synthesis.grid(row=1, column=0, columnspan=2, sticky="w", pady=d(8))
-    label = t.wrapped_label(run, text="消耗两种普通材料各 1 个；仅补领奖时不合成。", style="CardHint.TLabel")
-    label.grid(row=2, column=0, columnspan=2, sticky="ew", pady=d(6))
-    ui.setting_controls.extend((ui.overlay_control, synthesis))
-    recognition = ui.settings_sections["recognition"]
-    for row, (label, variable, limits) in enumerate((("操作间隔（秒）", ui.action_delay, "0.3～5"), ("战斗超时（秒）", ui.battle_timeout, "60～3600"), ("OCR 阈值", ui.ocr_confidence, "0.4～0.99"))):
-        ttk.Label(recognition, text=label).grid(row=row, column=0, sticky="w", pady=d(12), padx=(0, d(25)))
-        field = ttk.Entry(recognition, textvariable=variable, width=10)
-        setattr(ui, ("action_delay_entry", "battle_timeout_entry", "ocr_confidence_entry")[row], field)
-        field.grid(row=row, column=1, sticky="w")
-        ttk.Label(recognition, text=limits, style="Muted.TLabel").grid(row=row, column=2, sticky="w", padx=d(12))
-        ui.setting_controls.append(field)
-    admin = ui.settings_sections["admin"]
-    label = t.wrapped_label(admin, textvariable=ui.admin_launch_status, style="CardHint.TLabel")
-    label.grid(row=0, column=0, columnspan=2, sticky="ew")
-    actions = ttk.Frame(admin, style="Card.TFrame")
-    actions.grid(row=1, column=0, columnspan=2, sticky="w", pady=d(18))
-    for label, action in (("启用授权", "enable"), ("移除授权", "disable"), ("刷新状态", "status")):
-        button = ttk.Button(actions, text=label, command=lambda action=action: ui._admin_operation(action))
-        button.pack(side="left", padx=(0, d(10)))
-        ui.setting_controls.append(button)
-    label = t.wrapped_label(admin, text="首次需 Windows 授权；仅绑定当前账户和目录，移动目录后需重新启用。", style="CardHint.TLabel")
-    label.grid(row=2, column=0, columnspan=2, sticky="ew")
-    location = t.wrapped_label(page, text="配置位置："+str(ui.config_path), style="Hint.TLabel")
-    location.grid(row=1, column=1, sticky="ew", pady=(d(8), 0))
+    from .desktop_settings import build_settings
+    build_settings(ui)
 
 
 def _footer(ui):
     s = ui.ui_scale
     d = lambda n: round(n*s)
-    footer = ttk.Frame(ui.root, style="Footer.TFrame", padding=(d(42), d(7), d(42), d(18)))
+    footer = ttk.Frame(ui.shell, style="Footer.TFrame", padding=(d(42), d(7), d(42), d(18)))
     footer.grid(row=2, column=0, sticky="ew")
     footer.columnconfigure(0, weight=1)
-    ui.summary_label = SummaryStrip(footer, s, ui)
-    ui.summary_label.grid(row=0, column=0, columnspan=2, sticky="ew")
-    def summary_visibility(*_):
-        ui.summary_label.grid() if ui.summary_label.message() else ui.summary_label.grid_remove()
-    tokens = [(v, v.trace_add("write", summary_visibility)) for v in (ui.summary, ui.input_error, ui.result_alert)]
+    feedback = ttk.Frame(footer, style="Footer.TFrame")
+    feedback.grid(row=0, column=0, sticky="ew", padx=(0, d(18)))
+    feedback.columnconfigure(0, weight=1)
+    ui.summary_label = SummaryStrip(feedback, s, ui)
+    ui.summary_label.grid(row=0, column=0, sticky="ew")
+    ui.activity_label = ActivityStrip(feedback, s, ui.activity)
+    ui.activity_label.grid(row=1, column=0, sticky="ew")
+    def refresh_feedback(*_):
+        # The open result owns its outcome. A different report, new error,
+        # or active operation must still have its own visible footer feedback.
+        result = ui.feedback_result
+        deck = ui.mode_decks.get(getattr(ui, "active_page", ""))
+        in_result = bool(result and deck and deck["shown"] == "result" and not ui.busy
+                         and not ui.input_error.get() and ui.active_page == result[0]
+                         and result[1:] == (ui.summary.get(), ui.result_alert.get(), ui.status.get()))
+        has_summary = bool(ui.summary_label.message())
+        ui.summary_label.grid() if has_summary and not in_result else ui.summary_label.grid_remove()
+        has_activity = ui.busy or ui.activity.get() not in ("", "● 准备就绪")
+        ui.activity_label.grid() if not in_result and has_activity and (ui.busy or not has_summary) else ui.activity_label.grid_remove()
+    ui.refresh_feedback = refresh_feedback
+    tokens = [(v, v.trace_add("write", refresh_feedback)) for v in (ui.summary, ui.input_error, ui.result_alert, ui.activity)]
     footer.bind("<Destroy>", lambda e: [v.trace_remove("write", token) for v, token in tokens] if e.widget is footer else None, add="+")
-    summary_visibility()
-    metrics = ttk.Frame(footer, style="Footer.TFrame")
-    metrics.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, d(9)))
-    metrics.columnconfigure(0, weight=1)
-    ui.activity_label = ActivityStrip(metrics, s, ui.activity)
-    ui.activity_label.grid(row=0, column=0, sticky="ew", padx=(0, d(18)))
-    ui.save_label = ttk.Label(metrics, textvariable=ui.save_status, style="Footer.TLabel")
-    ui.save_label.grid(row=0, column=1, sticky="e")
+    refresh_feedback()
     left = ttk.Frame(footer, style="Footer.TFrame")
-    left.grid(row=2, column=0, sticky="w")
+    left.grid(row=1, column=0, sticky="w", pady=(d(9), 0))
     ui.save_button = ttk.Button(left, text="保存设置", style="Footer.TButton", command=ui._save_settings)
     ui.reward_button = ttk.Button(left, text="仅补领奖", style="Footer.TButton", command=ui._reward_only)
-    for button in (ui.save_button, ui.reward_button):
-        button.pack(side="left", padx=(0, d(8)))
+    ui.save_label = ttk.Label(left, textvariable=ui.save_status, style="Footer.TLabel")
     ui.setting_controls.append(ui.save_button)
     right = ttk.Frame(footer, style="Footer.TFrame")
-    right.grid(row=2, column=1, sticky="e")
+    right.grid(row=1, column=1, sticky="e", pady=(d(9), 0))
     ui.pause_button = ttk.Button(right, text="暂停 F9", style="Footer.TButton", command=ui._pause)
     ui.stop_button = ttk.Button(right, text="停止 F10", style="Danger.TButton", command=ui._stop)
-    ui.start_button = ttk.Button(right, text="开始计划", style="Accent.TButton", width=16, command=lambda: ui._start(run_plan=True))
+    ui.footer_start_button = ttk.Button(right, text="开始计划", style="Accent.TButton", width=16, command=lambda: ui._start(run_plan=True))
+    ui.start_button = ui.footer_start_button
     for button in (ui.pause_button, ui.stop_button, ui.start_button):
         button.pack(side="left", padx=(d(8), 0))

@@ -1,5 +1,720 @@
 # AutoHSR 0.1 验证记录
 
+## 2026-10-30：旷宇纷争显示实际周常及运行状态
+
+货币战争入口仍保留“周常自动运行尚未接入”的旧文案，与当前周常编排不一致。本轮改为显示当前周常安排，去掉左侧重复摘要；保留开发中／整局未验收和只读主操作，不把编排接通写成货币战争已完整验收。差分的独立局数改称“本次局数”，与周常局数分开。
+
+无运行记录时查看结果置灰；运行中显示查看进度，有报告后显示查看结果，中断且未生成报告时为查看状态。独立差分或货币操作的未核实异常同步至对应状态／原因，不继续显示正在运行；已有报告不被后续异常改写。计划周常阶段异常按冻结的玩法更新状态及周常中断原因，保留原报告，时钟预览不盖掉中断提示；用户更改设置或再次运行才转为新安排。
+
+最终221项100%／125%／150%／200%默认与最小窗口入口、假Runner及UI事件协议检查通过，见`runs/universe-state-final-ui/result.json`和`universe-state-clock-confirmed.log`。检查实际绘制的周常文字随关闭／货币／差分安排更新、独立本次局数、空结果禁用、运行中进度、结束结果、独立异常及冻结周常异常、强制时间刷新保持中断、后续异常保留已生成报告。另84项既有UX回归通过（`universe-state-ux-disabled/result.json`），对应补充周常异常保护前，221项覆盖当前最终源码；118／142／213项中间结果不累计。窗口透明且禁用原生输入，桌面截图钩子替换，没有调用NativeRunner、共享执行锁或游戏输入。当前构建、原生核验及包更新待续。
+
+源码`e34ab5f`首轮独立配置启用货币周常、上限7局，仅用于UI核对，不是账号实际安排。原生入口显示货币战争周积分／奖励、最多7局和到期运行时核对，主操作仍为只读识别；差分独立本次3局与周常7局分别显示，两个空结果入口置灰。发现差分预设名左端落在深色插图区域，原图`universe-state-native-du-*.png`保留；将预设区域移至右侧明亮信息列，并为32字长名保留四行。首轮标题栏关闭、配置与239份正式用户文件不变，见`universe-state-native-initial.json`。221项结果对应移动文字前的源码；此次坐标与换行修整另做原生复核，不冒充全量重跑。
+
+源码`7e8213b`最终原生复核使用32字重复测试预设名、货币周常7局的独立配置：预设标题及四行全文位于右侧明亮信息列，没有覆盖通关后说明；差分本次3局、货币周常7局及空结果禁用分别呈现。货币入口保留整局未验收，主操作为只读识别，周常完整安排在信息块内换行显示。截图`universe-state-native-team-final-*.png`及`universe-state-native-currency-final.png`，元数据`universe-state-native-final.json`。首次观察被前台聊天窗口遮挡，未根据该画面输入；核对目标窗口后使用其Raise动作置前，再取得正确画面操作。标题栏关闭后进程退出，独立配置及正式239份用户文件哈希不变，未启动任何演算、识别、日常、周常或游戏任务。此处只是默认原生窗口的文字与空态，不外推为原生运行中／失败、四种DPI或真实编队验收。
+
+正式包已更新至`7e8213b`构建，EXE SHA-256为`7aaaafe473f66694cf7186f07dfef7e0cf69342ddc9059bcabf28e81aa1dc66a`。1868项包文件一致、22份说明齐全、239份用户文件未变；备份`D:\Projects\AutoHSR\build\userdata-universe-state-20261030_132234\`，发布记录`runs/universe-state-publication.json`。说明同步／链接复核`universe-state-package-docs-final.json`，各轮检查、原生首轮问题和最终画面归档主项目`runs/`，索引`universe-state-evidence-archive.json`。用户要求本轮处理后暂停，交付后停止，不继续下一轮或恢复旧游戏目标；整体UI目标仍未验收完成。
+
+## 2026-10-30：生存索引直接编辑当前体力计划
+
+原目录操作在体力计划模式下仍只修改单副本／默认补刷字段，“已选”的含义与当前执行计划不一致。本轮目录按当前模式分流：单副本逻辑不变；体力计划模式按分类、名称及地点显示“加入计划／编辑次数”，打开同一纸面弹窗预填该条目，新增或更新原次数并加入本次刷本。取消不改列表或开关；不改变默认补刷目标、次数、开关及预算。目录下方显示计划项数和共用预算，隐藏不适用的单副本次数及编辑入口；“调整计划”管理顺序、补刷和预算，Esc返回原目录。运行期间及未授权时不允许修改，只有显式保存才写配置。
+
+新增目录计划检查使用透明、禁用原生输入的四缩放默认／最小窗口，核对预填、取消、无效次数、按地点新增、原行更新、默认补刷不变、只读、模式切换、管理后返回及不自动保存。首次72项通过，后加运行快照检查的最终结果另记`runs/survival-plan/result.json`与`survival-plan-confirmed.log`。共享弹窗／布局144项、PlanRunner配模拟子流程执行保存28项、旧UX84项通过，结果分别为`survival-plan-layout/result.json`、`survival-plan-execution/result.json`、`survival-plan-ux-disabled/result.json`。上述检查不使用NativeRunner、共享执行锁或桌面截图，没有运行游戏；当前包原生呈现及正式发布待核对。
+
+最新80项目录计划检查通过（`survival-plan-count-focus.log`与`survival-plan/result.json`），另核对运行快照接收目录草稿、次数默认聚焦／选中与Enter更新原行。72／76项中间版本不累计。计划成员集合随草稿变化刷新，绘制每行不重复解析整份计划。单副本272项旧目录回归通过（`survival-plan-single-regression/result.json`及日志），使用透明禁用窗口并替换桌面截图钩子，核对原目录素材、选择、预算及锁定；此272项与144／28／84项对应新增目录次数聚焦前，之后80项覆盖最终新增入口，不冒充原生或全量结果。构建及原生复核待续。
+
+源码`0527968`重建后，在独立双条目配置中原生核对：生存索引显示计划2项、共用240开拓力，已加入项为编辑次数，新项为加入计划；点击以太之蕾／边缘通路预填该目标，次数1默认选中，输入3并按Enter后仅改为计划3项，目录同步为编辑次数。重开保持3，Esc取消；调整计划展示原8／2及新增3，补刷仍关闭。Esc返回原目录后Enter再次打开以太之蕾的3次编辑，证明键盘返回目标；再Esc取消，并经标题栏、不保存退出。独立配置与正式239份原文件哈希不变，进程退出，见`runs/survival-plan-native-final.json`及`survival-plan-native-*.png`。首张应用截图顶部仍是前一帧2项，随后新观察及重开／管理截图均为3项，未用前一帧断言摘要同步；保存首张多区域截图时工具返回对象类型错误，已按实际区域分别保存，没有重发点击。未点击开始、保存、检测或游戏入口；这里只是独立草稿，不代表用户账号计划、目录解锁或真实多副本执行验收。
+
+正式包已更新至该源码构建，EXE SHA-256为`f2e676daf66952f6403f17480747dc5117deac78affab17043182fbee1d2d0b6`。1868项包文件一致、22份说明齐全、239份用户文件未变，备份`D:\Projects\AutoHSR\build\userdata-survival-plan-20261030_130550\`；发布记录`runs/survival-plan-publication.json`，说明同步及本地链接复核`survival-plan-package-docs-final.json`。原生画面、检查与构建归档主项目`runs/`，索引`survival-plan-evidence-archive.json`。没有合入并行后端或借用其全量结果。
+
+## 2026-10-30：首页滚轮直接浏览任务卡
+
+只读对照AutoZZZ的TaskBoard后发现，AutoHSR将滚轮绑定到移动选择，默认页面前几次滚动不改变可见范围；需要玩家猜到先移到末尾才翻页。本轮把浏览与键盘选择分开：滚轮及底部箭头直接移动可见范围，仍在完整可见区域的选择保留，离开该区域的选择清除。左右键／Home／End继续选择并展开；若窗口变化留下不可见选择，首次Enter只展开，不在隐藏位置执行操作。半露卡片仍先展示动作再允许执行，不改变任务开关或自动保存。
+
+新增108项默认／最小窗口、100%／125%／150%／200%离线浏览检查通过，覆盖单次与反向滚动、零量与边界、选择保留／清除、Enter目标、箭头、键盘展开、计划与配置不变，见`runs/task-board-navigation/result.json`。检查窗口透明且禁用原生输入，没有桌面截图或Runner；检查先误补丁不存在的GUI.Runner属性而失败（`task-board-navigation-before.log`），修正检查隔离后原实现确实在首次滚动断言失败（`task-board-navigation-baseline.log`），保留两份原始记录。修改后结果`task-board-navigation-first.log`，新包原生呈现与正式包更新待续。
+
+补充每种窗口下点击半露卡片只展开、不改任务的反例后，最新116项通过（`task-board-navigation-confirmed.log`与同目录最新结果），不与前轮108项累计。旧UX84项另通过，见`task-board-ux-disabled/result.json`；旧UX窗口同样透明、禁用输入并排除桌面截图，不将其当作原生视觉或键盘焦点证据。
+
+源码`4240d84`首轮原生窗口证实一次向下滚动直接从1～4变为2～5／5，未加入的邮件、勋礼仍未加入；同时发现滚动后原卡片悬停描边保留在错误位置，原截图`task-board-native-wheel-down.png`保留。标题栏关闭后独立配置和正式239份文件未变，见`task-board-native-initial.json`。随后在可见范围变化时清除旧悬停状态，新增相应反例；新版原生与发布待续。
+
+修整后最新124项浏览检查通过（`task-board-navigation-hover.log`与`task-board-navigation/result.json`），116项原结果另保留`task-board-navigation-116.json`，不累计版本计数；旧84项UX结果对应悬停修整前。源码`1920dd8`重建后默认原生核对：向下滚动1～4变2～5／5，旧描边消失；向上恢复，点击半露勋礼仅展开、仍未加入。Home选回首张并展开；将首张滚出视野后Enter进入当前可见副本卡的体力计划，Esc返回2～5／5并保留副本卡选择，主操作仍为开始计划。截图`task-board-native-*-final.png`。标题栏关闭后进程消失，独立配置与正式239份原文件不变，见`task-board-native-final.json`。未点击开始、保存、检测或游戏入口，没有运行游戏；默认原生路径不替代全部DPI、鼠标设备和页签的完整交互一致性验收。
+
+正式包已更新至`1920dd8`构建，EXE SHA-256为`d5ce13ed8b9141852b5f33373de87f422294040ccc574e88d9a08cf98c68f622`。1868项包文件一致，22份说明保留，239份用户文件未变；备份`D:\Projects\AutoHSR\build\userdata-task-board-20261030_124740\`，发布记录`runs/task-board-publication.json`。包内说明同步及链接复核见`task-board-package-docs-final.json`；首轮问题、原生复核、检查与构建归档主项目`runs/`，索引`task-board-evidence-archive.json`。
+
+## 2026-10-30：统一体力列表可用操作并整理界面验收范围
+
+支援列表已有选中／边界状态，体力列表仍在未选中时显示编辑、移除和排序为可用。本轮按当前行启用操作：空表或未选中时只可添加，首行不能上移、末行不能下移；运行中全部锁定，结束后仅恢复有效操作。状态在全局控件刷新后仍保持，避免暂停／结束或设置变化把禁用按钮重新显示为可用。保留原条目、顺序、目标次数、任务开关与保存规则。
+
+144项四缩放布局／交互、28项真实PlanRunner配模拟子流程及84项旧UX回归通过，结果分别为`runs/power-actions-layout/result.json`、`power-actions-execution/result.json`、`power-actions-ux-disabled/result.json`。检查覆盖空表、未选中、首末行、执行中与恢复、排序／删除及不自动保存，没有调用原生Runner或共享任务执行锁；没有启动游戏。新包原生状态待核对。另新增[界面验收表](docs/ui-acceptance.md)，逐项区分已有证据与完整视觉、原生缩放、真实组合和玩家体验的缺项，不把历史或局部检查写成最终目标已完成。
+
+源码`86e173d`重新构建后，在双条目独立配置下原生确认：未选中时仅添加可用；选中首行后编辑／移除／下移可用、上移置灰；下移后选择跟随该条目至末行，上移可用、下移置灰；上移恢复原顺序和原目标8／2。随后通过标题栏关闭，进程消失，独立配置及正式239份用户文件哈希不变，见`runs/power-actions-native-final.json`与`power-actions-native-unselected.png`、`power-actions-native-first.png`、`power-actions-native-moved-down.png`、`power-actions-native-restored.png`。关闭后的观察工具报告窗口已不可用，结合进程消失核对退出；未出现需丢弃的改动，未点击运行、保存、检测或游戏入口。此次仅证明默认原生窗口的上述状态，执行中与恢复仍为模拟证据。
+
+正式包已更新为该源码构建，EXE SHA-256为`d8ad27092e615e059c08bcb59f2bfac7af6edc9fd518727fdc0724744ac364c6`。1868项包文件核对一致，22份说明齐全；239份原配置／运行证据未变，备份`D:\Projects\AutoHSR\build\userdata-power-actions-20261030_123829\`，记录`runs/power-actions-publication.json`。包内说明、相关本地链接及用户文件复查见`power-actions-package-docs-final.json`；检查、构建与原生画面归档主项目`runs/`，索引`power-actions-evidence-archive.json`。本轮未合入并行后端的新功能，不把其测试或接口计入当前UI完成度。
+
+## 2026-10-30：支援偏好接入每日任务界面
+
+原桌面只有支援开关，已接入的角色／好友偏好需手改配置。本轮在“设置 → 每日任务 → 借用好友支援”提供“选择角色”，沿用纸面标题、角色头像列表和应用／取消底栏。中文角色名可筛选，好友昵称要求完整；支持角色／好友单独指定、多候选添加更新与排序、每轮1～20页及明确未找到处理。直接应用可提交当前角色／昵称，不必先执行添加；应用不自动启用支援或刷本，不写配置。取消保留原草稿，显式保存后重开保持偏好与关闭状态，错误定位同页入口。删除了关闭支援后仍要求勾选的旧提示，保留资源和格式的必要提示。
+
+**204项界面检查通过**：新支援120项（`runs/support-ui-scopes/result.json`）及旧UX84项（`support-ui-ux-disabled/result.json`）。新检查使用100%／125%／150%／200%透明禁用窗口、本地控件操作及真实PlanRunner配模拟子流程，覆盖105个角色中文标签／筛选、头像、重复拒绝、好友完整匹配与40字限制、页数、空候选／处理选项冲突、只应用一次、取消、排序、快照与父报告保留、运行不保存、保存重开、关闭开关不隐式启用、检查／仅补领奖／原周接续隔离及无效原候选的显式修复；另核对默认／最小每日页和弹窗内部边界。没有调用原生Runner、占用共享任务执行锁、采集桌面或运行游戏。最初加入重开检查后有3次销毁时遗留的Tcl主题回调警告（`support-ui-confirmed.log`）；补充重开窗口事件处理后，`support-ui-final.log`及最终范围检查无该警告。前轮1808项全量结果不冒充包含本轮新UI；原生呈现、真实偏好借用与新包更新待核验。
+
+原生首轮使用支援关闭的独立配置，从任务卡进入每日设置，输入符玄后直接应用，关闭状态未变；重开显示头像／任意好友，Esc返回，随后不保存退出。独立配置与正式239份文件不变，见`support-ui-native-initial.json`及`support-ui-native-*-initial*.png`。观察到未选候选时更新／移除／排序按钮仍显示可用，本轮改为按选中项及列表边界启用；128项最新支援检查通过（`support-ui-actions/result.json`），原120项不累计。修改不改变角色、好友或执行协议；原生复核及新包发布待续。
+
+后续空列表明确显示“自动选择好友”，输入角色／昵称草稿时收起该状态；最新136项支援检查通过（`support-ui-empty-state/result.json`），与旧UX84项分别计数，不叠加同一套检查的120／128／132项中间版本。首轮所述105项为角色标签，含原清单保留的Archer／Saber；昵称检查验证原文保留和40字限制，不代替游戏内真实昵称匹配。
+
+源码`5d75b2f`的最终包在支援关闭的独立配置下原生复核：空候选状态清楚，未选中时更新／移除／排序置灰；输入黄泉后自动状态收起，直接应用保留关闭开关，重开显示头像／任意好友。选中单项时更新／移除启用，上下移动仍禁用；Esc返回后偏好与关闭状态保留，回首页主操作仍为“开始计划”。选择“不保存退出”后进程退出，独立配置和正式239份文件不变。截图`runs/support-ui-native-*-final*.png`，元数据`support-ui-native-final.json`；一次旧截图映射被工具拒绝，刷新窗口后确认未打开弹窗，再按新画面点击，没有盲目重放输入。
+
+已更新正式`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，SHA-256为`fc0e03ebfacc2ca564da00874a0725af03ba49eb326cb4c1f83118aed3a8708f`，1867项包文件核对一致，21份说明齐全。239份原用户文件保留，备份`D:\Projects\AutoHSR\build\userdata-support-ui-20261030_095136\`；发布记录`support-ui-publication.json`，说明同步检查`support-ui-package-docs.json`。各轮检查、原生画面、主题警告日志及构建归档主项目`runs/`，索引`support-ui-evidence-archive.json`。没有运行游戏、查询真实好友列表或消耗资源；原生仅覆盖上述默认窗口路径，未把离线四缩放布局、参考头像或新增偏好外推为全像素一致、真实借用或玩家体验通过。
+
+包内最终说明同步后，75条当前相关本地链接存在，整包1867项文件与源码构建目录一致，239份用户文件再次核对不变；最终补充记录`runs/support-ui-package-docs-final.json`保留此前72条检查记录。新增界面使用136项最新支援检查及84项旧UX回归，重复运行不累计。
+
+## 2026-10-30：补刷副本提供同页编辑入口
+
+对照现有游戏风格及已交付页面，发现体力计划能开关默认补刷，却没有就近编辑默认副本的入口。本轮在该行加入“更换副本”，沿用纸面弹窗直接选择分类、副本、明确地点及最多次数，不再要求离开计划页寻找单副本设置。次数范围依据六类单次费用、历战三次上限和本次预算显示；错误保留弹窗与原目标，不默认改成另一个有效数。应用仅改补刷草稿，不改计划条目、自动开启任务或写配置；补刷字段错误回到同页按钮，主操作仍为“开始计划”。
+
+**232项离线界面检查通过**：四种缩放布局／弹窗120项、正式PlanRunner搭配模拟子流程执行／保存28项及原UX回归84项；另7项结果文案单元检查通过。新增覆盖直接入口、取消、六类次数越界、按地点应用、不隐式启用、草稿摘要、运行中锁定和错误定位。结果分别为`runs/power-fallback-layout-confirmed/result.json`、`power-fallback-execution/result.json`、`power-fallback-ux-disabled/result.json`与`power-fallback-feedback.log`。窗口透明且禁用原生输入，不操作游戏或采集桌面。初轮用键盘事件模拟取消时，禁用窗口未持有原生键盘焦点，取消断言未成立；改为实际取消按钮操作，原日志`power-fallback-layout.log`保留，不将这轮模拟作为Esc证据。当前检查不调用原生Runner／任务树，不与主线共享执行锁的全量检查重叠；未重复声称1808项全量已覆盖新入口。新入口的原生窗口与更新包待核对。
+
+原生首轮确认“更换副本”直达、选项样式、以太之蕾／边缘通路／最多2次应用并重开保留，计划两条原目标及关闭状态未变。第一次Esc取消返回成功，但应用后重开的一次Esc仍显示弹窗，保留`power-fallback-native-esc-unclosed-*.png`，不推定工具焦点或产品根因已定位。用取消按钮退出编辑后“不保存退出”，独立配置及正式239份文件未变，见`power-fallback-native-initial.json`。随后将计划弹窗的显示／键盘焦点交接与现有退出弹窗一致：等待窗口可见、抓取输入、将键盘焦点交给副本字段；关闭时只在焦点属于该弹窗时恢复原生焦点，Esc处理停止传播。调整后120项布局／弹窗及28项执行检查通过，结果`power-fallback-focus-layout/result.json`、`power-fallback-focus-execution/result.json`；原生复核和发布待续。
+
+`61a0133`重新构建后，在独立配置中原生复核首次打开→Esc，以及修改最多次数为2→应用→重开→Esc两条路径，均返回原计划页；返回首页仍为“开始计划”，计划原目标8／2及补刷关闭未变。选择“不保存退出”后进程退出，独立配置与正式239份用户文件哈希一致。对应画面`power-fallback-native-focus-return-1.png`、`power-fallback-native-focus-reopened-*.png`、`power-fallback-native-focus-return-2.png`、`power-fallback-native-final-home.png`，元数据`power-fallback-native-final.json`。该复核只证明观察到的两条原生路径，不将首轮未关闭归因写成已确定，也不外推为所有焦点／IME组合通过。
+
+正式包已更新为源码`61a0133`，EXE SHA-256为`4efd05c05d653e16cf4bb2b01f5f1c52305458d9b03a7168eaf351659fcc65c9`。1867项包文件核对一致，21份功能说明保留，239份用户配置／运行记录未变；备份`D:\Projects\AutoHSR\build\userdata-power-fallback-20261030_085529\`，记录`runs/power-fallback-publication.json`。检查、首轮未关闭画面、修整后的原生复核与构建另归档主项目`runs/`，索引`power-fallback-evidence-archive.json`；包内说明同步与链接复查见`power-fallback-package-docs.json`。未执行日常、周常、检测或游戏入口，也未占用真实资源；完整像素一致性与玩家体验仍待验收。
+
+## 2026-10-30：体力计划与历战优先接入桌面
+
+本轮在现有游戏风格桌面中加入“设置 → 体力计划”，由首页副本卡的“调整计划”进入；主按钮继续为“开始计划”。原单副本默认不变，明确选用计划后才向正式日常／PlanRunner传入`use_power_plan`；保存过非空列表或开启过偏好不替本次选择授权执行。条目按分类、名称和地点添加，可编辑、移除和排序，保留原目标次数；次数处理、默认补刷、历战副本与开始星期使用同页设置，添加弹窗沿用纸面、标题和确认／取消底栏。所有条目共用本次已有开拓力上限，饰品已有沉浸器另计。首页预览不读历史账号次数，运行和回执区分此前、本次、本目标剩余；预算内本次结束不误标全部长期目标完成，原日常与原周额度带来源语境。货币周常的结束局数与胜负分别呈现，失败后停止不写成胜利。
+
+依赖后端合并至`95a6691`，未合并后续通知功能；合并提交`1b6a41d`保留既有桌面输入错误、日常任务快照与双方素材说明。整合检查暴露旧64位账号／目标目录在长工作树下触发Windows路径长度限制；修复仅在文件IO使用扩展路径，存储引用继续用普通绝对路径，保留旧目录、哈希和进度，不迁移或重置。初轮82项中81项通过、1项长路径失败；首次修复仍因测试临时目录清理失败，日志`power-plan-ui-merge-unit.log`、`power-plan-ui-longpath-fixed.log`保留，最终原用例通过。没有改变系统长路径设置。
+
+最终串行**1808项单元测试通过，796.520秒**，核对的339份源码／依赖文件运行前后一致，见`runs/power-plan-ui-all-unit-serial.log`和`power-plan-ui-serial-verification.json`。新界面执行／保存27项及四种缩放布局／弹窗72项通过，结果分别在`power-plan-ui-confirmed/result.json`与`power-plan-layout-confirmed/result.json`；使用真实PlanRunner、模拟子流程及本地控件操作，覆盖单副本不隐式启用、计划显式传参、不使用的次数草稿不阻塞、只补领奖／原周常接续隔离、目标不递减、有限预算结果、输入定位、多地点选择、取消和100%／125%／150%／200%布局。旧版UX回归另有84项通过，见`power-plan-ui-ux-mapped-disabled/result.json`。新界面检查合计183项，不累计重复运行。布局与旧UX使用透明、禁用的映射窗口，不发送桌面输入或采集用户桌面；不代表原生视觉验收。旧UX第一次包装因窗口保持隐藏而在首页可见性断言失败，`power-plan-ui-ux-disabled.log`保留，调整包装后原检查通过。初轮下拉宽度及历战开关裁切也保留失败记录，修复后72项通过。
+
+此前一轮89项相关检查有10项因共享执行锁被占用而失败，`power-plan-ui-related-final.log`保留；未放宽或清除生产锁。第一次全量运行在974项通过时因另一工作树同期使用共享执行锁而主动中止，未作全量成功，见`power-plan-ui-all-interrupted.json`。确认另一轮后端测试完成、锁释放后重新运行上述最终串行全量。`git diff --check`及暂存差异检查通过；CLI帮助已生成。构建脚本补齐全部21份功能说明与根目录货币战争记录，避免新增页面说明在包内缺失。以上未启动游戏、运行真实账号任务、通知或恢复旧货币开发局；新版原生画面、安装包发布、真实组合及玩家体验仍待验收，后续结果另记。
+
+### 原生首轮与排版修整
+
+`3811007`已构建，独立配置／隔离目录原生观察首页、从“调整计划”进入体力计划及打开添加弹窗，再取消并用标题栏关闭。目标仍为两项，独立配置和正式239份用户文件哈希未变，进程已退出，未点击开始、保存或检测；见`runs/power-plan-ui-native-initial.json`及`power-plan-ui-native-*-initial*.png`。此轮实际观察发现首页资源说明末字换行，计划列表默认字号偏小；将卡片文字精简为“上限 … 开拓力”，列表沿用设置灰色、提高字号与行距，并对齐表头和次数列。修整后72项四缩放布局、27项执行／保存及7项结果文案检查通过，分别见`power-plan-layout-native-fixed/result.json`、`power-plan-ui-native-fixed/result.json`和`power-plan-feedback-native-fixed.log`。这两处只改排版，1808项全量结果对应此前`3811007`，没有将其写成修整后全量重跑；新版原生复核与发布结果待续。
+
+### 修整后原生复核与正式包更新
+
+`9b693f6`经`tools/build.ps1`构建，在独立双条目配置下原生复核：首页“上限240开拓力”完整成行，设置入口进入游戏连接，从导航切至体力计划后列表字号／行距及次数对齐正常；历战选择展示固定分类、副本、地点及周一04:00，Esc取消后关闭状态与两条原目标保持；设置返回首页仍为“开始计划”。标题栏关闭后进程退出，配置与正式239份文件哈希不变。初轮的“调整计划”直达及添加／取消同样有原生证据；未将其外推为新版全部交互、四种原生缩放或全像素一致。最终截图`runs/power-plan-ui-native-*-final*.png`，数据`power-plan-ui-native-final.json`，未点击运行、保存、检测、游戏或真实资源操作。
+
+已更新正式`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，SHA-256为`63b1cfbeb370035dc0cda4b100a4342b278bedac84d01fbcff75ecb097b12224`。1866项包文件逐项哈希一致，21份功能说明齐全；239份原配置／运行证据未变，恢复副本在`D:\Projects\AutoHSR\build\userdata-power-plan-ui-20261030_082953\`，记录`runs/power-plan-ui-publication.json`。源码、单元／界面检查、失败记录、构建和两轮原生证据另存`power-plan-ui-evidence-archive.json`索引并归档主项目`runs/`。本轮交付体力计划UI，不代表真实多副本／历战／到期周常组合、玩家体验或全部HSR界面一致性已验收。
+
+包内文档后检查另修复原有源码链接：改为固定源码提交的仓库页面，补入根目录货币战争操作指南；71条当前首页／体力／历战／进度说明中的本地链接存在，构建脚本语法检查通过。更新说明后再次核对整包和239份用户文件，记录`runs/power-plan-ui-package-docs.json`；EXE哈希保持不变。原生画面中的目标来自独立测试配置，不是用户账号计划或真实执行回执。
+
+## 2026-10-30：用户置前后核对原生接续首页与卡片详情
+
+用户明确回复已置前并继续后，使用仍在运行的同一隔离副本（EXE哈希`0717f5ab39887157eddd57cb43ea517e8ae4ffd2c57a1e4930350ee52281999b`）核验，没有重开目标。无遮挡首页确认原日常状态、12/12次／已用120开拓力、未请求项“本次不执行”、原周常1局／上限2局和“继续周常”；实训表仍为未核实。点击日常副本卡片打开详情，确认“原日常完成”及明确标记为模拟回执的原内容。截图为`runs/native-home-review-resumed-home.png`、`native-home-review-battle-detail.png`及`native-home-review-battle-dialog.png`。
+
+弹窗关闭的坐标点击被工具以目标位置落在其他进程上拒绝，没有据此重复点击；刷新后用Escape关闭详情，工具回显可见返回卡片并保留副本卡焦点，但未单独保存返首页截图。随后尝试设置入口时工具提示检测到用户输入；重取画面已是其他游戏遮挡，立即停止原生输入，没有向游戏发送按键或点击。**设置返回、长状态的打包呈现及完整原生流程仍未通过**，不将一次手动置前视为窗口激活问题或此前返回焦点问题已修复。
+
+退出前逐份核对56份模拟证据、独立配置及正式239份用户文件哈希均与初始一致，记录`runs/native-home-review-resumed-verification.json`；原失败、等待与源码检查记录保持。核对私有进程路径后结束该空闲验证副本，正常窗口关闭未核验。没有点击开始、继续、补存、检测或游戏入口，没有新增目标、预算或资源消耗；此次原生结果只证明上述使用模拟目标的界面操作。
+
+## 2026-10-29：原生接续首页复核仍待窗口置前
+
+复核正式`e1582a5`程序，EXE哈希仍为`0717f5ab39887157eddd57cb43ea517e8ae4ffd2c57a1e4930350ee52281999b`。在`build/native-home-review-20261029_234256/`创建相同EXE的隔离副本，默认配置关闭字幕，以模拟输入建立原日常12次／120开拓力及原周常1局／上限2局。此次在启动前将56份模拟运行文件及独立配置的全部哈希写入`runs/native-home-review-before.json`，未复制正式用户配置或改动正式运行记录。
+
+通过CUA原生入口启动，原生窗口存在且响应，但画面被其他窗口遮挡；Raise失败，重取窗口后点击可见抬头仍报`failed to activate captured window`。核对私有进程路径后结束首个实例，确认56份文件与配置未变。之后尝试临时最小化遮挡窗口，再启动同一隔离副本；截图仍显示遮挡，系统菜单也未获可见确认，不能称已成功最小化或已恢复。未点击其他程序的任务／设置控件，不继续发送其他窗口输入。当前隔离助手保持打开，并已请求用户仅将该窗口置前以继续核验；尚未点击其开始、继续、检测或游戏入口。
+
+只读复查56份模拟文件、配置及正式239份用户文件哈希全部一致，原目标来源及12/12次／120开拓力字段仍核对通过；记录`runs/native-home-review-status.json`。本次没有新增GUI通过项、真实游戏输入或资源消耗，原生卡片详情与长状态呈现仍不计通过。既有激活失败证据保留，不将其当作此前返回焦点问题的原因。`docs/development-roadmap.md`同步已整合的周常界面状态及逐项UI验证边界，14条相对链接存在；纯文档更新不重新构建EXE。
+
+## 2026-10-29：任务卡状态条随文字宽度调整
+
+核对已有4.6每日实训原图，四条可见状态条的归一化宽度为143／194／143／160像素，均不相同；参考原件哈希仍为`6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11`，未新增取材。`2059571`卡片状态底色固定约162逻辑像素；以实际控件位图核对，“原日常全部完成／部分完成”在100%、150%、200%下分别超出底色19／26／38像素。原记录`runs/card-status-before/result.json`及位图保留，其中24个断言未满足，包含6项长文字越界和18项留白不平衡；留白平衡是应用适配检查，其旧断言名称包含reference，不将其作为游戏原图一致性证据。
+
+状态条现按实际绘图字体的字形宽度扩展或收缩，并限制在卡片内部；字号、行高、纸面和动作不变。没有改写状态词、添加解释段落、修改素材或玩法逻辑。应用状态名称与游戏进度数字不同，宽度与两侧留白属于应用适配，不能据此声称整屏逐像素一致。
+
+**343项GUI检查通过**：新增46项实际控件位图检查、140项参考几何／交互、73项接续首页及84项原GUI。新检查在100%、150%、200%下覆盖待执行、进行中、全部／部分完成、原日常全部／部分完成及本次不执行，从位图独立提取文字与底色边界；记录`runs/card-status-ui/result.json`。参考检查继续核对书页、卡片比例／位置、三处未遮挡星图色彩及导航操作；使用既有去账号信息裁图，不比较不同任务内容和所有像素，汇总`runs/card-status-regressions.json`。没有配置写入、真实游戏输入或资源消耗。位图检查证明本程序的绘制结果，不替代原生窗口呈现核验；上一轮原生激活失败、此前一次未定位焦点问题、完整视觉和组合实机仍未验收。
+
+源码`e1582a5`经`tools/build.ps1`构建并更新正式版，发布前确认没有运行中的AutoHSR原生进程。EXE SHA-256为`0717f5ab39887157eddd57cb43ea517e8ae4ffd2c57a1e4930350ee52281999b`，构建日志`runs/card-status-build.log`；1733项文件已发布，147项UI素材、5份清单及23份上游文件核对一致。239份原有用户文件哈希不变，备份`build/userdata-card-status-20261029_234114/`，元数据`runs/card-status-publication.json`。本轮未再启动原生助手或尝试激活其他前台窗口，打包版呈现仍未核验；证据索引`runs/card-status-evidence-archive.json`。
+
+## 2026-10-29：接续首页的任务卡使用原日常范围
+
+`c3824fb`原生隔离画面`runs/currency-weekly-ui-resume-package-home.png`中，顶部为“日常 · 沿用原报告”，任务卡却仍为新草稿24次／预计240开拓力和“待执行”。现在只读核对原周常来源后提取任务展示字段，首页标明“原日常完成”，显示原报告的12/12次／已用120开拓力；原报告未包含的任务、没有原日常的周常目标均为“本次不执行”，不附带新草稿费用。卡片分别提供“查看结果”／“查看安排”，只打开详情。编辑后续计划不改变当前接续范围，当前窗口刚完成的真实日常结果仍保留。原报告哈希改变时不展示旧成功或提供接续；不改写来源、不修复索引、不把旧实训点亮为当前核实，也不新增日常预算。
+
+**20项相关单元检查、295项GUI检查通过**。新增73项冷启动检查覆盖原日常、仅周常、原报告改变三种来源，在100%、150%、200%下核对原挑战与消耗、草稿编辑、卡片详情、新建／复用缩放布局和只读文件哈希；记录`runs/weekly-resume-preview-ui/result.json`与`weekly-resume-preview-unit.log`。另回归货币计划49项、任务范围65项、原计划24项、GUI84项，汇总`runs/weekly-resume-preview-regressions.json`；正常启动、接续、只读补存及当前执行结果均保持。新工具`tools/weekly_resume_preview_smoke.py`的目标与报告均由模拟输入建立，没有真实游戏输入、截图或资源消耗。最初回归启动命令因PowerShell引号形成Python语法错误，未启动检查；改为保存包装脚本后顺序完成，不将启动错误称作产品失败。整屏视觉一致性、玩家体验、此前一次未定位的焦点失败、完整货币玩法及组合实机仍待核对。
+
+源码`aa22357`已构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，EXE SHA-256为`3835057ca58d3624ca08b8f5d14e9e09fd9704a0a7fb38dec8d043febc9bdf33`；构建日志`runs/weekly-resume-preview-build.log`。发布1733项文件，147项UI素材、5份清单及23份上游文件核对一致，239份原有用户文件与发布前备份哈希一致，备份`build/userdata-weekly-resume-preview-20261029_232937/`。
+
+相同EXE的隔离副本用模拟输入建立1局／上限2局的原周常。原生仅打开首页，画面部分可见“原日常完成”，但其他前台窗口遮挡了挑战次数等区域；CUA执行Raise失败，重新获取同一窗口后点击可见空白抬头仍报`failed to activate captured window`。没有继续发送输入，也没有操作遮挡窗口；核对进程路径后结束本次私有验证进程，包装脚本因未正常关闭而返回1。**本次原生任务卡与详情交互不计通过**，画面保留`runs/weekly-resume-preview-native-home-occluded.png`。终止后独立配置哈希未变，原目标来源仍通过只读核对，正式239份用户文件仍与备份一致；私有56份文件的全量前后哈希比较未完成，不声称全部未变。记录为`weekly-resume-preview-publication.json`、`weekly-resume-preview-native-verification.json`与`weekly-resume-preview-native-outcome.json`。没有点击开始、继续、补存、检测或游戏入口；该激活失败不证明此前返回焦点问题的原因。证据索引`runs/weekly-resume-preview-evidence-archive.json`。
+
+## 2026-10-29：整合货币战争周常计划与原目标接续
+
+以`0c253b9`界面和已提交后端`a4d3e06`为基线，合入其标准循环、积分、领奖及周常编排依赖；没有取用主工作区未提交内容。保留计划的`daily_tasks`范围、错误字段定位及原报告。周常设置在货币模式显示1～10局“对局上限”，隐藏差分预设；说明保留标准A8-40开发范围、原目标上限不随偏好变化和完整实机未验收。阶段反馈区分积分、对局、领奖，不把周常执行写成独立只读识别。耗尽上限、过期、报告或奖励未核实分别保留为未完成；仅父报告接受完整积分奖励回执才显示完成。
+
+首页只读核对本地循环、原始来源与回执，发现可接续目标时主按钮变为“继续周常”，原周、原上限与完成数保留；日常摘要显示沿用原报告或本次不执行。运行快照固定原目标，忽略无关的未保存日常、差分和新周常表单，仍校验游戏连接与识别设置；不自动保存。接续展示的费用、实训、卡片和退出结果标为原日常，当前实训表不据此点亮，当前消耗抬头不将旧费用再次计入。只剩审计时显示“补存周常结果”；没有原生游戏子阶段时不最小化，不调用游戏。完整回执已经存在时不再提供重复运行入口。损坏或弱来源记录保留提示，不自动修复、重开或清账。
+
+**1551项全量单元检查通过**（`runs/currency-weekly-ui-all-unit.log`，693.813秒）；之后补充只读审计语境和窗口收尾，**68项相关单元检查通过**（`currency-weekly-ui-audit-related-unit.log`）。最终**652项GUI检查通过**：新周常49、任务范围65、原计划24、设置225、返回80、首末导航125、GUI84；汇总`runs/currency-weekly-ui-final-regressions.json`。新49项实际点击计划主按钮，调用正式PlanRunner、原生周常／循环／领奖实现及合成输入，核对日常→积分→有限对局→领奖顺序、父子完成门禁、上限耗尽、暂停继续、原日常不重跑、原上限不变、旧失败及日常原报告不改写、旧费用不重复显示为新费用。正向对局仅使用模拟末节点，领奖使用合成画面；不是完整对局或实机证据。只读补存案例子流程调用列表为空，窗口未最小化。配置均未保存，没有启动、检测或操作真实游戏，没有资源消耗；独立货币整局仍为0/10。
+
+旧“货币周常尚未接入”的测试预期已按积分失败和开发上限更新。最初42项检查因旧预期失败，中间一次测试断言改错位置后已纠正；日志均保留。首次35项GUI夹具只有日常实训回执、缺少副本结果与资源账本，不能代表完整日常显示；补全合成日常结果和成功账本后35项及新增审计后的49项通过，初轮画面保留。后一轮设置返回检查曾在150%下出现一次导航焦点断言失败；没有回调异常，原日志`currency-weekly-ui-checked-settings_return_smoke.log`保留。添加失败诊断后，相同生产代码的独立80项重查通过，尚未复现或确定该次失败原因，不声称已修复该未定位问题。最后一组结果沿用该独立重查记录，其余检查继续完成；初轮638项也保留。CLI帮助包含计划及明确接续入口，123条相关文档链接存在。
+
+源码`04085e8`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。独立默认配置、`--no-admin-launch`下，原生打开周常设置、用键盘切换货币战争，确认“对局上限”、差分预设隐藏及开发边界；将上限从1改为3，再恢复1和差分，预设完整恢复。返回并关闭后退出码0，配置及239份原有用户文件哈希不变；147项UI素材、5份清单、23份上游文件及2项新增模板一致。截图`runs/currency-weekly-ui-package-*`，元数据`currency-weekly-ui-package-verification.json`；EXE SHA-256为`af02a4c8ff7ca490ef63f60a01b952b0e294625ac831ec05e85636dcff78d748`，备份`build/userdata-currency-weekly-ui-20261029_230636/`。
+
+另使用相同EXE的隔离副本及仅复用正式`_internal`资源的目录连接，在隔离运行目录用模拟输入建立已完成1局／原上限2局的停止目标。原生仅打开首页浏览，确认“继续周常”、2026-10-26原周、原上限及“日常 · 沿用原报告”；实训仍未点亮，卡片保留当前草稿预览，没有将本地旧结果冒充当前账号新观察。关闭后退出码0，独立配置、56份合成目标文件与正式用户数据全部未变。记录`runs/currency-weekly-ui-resume-package-verification.json`，画面`currency-weekly-ui-resume-package-home.png`，隔离副本在`build/native-currency-weekly-20261029_231002/`。两次原生均未点击开始、继续、补存、检测或游戏入口；执行与审计路径仍只由上述模拟检查证明。证据索引`runs/currency-weekly-ui-evidence-archive.json`。整体像素一致性、玩家体验、卡片预览与接续语境、一次未复现焦点失败、完整货币玩法及组合实机仍待核对；没有恢复旧十场目标或旧开发局。
+
+## 2026-10-29：按游戏展开列表重绘设置选项
+
+`28efb1c`已修复首末项导航，但原生设置列表仍是约19像素高的紧密行，缺少游戏中的整行选项、分隔线和右侧选中圆点，旧版原生画面保留在`runs/settings-keys-package-opened-*`。本轮对照MobileMatters已展开的PC帧率截图（原文标记2023-07-13更新；版本未知），代码绘制设置列表，目标行高约58个逻辑像素，与既有设置行接近；来源、原图哈希和排除UID的局部范围登记在`assets/ATTRIBUTION.md`。没有复制或分发原图像素。仅设置页使用新视图，副本和其他可编辑下拉框保留原样。
+
+新视图保留原生Listbox的焦点、抓取、滚动、鼠标命中与确认／取消逻辑：整行文字侧、圆点侧都可点击；橙色圆点始终表示已确认值，键盘待确认行另有边框，Enter提交、Esc取消；列表按当前显示器工作区限高，长列表滚动。返回或重建界面时收起弹层并释放抓取。测试发现直接从展开列表返回时，指南页签原先调用Python的focus_get读取Tk内部控件会抛KeyError，改为复用已有focus_widget归属查询，保留实际焦点处理。
+
+**575项GUI检查通过**：新列表61项、首末项125项、设置225项、返回80项、GUI84项，汇总`runs/settings-popup-regressions.json`。新列表检查在100%、150%、200%下对照原图局部的纸色、分隔线与选中圆点几何，并通过实际绘制视图转发的点击和滚轮核对文本侧／圆点侧提交一次、30项列表滚动后选择、Esc、外部点击、导航离开、工作区边界和重建／复用布局；无配置写入、游戏调用或回调异常。源图比较不包括其他字体、整屏或当前客户端，不把局部通过外推为完整一致。
+
+初轮RGB／RGBA格式及抗锯齿精确色值比较失配的日志、首轮圆点尺寸偏小的画面、焦点异常与修正前后结果均保留为`runs/settings-popup-visual*.log`和`runs/settings-popup-ui/`；分隔线改用参考线宽，圆点按原图行高比例修正后通过。最初125项在新代码下通过，但写入了既有默认输出目录；新结果已另存`settings-popup-choice-keys-ui/`，旧109项原件从此前哈希归档恢复；最终125项使用独立目录再次核对，原66份键盘证据哈希仍全部一致。整屏视觉一致性、玩家体验与日常周常组合实机仍未验收，没有启动、检测或操作游戏。
+
+源码`a679e60`已构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。独立默认配置、`--no-admin-launch`下，原生鼠标打开玩法列表，确认两行尺寸、细分隔线和当前值圆点；点击右侧圆点选货币战争，重新展开圆点位于货币战争。Home高亮差分时字段及已选圆点仍为货币战争，Esc取消；重开后点击文字侧恢复差分。再次展开点击外部空白处，只收起列表。10项局数列表限为7个可见行，鼠标滚轮显示4～10，点击10提交，再用Home、Enter恢复1，Esc返回首页。默认草稿恢复后正常关闭、退出码0，独立配置和239份原有用户文件哈希不变；147项素材、5份清单及23份上游文件一致。未点击保存、开始、检测或游戏入口。截图为`runs/settings-popup-package-*`，元数据`runs/settings-popup-package-verification.json`，EXE SHA-256为`f9050cc9dfbb3bf210be4a21e21015f535b73ad26d4c54e5d5cb2c1ea76abb89`，备份`build/userdata-settings-popup-20261029_220306/`，构建日志`runs/settings-popup-build.log`；证据索引`runs/settings-popup-evidence-archive.json`。原生只验证本段列出的玩法与局数操作；其他缩放、工作区和输入变体仍为上述假后端范围。测试中的图像几何来自实际视图位图，原生弹层呈现以上述CUA画面为准，根窗口抓图可能漏掉独立弹层。
+
+## 2026-10-29：展开选项后用Home／End定位首末项
+
+针对此前保留的原生End／Enter未改变周常玩法问题，在原打包版、独立默认配置下复现：展开玩法后，End仍停在差分宇宙，方向键可移至货币战争并由Enter确认；重新展开时Home仍停在货币战争，Ctrl+Home及Enter可恢复差分宇宙。原生前后画面为`runs/settings-keys-before-package-{opened,end,down,selected,home,restored}.png`，配置未保存、退出码0。核对打包版Tk自身的`ttk/combobox.tcl`与`listbox.tcl`，原Home／End只横向滚动；此前的不确定原因现有控件绑定与实际键盘对照支持，原失败证据保留。
+
+现在仅为展开下拉列表的`ComboboxListbox`绑定Home／End，复用Tk已有的Ctrl+Home／End首末行选择动作。按键只移动高亮并滚动至可见位置，Enter才提交，Esc取消；保留Ctrl快捷键、文本光标、普通Listbox和禁用选项行为。没有新增界面说明或修改任务、保存、资源门禁。假后端对照`runs/settings-keys-before.json`、`settings-keys-after.json`确认修复前后行为与配置不变。
+
+**514项GUI检查通过**：新增125项首末行导航、原设置225项、返回80项与GUI84项，汇总`runs/settings-keys-regressions.json`。新检查覆盖100%、125%、150%、200%缩放，实际2／7／10项选项、30项滚动长列表、空列表、确认一次、Esc分层取消、重建／复用布局、Ctrl快捷键、输入光标和禁用状态；初轮109项证据与最终125项证据均保留，没有游戏后端调用、配置写入或回调异常。整屏视觉一致性、玩家体验和日常周常组合实机仍未验收，没有启动、检测或操作游戏。
+
+源码`d73d754`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。独立默认配置、`--no-admin-launch`下，全程以Tab、方向键、Home／End、Enter和Esc核对周常列表：End高亮货币战争时字段仍为差分宇宙，Enter提交后重新展开，Home高亮差分宇宙而字段仍为货币战争；Enter恢复后，在7项日期中同样确认周日／周一，另用End、Esc取消并保留周一，第二次Esc返回“开始计划”首页。没有点击保存、开始、检测或游戏入口，恢复默认草稿后正常关闭、退出码0；独立配置和239份原有用户文件哈希不变，147项素材、5份清单及23份上游文件一致。截图前缀`runs/settings-keys-package-`，元数据`runs/settings-keys-package-verification.json`，EXE SHA-256为`a996ec3878c50e8d7e6a7e3dd203a9a2dc4264f265c62e69896732975ea41a95`，备份`build/userdata-settings-keys-20261029_213451/`，构建日志`runs/settings-keys-build.log`。修复前原生对照、源探针及回归证据归档至正式项目`runs/settings-keys-*`与`runs/choice-keys-ui/`，索引`runs/settings-keys-evidence-archive.json`。原生仅核对本段列出的2项玩法与7项日期，其他导航变体的验证范围为上述假后端检查。
+
+## 2026-10-29：按冻结任务范围显示计划结果
+
+在`d0f2f55`、仅安排周四11:00周常、时间固定10:00、假后端下，一次开始没有创建任何游戏子流程，界面却显示“全部完成 · 本轮已确认0／上限0 · 每日奖励未验证”。原状态、报告及画面为`runs/plan-scope-before.*`与`plan-scope-before-report.json`。计划结果现在依据开始时保存在`weekly_plan.daily_tasks`的任务范围显示：本次未执行的未来周常显示“本次无需执行 · 周常未到期”与冻结的北京时间，不附加未安排的日常零费用、未核实实训或默认游戏退出说明；仅日常完成则明确显示日常。报告内实际出现的消耗、未知／待核对资源、已核实奖励、退出结果、保存失败及恢复建议仍保留，即使后来修改了表单。缺失或无效范围的旧报告沿用原展示，不从当前表单猜测。后端status与原始报告不因界面用语重写。
+
+同时将计划最小化移至实际日常／周常子阶段；只核对未到期周常或遇到尚未接入的货币周常时保留当前窗口。未选择的任务在后端尚未报告结果时保持“未加入”，真实跳过结果仍保留。中间探针`plan-scope-window-before.json`在已含摘要修复、尚未修改最小化时记录1次最小化；它不是整份原提交的证据。最终对照`plan-scope-final.json/png`中无游戏子流程、无最小化、配置不变，摘要为本次无需执行及原计划时间。到期只更新预览，原结果保留“本次”语境，不自动执行。
+
+**42项单元测试及377项GUI检查通过**：计划反馈、编排与游戏周42项；新任务范围65项、原计划24项、时钟预览35项、任务状态169项、GUI84项。新检查在100%、125%、150%、200%下实际点击主按钮，以正式本地PlanRunner和合成子流程核对未到期、到期演算、货币战争待接入、草稿变化、跨过计划时间、报告原件及配置保留；明确核对不创建子流程时不最小化、真正进入子阶段才最小化。另覆盖旧范围回退、字段格式、未知费用、保存失败、已核实奖励和原游戏周；源报告未改。结果为`runs/plan-scope-final-*`，单元日志`runs/plan-scope-unit-final.log`，汇总`runs/plan-scope-regressions.json`；初轮65项结果和中间探针保留。全部使用假游戏后端，没有启动、检测或操作游戏。货币战争完整周常、整屏视觉一致性、玩家体验及日常周常组合实机仍未验收。
+
+首版原生浏览另发现，货币周常说明“到期时仅执行日常”不适用于未选择日常的情况，现精简为“货币战争周常尚未接入”，24项计划界面重查通过，结果`runs/plan-scope-boundary-plan-ui/`。首版原生End／Enter尝试没有改变玩法选择，随后鼠标选中货币战争；保留`runs/plan-scope-package-keyboard-attempt.png`，未核实是输入路由还是控件行为，不将该尝试写为键盘选择通过。
+
+最终源码`53e14dc`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。独立默认配置、`--no-admin-launch`下核对首页3项日常、24次／预计240开拓力及“开始计划”，打开周常页仍保留开关、时间格式和演算边界；鼠标选择货币战争后，明确显示精简后的未接入提示，局数与预设表单按原逻辑隐藏。选择“不保存退出”后退出码0，独立配置与239份原有用户文件哈希不变，147项素材、5份清单及23份上游文件一致。截图前缀`runs/plan-scope-boundary-package-`，元数据`runs/plan-scope-boundary-package-verification.json`，EXE SHA-256为`33d6547b423651836d574709612689c5a3f829f6a1015903bab2930f348b9bae`，备份`build/userdata-plan-scope-boundary-20261029_203428/`，构建日志`runs/plan-scope-boundary-build.log`。首版`8c4cd97`的原生画面及核对记录也保留，前后证据归档至正式项目`runs/plan-scope-*`，索引`runs/plan-scope-evidence-archive.json`。原生仅启动和浏览助手，没有点击开始、检测或游戏入口；本次新结果和最小化路径的执行验证为上述假后端检查。
+
+## 2026-10-29：恢复指南底边的全宽星图纹样
+
+对照已保存4.6每日实训原图，`feaed4a`的书页底纹仍只有左下329×72裁块，且被不透明任务画布遮住大半；右侧另用一条直线代替纹样。原状态为`runs/paper-strip-before-{home,tasks,differential_universe}.png`。现在同源提取1458×72底边星图，书页与任务画布按同一书页坐标绘制，恢复左、中、右可见部分并移除替代直线；原图倒计时与挂饰重叠区清除RGBA，不补画未知背景。没有修改任务文字、位置、主操作或后台行为。
+
+首轮硬蒙版导致亮边，保留`runs/paper-strip-after-*.png`；改为连续透明度并去除中性纸色后，`paper-strip-corrected-*.png`消除该亮边。三个未遮挡原图区域的平均每通道颜色差，原版约为9.49／9.93／11.68，修正后约为1.91／2.81／0.85（0～255色值，允许±4参考像素平移），见`runs/paper-strip-comparison.json`。只比较这些静态底纹区域，不把数值外推成整屏相似度。
+
+**395项离线检查通过**：140项参考图与交互、63项场景、108项缩放、84项GUI。参考检查新增三个独立原图区域的颜色对照，在100%、125%、150%、200%默认窗口均通过，平均颜色差0.80～2.81；原卡片几何、鼠标／键盘导航和操作断言保留。场景与缩放检查覆盖最小、加宽、最大化和返回，未出现绘制异常或控件裁切。日志、结果为`runs/paper-strip-final-*`，汇总`runs/paper-strip-regressions.json`。素材复现核对原图与输出哈希、32级透明度、清除区域RGBA全零；不匹配原图被拒绝且不写入，按已登记原图重生成字节一致，其他素材未变，见`runs/paper-strip-source-verification.json`。原图不分发，来源及许可同步更新。整屏视觉一致性、玩家体验和日常周常组合实机仍未验收；没有启动、检测或操作游戏。
+
+源码`08c966e`已构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。独立默认配置、`--no-admin-launch`下，普通窗口显示整条可见星图；点击下一页访问第五张卡，再最大化、还原，底纹连续、翻页位置仍为2～5／5，3项日常、24次／预计240开拓力及“开始计划”保留。浏览生存索引再返回同样保留安排与位置；未点击卡片动作、开始、检测或游戏入口，没有修改或保存配置。截图为`runs/paper-strip-package-{home,last-card,maximized,restored,tasks,returned}.png`；退出码0，独立配置和239份原有用户文件哈希不变，147项素材、5份清单及23份上游文件一致。详见`runs/paper-strip-package-verification.json`，EXE SHA-256为`d1c328678acedf784806886d9ffb80ac1c3f0aede4339418dc1b2090cdb390b1`，备份`build/userdata-paper-strip-20261029_195253/`，构建日志`runs/paper-strip-build.log`。前后画面、原始亮边草稿、局部测量与最终证据归档至正式项目`runs/paper-strip-*`，索引`runs/paper-strip-evidence-archive.json`。
+
+## 2026-10-29：按现有计划入口精简旧提示
+
+只读核对AutoZZZ本地`b2965fc`的首页任务、设置与直接启动入口，未改动其已有工作区修改。AutoHSR在`321bb63`仍于启动日志要求先选择任务、副本并检测窗口，又重复建议先设为1次；这与当前“开始计划”自动检查并按需启动游戏的行为不符，费用和次数也已由首页与副本设置显示。现在启动仅记“准备就绪”，不增加新的解释段落；未加入任务的运行详情改为“未加入计划”，空任务提示使用当前开关的“开启”用语。无开拓力授权时仍保留具体限制，但删除“当前仅收取委托与奖励”这一不能概括独立玩法的说法。README操作顺序同步以核对首页和开始计划为先，检测保留在连接排查入口。
+
+本轮仅修改文字及说明，没有改变任务启用、预算、启动、保存或报告逻辑。**304项既有离线检查通过**：84项GUI、24项计划、169项任务状态与结果、27项启动失败反馈；覆盖单次启动、停止与失败、未执行任务、待核对费用、错误字段定位、报告及配置保留。结果与日志为`runs/plan-copy-final-*`，汇总`runs/plan-copy-regressions.json`。没有为替换文案另写镜像断言，没有启动或检测游戏；整屏视觉一致性、玩家体验和日常周常组合实机仍未验收。
+
+源码`859d67b`已构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。独立默认配置、`--no-admin-launch`下核对：首页保留本次3项日常、24次／预计240开拓力及“开始计划”；运行日志仅一条“准备就绪”；每日任务仍显示开启／关闭、1个奇巧零食与两种材料各1，以及仅实训未完成才合成的条件；识别页三项输入范围完整，游戏连接仍可找到检测与进入按钮。只浏览页面，没有修改配置、保存或执行游戏动作。截图为`runs/plan-copy-package-{home,log,connection,daily,ranges}.png`，退出码0，独立配置及239份原有用户文件哈希不变，147项素材、5份清单及23份上游文件一致。详见`runs/plan-copy-package-verification.json`，EXE SHA-256为`b0dcbfd5714ebb7c5889a5533b5204c86774a370eaec694bce107b82cb8f7cf9`，备份`build/userdata-plan-copy-20261029_193156/`，构建日志`runs/plan-copy-build.log`。原始证据归档至正式项目`runs/plan-copy-*`，索引`runs/plan-copy-evidence-archive.json`。
+
+## 2026-10-29：从设置返回保留原任务与可用焦点
+
+在`35f3ead`、临时配置与假后端下复现：从“开始计划”的编队纠错页进入一般设置再返回，主按钮变为“开始演算 · 3局”；编辑框在设置期间锁定后返回，焦点仍落到禁用字段。原始状态`runs/settings-return-before.json`保留两个结果，配置未改，没有访问游戏。
+
+现在一般设置同时记住来源页、启动操作和焦点，放大、还原及布局复用时一起保留；关闭或Esc仍回到原页面与操作，不把纠错中的日常周常计划换成独立演算。明确选择每日任务或周常计划时，返回目标仍为每日实训和“开始计划”。原焦点仍可用时恢复输入位置，运行锁定的输入框或副本列表改由可用导航承接；仍可阅读的任务卡与日志保留焦点。对照`runs/settings-return-after.json`两条均符合预期；不增加界面解释文字，不保存、启动或停止任务。
+
+**437项离线检查通过**：80项设置返回、225项设置交互、24项计划、24项布局缓存、84项GUI。新增检查覆盖100%、125%、150%、200%，核对Esc与关闭按钮、来源输入选区、新建和缓存布局、日常周常快捷页、独立演算与货币只读入口、日志焦点和运行锁定；实际调用主按钮并截获派发，分别仍为原计划、独立演算或只读动作，没有访问游戏。日志与结果为`runs/settings-return-final-*`，汇总`runs/settings-return-regressions.json`。初版72项之后补充了禁用Canvas副本列表与可阅读任务卡的变体，最终80项通过；初版结果`runs/settings-return-ui/`保留。整屏视觉一致性、玩家体验及日常周常组合实机仍未验收。
+
+源码`9ed6d72`已构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，构建日志`runs/settings-return-build.log`。独立默认配置、`--no-admin-launch`下，在演算设置清空编队，回首页点击保存触发纠错；此时主操作为“开始计划”。打开一般设置、切到识别与等待、最大化，再按Esc返回，仍为原编队纠错页和“开始计划”；直接按空格能重新打开设置，核对来源齿轮焦点已恢复。再次返回并将编队纠正为“哈哈哈哈”，没有保存。
+
+另浏览货币战争只读页后打开设置，主操作仍为“只读识别当前画面”；明确切到周常计划后变为“开始计划”，按Esc返回每日实训及同一计划按钮。未更改周常参数，没有点击开始、识别、检测或游戏入口。原生截图为`runs/settings-return-package-{error,settings-max,plan-return,reopened,corrected,currency,currency-settings,weekly,weekly-home}.png`；关闭退出码0，独立配置与239份原有用户文件哈希不变，147项素材、5份清单及23份上游文件一致。详见`runs/settings-return-package-verification.json`，EXE SHA-256为`4209ba04bc7b441e7ab44fb257bce7b52b738f1157c8131f31751debae15ff47`，备份`build/userdata-settings-return-20261029_191712/`。原始和最终证据归档至正式项目`runs/settings-return-*`，索引`runs/settings-return-evidence-archive.json`。
+
+## 2026-10-29：纠正输入与窗口缩放保留目标和启动操作
+
+在`b71a1b9`、临时配置与假后端下核对：预算错误定位尚未送达时快速纠正并继续搜索，旧回调仍将焦点拉回预算；错误后立即缩放，战斗超时落到同分组第一项操作间隔。`runs/input-focus-before.json`中这两条失败，离开错误页的反例通过。映射诊断`input-focus-trace.log`确认旧字段未显示时已尝试聚焦，随后旧Notebook事件还用新布局的分组查找而抛出`StopIteration`。
+
+另在原导航恢复逻辑下复现：从首页保存定位到空预设编队，原操作为“开始计划”；缩放后变为“开始演算 · 3局”。记录`runs/input-focus-action-before.json`明确注明此时已含未提交焦点修复，导航恢复仍为原逻辑，不将其称作整份原提交的运行证据。
+
+现在纠错定位只保留字段和页面名称，等当前控件实际显示后选中；布局替换完成再处理未送达的请求。输入已纠正、页面已离开、运行锁定或对话框持有输入时取消旧请求；完成定位后用户手动换到其他字段，后续缩放保留该选择。旧Notebook通知只更新自身所属的当前布局。布局重建与失败恢复都保留原启动操作，错误页不会把日常周常计划换成独立演算；主动进入独立演算时仍保留独立入口。对照`runs/input-focus-after.json`三条均通过。没有增加界面提示段落或改变配置、资源授权和后台流程。
+
+**704项最终离线检查通过**：184项纠错焦点、55项输入反馈、225项设置、24项计划、24项布局缓存、108项缩放、84项GUI。新增检查在100%、125%、150%、200%下，反复核对预算、超时、OCR与周常时间在新建和缓存布局中选中完整错误值，发送键盘事件即可替换；同时验证旧Notebook通知、主动选择其他字段、详情输入权、快速离开与运行锁定。纠正编队后实际调用按钮，截获派发仍为`run_plan=True`；主动进入独立演算则仍派发独立入口。日志与结果为`runs/input-focus-final-*`和`input-focus-verified-*`，汇总`runs/input-focus-verification-summary.json`；各脚本独立进程串行运行，未访问游戏。
+
+专项初轮保留了预算错误缩放后`action_page`变化的失败，见`runs/input-focus-initial.log`、`input-focus-layout-probe.log`；未放宽原启动操作的断言。修复导航恢复后176项通过，再补立即取消尚未显示请求的边界，184项及输入、设置回归通过。此前`action_delay_focus_nan`偶发失败缺少当时的映射状态，不能仅凭本轮复现认定其原因；旧记录原样保留。整体视觉一致性、玩家体验与日常周常组合实机仍未验收。
+
+源码`59b41a8`已构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/input-focus-build.log`。独立默认配置、`--no-admin-launch`下，先在演算设置清空编队名，再回首页点击保存；校验定位到编队，主按钮保持“开始计划”。最大化后不再点击字段，直接输入“哈哈哈哈”即可纠正，还原后名称与计划按钮仍保留。另将识别设置第二项战斗超时改为50，保存校验选中50；最大化后选区仍在第二项，直接输入900完整替换，操作间隔仍为1.0、OCR仍为0.65，原启动操作未变。
+
+截图为`runs/input-focus-package-{home,team-error,team-maximized,team-corrected,team-restored,timeout-error,timeout-maximized,timeout-corrected,timeout-restored}.png`。没有执行开始、检测或进入游戏；无效保存未写入，纠正后也未保存，关闭退出码0。独立配置及239份原有用户文件哈希不变，147项素材、5份清单与23份上游文件一致，详见`runs/input-focus-package-verification.json`。EXE SHA-256为`382cb056cb5bd5233fa1cace7e6cf18916686c5c7778dfe7d28ddf530fb522ce`，备份`build/userdata-input-focus-20261029_185127/`。全部原始与最终证据归档至正式项目`runs/input-focus-*`，索引`runs/input-focus-evidence-archive.json`。
+
+## 2026-10-29：选用副本后直接形成预算内计划
+
+在`09c528e`、120开拓力预算、花萼12次与假后端下复现：选用侵蚀隧洞后变成6次／预计240，计划读取随即因超出120预算失败。原始截图与状态为`runs/selection-budget-before.png/json`。只读核对AutoZZZ本地`338951d`的明确动作及预算边界，未修改其工作区。
+
+现在选用副本、手动切换分类及次数增减都按当前有效预算计算整次上限，保留原本能负担的较少次数，历战余响仍最多3次。相同场景选用侵蚀隧洞后为3次／预计120，计划读取成功，预算与配置文件未改；对照`runs/selection-budget-after.png/json`。预算格式有误或不足一次时，列表显示“调整上限”，点击后保留原计划并定位预算字段；“填满预算”也使用同一字段错误反馈。成功选用会清除已解决的副本、次数或预算错误，其他错误保留。直接填写的草稿不自动改写，保存与开始仍校验；不改变运行资源门禁或已有沉浸器规则。
+
+**739项离线检查通过**：156项预算选择、272项生存索引、64项未加入配置、55项输入纠错、108项缩放、84项GUI。新增检查覆盖100%、125%、150%、200%，使用120与50预算核对六类限制、余数取整、保留较少次数、鼠标／Enter选择、滑条／箭头／增减、非法预算定位、运行与未授权反例。结果与截图为`runs/selection-budget-final-*/`和`selection-budget-verified-*/`，汇总`selection-budget-verification-summary.json`；全部配置为临时或独立测试文件，没有访问游戏。
+
+首轮新增检查要求空白输入也有文字选区，诊断确认焦点与错误均正确，只有空白选区不存在；现空白核对插入点0，非空仍要求选中，生产逻辑未为此调整。保留`runs/selection-budget-initial.log`、`selection-budget-error-probe.log`。既有输入检查首轮在`action_delay_focus_nan`出现一次焦点断言失败，保留`selection-budget-final-input_feedback_smoke.log`；带状态诊断的独立复跑及原脚本复跑均通过55项（`selection-budget-focus-probe.log`、`selection-budget-verified-input_feedback_smoke.log`），未修改焦点代码或放宽断言，瞬态原因尚未核实。整屏视觉一致性、玩家体验及日常周常组合实机仍未验收。
+
+源码`31d7d23`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。独立120预算／花萼12次配置、`--no-admin-launch`下，从首页“更换副本”进入并选用密伶之径／生研院，直接得到3次／预计120，再点加号仍为3。随后通过花萼“设为1次”准备10预算／1次的草稿，浏览侵蚀隧洞显示“调整上限”；点击后仍保留花萼／绘世学院、1次与加入状态，预算10被选中。直接输入40后恢复“选用”，再次选择得到1次／预计40，未保存或执行。错误栏刚出现时有一次短暂布局裁切，稳定后的提示、列表和字段完整可见；分别保留`package-error-initial.png`与`package-error.png`，没有将瞬态图替换为通过证据。
+
+原生截图前缀`runs/selection-budget-package-`，包含`home`、`selected`、`capped`、`low-plan`、`unavailable`、`error-initial`、`error`、`corrected`、`final`与`close`。选择“不保存退出”后退出码0，独立配置与239份原有用户文件哈希未变，147项素材、5份清单及23份上游文件一致；详见`runs/selection-budget-package-verification.json`。EXE SHA-256为`a393a2042cc1fea80cb3e3192b28963f39be0e11364d38ff13ee07b404c2133f`，备份`build/userdata-selection-budget-20261029_181949/`，构建日志`runs/selection-budget-build.log`。原始与最终证据归档至正式项目`runs/selection-budget-*`，索引`runs/selection-budget-evidence-archive.json`；全程未检测或操作游戏。
+
+## 2026-10-29：退出确认沿用游戏提示框与明确动作
+
+上一轮正式版`357da46`关闭草稿时仍使用Windows“是／否／取消”，原生证据`runs/challenge-inline-package-close-prompt.png`保留。现在复用既有4.6提示框的浅灰面板、偏移边框、深色底栏和胶囊按钮，仅保留一处未保存提醒；选择明确写成“返回修改／不保存退出／保存并退出”。Esc与Alt+F4返回原字段并保留草稿、选区和光标，Enter执行当前聚焦的选择，默认聚焦保存；重复关闭不叠加窗口。校验失败定位错误字段，写入失败保留窗口与原文件；执行中的关闭仍按原逻辑停止并等待后台。游戏原图为两按钮，三选项及小屏纵排是应用适配，不声称与原游戏交互逐项相同。
+
+**254项离线检查通过**：新增69项实际模态交互、既有101项详情窗口及84项GUI。覆盖100%、125%、150%、200%，核对保存／放弃／取消、Tab与Enter、错误纠正、写入失败、重入、焦点恢复、小工作区与运行中关闭。最终结果与截图为`runs/save-dialog-regression-*/`，日志同名前缀，汇总`runs/save-dialog-regressions.json`。不接触真实游戏，测试配置位于独立临时目录。
+
+初版小屏纵排时提醒被裁切，截图复核后调整标题与底栏占比，并增加“提醒无需滚动且完整可见”检查；诊断及原图保留在`runs/save-dialog-compact-probe.log`、`save-dialog-ui/compact-clipped.png`。初轮测试还修正了聚焦事件未处理、误从历史摘要读取输入错误、销毁后查询Tk窗口的测试假设；旧日志`save-dialog-initial.log`、`save-dialog-focus-recheck.log`、`save-dialog-validation-probe.log`、`save-dialog-verified.log`未覆盖。多Tk实例的测试退出时仅清理根窗口自己的轮询回调，最后三套检查没有回调报错。整体视觉一致性、玩家体验和日常周常组合实机仍未验收。
+
+源码`a02448b`已构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/save-dialog-build.log`。原生窗口使用两份独立配置、`--no-admin-launch`核验：第一次将24次改为12，Alt+F4打开提示，Esc返回仍为12，再关闭并选择“不保存退出”，原文件哈希不变；第二次输入`abc`，关闭后按Enter触发保存校验，窗口保留、原因可见、错误字段选中，直接输入12纠正。纠正尚未提交时配置仍未写入；再次关闭按Enter，独立配置保存12次、240上限并正常退出。两个进程退出码均为0，未启动或检测游戏。
+
+原有239份用户文件哈希不变，147项素材、5份清单及23份上游文件与源码一致。记录`runs/save-dialog-package-verification.json`、`save-dialog-native-validation-check.json`，原生截图为`save-dialog-package-{prompt,returned,discard-prompt,invalid-prompt,error,corrected,save-prompt}.png`。EXE SHA-256为`075bce0397660c99955e817d9046e2162a05024921f5da12316d83d58a7ed55a`，备份`build/userdata-save-dialog-20261029_175250/`。本轮原始与最终证据归档至正式项目`runs/save-dialog-*`，索引`runs/save-dialog-evidence-archive.json`；保存只作用于专用测试配置。
+
+## 2026-10-29：就地调整挑战设置并保留副本上下文
+
+在`feee947`、独立配置与假后端下核对：打开“挑战设置”会隐藏整张副本列表，预算区与次数区之间留下大片空白，Esc不能返回；未加入时还重复显示“副本挑战未启用”。原图及状态为`runs/challenge-inline-before.png/json`。只读参考AutoZZZ本地`338951d`的直接操作、草稿与显式保存边界，未修改其工作区。
+
+现在预算、支援和次数预设在列表下方展开；分类切换、搜索及选用副本保留展开状态，目标、费用和列表同时可见。“收起设置”与Esc返回原入口；打开设置选中预算，手动填写选中副本名，方便直接替换。搜索有内容时Esc先清空，手动下拉框先收起；运行期间返回不解锁编辑，焦点移至可用导航。“读取游戏目录”移到手动填写，只有显式点击才采集。移除未加入的重复警告，保留未加入状态、本次不刷本、支援关闭、沉浸器和已有资源边界。与原始相同未加入配置的对照为`runs/challenge-inline-after-matched.png/json`；最小1100×800窗口的已加入场景仍完整可见两条副本，见`runs/challenge-inline-minimum.png/json`。
+
+**667项离线检查通过**：84项就地设置、272项生存索引、64项未加入配置保存与重开、55项输入纠错、108项缩放、84项GUI。新检查覆盖100%、125%、150%、200%，核对单次选择形成含目标、预算、次数与支援的运行快照，搜索和菜单的Esc层级、错误字段定位、窗口缩放及缓存复用、运行锁定与配置未写入；目录按钮仅截获派发，不运行采集。汇总`runs/challenge-inline-verification-summary.json`，逐项结果与日志为`challenge-inline-final-*`和`challenge-inline-verified-*`。
+
+首轮输入纠错在`stamina_limit_focus_abc`出现一次焦点断言失败，保留`runs/challenge-inline-final-input_feedback_smoke.log`。加入诊断的独立复现、原脚本复跑及后续整合均通过55项（`challenge-inline-focus-probe.log`、`challenge-inline-focus-recheck.log`、`challenge-inline-verified-input_feedback_smoke.log`），没有为通过该断言修改生产逻辑或放宽检查；瞬态原因尚未核实。全程未操作游戏；整体逐像素一致性、玩家体验及日常周常组合实机仍未验收。
+
+源码`357da46`已构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/challenge-inline-build.log`。使用独立配置、`--no-admin-launch`从首页“更换副本”进入，打开挑战设置后直接输入`abc`替换240；点击保存被整数校验阻止，字段重新选中，接着直接输入120即可纠正。切到侵蚀隧洞并选密伶之径／生研院，设置保持展开；点击填满预算得到3次／预计120开拓力，关闭支援后显示对应提示。Esc收起后，空格从返回的焦点重新打开，保留目标、次数、预算与支援；关闭时选择不保存。未点击任务执行或目录读取入口。原生截图`runs/challenge-inline-package-{opened,error,corrected,ready,collapsed,reopened,close-prompt}.png`保留各阶段。
+
+窗口退出码0，独立配置与原有239份用户文件哈希不变；147项素材、5份清单及23份上游文件一致。EXE SHA-256为`ecba831018e5acee3f3af14fa00e936622449aab50e8b542e637b3e614f12358`，用户文件恢复副本为`build/userdata-challenge-inline-20261029_172228/`；详见`runs/challenge-inline-package-verification.json`。本轮全部证据归档至正式项目`runs/challenge-inline-*`，索引`runs/challenge-inline-evidence-archive.json`。关闭草稿的确认框仍为系统样式，是后续视觉一致性待处理项；本轮未将它算作已对齐。
+
+## 2026-10-29：生存索引双行分类卡与游戏顺序
+
+继续只读对照AutoZZZ本地`338951d`的导航、运行锁定与显式保存交互，未修改其工作区。界面依据既有4.6生存索引参考`runs/survival-layout-reference.png`及2026-10-20目录采集的分类OCR，恢复“分类名＋材料类型”、深底金色选中态、侧边标记和淡色徽记。六类按饰品提取、拟造花萼（金）、拟造花萼（赤）、凝滞虚影、侵蚀隧洞、历战余响排列；只调整显示顺序，不改工作流扫描顺序。复用已署名字体与水印，没有新增游戏截图或素材。
+
+与`53c6f04`在相同1920×1080、125%界面比例下对比，分类卡从385×71变为386×102，六张等高并占用原来的空白区域；右侧列表仍高442、完整可见3行。分类标题与材料名分层显示，保留原生鼠标、空格、焦点和禁用反馈。浏览不改计划目标，只有列表选用才更换或加入任务。前后截图及尺寸记录为`runs/survival-categories-before.png/json`、`survival-categories-after.png/json`。
+
+**611项离线检查通过**：272项生存索引、108项缩放、24项布局复用、123项缩放过渡、84项GUI。分类卡检查覆盖100%、125%、150%、200%，包含原生点击及空格切换、唯一选中态、运行禁用与恢复、最小窗口六类完整可见、草稿不变和配置未写入；沿用同名副本地点、半露行、次数限制和费用反例。最终生存索引结果位于`runs/survival-categories-ui-final/`，其余结果与日志为`survival-categories-final-*`，汇总`runs/survival-categories-regressions.json`。最后字号调整后重跑生存索引，不重复计算检查数。全程使用假后端，不启动游戏。整体逐像素一致性、玩家体验及日常周常组合实机仍未验收。
+
+源码`35b248b`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，构建日志`runs/survival-categories-build.log`。原生窗口使用独立配置与`--no-admin-launch`，核对六类完整显示、点击饰品提取与历战余响、打开设置后Esc返回保留分类；目标仍为原来未加入的回忆之蕾／城郊雪原，未点击任务执行入口。正常关闭退出码0，独立配置及原有239份用户文件哈希不变。截图为`runs/survival-categories-package-browser.png`、`package-planar.png`、`package-returned.png`、`package-echo.png`（后三项同`survival-categories-`前缀），记录`runs/survival-categories-package-verification.json`。
+
+147项素材、5份清单和23份上游文件与源码一致；用户文件恢复副本位于`build/userdata-survival-categories-20261029_165309/`。EXE SHA-256为`78ab73bb3a3d2416b833efeeae683f1970c1d4658c483c663b8b74e144932223`。本轮对照、离线与原生核验证据归档至正式项目`runs/survival-categories-*`，索引为`runs/survival-categories-evidence-archive.json`。
+
+## 2026-10-29：保存与重开保留未加入的副本设置
+
+只读核对AutoZZZ本地`338951d`的草稿与显式保存流程，未修改其工作区。在AutoHSR `ea08b1b`用假后端复现：选“侵蚀隧洞／密伶之径／生研院”、3次、120开拓力、关闭支援后取消加入，点击保存会还原成回忆之蕾／城郊雪原及240预算，界面却标记已保存；类别和次数仍留在新值，磁盘则保留旧类别、次数与支援选项。原始记录`runs/excluded-draft-before.json`，未启动游戏。
+
+显式保存现在收集已授权副本的全部设置，与是否加入任务分别保存。空闲时未加入的副本也可修改次数、预算、手动目标和支援，预设仅填写表单；保存后重新打开仍保持目标与关闭状态。无效值按既有校验定位可修改字段，不替用户开启任务。运行、检测、仅补领奖保持快照与不保存约定，未启用副本的未完成输入不阻塞无关操作；运行中或未授权时仍锁定编辑与加入。
+
+新增64项保存与重开检查通过，覆盖100%、125%、150%、200%：完整目标与支援持久化、重开前后关闭状态、非法次数／超预算／非法预算纠错、预设不加入、显式重新加入、运行及授权反例。结果与截图为`runs/excluded-draft-ui/`，日志`runs/excluded-draft-verified.log`。初次测试在清理窗口时统一取消了其他控件拥有的回调，导致销毁时重复删除Tcl命令；清理现只取消根窗口自己的队列轮询，其余控件自行销毁，原日志`runs/excluded-draft-initial.log`保留，没有为此修改生产界面。
+
+另有228项生存索引、42项原生表单、225项设置、55项输入纠错、108项缩放、24项计划、84项GUI检查通过，合计**830项界面检查通过**。各脚本独立进程顺序运行，日志为`runs/excluded-draft-final-*.log`，汇总`runs/excluded-draft-regressions.json`。生存索引原有禁用状态断言改为对应“空闲未加入仍可编辑”的交互；运行锁定和未授权反例保留。
+
+本轮未新增界面解释段落，没有启动、检测或操作游戏。整体视觉一致性、玩家体验与日常周常组合实机仍未验收。
+
+源码`c9d17ce`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/excluded-draft-build.log`。使用独立配置和`--no-admin-launch`，通过原生鼠标与键盘选定密伶之径／生研院，取消加入，再改为3次、120开拓力上限、关闭支援并点击保存。窗口显示“已保存”且目标不变；磁盘全字段与预期一致。正常关闭、重新启动同一配置后，首页显示该副本未加入，生存索引与挑战设置保留上述值；再次关闭，两次退出码均为0，重开阶段配置哈希不变。截图为`runs/excluded-draft-package-count.png`、`package-before-save.png`、`package-saved.png`、`package-reopened-home.png`、`package-reopened-browser.png`、`package-reopened-settings.png`（后五项同`excluded-draft-`前缀）。
+
+239份原有用户文件哈希不变，147项素材、5份清单和23份上游文件与源码一致；记录`runs/excluded-draft-package-verification.json`，备份`build/userdata-excluded-draft-20261029_162044/`。最终EXE SHA-256为`789386f23c21cb837cbd54c40a730853524527e6d78fa40da8bc146389cd6cfc`。本轮原始与最终证据归档至正式项目`runs/excluded-draft-*`；保存操作仅作用于独立核验配置。
+
+## 2026-10-29：浏览副本后一键加入计划
+
+继续只读参考AutoZZZ本地`b197004`的导航和直接动作入口，未修改其工作区。在AutoHSR `b714457`、独立配置和假后端下复现：关闭副本任务后，分类、搜索和列表一起锁定，但费用仍显示预计240开拓力；证据为`runs/dungeon-join-before.json/png`，配置字节未变，未启动游戏。
+
+现在已授权、空闲的用户可先浏览六类副本；分类、搜索、方向键不修改草稿。未加入时每行显示“加入计划”，完整行点击或Enter同时选定分类、名称、地点并加入副本；次数按目标类别限制，首页与费用同步更新。半露行第一次点击只展开。取消加入后保留当前草稿目标、显示“本次不刷本”，重新勾选可恢复；手动字段和次数仍需加入后才能编辑。运行中与未授权时保持锁定，不隐式保存、启动或扩大资源授权。
+
+**871项界面检查通过**：212项生存索引、42项原生表单、225项设置、121项任务入口、55项输入纠错、108项缩放、24项计划、84项GUI。新增检查覆盖100%、125%、150%、200%，验证六类浏览、同名地点、半露行、Enter加入历战余响后的3次／90开拓力限制、重新勾选、运行锁定和授权反例。日志为`runs/dungeon-join-ui-verified.log`与`dungeon-join-final-*.log`，汇总`runs/dungeon-join-regressions.json`；截图及逐项结果位于`runs/dungeon-join-ui/`及各`dungeon-join-final-*`目录，各脚本独立进程顺序运行。
+
+初次新增检查把“未启用副本的运行快照”与当前未保存目标混为一谈，触发断言；既有读取逻辑只在副本启用时复制目标。检查现分别核对当前草稿保留目标、运行快照不含副本和显示不刷本，原失败`runs/dungeon-join-ui-initial.log`保留，没有改变配置读取或保存逻辑。原生表单禁用检查也改为核对实际点击的副本开关，不再误比邮件开关。
+
+本轮未增加解释段落，没有启动、检测或操作游戏。整屏视觉一致性、玩家体验与日常周常组合实机仍未验收。
+
+源码`c546ebf`经`tools/build.ps1`构建并更新正式目录，使用独立的副本未启用配置和`--no-admin-launch`核验：分类、搜索不加入任务；点击“加入计划”后显示回忆之蕾／城郊雪原、24次、预计240开拓力，首页同步为3项；取消后恢复2项、不刷本。未点击开始、检测或保存，正常关闭退出码0；239份用户文件及独立配置哈希未变，147项素材、5份清单与23份上游文件一致。证据为`runs/dungeon-join-package-*.png`、`dungeon-join-package-verification.json`、`dungeon-join-build.log`；备份`build/userdata-dungeon-join-20261029_155458/`。该次EXE SHA-256为`4ca3f73c06e6ca1fce7ce2f3d277f32a344916be72cf6261295630348c0ce5fb`。
+
+上述实际窗口发现另一个显示问题：以副本未加入的配置首次打开时，次数框为24，滑块仍在最小位置，加入后也未同步。独立诊断`runs/dungeon-join-slider-before.json`确认滑块实际值为0，取消加入后才更新为24；原截图保留。原因是禁用的`ttk.Scale.set`忽略赋值，刷新发生在启用控件之前。现在通过控件配置同步显示值，不触发选择动作或改动草稿；首次打开、加入和返回页面增加数值与滑块实际位置检查。
+
+滑块修正后，228项生存索引检查通过；针对受影响的原生控件、输入纠错、缩放与计划又分别运行42、55、108、24项，合计457项通过。新增16项为四种比例下的首次禁用显示、实际滑块位置、首次加入和返回，原有212项选择检查一并通过。结果为`runs/dungeon-join-slider-ui/result.json`和`dungeon-join-slider-regressions.json`，日志`dungeon-join-slider-ui.log`及`dungeon-join-slider-final-*.log`；没有重复运行不受此次显示修正影响的其他项目。
+
+最终源码`cfa522d`再次构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`。独立配置下，实际窗口首次打开未加入副本、点击加入、从首页“更换副本”返回时，24次与最右端滑块均一致；取消后显示本次不刷本，未保存或执行任务，正常关闭退出码0。239份用户文件及独立配置哈希仍不变，147项素材、5份清单、23份上游文件复核一致；记录`runs/dungeon-join-slider-package-verification.json`，截图`dungeon-join-slider-package-browser.png`、`package-selected.png`、`package-home-selected.png`、`package-return.png`、`package-removed.png`（后四项同`dungeon-join-slider-`前缀），构建日志`dungeon-join-slider-build.log`。备份`build/userdata-dungeon-join-slider-20261029_160411/`，最终EXE SHA-256为`5b9c9e60bf72c6af73ee9634c9eaf13b089ff12fefa451f94c01a412dddbab97`。本轮原始与最终证据归档至正式项目`runs/dungeon-join-*`，未替换失败记录。
+
+## 2026-10-29：玩法设置与结果返回原入口
+
+继续按AutoZZZ的明确动作与原操作保留方式核对，阅读基线为本地`b197004`的桌面与详情代码，未修改其工作区。在AutoHSR `bcdf9a1`、临时配置和假后端中复现：差分／货币战争两种玩法进入设置或结果时，焦点留在已隐藏入口，Esc不返回；鼠标返回后焦点也留在隐藏的返回按钮。四条路径的原始结果见`runs/mode-navigation-before.json`，配置未变，后端调用为0。
+
+现在用户打开演算设置后直接聚焦局数，开发工具聚焦分类栏，结果页聚焦可翻阅的记录；点击返回或按Esc回到原入口按钮。下拉菜单与独立详情窗口先处理自己的Esc；从通用设置返回玩法编辑页后，再按一次Esc才回玩法入口。草稿、文本选择、开发分类和结果滚动位置保持，执行中返回不停止或解锁。只有用户导航请求安排默认焦点，自动结果更新、错误定位和缩放恢复不额外抢焦点；快速切换页面后取消旧目标的聚焦。
+
+新增**156项导航检查通过**，覆盖100%、125%、150%、200%，包括鼠标返回、连续Esc、下拉菜单、PageDown、错误字段、独立窗口、快速切页和执行锁定。日志`runs/mode-navigation-verified.log`，结果与截图位于`runs/mode-navigation-ui/`。初次检查直接给尚未映射的隐藏字段设置焦点，Windows未接受该焦点；`runs/mode-navigation-focus-timing.json`记录映射前仍在入口按钮，映射后转至默认局数。专项改用真实`_input_failed`字段定位流程及映射后的导航回调核验，原失败`runs/mode-navigation-initial.log`保留，没有为此改变生产焦点逻辑或放宽最终焦点断言。
+
+既有112项玩法入口、225项设置、55项输入纠错、108项缩放、24项计划和84项GUI检查通过，本轮合计**764项界面检查通过**，各脚本独立进程顺序执行。日志为`runs/mode-navigation-final-*.log`及`mode-navigation-verified-ux_smoke.log`，各输出目录保留截图与结果。批次包装器首次为GUI脚本指定新截图目录时漏建目录，原`mode-navigation-final-ux_smoke.log`保留；创建专用输出目录后单独重跑该脚本通过，没有修改生产代码或重复已通过项目。
+
+本轮没有新增界面提示段落，没有改变开始、保存、暂停、停止或资源授权。未启动、检测或操作游戏；整屏一致性、玩家体验与日常周常组合实机仍未验收。
+
+源码`42c37ab`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/mode-navigation-build.log`。独立配置、`--no-admin-launch`下，原生鼠标打开演算设置后不按Tab，直接按Down即可展开局数；第一次Esc收起下拉框、保持原3局，第二次Esc返回玩法入口。再打开结果，Esc同样返回。没有选择新值、保存、检测或执行任务；标题栏关闭后退出码0。截图为`runs/mode-navigation-package-home.png`、`package-editor.png`、`package-choice.png`、`package-choice-closed.png`、`package-return.png`、`package-result.png`与`package-result-return.png`（后六项均同`mode-navigation-`前缀）。239份用户文件及独立配置哈希不变，147项UI素材、5份清单及23个上游文件与源码一致；记录`runs/mode-navigation-package-verification.json`，备份`build/userdata-mode-navigation-20261029_152908/`。EXE SHA-256为`47e3f04f6393f76783f5c867496e7eae88a98f18d63b4a5ab46024779a3cf2b9`；本轮证据归档在正式项目`runs/mode-navigation-*`。
+
+## 2026-10-29：生存索引按游戏分组浏览
+
+只读对照AutoZZZ本地`51f236e`的页面与明确选择入口，以及2026-10-20既有CN 4.6.0生存索引采集帧。移除副本列表下方重复的委托、实训、邮件和勋礼开关，这些任务继续通过首页卡片与“每日任务”设置调整；副本自己的“加入计划”与已选目标放在同一行，原次数、费用、预算、授权与显式保存约定不变。
+
+金色花萼按5个地区、赤色花萼按9个命途、凝滞虚影按7个属性显示灰底标题及原图标，共21组、64条已有副本归属。依据同屏标题与连续滚动帧中的重叠行核对，不按名称猜地区；本地新增条目没有分组证据时显示“其他副本”。其余40条目录仍按原列表显示。搜索可匹配分组、名称、地点，标题不承担选择动作；方向键和浏览不改计划，完整行点击或Enter才选用，半露行先完整展开。没有修改游戏执行目录或识别阈值。
+
+从`a58b4cf`原模块和本轮源码分别运行相同假后端窗口，1920×1080、比例1.25、同一目录起点，列表宽均为911像素，高度由320增至442，完整可见副本由2条增至3条；原图与数值分别为`runs/survival-groups-before.png/json`、`survival-groups-after.png/json`。临时配置字节均未变，未调用游戏后端。这是特定窗口的前后对照，不外推为用户测试结果。
+
+**803项界面检查通过**：144项生存索引、42项原生表单、225项设置、121项任务入口、108项缩放、55项输入纠错、24项计划、84项GUI。生存索引覆盖100%、125%、150%、200%，其他项目按各自既有比例核验；包括分组搜索、同名地点、标题非动作、半露行、未知归属、费用限制、禁用开关、手动配置、缩放恢复和原报告保留。日志为`runs/survival-groups-ui-initial.log`、`survival-groups-form_feedback_smoke.log`、`survival-groups-settings_ui_smoke.log`、`survival-groups-entry_clarity_smoke.log`及`survival-groups-final-*.log`，各脚本独立进程运行。GUI结果另归档到`runs/survival-groups-final-gui_smoke/`。
+
+初次离线提取因部分标题OCR框包含图标而漏项，覆盖断言中止；按实际标题区域校正后完成64条映射，原日志`runs/survival-groups-preparation.log`与成功日志`survival-groups-preparation-verified.log`保留。缩放检查最初在设置页尚未显示时模拟编辑，默认入口聚焦随后把模拟焦点移到周常开关；诊断证明缩放前焦点已不在编辑框，光标与文本选择仍被保留。测试现先显示页面再模拟编辑，并新增缩放前焦点断言；原失败、诊断和trace为`runs/survival-groups-responsive_ui_smoke.log`、`survival-groups-resize-diagnostic.log`和`survival-groups-resize-trace.json`，未为此修改生产焦点逻辑或放宽恢复断言。
+
+21幅图标已逐一查看；`runs/survival-groups-asset-verification.json`核对原图、OCR及输出哈希，分组清单SHA-256为`1359589505826ac653567b90ec856c8eed0deb75a25269e334bc06623d813532`。新增素材及复现脚本见`assets/ui/survival/groups.json`、`tools/prepare_survival_groups.py`及署名文件；原始截图与账号区域不分发。未启动、检测或操作游戏，未扩大资源授权；整屏一致性、最终玩家体验与组合计划实机尚未验收。
+
+源码`e063dde`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/survival-groups-build.log`。独立配置、`--no-admin-launch`下，原生鼠标点击“更换副本”直接显示已选“回忆之蕾／城郊雪原”和雅利洛-VI分组；输入“匹诺康尼”后显示该地区三条金色花萼，原选中目标、24次和240开拓力预算不变。Esc清除搜索，再返回每日实训，原计划仍保持三项，未出现未保存改动。截图为`runs/survival-groups-package-home.png`、`survival-groups-package-selected.png`、`survival-groups-package-search.png`与`survival-groups-package-return.png`。全程未保存、检测或运行游戏。
+
+监督脚本在界面核对期间达到360秒等待上限，原记录`runs/survival-groups-package-verification.json`保留；随后通过原生标题栏关闭助手，另确认进程已退出，但未取得助手退出码，不记录为0。补充核验`runs/survival-groups-package-final-verification.json`确认239份用户文件与独立配置哈希不变、1727个包文件与构建产物一致；其中147项UI素材、5份清单及23个上游文件与源码一致。备份`build/userdata-survival-groups-20261029_145943/`，EXE SHA-256为`14ef1584c2753c4f2748af733199e32b30fb68c56f944b9297a57039b50f13a8`。本轮失败记录、前后对照、检查与原生截图均归档到正式项目`runs/survival-groups-*`。
+
+## 2026-10-29：启动路径错误直接定位到设置
+
+沿用当前AutoZZZ的明确动作入口和显式保存约定，继续处理首次配置路径。原实现只在表单中检查文件名格式：路径以StarRail.exe结尾但文件不存在时，后端会报告一般失败，用户需自行找到设置。现在启动文件检查返回带字段的SettingsError，直接启动事件、普通Runner和日常／周常合并报告保留`input_error_field`；桌面在工作线程结束后打开游戏连接、选中路径，并显示必要原因。没有增加重复教程或自动打开文件选择器。
+
+错误跳转仅接受已知字段与非空原因；未标字段、未知字段或内容恰好提到StarRail.exe的一般失败均不猜测跳转。错误处于报告中，已完成日常、费用、待核对消耗和报告保存失败继续可见；编辑只清除当前输入提示，不改写原报告、自动重试或保存配置。已有游戏窗口仍先复用，配置保存仍只检查格式，不额外检查安装文件；权限错误仍是运行错误。
+
+新增7项后端机制回归，覆盖缺失文件、同名目录、配置可保存、已运行窗口复用、普通日常、组合计划、仅周常与权限反例。与既有启动、计划和输入结果检查合计**32项通过**，日志`runs/startup-feedback-unit-initial.log`。**27项假后端GUI检查通过**，日志`runs/startup-feedback-ui-initial.log`，截图与结果位于`runs/startup-feedback-ui/`；覆盖进入游戏、首次计划失败、日常已完成后失败、修改和返回、错误原因与原报告保留、未知字段反例，以及不额外运行或保存。
+
+既有**55项输入纠错、225项设置、24项计划与84项GUI检查通过**，日志依次为`runs/startup-feedback-input_feedback_smoke.log`、`startup-feedback-settings_ui_smoke.log`、`startup-feedback-plan_ui_smoke.log`、`startup-feedback-gui_smoke.log`，各脚本独立进程运行。本轮界面检查合计415项，未出现回调错误。
+
+报告字段影响普通Runner与计划，另执行1199项后端全量检查：1198项首次通过，一项旧生命周期测试的SimpleNamespace夹具缺少此前新增的周常摘要刷新方法。原失败见`runs/startup-feedback-full-unit.log`；该调用来自已有`6b56d521`，本轮未更改它。补齐夹具方法后，原“线程结束前不处理终止事件”断言保持不变，该项复查通过，见`runs/startup-feedback-lifecycle-fixed.log`。没有为此改动生产逻辑或重复其他已通过项目。
+
+本轮不启动、检测或操作游戏；原日常周常组合实机、货币战争周常和积分奖励边界不变。玩家体验按用户安排留待开发完成后反馈，离线检查不代替体验验收。
+
+源码`b9b8682`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/startup-feedback-build.log`。独立配置指向专门核实为不存在的StarRail.exe，用`--no-admin-launch`启动助手，原生鼠标打开设置、点击“进入游戏”：文件检查即阻止启动，路径自动全选，错误只在底栏显示一处；Tab到“浏览”，Esc返回首页后错误仍保留。没有执行游戏窗口检测、游戏进程启动、保存或重试；正常关闭退出码0。截图为`runs/startup-feedback-package-home.png`、`startup-feedback-package-settings.png`、`startup-feedback-package-error.png`、`startup-feedback-package-browse-focus.png`与`startup-feedback-package-return.png`。239份用户文件及独立配置哈希不变，126项UI素材、4份清单、23个上游文件与源码一致；记录`runs/startup-feedback-package-verification.json`，备份`build/userdata-startup-feedback-20261029_141933/`。EXE SHA-256为`a97bb0220e4e0167843b66d7fd416fa17a9e482227005edd9b5e56bc593a644a`，本轮证据归档在正式项目`runs/startup-feedback-*`。
+
+## 2026-10-29：设置入口直接聚焦当前选项
+
+以`9731bf0`为基线，用临时配置和假后端重现：从首页打开周常或设置，焦点仍在已隐藏的首页按钮；第一次Tab转到分类栏的第一个入口，而非正在显示的周常选项。记录`runs/settings-entry-focus-before.json`，两条路径的焦点`visible=false`，未修改配置、未运行游戏。
+
+现在用户打开设置、周常或切换设置分类时，焦点进入当前分类首个可用控件；任务卡指定项、错误字段、文本选择、分类键盘导航和其他详情窗口优先保留。以控件的布局归属处理Windows延后映射，不通过强行抢前台或增加按钮说明解决。只有用户导航请求安排默认焦点，单纯的Notebook页面变化不覆盖错误定位。下拉框沿用原生下方向键展开与Esc收起，随后Esc返回原入口；任务、保存和启动逻辑不变。
+
+初期实现确实遇到控件映射时机和通用页面事件覆盖错误焦点的问题，原失败与诊断保存在`runs/settings-entry-focus-initial.log`、`settings-entry-focus-verified.log`、`settings-entry-focus-final.log`、`settings-entry-focus-regressions.log`及对应trace文件。错误焦点检查在关闭新增导航回调时通过，之后将自动聚焦限定到用户导航请求，未放宽既有检查。 另一次检查误用了原生只读组合框未绑定的Space，已按实际绑定改用Down，没有新增或改变产品键位。 同进程串联两个旧GUI脚本时还出现前一脚本销毁窗口后遗留的`_drain`计时器警告，最终检查改为各脚本独立进程运行；未因此改写业务循环或游戏输入。
+
+**225项设置、55项输入纠错、121项任务入口、84项GUI检查通过**，最终日志为`runs/settings-focus-clean-settings_ui_smoke.log`、`settings-focus-clean-input_feedback_smoke.log`、`settings-focus-clean-entry_clarity_smoke.log`、`settings-focus-clean-gui_smoke.log`。设置专项覆盖100%、150%、200%，入口专项另含125%；普通／最小窗口、当前字段变禁用、快速返回、详情焦点、原生下拉、指定任务与错误字段均已核对。最终独立进程日志无回调错误或计时器警告，配置写入只发生在临时配置的显式保存检查中，游戏调用为0。
+
+本轮不新增提示文案、控件或键位，不改变日常与周常的执行、资源或保存约定；只修复导航后的焦点。真人体验反馈仍按用户安排留待开发完成后，不能以这些离线检查证明学习与注意力成本接近零。
+
+源码`3ab3e16`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/settings-focus-build.log`。独立配置、`--no-admin-launch`下，鼠标打开周常后不按Tab，直接按Down即展开“开启／关闭”；Esc收起，下次Esc回到首页周常入口。再从齿轮打开设置，保留周常分类，同样直接按Down展开选择。全程未选择新值、保存、检测或启动任务，正常关闭退出码0。截图`runs/settings-focus-package-weekly.png`、`settings-focus-package-choice-screenshot-0.png`、`settings-focus-package-return.png`与`settings-focus-package-gear-choice-screenshot-0.png`保留完整原生路径。239份用户文件与独立配置哈希不变；126项UI素材、4份清单及23个上游文件与源码一致。记录`runs/settings-focus-package-verification.json`，备份`build/userdata-settings-focus-20261029_140018/`，EXE SHA-256为`30199af8941ea202c73497fe37a8ccbcf3f0b4b4e4f35813ca3fee10f302f76f`。本轮证据归档于正式项目`runs/settings-focus-*`及`runs/settings-entry-focus-*`。
+
+## 2026-10-29：任务卡使用原纸面纹样与边框
+
+保留当前任务卡、设置入口与开始计划的交互。只读对照AutoZZZ本地`8511c1b`的`interface.py`、`desktop.py`、`game_widgets.py`和`gui.py`，继续采用整卡点击、鼠标与键盘同一动作、切页保留状态及单独保存设置的原则；没有操作AutoZZZ窗口或迁入其源码。
+
+从既有CN 4.6.0每日实训源图提取288×372静态纸面边框，替换原近似斜线和手绘点线，保留真实地图纹样与底部撕口。原状态栏、任务、数值、奖励区域的RGB及透明度整块清零，运行时绘制本次内容；费用底色收进点线内部。源码、素材清单、署名和复现脚本同步更新，没有使用旧任务完成状态。
+
+**128项参考几何与121项入口检查通过**，日志`runs/card-paper-verified-ui.log`，截图和结果位于`runs/card-paper-reference-ui/`与`runs/card-paper-entry-ui/`。覆盖100%、125%、150%、200%的普通／最小窗口、半露卡片、加入草稿、任务调整、设置返回、运行锁定与费用授权。初次替换遗漏原纸面顶部1逻辑像素偏移，在125%下超出既有位置容差；已恢复原起点后通过，原失败日志`runs/card-paper-reference-initial.log`保留，没有放宽检查容差。
+
+**169项任务状态检查通过**，日志`runs/card-paper-task-state.log`与结果`runs/card-paper-task-state-ui/`，覆盖停止、失败和异常后的未执行原因、实际消耗、原始报告及草稿不被修改；启动均为假后端，实际游戏调用为0。
+
+`runs/card-paper-material-verification.json`核对四边金色点线、不透明像素与源图一致、透明区域RGB亦清零，以及18项根素材清单的输出哈希。源图、参考裁图均沿用此前记录；新的纸面素材SHA-256为`bcb327404434c124170b195456fd4e179ee01d02be30d011bd6f901e5432e8ff`。已查看最终普通窗口截图，实时费用和动作文字可见。
+
+本轮只核对桌面素材与交互，不启动、检测或操作游戏。边缘透明度仍是提取结果，背景遮挡重建和应用专属内容也与游戏有差异；不宣称整屏逐像素相同。真人体验反馈按用户安排留待开发完成后，日常周常组合实机及未接入模式的既有边界不变。
+
+源码`41bd40a`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/card-paper-build.log`。独立配置、`--no-admin-launch`下，核对任务卡新纹样与边框；一击“更换副本”打开当前已选“回忆之蕾／城郊雪原”，打开设置后按Esc回到原副本页，再返回首页仍保留副本卡选择。没有修改选项、保存、检测或启动任务，正常关闭退出码0。239份用户文件与独立配置哈希不变，126项UI素材、4份清单及23个上游文件与源码一致。记录`runs/card-paper-package-verification.json`，备份`build/userdata-card-paper-20261029_133008/`；EXE SHA-256为`9a61b78f18abbcfa0e0751cc1242b4ed117925a4b419f5f9c83895b2976a147c`。原生截图为`runs/card-paper-package-home.png`、`card-paper-package-dungeon.png`、`card-paper-package-settings.png`、`card-paper-package-return.png`及`card-paper-package-final-home.png`；本轮证据已归档到正式项目`runs/card-paper-*`。
+
+## 2026-10-29：按任务卡与设置入口的用户反馈调整交互
+
+用户指出首页的任务卡和设置入口仍需要停下来辨认。本次将“设置”从左侧玩法页签移至指南右侧，用齿轮与文字共同标识，保留原指南印章；各玩法及记录页位置一致，返回保留原页面和入口。任务卡标题简化为任务名，副本卡直接显示当前名称、地点及预计费用；未加入的标签和标题改用灰色。按钮按动作显示“加入计划／调整任务／更换副本／查看安排／查看进度／查看结果”。加入只修改当前草稿，保存仍需显式操作；运行中不能加入，没有开拓力授权时只查看限制。边缘仅部分可见的卡片首次点击先展开，不在动作名称不可见时修改计划。
+
+详情样式同时对照已保存的4.6提示框`autohsr/tests/fixtures/du_runtime/last_area_confirm.png`：居中标题、圆点分隔线、浅色正文、深色底栏、单个右上圆角和关闭胶囊，素材说明见`assets/ATTRIBUTION.md`。标题不在正文重复，短提示居中，长记录完整可选、复制和滚动；原错误、费用和JSON内容不改。无系统标题栏，Esc、Alt+F4和关闭按钮通过同一退出路径恢复入口；主窗口最小化时同步隐藏。没有模态抓取，暂停／停止保持可操作。
+
+- **121项入口专项、128项参考几何与页签检查通过**，分别为`runs/entry-clarity-final-verified-entry_clarity_smoke.log`、`entry-clarity-checks-reference_ui_smoke.log`。覆盖100%、125%、150%、200%的普通／最小窗口、五个页面的一击设置与返回、加入草稿、运行锁定、资源授权、半露卡片先展开、原始结果与配置不变。参考使用既有无账号全宽裁图`runs/reference-daily-inspection.png`，SHA-256为`ed431d67e4af97330cde6864fb23c530b58f0e3b2f576a3785d548e0d6f9c6f3`。
+- **101项详情检查通过**，`runs/game-dialog-reference-final.log`与`runs/game-dialog-ui/`。四种缩放下核对参考纸色、底栏分界和按钮尺寸，以及长记录、短提示、最小化／还原、Esc／Alt+F4、窗口边缘和模拟620×360工作区。初期确实发现无边框窗口返回焦点、按钮图片纵向重复及设置按钮继承白色底的问题，已修复；原失败及中间截图日志保留。采样检查按明暗分界定位抗锯齿边缘，尺寸允许整数像素舍入。
+- **169项任务结果、192项设置、60项首页反馈、24项计划、84项GUI检查通过**。日志分别为`entry-clarity-release-task_card_state_smoke.log`、`entry-clarity-verified-settings_ui_smoke.log`、`entry-clarity-checks-home_feedback_smoke.log`、`entry-clarity-final-verified-plan_ui_smoke.log`、`entry-clarity-final-verified-gui_smoke.log`。旧测试中“未加入卡片直接打开设置”、设置与文字居中等预期已同步新交互；计划测试改经真实关闭协议退出详情，不直接销毁窗口绕过返回流程。返回入口检查保留应用内焦点目标，不把其他桌面应用短暂取得前台当成丢失返回位置。中间失败和漏传参考参数的记录均保留，未重跑后端全量测试。
+
+原生源码核验使用明确标注“离线入口核验”的假后端窗口与独立临时配置，记录`runs/entry-clarity-native-verification.json`：详情中心误差0，一次开启／关闭后返回原任务卡，退出码0、配置字节未变。截图为`entry-clarity-native-open-screenshot-0.png`等。截图工具在关闭后曾返回其他前台窗口像素，已停止依赖旧画面并重新绑定核验窗口；原生观察只确认记录中的一次返回，不将后续缓存截图当作Enter再次开启或Alt+F4成功的证据，这两项仍以专项事件检查为准。没有启动、检测或操作游戏。
+
+旧正式版首页截图保存在`runs/entry-clarity-before-home.png`，来源提交和哈希见`entry-clarity-baseline.json`；新版普通／最小窗口见`runs/entry-clarity-ui/`。这些检查验证入口、反馈和局部参考样式，不能证明真实玩家的学习／注意力成本接近零，也不证明整屏逐像素一致。日常周常组合实机、货币战争周常与积分奖励的原有边界不变。
+
+源码`eb92eff`经`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/entry-clarity-build.log`。独立配置、`--no-admin-launch`下，原生鼠标一击齿轮打开设置，Esc返回后入口仍高亮；一击邮件卡“加入计划”使日常从3项变4项并出现保存入口，再点“调整任务”直接聚焦邮件选项。将该独立草稿恢复关闭后返回，原卡位置保留、保存入口消失，正常退出码0。没有保存、检测或执行任务；239份用户文件及独立配置哈希不变。125项UI素材、4份清单、23个上游文件与源码一致，记录`runs/entry-clarity-package-verification.json`，备份`build/userdata-entry-clarity-20261029_130545/`。EXE SHA-256为`c9bd3c62a6a4db205e02d017a0a99c030d391cb8e21f48cd131037e0f11cf870`。原生截图为`runs/entry-clarity-package-home.png`、`package-settings.png`、`package-return.png`、`package-joined.png`、`package-task-settings.png`与`package-restored.png`（后五项均同`entry-clarity-`前缀）；相关证据已归档到正式项目`runs/entry-clarity-*`与`runs/game-dialog-*`。
+
+## 2026-10-29：详情在当前窗口中央打开并返回原入口
+
+从`3cc4e2c`提取原`_show_summary`方法，在相同临时配置和窗口位置离线重放：主窗口客户区`[611,445,1651,1201]`，详情客户区`[11,45,1021,510]`，中心相差`[-915,-746]`像素。新实现对应`[926,790,1021,510]`，中心误差为0；坐标、版本及截图见`runs/summary-placement-before-replay.json`与`summary-placement-after.json`及同名PNG。初次探针重复运行时复用了文件名，旧`summary-placement-baseline.json`和`summary-placement-before.png`已被修后输出覆盖，不能作为修前证据；上述基线是从原提交重新取得的方法重放的结果。
+
+现在先隐藏详情窗，测量原生边框后按助手客户区居中，并通过当前显示器工作区限制位置和大小；不以主显示器原点代替当前窗口位置。关闭按钮、Esc和标题栏关闭恢复原入口焦点；替换详情仍保留原入口，原入口隐藏时不强行把焦点送回隐藏控件。正文使用可伸缩网格，长文本保留滚动、选择和只读状态，底部关闭按钮优先保留。没有增加模态输入抓取，没有改写结果、配置、任务启动或游戏输入。
+
+**69项专项检查通过**，`runs/summary-dialog-release-smoke.log`与`runs/summary-dialog-ui/`。覆盖100%、125%、150%、200%，偏离原点的主窗口、实际工作区边缘、模拟620×360小工作区、长文本末尾、三种关闭方式、替换窗口、隐藏原入口及差分／货币战争的独立详细记录。最初两次检查错误地将独立Toplevel当成受主窗口客户区裁切的子控件，日志`runs/summary-dialog-smoke.log`与`summary-dialog-smoke-v2.log`保留；改为核对原生窗口工作区和其自身子控件后通过。
+
+**169项任务卡、60项首页反馈、24项计划、84项GUI检查通过**，日志为`runs/summary-dialog-task_card_state_smoke.log`、`summary-dialog-home_feedback_smoke.log`、`summary-dialog-plan_ui_smoke.log`与`summary-dialog-gui_smoke.log`。相关配置和原始结果未变，没有重跑后端全量单元测试。
+
+另以独立临时配置打开明确标注“离线详情核验”的源码窗口，使用原生键盘按Esc关闭、Enter再次打开同一结果，再用标题栏关闭。两次客户区中心误差均为0，两次关闭均返回原任务卡，正常退出码0，配置字节未变；记录`runs/summary-dialog-native-verification.json`，画面为`summary-dialog-native-open-screenshot-0.png`及`summary-dialog-native-reopened-screenshot-0.png`。第一次按缓存AX索引关闭遇到工具索引失效，刷新AX后正常关闭，没有重发任何游戏输入。
+
+这次修复详情位置及返回路径；原生标题栏和详情样式仍与游戏不同，不证明整屏复刻或真实玩家学习／注意力成本已经验收。未启动、检测或操作游戏。
+
+源码`e425c11`通过`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，最终日志`runs/summary-dialog-build-final.log`。独立配置下使用`--no-admin-launch`核对正式版正常启动、主入口显示及正常关闭，退出码0；截图`runs/summary-dialog-package-home.png`。详情操作由上述源码离线原生窗口与专项检查验证，正式版未启动任务来制造结果。239份用户文件和独立配置哈希未变，125项UI素材、4份清单及23个上游文件与源码一致。记录`runs/summary-dialog-package-verification.json`，备份`build/userdata-summary-dialog-20261029_121716/`，EXE SHA-256为`95f981afdd035bcf07e22e7f10fd1a00dc3ef93b1e0306c0c25f76b6b79229f1`。专项、任务卡、计划与首页证据均已归档到正式项目`runs/summary-dialog-*`目录，基线重放与修后位置保留在`runs/summary-placement-*`。
+
+## 2026-10-29：区分任务安排与未执行结果
+
+在`5d0d73e`上用假后端复现：计划在委托阶段停止后，副本卡显示“未执行”，按钮仍是“副本设置”，点击会进入生存索引，无法直接查看这项为何未执行。运行前未启用的任务也显示“跳过”，与实际执行结果混淆。原记录`runs/task-card-state-baseline.json`、`task-card-state-before-home.png`和`task-card-state-before-stopped.png`保留。同次检查确认最小窗口的每日设置选项均在完整祖先可见范围内，没有据此改动布局。
+
+现在运行前显示“待执行／未加入”；后端实际报告的“跳过”不变。已结束流程中尚未开始的任务成为本次结果，按钮显示“查看结果”；一击打开该项原因，包含原报告提供的错误、未保存和资源待核对提示，不再跳到设置。状态已写“未执行”时，详情不再重复“此项未执行”。正在执行的任务若意外中断，也保留具体原因及“未确认完成”，不再要求另找日志。修改下一次每日计划后恢复设置入口，原报告、总摘要与已核实结果不被单项查看覆盖。没有改变后端任务、默认选择或主按钮。
+
+- **169项专项检查通过**，`runs/task-card-state-release-task_card_state_smoke.log`与`runs/task-card-state-ui/`。覆盖100%、125%、150%、200%最小窗口、停止、启动失败和运行异常、鼠标一击打开副本及实训的本次详情、真实跳过与未加入区分、费用与错误保留、设置入口可见性、显示偏好不清结果、下一次计划恢复设置入口；12次启动均为显式调用主按钮产生的假后端，没有游戏调用，配置和原始报告未变。
+- **186项设置、24项计划、60项首页反馈、84项GUI检查通过**。日志为`runs/task-card-state-settings_ui_smoke.log`、`task-card-state-final-plan_ui_smoke.log`、`task-card-state-home_feedback_smoke.log`与`task-card-state-release-gui_smoke.log`；补充错误原因后重跑了专项、计划与GUI检查，扩展运行异常时再次核对专项与GUI。没有改后端或重跑全量后端单元测试。
+
+专项脚本前三次分别误将规范化运行配置与未展开默认值整体比较、未进入ScrolledText的外层容器、在尚有重绘回调时用根窗口取消子控件回调，日志`runs/task-card-state-smoke.log`、`task-card-state-smoke-final.log`和`task-card-state-smoke-final-v2.log`保留。修正测试方法后通过；`task-card-state-smoke-final-v3.log`为精简重复详情前的105项通过记录。已查看最终预览、停止及失败详情截图。这些检查证明状态与按钮去向一致，不代替真实玩家使用测试或整屏复刻验收；未启动、检测或操作游戏。
+
+源码`d0f9558`通过`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/task-card-state-build.log`。用独立配置和`--no-admin-launch`打开，核对“待执行／未加入”、邮件卡一击进入对应设置及返回后的原卡片位置；没有修改选项、保存、检测或运行任务，正常关闭退出码0。截图`runs/task-card-state-package-home.png`、`task-card-state-package-settings.png`和`task-card-state-package-return.png`保留；提前结束和异常详情由上述假后端专项验证。239份正式用户文件与独立配置哈希未变，125项UI素材、4份清单和23个上游文件一致。记录`runs/task-card-state-package-verification.json`，备份`build/userdata-task-card-state-20261029_114913/`，EXE SHA-256为`b1cad3671689e6caab5019ccee9141e0d5729eadc6fb6a76480295f1a3de5145`。设置、计划与首页结果归档为`runs/task-card-state-settings-ui/`、`task-card-state-plan-ui/`和`task-card-state-home-feedback-ui/`。
+
+## 2026-10-29：周常提示随计划时间与游戏周刷新
+
+在`62b4ec8`上用临时配置和假时钟复现：助手从周四10:59:59保持打开至11:00，后端资格已到期，首页却仍显示“周四11:00后”，直到修改表单才更新。原记录`runs/weekly-preview-baseline.json`、`weekly-preview-before-due.png`和`weekly-preview-after-due-baseline.png`保留，配置字节未变，没有调用游戏后端。
+
+现在复用已有界面事件轮询，空闲时按分钟核对预览，内容没变就不写变量或触发重绘。运行／暂停保持冻结快照及进度；同周已完成／已跳过结果保留，跨周后恢复本周资格预览。原结果仍在，属于该结果的摘要标为“上次计划”，周常详情使用冻结游戏周日期；不会改写原报告，也不重新标记较新的独立玩法结果。待核对、停止、无游戏周或报告未保存的结果不因时钟变化消失。未增加定时任务、启动动作、账号推断或配置写入。
+
+- **35项假后端专项检查通过**，`runs/weekly-preview-smoke-final.log`和`runs/weekly-preview-ui/`。覆盖到期、时钟回退、周一02:00与04:00、无效草稿、关闭周常、同周保留／跨周切换、待核对与报告失败、独立结果、还原窗口、无重复重绘，以及一次点击后的运行／暂停跨周快照。全部时间变化只触发显示；唯一启动来自显式调用主按钮，实际游戏后端调用为0，配置与原始报告未改。
+- **20项周计划单元测试、24项计划编排GUI、60项首页反馈、84项GUI检查通过**，`runs/weekly-preview-unit.log`、`weekly-preview-plan-ui.log`、`weekly-preview-home-feedback.log`与`weekly-preview-gui.log`。保留日常后接周常、账号周记录去重、原始结果、暂停停止、单一主按钮和保存语义。本轮未修改后端或重跑全量单元测试。
+
+已查看到期及跨周后的截图，首页继续显示计划与真实状态，没有添加提示段落或新的启动入口。这次修复时间提示过期，不证明真实玩家的学习／注意力成本或整屏游戏复刻已经验收；日常周常组合实机、货币战争周常与积分奖励的既有边界不变。未启动、检测或操作游戏。
+
+源码`6b56d52`通过`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，构建日志`runs/weekly-preview-build.log`。使用独立临时配置和`--no-admin-launch`，11:27打开窗口并保持首页不动；实际跨过11:29后，提示从“差分宇宙 · 1 局 · 周四 11:29 后”自动变为“差分宇宙 · 1 局 · 到期，运行时核对”。没有修改系统时间、点击运行／保存、切页或操作游戏。截图`runs/weekly-preview-package-before-due.png`与`weekly-preview-package-after-due.png`、观察记录`runs/weekly-preview-native-observation.json`保留。正常关闭退出码0，239份正式用户文件和独立配置哈希未变；125项UI素材、4份清单、23个上游文件与源码一致。发布记录`runs/weekly-preview-package-verification.json`，备份`build/userdata-weekly-preview-20261029_112657/`，EXE SHA-256为`27112aa12e1c2e309acd7781c209da4402f1699efebdea925313363dd7fa95a5`。本轮计划与首页结果分别归档为`runs/weekly-preview-plan-ui/`和`weekly-preview-home-feedback-ui/`。
+
+## 2026-10-29：校正指南图标与任务卡静态素材
+
+以`1d3bc55`为修改前基线，对照同一批已保存的CN 4.6.0画面，发现每日实训图标混入原指针，活跃标记含放射纹且失去渐变，任务水印被拉伸并叠在偏黄的内页上。此次重提取五项既有素材：三个页签改取未选中且无遮挡的区域，连续计算透明度并保持原比例；活跃标记改取任务卡区域，保留金色渐变、白色内环和抗锯齿；水印保留原色及比例，内页改为白色。源图、裁切、方法和输出哈希见`assets/ui/sources.json`，未新增素材数量或分发整图。
+
+页签选中底色与悬停／键盘焦点分开；光晕只模糊透明度，避免透明像素的黑色RGB混入边缘。125%缩放对照同时发现副本列表边缘的不足一像素区域会产生空裁切异常，现跳过该区域并始终恢复外层画布；原绘制异常不被吞掉。没有改变任务名称、计划默认值、费用说明、主按钮或后端流程。
+
+- **3项绘制回归通过**，`runs/guide-artwork-painter.log`。将同三项检查作用于基线`Painter`时复现5个空裁切错误（含四种缩放子项）及1个光晕发黑失败，原记录`runs/guide-artwork-painter-before.log`保留。
+- **124项参考与页签检查通过**，`runs/guide-artwork-reference-final.log`。覆盖100%、125%、150%、200%的正常／最小窗口、参考纸面比例与位置，以及三个页签真实截图中的悬停、离开、键盘焦点和空格导航；没有绘制回调异常，配置字节不变。首次扩展脚本误用导航别名导致`KeyError: universe`，保留`runs/guide-artwork-reference.log`；改用实际页签控件后通过。
+- **84项GUI、105项缩放交互、99项周常入口还原检查通过**，`runs/guide-artwork-gui.log`、`guide-artwork-responsive.log`与`guide-artwork-header.log`。假后端覆盖运行锁定、暂停停止、草稿、返回焦点、缓存布局、最大化／还原后的按钮可见性；未重跑后端全量单元测试。
+
+已查看同尺寸1920×1080的修改前后首页，以及更新后的生存索引和旷宇纷争截图（`runs/guide-artwork-before-*.png`、`guide-artwork-final-*.png`）与`runs/guide-artwork-card-comparison.png`。对照图单独标明游戏参考、修改前和修改后，任务文本及状态各自独立。这些证据证明局部素材及交互改进，不代表整屏像素一致或真实玩家学习／注意力成本已经验收。原水印上端被标题遮挡的部分尚未恢复，纸面边饰等重绘部分仍有差异；日常周常组合实机、货币战争周常和周积分奖励的既有边界不变。未启动、检测或操作游戏。
+
+源码`861df90`通过`tools/build.ps1`构建并更新正式版`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，构建日志`runs/guide-artwork-build.log`。用`--no-admin-launch`打开，按当前画面依次进入生存索引、旷宇纷争并返回每日实训；核对新的图标、焦点、任务卡和计划入口后正常关闭，退出码0。未点击保存、检测或运行。239份用户文件哈希未变，125项UI素材、4份清单及23个上游文件与源码一致；记录`runs/guide-artwork-package-verification.json`，备份`build/userdata-guide-artwork-20261029_105058/`，EXE SHA-256为`69d9c28c0aa55ada8947834f7abafb1a4b475894b45677197dca503b1f972e4c`。正式截图为`runs/guide-artwork-package-home.png`、`guide-artwork-package-tasks.png`、`guide-artwork-package-universe.png`及`guide-artwork-package-return.png`。参考、缩放和还原结果分别归档为`runs/guide-artwork-reference-ui/`、`guide-artwork-responsive-ui/`及`guide-artwork-header-ui/`。
+
+## 2026-10-29：还原窗口后保持周常入口可见
+
+上一轮正式截图记录了还原后周常按钮未出现、切页后恢复。本轮在`d3b8d01`上使用假后端复现：不切换页面，直接最大化再还原缓存布局，周常按钮落到可见范围之外；原失败`runs/header-restore-before.log`与截图`runs/header-restore-before.png`保留。原来的调用按钮测试仍能打开设置，不能证明玩家看得到或点得到按钮。
+
+原因是顶部计划容器的宽度依赖`Header.paint()`更新，复用画面时该次重绘可能被跳过。现将位置计算接到标题区域的实际尺寸变化；背景绘制只负责画面，页面切换仍主动更新计划容器。没有改变文案、按钮样式、点击动作、配置或后端流程。
+
+**99项专项检查通过**，`runs/header-restore-after.log`与`runs/header-restore-ui/`。覆盖100%、150%、200%，每日实训与生存索引，最大化／还原各重复两次；核对“周常计划”和“开始计划”在全部祖先容器及窗口内完整可见、还原复用原布局、周常打开正确分类、返回恢复焦点，配置字节不变。已查看同一普通窗口修复前后截图，按钮由缺失恢复到顶部右侧。
+
+**63项背景、24项布局缓存、123项过渡、105项缩放交互、84项GUI检查通过**，日志`runs/header-restore-*_smoke.log`；过渡、缩放及缓存截图另存为`runs/header-restore-transition-ui/`、`runs/header-restore-responsive-ui/`及`runs/header-restore-cache-ui/`。覆盖场景衔接、空闲无重绘循环、草稿、动态候选与范围、运行锁定、暂停停止和布局失败恢复。本轮未修改后端或重跑全量单元测试。
+
+早期探针漏考虑尚未绘制的控件没有`_photo`，原日志`runs/cached-paint-probe.log`保留，修正后的几何记录为`runs/cached-paint-probe-v2.log`。扩展背景检查的首次指针命中断言失败记录为`runs/header-position-before.log`，该路径此前已淘汰待验证的缓存；未以该断言推断按钮缺失，后续用直接缓存还原及完整祖先边界检查复现。
+
+源码`359c6d2`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/header-restore-build.log`。以`--no-admin-launch`核对首页最大化、直接还原且不切页，周常入口完整显示；按当前画面点击按钮进入周常计划，再以Esc返回原入口，正常关闭退出码0。未点击保存、检测或运行，239份用户文件哈希未变；125个UI素材、4份清单、23个上游文件一致。核对记录`runs/header-restore-package-verification.json`，备份`build/userdata-header-restore-20261029_101316/`；EXE SHA-256为`81c7921c5b9ff97db93654a8ecc138df15daed85817abbae8b3b775c5afce333`。正式截图为`runs/header-restore-package-home.png`、`header-restore-package-maximized.png`、`header-restore-package-restored.png`、`header-restore-package-weekly.png`及`header-restore-package-return.png`。
+
+这次修复稳定后的周常入口缺失，不代表已消除整个缩放过渡的裁切或闪烁。未启动、检测或操作游戏；整屏与游戏完全一致、真实玩家学习／注意力成本、日常周常组合实机仍未验收，货币战争周常与周积分领奖尚未接入。
+
+## 2026-10-29：复用最近窗口布局并保持动态控件状态
+
+在`0e26d57`基础上，窗口切换最多保留当前和前一个尺寸的布局。返回相同尺寸与比例时复用控件、主题图片；准备第三种布局前释放较早的控件与图片。隐藏画面记录内容变化，恢复时只重绘内容或位置变化的部分；任务、队列、草稿变量及运行对象仍共用当前状态。新布局准备失败时恢复原界面，错误继续报告。未修改游戏后端、CLI、默认配置、图标、字体或颜色。
+
+专项检查发现：改选历战余响后，缓存布局可能仍显示旧的副本下拉选项与次数上限。原失败保留于`runs/resize-cache-dynamic-before.log`。现同时转移下拉候选、数值范围、滑块位置及当前文字选区，不在窗口切换时规范化尚未填完的输入。
+
+- **24项专项检查通过**，`runs/resize-cache-dynamic-after.log`与`runs/resize-cache-lifecycle-ui/`。通过实际选项操作覆盖3次与24次上限切换、滑块取值、无效草稿、取消选区、任务结果像素、日志标签、运行锁定、暂停／停止、两个布局上限、第三种尺寸释放旧控件，以及完整构建后模拟失败的恢复。配置字节未变，假后端拒绝游戏运行。
+- **123项过渡、105项缩放交互、123项设置绘制检查通过**，最终日志`runs/resize-cache-verified-*_smoke.log`；截图与结果归档于`runs/resize-cache-transition-ui/`、`runs/resize-cache-responsive-ui/`与`runs/resize-cache-paint-ui/`。覆盖100%、150%、200%缩放、普通／最大化／还原、草稿与焦点、下拉菜单、运行对象、主题图片与回调数量。设置绘制逐像素比较的是复用后画面与应用自身完整重绘结果，不代表与游戏整屏一致。
+- **186项设置、63项背景、165个布局场景与15项布局交互、84项GUI、60项首页反馈、55项输入反馈检查通过**，`runs/resize-cache-final-*_smoke.log`。这批在最终补齐动态控件转移之前完成；补齐后重测上述专项、过渡、缩放与设置绘制。未修改后端，未重跑全量单元测试。
+
+原过渡脚本的绘制钩子跨复用残留、截图变量重名，以及专项脚本在字段映射前设置焦点、绕过任务事件直接改卡片的失败均已保留为`runs/resize-cache-resize_transition_smoke.log`、`resize-cache-v2-resize_transition_smoke.log`、`resize-cache-v3-transition.log`及`resize-cache-lifecycle*.log`；修正测试方式后通过，未把这些脚本问题写成游戏或实机验收失败。
+
+最终使用同一`profile_layout_transition.py`脚本、150%系统缩放和相同页面顺序复测，见`runs/resize-cache-final-profile.json`及对应调用分析。下表为本机单样本、含性能分析开销；首页第一次最大化仍需创建布局，随后切换复用已准备的两个尺寸。不代表所有设备或正式EXE的性能保证。
+
+| 页面／操作 | 上一版 | 本次 |
+| --- | ---: | ---: |
+| 首页最大化 | 1684毫秒 | 1536毫秒 |
+| 首页还原 | 1202毫秒 | 537毫秒 |
+| 每日设置最大化 | 1115毫秒 | 462毫秒 |
+| 每日设置还原 | 834毫秒 | 264毫秒 |
+
+源码`f1ea1e6`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/resize-cache-build.log`。以`--no-admin-launch`核对最大化、邮件卡直达每日设置、关闭邮件后的4项草稿、还原后的值与焦点、恢复原开关、Esc返回原卡及5项计划，正常关闭退出码0。未点击保存、检测或运行，239份用户文件哈希未变；125个UI素材、4份清单、23个上游文件一致。核对记录`runs/resize-cache-package-verification.json`，备份`build/userdata-resize-cache-20261029_094719/`；EXE SHA-256为`83f33b217b06ed23e9a0ca89d7da1a80d0feb19877f0baf6c060f187e47796ed`。正式截图为`runs/resize-cache-package-maximized.png`、`resize-cache-package-settings.png`、`resize-cache-package-draft.png`、`resize-cache-package-restored.png`及`resize-cache-package-return.png`。
+
+首次桌面采集得到目标窗口外画面，保留为本地`runs/resize-cache-package-initial-capture-mismatch.png`，不作为界面证据或打包素材。前置后普通窗口首帧`resize-cache-package-home.png`尚未显示周常按钮，随后稳定的最大化和返回首页截图均显示入口；未将单帧检查当作连续过渡验收。
+
+已查看失败恢复后的首页和替换前的设置画面。还原时旧大布局仍可能短暂裁切，不能称为即时或无闪烁。未启动、检测或操作游戏；真实玩家学习／注意力成本、与游戏整屏逐像素一致、日常周常组合实机仍未验收，货币战争周常与周积分领奖尚未接入。
+
+## 2026-10-29：减少窗口缩放的重复绘制
+
+在`f7c2291`上使用假后端与临时配置分析首页、每日设置的最大化和还原；本机150%缩放下四次切换为2337、2507、2784、1424毫秒。主要耗时来自旧布局在替换前重绘，以及设置页将整块纯色背景按双倍尺寸绘制后缩小。原计时、调用分析与诊断脚本保留为`runs/resize-performance-before.json`、`resize-performance-before-*.txt`／`.prof`及`profile_layout_transition.py`。
+
+现直接准备新布局，保留旧画面至替换；设置页只生成顶部装饰图片，其余区域使用同色画布背景。设置页完全遮住的场景暂停显示，返回指南后恢复。未改变绘制倍率、图标、字体、颜色、原生控件或点击区域。
+
+- **84项绘制检查通过**，`runs/resize-performance-paint.log`与`runs/resize-performance-paint-ui/`。三档系统缩放、普通／最大化窗口、全部六个设置分类，含实际消耗和计时文字；将新装饰图片铺回完整背景后，与原整页绘制逐像素一致。此处仅证明优化前后设置画面一致，不证明与游戏整屏相同。
+- **123项过渡检查通过**，`runs/resize-performance-transition.log`与`runs/resize-performance-transition-ui/`。旧画面不再在待替换尺寸上重绘，旧控件与原字号保留到新画面准备完成，替换后旧控件释放；三档缩放下首页和每日设置均覆盖，配置未写入。
+- **102项缩放交互、186项设置、63项背景衔接、165个布局场景与15项布局交互、84项GUI检查通过**，日志为`runs/resize-performance-*_smoke.log`。覆盖草稿、焦点、下拉菜单、运行锁定、暂停停止、页面返回及场景恢复。未修改后端，未重跑全量单元测试。
+
+最终代码使用同一分析脚本与窗口顺序复测，见`runs/resize-performance-final.json`及对应调用分析。下表是本机四次单样本、带性能分析开销的对照，不代表其他设备或正式EXE的性能保证。
+
+| 页面／操作 | 修改前 | 修改后 |
+| --- | ---: | ---: |
+| 首页最大化 | 2337毫秒 | 1684毫秒 |
+| 首页还原 | 2507毫秒 | 1202毫秒 |
+| 每日设置最大化 | 2784毫秒 | 1115毫秒 |
+| 每日设置还原 | 1424毫秒 | 834毫秒 |
+
+源码`094d0e2`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/resize-performance-build.log`。以`--no-admin-launch`核对首页、最大化、邮件卡直达每日设置、还原、Esc返回原卡片及正常关闭，退出码0；所捕获的各帧画面完整，邮件焦点与返回位置保持、指南背景恢复。未点击保存、检测或运行，239份用户文件哈希未变；125个UI素材、4份清单、23个上游文件一致。核对记录为`runs/resize-performance-package-verification.json`，备份`build/userdata-resize-performance-20261029_085056/`；EXE SHA-256为`1c1ba831f2e0437b390f33d7abe11c070aec2206bf83d6589cdd3c1bad944022`。正式截图为`runs/resize-performance-package-home.png`、`resize-performance-package-maximized.png`、`resize-performance-package-settings.png`、`resize-performance-package-restored.png`及`resize-performance-package-return.png`。
+
+已查看切换前与稳定画面。还原时旧的大布局仍会暂时裁切，缩放等待尚未消除，不能称为即时或无闪烁。检查使用假后端，未启动、检测或操作游戏；真实玩家学习／注意力成本、整屏逐像素一致、日常周常组合实机仍未验收，货币战争周常与周积分领奖尚未接入。
+
+## 2026-10-29：首页任务直达每日设置
+
+诊断复现：首页邮件卡的“邮件设置”进入生存索引，页面主体仍是副本目录，仅把焦点移到下方勾选框。原记录保留为`runs/task-settings-before.log`、`runs/task-settings-before-mail.png`。现将委托、实训、邮件和勋礼卡片接到独立“每日任务”分类，直接聚焦对应开关；返回恢复原卡片和浏览位置。实训合成移到实训奖励下一行，保留数量、材料和适用条件。副本卡保留原生存索引捷径：关闭时定位启用开关，开启时定位所选副本，避免启用后再绕回设置。
+
+新开关与生存索引勾选共用原变量，保持草稿、显式保存、运行锁定及开拓力授权限制。每日任务分类使用现有星铁设置行、原字体和既有图标；未新增第三方素材或修改游戏执行、默认配置和CLI。卡片已有结果时仍打开详情。
+
+- **最终186项设置检查、84项GUI检查通过**，`runs/task-settings-battle-route-settings.log`、`runs/task-settings-battle-route-gui.log`。覆盖四张卡片的实际点击、对应焦点、原卡片返回、计划状态同步、两个副本入口状态、开拓力授权、运行锁定、草稿和显式保存，以及100%、150%、200%的默认／最小窗口。已查看每日任务页实际Tk截图，最终截图和结果归档为`runs/task-settings-ui/`。
+- **99项缩放检查、165个布局场景与15项布局交互、54项参考检查通过**，`runs/task-settings-final-responsive_ui_smoke.log`、`task-settings-final-ui_layout_smoke.log`、`task-settings-final-reference.log`。包括新分类与开关焦点在最大化、还原后保留，返回首页仍定位原卡片；原任务比例和结果详情入口保持。这批检查在最终保留关闭状态副本捷径之前完成，该分支调整后已重测上述186项设置及84项GUI。缩放截图和结果归档为`runs/task-settings-responsive-ui/`。
+
+首次正式源码`ab83691`通过`tools/build.ps1`构建，实查邮件卡直达、关闭任务后的4项计划、Esc返回原卡片、还原开关后的5项计划及正常退出，退出码0。239份用户文件哈希未变，125个素材、4份清单与23个上游文件一致；核对记录`runs/task-settings-package-verification.json`，备份`build/userdata-task-settings-20261029_080957/`，EXE SHA-256为`fcc1d7f92283be2ae3713940efb8f6445111d03d744f52a222b88b4c7363954e`。截图为`runs/task-settings-package-home.png`、`task-settings-package-mail.png`、`task-settings-package-draft.png`、`task-settings-package-draft-home.png`及`task-settings-package-return.png`。未点击保存、检测或运行。
+
+该构建最大化时仍捕获到文字交叠的中间帧，`runs/task-settings-package-maximized.png`保留；同一窗口随后恢复完整，见`task-settings-package-maximized-settled.png`。诊断确认Tk切换全局主题时，仍可见的旧按钮文字宽度从88变成140像素，见`runs/task-settings-theme-before.log`。现为旧控件保留原主题的字体、边距、状态和图形元素，再创建新布局；诊断恢复为88→88，见`task-settings-theme-after-v2.log`。旧布局释放前的**111项过渡检查通过**，覆盖首页与每日设置、三档缩放、最大化和还原，日志`runs/task-settings-theme-transition-v2.log`。原失败诊断保留，未删改。
+
+已查看旧布局释放前的截图：文字交叠消失，但还原过程中旧大布局仍会暂时裁切；新布局完成后恢复全部行。截图检查不是连续视频验收，本机该轮过渡测量1.5～4.6秒，不能称为即时或无闪烁切换。
+
+主题修复后的**102项缩放、186项设置、165个布局场景与15项布局交互再次通过**，日志为`runs/task-settings-theme-responsive_ui_smoke.log`、`task-settings-theme-settings_ui_smoke.log`、`task-settings-theme-ui_layout_smoke.log`。反复缩放复用旧主题元素，图片与回调数量有界；草稿、焦点、运行锁定、暂停停止和结果保持。最终离线证据另存于`runs/task-settings-theme-transition-ui/`、`runs/task-settings-theme-ui/`和`runs/task-settings-theme-responsive-ui/`。
+
+最终源码`383e99b`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/task-settings-theme-final-build.log`。以`--no-admin-launch`实查邮件卡直达对应开关、最大化、还原、Esc返回原卡片和正常关闭，退出码0。放大与还原后首次返回的截图均显示完整行、正常字号及邮件开关焦点；这两帧不替代连续过渡验收。未点击保存、检测或运行，239份用户文件哈希未变；125个UI素材、4份清单、23个上游文件一致。核对记录`runs/task-settings-theme-final-package-verification.json`，备份`build/userdata-task-settings-theme-final-20261029_083010/`；EXE SHA-256为`18f28d0a60fa85319b97e0f0cda128ef97fd0830a24fe3cfc54a34f015286441`。正式截图为`runs/task-settings-theme-final-package-home.png`、`task-settings-theme-final-package-mail.png`、`task-settings-theme-final-package-maximized.png`、`task-settings-theme-final-package-restored.png`及`task-settings-theme-final-package-return.png`。
+
+离线回归使用假后端，正式版检查仅操作助手界面；未启动、检测或操作游戏。上述结果证明入口与状态行为，不证明真实玩家学习／注意力成本，也不代表整屏与游戏逐像素一致；日常周常组合实机、货币战争周常和周积分领奖仍未验收或接入。
+
+## 2026-10-29：缩放切换时保留旧控件
+
+最大化、还原和调整比例时，新界面在旧界面下面完成布局与绘制，再释放旧控件和图片。旧主按钮不再先销毁；后台线程、计划和状态继续复用。场景背景直接使用已缓存的目标尺寸图片，移除二次放大缩小和重复书页绘制；更新画布图片时先关联新图片，再释放上一张。搜索框销毁时清理自身变量上的回调，避免新旧控件短暂共存时清理错变量。
+
+- **45项过渡检查通过**，`runs/transition-swap-ui.log`。100%、150%、200%下自动响应最大化和还原；在旧控件即将释放的时刻，检查旧主按钮仍完整映射、旧主题图片仍存在、旧界面仍在最上层、新主按钮与书页绘制已就绪，切换后旧控件释放且配置未写入。
+- **93项缩放交互检查通过**，`runs/transition-responsive-ui-retry.log`。草稿、当前设置页、编辑位置、搜索、结果、日志、队列、暂停停止、下拉菜单及对话框归属保持，反复切换后图片和根窗口回调数量有界。首次回归暴露的搜索回调清理错误保留在`runs/transition-responsive-ui.log`，修复后重测通过。
+- **156个布局场景、15项布局交互、84项GUI、63项背景和54项参考检查通过**，`runs/transition-ui_layout_smoke.log`、`transition-stage-gui.log`、`transition-guide_backdrop_smoke.log`、`transition-reference.log`。使用假后端与临时配置；本轮未启动、检测或操作游戏。
+
+首次正式构建`30732df`核对首页与最大化时发现：旧控件保留期间，Tk会复用缓存的点数字体，按钮与部分输入文字没有随新界面放大。原截图保留为`runs/transition-package-maximized.png`及`transition-package-maximized-settled.png`；此构建正常关闭，239份用户文件哈希未变。已改为按当前比例提供明确的像素字号，覆盖按钮、设置值、日志、下拉列表与键盘提示。原测试新建Font对象测量，绕过了已有字体缓存；现直接测量控件使用的字体，新回归在恢复旧点数字体时确实失败，见`runs/transition-point-font-regression.log`。修正后的**51项切换与字号检查通过**，`runs/transition-font-swap.log`。
+
+字号修正后，**93项缩放交互、156个布局场景与15项布局交互、123项设置及54项参考检查再次通过**，最终日志为`runs/transition-final-responsive_ui_smoke.log`、`transition-final-ui_layout_smoke.log`、`transition-final-settings_ui_smoke.log`及`transition-final-reference.log`。已查看最终假后端最大化画面，主按钮、周常入口与文字比例完整。
+
+最终源码`56d7d2e`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/transition-final-build.log`。以`--no-admin-launch`检查首页、最大化、周常设置、还原保留设置分类、Esc返回和正常关闭，退出码0；所查看的最大化画面中主按钮、导航及原生文字比例完整。未点击保存、检测或运行；239份配置及运行证据哈希未变，125个UI素材、4份清单、23个上游文件一致。核对记录`runs/transition-final-package-verification.json`，备份`build/userdata-transition-final-20261029_074758/`；EXE SHA-256为`5233ad2ede4d22132fa6240aa9f2df08679337ffa70f070807172126f650f179`。正式截图为`runs/transition-final-package-home.png`、`transition-final-package-maximized.png`、`transition-final-package-weekly.png`、`transition-final-package-restored.png`及`transition-final-package-return.png`，最终离线切换结果与截图归档为`runs/transition-final-resize-ui/`、`runs/transition-final-responsive-ui/`。
+
+先前停绘／画面缓存试验在慢速模拟中仍出现黑边或缺失控件，未采用；原中间帧继续保留。最终实现保留实际控件，不截取桌面或缓存窗口截图。字号修正后的离线自动切换本机计时为1.9～3.2秒，不能宣称即时缩放；上述结构与布局检查也不等于连续画面的无闪烁验收。整屏逐像素一致、真实玩家学习／注意力成本和日常周常组合实机仍未验收，货币战争周常与周积分领奖尚未接入。
+
+## 2026-10-29：随窗口等比放大并保留操作位置
+
+更大窗口和最大化窗口按可用宽高放大整套指南、字体、设置行和按钮，不再维持小窗口书页尺寸。小窗口保留原系统缩放下的可读尺寸；还原时保留当前页面、设置分类、输入光标与选区、未保存计划、副本搜索、结果页、任务记录及日志。运行线程、事件队列和计时器不重建，暂停／停止继续作用于同一次运行。原生下拉菜单、对话框与按住的按钮先完成当前交互，再调整布局；键盘名称提示不阻止缩放。主题切换释放旧图片，重复调整不累积根窗口事件处理器。
+
+- **90项响应式交互检查及3项键盘提示补查通过**，`runs/responsive-ui-final.log`、`responsive-tooltip-final.log`。覆盖100%、150%、200%缩放下的最大化、还原、更大的普通窗口、编辑焦点、草稿、结果、搜索、日志、运行锁定、暂停停止、菜单／对话框归属，以及图片与事件处理器的数量边界。截图和结果为`runs/responsive-ui/`，假后端与临时配置，无游戏输入。
+- **156个布局场景、15项布局交互、84项GUI、63项背景、123项设置、42项表单及24项计划检查通过**，`runs/responsive-*_smoke.log`。布局新增最大化窗口下的全部主页面、设置分类及玩法子页；原默认／最小窗口继续覆盖。
+- **54项参考几何与入口检查通过**，`runs/responsive-reference.log`。默认窗口与原游戏参考的局部位置、尺寸和比例保持；不证明整屏逐像素相同。
+- **1189项全量单元测试通过**，`runs/responsive-ui-unit.log`，139.514秒；在最终原生菜单焦点修正前完成，后续改动由上述界面回归核对。未改Runner、CLI、周常到期规则或资源门禁。
+
+菜单补查实际重现状态条重绘的`KeyError: popdown`：Tk原生下拉列表没有Python控件包装。已改为直接比较原生焦点路径，并在恢复输入位置时定位其Python所属控件；生存索引同步处理同类焦点。原诊断保留为`runs/responsive-ui-dropdown-diagnostic.log`，未通过的初期测试日志继续保留。
+
+本轮还核对源码启动的DPI：实际客户区2305×1297、系统DPI适配已生效，同一窗口经桌面截图工具返回1539×896（含标题栏）。证据`runs/guide-dpi-source.json`、`guide-dpi-source-cua.png`说明该截图经过缩小，不能仅据截图判定程序DPI失效；本次未修改DPI入口。
+
+源码`855dbac`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/responsive-build.log`。以`--no-admin-launch`核对首页、最大化、周常设置、还原保留设置分类、Esc返回及正常关闭，退出码0；未点击保存、检测或运行。239份配置及运行证据哈希未变，125个UI素材、4份清单、23个上游文件一致。核对记录`runs/responsive-package-verification.json`，备份`build/userdata-responsive-20261029_065718/`，EXE SHA-256为`e87cf8e772cf235d729b20ec57f09a21a1bd62fdfff70a1d07ef0b286d980a58`。正式截图为`runs/responsive-package-home.png`、`responsive-package-maximized-settled.png`、`responsive-package-weekly.png`、`responsive-package-restored.png`和`responsive-package-return.png`。
+
+首次最大化捕获了重绘中间帧：页签与主按钮暂未绘出，辅助功能树暂不可用；没有重新发出最大化操作，再次读取同一窗口后全部入口完整。中间帧保留为`runs/responsive-package-maximized.png`，不能用稳定帧宣称无闪烁过渡；缩放过渡仍待优化。
+
+未启动、检测或操作真实游戏。真实玩家的学习／注意力成本、整屏逐像素一致和日常周常组合实机仍未验收；货币战争周常与周积分领奖尚未接入。
+
+## 2026-10-29：指南比例与可见入口名称
+
+按原每日实训画面校准默认窗口的书页位置、页签间距、纸面内边距及卡片起点和大小，纸面底纹恢复参考比例。画布为挂饰预留外缘，默认窗口的右侧挂饰不再缩小或被任务内容遮挡；小窗口保持内容可达，大窗口继续保留阅读尺寸。应用入口“记录”“设置”直接显示名称，前三个游戏入口保留原图标，避免把游戏其他玩法的图标重新解释为日志或设置。按钮外形、选中底色、键盘操作和主动作语义保留。
+
+- **54项参考与入口检查通过**，`runs/guide-proportions-final-reference.log`。新增整宽、无账号区域的参考裁图（SHA-256 `ed431d67e4af97330cde6864fb23c530b58f0e3b2f576a3785d548e0d6f9c6f3`），独立提取纸面起点、宽度和四张卡片的位置／尺寸，100%、150%、200%默认窗口按参考宽度缩放后误差均不超过4逻辑像素；最小窗口继续校验卡片比例。另核对两个文字入口无需悬停、没有重复名称浮窗、键盘进入对应页且保留“开始计划”。截图和原始量测见`runs/guide-proportions-ui/`，仅为局部几何与交互证据。
+- **最终108个布局场景、63项场景背景、123项设置及84项GUI检查通过**，`runs/guide-proportions-final-*_smoke.log`。覆盖三档缩放、默认／最小／更宽／最大化、挂饰画布扩展后的背景衔接、设置返回、暂停停止、错误和保存；假后端运行，无真实游戏输入。
+- **60项首页反馈、55项输入反馈、24项计划及1189项全量单测通过**，`runs/guide-proportions-*_smoke.log`及`guide-proportions-unit.log`（148.041秒）。这批检查在最终挂饰画布扩展之前完成；最终绘制变更由上一项界面检查再次核对。素材未新增，沿用原来源、版本及哈希；配置、资源门禁、Runner、CLI和周常执行规则未改。
+
+首次正式构建`2945e4d`已核对首页、记录和设置，发现可见文字入口仍弹出同名提示，现移除这两条重复提示，保留三个图标入口的名称提示；最终54项参考与入口检查再次通过。首次截图和构建记录以`guide-proportions-package-initial-*`保留，239份配置及运行证据哈希未变。
+
+最终源码`d73b44d`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/guide-proportions-build.log`。以`--no-admin-launch`核对首页、记录、设置及Esc返回原页面，两个文字入口不再出现重复名称浮窗，未点击保存、检测或运行。正常关闭退出码0；239份配置及运行证据哈希未变，125个UI素材、4份清单、23个上游文件逐项一致。截图为`runs/guide-proportions-package-home.png`、`guide-proportions-package-records.png`、`guide-proportions-package-settings.png`、`guide-proportions-package-return.png`；核对记录`runs/guide-proportions-package-verification.json`，备份`build/userdata-guide-proportions-20261029_061945/`。EXE SHA-256为`69d7b7d3d4e5441432508f025a2b4ac2cb0bdce8d9e958b21d6f7f2e1daa63fa`。
+
+未启动、检测或操作真实游戏。整屏逐像素一致、全屏随分辨率等比放大、真实玩家学习／注意力成本，以及日常周常组合实机仍未完成；货币战争周常与周积分领奖的未接入边界保留。
+
+## 2026-10-29：指南场景与活跃徽章
+
+标题栏、指南外缘和周常按钮改用同一窗口坐标的静态模糊场景，窗口缩放后重新裁切，运行计时更新复用缓存；周常按钮圆角外不再出现纯色方块，保留原生点击、键盘、禁用和返回焦点。关闭符号来自既有参考，设置页仍执行返回，指南页仍执行关闭。活跃圆章按参考补上四向尖角、点状边缘及内部放射纹，未核实的活跃值继续显示“—”，不复用截图中的500或领取状态。
+
+新增两幅静态素材及来源清单，移除整本指南、文字和整个底部HUD区域；被遮挡场景采用邻近颜色插值，不能称为原始景物或整屏像素复现。原图哈希与已有指南素材一致，完整帧不提交，详见[UI素材说明](assets/ui/README.md)。底栏和设置页保留深色，主操作、费用、错误提示与周常启动规则未改。
+
+- **63项场景与交互检查通过**，`runs/guide-backdrop-resize-guide_backdrop_smoke.log`及`runs/guide-backdrop-ui/result.json`。覆盖100%、150%、200%、默认／最小／更宽／最大化窗口、跨组件背景坐标、书页高度与垂直居中、周常原生键盘进入、禁用、返回焦点、实时计时复用缓存及空闲不循环重绘。仅使用临时配置，禁止启动Runner。
+- **84项GUI、60项首页反馈、72项底栏和123项设置检查通过**，`runs/guide-backdrop-*_smoke.log`及`guide-backdrop-settings.log`。运行、暂停、停止、保存、错误定位、结果状态与隐藏页面恢复均保持。
+- **30项参考几何与交互、108个布局场景及15项布局交互检查通过**，`runs/guide-backdrop-final-reference.log`及`runs/guide-backdrop-ui_layout_smoke.log`。已查看真实GUI生成的`runs/guide-backdrop-ui/home.png`，背景与圆角连续、徽章状态正确；这些证据不证明整个游戏界面的像素相同。
+- **1189项全量单元测试通过**，`runs/guide-backdrop-unit.log`，141.584秒；素材输出哈希、文档链接与`git diff --check`通过。初次空闲重绘检查直接写计时文本，与真实时钟字段冲突而失败；改用正式计时字段后通过，原日志`runs/guide-backdrop-smoke.log`及`guide-backdrop-smoke-diagnostic.log`保留，未修改运行时钟以掩盖测试问题。
+
+首次正式构建`d0dbddf`在最大化时暴露旧布局问题：书页受最大宽度约束，高度却随窗口拉长。现为书页设置默认阅读高度并垂直居中，小窗口仍随可用空间收缩；背景继续铺满窗口。修正后63项场景、108个布局、123项设置、84项GUI及30项参考检查再次通过，日志为`runs/guide-backdrop-resize-*.log`。首次检查记录为`runs/guide-backdrop-package-initial-verification.json`，截图`guide-backdrop-package-initial-maximized.png`保留；原配置和239份运行证据哈希未变。这是离线界面修正，不是新游戏验证。
+
+最终源码`a475edf`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/guide-backdrop-build.log`。以`--no-admin-launch`核对首页、最大化／还原、周常入口与右上返回，未点击保存、检测或运行。正常关闭退出码0；239份配置及运行证据哈希未变，125个UI素材、4份清单、23个上游文件逐项一致。截图为`runs/guide-backdrop-package-home.png`、`guide-backdrop-package-maximized.png`、`guide-backdrop-package-weekly.png`、`guide-backdrop-package-return.png`；核对记录`runs/guide-backdrop-package-verification.json`，备份`build/userdata-guide-backdrop-20261029_054410/`。EXE SHA-256为`52ac6592af7b675cb3b621a044ffc64825daef03550d8ef6752977f5076dc42b`。
+
+本次未启动、检测或操作游戏。日常与周常组合实机、周积分奖励、货币战争周常和真实玩家学习／注意力成本仍未验收；历史资源、失败记录和通关计数不变。
+
+## 2026-10-29：底栏按当前操作显示
+
+未修改的已保存计划收起保存按钮及“已保存”“准备就绪”常驻文案；有草稿、首次使用或配置读取失败时保留显式保存入口。保存成功后在左侧操作区确认，继续编辑或切页后收起；磁盘写入失败明确显示“保存失败”，保留原文件、草稿、保存入口与具体错误。读取损坏配置后使用默认表单，不再误称已保存；仅明确保存才替换配置。补领奖只在每日实训、生存索引出现；运行时收起空闲操作，阶段、暂停、停止、错误、资源和恢复信息继续显示。主按钮位置和日常后接到期周常的执行规则不变。
+
+- **72项底栏交互检查通过**，`runs/footer-attention-final-ui.log`与`runs/footer-attention-ui/result.json`。覆盖100%、150%、200%、默认／最小窗口、草稿恢复、无写入导航、无效输入定位、显式保存、模拟磁盘失败、损坏配置恢复、首次默认配置、运行锁定、停止状态和错误优先。已查看`home.png`、`draft.png`、`saved.png`；使用临时配置并禁止启动Runner。
+- **84项GUI、60项首页反馈、55项输入反馈、24项计划、123项设置及42项表单检查通过**，`runs/footer-attention-*_smoke.log`。补充配置读取失败分支后，底栏72项及GUI84项再次通过，后者为`runs/footer-attention-final-gui.log`；随后仅改正磁盘失败的标题与底栏文字，底栏72项再次通过。
+- **108个布局场景、30项指南参考检查通过**，`runs/footer-attention-ui_layout_smoke.log`、`footer-attention-reference.log`。卡片比例、全部入口、设置和结果可达；仅为局部布局及交互证据，不代表整屏与游戏逐像素相同。
+- **1189项全量单元测试通过**，`runs/footer-attention-unit.log`，140.382秒；在补充配置读取失败的界面分支之前完成，后续改动由上述底栏和GUI回归核对。未修改游戏流程、资源门禁或报告格式。
+
+源码`663a17c`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/footer-attention-build.log`。以`--no-admin-launch`实际检查首页、周常页、运行偏好草稿和还原：保存入口随修改出现、还原后收起，未点击保存、检测或运行。正常关闭退出码0，239份配置及运行证据哈希未变，123个UI素材、3份清单和23个上游文件一致。截图为`runs/footer-attention-package-home.png`、`footer-attention-package-weekly.png`、`footer-attention-package-draft.png`、`footer-attention-package-reverted.png`；核对记录`runs/footer-attention-package-verification.json`，备份`build/userdata-footer-attention-20261029_051005/`。EXE SHA-256为`51eed346ba7f6278382838afd99211eca1154f2489c989ab18ef604b37ffe521`。文档链接和`git diff --check`通过。
+
+本次未启动、检测或操作真实游戏。真实玩家的学习／注意力成本、整屏逐像素一致和日常周常组合实机仍未验收；货币战争周常及周积分奖励尚未接入，历史计数及失败记录不变。
+
+## 2026-10-29：独立设置页与返回操作
+
+设置从指南书框中移出，采用顶部分类、整行选项与右上返回。右上“×”和Esc返回进入前的页面及键盘焦点；从周常计划返回每日实训，下拉菜单打开时Esc仅收起菜单。窗口标题栏关闭继续走停止、等待后台和未保存确认。设置内保留当前操作，日常计划摘要在下方显示，始终只有一个可见主按钮；返回不保存配置、不停止正在运行的任务。游戏设置参考来源见[素材署名](assets/ATTRIBUTION.md)，分类仍使用既有指南图标、应用名称与深色背景，未达到整屏逐像素一致。
+
+- **120项设置界面检查通过**，`runs/settings-shell-settings_ui_smoke.log`。覆盖100%、150%、200%缩放、正常／最小尺寸、五个分类、值区域与键盘操作、两层Esc、各页返回、恢复焦点、周常默认返回日常、隐藏页面恢复、已用开拓力与计时、运行中返回保持锁定，以及只在显式保存时写配置。已查看实际Tk截图`runs/settings-shell-ui/weekly-default.png`；截图使用测试数据。
+- **84项GUI、55项输入反馈、24项计划、42项表单、60项首页反馈检查通过**，`runs/settings-shell-*_smoke.log`；执行使用假后端，未启动游戏。
+- **108个布局场景与30项指南参考检查通过**，`runs/settings-shell-ui_layout_smoke.log`、`settings-shell-reference.log`。参考检查只证明原有指南卡片几何及交互，不能用于证明新设置页像素一致。
+- **1189项全量单元测试通过**，`runs/settings-shell-final-unit.log`，140.503秒；新增3项时钟检查覆盖空闲重复轮询、跨秒／小时更新和冻结结果时间。
+
+首次GUI回归在“货币战争 → 运行记录 → 设置”后持续绘制，进程CPU增长且后续截图未生成。保留有界复现`runs/settings-shell-repro-before.log`：计时器每100毫秒重复写同一个字符串，触发新全屏背景及隐藏页重绘。修复为显示值变化时才更新时间、隐藏Surface不绘制、重新映射时绘制最新状态；修复后同路径复现退出码0，日志`runs/settings-shell-repro.log`，以上最终回归全部通过。初期测试焦点时序错误与返回按钮宽度不足记录分别保存在`settings-shell-initial-ui.log`、`settings-shell-close-layout.log`，未覆盖原失败。
+
+首版`fb57818`构建并打开正式EXE，发现首次进入设置时选中圆环显示、下划线缺失。补充真实画布像素检查后重现失败，日志`runs/settings-shell-first-entry-before.log`；新增分类按钮映射与导航布局事件触发重绘，最终**123项设置检查通过**，`runs/settings-shell-first-entry-final.log`，覆盖三档缩放首次进入后的下划线及原有全部设置路径。首版EXE的配置和运行记录239份哈希未变，已正常关闭；首版核对记录、构建日志及截图保留为`settings-shell-package-initial-verification.json`、`settings-shell-initial-build.log`、`settings-shell-package-initial-weekly.png`，不混作最终版本。
+
+最终源码`e782372`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/settings-shell-build.log`。以`--no-admin-launch`打开正式程序，核对首次进入周常设置的完整选中标记、管理员按钮列及右上返回每日实训，正常关闭退出码0。实际截图为`runs/settings-shell-package-weekly.png`、`settings-shell-package-admin.png`、`settings-shell-package-return.png`；最终模拟截图另存`runs/settings-shell-final-ui/`。239份配置及运行证据哈希未变，123个UI素材、3份清单、23个上游文件一致；记录`runs/settings-shell-package-verification.json`，备份`build/userdata-settings-shell-20261029_045325/`。EXE SHA-256为`5b4a919adfdb870a69e5f33e9e4a859e25f63597cf3862a0e61f073e98d6211e`。文档相对链接和`git diff --check`通过，7处历史忽略报告链接在原工作区核对。
+
+本次未启动、检测或操作真实游戏。日常周常组合实机、周积分奖励、货币战争周常和真实玩家学习／注意力成本仍未验收；历史资源、失败记录和通关计数不变。
+
+## 2026-10-29：设置行布局与明确开关状态
+
+设置页从左上角紧凑表单改为游戏式整行浅灰选项，名称在左、当前值统一在右；周常、游戏内字幕和实训合成使用“开启／关闭”下拉选择。时间格式、北京时间、数值范围和合成费用放在对应字段附近，配置路径移至游戏连接页，管理员授权边界继续显示。周常选择货币战争时整体隐藏差分局数及编队行，隐藏字段不进入键盘焦点顺序；错误定位、草稿、显式保存和运行锁定规则不变。
+
+参考图来源、响应格式、哈希与未标明版本的限制见[素材署名](assets/ATTRIBUTION.md)。本次只以代码重绘设置行，未把公开截图打包成素材；外围仍为指南页，尚未达到游戏设置整屏逐像素一致。
+
+- **81项新增设置界面检查通过**，`runs/settings-settings_ui_smoke.log`及`runs/settings-ui/result.json`。覆盖100%、150%、200%、默认／最小窗口、五个分类、值区域打开选择、键盘改变周常及两个运行偏好、外部布尔值同步、忙碌锁定、差分字段显隐、长状态提示、只显式保存时落盘。假后端拒绝启动Runner。
+- **108个既有布局场景通过**，`runs/settings-layout.log`。初版已检查全部页面与子页，最终设置检查再次覆盖修改后的五个设置分类、三档缩放与两个尺寸；已查看`runs/settings-ui/weekly-default.png`、`weekly-minimum.png`和`run-minimum.png`。
+- **42项表单、55项输入反馈、24项计划和84项GUI检查通过**，`runs/settings-*_smoke.log`。错误字段仍自动展开并选中，周常交接与显式保存逻辑保持；所有执行使用假后端。
+- **1186项全量单元测试通过**，`runs/settings-unit.log`，137.540秒；文档链接与`git diff --check`通过。7处历史忽略报告链接在原工作区核对，未为新工作树改写或删除原记录。
+
+新增检查的首次脚本误用Home键选择列表首项，改为原生上下键后修正；测试结束时批量取消所有组件回调造成重复清理，改为完成待绘制内容并只取消根窗口轮询。两份原失败日志为`runs/settings-ui-initial.log`、`settings-ui-cleanup.log`，未改运行代码以掩盖错误。
+
+初次打包检查了首页、五个设置分类和下拉打开／Escape收起，配置未改；截图发现管理员页双按钮撑宽值列，已缩小设置专用按钮内边距。最终**81项设置检查再次通过**，`runs/settings-final-ui.log`，已查看管理员最小窗口，未改游戏输入或流程代码。
+
+最终源码`5987f74`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志`runs/settings-build.log`。以`--no-admin-launch`打开正式程序，复核周常入口和管理员按钮列后正常关闭，退出码0；截图为`runs/settings-package-weekly.png`和`settings-package-admin.png`。239份配置及运行证据哈希未变，123个UI素材、3份清单、23个上游文件一致；核对记录`runs/settings-package-verification.json`，备份`build/userdata-settings-20261029_041708/`。EXE SHA-256为`0fb7259cc63b9d8376dc8df44949cf977cd28586a2c9724808a040479d6179ab`。初次构建、核对与截图以`settings-initial-build`、`settings-package-initial-*`保留，未混作最终版本。
+
+本次未启动、检测或操作真实游戏。日常周常组合实机、周积分奖励、货币战争周常和真实玩家学习／注意力成本仍未验收；历史资源、失败记录和通关计数不变。
+
+## 2026-10-29：首页费用语义与结果去重
+
+首页删除委托、邮件、勋礼卡片的重复“0 开拓力”，跳过和未执行的副本不显示费用；只保留副本预算与实训目标等影响判断的信息。普通副本标注预计费用，饰品提取标注最多开拓力及已有沉浸器优先，首页与生存索引使用一致语义；无效次数不生成负数或超范围费用。副本运行后的卡片读取报告中的次数和两种资源消耗，缺失与待核对数据单独显示。初次打开隐藏未发生的消耗与计时，运行后右上角明确为“已用开拓力”；缺少新消耗字段不会把已确认值覆盖成0。
+
+空闲底栏合并结果与状态，不再出现两个重复行。当前差分或货币结果页已展示完整结果时，底栏收起相同反馈；离开结果页立即恢复。判断同时核对页面、结果内容、警告和运行状态，新输入错误、新报告、其他任务错误及运行中步骤仍然显示。完整费用、原因、报告未保存与下一步继续保留。两个资源的文字改为卡片内独立行距，最小窗口不碰到底部点线。
+
+- **1186项全量单元测试通过**，`runs/home-feedback-unit.log`；新增9项普通／饰品费用、无效次数、未知与0、待核对及双资源结果检查。
+- **60项首页与反馈界面检查通过**，`runs/home-feedback-ui.log`及`runs/home-feedback-ui/result.json`。覆盖三档缩放、正常／最小尺寸、真实绘制文案、单一主按钮、详情可达、跨页面与跨操作错误不隐藏、执行阶段保留及配置不写入。已查看`home.png`、`partial-daily.png`、`partial-daily-minimum.png`和`result.png`，全部为假数据、假后端或拒绝启动Runner的测试。
+- **84项既有GUI、55项输入反馈、45项货币结果、24项计划检查通过**，前三项日志为`runs/home-feedback-*_smoke.log`，计划日志为`runs/quiet-home-plan-ui.log`。运行、保存与日常周常交接逻辑未改。
+- **30项参考几何与交互、108个布局场景通过**，`runs/home-feedback-reference_ui_smoke.log`、`runs/home-feedback-ui_layout_smoke.log`。参考裁图仍为既有无账号图片，SHA-256为`a3e584b01eb5103c1f1ed72585d862ebcd1cce1d251b89351008c0696c380bb7`；初次调用漏传参考路径，补齐参数后通过，调用记录保存在`runs/home-feedback-reference-invocation.log`。
+
+源码`7b7f53e`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，日志为`runs/home-feedback-build.log`。使用`--no-admin-launch`检查正式首页和一键进入周常设置，未点击运行或检测，正常关闭退出码0；实际截图为`runs/home-feedback-package-home.png`和`home-feedback-package-weekly.png`。239份配置及运行证据哈希未变，123个UI素材、3份来源清单及23个上游文件一致；核对记录`runs/home-feedback-package-verification.json`，备份`build/userdata-home-feedback-20261029_035244/`。EXE SHA-256为`df58e84dbcb1e4eec564aa6206f57e52ae22756a20a190188ac067ab46ed38cb`。
+
+未操作真实游戏，未改变历史资源、通关或失败记录。逐像素一致与真实玩家注意力／学习成本尚未验证，货币战争周常及周积分领奖的未接入边界保留。
+
+## 2026-10-29：货币战争结果简化与交付状态核对
+
+货币战争结果改为具体的中文结果标题、必要原因和下一步；动作状态码、截图路径和原始字段收进“详细记录”。已结束但尚待核实的步骤不继续显示运行时动词，准备与只读识别不重复“玩法未完成”；单个节点和开发步骤仍明确整局未完成。识别不到的金币、等级保持“未识别”，与实际读到的0区分。对应原始报告保存独立快照，之后执行日常不会覆盖；缺失观察或运行失败不会遗留旧结果。
+
+整合已提交后端`f7a2909`，补给页面转换、仓库反馈和角色交付分开显示：两笔关联动作与仓库核验均完成，有角色时还须核实新增／升星及其他阵容不变，才显示“奖励交付已核实”。奖励局部完成不等于整局完成；失败、停止、报告未保存及后续错误中的既有结算证据继续保留。未纳入另一工作区当前尚未提交的投资实现。
+
+- **1177项全量单元测试通过**，`runs/currency-feedback-unit.log`，包含12项新的结果语义与交付证据检查。
+- **45项结果界面检查通过**，`runs/currency-feedback-currency_feedback_smoke.log`及`runs/currency-feedback-ui/result.json`。覆盖三档缩放、等待／失败／只读结果、原始记录不随外部对象或后续日常改变、未知与0、入口／设置／结果的主按钮、配置未写入。实际Tk模拟截图`runs/currency-feedback-ui/pending-delivery.png`和`readonly-result.png`已查看。
+- **84项既有GUI、55项输入反馈、24项计划检查通过**，`runs/currency-feedback-*_smoke.log`。首次GUI检查仍要求旧重复文案而失败；改为核对具体结果、未开局或整局未完成及未保存设置，不放宽运行门禁。
+- **108个布局场景通过**，`runs/currency-feedback-ui_layout_smoke.log`，覆盖100%、150%、200%、默认和最小尺寸及全部入口、设置、结果、开发分页。
+
+源码`f38a3c9`通过`tools/build.ps1`构建并更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，构建日志`runs/currency-feedback-build.log`。以`--no-admin-launch`打开正式桌面，检查首页、旷宇纷争、货币入口和空结果页，确认“详细记录”初始禁用、单一主操作与保存状态，正常关闭退出码0。239份配置及运行证据哈希未变，123个UI素材、3份UI来源清单、23个上游文件匹配；核对记录`runs/currency-feedback-package-verification.json`，备份`build/userdata-currency-feedback-20261029_033526/`。EXE SHA-256为`afeea11d07c8539e7f4426973788678088b1e1fe2a4679d4937eb8a9571b9407`；实际打包窗口截图`runs/currency-feedback-package-result.png`，补给等待截图使用离线模拟报告，二者不混作真实游戏结果。
+
+本轮只使用假后端与助手桌面，没有启动、检测或操作真实游戏。新交付路径、日常周常组合与货币战争完整对局未实机验收；周常及积分奖励的未接入边界、独立通关计数与历史失败记录保持不变。界面仍不能称为整屏逐像素一致，也没有实际玩家学习成本测试。
+
+## 2026-10-29：旷宇纷争入口与单一主操作
+
+差分宇宙和货币战争改为左侧玩法选择、右侧游戏入口插图。右下原“前往参与”的位置放当前实际动作；设置及结果按需打开，同一动作在这些页面移至底栏，避免同时出现两个启动按钮。差分入口实时显示计划局数、编队、新开／接续和通关后选项；费用提示随卡带、通关后每日开关保留。周期接续局数不符时直接展开并聚焦局数字段，不再额外弹出提示框。货币战争主操作保持只读，开发操作收在“开发工具”；整局未验收和周常未接入边界保留。
+
+两幅静态插图来自既有CN 4.6指南参考，源图哈希、裁切和去除区域见[来源清单](assets/ui/universe/sources.json)。旧等级、倒计时、赛季与奖励状态全部移除，中央数字仅清除封闭字形，保留徽章轮廓；背景缺失部分以局部颜色延展补足。补足纹理、应用文案和响应布局仍有区别，不能称为整屏逐像素相同。没有启动游戏采集素材。
+
+- **112项入口交互检查通过**，`runs/universe-ui/result.json`：鼠标进入设置、键盘返回、单击分别启动差分／货币只读假后端、单一可见主按钮、切页不改计划、编队缺失及周期接续错误定位、运行锁定、暂停停止、停止后不冒充完整通关、配置字节未变化。
+- **108个布局场景通过**，`runs/ui-layout/result.json`：100%、150%、200%，默认及最小窗口；新增入口、设置、结果和全部货币开发分页均实际展开检查。32字编队、全部通关后选项与费用提示的画面见`runs/universe-ui/long-team-options.png`。
+- **84项既有GUI、55项输入反馈、42项表单反馈、24项计划检查通过**，日志在`runs/universe-*_smoke.log`。真实Runner均替换为假后端，表单结果检查同步打开新的结果页。
+- **1151项全量单元测试通过**，`runs/universe-unit.log`，未启动真实游戏；文档相对链接及`git diff --check`通过。
+
+源码`66f88a8`通过`tools/build.ps1`构建，日志`runs/universe-build.log`。已更新`D:\Projects\AutoHSR\dist\AutoHSR\AutoHSR.exe`，以`--no-admin-launch`实际打开首页、差分入口、演算设置、结果与货币入口，确认启动动作位置和配置状态，正常关闭退出码0。239份配置及运行证据哈希未变，123个UI素材、3份UI清单、23个上游文件均匹配；核对记录`runs/universe-package-verification.json`，备份`build/userdata-universe-20261029_031334/`。EXE SHA-256为`31ca4fca66eef5c2c970f6e817eeac22462b8c47b9d8ba085e9befaf0f6c4cd9`；实际窗口截图为`runs/universe-package-du.png`、`runs/universe-package-cw.png`和`runs/universe-package-settings.png`。打包未纳入另一任务尚未提交的补给后端改动，未点击运行、检测或开发操作。
+
+正常开始仍自动最小化以让游戏获得前台；假后端运行态检查恢复助手后再验证暂停和停止显示。旧布局检查曾把独立提示窗的屏幕坐标当作按钮内部坐标；已将独立窗口排除在父控件边界检查之外，不放宽正常控件裁切约束。日常周常组合、周积分奖励、货币战争整局和真实玩家学习成本未由这些桌面回归证明，历史实机计数不变。
+
 ## 2026-10-29：生存索引行式选择与计划草稿隔离
 
 生存索引从副本、地点两个下拉框改为游戏式行列表，展示对应掉落图标或首领徽章、名称、地点、单次费用及选中态。左侧分类、搜索、滚轮与键盘定位只改变浏览位置；点击行／“选用”或Enter才更新当前计划。同名副本保留不同地点，已选目标、次数、预计费用与预算上限常驻下方。预算、支援、快捷填写与目录刷新进入“挑战设置”；“手动填写”保留未知旧配置及新副本输入，错误直接打开对应字段。选择不保存，不启动Runner，不改变资源或实时页面门禁。

@@ -2,17 +2,23 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from copy import deepcopy
 from datetime import datetime
 import json
 from pathlib import Path
 import threading
 import uuid
 
-from .config import ROOT
+from .config import ROOT, SettingsError
 from .models import RunReport, Stopped, TaskResult
 from .run_control import stop_requested
 from .storage import replace_file
 from .weekly_plan import CHINA, WeeklyGuard, weekly_slot
+
+
+def _daily_tasks(settings):
+    return [task for task, field in (('assignments','assignments'), ('battle','battle'), ('daily','daily'),
+        ('redemption','redemption_enabled'), ('mail','mail'), ('battlepass','battlepass')) if getattr(settings, field)]
 
 
 class PlanRunner:
@@ -29,10 +35,10 @@ class PlanRunner:
             raise ValueError('接续货币战争周常须选择该周常，且不新增日常预算。')
         self.settings = replace(settings)
         if resume_weekly_currency:
-            self.settings=replace(self.settings,assignments=False,battle=False,daily=False,mail=False,battlepass=False)
+            self.settings=replace(self.settings,assignments=False,battle=False,daily=False,mail=False,battlepass=False,
+                                  redemption_enabled=False)
         self.settings.validate("power_plan" if use_power_plan else "plan")
-        if not self.settings.weekly_enabled and not any(getattr(self.settings, name) for name in
-                                                       ("assignments", "battle", "daily", "mail", "battlepass")):
+        if not self.settings.weekly_enabled and not _daily_tasks(self.settings):
             raise ValueError("请选择日常任务或加入周常。")
         self.emit = emit or (lambda event: None)
         self.factory = runner_factory or Runner
@@ -122,10 +128,10 @@ class PlanRunner:
         report=self.report
         report.weekly_plan['children'].append(dict(operation='daily',run_dir=daily.get('run_dir',''),reused=reused))
         for name in ('stamina_spent','stamina_limit','stamina_pending','immersifiers_spent','immersifiers_pending',
-                     'battle_completed','battle_requested','daily_verified','daily_synthesis','engagement','game_day',
-                     'error','safe_next','failure_task','support_selections'):
-            if name in daily:setattr(report,name,daily[name])
-        if 'power_plan' in daily:report.power_plan=daily['power_plan']
+                     'battle_completed','battle_requested','daily_verified','daily_synthesis','redemption','engagement','game_day',
+                     'error','input_error_field','safe_next','failure_task','support_selections'):
+            if name in daily:setattr(report,name,deepcopy(daily[name]))
+        if 'power_plan' in daily:report.power_plan=deepcopy(daily['power_plan'])
         report.results.extend(TaskResult(r['task'],r['status'],r.get('detail','')) for r in daily.get('results',[]))
         if reused:
             report.weekly_plan['daily_reused']=True
@@ -140,6 +146,7 @@ class PlanRunner:
         report.run_dir, report.started_at, report.source = str(directory), started.isoformat(), str(self.root.parent)
         report.weekly_plan = dict(week=self.slot.week, due_at=self.slot.due_at.isoformat(),
                                  mode=self.settings.weekly_mode, requested_runs=self.settings.weekly_runs,
+                                 daily_tasks=_daily_tasks(self.settings),
                                  status="waiting", score_rewards_verified=False, children=[])
         try:
             self._checkpoint()
@@ -175,7 +182,7 @@ class PlanRunner:
                     daily_reference=target['daily']
                     if daily_reference is not None:
                         _,original=read_ref(self.root,daily_reference);self._copy_daily(original,reused=True)
-            daily_selected = any(getattr(self.settings, name) for name in ("assignments", "battle", "daily", "mail", "battlepass"))
+            daily_selected = bool(report.weekly_plan['daily_tasks'])
             if daily_selected:
                 daily = self._run(self.settings, phase="daily", operation="daily", new_battle_run=self.new_battle_run,
                     **(dict(use_power_plan=True,new_power_plan=self.new_power_plan) if self.use_power_plan else {}))
@@ -209,8 +216,11 @@ class PlanRunner:
                     self._weekly_result('already_complete' if data.get('already_complete') else 'complete','本周货币战争积分及奖励已核实。')
                 else:
                     report.status='stopped' if weekly.get('status')=='stopped' else 'partial'
+                    reason = ('本周对局上限已用完，积分仍未满。' if data.get('state') == 'exhausted' else
+                              '原周目标已过期。' if data.get('state') == 'expired' else '货币战争周常未完成。')
                     self._weekly_result(data.get('state') if data.get('state') in ('exhausted','expired') else 'needs_review',
-                                        '货币战争周常尚未完整结束；原日常结果和目标已保留。')
+                                        reason+('日常结果已保留。' if daily_reference is not None else '')+
+                                        ('原目标已保留。' if data.get('loop_id') else ''))
             else:
                 self.emit(dict(type="task", task="weekly", status="running", detail="核对本周演算记录"))
                 guard = WeeklyGuard(self.root, self.settings, self.slot)
@@ -226,6 +236,7 @@ class PlanRunner:
                 if weekly.get("status") != "success":
                     report.status = "stopped" if weekly.get("status") == "stopped" else "partial"
                     report.error, report.safe_next = weekly.get("error", ""), weekly.get("safe_next", "")
+                    report.input_error_field = weekly.get("input_error_field", "")
                     self._weekly_result("needs_review", "周常演算未完成；核对原报告后再处理。")
                 else:
                     guard.complete(weekly)
@@ -239,6 +250,9 @@ class PlanRunner:
         except Exception as exc:
             report.status, report.error = "partial" if report.results else "failed", str(exc)
             report.safe_next = "查看日常与周常各自的原始报告；未核实的开局不自动重放。"
+            if isinstance(exc, SettingsError):
+                report.input_error_field = exc.field
+                report.safe_next = "请修改对应设置，再次开始。"
             self._weekly_result("needs_review", str(exc))
         finally:
             report.finished_at = datetime.now(CHINA).isoformat()

@@ -48,6 +48,7 @@ class CurrencyWeekRunner(PlanRunner):
             current_account_verified=previous.get('current_account_verified',False))
 
     def _child(self,phase,**options):
+        self.emit(dict(type='currency_weekly_phase',stage=phase))
         child=self._run(self.settings,phase=phase,**options)
         self.report.currency_wars.setdefault('children',[]).append(dict(operation=child.get('operation'),run_dir=child.get('run_dir','')))
         return child

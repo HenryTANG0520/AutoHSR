@@ -10,6 +10,7 @@ from unittest.mock import patch
 from PIL import ImageGrab
 from ux_smoke import ROOT, Settings, Window, module
 from ui_layout_smoke import check_layout
+from autohsr.desktop_modes import show_mode_view
 
 OUT = ROOT/"runs/form-feedback-ui"
 
@@ -45,19 +46,20 @@ def main():
             ui = Window(root, config)
             try:
                 ui._show_page("tasks")
+                ui.tasks["battle"].set(False)
                 root.update()
-                checkbox = ui.task_controls["mail"]
+                checkbox = ui.battle_checkbox
                 click(checkbox, *part(checkbox, "indicator"))
                 root.update()
-                check(f"{scale}_indicator_changes_value", ui.tasks["mail"].get())
+                check(f"{scale}_indicator_changes_value", ui.tasks["battle"].get())
                 click(checkbox, checkbox.winfo_width()-5, checkbox.winfo_height()//2)
                 root.update()
-                check(f"{scale}_label_changes_same_value", not ui.tasks["mail"].get())
+                check(f"{scale}_label_changes_same_value", not ui.tasks["battle"].get())
                 checkbox.focus_force()
                 checkbox.event_generate("<KeyPress-space>")
                 checkbox.event_generate("<KeyRelease-space>")
                 root.update()
-                check(f"{scale}_keyboard_toggle", ui.tasks["mail"].get())
+                check(f"{scale}_keyboard_toggle", ui.tasks["battle"].get())
                 ui.challenge_count.set("2")
                 spin = ui.challenge_entry
                 click(spin, *part(spin, "uparrow"))
@@ -72,10 +74,10 @@ def main():
                 slider.event_generate("<ButtonRelease-1>", x=slider.winfo_width()//2, y=y)
                 check(f"{scale}_slider_drag", 10 <= int(ui.challenge_count.get()) <= 14)
                 ui._set_busy(True)
-                before = ui.tasks["mail"].get(), ui.challenge_count.get()
+                before = ui.tasks["battle"].get(), ui.challenge_count.get()
                 click(checkbox, *part(checkbox, "indicator"))
                 click(spin, *part(spin, "uparrow"))
-                check(f"{scale}_disabled_does_not_edit", before == (ui.tasks["mail"].get(), ui.challenge_count.get()))
+                check(f"{scale}_disabled_does_not_edit", before == (ui.tasks["battle"].get(), ui.challenge_count.get()))
                 ui._set_busy(False)
                 ui._show_weekly_plan()
                 ui.weekly_enabled.set(True)
@@ -98,6 +100,7 @@ def main():
                 if scale == 1.5:
                     ImageGrab.grab(window=root.winfo_id()).save(OUT/"weekly-settings.png")
                 ui._show_page("differential_universe")
+                show_mode_view(ui, "differential_universe", "result")
                 ui._finish(dict(operation="differential_universe", status="failed", report_saved=True,
                     error="拟合奖励页未返回", safe_next="核对当前奖励页面后再接续。",
                     differential_universe=dict(requested_runs=3, completed_runs=3, mode="周期演算",

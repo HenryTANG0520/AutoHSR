@@ -28,6 +28,10 @@ def main():
         Settings().save(config)
         original = config.read_bytes()
         class WeeklyFake(FakeRunner):
+            def __init__(self,*args,**kwargs):
+                super().__init__(*args,**kwargs)
+                if kwargs.get('operation')=='currency_wars_points':
+                    self.release.set()
             def run(self):
                 if self.kwargs.get("weekly_plan") is None:
                     report = super().run()
@@ -35,6 +39,9 @@ def main():
                         report.update(stamina_spent=120, battle_completed=12, battle_requested=12,
                                       results=[dict(task="assignments", status="ok", detail="模拟完成委托"),
                                                dict(task="battle", status="ok", detail="模拟完成 12 次，120 开拓力")])
+                        run=run_root/('daily-'+str(len(FakeRunner.instances)));run.mkdir(parents=True,exist_ok=True)
+                        report['run_dir']=str(run)
+                        (run/'report.json').write_text(json.dumps(report,ensure_ascii=False),'utf-8')
                     return report
                 guard = self.kwargs["weekly_plan"]
                 guard.receipt = WeeklyReceipt(run_root, "c"*24, guard.slot)
@@ -99,7 +106,7 @@ def main():
                 check("daily_proof_and_cost_visible_while_weekly_running", ui.busy and
                       ui.table.item("daily", "values")[1] == "完成" and ui.confirmed_stamina == 120 and
                       str(ui.save_button.cget("state")) == "disabled")
-                check("completed_card_uses_actual_run_counts_and_cost", ui.table.item("battle", "metrics") == ("12/12 次", "已确认 120 开拓力"))
+                check("completed_card_uses_actual_run_counts_and_cost", ui.table.item("battle", "metrics") == ("12/12 次", "已用 120 开拓力"))
                 second.emit(dict(type="universe_progress", requested_runs=2, completed_runs=1))
                 pump(root, lambda: "1/2" in ui.activity.get())
                 ui._restore()
@@ -128,12 +135,12 @@ def main():
                 check("same_week_skips_completed_runs", "已跳过" in ui.weekly_status.get())
                 ui._show_weekly_plan()
                 ui.weekly_mode.set("货币战争")
-                check("currency_boundary_visible_before_start", "尚未接入" in ui.weekly_boundary.get())
+                check("currency_boundary_visible_before_start", "开发流程" in ui.weekly_boundary.get())
                 ui.start_button.invoke()
                 pump(root, lambda: len(FakeRunner.instances) == 5)
                 FakeRunner.instances[-1].release.set()
                 pump(root, lambda: not ui.busy)
-                check("unsupported_weekly_keeps_daily_without_development_run", len(FakeRunner.instances) == 5 and
+                check("unverified_weekly_points_keep_daily_without_development_run", len(FakeRunner.instances) == 6 and
                       ui.training_meter.verified and "部分完成" in ui.status.get())
                 ui.weekly_mode.set("差分宇宙")
                 ui._save_settings()
@@ -142,7 +149,7 @@ def main():
                 previous = {key: ui.table.item(key) for key in ui.tasks}
                 ui._show_page("differential_universe")
                 ui.start_button.invoke()
-                pump(root, lambda: len(FakeRunner.instances) == 6 and ui.runner is not None)
+                pump(root, lambda: len(FakeRunner.instances) == 7 and ui.runner is not None)
                 check("independent_run_preserves_daily_cards_at_start", previous == {key: ui.table.item(key) for key in ui.tasks})
                 FakeRunner.instances[-1].release.set()
                 pump(root, lambda: not ui.busy)
@@ -153,12 +160,13 @@ def main():
                 ui.table.activate()
                 root.update()
                 check("task_details_do_not_replace_overall_outcome", ui.summary_dialog.winfo_exists() and ui.summary.get() == summary)
-                ui.summary_dialog.destroy()
+                root.tk.call(ui.summary_dialog.protocol("WM_DELETE_WINDOW"))
+                root.update()
                 ui.overlay_logs.set(not ui.overlay_logs.get())
                 check("display_preferences_keep_daily_results", ui.table.action_label("battle") == "查看结果")
                 ui.challenge_count.set("1")
-                check("changed_daily_plan_returns_to_settings_actions", ui.table.action_label("battle") == "副本设置" and
-                      ui.table.item("battle", "values")[1] == "等待" and ui.table.item("battle", "metrics") is None and
+                check("changed_daily_plan_returns_to_settings_actions", ui.table.action_label("battle") == "更换副本" and
+                      ui.table.item("battle", "values")[1] == "待执行" and ui.table.item("battle", "metrics") is None and
                       ui.training_meter.verified and ui.summary.get() == summary)
                 ui.table.activate()
                 root.update()

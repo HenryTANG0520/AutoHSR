@@ -2,6 +2,7 @@
 from copy import deepcopy
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 
@@ -10,9 +11,26 @@ from .storage import replace_file
 from .power_plan import items,spec_digest,row_keys
 
 
+def normal_path(value):
+    text=str(Path(value))
+    if os.name=='nt' and text.upper().startswith('\\\\?\\UNC\\'):text='\\\\'+text[8:]
+    elif os.name=='nt' and text.startswith('\\\\?\\') and re.match(r'[A-Za-z]:[\\/]',text[4:]):text=text[4:]
+    return Path(text)
+
+
+def fs_path(value):
+    """Use extended Windows syntax for IO only; stored references stay canonical."""
+    path=normal_path(value).absolute()
+    text=str(path)
+    if text.startswith('\\\\?\\'):return path
+    if os.name=='nt' and len(text)>=240:
+        return Path('\\\\?\\UNC\\'+text[2:] if text.startswith('\\\\') else '\\\\?\\'+text)
+    return path
+
+
 def read(path):
     try:
-        path=Path(path)
+        path=fs_path(path)
         if path.stat().st_size>16*1024*1024:raise ValueError('体力计划记录过大')
         data=json.loads(path.read_text('utf8'))
         if type(data) is not dict:raise ValueError('体力计划记录不是对象')
@@ -21,7 +39,7 @@ def read(path):
 
 
 def write(path,data):
-    path=Path(path);path.parent.mkdir(parents=True,exist_ok=True)
+    path=fs_path(path);path.parent.mkdir(parents=True,exist_ok=True)
     temp=path.with_suffix('.tmp');temp.write_text(json.dumps(data,ensure_ascii=False,indent=2,allow_nan=False),encoding='utf8')
     replace_file(temp,path)
 
@@ -30,20 +48,20 @@ def hex_id(value,size):return type(value) is str and re.fullmatch('[0-9a-f]{'+st
 
 
 def inside(root,value):
-    path=Path(value).resolve();root=Path(root).resolve()
+    path=normal_path(value).resolve();root=normal_path(root).resolve()
     if path==root or not path.is_relative_to(root):raise AutomationError('体力计划证据路径不在运行目录。')
     return path
 
 
 def file_ref(root,path):
     path=inside(root,path)
-    return dict(path=str(path),sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    return dict(path=str(path),sha256=hashlib.sha256(fs_path(path).read_bytes()).hexdigest())
 
 
 def read_ref(root,ref):
     if type(ref) is not dict or set(ref)!={'path','sha256'} or not hex_id(ref['sha256'],64):raise AutomationError('体力计划证据引用无效。')
     path=inside(root,ref['path'])
-    try:value=hashlib.sha256(path.read_bytes()).hexdigest()
+    try:value=hashlib.sha256(fs_path(path).read_bytes()).hexdigest()
     except OSError as error:raise AutomationError('体力计划原证据无法读取。') from error
     if value!=ref['sha256']:raise AutomationError('体力计划原证据已改变。')
     return path
@@ -57,8 +75,8 @@ def folder(root,account,spec):
     # existing layouts exactly where they are.
     legacy=Path(root)/'power-plans'/account/spec
     current=Path(root)/'power-plans'/account[:32]/spec[:32]
-    if legacy.exists() and current.exists():raise AutomationError('体力计划新旧目录同时存在，未合并或重建进度。')
-    return legacy if legacy.exists() else current
+    if fs_path(legacy).exists() and fs_path(current).exists():raise AutomationError('体力计划新旧目录同时存在，未合并或重建进度。')
+    return legacy if fs_path(legacy).exists() else current
 
 
 def pointer(root,directory):
@@ -165,7 +183,7 @@ def archive(root,data):
     if not data.get('power_plan'):return
     plan=validate(root,data,settled=True)
     path=folder(root,plan['account'],plan['spec'])/('repeat' if plan['keep'] else plan['goal'])/(plan['run']+'.json')
-    if path.exists():
+    if fs_path(path).exists():
         if read(path)!=data:raise AutomationError('原体力计划归档已存在且不同，未覆盖。')
     else:write(path,deepcopy(data))
     if not plan['keep']:
@@ -179,7 +197,7 @@ def archive(root,data):
 def prior(root,account,spec,goal):
     directory=folder(root,account,spec)/goal
     records=[]
-    for path in directory.glob('*.json'):
+    for path in fs_path(directory).glob('*.json'):
         data=read(path);plan=validate(root,data,settled=True)
         if plan['account']!=account or plan['spec']!=spec or plan['goal']!=goal or plan['keep']:raise AutomationError('体力计划归档归属不同。')
         records.append((plan['sequence'],path,data,plan))

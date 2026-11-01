@@ -10,7 +10,7 @@ from autohsr.currency_wars_identity import account_key
 from autohsr.currency_wars_session import StandardSession
 from autohsr.currency_wars_standard_node import entry_feedback, observe_started_node
 from autohsr.currency_wars_standard_flow import next_action
-from autohsr.models import AutomationError, Scene, Token
+from autohsr.models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, Scene, Stopped, Token
 from autohsr.tests.test_currency_wars_node import screen
 
 
@@ -36,9 +36,16 @@ class StandardNodeTests(unittest.TestCase):
             runner=SimpleNamespace(input_epoch=0,inactive_duration=0),scene_epoch=0,
             checkpoint=Mock(),sleep=Mock(),log=Mock(),evidence=Mock(return_value='evidence.png'))
         sequence=iter(states)
+        captured=[time.monotonic()-1]
         def snapshot():
             c.last_scene=next(sequence)
-            c.last_scene.captured_at=time.monotonic()
+            if isinstance(c.last_scene,Exception):
+                error=c.last_scene;c.last_scene=None
+                raise error
+            # Fake OCR captures must still be distinct on Windows clocks whose
+            # resolution can exceed this in-memory test's entire iteration.
+            captured[0]+=.001
+            c.last_scene.captured_at=captured[0]
             return c.last_scene
         c.snapshot=snapshot
         return c
@@ -159,6 +166,171 @@ class StandardNodeTests(unittest.TestCase):
             self.assertFalse(verified)
             self.assertEqual(store.data['action_status'],'node_unverified')
             self.assertEqual(len(store.data['actions']),1)
+
+    def test_temporarily_missing_low_confidence_or_conflicting_identity_is_only_an_unknown_frame(self):
+        for variant in ('missing','low_confidence','conflicting'):
+            for kind in ('battle','node_result'):
+                with self.subTest(variant=variant,kind=kind),tempfile.TemporaryDirectory() as folder:
+                    store=self.store(folder)
+                    hidden=current(kind)
+                    if variant=='missing':hidden.tokens=hidden.tokens[:-1]
+                    elif variant=='low_confidence':
+                        last=hidden.tokens[-1];hidden.tokens[-1]=Token(last.text,.80,last.box)
+                    else:hidden.tokens.append(Token('UID:200000000',.99,(.11,.96,.2,.99)))
+                    battle,result=current('battle'),current('node_result')
+                    c=self.context([hidden,battle,result])
+                    with patch('autohsr.currency_wars_replay.save_sample'):
+                        after,verified=observe_started_node(c,store,c.snapshot())
+                    self.assertTrue(verified)
+                    self.assertIs(after,result)
+                    self.assertTrue(store.data['node_attempt']['battle_observed'])
+                    self.assertTrue(store.data['node_attempt']['node_verified'])
+                    self.assertFalse(store.data['completion_verified'])
+                    self.assertFalse(any(call.args[0] is hidden for call in c.evidence.call_args_list))
+                    self.assertEqual(len(store.data['actions']),1)
+
+    def test_identity_gap_cannot_bridge_two_auto_on_observations(self):
+        from autohsr.currency_wars_auto import AutoObservation
+        for gap in ('identity','capture'):
+            with self.subTest(gap=gap),tempfile.TemporaryDirectory() as folder:
+                store=self.store(folder)
+                hidden=current('battle');hidden.tokens=hidden.tokens[:-1]
+                missing=hidden if gap=='identity' else EmptyCapture('transition')
+                c=self.context([current('battle'),missing,current('battle'),current('node_result')])
+                with patch('autohsr.currency_wars_replay.save_sample'),patch(
+                        'autohsr.currency_wars_auto.read_auto',return_value=AutoObservation('on',.99,())) as read_auto:
+                    _,verified=observe_started_node(c,store,c.snapshot())
+                self.assertTrue(verified)
+                self.assertEqual(read_auto.call_count,2)
+                self.assertFalse(store.data['node_attempt']['auto_on_observed'])
+                self.assertFalse(store.data['node_attempt']['auto_observation']['verified_on'])
+                self.assertEqual(len(store.data['node_attempt']['auto_observation']['on_frames']),1)
+
+    def test_identity_gap_discards_current_on_but_preserves_verified_on_history(self):
+        import json
+        from autohsr.currency_wars_auto import AutoObservation
+        for gap in ('identity','capture'):
+            with self.subTest(gap=gap),tempfile.TemporaryDirectory() as folder:
+                store=self.store(folder)
+                hidden=current('node_result');hidden.tokens=hidden.tokens[:-1]
+                missing=hidden if gap=='identity' else EmptyCapture('transition')
+                c=self.context([current('battle'),current('battle'),missing,current('node_result')])
+                with patch('autohsr.currency_wars_replay.save_sample'),patch(
+                        'autohsr.currency_wars_auto.read_auto',return_value=AutoObservation('on',.99,())):
+                    _,verified=observe_started_node(c,store,c.snapshot())
+                self.assertTrue(verified)
+                attempt=store.data['node_attempt']
+                self.assertTrue(attempt['auto_on_observed'])
+                self.assertEqual(len(attempt['auto_on_evidence']),2)
+                self.assertNotIn('auto_observation',attempt)
+                saved=json.loads(store.path.read_text(encoding='utf-8'))['node_attempt']
+                self.assertTrue(saved['auto_on_observed'])
+                self.assertNotIn('auto_observation',saved)
+
+    def test_identity_or_capture_gap_requires_two_new_defeat_frames(self):
+        def defeated():
+            page=current('final_victory')
+            page.tokens=[Token('挑战结束' if t.text=='挑战成功' else '1-1首领'
+                               if t.text=='3-5首领' else t.text,t.score,t.box) for t in page.tokens]
+            return page
+        for gap in ('identity','capture'):
+            with self.subTest(gap=gap),tempfile.TemporaryDirectory() as folder:
+                store=self.store(folder)
+                first,second,third=defeated(),defeated(),defeated()
+                hidden=defeated();hidden.tokens=hidden.tokens[:-1]
+                missing=hidden if gap=='identity' else EmptyCapture('transition')
+                c=self.context([first,missing,second,third])
+                c.evidence.side_effect=lambda scene,label:label+str(id(scene))+'.png'
+                with patch('autohsr.currency_wars_replay.save_sample'):
+                    after,verified=observe_started_node(c,store,c.snapshot())
+                self.assertTrue(verified)
+                self.assertIs(after,third)
+                self.assertFalse(store.data['node_attempt']['node_verified'])
+                self.assertEqual(store.data['node_attempt']['status'],'defeated')
+                self.assertEqual(store.data['node_attempt']['defeat_frames'],[
+                    'currency_standard_defeat_frame_1'+str(id(second))+'.png',
+                    'currency_standard_defeat_frame_2'+str(id(third))+'.png'])
+                self.assertFalse(store.data['completion_verified'])
+                self.assertEqual(len(store.data['actions']),1)
+
+    def test_missing_identity_uses_one_existing_deadline_across_frames_and_never_verifies_result(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store=self.store(folder)
+            hidden_battle,hidden_result=current('battle'),current('node_result')
+            for page in (hidden_battle,hidden_result):page.tokens=page.tokens[:-1]
+            c=self.context([hidden_battle,hidden_result,current('node_result')])
+            first=c.snapshot()
+            clock=SimpleNamespace(monotonic=Mock(side_effect=[0,12,12,21,21,31]))
+            with patch('autohsr.currency_wars_standard_node.time',clock),patch('autohsr.currency_wars_replay.save_sample'):
+                after,verified=observe_started_node(c,store,first)
+            self.assertFalse(verified)
+            self.assertIs(after,hidden_result)
+            self.assertFalse(store.data['node_attempt']['node_verified'])
+            self.assertFalse(store.data['node_attempt']['battle_observed'])
+            self.assertEqual(store.data['node_attempt']['status'],'unknown')
+            self.assertEqual(store.data['action_status'],'node_unverified')
+            self.assertIn('账号标识',store.data['reason'])
+            self.assertNotIn('result',store.data['node_attempt'])
+            self.assertNotIn('auto_observation',store.data['node_attempt'])
+            self.assertEqual(len(store.data['actions']),1)
+
+    def test_capture_crossing_the_unreadable_deadline_cannot_deliver_a_late_result(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store=self.store(folder)
+            hidden=current('battle');hidden.tokens=hidden.tokens[:-1]
+            result=current('node_result');c=self.context([hidden,result]);first=c.snapshot()
+            clock=SimpleNamespace(monotonic=Mock(side_effect=[0,1,1,32]))
+            with patch('autohsr.currency_wars_standard_node.time',clock),patch('autohsr.currency_wars_replay.save_sample'):
+                after,verified=observe_started_node(c,store,first)
+            self.assertFalse(verified)
+            self.assertIs(after,result)
+            self.assertEqual(store.data['node_attempt']['status'],'unknown')
+            self.assertFalse(store.data['node_attempt']['node_verified'])
+            self.assertNotIn('result',store.data['node_attempt'])
+            self.assertEqual(len(store.data['actions']),1)
+
+    def test_identity_recovery_still_rejects_a_different_account_or_node(self):
+        for variant in ('account','node'):
+            with self.subTest(variant=variant),tempfile.TemporaryDirectory() as folder:
+                store=self.store(folder)
+                hidden=current('battle');hidden.tokens=hidden.tokens[:-1]
+                wrong=current('battle','1-2') if variant=='node' else current('node_result')
+                if variant=='account':wrong.tokens[-1]=Token('UID:200000000',.99,(.01,.96,.1,.99))
+                c=self.context([hidden,wrong])
+                with patch('autohsr.currency_wars_replay.save_sample'):
+                    if variant=='account':
+                        with self.assertRaises(AutomationError):observe_started_node(c,store,c.snapshot())
+                    else:
+                        _,verified=observe_started_node(c,store,c.snapshot())
+                        self.assertFalse(verified)
+                self.assertFalse(store.data['node_attempt']['node_verified'])
+                self.assertEqual(len(store.data['actions']),1)
+
+    def test_empty_capture_and_missing_identity_can_recover_without_restarting(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store=self.store(folder)
+            hidden=current('node_result');hidden.tokens=hidden.tokens[:-1]
+            c=self.context([current('battle'),EmptyCapture('transition'),hidden,current('node_result')])
+            with patch('autohsr.currency_wars_replay.save_sample'):
+                _,verified=observe_started_node(c,store,c.snapshot())
+            self.assertTrue(verified)
+            self.assertTrue(store.data['node_attempt']['node_verified'])
+            self.assertEqual(len(store.data['actions']),1)
+
+    def test_control_exceptions_from_identity_or_auto_are_never_converted_to_unknown(self):
+        for source in ('identity','auto'):
+            for control in (Stopped('stop'),InputInterrupted('epoch'),FocusLost('focus')):
+                with self.subTest(source=source,control=type(control).__name__),tempfile.TemporaryDirectory() as folder:
+                    store=self.store(folder);c=self.context([current('battle')])
+                    name=('autohsr.currency_wars_standard_node.account_key' if source=='identity'
+                          else 'autohsr.currency_wars_auto.read_auto')
+                    with patch('autohsr.currency_wars_replay.save_sample'),patch(name,side_effect=control):
+                        with self.assertRaises(type(control)) as raised:
+                            observe_started_node(c,store,c.snapshot())
+                    self.assertIs(raised.exception,control)
+                    self.assertFalse(store.data['node_attempt']['node_verified'])
+                    self.assertNotIn('auto_observation',store.data['node_attempt'])
+                    self.assertEqual(len(store.data['actions']),1)
 
     def test_full_owned_board_can_start_once_and_own_pending_is_rederived(self):
         from autohsr.tests.test_currency_wars_standard_trading import full_board_fixture

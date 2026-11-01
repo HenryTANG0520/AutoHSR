@@ -97,6 +97,16 @@ and, where stated below, desktop UI materials.
 Honkai: Star Rail artwork and names belong to their respective rights holders;
 the upstream software licenses do not grant ownership of those game assets.
 
+## 2026-10-29 指南底纹
+
+更新既有指南的`ui/paper-pattern.png`：仍取自已登记4.6每日实训原图（SHA-256 `6ba21f7ad3417d8bebb0224849221b59b674030e1e964c49e34f676176d28e11`），范围扩为`[236,892,1694,964]`，以连续暖色透明度提取静态底边星图，清除倒计时与挂饰遮挡区，不补全未知像素。处理与输出哈希见`ui/sources.json`；游戏美术权利归原权利人，不纳入代码GPL许可。
+
+## 2026-10-29 设置页布局参考
+
+设置行的左右分区、细分隔线和下拉箭头参考 [GameWith 发布的游戏「其他」设置截图](https://img.gamewith.jp/img/original_ff63c82b79444430e3f32cae5029b920.png)，所在[原文](https://gamewith.jp/houkaistarrail/article/show/447025)。本次读取的原始响应为1200×630 JPEG，SHA-256为`8e6c0f13f458454da06a14570c37e8decec5c764eaa543f288da1846b0894d0f`；原截图游戏版本未标明，不能视作当前客户端逐像素验收。图片只用于本地视觉对照，未作为分发素材；界面以代码绘制，沿用下文已登记的字体。未复制博主的标记箭头、教程或截图像素，也未取得该图片的再分发许可。
+
+展开列表的行高、分隔线和右侧选中圆点另参考[MobileMatters的PC帧率选项截图](https://prod.assets.earlygamecdn.com/images/Honkai_-Star-Rail-PC-FPS-modes.png)，所在[原文](https://mobilematters.gg/gaming/enable-120-fps-honkai-star-rail)标记于2023-07-13更新。读取的1920×1080 PNG SHA-256为`2882740221aaa7033f6cf0d23f9b37dee7227ed270d61a1524cffc7b767c8df6`；本地对照区域`[1406,418,1834,567]`只含两行选项，排除UID和无关内容。`autohsr/setting_choices.py`使用代码和既有字体绘制，没有分发截图像素或新增位图素材。原图游戏版本未知，仅为该静态列表的视觉参考；未取得额外再分发许可。橙点保留已确认值、待确认行焦点框及工作区限高是应用交互适配，不作为游戏键盘行为或当前版本的证据。
+
 ## Honkai Star Rail - One Dragon
 
 Source: [OneDragon-Anything/StarRailOneDragon](https://github.com/OneDragon-Anything/StarRailOneDragon)
@@ -724,6 +734,17 @@ strip masked. Its sidecar records the source hash and non-identifier OCR.
 It verifies modal priority and one-shot confirmation feedback; it is not
 independent completion evidence. Game artwork remains the property of HoYoverse.
 
+The same `du_runtime/last_area_confirm.png` is also a layout/color reference for
+the code-drawn desktop detail and unsaved-settings panels in `autohsr/desktop_dialogs.py`
+(2026-10-29): 960×360 plate, 8px offset frame, 96px footer at the 1920px baseline.
+The masked fixture SHA-256 is
+`961eefc1aaf95bb3c501bb23df9e519e97e6431abd2e4ff68b92714e3cdc7dab`.
+No new bitmap is extracted or bundled for this panel; the existing game font
+retains its attribution above. This reference does not prove whole-screen parity.
+The unsaved-settings panel has three explicit application choices; narrow work
+areas stack them vertically. These are application adaptations of the reference,
+not claims that the game's original two-button interaction is identical.
+
 `du_runtime/adventure_hanu_*` are locally captured 4.6 adventure-room frames
 with the bottom identifier strip masked at the 1920-pixel baseline. Their
 source hashes and non-identifier OCR verify the floating NPC name separately
@@ -763,6 +784,10 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 
 字体为本地客户端附带的`SDK_SC_Web`，原文件名`zh-cn.ttf`，按原始字节复制；保留汉仪版权和许可元数据，不纳入原创代码GPL声明。游戏图像同样归相应游戏权利人；来源事实与署名不构成再许可授权。详情及复现脚本见[UI素材说明](ui/README.md)。代码重绘指南外框、纹样、卡片、进度与按钮，没有迁入AutoZZZ或March7thAssistant的GUI源码。
 
+2026-10-29重制其中三个页签图标、活跃标记与任务卡水印。仍使用既有每日实训、旷宇纷争两张原图，避开指针与放射纹背景，保留连续透明度、图标渐变及原比例；五项来源、裁切与输出哈希更新在同一清单中。没有新增来源或素材文件数，未分发原始画面；游戏美术的权利归属和许可边界不变。
+
+同日新增`card-frame.png`，从同一每日实训源图提取纸面地图纹样、金色点线与底部撕口。原状态栏、任务、数值和奖励区域的RGB及透明度一并清零，外缘按亮度提取透明度；没有保留藏在透明通道下的原任务文字。清单记录288×372裁切、蒙版与哈希；不透明静态区域保留源像素。未采集新游戏画面，权利归属仍同上。
+
 ## 2026-10-28 March7thAssistant货币战争策略适配
 
 标准模式“默认／阿格莱雅／希儿”的购买、成长和补空位偏好参考March7thAssistant固定提交`7cf6c6bed474539485d3b1504077ac352866829f`，作者moesnow及其贡献者，上游GPL v3。完整许可、Git blob与哈希清单及改写范围见[来源说明](upstream/March7thAssistant/README.md)。本次界面只接入对应的本次新局策略选择，接续继续使用已记录策略；没有迁入上游GUI、固定输入或图片，未将离线通过写作实机通过。
@@ -770,6 +795,8 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 ## 2026-10-29 生存索引列表素材
 
 新增`assets/ui/survival/`的104幅静态图像，从2026-10-20既有CN 4.6.0生存索引目录采集画面裁出对应掉落图标或首领徽章。分类、名称和地点与现有104条目录逐项绑定；[来源清单](ui/survival/sources.json)记录原图相对标识、SHA-256、1920×1080坐标、裁切变换及输出哈希。排除完整画面、UID、玩家头像、余额和无关个人信息，没有启动游戏取新图。游戏美术归HoYoverse及相应权利人，不纳入原创代码GPL声明；来源记录不代表额外再许可。仅用于桌面目录展示，不能作为当前账号已解锁或已通关的证据。
+
+同日从同批归档画面补入21个地区、命途、属性标题图标。对应64条副本的分组按同屏标题及相邻滚动画面的重叠条目核对；[分组清单](ui/survival/groups.json)保留每组图标的裁切、原图与OCR记录哈希、输出哈希，以及条目归属的原始帧标识。没有采集新画面、复制账号状态或变更执行目录；图像的权利归属与上述许可边界相同。
 
 ## 2026-10-29 March7thAssistant装备识别参考
 
@@ -829,6 +856,14 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 
 参考固定March7thAssistant的`equip_weapons`、`check_main_screen`及`equip_aglaea`／`equip_seele`调用关系，将普通装备的首领节点限制改写为[原生装备模式](../autohsr/currency_wars_equipment_mode.py)。命名核心分配独立，保留本项目默认、设置保存语义及逐件装备回执；标准首领节点采用固定源码中的1-9、2-7、3-7，不将其他模式写成已接入。来源函数、Git blob及GPL v3许可见[source.json](upstream/March7thAssistant/source.json)。没有新增公开游戏素材、模型或实机采集；检查沿用既有署名图标与合成状态。
 
+## 2026-10-29 旷宇纷争入口插图
+
+新增`assets/ui/universe/`两幅入口插图，来源为2026-10-24和26日已保存的CN 4.6.0指南画面。只保留静态插图，原等级、赛季倒计时、奖励预览和动作区域移除，局部颜色延展补充背景；原区域不再代表账号或当前版本状态。来源SHA-256、裁切、移除蒙版、处理方法与输出SHA-256见[来源清单](ui/universe/sources.json)。未启动游戏采集，不包含完整帧、UID或账号指纹；游戏美术归HoYoverse及相应权利人，继续排除在原创代码GPL许可之外。
+
+## 2026-10-29 指南场景与关闭符号
+
+新增`assets/ui/guide/`两幅图像，复用既有CN 4.6.0每日实训源图，原图SHA-256与首批指南素材一致。背景移除标题、整本指南、关闭符号及整个底部HUD区，遮挡区域用低分辨率邻近颜色插值、放大并在蒙版内侧羽化；这些区域不代表原始景物。关闭符号单独裁出静态白色图形。来源哈希、1920×1080坐标、蒙版、变换及输出哈希见[来源清单](ui/guide/sources.json)，未分发原始整图、UID或安装路径，未启动游戏取材。游戏美术归HoYoverse及相应权利人，不纳入原创代码GPL许可，署名不构成额外再许可。
+
 ## 2026-10-29 携装角色出售与装备返还
 
 参考固定March7thAssistant的`_sell_single_character`及三种出售调用关系，将携装角色处理适配为[原生库存返还协议](../autohsr/currency_wars_sale_equipment.py)。保留本项目已校准图标和角色面板，增加版本化目标、完整库存来源、逐项返还及售后完整重采，未移植点击成功即完成的判断。来源函数、Git blob及GPL v3许可继续记录于[source.json](upstream/March7thAssistant/source.json)。本轮没有新增图像、模型或游戏采集；正向售出及返还均为合成画面机制检查，来源及边界见[开发记录](../docs/currency-wars-development.md)。
@@ -856,3 +891,7 @@ AutoHSR桌面参考《崩坏：星穹铁道》“星际和平指南／每日实�
 继续参考固定March7thAssistant的`check_investment_environment`和`check_special_characters`，将角色赠送接入[原生核验](../autohsr/currency_wars_investment_units.py)。固定源码及GPL v3署名保留在[上游清单](upstream/March7thAssistant/source.json)。原末节点完整阵容、直接位面来源、确认后全部重采、显式数量／星级／费用、装备守恒与逐角色关闭回执是AutoHSR实现，没有迁入上游缓存加计数或默认首项的行为。
 
 效果文本来自既有4.6的150号匿名字段样本，记录“黑塔、缇宝、0.15%”，未由标题猜测星级。原样本和PNG的SHA-256、校准范围及权利说明见[机制清单](currency-investment/sources.json)与[README](currency-investment/README.md)。没有新增、复制或公开原游戏画面，没有训练模型或独立真实留出；其他变体和输入链为合成检查，真实赠送尚未验收，见[说明](../docs/currency-wars-investment-units.md)。
+
+## 2026-10-30 支援偏好桌面展示
+
+中文候选列表复用上述105幅既有[支援头像清单](upstream/March7thAssistant/support/sources.json)与明确名称，仅在内存中将已选头像缩放至38个逻辑像素供界面显示；原PNG及哈希不变，没有增加游戏画面或训练素材。美术权利与上游源码GPL边界继续见[原说明](upstream/March7thAssistant/support/README.md)。编辑与快照接线由本项目实现，应用／保存不读账号、好友名单或游戏画面，不把参考头像视为可用支援的观察证据；验证与实机边界见[支援说明](../docs/support-preferences.md)。

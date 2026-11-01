@@ -4,7 +4,20 @@ import time
 from .currency_wars import CurrencyWarsWorkflow, observe
 from .currency_wars_identity import account_key
 from .currency_wars_node import battle_node, result_node
-from .models import AutomationError, EmptyCapture
+from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, Stopped
+
+
+def _discard_current_auto(store, tracker):
+    tracker.clear()
+    # Historical verified-on facts remain valid. Without a current identity
+    # there is no current auto observation, and no unbound frame becomes proof.
+    if store.data['node_attempt'].pop('auto_observation', None) is not None:
+        store.persist()
+
+
+def _unreadable_reason(identity_unreadable):
+    return ('出战后持续未核实当前账号标识，未采用缺读帧的战斗或结算。'
+            if identity_unreadable else '出战后持续未识别到对应战斗或结算。')
 
 
 def _observe_auto(c, store, scene, guard, tracker):
@@ -13,6 +26,8 @@ def _observe_auto(c, store, scene, guard, tracker):
     from .currency_wars_standard_flow import evidence
     try:
         observed = read_auto(scene, c.settings.ocr_confidence)
+    except (Stopped, InputInterrupted, FocusLost):
+        raise
     except Exception:
         observed = AutoObservation('unknown', 0., (('reason', 'reader_unavailable'), ('off_calibrated', False)))
     guard._require_current_scene(scene)  # Discard a result interrupted during CV.
@@ -74,17 +89,37 @@ def observe_started_node(c, store, scene):
     elapsed, unseen = 0., 0.
     defeat_frames=[]
     auto_tracker = {}
+    identity_gap = False
     limit = min(180,c.settings.battle_timeout)
     while elapsed < limit:
         c.checkpoint()
         started, inactive = time.monotonic(), c.runner.inactive_duration
         kind = 'unknown'
         unreadable = True
-        if scene is not None:
+        identity_unreadable = False
+        if scene is None:
+            defeat_frames=[]
+            _discard_current_auto(store, auto_tracker)
+        else:
             guard._require_current_scene(scene)
-            if account_key(scene,max(.85,c.settings.ocr_confidence)) != store.data.get('account_key'):
-                raise AutomationError('节点观察账号来源不一致。')
-            kind = observe(scene,c.settings.ocr_confidence).page_kind
+            try:
+                observed_account = account_key(scene,max(.85,c.settings.ocr_confidence))
+            except (Stopped, InputInterrupted, FocusLost):
+                raise
+            except AutomationError:
+                # A missing/conflicting UID proves nothing about this frame.
+                # Keep the existing bounded observation deadline; never carry
+                # an incomplete auto-on proof across an identity gap.
+                identity_unreadable = True
+                _discard_current_auto(store, auto_tracker)
+                if not identity_gap:
+                    c.log('标准节点'+attempt['node']+'当前账号标识暂不可读，仅在原观察期限内重新采集。')
+                identity_gap = True
+            else:
+                if observed_account != store.data.get('account_key'):
+                    raise AutomationError('节点观察账号来源不一致。')
+                identity_gap = False
+                kind = observe(scene,c.settings.ocr_confidence).page_kind
             if kind!='match_defeat':defeat_frames=[]
             unreadable = kind in ('unknown','preparation')
             if kind=='battle':
@@ -132,7 +167,7 @@ def observe_started_node(c, store, scene):
         if unreadable:
             unseen += duration
             if unseen >= 30:
-                attempt.update(status='unknown',reason='出战后持续未识别到对应战斗或结算。')
+                attempt.update(status='unknown',reason=_unreadable_reason(identity_unreadable))
                 break
         capture_started, capture_inactive = time.monotonic(), c.runner.inactive_duration
         try:
@@ -143,6 +178,9 @@ def observe_started_node(c, store, scene):
         elapsed += capture_duration
         if unreadable:
             unseen += capture_duration
+            if unseen >= 30:
+                attempt.update(status='unknown',reason=_unreadable_reason(identity_unreadable))
+                break
     else:
         attempt.update(status='timeout',reason='标准节点战斗观察超时，未重复出战。')
     if scene is not None:

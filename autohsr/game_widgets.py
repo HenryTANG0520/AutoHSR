@@ -4,60 +4,188 @@ from __future__ import annotations
 import math
 import tkinter as tk
 from tkinter import ttk
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
 from . import theme as t
 
 
 class Surface(tk.Canvas):
-    def __init__(self,parent,scale,**kwargs):
+    def __init__(self,parent,scale,*,scene=False,paint_height=None,**kwargs):
         kwargs.setdefault("bg",t.PANEL)
         super().__init__(parent,highlightthickness=0,borderwidth=0,**kwargs)
         self.scale=scale
+        self.paint_height=paint_height
         self._paint_job=None
+        self._content_dirty=True
+        self._rendered_geometry=None
+        self.scene=scene
+        self._scene_size=None
+        self._scene_binding=None
+        if scene:
+            self._scene_root=self.winfo_toplevel()
+            self._scene_binding=self._scene_root.bind("<Configure>",self._scene_resize,add="+")
         self.bind("<Configure>",self.redraw)
+        self.bind("<Map>", self.redraw, add="+")
         self.bind("<Destroy>",self._destroy,add="+")
 
     def _destroy(self,event):
-        if event.widget is self and self._paint_job:
-            self.after_cancel(self._paint_job)
-            self._paint_job=None
+        if event.widget is self:
+            if self._paint_job:
+                self.after_cancel(self._paint_job)
+                self._paint_job=None
+            if self._scene_binding:
+                self._scene_root.unbind("<Configure>",self._scene_binding)
+            self._photo=None
+
+    def _scene_resize(self,event):
+        if event.widget is self._scene_root and (event.width,event.height)!=self._scene_size:
+            self.redraw(event)
 
     def watch(self,*variables):
-        tokens=[(v,v.trace_add("write",lambda *_:self.redraw())) for v in variables]
+        values={v._name:v.get() for v in variables}
+        def changed(variable):
+            value=variable.get()
+            if values[variable._name]!=value:
+                values[variable._name]=value
+                self.redraw()
+        tokens=[(v,v.trace_add("write",lambda *_,v=v:changed(v))) for v in variables]
         self.bind("<Destroy>",lambda e:[v.trace_remove("write",token) for v,token in tokens] if e.widget is self else None,add="+")
 
-    def redraw(self,_event=None):
-        if self._paint_job is None:
+    def redraw(self,_event=None,*,layout=False):
+        if not layout and (_event is None or _event.type not in (tk.EventType.Configure,tk.EventType.Map)):
+            self._content_dirty=True
+        if self._paint_job is None and not getattr(self,"_suspended",False):
             self._paint_job=self.after_idle(self._render)
+
+    def _geometry_key(self):
+        key=(self.winfo_width(),self.winfo_height())
+        if self.scene:
+            root=self._scene_root
+            key+= (root.winfo_width(),root.winfo_height(),
+                   self.winfo_rootx()-root.winfo_rootx(),self.winfo_rooty()-root.winfo_rooty())
+        return key
 
     def _render(self):
         self._paint_job=None
         w,h=self.winfo_width(),self.winfo_height()
-        if w<2 or h<2:
+        if w<2 or h<2 or not self.winfo_ismapped():
             return
+        if self.paint_height is not None:
+            # The canvas supplies the remaining solid background; only the
+            # decorated area needs an antialiased bitmap.
+            h=min(h,round(self.paint_height*self.scale))
         p=t.Painter(w,h,self.scale,self.cget("bg"))
+        if self.scene:
+            root=self._scene_root
+            self._scene_size=(root.winfo_width(),root.winfo_height())
+            x,y=self.winfo_rootx()-root.winfo_rootx(),self.winfo_rooty()-root.winfo_rooty()
+            scene=t.scene_image(*self._scene_size).crop((x,y,x+w,y+h))
+            p.image.paste(scene.resize(p.image.size,Image.Resampling.BILINEAR))
         self.paint(p)
-        self._photo=ImageTk.PhotoImage(p.finish(),master=self)
-        self.delete("art")
-        self.create_image(0,0,image=self._photo,anchor="nw",tags="art")
-        self.tag_lower("art")
+        self._present(p.finish())
+
+    def _present(self, image):
+        photo=ImageTk.PhotoImage(image,master=self)
+        if self.find_withtag("art"):
+            self.itemconfigure("art",image=photo)
+        else:
+            self.create_image(0,0,image=photo,anchor="nw",tags="art")
+            self.tag_lower("art")
+        # Keep the previous bitmap alive until the canvas references its replacement.
+        self._photo=photo
+        self._rendered_geometry=self._geometry_key()
+        self._content_dirty=False
+
+
+class Backdrop(Surface):
+    def __init__(self,parent,scale,**kwargs):
+        super().__init__(parent,scale,scene=True,bg=t.BG,**kwargs)
+
+    def paint(self,p):
+        pass
+
+    def _render(self):
+        self._paint_job=None
+        w,h=self.winfo_width(),self.winfo_height()
+        if w<2 or h<2 or not self.winfo_ismapped():
+            return
+        root=self._scene_root
+        self._scene_size=(root.winfo_width(),root.winfo_height())
+        x,y=self.winfo_rootx()-root.winfo_rootx(),self.winfo_rooty()-root.winfo_rooty()
+        region=(*self._scene_size,x,y,w,h)
+        if region==getattr(self,"_scene_region",None):
+            return
+        # This surface has no vector artwork: use the cached scene at native size.
+        self._present(t.scene_image(*self._scene_size).crop((x,y,x+w,y+h)))
+        self._scene_region=region
+
+
+class SceneButton(ttk.Button):
+    """Native button bindings with scenery composited into the rounded corners."""
+    def __init__(self,parent,scale,**kwargs):
+        self.scale=scale
+        self._paint_job=None
+        self._photo=ImageTk.PhotoImage(Image.new("RGBA",(round(116*scale),round(38*scale)),t.BG),master=parent)
+        style=ttk.Style(parent)
+        style.layout("Scene.Footer.TButton",[("Button.label",{"sticky":"nsew"})])
+        style.configure("Scene.Footer.TButton",padding=0)
+        super().__init__(parent,image=self._photo,compound="center",style="Scene.Footer.TButton",**kwargs)
+        self._scene_root=self.winfo_toplevel()
+        self._scene_size=None
+        self._scene_binding=self._scene_root.bind("<Configure>",Surface._scene_resize.__get__(self),add="+")
+        for event in ("<Configure>","<Map>","<Enter>","<Leave>","<FocusIn>","<FocusOut>","<ButtonPress-1>","<ButtonRelease-1>","<KeyPress-space>","<KeyRelease-space>"):
+            self.bind(event,self.redraw,add="+")
+        self.bind("<Destroy>",Surface._destroy.__get__(self),add="+")
+
+    redraw=Surface.redraw
+
+    def state(self,*args):
+        result=super().state(*args)
+        if args:
+            self.redraw()
+        return result
+
+    def _render(self):
+        self._paint_job=None
+        if not self.winfo_ismapped():
+            return
+        root=self._scene_root
+        self._scene_size=(root.winfo_width(),root.winfo_height())
+        w,h=self.winfo_width(),self.winfo_height()
+        x,y=self.winfo_rootx()-root.winfo_rootx(),self.winfo_rooty()-root.winfo_rooty()
+        p=t.Painter(w,h,self.scale)
+        scene=t.scene_image(*self._scene_size).crop((x,y,x+w,y+h))
+        p.image.paste(scene.resize(p.image.size,Image.Resampling.BILINEAR))
+        color="#d3d3d3" if self.instate(("disabled",)) else t.CARD
+        edge=t.GOLD if any(self.instate((state,)) for state in ("active","pressed","focus")) else "#b4b4b4"
+        p.box((1,1,p.width-1,p.height-1),color,18,edge,1.4)
+        p.box((5,5,p.width-5,p.height-5),color,14,"#d5d5d5")
+        photo=ImageTk.PhotoImage(p.finish(),master=self)
+        self.configure(image=photo)
+        self._photo=photo
+
+
+def paint_run_metrics(p, ui):
+    if ui.stamina.get() != "—":
+        p.text((p.width-295, 29), "已用开拓力  "+ui.stamina.get(), 14, t.LIGHT)
+        p.text((p.width-142, 29), ui.elapsed.get(), 14, t.LIGHT)
 
 
 class Header(Surface):
     def __init__(self,parent,scale,ui):
-        super().__init__(parent,scale,bg=t.BG,height=round(76*scale))
+        super().__init__(parent,scale,scene=True,bg=t.BG,height=round(76*scale))
         self.ui=ui
         self.watch(ui.page_title,ui.stamina,ui.elapsed)
         self.bind("<Button-1>",lambda e:ui._close() if e.x>self.winfo_width()-55*scale else None)
-        self.plan = ttk.Frame(self, style="Footer.TFrame")
+        self.plan = Backdrop(self, scale, width=1, height=1)
         self.plan.columnconfigure(0, weight=1)
         ui.plan_ribbon = PlanRibbon(self.plan, scale, ui, dark=True)
         ui.plan_ribbon.grid(row=0, column=0, sticky="ew")
-        ui.weekly_button = ttk.Button(self.plan, text="周常计划", style="Footer.TButton", command=ui._show_weekly_plan)
+        ui.weekly_button = SceneButton(self.plan, scale, text="周常计划", command=ui._show_weekly_plan)
         ui.weekly_button.grid(row=0, column=1, padx=(round(10*scale), 0))
+        self.bind("<Configure>", self.position_plan, add="+")
 
-    def position_plan(self):
+    def position_plan(self, _event=None):
         if getattr(self.ui, "action_page", "home") in ("home", "tasks"):
             d = lambda n: round(n*self.scale)
             self.plan.place(x=d(200), y=d(18), width=max(1, self.winfo_width()-d(550)), height=d(46))
@@ -65,70 +193,142 @@ class Header(Surface):
             self.plan.place_forget()
 
     def paint(self,p):
-        self.position_plan()
         p.asset("guide-mark.png",(24,23,62,59),t.GOLD)
         p.text((73,21),"星际和平指南",14,t.GOLD)
         p.text((73,43),self.ui.page_title.get(),17,t.LIGHT)
-        p.text((p.width-295,29),"已确认开拓力  "+self.ui.stamina.get(),14,t.LIGHT)
-        p.text((p.width-142,29),self.ui.elapsed.get(),14,t.LIGHT)
+        paint_run_metrics(p, self.ui)
         x,y=p.width-33,36
-        for sx,sy in ((-1,-1),(-1,1),(1,-1),(1,1)):
-            p.line((x+sx*4,y+sy*4,x+sx*13,y+sy*13),t.LIGHT,2)
+        p.asset("guide/close.png",(x-16,y-16,x+16,y+16))
 
 
 class Guide(Surface):
-    """The black guide cover, five icon tabs, light paper and two charms."""
+    """The game guide, named app utilities, light paper and two charms."""
     def __init__(self,parent,scale,ui):
-        super().__init__(parent,scale,bg=t.BG)
+        super().__init__(parent,scale,scene=True,bg=t.BG,height=round(678*scale))
         self.ui=ui
+        self.art_left=self.art_right=0
         self.content=ttk.Frame(self)
         self.tabs=ttk.Frame(self,style="Rail.TFrame")
         self.buttons={}
         self.photos={}
+        self.selected_page="home"
+        self.hovered_page=None
         definitions=(("home","每日实训","tab-daily.png"),("tasks","生存索引","tab-survival.png"),
-                     ("universe","差分宇宙 / 货币战争","tab-universe.png"),("logs","运行记录","tab-records.png"),
-                     ("settings","设置","tab-settings.png"))
+                     ("universe","差分宇宙 / 货币战争","tab-universe.png"),("logs","记录","tab-records.png"))
         for col,(key,label,filename) in enumerate(definitions):
             for selected in (False,True):
-                p=t.Painter(round(42*scale),round(42*scale),scale,t.PANEL if selected else t.RAIL)
-                if selected:
-                    p.glow((21,21),10,(96,181,237,155),7)
-                p.asset(filename,(1,1,41,41),"#111111" if selected else "#b6b6b6")
-                self.photos[key,selected]=ImageTk.PhotoImage(p.finish(),master=self)
+                for emphasized in (False,True):
+                    p=t.Painter(round(52*scale),round(52*scale),scale,t.PANEL if selected else t.RAIL)
+                    if key not in ("logs", "settings"):
+                        if emphasized:
+                            p.glow((26,26),12,(96,181,237,155),6)
+                        source=t.asset(filename)
+                        half_w,half_h=source.width*.4,source.height*.4
+                        p.asset(filename,(26-half_w,26-half_h,26+half_w,26+half_h),
+                                "#031724" if selected and emphasized else "#080808" if selected else "#b6b6b6")
+                    self.photos[key,selected,emphasized]=ImageTk.PhotoImage(p.finish(),master=self)
             command=lambda key=key:ui._show_page(getattr(ui,"last_universe_page","differential_universe") if key=="universe" else key)
-            button=ttk.Button(self.tabs,text=label,image=self.photos[key,False],style="Nav.TButton",command=command)
+            button=ttk.Button(self.tabs,text=label,image=self.photos[key,False,False],
+                             compound="center" if key in ("logs", "settings") else "none",style="Nav.TButton",command=command)
             button.grid(row=0,column=col,padx=0)
             self.buttons[key]=button
-            Tooltip(button,"旷宇纷争" if key=="universe" else label)
+            button.bind("<Enter>",lambda _event,key=key:self._hover(key),add="+")
+            button.bind("<Leave>",lambda _event:self._hover(None),add="+")
+            for event in ("<FocusIn>","<FocusOut>"):
+                button.bind(event,lambda _event:self._refresh_tabs(),add="+")
+            if key not in ("logs", "settings"):
+                Tooltip(button,"旷宇纷争" if key=="universe" else label)
+        # Application settings are a utility at the opposite end of the book,
+        # separate from its game-mode tabs. Keep a visible name beside the gear.
+        style = ttk.Style(self)
+        style.layout("Settings.Entry.TButton", [("Button.padding", {"sticky":"nsew", "children":[("Button.label", {"sticky":"nsew"})]})])
+        style.configure("Settings.Entry.TButton", background=t.RAIL, foreground=t.LIGHT,
+                        font=t.native_font(self,14), padding=(round(8*scale),0), anchor="center")
+        style.map("Settings.Entry.TButton", foreground=[("active",t.GOLD),("focus",t.GOLD),("!disabled",t.LIGHT)],
+                  background=[("active",t.RAIL),("!disabled",t.RAIL)])
+        for emphasized in (False, True):
+            p=t.Painter(round(34*scale),round(34*scale),scale,t.RAIL)
+            color=t.GOLD if emphasized else t.LIGHT
+            points=[]
+            for step in range(32):
+                angle=step*math.tau/32
+                radius=12 if step%4 in (1,2) else 9
+                points.extend((15+radius*math.cos(angle),17+radius*math.sin(angle)))
+            p.poly(points,color)
+            p.ellipse((10,12,20,22),t.RAIL)
+            self.photos["settings",False,emphasized]=ImageTk.PhotoImage(p.finish(),master=self)
+        def settings():
+            ui._show_page("settings")
+            ui.settings_return_focus = self.buttons["settings"]
+        button=ttk.Button(self,text="设置",image=self.photos["settings",False,False],compound="left",
+                          style="Settings.Entry.TButton",command=settings)
+        self.buttons["settings"]=button
+        button.bind("<Enter>",lambda _:self._hover("settings"),add="+")
+        button.bind("<Leave>",lambda _:self._hover(None),add="+")
+        for event in ("<FocusIn>","<FocusOut>"):
+            button.bind(event,lambda _:self._refresh_tabs(),add="+")
         self.bind("<Configure>",self._position,add="+")
 
     def select(self,page):
-        group="universe" if page in ("differential_universe","currency_wars") else page
+        self.selected_page="universe" if page in ("differential_universe","currency_wars") else page
+        self._refresh_tabs()
+
+    def _hover(self,page):
+        self.hovered_page=page
+        self._refresh_tabs()
+
+    def _refresh_tabs(self):
+        focus=t.focus_widget(self.winfo_toplevel())
         for key,button in self.buttons.items():
-            button.configure(style="Selected.Nav.TButton" if key==group else "Nav.TButton",image=self.photos[key,key==group])
+            if key == "settings":
+                button.configure(image=self.photos[key,False,key==self.hovered_page or button==focus])
+                continue
+            selected=key==self.selected_page
+            emphasized=key==self.hovered_page or button==focus
+            button.configure(style="Selected.Nav.TButton" if selected else "Nav.TButton",
+                             image=self.photos[key,selected,emphasized])
 
     def _position(self,_event=None):
         d=lambda n:round(n*self.scale)
-        w,h=self.winfo_width(),self.winfo_height()
-        self.tabs.place(x=d(97),y=d(24))
-        self.content.place(x=d(77),y=d(108),width=max(1,w-d(151)),height=max(1,h-d(148)))
+        w,h=self.winfo_width()-self.art_left-self.art_right,self.winfo_height()
+        self.tabs.place(x=self.art_left+d(110),y=d(24))
+        self.buttons["settings"].place(x=self.art_left+w-d(330),y=d(24),width=d(122),height=d(52))
+        self.content.place(x=self.art_left+d(90),y=d(90),width=max(1,w-d(173)),height=max(1,h-d(130)))
+
+    def paint_paper(self, p, surface):
+        # The task canvas is opaque. Reuse the book's coordinates so the chart
+        # continues across it instead of disappearing at the canvas boundary.
+        scale = self.scale
+        dx = (self.winfo_rootx()-surface.winfo_rootx()+self.art_left)/scale
+        dy = (self.winfo_rooty()-surface.winfo_rooty())/scale
+        w = (self.winfo_width()-self.art_left-self.art_right)/scale
+        h = self.winfo_height()/scale
+        origin = p.origin
+        p.origin = (0, 0)
+        try:
+            p.asset("paper-pattern.png", (dx+60,dy+h-78,dx+w-51,dy+h-20))
+        finally:
+            p.origin = origin
 
     def paint(self,p):
-        w,h=p.width,p.height
-        p.box((38,12,w-38,h-12),"#101111",25,"#3a3a3c",2)
-        p.box((51,25,w-51,h-25),t.PANEL,16)
-        p.box((51,25,w-51,91),"#252525",15)
-        p.box((51,53,w-51,91),"#252525")
-        p.box((51,91,w-51,111),t.PANEL)
+        left,right=self.art_left/self.scale,self.art_right/self.scale
+        w,h=p.width-left-right,p.height
+        p.origin=(left,0)
+        p.box((47,12,w-38,h-9),"#101111",25,"#3a3a3c",2)
+        p.box((60,25,w-51,h-20),t.PANEL,16)
+        p.box((60,25,w-51,88),"#252525",15)
+        p.box((60,53,w-51,88),"#252525")
+        p.box((60,88,w-51,111),t.PANEL)
         # The static paper pattern is isolated from the reference's live text.
-        with p.clip((51,91,w-51,h-25),16):
-            p.asset("paper-pattern.png",(51,h-99,380,h-25))
-            p.line((w-185,92,w-260,h-25),"#d1cec3")
+        with p.clip((60,88,w-51,h-20),16):
+            self.paint_paper(p, self)
         p.box((w-159,42,w-51,66),"#222222",12,"#6f654a")
         p.ellipse((w-150,52,w-147,55),t.GOLD)
         p.asset("guide-seal.png",(w-119,32,w-70,73),t.GOLD)
-        p.asset("guide-charm-left.png",(1,114,83,273))
-        p.asset("guide-charm-right.png",(w-112,h-255,w+1,h-66))
+        p.asset("guide-charm-left.png",(-6,112,86,290))
+        charm_width=113+28*min(1,right/44)
+        edge=w+min(43,right)
+        p.asset("guide-charm-right.png",(edge-charm_width,h-37-charm_width*294/176,edge,h-37))
 
 
 class Tooltip:
@@ -145,7 +345,7 @@ class Tooltip:
         self.tip=tk.Toplevel(self.widget)
         self.tip.overrideredirect(True)
         self.tip.geometry(f"+{self.widget.winfo_rootx()}+{self.widget.winfo_rooty()+self.widget.winfo_height()+5}")
-        tk.Label(self.tip,text=self.text,bg=t.RAIL,fg=t.LIGHT,font=(t.FONT,10),padx=12,pady=5).pack()
+        tk.Label(self.tip,text=self.text,bg=t.RAIL,fg=t.LIGHT,font=t.native_font(self.widget,10),padx=12,pady=5).pack()
 
     def hide(self,_=None):
         if self.tip is not None:
@@ -167,12 +367,25 @@ class TrainingMeter(Surface):
         w=p.width
         p.box((39,12,w-1,98),"#e9e9e9",35,"#f7f7f7",2)
         p.box((78,62,w-1,98),"#e9e9e9")
-        cx,cy,r=54,54,53
-        p.ellipse((cx-r,cy-r,cx+r,cy+r),"#f8f8f5","#d2c9b5")
+        cx,cy=55,55
+        for n in range(96):
+            angle=n*math.tau/96
+            x,y=cx+53*math.cos(angle),cy+53*math.sin(angle)
+            p.ellipse((x-.7,y-.7,x+.7,y+.7),"#c9bfa8")
+        outline=[]
+        for degrees in range(360):
+            # The reference seal has four tips, a gold rim and inner spokes.
+            distance=min(degrees%90,90-degrees%90)
+            radius=49+6*max(0,1-distance/12)
+            angle=math.radians(degrees)
+            outline.extend((cx+radius*math.cos(angle),cy+radius*math.sin(angle)))
+        p.poly(outline,"#c5b99d")
+        p.line((*outline,*outline[:2]),"#f8f8f8",1.6)
+        p.ellipse((cx-46,cy-46,cx+46,cy+46),"#f8f8f6")
         for n in range(72):
-            angle=n*math.pi/36
-            p.line((cx+44*math.cos(angle),cy+44*math.sin(angle),cx+52*math.cos(angle),cy+52*math.sin(angle)),"#c6b994",.55)
-        p.asset("activity.png",(cx-19,cy-43,cx+19,cy+17),"#ad9a70")
+            angle=n*math.tau/72
+            p.line((cx+8*math.cos(angle),cy+8*math.sin(angle),cx+45*math.cos(angle),cy+45*math.sin(angle)),"#d0c8b4",.8)
+        p.asset("activity.png",(cx-20.4,cy-45.6,cx+23.12,cy+15.6))
         p.text((cx,cy+23),"500" if self.verified else "—",23,"#101010","mt")
         start,end=120,w-34
         color=t.ORANGE if self.verified else "#a6a6a6"
@@ -194,8 +407,8 @@ class TrainingMeter(Surface):
             p.text((x,75),str(i*100),18,t.TEXT,"mt")
 
 
-TITLES={"assignments":"领取持续委托奖励","battle":"完成日常副本挑战","daily":"领取每日实训奖励",
-        "mail":"领取现有邮件附件","battlepass":"领取无名勋礼奖励"}
+TITLES={"assignments":"持续委托","battle":"日常副本","daily":"每日实训",
+        "mail":"邮件附件","battlepass":"无名勋礼"}
 
 
 class TaskBoard(Surface):
@@ -207,11 +420,11 @@ class TaskBoard(Surface):
         self.offset,self.selected,self.hover=0,None,None
         self.hitboxes={}
         self.visible_count=4
-        self.watch(ui.challenge_count,ui.battle_cost,*ui.tasks.values())
+        self.watch(ui.challenge_count,ui.battle_cost,ui.target_name,ui.target_location,*ui.tasks.values())
         self.bind("<Button-1>",self._click)
         self.bind("<Motion>",lambda e:self._set_hover(self._target(e)))
         self.bind("<Leave>",lambda _:self._set_hover(None))
-        self.bind("<MouseWheel>",lambda e:self.move(1 if e.delta<0 else -1))
+        self.bind("<MouseWheel>",lambda e:self.scroll(1 if e.delta<0 else -1 if e.delta>0 else 0))
         for key,delta in (("Right",1),("Left",-1),("Home",-9),("End",9)):
             self.bind("<"+key+">",lambda _,delta=delta:self.move(delta))
         self.bind("<Return>",lambda _:self.activate())
@@ -246,20 +459,71 @@ class TaskBoard(Surface):
         self.redraw()
         return "break"
 
+    def scroll(self,delta):
+        previous=self.offset
+        self.offset=max(0,min(len(self.names)-self.visible_count,self.offset+delta))
+        if self.offset!=previous:
+            self.hover=None
+            self.configure(cursor="")
+        visible=list(self.names)[self.offset:self.offset+self.visible_count]
+        if self.selected not in visible:
+            self.selected=None
+        self.redraw()
+        return "break"
+
     def activate(self):
         self.selected=self.selected or list(self.names)[self.offset]
+        index=list(self.names).index(self.selected)
+        if not self.offset<=index<self.offset+self.visible_count:
+            self._reveal(index)
+            self.redraw()
+            return "break"
         if self.records[self.selected]["has_result"]:
             self.ui._show_task_detail()
+        elif self.can_join(self.selected):
+            self.ui.tasks[self.selected].set(True)
         else:
             self.ui._show_task_setup(self.selected)
         self.redraw()
         return "break"
 
     def action_label(self, key):
+        if self.records[key]['values'][1] == '本次不执行':
+            return '查看安排'
         if self.records[key]["has_result"]:
             return "查看进度" if self.records[key]["values"][1] == "进行中" else "查看结果"
-        return {"assignments":"委托设置", "battle":"副本设置", "daily":"实训设置",
-                "mail":"邮件设置", "battlepass":"勋礼设置"}[key]
+        if self.ui.busy:
+            return "查看安排"
+        if self.can_join(key):
+            return "加入计划"
+        if key == "battle":
+            if self.ui.power_mode.get() == '体力计划':
+                return '调整计划'
+            return "更换副本" if self.ui.tasks[key].get() else "查看限制"
+        return "调整任务"
+
+    def can_join(self, key):
+        return (not self.ui.busy and not self.records[key]["has_result"]
+                and not self.ui.tasks[key].get()
+                and (key != "battle" or self.ui.settings.allow_stamina_spend))
+
+    def resource_metrics(self, key):
+        if self.records[key]["values"][1] in ("未加入", "跳过", "未执行", "本次不执行"):
+            return None
+        if key == "daily":
+            return ("500", "活跃目标") if self.ui.tasks[key].get() or self.records[key]["has_result"] else None
+        if key != "battle":
+            return None
+        if self.records[key]["has_result"]:
+            return self.records[key]["metrics"] or ("— 次", "等待消耗记录")
+        if self.ui.power_mode.get() == '体力计划':
+            from .power_plan_ui import display_rows,has_planar
+            count=len(display_rows(self.ui))
+            return (f'{count} 项' if count else '历战优先' if self.ui.echo_enabled.get() else '— 项',
+                    f'上限 {self.ui.stamina_limit.get()} 开拓力\n已有沉浸器另计' if has_planar(self.ui) else f'上限 {self.ui.stamina_limit.get()} 开拓力')
+        from .dungeon_ui import selected_category
+        from .ux import planned_battle_metrics
+        return planned_battle_metrics(selected_category(self.ui), self.ui.challenge_count.get(), self.ui.tasks[key].get())
 
     def _target(self,e):
         x,y=e.x/self.scale,e.y/self.scale
@@ -275,21 +539,27 @@ class TaskBoard(Surface):
         key=self._target(e)
         self.focus_set()
         if key in ("previous","next"):
-            self.offset=max(0,min(len(self.names)-self.visible_count,self.offset+(-1 if key=="previous" else 1)))
-            self.selected=None
-            self.redraw()
+            self.scroll(-1 if key=="previous" else 1)
         elif key:
             self.selected=key
-            self.activate()
+            x1, _, x2, _ = self.hitboxes[key]
+            if x2-x1 < self.card_width-1:
+                # A peek at the next card does not expose its action label yet.
+                self._reveal(list(self.names).index(key))
+                self.redraw()
+            else:
+                self.activate()
 
     def paint(self,p):
         w,h=p.width,p.height
+        self.ui.guide.paint_paper(p, self)
         self.visible_count=4 if w>=850 else 3
         self.offset=min(self.offset,len(self.names)-self.visible_count)
         self.hitboxes={}
         # Reference card: 290 x 480, a 372px paper section and 45px gaps.
         # Keep that aspect when space changes, and expose the next card's edge.
-        width=min((w-10)/(self.visible_count*335/290+40/290), (h-32)*290/480)
+        width=min(w/(self.visible_count*335/290+40/290), (h-32)*290/480)
+        self.card_width=width
         unit=width/290
         q=lambda value:value*unit
         gap=q(45)
@@ -303,43 +573,37 @@ class TaskBoard(Surface):
             bottom=q(480)
             selected=key in (self.selected,self.hover)
             p.box((x+q(10),q(10),right+q(10),bottom+q(10)),"#c7c7c7",q(7))
-            p.box((x,1,right,card_bottom),"#fbfaf7",q(7),t.GOLD if selected else "#eeede8",2 if selected else 1)
-            for dx in (-40,20,90,160):
-                p.line((max(x,x+q(dx)),2,min(right,x+q(dx+70)),q(60)),"#efede5",1)
-            p.asset("card-watermark.png",(x+q(40),q(110),x+q(250),q(282)))
-            for xx in range(round(x+q(14)),round(right-q(14)),max(3,round(q(4)))):
-                for yy in (q(64),card_bottom-q(16)):
-                    p.box((xx,yy,xx+1,yy+1),"#d4bc8b")
-            for yy in range(round(q(64)),round(card_bottom-q(16)),max(3,round(q(4)))):
-                for xx in (x+q(14),right-q(14)):
-                    p.box((xx,yy,xx+1,yy+1),"#d4bc8b")
+            p.box((x,q(12),x+q(165),q(49)),"#fbf9f6")
+            p.box((x+q(14),q(64),right-q(14),card_bottom-q(16)),"white")
+            p.asset("card-frame.png",(x,1,right,card_bottom))
+            p.asset("card-watermark.png",(x+q(36),q(107),x+q(248),q(276)))
             _,state,_=self.records[key]["values"]
-            p.box((x+1,q(16),x+q(162),q(47)),"#e9dbbd",0,"#d7bd8b")
-            p.text((x+q(24),q(20)),state,q(23),"#6b624d")
-            p.text((x+q(24),q(80)),p.wrap(TITLES[key],width-q(48),q(25),3),q(25),"#111111")
-            resource_y=q(278)
-            p.box((x+q(15),resource_y,right-q(15),card_bottom-q(17)),"#f4f4f4")
-            if key=="daily":
-                p.asset("activity.png",(x+q(60),q(265),x+q(117),q(351)),"#ad9a70")
-            else:
-                p.asset("stamina.png",(x+q(62),q(288),x+q(108),q(334)))
-            if key=="battle":
-                value=self.ui.challenge_count.get()+" 次" if self.ui.tasks[key].get() else "0 次"
-                from .dungeon_ui import selected_category
-                try:
-                    sub=f"预计 {int(self.ui.challenge_count.get())*selected_category(self.ui).cost} 开拓力" if self.ui.tasks[key].get() else "未启用"
-                except ValueError:
-                    sub="次数待填写"
-                if self.records[key]["metrics"] is not None:
-                    value, sub = self.records[key]["metrics"]
-            elif key=="daily":
-                value="500"
-                sub="活跃目标"
-            else:
-                value="0"
-                sub="开拓力"
-            p.text((x+q(126),q(286)),value,q(32),"#494442")
-            p.text((x+q(126),q(326)),sub,q(16),t.MUTED)
+            excluded = state == "未加入"
+            status_width=t.bitmap_font(q(23)*p.factor).getlength(state)/p.factor+q(48)
+            p.box((x+1,q(16),x+min(width-q(16),status_width),q(47)),"#dedede" if excluded else "#e9dbbd",0,"#bdbdbd" if excluded else "#d7bd8b")
+            p.text((x+q(24),q(20)),state,q(23),"#747474" if excluded else "#6b624d")
+            p.text((x+q(24),q(80)),TITLES[key],q(28),"#717171" if excluded else "#111111")
+            if key == "battle" and not self.records[key]["has_result"]:
+                if self.ui.power_mode.get() == '体力计划':
+                    from .power_plan_ui import display_rows
+                    values=display_rows(self.ui)
+                    name=values[0]['target']+(' 等' if len(values)>1 else '') if values else '历战优先' if self.ui.echo_enabled.get() else '添加副本'
+                    location=self.ui.power_repeat.get()+(' · 默认补刷' if self.ui.power_fill.get() else '')
+                else:
+                    name,location=self.ui.target_name.get() or '名称待填写',self.ui.target_location.get() or '地点待填写'
+                p.text((x+q(24),q(133)),p.wrap(name,width-q(48),q(22),2),q(22),"#494442")
+                p.text((x+q(24),q(195)),p.wrap(location,width-q(48),q(18),2),q(18),t.MUTED)
+            metrics = self.resource_metrics(key)
+            if metrics is not None:
+                value, sub = metrics
+                p.box((x+q(17),q(278),right-q(18),card_bottom-q(22)),"#f4f4f4")
+                if key=="daily":
+                    p.asset("activity.png",(x+q(55),q(262),x+q(119),q(352)))
+                else:
+                    p.asset("stamina.png",(x+q(62),q(288),x+q(108),q(334)))
+                p.text((x+q(126),q(282)),value,q(30),"#494442")
+                for line, text in enumerate(p.wrap(sub,q(149),q(16),2).splitlines()):
+                    p.text((x+q(126),q(316+18*line)),text,q(16),t.MUTED)
             with p.clip((x,card_bottom,right,bottom),q(7)):
                 p.asset("card-footer.png",(x,card_bottom,right,bottom))
             p.text((x+width/2,q(426)),self.action_label(key),q(25),"#d8ba78","mm")
@@ -357,7 +621,7 @@ class TaskBoard(Surface):
 
 class PlanRibbon(Surface):
     def __init__(self, parent, scale, ui, *, dark=False):
-        super().__init__(parent, scale, bg=t.BG if dark else t.PANEL, height=round(46*scale))
+        super().__init__(parent, scale, scene=getattr(parent,"scene",False), bg=t.BG if dark else t.PANEL, height=round(46*scale))
         self.ui = ui
         self.dark = dark
         self.watch(ui.daily_caption, ui.weekly_status)
@@ -385,7 +649,7 @@ class SummaryStrip(Surface):
         if self.ui.input_error.get():
             self.ui._focus_input_error()
         else:
-            self.ui._show_summary()
+            self.ui._show_summary(return_focus=self)
         return "break"
 
     def paint(self,p):
@@ -393,7 +657,7 @@ class SummaryStrip(Surface):
         if text:
             p.text((0,4),p.wrap(text,p.width-65,13,1),13,t.GOLD if self.ui.input_error.get() or self.ui.result_alert.get() else t.LIGHT)
             p.text((p.width,4),"修改  ›" if self.ui.input_error.get() else "详情  ›",13,t.GOLD,"rt")
-            if self.focus_get() is self:
+            if self.tk.call("focus") == self._w:
                 p.line((0,p.height-1,p.width,p.height-1),t.GOLD)
             self.configure(cursor="hand2", takefocus=True)
         else:

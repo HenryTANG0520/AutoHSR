@@ -6,7 +6,7 @@ from contextlib import contextmanager
 import ctypes
 import sys
 from tkinter import font as tkfont, ttk
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageTk
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps, ImageTk
 
 from .config import RESOURCE_ROOT
 
@@ -15,6 +15,8 @@ RAIL = "#242323"
 PANEL = "#e1e1e1"
 CARD = "#f4f4f4"
 FIELD = "#ebebeb"
+SETTING_ROW = "#c5c6c8"
+SETTING_VALUE = "#d6d7d9"
 TEXT = "#242424"
 MUTED = "#757575"
 GOLD = "#bca775"
@@ -37,6 +39,13 @@ def load_font(root):
     FONT = next((name for name in tkfont.families(root) if name == "SDK_SC_Web"), "Microsoft YaHei UI")
 
 
+def native_font(widget, points):
+    """An explicit pixel size avoids Tk reusing a previous scale's point font."""
+    root = widget.winfo_toplevel()
+    scale = getattr(root, "_hsr_scale", float(root.tk.call("tk", "scaling"))/(96/72))
+    return FONT, -max(1, round(points*scale*96/72))
+
+
 @lru_cache(maxsize=96)
 def bitmap_font(size):
     return ImageFont.truetype(str(UI_ASSETS/"hsr-sc.ttf"), max(1, round(size)))
@@ -48,15 +57,22 @@ def asset(name):
         return im.convert("RGBA")
 
 
+@lru_cache(maxsize=1)
+def scene_image(width, height):
+    """Share one window-sized scene across adjacent surfaces without seams."""
+    return ImageOps.fit(asset("guide/backdrop.png"), (width, height), Image.Resampling.LANCZOS)
+
+
 class Painter:
     def __init__(self, width, height, scale, background=PANEL):
         self.factor = scale*2
         self.width, self.height = width/scale, height/scale
+        self.origin = (0, 0)
         self.image = Image.new("RGBA", (width*2, height*2), background or (0,0,0,0))
         self.draw = ImageDraw.Draw(self.image)
 
     def coords(self, values):
-        return tuple(round(v*self.factor) for v in values)
+        return tuple(round((v+self.origin[index % 2])*self.factor) for index,v in enumerate(values))
 
     @contextmanager
     def clip(self, rect, radius=0):
@@ -67,13 +83,17 @@ class Painter:
             yield
         finally:
             bounds = self.coords(rect)
-            layer = self.image.crop(bounds)
-            mask = Image.new("L", layer.size)
-            ImageDraw.Draw(mask).rounded_rectangle((0,0,layer.width-1,layer.height-1), radius=round(radius*self.factor), fill=255)
-            from PIL import ImageChops
-            layer.putalpha(ImageChops.multiply(layer.getchannel("A"), mask))
-            base.alpha_composite(layer, bounds[:2])
-            self.image, self.draw = base, ImageDraw.Draw(base)
+            try:
+                # A fractional row at a viewport edge can round to zero pixels.
+                if bounds[2] > bounds[0] and bounds[3] > bounds[1]:
+                    layer = self.image.crop(bounds)
+                    mask = Image.new("L", layer.size)
+                    ImageDraw.Draw(mask).rounded_rectangle((0,0,layer.width-1,layer.height-1), radius=round(radius*self.factor), fill=255)
+                    from PIL import ImageChops
+                    layer.putalpha(ImageChops.multiply(layer.getchannel("A"), mask))
+                    base.alpha_composite(layer, bounds[:2])
+            finally:
+                self.image, self.draw = base, ImageDraw.Draw(base)
 
     def box(self, rect, fill, radius=0, outline=None, width=1):
         if rect[2] <= rect[0] or rect[3] <= rect[1]:
@@ -91,10 +111,12 @@ class Painter:
         self.draw.polygon(self.coords(points), fill=fill)
 
     def glow(self, center, radius, color, blur):
-        layer = Image.new("RGBA", self.image.size)
+        layer = Image.new("RGBA", self.image.size, color)
+        alpha = Image.new("L", self.image.size)
         x, y = center
-        ImageDraw.Draw(layer).ellipse(self.coords((x-radius,y-radius,x+radius,y+radius)), fill=color)
-        self.image.alpha_composite(layer.filter(ImageFilter.GaussianBlur(blur*self.factor)))
+        ImageDraw.Draw(alpha).ellipse(self.coords((x-radius,y-radius,x+radius,y+radius)), fill=color[3])
+        layer.putalpha(alpha.filter(ImageFilter.GaussianBlur(blur*self.factor)))
+        self.image.alpha_composite(layer)
 
     def text(self, xy, text, size=16, fill=TEXT, anchor="lt"):
         if "\n" in str(text):
@@ -141,6 +163,26 @@ def wrapped_label(parent, **kwargs):
     return label
 
 
+def focus_widget(root):
+    """Return the Python owner when focus is inside a Tcl-created popdown."""
+    name = str(root.tk.call("focus"))
+    while name:
+        try:
+            return root.nametowidget(name)
+        except KeyError:
+            name = name.rpartition(".")[0]
+    return None
+
+
+def _theme_image(root, image):
+    # Stable names let an evicted layout release its pixels and recreate them
+    # when revisited. Each of the two retained layouts owns its bitmap objects.
+    photo = ImageTk.PhotoImage(image, master=root,
+        name=f"{root._hsr_theme_name}_{len(root._hsr_images)}")
+    root._hsr_images.append(photo)
+    return photo
+
+
 def _button(root, style, scale, name, fill, ink, *, tab=False, option=False, background=PANEL):
     photos = []
     for state in ("normal","active","pressed","disabled"):
@@ -154,14 +196,14 @@ def _button(root, style, scale, name, fill, ink, *, tab=False, option=False, bac
         else:
             p.box((1,1,83,37), color, 18, GOLD if state in ("active","pressed") else "#b4b4b4", 1.4)
             p.box((5,5,79,33), color, 14, "#d5d5d5" if fill!=RAIL else "#54504a", 1)
-        photos.append(ImageTk.PhotoImage(p.finish(),master=root))
-    root._hsr_images.extend(photos)
+        photos.append(_theme_image(root, p.finish()))
     element = name+".border"
-    style.element_create(element,"image",photos[0],("disabled",photos[3]),("pressed",photos[2]),
-                         ("active",photos[1]),("focus",photos[1]),
-                         border=(round((8 if tab or option else 19)*scale),round((8 if tab else 1)*scale),round((8 if tab or option else 19)*scale),round(scale)),sticky="nsew")
+    if element not in style.element_names():
+        style.element_create(element,"image",photos[0],("disabled",photos[3]),("pressed",photos[2]),
+                             ("active",photos[1]),("focus",photos[1]),
+                             border=(round((8 if tab or option else 19)*scale),round((8 if tab else 1)*scale),round((8 if tab or option else 19)*scale),round(scale)),sticky="nsew")
     style.layout(name,[(element,{"sticky":"nsew","children":[("Button.padding",{"sticky":"nsew","children":[("Button.label",{"sticky":"nsew"})]})]})])
-    style.configure(name,foreground=ink,background=fill,padding=(round(10*scale),round(7*scale)),font=(FONT,11),width=0,anchor="center",borderwidth=0)
+    style.configure(name,foreground=ink,background=fill,padding=(round(10*scale),round(7*scale)),font=native_font(root, 11),width=0,anchor="center",borderwidth=0)
     style.map(name,foreground=[("disabled","#8b8b8b"),("!disabled",ink)],background=[("disabled","#d3d3d3"),("!disabled",fill)])
 
 
@@ -174,11 +216,11 @@ def _form_elements(root, style, scale):
         for state in ((), *states):
             p = Painter(d(size[0]), d(size[1]), scale, None)
             draw(p, state)
-            photos.append(ImageTk.PhotoImage(p.finish(), master=root))
-        root._hsr_images.extend(photos)
-        style.element_create(name, "image", photos[0],
-            *((*state, photo) for state, photo in zip(states, photos[1:])),
-            border=d(border), padding=0, sticky=sticky)
+            photos.append(_theme_image(root, p.finish()))
+        if name not in style.element_names():
+            style.element_create(name, "image", photos[0],
+                *((*state, photo) for state, photo in zip(states, photos[1:])),
+                border=d(border), padding=0, sticky=sticky)
 
     def check(p, state):
         disabled, selected = "disabled" in state, "selected" in state
@@ -233,6 +275,25 @@ def _form_elements(root, style, scale):
     for name, layout in layouts.items():
         style.layout(name, layout)
 
+    def setting_field(p, state):
+        p.box((0, 0, 84, 58), SETTING_VALUE)
+        if "focus" in state and "disabled" not in state:
+            p.box((1, 1, 83, 57), None, 0, GOLD, 1.5)
+
+    def setting_arrow(p, state):
+        p.poly((10, 26, 20, 26, 15, 32), "#96979b" if "disabled" in state else "#44464b")
+
+    element("Settings.field", (84, 58), setting_field, states, border=3, sticky="nsew")
+    element("Settings.Combobox.downarrow", (30, 58), setting_arrow, states)
+    for widget in ("Entry", "Combobox"):
+        children = [(widget+".padding", {"sticky": "nswe", "children": [(widget+".textarea", {"sticky": "nswe"})]})]
+        if widget == "Combobox":
+            children.insert(0, ("Settings.Combobox.downarrow", {"side": "right", "sticky": "ns"}))
+        style.layout("Settings.T"+widget, [("Settings.field", {"sticky": "nswe", "children": children})])
+        style.configure("Settings.T"+widget, padding=(d(12), d(7)), fieldbackground=SETTING_VALUE,
+                        background=SETTING_VALUE)
+        style.map("Settings.T"+widget, fieldbackground=[("disabled", SETTING_VALUE), ("readonly", SETTING_VALUE)])
+
     def trough(p, state):
         p.box((0, 10, 96, 14), "#cecac3" if "disabled" in state else "#aaa59b", 2)
     def slider(p, state):
@@ -245,33 +306,113 @@ def _form_elements(root, style, scale):
         ("Guide.Horizontal.Scale.slider", {"side": "left"})]})])
 
 
+def preserve_widget_theme(root, style, widgets, next_scale):
+    """Keep displayed ttk controls on their old theme until the shell swaps.
+
+    ttk's active theme belongs to the interpreter, not the widget tree. Merely
+    retaining the previous shell would otherwise change its fonts and elements
+    while the replacement is still being built underneath it.
+    """
+    source = style.theme_use()
+    target = f"AutoHSR{round(next_scale*1000)}"
+    if target not in style.theme_names():
+        style.theme_create(target, parent="clam")
+    prefix = "Previous"+source+"."
+    controls = []
+    for widget in widgets:
+        if isinstance(widget, ttk.Widget):
+            name = str(widget.cget("style"))
+            if not name:
+                name = widget.winfo_class()
+                if name in ("TScale", "TScrollbar", "TSeparator", "TProgressbar"):
+                    name = str(widget.cget("orient")).title()+"."+name
+            controls.append((widget, name))
+    names = {name for _, name in controls}
+    names.update(name+suffix for widget, name in controls
+                 for suffix in ((".Tab",) if isinstance(widget, ttk.Notebook)
+                                else (".Heading",) if isinstance(widget, ttk.Treeview) else ()))
+    old_settings, new_settings, elements = {}, {}, {}
+    known = getattr(root, "_hsr_preserved_elements", {})
+    created = known.setdefault(target, set())
+
+    def copy_layout(layout):
+        result = []
+        for element, options in layout:
+            cloned = prefix+element if element != "null" else element
+            if element != "null" and cloned not in created:
+                elements[cloned] = {"element create": ("from", source, element)}
+            options = dict(options)
+            if "children" in options:
+                options["children"] = copy_layout(options["children"])
+            result.append((cloned, options))
+        return result
+
+    for name in names:
+        parts = name.split(".")
+        hierarchy = [".", *(".".join(parts[index:]) for index in reversed(range(len(parts))))]
+        config, mapping = {}, {}
+        for ancestor in hierarchy:
+            config.update(style.configure(ancestor) or {})
+            mapping.update(style.map(ancestor) or {})
+        layout = style.layout(name)
+        old_settings[prefix+name] = dict(configure=config, map=mapping, layout=layout)
+        new_settings[prefix+name] = dict(configure=config, map=mapping, layout=copy_layout(layout))
+    style.theme_settings(target, {**elements, **new_settings})
+    style.theme_settings(source, old_settings)
+    created.update(elements)
+    root._hsr_preserved_elements = known
+    for widget, name in controls:
+        widget.configure(style=prefix+name)
+
+
+def choice_navigation(root):
+    """Use first/last rows for Home/End only in an expanded choice list."""
+    for key in ("Home", "End"):
+        # Reuse Tk's own row-selection action. Entry caret bindings and normal
+        # Listboxes retain their defaults; Return/Escape still own commit/cancel.
+        native = str(root.tk.call("bind", "Listbox", "<Control-"+key+">"))
+        if native:
+            root.tk.call("bind", "ComboboxListbox", "<"+key+">", native+"\nbreak")
+
+
 def apply_theme(root, scale):
     load_font(root)
+    root._hsr_scale = scale
     d = lambda n: round(n*scale)
     style = ttk.Style(root)
-    style.theme_use("clam")
+    choice_navigation(root)
+    root._hsr_theme_name = f"AutoHSR{round(scale*1000)}"
+    if root._hsr_theme_name not in style.theme_names():
+        style.theme_create(root._hsr_theme_name, parent="clam")
+    style.theme_use(root._hsr_theme_name)
     root._hsr_images=[]
-    style.configure(".",font=(FONT,11),background=PANEL,foreground=TEXT)
+    style.configure(".",font=native_font(root, 11),background=PANEL,foreground=TEXT)
     for name,color in (("TFrame",PANEL),("Card.TFrame",CARD),("Panel.TFrame",CARD),("Rail.TFrame",RAIL),("Footer.TFrame",BG)):
         style.configure(name,background=color)
+    style.configure("Settings.Row.TFrame", background=SETTING_ROW)
+    style.configure("Settings.Value.TFrame", background=SETTING_VALUE)
+    style.configure("Settings.Line.TFrame", background="#a5a7ab")
+    style.configure("Settings.TLabel", background=SETTING_ROW, foreground=TEXT, font=native_font(root, 12))
+    style.configure("Settings.Hint.TLabel", background=SETTING_ROW, foreground="#5d6065", font=native_font(root, 9))
+    style.configure("Settings.Note.TLabel", background=BG, foreground="#bdc0c9", font=native_font(root, 10))
     for name,color,ink in (("TLabel",CARD,TEXT),("Card.TLabel",CARD,TEXT),("Muted.TLabel",CARD,MUTED),
         ("CardHint.TLabel",CARD,MUTED),("Hint.TLabel",PANEL,MUTED),("Footer.TLabel",BG,"#b8b8bc"),
         ("FooterStatus.TLabel",BG,LIGHT),("Rail.TLabel",RAIL,LIGHT),("Warning.TLabel",CARD,WARNING)):
-        style.configure(name,background=color,foreground=ink,font=(FONT,10))
+        style.configure(name,background=color,foreground=ink,font=native_font(root, 10))
     for name in ("Section.TLabel","CardTitle.TLabel"):
-        style.configure(name,background=CARD,foreground=TEXT,font=(FONT,14))
-    style.configure("PageTitle.TLabel",background=PANEL,foreground=TEXT,font=(FONT,17))
+        style.configure(name,background=CARD,foreground=TEXT,font=native_font(root, 14))
+    style.configure("PageTitle.TLabel",background=PANEL,foreground=TEXT,font=native_font(root, 17))
     for name in ("TCheckbutton","Card.TCheckbutton"):
-        style.configure(name,background=CARD,foreground=TEXT,font=(FONT,11),padding=(0,d(4)))
+        style.configure(name,background=CARD,foreground=TEXT,font=native_font(root, 11),padding=(0,d(4)))
         style.map(name,background=[("active",CARD)],foreground=[("disabled","#92918c")],indicatorbackground=[("selected",GOLD),("!selected",FIELD)])
     for name in ("TEntry","TSpinbox","TCombobox"):
         style.configure(name,fieldbackground=FIELD,background=FIELD,foreground=TEXT,insertcolor=TEXT,bordercolor=LINE,
-                        lightcolor=LINE,darkcolor=LINE,arrowcolor=TEXT,padding=d(6),font=(FONT,11),borderwidth=0,
+                        lightcolor=LINE,darkcolor=LINE,arrowcolor=TEXT,padding=d(6),font=native_font(root, 11),borderwidth=0,
                         selectbackground="#d7cab0",selectforeground=TEXT)
         style.map(name,fieldbackground=[("disabled",PANEL),("readonly",FIELD)],foreground=[("disabled","#92918c"),("readonly",TEXT)],bordercolor=[("focus",GOLD)])
-        root.option_add("*"+name+".font", (FONT, 11))
+        root.option_add("*"+name+".font", native_font(root, 11))
     _form_elements(root, style, scale)
-    root.option_add("*TCombobox*Listbox.font",(FONT,11))
+    root.option_add("*TCombobox*Listbox.font",native_font(root, 11))
     root.option_add("*TCombobox*Listbox.background",CARD)
     root.option_add("*TCombobox*Listbox.foreground",TEXT)
     root.option_add("*TCombobox*Listbox.selectBackground","#d7cab0")
@@ -279,24 +420,34 @@ def apply_theme(root, scale):
     for name,fill,ink,tab,option,background in (
         ("TButton",CARD,TEXT,False,False,CARD),("Panel.TButton",CARD,TEXT,False,False,PANEL),
         ("Compact.TButton",CARD,TEXT,False,False,CARD),("Accent.TButton",CARD,TEXT,False,False,BG),
+        ("Settings.TButton",CARD,TEXT,False,False,SETTING_VALUE),
+        ("Poster.TButton",CARD,TEXT,False,False,PANEL),
         ("Primary.TButton",CARD,TEXT,False,False,BG),("Footer.TButton",CARD,TEXT,False,False,BG),
         ("Danger.TButton",CARD,"#9d4949",False,False,BG),("Nav.TButton",RAIL,"#b7b7b7",True,False,RAIL),
         ("Selected.Nav.TButton",PANEL,TEXT,True,False,RAIL),("Option.TButton",CARD,TEXT,False,True,PANEL),
         ("Selected.Option.TButton",RAIL,GOLD,False,True,PANEL)):
         _button(root,style,scale,name,fill,ink,tab=tab,option=option,background=background)
-    style.configure("Nav.TButton",padding=(d(22),d(7)))
-    style.configure("Selected.Nav.TButton",padding=(d(22),d(7)))
-    style.configure("Option.TButton",anchor="w",padding=(d(22),d(17)),font=(FONT,13))
-    style.configure("Selected.Option.TButton",anchor="w",padding=(d(22),d(17)),font=(FONT,13))
+    style.configure("Nav.TButton",padding=(d(14),d(1)),font=native_font(root, 14))
+    style.configure("Selected.Nav.TButton",padding=(d(19),d(1)),font=native_font(root, 14))
+    style.configure("Option.TButton",anchor="w",padding=(d(22),d(17)),font=native_font(root, 13))
+    style.configure("Selected.Option.TButton",anchor="w",padding=(d(22),d(17)),font=native_font(root, 13))
     style.configure("Compact.TButton",padding=(d(6),d(4)))
-    style.configure("Treeview",background=CARD,fieldbackground=CARD,foreground=TEXT,rowheight=d(33),borderwidth=0,font=(FONT,10))
-    style.configure("Treeview.Heading",background=PANEL,foreground=MUTED,padding=d(6),font=(FONT,10))
+    style.configure("Settings.TButton",padding=(d(4),d(7)))
+    style.configure("Treeview",background=CARD,fieldbackground=CARD,foreground=TEXT,rowheight=d(33),borderwidth=0,font=native_font(root, 10))
+    style.configure("Treeview.Heading",background=PANEL,foreground=MUTED,padding=d(6),font=native_font(root, 10))
     style.map("Treeview",background=[("selected","#d7cab0")],foreground=[("selected",TEXT)])
     style.configure("TNotebook",background=PANEL,borderwidth=0,tabmargins=0)
-    style.configure("TNotebook.Tab",background=PANEL,foreground=MUTED,padding=(d(16),d(8)),font=(FONT,11))
+    style.configure("TNotebook.Tab",background=PANEL,foreground=MUTED,padding=(d(16),d(8)),font=native_font(root, 11))
     style.map("TNotebook.Tab",background=[("selected",CARD)],foreground=[("selected",TEXT)])
     style.layout("Hidden.TNotebook.Tab", [])
     style.configure("Hidden.TNotebook", borderwidth=0, tabmargins=0)
+    style.layout("Settings.TNotebook", [])
+    style.layout("Settings.TNotebook.Tab", [])
+    style.configure("Settings.TNotebook", background=BG, borderwidth=0, tabmargins=0)
+    for name in ("Settings.Nav.TButton", "Settings.Selected.Nav.TButton", "Settings.Close.TButton"):
+        style.layout(name, [("Button.padding", {"sticky": "nswe", "children": [("Button.label", {"sticky": "nswe"})]})])
+        style.configure(name, background=BG, foreground=LIGHT, padding=d(3), borderwidth=0, font=native_font(root, 10), anchor="center")
+        style.map(name, foreground=[("focus", GOLD), ("active", GOLD), ("!disabled", LIGHT)], background=[("active", BG), ("!disabled", BG)])
     style.configure("Horizontal.TScale",background=CARD,troughcolor="#c1c1c1",sliderlength=d(18))
     style.configure("Vertical.TScrollbar",background="#b0b0b0",troughcolor=PANEL,borderwidth=0,arrowcolor=MUTED)
     return style
