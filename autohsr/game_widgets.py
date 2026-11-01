@@ -201,6 +201,27 @@ class Header(Surface):
         p.asset("guide/close.png",(x-16,y-16,x+16,y+16))
 
 
+def paint_utility_tab(p,key,color,background):
+    """Original guide-style glyphs; logical 52px square, shared tab palette."""
+    if key=='logs':
+        p.ellipse((6,6,46,46),None,color,2.4)
+        p.box((15,10,39,42),background)
+        p.line((17,12,31,12,37,18,37,40,17,40,17,12),color,2.7)
+        p.line((31,12,31,19,37,19),color,2.4)
+        for y in (25,30,35):p.line((22,y,32,y),color,2.3)
+        p.poly((5,29,12,35,4,38),color)
+    else:
+        points=[]
+        for step in range(32):
+            angle=step*math.tau/32-math.pi/8
+            radius=21 if step%4 in (1,2) else 17
+            points.extend((26+radius*math.cos(angle),26+radius*math.sin(angle)))
+        p.poly(points,color)
+        p.ellipse((13,13,39,39),background)
+        p.poly((26,16,36,26,26,36,16,26),color)
+        p.ellipse((22,22,30,30),background)
+
+
 class Guide(Surface):
     """The game guide, named app utilities, light paper and two charms."""
     def __init__(self,parent,scale,ui):
@@ -214,59 +235,35 @@ class Guide(Surface):
         self.selected_page="home"
         self.hovered_page=None
         definitions=(("home","每日实训","tab-daily.png"),("tasks","生存索引","tab-survival.png"),
-                     ("universe","差分宇宙 / 货币战争","tab-universe.png"),("logs","记录","tab-records.png"))
+                     ("universe","差分宇宙 / 货币战争","tab-universe.png"),
+                     ("logs","记录",None),("settings","设置",None))
         for col,(key,label,filename) in enumerate(definitions):
             for selected in (False,True):
                 for emphasized in (False,True):
                     p=t.Painter(round(52*scale),round(52*scale),scale,t.PANEL if selected else t.RAIL)
-                    if key not in ("logs", "settings"):
-                        if emphasized:
-                            p.glow((26,26),12,(96,181,237,155),6)
+                    if emphasized:
+                        p.glow((26,26),12,(96,181,237,155),6)
+                    color="#031724" if selected and emphasized else "#080808" if selected else "#b6b6b6"
+                    if filename:
                         source=t.asset(filename)
                         half_w,half_h=source.width*.4,source.height*.4
                         p.asset(filename,(26-half_w,26-half_h,26+half_w,26+half_h),
-                                "#031724" if selected and emphasized else "#080808" if selected else "#b6b6b6")
+                                color)
+                    else:
+                        paint_utility_tab(p,key,color,t.PANEL if selected else t.RAIL)
                     self.photos[key,selected,emphasized]=ImageTk.PhotoImage(p.finish(),master=self)
-            command=lambda key=key:ui._show_page(getattr(ui,"last_universe_page","differential_universe") if key=="universe" else key)
+            def command(key=key):
+                ui._show_page(getattr(ui,"last_universe_page","differential_universe") if key=="universe" else key)
+                if key=='settings':ui.settings_return_focus=self.buttons[key]
             button=ttk.Button(self.tabs,text=label,image=self.photos[key,False,False],
-                             compound="center" if key in ("logs", "settings") else "none",style="Nav.TButton",command=command)
+                             compound="none",style="Nav.TButton",command=command)
             button.grid(row=0,column=col,padx=0)
             self.buttons[key]=button
             button.bind("<Enter>",lambda _event,key=key:self._hover(key),add="+")
             button.bind("<Leave>",lambda _event:self._hover(None),add="+")
             for event in ("<FocusIn>","<FocusOut>"):
                 button.bind(event,lambda _event:self._refresh_tabs(),add="+")
-            if key not in ("logs", "settings"):
-                Tooltip(button,"旷宇纷争" if key=="universe" else label)
-        # Application settings are a utility at the opposite end of the book,
-        # separate from its game-mode tabs. Keep a visible name beside the gear.
-        style = ttk.Style(self)
-        style.layout("Settings.Entry.TButton", [("Button.padding", {"sticky":"nsew", "children":[("Button.label", {"sticky":"nsew"})]})])
-        style.configure("Settings.Entry.TButton", background=t.RAIL, foreground=t.LIGHT,
-                        font=t.native_font(self,14), padding=(round(8*scale),0), anchor="center")
-        style.map("Settings.Entry.TButton", foreground=[("active",t.GOLD),("focus",t.GOLD),("!disabled",t.LIGHT)],
-                  background=[("active",t.RAIL),("!disabled",t.RAIL)])
-        for emphasized in (False, True):
-            p=t.Painter(round(34*scale),round(34*scale),scale,t.RAIL)
-            color=t.GOLD if emphasized else t.LIGHT
-            points=[]
-            for step in range(32):
-                angle=step*math.tau/32
-                radius=12 if step%4 in (1,2) else 9
-                points.extend((15+radius*math.cos(angle),17+radius*math.sin(angle)))
-            p.poly(points,color)
-            p.ellipse((10,12,20,22),t.RAIL)
-            self.photos["settings",False,emphasized]=ImageTk.PhotoImage(p.finish(),master=self)
-        def settings():
-            ui._show_page("settings")
-            ui.settings_return_focus = self.buttons["settings"]
-        button=ttk.Button(self,text="设置",image=self.photos["settings",False,False],compound="left",
-                          style="Settings.Entry.TButton",command=settings)
-        self.buttons["settings"]=button
-        button.bind("<Enter>",lambda _:self._hover("settings"),add="+")
-        button.bind("<Leave>",lambda _:self._hover(None),add="+")
-        for event in ("<FocusIn>","<FocusOut>"):
-            button.bind(event,lambda _:self._refresh_tabs(),add="+")
+            Tooltip(button,"旷宇纷争" if key=="universe" else label)
         self.bind("<Configure>",self._position,add="+")
 
     def select(self,page):
@@ -280,9 +277,6 @@ class Guide(Surface):
     def _refresh_tabs(self):
         focus=t.focus_widget(self.winfo_toplevel())
         for key,button in self.buttons.items():
-            if key == "settings":
-                button.configure(image=self.photos[key,False,key==self.hovered_page or button==focus])
-                continue
             selected=key==self.selected_page
             emphasized=key==self.hovered_page or button==focus
             button.configure(style="Selected.Nav.TButton" if selected else "Nav.TButton",
@@ -292,7 +286,6 @@ class Guide(Surface):
         d=lambda n:round(n*self.scale)
         w,h=self.winfo_width()-self.art_left-self.art_right,self.winfo_height()
         self.tabs.place(x=self.art_left+d(110),y=d(24))
-        self.buttons["settings"].place(x=self.art_left+w-d(330),y=d(24),width=d(122),height=d(52))
         self.content.place(x=self.art_left+d(90),y=d(90),width=max(1,w-d(173)),height=max(1,h-d(130)))
 
     def paint_paper(self, p, surface):
