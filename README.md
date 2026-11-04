@@ -12,6 +12,8 @@
 
 10月28日已离线修复节点字段识别并接通标准结算推进；尚未实机验收整局，历史计数不变，详见[货币战争开发记录](docs/currency-wars-development.md)。
 
+11月5日恢复核心开发，补齐货币补给完整装备列表、策略及库存／角色穿戴总量核验；两件字段与交付目前为离线机制，真实双装备布局、初始赠品归因及完整整局仍待验收，见[补给协议](assets/currency-supply/README.md)。
+
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-blue)](#运行条件)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)](#安装与启动)

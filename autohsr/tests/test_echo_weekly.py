@@ -36,6 +36,16 @@ class EchoWeeklyTests(unittest.TestCase):
         self.root=Path(self.temp.name)/'runs';self.now=NOW
         clock=patch('autohsr.echo_weekly.local_now',side_effect=lambda:self.now)
         clock.start();self.addCleanup(clock.stop)
+        owner=self
+        class RunnerDateTime(datetime):
+            @classmethod
+            def now(cls,tz=None):
+                current=owner.now.astimezone(tz)
+                return current if tz is not None else current.replace(tzinfo=None)
+        # Runner's frozen start and the moving week gate share this fixture's
+        # wall clock. Monotonic deadlines and deliberate week changes stay real.
+        started=patch('autohsr.app.datetime',RunnerDateTime)
+        started.start();self.addCleanup(started.stop)
 
     def context(self,config=None,world=None,*,root=None,new_run=False):
         config=config or settings();root=root or self.root
@@ -199,6 +209,7 @@ class EchoWeeklyTests(unittest.TestCase):
             runner=entry.Runner(config,events.append,use_power_plan=True);window.owner=runner;report=runner.run()
         self.assertEqual(report.status,'success',report.error)
         self.assertEqual(window.world.payments,[('毁灭的开端',3,90,0),('回忆之蕾',2,20,0)])
+        self.assertEqual(datetime.fromisoformat(report.started_at),self.now)
         self.assertTrue(all(c.runner is runner and c.battle_budget is runner.battle_budget for c in window.contexts))
         self.assertEqual(report.power_plan['weekly_echo']['state'],'complete')
         self.assertTrue(any(e.get('type')=='power_plan_progress' and e['weekly_echo']['completed']==3 for e in events))
@@ -321,6 +332,7 @@ class EchoWeeklyTests(unittest.TestCase):
         self.assertEqual(report.status,'success',report.error)
         self.assertEqual(report.power_plan['weekly_echo']['completed'],3)
         self.assertEqual(report.power_plan['weekly_echo']['state'],'complete')
+        self.assertEqual(datetime.fromisoformat(report.power_plan['weekly_echo']['started_at']),self.now)
         self.assertEqual(read(Path(report.run_dir)/'report.json')['power_plan'],report.power_plan)
 
     def test_daily_start_snapshot_does_not_become_due_during_earlier_tasks(self):

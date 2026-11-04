@@ -23,6 +23,8 @@
 | 补给候选与回执只表达一件装备 | [补给字段](../autohsr/currency_wars_supply_fields.py)的`_items`按每列一个装备词核对四／五卡；[奖励协议](../autohsr/currency_wars_standard_rewards.py)的`_options`保存单个物品，`feedback`只增加一件库存，`returned`也记录单个`item` | 不能覆盖上游明确提到的双装备补给，漏读第二件也不能当作单件已完整识别 |
 | 标准节点没有开启自动战斗协议 | 原审查时[节点观察](../autohsr/currency_wars_standard_node.py)只识别战斗与结果；同日后续已补on／disabled／unknown只读检测及两帧观察，仍没有off或开启动作 | 只读on证据不等于本程序开启过开关；缺少真实关闭与切换反馈链，完整自动开启仍待交付 |
 
+2026-11-05恢复核心开发，正在将补给的单件字段、策略与交付协议扩展为完整装备列表。上表及下文的单件源码事实为10月30日审查基线；最新实现及验证另记[开发记录](currency-wars-development.md)。真实双装备布局仍缺校准，初始赠品归因、纯赠箱、自动开关和其他未完成项不因此消失。
+
 ## 建议顺序与验证范围
 
 ### 1. 初始环境声明与交付分开核验

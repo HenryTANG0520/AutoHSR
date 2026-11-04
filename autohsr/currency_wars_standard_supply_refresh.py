@@ -17,6 +17,7 @@ from .currency_wars import observe
 from .currency_wars_match import read_match
 from .currency_wars_supply import supply_count
 from .currency_wars_supply_policy import groups,matches
+from .currency_wars_reward_items import items_from_names, named_payload
 from .models import AutomationError,Scene,Token,normalize
 
 ACTION='refresh_standard_supply'
@@ -108,12 +109,17 @@ def icon_ready(scene):
 
 def table(scene,confidence=.65):
     from .currency_wars_standard_rewards import _options
-    from .currency_wars_supply_fields import rows
+    from .currency_wars_supply_fields import rows,equipment_names
     result=[]
     for option,(_,role,equipment) in zip(_options(scene,'supply_selection',confidence),rows(scene,confidence)):
         slot,name,item,unit,gold,target=option
-        result.append(dict(slot=slot,name=name,item_name=normalize(equipment.text),item=item))
+        result.append(dict(slot=slot,name=name,item_name=named_payload(equipment_names(equipment)),item=item))
     return result
+
+
+def candidate_descriptors(candidates, *, legacy=False):
+    return [[row['slot'],row['name'],row['item'],None if row['name'].startswith('unknown:') else row['name'],0]
+            + ([] if legacy else [row['item_name']]) for row in candidates]
 
 
 def modal_hud(scene,confidence=.65):
@@ -226,12 +232,14 @@ def refreshed(session,choice,scene,confidence=.65):
 
 
 def _valid_table(rows,private_names=()):
-    from .currency_wars_standard_rewards import ITEM_IDS
+    def valid_items(row):
+        value=row['item_name']
+        names=(value,) if isinstance(value,str) else value if type(value) is list and len(value)==2 else ()
+        return named_payload(names)==value and row['item']==items_from_names(names)
     return (isinstance(rows,list) and len(rows) in (4,5) and len({r['name'] for r in rows})==len(rows)
         and all(set(r)=={'slot','name','item_name','item'} and type(r['slot']) is int and r['slot']==i
             and isinstance(r['name'],str) and (r['name'] in private_names or re.fullmatch(r'(?:[\u4e00-\u9fffa-z0-9·.]{1,40}|unknown:[0-9a-f]{64})',r['name']))
-            and isinstance(r['item_name'],str) and re.fullmatch(r'[\u4e00-\u9fff]{2,20}',r['item_name'])
-            and r['item']==ITEM_IDS.get(r['item_name']) for i,r in enumerate(rows)))
+            and valid_items(r) for i,r in enumerate(rows)))
 
 
 def _valid_hud(hud):
@@ -285,6 +293,9 @@ def valid_prefix(action,actions):
 
 def bind_choice(session,choice,scene,confidence=.65):
     data=session['reward'];actions=session['actions'];history,selection=_chain(actions[:-1],data['origin_action_id'])
+    candidates=table(scene,confidence)
+    if digest(candidate_descriptors(candidates))!=choice.payload[8]:raise AutomationError('补给全部装备名称与已落盘选择摘要不符。')
+    actions[-1].update(supply_candidate_schema=2,supply_candidate_table=deepcopy(candidates))
     if not history:return
     last=history[-1]
     if table(scene,confidence)!=last['supply_refresh_receipt']['candidates_after']:raise AutomationError('领取前的完整补给候选已变。')
@@ -294,10 +305,22 @@ def bind_choice(session,choice,scene,confidence=.65):
 def valid_claim_chain(action,actions):
     try:
         target=action['target'];select=actions[action['id']-1]
+        source=_source(actions,target[1],target[0])
+        schema=action.get('supply_candidate_schema')
+        candidates=action.get('supply_candidate_table')
+        if schema is not None or candidates is not None or 'supply_candidate_schema' in select or 'supply_candidate_table' in select:
+            if (type(schema) is not int or schema!=2 or type(select.get('supply_candidate_schema')) is not int
+                    or select['supply_candidate_schema']!=2 or select.get('supply_candidate_table')!=candidates
+                    or not _valid_table(candidates,source['snapshot'].get('private_names',()))
+                    or target[8]!=digest(candidate_descriptors(candidates))):return False
+            if candidates[target[3]]['item']!=target[5] or candidates[target[3]]['name']!=target[6]:return False
+        elif not isinstance(target[5],str):return False
         history,extra=_chain(actions[:action['id']-1],target[1])
         if not history:return not action.get('supply_refresh_binding') and not select.get('supply_refresh_binding')
         if extra is not None:return False
         last=history[-1];rows=last['supply_refresh_receipt']['candidates_after']
+        if schema==2 and candidates!=rows:return False
+        if schema is None and any(not isinstance(row['item_name'],str) for row in rows):return False
         return (action.get('supply_refresh_binding')==_binding(last)==select.get('supply_refresh_binding')
-            and target[0]==last['target'][0] and target[8]==digest([[r['slot'],r['name'],r['item'],None if r['name'].startswith('unknown:') else r['name'],0] for r in rows]))
+            and target[0]==last['target'][0] and target[8]==digest(candidate_descriptors(rows,legacy=schema is None)))
     except (AutomationError,AttributeError,IndexError,KeyError,TypeError,ValueError):return False

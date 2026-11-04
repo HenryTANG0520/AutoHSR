@@ -815,7 +815,9 @@
     {
       "path": "autohsr/currency_wars_standard_rewards.py",
       "reference_functions": ["check_box", "_check_equipment_box", "_check_hiring_book", "_check_expert_invitation", "check_supply_phase"],
-      "kind": "native typed reward custody, observed cash amount, paired supply selection and separate confirmation; inventory and independently recollected unit delivery verified before clearing the reward ledger"
+      "native_files": ["autohsr/currency_wars_reward_items.py"],
+      "tests": ["autohsr/tests/test_currency_wars_supply_bundles.py"],
+      "kind": "native typed reward custody, observed cash amount, paired supply selection and separate confirmation; one/two-item equipment payloads retain duplicates and unknown candidate names; bounded inventory plus independently recollected complete unit equipment conservation before clearing the reward ledger. AutoHSR-authored bundle custody and receipts, no blind upstream item counters; synthetic multi-item grammar and delivery tests do not calibrate an unseen live double-equipment layout"
     },
     {
       "path": "autohsr/currency_wars_character_rewards.py",
@@ -868,7 +870,8 @@
       "reference_functions": [
         "check_supply_phase"
       ],
-      "kind": "native four/five-column association from the complete equipment row, bounded dual name reads and retained image identities for unreadable unselected roles; no fixed first/middle candidate fallback"
+      "tests": ["autohsr/tests/test_currency_wars_supply_fields.py"],
+      "kind": "native four/five-column association from the complete equipment row, bounded dual name reads and retained image identities for unreadable unselected roles; complete explicit one/two-name fields in the existing text band retain multiplicity and reject overlapping OCR, incomplete columns and extra item-shaped labels outside the band. Multi-item field variants remain synthetic pending real layout calibration; no new second-row coordinates or fixed first/middle candidate fallback"
     },
     {
       "path": "autohsr/task_workflow.py",

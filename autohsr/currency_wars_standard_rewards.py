@@ -15,6 +15,7 @@ from .currency_wars_match import read_match, unit_name
 from .currency_wars_prepare import trusted
 from .currency_wars_standard_ledger import ledger_status
 from .currency_wars_standard_policy import preferred_names
+from .currency_wars_reward_items import item_ids, items_from_names, stock_counts
 from .models import AutomationError, Token, normalize
 
 PAGES = frozenset(('equipment_selection','advanced_equipment_selection','expert_selection','supply_selection','hiring_selection'))
@@ -153,11 +154,11 @@ def _options(scene, kind, confidence):
             raise AutomationError('邀请函实际金币数未独立核实，未按旧常量领取。')
         return ((0,'现金为王',None,None,int(next(iter(amounts))),cash[0]),)
     if kind=='supply_selection':
-        from .currency_wars_supply_fields import rows
+        from .currency_wars_supply_fields import rows, equipment_names
         for i,name,equipment in rows(scene,confidence):
-            item = normalize(equipment.text)
+            item = items_from_names(equipment_names(equipment))
             unknown=name.text.startswith('unknown:')
-            result.append((i,name.text if unknown else unit_name(name.text),ITEM_IDS.get(item),None if unknown else unit_name(name.text),0,name))
+            result.append((i,name.text if unknown else unit_name(name.text),item,None if unknown else unit_name(name.text),0,name))
     else:
         for i,x in enumerate((.346,.497,.647,.799)):
             names = [t for t in clean.tokens if t.within((x-.065,.25,x+.065,.29))
@@ -213,7 +214,7 @@ def _chosen(scene, data, strategy, confidence):
     for option in options:
         if option[2] is None or data['page']=='supply_selection' and option[3] is None:
             continue  # Unidentified effects cannot become a default first choice.
-        score = 100-5*priorities.index(option[2]) if option[2] in priorities else 5
+        score = sum(100-5*priorities.index(item) if item in priorities else 5 for item in item_ids(option[2]))
         if option[3] and strategy!='default' and option[3] in preferences:
             index = preferences.index(option[3])
             highest = max((u.get('star') or 0 for u in units if u['name']==option[3]),default=0)
@@ -228,7 +229,10 @@ def _chosen(scene, data, strategy, confidence):
     return selected,options
 
 
-def _descriptors(options):
+def _descriptors(options, scene=None, kind=None, confidence=.65):
+    if kind=='supply_selection':
+        from .currency_wars_standard_supply_refresh import table,candidate_descriptors
+        return candidate_descriptors(table(scene,confidence))
     return [list(o[:5])+([o[6]] if len(o)>6 else []) for o in options]
 
 
@@ -266,7 +270,7 @@ def active_action(scene, session, confidence=.65):
     option,options = _chosen(scene,data,prior.get('strategy','default'),confidence)
     if data['page']=='expert_selection' and not option[3] and (not data['money_observed'] or state.gold is None):
         raise AutomationError('邀请函领取前当前金币不可见，未用旧余额推断到账。')
-    descriptors = _descriptors(options)
+    descriptors = _descriptors(options,scene,data['page'],confidence)
     payload = (state.node,data['origin_action_id'],data['page'],option[0],option[1],option[2],option[3],option[4],_digest(descriptors))
     if len(option)>6:
         payload+=(option[6]['selection_count'],option[6]['expected_tier'])
@@ -294,7 +298,7 @@ def feedback(choice, before, after, session, confidence=.65):
     if choice.expected=='standard_supply_selected':
         try:
             option,options = _chosen(after,data,session.get('strategy','default'),confidence)
-            return _digest(_descriptors(options))==choice.payload[8] and _selected_supply(after,option,options,confidence)
+            return _digest(_descriptors(options,after,data['page'],confidence))==choice.payload[8] and _selected_supply(after,option,options,confidence)
         except AutomationError:
             return False
     state = read_match(after,confidence)
@@ -319,8 +323,17 @@ def feedback(choice, before, after, session, confidence=.65):
         return False
     try:
         old,new = Counter(data['basis']['inventory']),inventory_counts(inventory(after,confidence))
-        if choice.payload[5]:old[choice.payload[5]]+=1
-        if old!=new:
+        items=item_ids(choice.payload[5],optional=True)
+        if data['page']=='supply_selection' and len(items)>1:
+            from .currency_wars_character_rewards import require_roster
+            original=require_roster(data['basis']['snapshot'])
+            gear=Counter(item for unit in original if unit['name']==choice.payload[6] for item in unit['equipment'])
+            # Returned stock can hold all, some, or none of the explicit pair.
+            # This only starts recollection; exact stock + worn conservation
+            # is mandatory before the delivery can clear its ledger intent.
+            if old-new or new-(old+gear+Counter(items)):
+                return False
+        elif old+Counter(items)!=new:
             return False
         if not choice.payload[6]:
             cells = {c.zone+':'+str(c.slot):[c.state,c.signature] for c in roster_cells(after,confidence)}
@@ -346,6 +359,13 @@ def returned(session, choice, scene, confidence=.65):
         name=choice.payload[4],item=choice.payload[5],unit=choice.payload[6],gold=choice.payload[7],
         gold_before=data['basis']['gold'] if data['money_observed'] or data['page']!='supply_selection' else None,gold_after=state.gold,
         inventory_checked=True,unit_verified=not bool(choice.payload[6]))
+    if data['page']=='supply_selection':
+        from .currency_wars_character_rewards import require_roster
+        original=require_roster(data['basis']['snapshot'])
+        action['reward_effect'].update(equipment_delivery_schema=1,items=list(item_ids(choice.payload[5])),
+            inventory_before=dict(data['basis']['inventory']),inventory_after=dict(inventory_counts(inventory(scene,confidence))),
+            equipment_before=sorted(item for unit in original if unit['name']==choice.payload[6] for item in unit['equipment']),
+            equipment_after=None,roster_after=None)
     action['reward_verified'] = not bool(choice.payload[6])
     if len(choice.payload)==11:
         action['reward_effect'].update(selection_count=choice.payload[9],expected_tier=choice.payload[10],
@@ -414,6 +434,14 @@ def panel_stale(session):
         or inspecting.get('input_epoch')!=session.get('account_verified_epoch'))
 
 
+def _supported_supply_copies(before, after):
+    # This new contract supports one base copy and three-to-one merges only.
+    # It is a capability bound, not an assertion that every supply in the game
+    # must deliver a one-star unit. Independently gifted stars stay unverified.
+    return (all(type(star) is int and 1<=star<=3 for star in before+after)
+            and sum(3**(star-1) for star in after)-sum(3**(star-1) for star in before)==1)
+
+
 def verify_unit(session, scene, epoch, confidence=.65):
     data = session.get('reward',{})
     if data.get('status')!='unit_verifying' or not session.get('collection',{}).get('complete'):
@@ -448,14 +476,26 @@ def verify_unit(session, scene, epoch, confidence=.65):
             data.update(delivery_kind='advisor_selection',observed_stars=new,original_stars=old)
             _finish(session,preserve_collection=True,action_status='advisor_selected')
             return None
+    effect = session['actions'][data['claim_action_id']]['reward_effect']
+    supply_delivery=data['page']=='supply_selection' and effect.get('equipment_delivery_schema')==1
     if (not data['basis']['snapshot'].get('roster_complete') or new<=old or others_old!=others_new
             or expected_tier is not None and any(t!=expected_tier for t in tiers)
-            or original_tiers and set(tiers)!=original_tiers or gear_before-gear_after):
+            or original_tiers and set(tiers)!=original_tiers or not supply_delivery and gear_before-gear_after):
         data.update(status='unit_mismatch',observed_stars=new,original_stars=old,expected_tier=expected_tier,
                     observed_tiers=tiers,original_equipment=sorted(gear_before.elements()),observed_equipment=sorted(gear_after.elements()))
         return '奖励角色、费用或持有装备未对应交付，原领取意图保留且不重放。'
+    if supply_delivery:
+        # A merged unit may return its old gear to stock. The explicit supply
+        # list must still be the exact total increment, including duplicates.
+        expected=Counter(data['basis']['inventory'])+gear_before+Counter(item_ids(data['choice'][5]))
+        actual=Counter(data['after_inventory'])+gear_after
+        if expected!=actual or not _supported_supply_copies(old,new):
+            data.update(status='unit_mismatch',original_equipment=sorted(gear_before.elements()),
+                        observed_equipment=sorted(gear_after.elements()))
+            return '补给装备总量或本契约支持的单张基础角色交付未对应，原领取意图保留且不重放。'
+        effect.update(equipment_after=sorted(gear_after.elements()),
+                      roster_after=json.loads(json.dumps([asdict(unit) for unit in snapshot.roster])))
     data.update(observed_stars=new,original_stars=old)
-    effect = session['actions'][data['claim_action_id']]['reward_effect']
     effect.update(unit_verified=True,stars_before=old,stars_after=new,other_roster_verified=True)
     if len(data['choice'])==11:
         effect.update(tiers_after=tiers,equipment_before=sorted(gear_before.elements()),equipment_after=sorted(gear_after.elements()))
@@ -477,7 +517,6 @@ def _valid_effect(action, actions):
     if (not isinstance(target,(list,tuple)) or len(target) not in (9,11) or not isinstance(effect,dict)
             or not isinstance(target[0],str) or not re.fullmatch(r'[1-3]-[1-9][0-9]?',target[0])
             or type(target[3]) is not int or not 0<=target[3]<=4 or not isinstance(target[4],str) or not 0<len(target[4])<=80
-            or target[5] is not None and target[5] not in GEAR
             or not action.get('before') or not action.get('after')
             or type(target[1]) is not int or not 0<=target[1]<action.get('id',0)
             or not 0<=target[1]<len(actions) or actions[target[1]].get('status')!='verified'
@@ -488,12 +527,13 @@ def _valid_effect(action, actions):
             or type(target[7]) is not int or not 0<=target[7]<=99 or effect.get('inventory_checked') is not True
             or type(effect.get('gold_after')) is not int or not 0<=effect['gold_after']<=99999):
         return False
+    items=item_ids(target[5],optional=True)
     kind = target[2]
     if kind=='supply_selection':
         from .currency_wars_standard_supply_refresh import valid_claim_chain
         previous = actions[action['id']-1]
         if (len(target)!=9 or action.get('action')!='confirm_standard_supply' or not isinstance(target[6],str)
-                or target[4]!=target[6] or target[5] not in GEAR or target[7]!=0
+                or target[4]!=target[6] or not items or target[7]!=0
                 or previous.get('action')!='select_standard_supply' or previous.get('status')!='verified'
                 or previous.get('target')!=list(target) or not previous.get('before') or not previous.get('after')
                 or not valid_claim_chain(action,actions)):
@@ -512,7 +552,7 @@ def _valid_effect(action, actions):
             return False
     elif kind=='hiring_selection':
         return False  # A contract cannot be settled as an equipment-only gift.
-    elif (len(target)!=9 or target[6] is not None or target[3]>3 or target[5] not in GEAR or target[4]!=NAMES[target[5]] or target[7]!=0):
+    elif (len(target)!=9 or target[6] is not None or target[3]>3 or len(items)!=1 or target[4]!=NAMES[items[0]] or target[7]!=0):
         return False
     parent = actions[target[1]]
     if not parent.get('before') or not parent.get('after'):
@@ -524,6 +564,8 @@ def _valid_effect(action, actions):
                 or not actions[entry[1]].get('reward_basis',{}).get('snapshot',{}).get('roster_complete')
                 or parent.get('feedback')!=dict(page_kind='supply_selection',node=target[0])):
             return False
+        supply_source=actions[entry[1]]['reward_basis']
+        if not _valid_supply_delivery(action,supply_source):return False
     elif kind=='supply_selection' or parent.get('reward_basis',{}).get('node')!=target[0]:
         return False
     if len(target)==11:
@@ -563,3 +605,41 @@ def _valid_effect(action, actions):
             if (old!=expected_stars or expected_tiers and set(tiers)!=expected_tiers
                     or first!=expected_gear or len(last)>3*len(new)):return False
     return True
+
+
+def _valid_supply_delivery(action, source):
+    """Recheck new receipts against the original pre-battle stock and roster.
+
+    Historical single-item receipts retain their original verification rules.
+    A pair can never fall back to that legacy receipt shape.
+    """
+    from .currency_wars_character_rewards import require_roster
+    target,effect=action['target'],action['reward_effect']
+    items=item_ids(target[5])
+    fields=('items','inventory_before','inventory_after','equipment_before','equipment_after','roster_after')
+    if 'equipment_delivery_schema' not in effect:
+        return len(items)==1 and not any(key in effect for key in fields)
+    if type(effect['equipment_delivery_schema']) is not int or effect['equipment_delivery_schema']!=1 or effect.get('items')!=list(items):
+        return False
+    before=require_roster(source['snapshot'])
+    old=stock_counts(source['inventory'])
+    new=stock_counts(effect.get('inventory_after'))
+    gear_before=sorted(item for unit in before if unit['name']==target[6] for item in unit['equipment'])
+    if (effect.get('inventory_before')!=source['inventory'] or effect.get('equipment_before')!=gear_before
+            or old-new or new-(old+Counter(gear_before)+Counter(items))):
+        return False
+    if action.get('reward_verified') is not True:
+        return effect.get('equipment_after') is None and effect.get('roster_after') is None
+    roster=effect.get('roster_after')
+    if not isinstance(roster,list):return False
+    after=require_roster(dict(roster_complete=True,roster=roster))
+    if any(len(unit['equipment'])>3 for unit in after):return False
+    gear_after=sorted(item for unit in after if unit['name']==target[6] for item in unit['equipment'])
+    others=lambda units:Counter((u['name'],u['star'],u['tier'],tuple(u['equipment'])) for u in units if u['name']!=target[6])
+    tiers_before={unit['tier'] for unit in before if unit['name']==target[6]}
+    tiers_after={unit['tier'] for unit in after if unit['name']==target[6]}
+    return (effect.get('equipment_after')==gear_after and old+Counter(gear_before)+Counter(items)==new+Counter(gear_after)
+        and effect.get('stars_before')==sorted((unit['star'] for unit in before if unit['name']==target[6]),reverse=True)
+        and effect.get('stars_after')==sorted((unit['star'] for unit in after if unit['name']==target[6]),reverse=True)
+        and _supported_supply_copies(effect['stars_before'],effect['stars_after'])
+        and (not tiers_before or tiers_after==tiers_before) and others(before)==others(after))

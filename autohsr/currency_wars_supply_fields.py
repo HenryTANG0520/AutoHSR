@@ -1,6 +1,11 @@
-"""Pair four/five complete supply columns; missing names are not fewer cards."""
+"""Pair complete supply columns without dropping a second visible equipment.
+
+Only the existing equipment text band is read. Multi-item grammar is an offline
+contract, not calibration for an unseen second row or an inferred hidden item.
+"""
 import re
 import hashlib
+import math
 
 import cv2
 
@@ -12,16 +17,69 @@ from .models import AutomationError,Scene,Token,normalize
 CENTERS={4:(.223,.407,.592,.777),5:(.13,.315,.5,.685,.87)}
 
 
+def equipment_names(token):
+    """One or two explicitly named items; repetitions retain multiplicity.
+
+    Parse separators before normalize(), which otherwise removes punctuation.
+    Counts, merged undecorated names and partial names never invent two items.
+    Unknown complete names survive for custody but cannot authorize delivery.
+    """
+    if not isinstance(token, Token) or not isinstance(token.text, str):
+        raise AutomationError('补给装备字段无效。')
+    pieces = tuple(normalize(part) for part in re.split(r'[、+＋]', token.text))
+    if (not re.fullmatch(r'[\u4e00-\u9fff\s、+＋]+', token.text)
+            or not 1 <= len(pieces) <= 2 or any(not re.fullmatch(r'[\u4e00-\u9fff]{2,20}', part) for part in pieces)
+            or any(char in token.text for char in '\n\r')):
+        raise AutomationError('补给装备名称或显式件数未完整核实。')
+    return pieces
+
+
 def _name(token):
     return bool(re.fullmatch(r'[\u4e00-\u9fffa-z0-9·.]{1,40}',normalize(token.text)))
 
 
 def _items(scene,confidence):
+    # An extra item-shaped label outside the calibrated text band must not
+    # silently disappear from the effect. It does not authorize a new layout.
+    for token in scene.tokens:
+        if token.within((.03,.55,.97,.80)) and not token.within((.03,.61,.97,.67)):
+            try:equipment_names(token)
+            except AutomationError:continue
+            raise AutomationError('补给装备文字出现在未校准行，未忽略额外装备。')
     items=sorted((t for t in scene.tokens if t.within((.03,.61,.97,.67))),key=lambda t:t.center[0])
-    if (len(items) not in CENTERS or any(not confidence<=t.score<=1 or not re.fullmatch(r'[\u4e00-\u9fff]{2,20}',normalize(t.text)) for t in items)
-            or any(abs(t.center[0]-x)>.035 for t,x in zip(items,CENTERS[len(items)]))):
+    if not items or len(items)>10:
         raise AutomationError('补给装备行数量与四／五卡布局不符，未把漏读当较少候选。')
-    return items
+    for token in items:
+        equipment_names(token)
+        if (not confidence<=token.score<=1 or len(token.box)!=4 or any(not math.isfinite(v) for v in token.box)
+                or not 0<=token.box[0]<token.box[2]<=1 or not .61<=token.box[1]<token.box[3]<=.67):
+            raise AutomationError('补给装备文字被截断、越界或可信度不足。')
+    layouts=[]
+    for centers in CENTERS.values():
+        columns=[[] for _ in centers]
+        for token in items:
+            slots=[i for i,x in enumerate(centers) if abs(token.center[0]-x)<=.035
+                   and x-.09<=token.box[0]<token.box[2]<=x+.09]
+            if len(slots)!=1:break
+            columns[slots[0]].append(token)
+        else:
+            if all(1<=len(column)<=2 for column in columns):layouts.append(columns)
+    if len(layouts)!=1:
+        raise AutomationError('补给装备行数量与四／五卡布局不符，未把漏读当较少候选。')
+    result=[]
+    for column in layouts[0]:
+        if len(column)==1:
+            result.append(column[0]);continue
+        first,second=sorted(column,key=lambda t:(t.box[1],t.box[0]))
+        horizontal=first.box[2]<=second.box[0] and abs(first.center[1]-second.center[1])<=.01
+        vertical=first.box[3]<=second.box[1] and abs(first.center[0]-second.center[0])<=.02
+        if not (horizontal or vertical) or any(len(equipment_names(t))!=1 for t in column):
+            raise AutomationError('补给装备文字重叠或件数不明，未把重复OCR当作两件。')
+        names=equipment_names(first)+equipment_names(second)
+        result.append(Token('、'.join(names),min(t.score for t in column),
+            (min(t.box[0] for t in column),min(t.box[1] for t in column),
+             max(t.box[2] for t in column),max(t.box[3] for t in column))))
+    return result
 
 
 def _role(scene,slot,x,confidence):

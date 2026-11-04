@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-11-05 补给装备列表协议
+
+继续参考固定March7thAssistant `7cf6c6bed474539485d3b1504077ac352866829f`的`check_supply_phase`及“过剩经费”双装备机制，补齐AutoHSR原生候选、策略、确认与交付的装备列表契约。固定[来源清单](upstream/March7thAssistant/source.json)、作者moesnow及贡献者与[GPL许可](upstream/March7thAssistant/LICENSE)保留，没有新增上游源码、图片或模型。双件字段与交付变体为合成机制检查，不称真实布局或独立留出；既有单件校准及未完成项见[补给说明](currency-supply/README.md)。
+
 ## 2026-11-01 本地核心序列协作
 
 执行权及账号连续性为AutoHSR原生协议，现由任务树扩展到独立日常／周常计划和货币战争循环／周常。没有迁入新上游源码、截图、输入框架或增加模型素材；已有固定[来源清单](upstream/March7thAssistant/source.json)及GPL许可保持。控制器同线程加入既有作用域，不替换外层账号或发布器，跨线程与嵌套任务树仍拒绝；实现与证据边界见[账号连续性](../docs/workflow-account-continuity.md)。

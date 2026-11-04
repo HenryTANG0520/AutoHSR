@@ -7,6 +7,7 @@ from collections import Counter
 
 from .currency_wars_character_rewards import require_roster
 from .currency_wars_standard_policy import preferred_names
+from .currency_wars_reward_items import item_ids
 
 
 def groups(data,strategy):
@@ -46,8 +47,12 @@ def groups(data,strategy):
 
 def matches(options,group):
     kind,names=group
-    index=2 if kind=='item' else 3
-    return sorted((o for o in options if o[2] is not None and o[3] is not None and o[index] in names),key=lambda o:(names.index(o[index]),o[0]))
+    def rank(option):
+        values=item_ids(option[2]) if kind=='item' else (option[3],)
+        hits=[names.index(value) for value in values if value in names]
+        return (min(hits),-len(hits),option[0]) if hits else None
+    ranked=[(rank(o),o) for o in options if o[2] is not None and o[3] is not None]
+    return [option for key,option in sorted((r for r in ranked if r[0] is not None),key=lambda r:r[0])]
 
 
 def preferred(options,data,strategy):

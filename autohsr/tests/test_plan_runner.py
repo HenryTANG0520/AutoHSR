@@ -25,6 +25,13 @@ class PlanTests(unittest.TestCase):
         self.settings = Settings(weekly_enabled=True)
         self.now = datetime(2026, 10, 28, 12, tzinfo=CHINA)
         self.before_return = lambda child: None
+        # A fake native points child must reach the same frozen week as its
+        # parent plan, even when these tests run months after the fixture date.
+        for module in ('currency_wars_weekly', 'currency_wars_weekly_run', 'currency_wars_points',
+                       'currency_wars_points_run', 'currency_wars_points_goal', 'currency_wars_weekly_reward_store'):
+            clock = patch('autohsr.' + module + '.local_now', side_effect=lambda: self.now)
+            clock.start()
+            self.addCleanup(clock.stop)
 
     def factory(self, settings, emit, **options):
         owner = self
