@@ -28,6 +28,7 @@ PAGE_LABELS = {
     "overclock_rules": "超频博弈规则说明",
     "tutorial": "玩法教学",
     "environment": "投资环境选择",
+    "encounter_selection": "遭遇节点双卡选择页",
     "guide_applied": "局内已应用攻略",
     "preparation": "备战阶段",
     "shop": "备战商店",

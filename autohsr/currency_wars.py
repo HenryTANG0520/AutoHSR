@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 from .models import AutomationError, InputInterrupted, Scene, TaskResult, normalize
 from .currency_wars_pages import PAGE_LABELS, classify_page
@@ -80,6 +80,12 @@ class CurrencyWarsWorkflow:
             raise AutomationError("货币战争只读识别超过 30 秒，未发送游戏输入。")
         self._require_current_scene(scene)
         observation = observe(scene, self.c.settings.ocr_confidence)
+        encounter = None
+        if observation.page_kind == 'unknown':
+            from .currency_wars_encounter import read_encounter
+            encounter = read_encounter(scene, self.c.settings.ocr_confidence)
+            if encounter is not None and encounter.layout_verified:
+                observation = replace(observation, page_kind='encounter_selection', page_verified=True)
         screenshot = self.c.evidence(scene, "currency_wars_observation")
         self.c.checkpoint()
         self._require_current_scene(scene)
@@ -104,6 +110,8 @@ class CurrencyWarsWorkflow:
         if observation.page_kind == 'investment_selection':
             from .currency_wars_investment_policy import badge_declarations
             data['investment_badge_declarations'] = badge_declarations(scene, self.c.settings.ocr_confidence)
+        if encounter is not None:
+            data['encounter'] = asdict(encounter)
         from .currency_wars_match import read_match
         match = read_match(scene, self.c.settings.ocr_confidence)
         data["match"] = asdict(match) if match is not None else None
@@ -122,6 +130,7 @@ class CurrencyWarsWorkflow:
         self.c.runner.emit(dict(type="currency_wars", data=data))
         detail = ("已识别朝露公馆的货币战争交互入口，尚未打开玩法。" if observation.page_kind == "world_entry" else
                   f"已识别{PAGE_LABELS[observation.page_kind]}，自动玩法及整局完成状态尚未验证。" if observation.page_verified else
+                  "已记录遭遇节点候选，双卡布局待核实。" if encounter is not None else
                   "已保存“货币战争”候选文字，页面尚未核实。" if observation.mode_text_visible
                   else "未识别到可信的“货币战争”完整文字，未推测当前页面。")
         self.c.log(detail + BLOCKER, "warning")
