@@ -59,6 +59,7 @@ class Context:
         self.last_scene: Scene | None = None
         self.scene_epoch = 0
         self.capture_sequence = 0
+        self.capture_occlusion_count = 0
         self._scroll_anchor = None
         self._currency_deploy_request = None
         self._currency_equipment_request = None
@@ -102,6 +103,7 @@ class Context:
                 image, geometry = self.window.capture()
                 scene = self.vision.read(image, geometry)
                 if helper_overlay(scene):
+                    self.capture_occlusion_count += 1
                     occluded_frames+=1
                     if occluded_frames==1:
                         self.evidence(scene,'helper_occlusion_discarded')
@@ -324,6 +326,31 @@ class Context:
                 self.window.click(*choice.target.center, scene.geometry)
         except FocusLost:
             self._focus_interrupted()
+        self.sleep(self.settings.action_delay)
+
+    def currency_overclock_input(self, scene, target):
+        from contextlib import ExitStack
+        from .currency_wars import CurrencyWarsWorkflow
+        from .currency_wars_overclock import OPERATION
+        flow = getattr(self, '_currency_overclock_configuration', None)
+        if self.report.operation != OPERATION or flow is None or flow.c is not self:
+            raise AutomationError('超频模式选择需要独立配置与本次待核对意图。')
+        self.checkpoint()
+        CurrencyWarsWorkflow(self)._require_current_scene(scene)
+        try:
+            self.window.guard(scene.geometry)
+            flow.authorize(scene, target)
+
+            with ExitStack() as read_sources:
+                def before_send():
+                    flow.authorize(scene, target, consume=True, read_sources=read_sources)
+                    self.last_scene, self._scroll_anchor = None, None
+
+                self.window.click(*target.center, scene.geometry, before_send=before_send)
+        except FocusLost:
+            self._focus_interrupted()
+        except OSError as error:
+            raise AutomationError('超频配置原证据读取或共享读保护失败，原记录保留。') from error
         self.sleep(self.settings.action_delay)
 
     def currency_weekly_reward_input(self, scene, choice):
@@ -1796,9 +1823,10 @@ class Runner:
 
     def _inspect_currency_wars(self, context):
         from .currency_wars import CurrencyWarsWorkflow, SAFE_NEXT, TASK
+        from .currency_wars_overclock import OPERATION as OVERCLOCK_CONFIGURE, configure_overclock
         self.report.failure_task = TASK
         self.report.safe_next = SAFE_NEXT
-        self.emit(dict(type="task", task=TASK, status="running", detail="核对并领取当前可领取积分奖励" if self.report.operation=='currency_wars_rewards' else "核对当前积分与游戏周" if self.report.operation=='currency_wars_points' else "标准A8-40开发：核实开局与当前局面" if self.report.operation == 'currency_wars_standard' else "启动准备：进入游戏，不开始对局" if self.report.operation == 'currency_wars_prepare' else "连续战斗与结算推进验证" if self.report.operation == "currency_wars_flow_test" else "当前节点战斗验证" if self.report.operation == "currency_wars_node_test" else "单次部署验证" if self.report.operation == "currency_wars_deploy_test" else "单次前台拖动验证" if self.report.operation == "currency_wars_drag_test" else "只读识别与证据保存"))
+        self.emit(dict(type="task", task=TASK, status="running", detail="核对并配置当前模式页的超频选择" if self.report.operation==OVERCLOCK_CONFIGURE else "核对并领取当前可领取积分奖励" if self.report.operation=='currency_wars_rewards' else "核对当前积分与游戏周" if self.report.operation=='currency_wars_points' else "标准A8-40开发：核实开局与当前局面" if self.report.operation == 'currency_wars_standard' else "启动准备：进入游戏，不开始对局" if self.report.operation == 'currency_wars_prepare' else "连续战斗与结算推进验证" if self.report.operation == "currency_wars_flow_test" else "当前节点战斗验证" if self.report.operation == "currency_wars_node_test" else "单次部署验证" if self.report.operation == "currency_wars_deploy_test" else "单次前台拖动验证" if self.report.operation == "currency_wars_drag_test" else "只读识别与证据保存"))
         if self.report.operation == 'currency_wars_rewards':
             from .currency_wars_weekly_reward_run import inspect_rewards
             result=inspect_rewards(context)
@@ -1808,6 +1836,8 @@ class Runner:
         elif self.report.operation == 'currency_wars_standard':
             from .currency_wars_standard_flow import run_standard
             result = run_standard(context)
+        elif self.report.operation == OVERCLOCK_CONFIGURE:
+            result = configure_overclock(context)
         elif self.report.operation == 'currency_wars_prepare':
             if self.currency_locate:
                 from .currency_wars_navigation import locate
@@ -1845,8 +1875,11 @@ class Runner:
         rewards_checked=(self.report.operation=='currency_wars_rewards' and result.status=='ok'
                          and data.get('mode')=='weekly_rewards' and data.get('phase')=='returned'
                          and data.get('rewards_verified') is True and data.get('completion_verified') is False)
-        self.report.status = 'success' if completed or points_checked or rewards_checked else 'partial'
-        if completed or points_checked or rewards_checked:
+        mode_configured = (self.report.operation == OVERCLOCK_CONFIGURE and result.status == 'ok'
+                           and data.get('mode_verified') is True and data.get('match_started') is False
+                           and data.get('completion_verified') is False)
+        self.report.status = 'success' if completed or points_checked or rewards_checked or mode_configured else 'partial'
+        if self.report.status == 'success':
             self.report.failure_task = ''
 
     @property
@@ -2005,6 +2038,7 @@ class Runner:
         replace_file(temporary, directory / 'report.json', before_replace=check_publication_week)
 
     def run(self) -> RunReport:
+        from .currency_wars_overclock import OPERATION as OVERCLOCK_CONFIGURE
         from .workflows import DailyWorkflow
         from .windows import kernel32
         directory = ROOT / "runs" / datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -2038,14 +2072,14 @@ class Runner:
                 raise AutomationError("另一个 AutoHSR 任务正在运行，请先停止后重试。")
             from .workflow_lease import require_workflow_access
             require_workflow_access()
-            currency_wars = self.report.operation in ("currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test")
+            currency_wars = self.report.operation in ("currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", OVERCLOCK_CONFIGURE, "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test")
             differential_universe = self.report.operation == "differential_universe"
             catalogue = self.report.operation == "dungeon_catalogue"
             guide_only = catalogue or build_target
             redemption = self.report.operation == 'redemption'
             challenge_prepare = self.report.operation == 'challenge_prepare'
             du_rewards = self.report.operation == 'du_rewards'
-            if not guide_only and self.report.operation not in ("daily", "reward_only", "redemption", "challenge_prepare", "du_rewards", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe"):
+            if not (guide_only or currency_wars) and self.report.operation not in ("daily", "reward_only", "redemption", "challenge_prepare", "du_rewards", "differential_universe"):
                 raise AutomationError("未知运行类型，未访问游戏。")
             self.settings.validate('build_target_preview' if build_target_preview else 'du_rewards' if du_rewards else 'challenge_prepare' if challenge_prepare else "check" if guide_only else "currency_wars" if currency_wars else "differential_universe" if differential_universe else 'redemption' if redemption else "power_plan" if self.use_power_plan else "daily")
             if self.report.operation != 'currency_wars':
@@ -2054,10 +2088,14 @@ class Runner:
                 from .du_archive_store import preflight as archive_preflight
                 archive_preflight(directory.parent)
             configured_name=''
-            if self.report.operation in ('currency_wars_points','currency_wars_rewards'):
+            if self.report.operation in ('currency_wars_points','currency_wars_rewards',OVERCLOCK_CONFIGURE):
                 from .currency_wars_points_run import require_no_active_match
                 from .currency_wars_session import StandardSession
-                require_no_active_match(StandardSession(directory.parent/'currency-standard-session.json').data)
+                saved = StandardSession(directory.parent/'currency-standard-session.json').data
+                if self.report.operation == OVERCLOCK_CONFIGURE:
+                    require_no_active_match(saved, purpose='超频模式配置')
+                else:
+                    require_no_active_match(saved)
             if self.report.operation!='currency_wars':
                 from .currency_wars_weekly_reward_store import RewardStore
                 rewards=RewardStore(directory.parent)
@@ -2229,7 +2267,10 @@ class Runner:
             self.log(str(error), "warning")
         except Exception as error:
             target_input = build_target_read and self.report.build_target.get('entry_input') in ('unconfirmed', 'sent')
-            self.report.status = "partial" if self.report.daily_verified or self.report.redemption.get('results') or self.report.challenge.get('actions') or self.report.du_rewards.get('actions') or target_input else "failed"
+            mode_pending = self.report.operation == OVERCLOCK_CONFIGURE and self.report.currency_wars.get('actions')
+            self.report.status = "partial" if (self.report.daily_verified or self.report.redemption.get('results')
+                or self.report.challenge.get('actions') or self.report.du_rewards.get('actions')
+                or target_input or mode_pending) else "failed"
             self.report.error = str(error)
             self.report.safe_next = ("积分领奖未完成；保留原报告和领奖记录，未知领取不重发；仅已核实步骤可明确接续。" if self.report.operation=='currency_wars_rewards' else
                                      build_target_safe_next if build_target else

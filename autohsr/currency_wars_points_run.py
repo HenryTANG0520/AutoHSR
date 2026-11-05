@@ -20,11 +20,11 @@ from .storage import replace_file
 OPERATION='currency_wars_points'
 
 
-def require_no_active_match(data):
+def require_no_active_match(data, *, purpose='积分导航'):
     if data is not None and (data['status']!='settled' or data.get('completion_verified') is not True
                             or data.get('settlement_verified') is not True
                             or any(a.get('status')!='verified' for a in data['actions'])):
-        raise AutomationError('已有未核实结束的标准对局；积分导航未开始，不放弃或重开当前局。')
+        raise AutomationError(f'已有未核实结束的标准对局；{purpose}未开始，不放弃或重开当前局。')
 
 
 def _inside(root,value):

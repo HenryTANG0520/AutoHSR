@@ -41,6 +41,8 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--currency-wars-prepare", action="store_true", help="启动或复用游戏，进入已有登录及主界面；不开始对局")
     mode.add_argument("--currency-wars-locate", action="store_true", help="启动准备并通过指南定位货币战争标准模式；不开始对局")
     mode.add_argument("--currency-wars-configure", action="store_true", help="定位并配置标准A8财富档位（默认40），不开始对局")
+    mode.add_argument("--currency-wars-configure-overclock", action="store_true",
+                      help="在已打开的模式页选择超频博弈，或只读核实已打开的超频A0档位")
     mode.add_argument("--currency-wars-standard", action="store_true", help="标准A8-40开发：核实配置后新开局；未知页面停下留证")
     mode.add_argument('--currency-wars-loop', action='store_true', help='标准A8-40连续开发：逐局核实结算与保存，失败或未知即停止')
     mode.add_argument('--currency-wars-points',action='store_true',help='导航到货币战争主页，核对当前积分、账号与游戏周；不开始对局或领取积分奖励')
@@ -119,6 +121,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    if args.currency_wars_configure_overclock and any(
+        arg.partition("=")[0] not in {"--currency-wars-configure-overclock", "--config"}
+        for arg in raw_args if arg.startswith("--")
+    ):
+        parser.error("超频模式配置为独立入口，仅可附带 --config。")
     build_target = args.read_build_target or args.preview_build_target
     if build_target and any(value is not None for value in
             (args.target, args.location, args.stamina, args.rounds, args.category, args.count)):
@@ -255,7 +262,7 @@ def main(argv: list[str] | None = None) -> int:
         tests = unittest.defaultTestLoader.discover(str(test_path))
         result = unittest.TextTestRunner(verbosity=2).run(tests)
         return 0 if result.wasSuccessful() else 1
-    if not any((args.check, args.scan_dungeons, build_target, args.launch, args.run, args.plan, args.redeem_codes, args.challenge_prepare, args.du_rewards_only, args.currency_wars_check, args.currency_wars_prepare, args.currency_wars_locate, args.currency_wars_configure, args.currency_wars_standard, args.currency_wars_loop, args.currency_wars_points, args.currency_wars_rewards, args.differential_universe)):
+    if not any((args.check, args.scan_dungeons, build_target, args.launch, args.run, args.plan, args.redeem_codes, args.challenge_prepare, args.du_rewards_only, args.currency_wars_check, args.currency_wars_prepare, args.currency_wars_locate, args.currency_wars_configure, args.currency_wars_configure_overclock, args.currency_wars_standard, args.currency_wars_loop, args.currency_wars_points, args.currency_wars_rewards, args.differential_universe)):
         if any(getattr(args, key) is not None for key in ('redemption_server', 'redemption_source', 'redemption_code', 'redemption_catalog', 'with_redemption', 'redemption_mail')):
             parser.error('兑换码运行选项需要明确的 --redeem-codes 或 --run/--plan 入口。')
         from .admin_launch import AdminLaunchError, handoff, is_admin
@@ -347,7 +354,7 @@ def main(argv: list[str] | None = None) -> int:
             settings = reward_only_settings(settings)
         from .redemption_cli import apply_overrides as apply_redemption_overrides
         apply_redemption_overrides(args, parser, settings)
-        settings.validate('build_target_preview' if args.preview_build_target else 'du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "check" if args.check or args.scan_dungeons or args.read_build_target else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "power_plan" if args.power_plan else "daily")
+        settings.validate('build_target_preview' if args.preview_build_target else 'du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "check" if args.check or args.scan_dungeons or args.read_build_target else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or args.currency_wars_configure_overclock or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "power_plan" if args.power_plan else "daily")
         from .app import Runner, inspect_game, launch_game
         if args.check:
             print(_json(inspect_game(settings)))
@@ -360,7 +367,7 @@ def main(argv: list[str] | None = None) -> int:
             if kind != "finished":
                 print(json.dumps(event, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
         wrap_notifications = None
-        if not build_target:
+        if not (build_target or args.currency_wars_configure_overclock):
             from .notify_runtime import hooks as notification_hooks
             emit, wrap_notifications = notification_hooks(settings, emit)
         if build_target:
@@ -379,7 +386,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             runner = Runner(settings, emit, new_battle_run=args.new_battle_run,
                             **(dict(use_power_plan=True,new_power_plan=args.new_power_plan) if args.power_plan else {}),
-                            operation='du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "dungeon_catalogue" if args.scan_dungeons else "currency_wars_rewards" if args.currency_wars_rewards else "currency_wars_points" if args.currency_wars_points else "currency_wars_standard" if args.currency_wars_standard else "currency_wars_prepare" if args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure else "currency_wars" if args.currency_wars_check else "differential_universe" if args.differential_universe else "reward_only" if args.reward_only else "daily",
+                            operation='du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "dungeon_catalogue" if args.scan_dungeons else "currency_wars_rewards" if args.currency_wars_rewards else "currency_wars_points" if args.currency_wars_points else "currency_wars_standard" if args.currency_wars_standard else "currency_wars_overclock_configure" if args.currency_wars_configure_overclock else "currency_wars_prepare" if args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure else "currency_wars" if args.currency_wars_check else "differential_universe" if args.differential_universe else "reward_only" if args.reward_only else "daily",
                             **(dict(du_use_cassettes=args.du_use_cassettes) if args.du_rewards_only else {}),
                             **(dict(currency_rewards_resume=args.resume_currency_rewards) if args.currency_wars_rewards else {}),
                             **(dict(currency_locate=True) if args.currency_wars_locate or args.currency_wars_configure else {}),

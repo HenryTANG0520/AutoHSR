@@ -97,6 +97,10 @@ class CurrencyWarsWorkflow:
                                  standard_interest_cap=5, overclock_interest=0),
             blocker=BLOCKER, decision=decision.action, decision_reason=decision.reason, sample=str(sample),
         )
+        from .currency_wars_overclock import read_overclock
+        mode = read_overclock(scene, self.c.settings.ocr_confidence)
+        if mode.state != 'other_page':
+            data['overclock_configuration'] = asdict(mode)
         if observation.page_kind == 'investment_selection':
             from .currency_wars_investment_policy import badge_declarations
             data['investment_badge_declarations'] = badge_declarations(scene, self.c.settings.ocr_confidence)
