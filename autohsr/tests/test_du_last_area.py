@@ -1,10 +1,15 @@
 """Final-route modal regressions from a masked native capture."""
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock
 
+from autohsr.app import Context
 from autohsr.config import Settings
 from autohsr.differential_universe import DifferentialUniverseWorkflow, classify_page
-from autohsr.models import AutomationError, RunReport, Scene, Token, normalize
+from autohsr.models import AutomationError, FocusLost, InputInterrupted, RunReport, Scene, Token, normalize
 from autohsr.policy import du_last_area_confirm, guard_differential_universe_click
 
 
@@ -62,3 +67,66 @@ class LastAreaTests(unittest.TestCase):
         predicate=ctx.wait.call_args.args[0]
         self.assertFalse(predicate(page))
         self.assertTrue(predicate(done))
+
+    def interrupted_confirmation(self, *, during_wait=False):
+        page=self.fixture()
+        warnings=[Scene(page.tokens,page.image) for _ in range(2 if during_wait else 1)]
+        done=Scene([Token('战斗失败',.99,(.45,.21,.55,.26))])
+        pages=[page,*warnings,done]
+        runner=SimpleNamespace(settings=Settings(),report=RunReport(operation='differential_universe'),
+                               input_epoch=0,inactive_duration=0,checkpoint=Mock(),log=Mock(),wait_for_focus=Mock())
+        window,vision=Mock(),Mock()
+        window.capture.side_effect=[(page.image,page.geometry) for page in pages]
+        vision.read.side_effect=pages
+        ctx=Context(runner,window,vision)
+        ctx.evidence=Mock(return_value='fixture.png')
+        ctx.sleep=Mock()
+        flow=DifferentialUniverseWorkflow(ctx,1)
+        return flow,ctx.snapshot(),window
+
+    def test_interrupted_feedback_does_not_send_final_area_confirmation_again(self):
+        for during in ('after_click','after_warning_observed'):
+            with self.subTest(during=during):
+                flow,page,window=self.interrupted_confirmation(during_wait=during=='after_warning_observed')
+                interrupted=InputInterrupted('test interruption during confirmation feedback')
+                if during=='after_click':
+                    flow.ctx.sleep.side_effect=[interrupted,None]
+                else:
+                    # After the first confirmation Context has already read
+                    # another warning frame, so the outer loop has to recapture it.
+                    flow.ctx.wait=Mock(side_effect=interrupted)
+                with TemporaryDirectory() as folder:
+                    flow.report['run_dir']=folder
+                    with self.assertRaises(AutomationError) as failure:
+                        flow._progress_run(page,'last_area_confirm')
+                    self.assertEqual(window.click.call_count,1)
+                    self.assertIn('未重复点击',str(failure.exception))
+                    ledger=json.loads((Path(folder)/'differential-universe-ledger.json').read_text('utf8'))
+                    self.assertEqual(ledger['actions'][0]['feedback_status'],'unverified')
+                    self.assertEqual(ledger['actions'][0]['intent'],'last_area_confirm')
+                    self.assertEqual(len(ledger['actions']),2)
+
+    def test_epoch_change_before_input_refreshes_warning_then_sends_once(self):
+        flow,page,window=self.interrupted_confirmation()
+        runner=flow.ctx.runner
+
+        def checkpoint():
+            if runner.input_epoch==0 and flow.report['actions']:
+                runner.input_epoch+=1
+
+        runner.checkpoint.side_effect=checkpoint
+        with self.assertRaisesRegex(AutomationError,'差分宇宙已失败'):
+            flow._progress_run(page,'last_area_confirm')
+        window.click.assert_called_once()
+        requests=[action for action in flow.report['actions'] if action.get('intent')=='last_area_confirm']
+        self.assertEqual([action['status'] for action in requests],['not_sent','sent'])
+        self.assertEqual(flow.ctx.scene_epoch,1)
+
+    def test_focus_loss_at_window_boundary_does_not_replay_final_area_confirmation(self):
+        flow,page,window=self.interrupted_confirmation()
+        window.click.side_effect=[FocusLost('test focus loss'),None]
+        with self.assertRaisesRegex(AutomationError,'反馈待核对，未重复点击'):
+            flow._progress_run(page,'last_area_confirm')
+        window.click.assert_called_once()
+        flow.ctx.runner.wait_for_focus.assert_called_once_with(window)
+        self.assertEqual(flow.report['actions'][0]['feedback_status'],'unverified')

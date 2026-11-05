@@ -1080,12 +1080,27 @@ class DifferentialUniverseWorkflow:
         target=du_last_area_confirm(scene)
         if target is None:
             raise AutomationError('最后一次区域选择提示已改变，未确认。')
-        scene,kind=self._click(scene,target,intent='last_area_confirm',label='last_area_confirmed')
-        if kind=='last_area_confirm':
-            scene=self.ctx.wait(lambda page:classify_page(page,self.ctx)!='last_area_confirm',
-                timeout=15,description='最后一次区域选择确认反馈')
-            kind=self._observe(scene,'last_area_confirmation_settled')
-        return self._wait_known(scene,kind,'last_area_confirmation')
+        action_index=len(self.report['actions'])
+        try:
+            scene,kind=self._click(scene,target,intent='last_area_confirm',label='last_area_confirmed')
+            if kind=='last_area_confirm':
+                scene=self.ctx.wait(lambda page:classify_page(page,self.ctx)!='last_area_confirm',
+                    timeout=15,description='最后一次区域选择确认反馈')
+                kind=self._observe(scene,'last_area_confirmation_settled')
+            return self._wait_known(scene,kind,'last_area_confirmation')
+        except InputInterrupted as error:
+            actions=self.report['actions'][action_index:]
+            request=actions[0] if actions and actions[0].get('intent')=='last_area_confirm' else None
+            if request is not None:
+                # DU Context appends its own action before calling the window.
+                # A lone requested row never reached that input boundary.
+                if self.ctx.report.operation==TASK and len(actions)==1 and request['status']=='requested':
+                    request['status']='not_sent'
+                    self._persist_ledger()
+                    raise
+                request['feedback_status']='unverified'
+                self._persist_ledger()
+            raise AutomationError('最后一次区域选择确认中断，反馈待核对，未重复点击。') from error
 
     def _finish_adventure(self,scene,kind):
         from .du_adventure import hanu_result_exit
