@@ -9,11 +9,22 @@ from .currency_wars_prepare import trusted
 from .models import AutomationError, normalize
 
 SELECTED_FIELD = (.108, .342, .19, .443)
+MIN_WEALTH = 1
+MAX_WEALTH = 50
+DEFAULT_WEALTH = 40
+NAVIGATION_BLOCKERS = ('密码', '验证码', '扫码登录', '用户协议', '资源下载', '更新游戏')
+
+
+def validate_wealth(value):
+    if type(value) is not int or not MIN_WEALTH <= value <= MAX_WEALTH:
+        raise ValueError(f'标准A8财富档位须为{MIN_WEALTH}～{MAX_WEALTH}的整数。')
+    return value
 
 
 def difficulty_page(scene, confidence=.65):
     scene = trusted(scene, confidence)
-    return (scene.has('货币战争', (0, 0, .2, .1), exact=True)
+    return (not scene.has(NAVIGATION_BLOCKERS)
+            and scene.has('货币战争', (0, 0, .2, .1), exact=True)
             and scene.has('标准博弈', (0, .78, .2, .86), exact=True)
             and any(re.fullmatch(r'a8财富造物主', normalize(t.text))
                     for t in scene.tokens if t.within((.02, .24, .25, .33)))
@@ -29,7 +40,7 @@ def visible_ranks(scene, confidence=.65):
     for token in scene.tokens:
         if token.within((.09, .31, .22, .80)) and re.fullmatch(r'[1-9][0-9]?', normalize(token.text)):
             value = int(normalize(token.text))
-            if 1 <= value <= 50 and token.box[3]-token.box[1] >= .035:
+            if MIN_WEALTH <= value <= MAX_WEALTH and token.box[3]-token.box[1] >= .035:
                 rows.append((value, token))
     if not rows or len({n for n, _ in rows}) != len(rows):
         raise AutomationError('职级数字缺失或不唯一。')
@@ -66,18 +77,18 @@ def selected_rank(scene, confidence=.65):
     return selected[0]
 
 
-def rank_target(scene, confidence=.65):
+def rank_target(scene, confidence=.65, *, wealth=DEFAULT_WEALTH):
+    validate_wealth(wealth)
     current = selected_rank(scene, confidence)
-    if current == 40:
+    if current == wealth:
         return None
     rows = visible_ranks(scene, confidence)
-    # Move toward 40 only through a visible, explicitly read row. Never count
-    # blind wheel pulses or infer a hidden row's coordinates.
+    # Move toward the requested rank only through a visible, explicitly read row.
     options = [(value, token) for value, token in rows if
-               40 <= value < current or current < value <= 40]
+               wealth <= value < current or current < value <= wealth]
     if not options:
         raise AutomationError('目标方向没有可见职级行，需要核实列表滚动控件。')
-    return min(options, key=lambda row: abs(row[0]-40))
+    return min(options, key=lambda row: abs(row[0]-wealth))
 
 
 def supplement_rank(scene, reader):
@@ -97,7 +108,7 @@ def supplement_rank(scene, reader):
     variants = (patch, cv2.threshold(gray, 210, 255, cv2.THRESH_BINARY)[1])
     fields = [reader.read_number(image) for image in variants]
     if (any(t is None or not .9 <= t.score <= 1 or not re.fullmatch(r'[1-9][0-9]?', t.text)
-            or not 1 <= int(t.text) <= 50 for t in fields) or len({t.text for t in fields}) != 1):
+            or not MIN_WEALTH <= int(t.text) <= MAX_WEALTH for t in fields) or len({t.text for t in fields}) != 1):
         return scene
     token = Token(fields[0].text, min(t.score for t in fields), SELECTED_FIELD)
     return Scene(scene.tokens+[token], scene.image, scene.geometry, scene.captured_at,scene.field_reads)

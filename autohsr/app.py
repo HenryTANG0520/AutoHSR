@@ -1459,7 +1459,7 @@ class Runner:
                  du_runs=None, du_resume_active=False, du_periodic_rank=None, du_use_cassettes=False,
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
-                 currency_configure=False, currency_resume=False, weekly_plan=None, currency_strategy=None,
+                 currency_configure=False, currency_wealth=None, currency_resume=False, weekly_plan=None, currency_strategy=None,
                  currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None,currency_rewards_resume=False,currency_weekly_guard=None,
                  use_power_plan=False,new_power_plan=False):
         from dataclasses import replace
@@ -1508,8 +1508,14 @@ class Runner:
         self.currency_locate = currency_locate
         if (type(currency_configure) is not bool or currency_configure and
                 (operation not in ('currency_wars_prepare','currency_wars_standard') or not currency_locate)):
-            raise ValueError('标准A8-40配置仅允许独立入口导航操作。')
+            raise ValueError('标准A8配置仅允许货币战争入口导航操作。')
         self.currency_configure = currency_configure
+        if currency_wealth is not None:
+            if operation != 'currency_wars_prepare' or not currency_configure:
+                raise ValueError('财富档位覆盖仅允许独立配置入口。')
+            from .currency_wars_standard import validate_wealth
+            currency_wealth = validate_wealth(currency_wealth)
+        self.currency_wealth = currency_wealth
         if type(currency_resume) is not bool or currency_resume and operation != 'currency_wars_standard':
             raise ValueError('接续标准对局只适用于标准开发入口。')
         self.currency_resume = currency_resume

@@ -23,11 +23,17 @@ def rank_page(current=50, values=(50, 49, 48)):
     for i, value in enumerate(values):
         y = .39 + .18*i
         box = (.12, y-.04, .18, y+.04)
-        tokens.append(Token(str(value), .99, box))
         if value == current:
             image[round((y-.08)*1080):round((y+.08)*1080)] = (230, 130, 80)
+        color = (255, 255, 255) if value == current else (80, 60, 30)
         cv2.putText(image, str(value), (round(.12*1920), round((y+.033)*1080)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 2.8, (255, 255, 255) if value == current else (80, 60, 30), 9)
+                    cv2.FONT_HERSHEY_SIMPLEX, 2.8, color, 9)
+        if value < 10:
+            x1, y1, x2, y2 = (round(v * size) for v, size in zip(box, (1920, 1080, 1920, 1080)))
+            glyph = np.all(image[y1:y2, x1:x2] == color, axis=2).astype(np.uint8)
+            x, dy, width, height = cv2.boundingRect(glyph)
+            box = ((x1+x)/1920, (y1+dy)/1080, (x1+x+width)/1920, (y1+dy+height)/1080)
+        tokens.append(Token(str(value), .99, box))
     return Scene(tokens, image)
 
 
@@ -43,6 +49,21 @@ class StandardRankTests(unittest.TestCase):
     def test_below_target_moves_up_without_overshooting(self):
         state = rank_page(39, (40, 39, 38))
         self.assertEqual(rank_target(state)[0], 40)
+
+    def test_custom_target_uses_only_visible_progress_and_stops_at_either_limit(self):
+        self.assertEqual(rank_target(rank_page(3, (4, 3, 2)), wealth=1)[0], 2)
+        self.assertEqual(rank_target(rank_page(2, (3, 2, 1)), wealth=1)[0], 1)
+        self.assertIsNone(rank_target(rank_page(1, (3, 2, 1)), wealth=1))
+        self.assertEqual(rank_target(rank_page(48), wealth=50)[0], 50)
+        self.assertIsNone(rank_target(rank_page(50), wealth=50))
+        with self.assertRaises(AutomationError):
+            rank_target(rank_page(48), wealth=1)
+
+    def test_standard_start_navigation_still_derives_the_fixed_40_target(self):
+        c = SimpleNamespace(settings=Settings(), report=SimpleNamespace(operation='currency_wars_standard'),
+                            runner=SimpleNamespace(currency_configure=True, currency_wealth=50))
+        state = rank_page(48, (49, 48, 47))
+        self.assertEqual(next_action(state, c).intent, 'select_rank_47')
 
     def test_no_current_image_or_no_highlight_is_not_selected(self):
         state = rank_page()
@@ -79,6 +100,23 @@ class StandardRankTests(unittest.TestCase):
             self.assertFalse(difficulty_page(modified))
         state.tokens[1] = replace(state.tokens[1], text='超频博弈')
         self.assertFalse(difficulty_page(state))
+
+    def test_navigation_barriers_veto_rank_and_standard_start(self):
+        from autohsr.currency_wars_standard_flow import next_action as standard_action
+
+        state = rank_page(40, (41, 40, 39))
+        self.assertEqual(standard_action(state, session={}).intent, 'start_standard_a8_40')
+        for label in ('密码', '验证码', '扫码登录', '用户协议', '资源下载', '更新游戏'):
+            with self.subTest(label=label):
+                overlay = Token(label, .99, (.41, .43, .51, .49))
+                blocked = Scene(state.tokens+[overlay], state.image)
+                self.assertFalse(difficulty_page(blocked))
+                with self.assertRaises(AutomationError):
+                    selected_rank(blocked)
+                with self.assertRaises(AutomationError):
+                    standard_action(blocked, session={})
+        weak = Scene(state.tokens+[Token('验证码', .4, (.41, .43, .51, .49))], state.image)
+        self.assertEqual(selected_rank(weak), 40)
 
     def test_navigation_scope_cannot_click_start_or_use_unselected_rank_as_target(self):
         c = SimpleNamespace(settings=Settings(), runner=SimpleNamespace(currency_configure=True))

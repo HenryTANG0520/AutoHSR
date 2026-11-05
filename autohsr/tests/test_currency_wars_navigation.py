@@ -8,13 +8,14 @@ from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.currency_wars_navigation import locate, next_action, page_kind, standard_selected
 from autohsr.models import AutomationError, InputInterrupted, RunReport, Scene, Token
 from autohsr.tests.test_currency_wars_prepare import phone
+from autohsr.tests.test_currency_wars_standard import rank_page
 
 
 def scene(*items):
@@ -171,9 +172,9 @@ class NavigationTests(unittest.TestCase):
         c.runner = SimpleNamespace(currency_locate=True, input_epoch=0, inactive_duration=0, emit=Mock())
         c.scene_epoch, c.last_scene = 0, None
         c.checkpoint, c.sleep, c.log = Mock(), Mock(), Mock()
-        pending = list(states)
+        pending = iter(states)
         def snapshot():
-            c.last_scene = pending.pop(0) if pending else c.last_scene
+            c.last_scene = next(pending, c.last_scene)
             return c.last_scene
         c.snapshot = snapshot
         c.evidence = lambda state, label: folder / (label+'.png')
@@ -214,6 +215,126 @@ class NavigationTests(unittest.TestCase):
             self.assertEqual([a['status'] for a in actions], ['verified'] * 3)
             self.assertTrue(c.report.currency_wars['entry_ready'])
 
+    def test_configured_wealth_is_reported_after_fresh_selected_rank_through_context(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner = Runner(Settings(), operation='currency_wars_prepare', currency_locate=True,
+                            currency_configure=True, currency_wealth=48)
+            runner.report.run_dir = folder
+            runner.report.currency_wars = dict(game_ready=True)
+            window = Mock()
+            c = Context(runner, window, Mock())
+            c.checkpoint, c.sleep = Mock(), Mock()
+            initial = rank_page(50, (50, 49))
+            intermediate = rank_page(49, (50, 49, 48))
+            unselected = rank_page(49, (49, 48, 47))
+            selected = rank_page(48, (49, 48, 47))
+            states = iter((initial, intermediate, unselected, selected))
+            journal = Path(folder)/'currency-navigation.json'
+
+            def snapshot():
+                state = next(states)
+                if state is unselected:
+                    data = json.loads(journal.read_text(encoding='utf-8'))
+                    self.assertNotIn('wealth', data)
+                    self.assertEqual(data['actions'][-1]['status'], 'pending')
+                state.captured_at = time.monotonic()
+                c.last_scene = state
+                return state
+
+            def check_pending(*_):
+                data = json.loads(journal.read_text(encoding='utf-8'))
+                self.assertEqual(data['actions'][-1]['status'], 'pending')
+                self.assertNotIn('wealth', data)
+
+            c.snapshot = snapshot
+            c.evidence = lambda state, label: Path(folder)/(label+'.png')
+            window.click.side_effect = check_pending
+            with patch('autohsr.currency_wars_navigation.prepare'), patch('autohsr.currency_wars_replay.save_sample'):
+                result = locate(c)
+            data = json.loads(journal.read_text(encoding='utf-8'))
+            self.assertEqual(window.click.call_args_list, [
+                call(*initial.find('49', exact=True).center, initial.geometry),
+                call(*intermediate.find('48', exact=True).center, intermediate.geometry),
+            ])
+            window.key.assert_not_called()
+            self.assertEqual([a['status'] for a in data['actions']], ['verified', 'verified'])
+            self.assertTrue(data['rank_verified'])
+            self.assertEqual((data['rank'], data['wealth']), (8, 48))
+            self.assertFalse(data['completion_verified'])
+            self.assertEqual(result.status, 'partial')
+            self.assertIn('A8财富造物主48', result.detail)
+            self.assertEqual(Path(data['screenshot']).name, 'currency_rank_48_ready.png')
+
+    def test_explicit_wealth_can_cross_the_full_range_with_confirmed_single_steps(self):
+        def frames():
+            for current in range(50, 0, -1):
+                values = (current, current-1) if current > 1 else (2, 1)
+                state = rank_page(current, values)
+                state.captured_at = time.monotonic()
+                yield state
+
+        with tempfile.TemporaryDirectory() as folder:
+            c = self.flow_context(Path(folder), frames())
+            c.runner.currency_configure = True
+            c.runner.currency_wealth = 1
+            with patch('autohsr.currency_wars_navigation.prepare'), patch('autohsr.currency_wars_replay.save_sample'):
+                locate(c)
+            data = c.report.currency_wars
+            self.assertEqual(data['wealth'], 1)
+            self.assertTrue(data['rank_verified'])
+            self.assertEqual([a['action'] for a in data['actions']],
+                             [f'select_rank_{rank}' for rank in range(49, 0, -1)])
+            self.assertTrue(all(a['status'] == 'verified' for a in data['actions']))
+
+    def test_unreachable_requested_wealth_does_not_write_rank_or_send_input(self):
+        with tempfile.TemporaryDirectory() as folder:
+            state = rank_page(48)
+            state.captured_at = time.monotonic()
+            c = self.flow_context(Path(folder), [state])
+            c.runner.currency_configure = True
+            c.runner.currency_wealth = 20
+            with patch('autohsr.currency_wars_navigation.prepare'), patch('autohsr.currency_wars_replay.save_sample'):
+                locate(c)
+            data = c.report.currency_wars
+            self.assertEqual(data['action_status'], 'needs_observation')
+            self.assertNotIn('wealth', data)
+            self.assertNotIn('rank_verified', data)
+            c.currency_navigation_input.assert_not_called()
+
+    def test_auth_overlay_does_not_verify_the_pending_rank_click(self):
+        with tempfile.TemporaryDirectory() as folder:
+            initial, blocked = rank_page(49), rank_page(48)
+            initial.captured_at = blocked.captured_at = time.monotonic()
+            blocked.tokens.append(Token('验证码', .99, (.41, .43, .51, .49)))
+            c = self.flow_context(Path(folder), [initial, blocked])
+            c.runner.currency_configure = True
+            c.runner.currency_wealth = 48
+            with patch('autohsr.currency_wars_navigation.prepare'), patch('autohsr.currency_wars_replay.save_sample'), \
+                 patch('autohsr.currency_wars_navigation.time', SimpleNamespace(monotonic=Mock(side_effect=[0, 61]))):
+                locate(c)
+            data = c.report.currency_wars
+            c.currency_navigation_input.assert_called_once()
+            self.assertEqual(data['actions'][0]['status'], 'unknown')
+            self.assertNotIn('rank_verified', data)
+            self.assertNotIn('wealth', data)
+
+    def test_already_selected_rank_behind_update_is_not_reported(self):
+        with tempfile.TemporaryDirectory() as folder:
+            blocked = rank_page(48)
+            blocked.captured_at = time.monotonic()
+            blocked.tokens.append(Token('更新游戏', .99, (.41, .43, .51, .49)))
+            c = self.flow_context(Path(folder), [blocked])
+            c.runner.currency_configure = True
+            c.runner.currency_wealth = 48
+            with patch('autohsr.currency_wars_navigation.prepare'), patch('autohsr.currency_wars_replay.save_sample'):
+                locate(c)
+            data = c.report.currency_wars
+            c.currency_navigation_input.assert_not_called()
+            self.assertFalse(data['entry_ready'])
+            self.assertEqual(data['action_status'], 'needs_observation')
+            self.assertNotIn('rank_verified', data)
+            self.assertNotIn('wealth', data)
+
     def test_cli_selects_explicit_navigation_without_saving_settings(self):
         from autohsr.__main__ import main
         with tempfile.TemporaryDirectory() as directory:
@@ -232,12 +353,46 @@ class NavigationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory)/'config.json'
             Settings().save(config)
+            before = config.read_bytes()
             with patch('autohsr.app.Runner') as runner, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 runner.return_value.run.return_value = {'status': 'partial'}
                 self.assertEqual(main(['--currency-wars-configure', '--config', str(config)]), 1)
                 self.assertEqual(runner.call_args.kwargs['operation'], 'currency_wars_prepare')
                 self.assertTrue(runner.call_args.kwargs['currency_locate'])
                 self.assertTrue(runner.call_args.kwargs['currency_configure'])
+                self.assertNotIn('currency_wealth', runner.call_args.kwargs)
+                for value in (1, 50):
+                    self.assertEqual(main(['--currency-wars-configure', '--currency-wealth', str(value),
+                                           '--config', str(config)]), 1)
+                    self.assertEqual(runner.call_args.kwargs['currency_wealth'], value)
+            self.assertEqual(config.read_bytes(), before)
+
+    def test_cli_rejects_out_of_scope_or_invalid_wealth_before_loading_configuration(self):
+        from autohsr.__main__ import main
+        other_modes = ((), ('--currency-wars-prepare',), ('--currency-wars-locate',), ('--currency-wars-standard',),
+                       ('--currency-wars-loop',), ('--currency-wars-points',), ('--currency-wars-rewards',),
+                       ('--plan',), ('--currency-wars-replay', 'not-read.sample.json'))
+        cases = [(*mode, '--currency-wealth', '40') for mode in other_modes]
+        cases.extend(('--currency-wars-configure', '--currency-wealth', value) for value in ('0', '51', '1.5', 'True'))
+        with patch.object(Settings, 'load') as load, patch('autohsr.app.Runner') as runner:
+            for args in cases:
+                with self.subTest(args=args), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                    main(list(args))
+                self.assertEqual(error.exception.code, 2)
+            load.assert_not_called()
+            runner.assert_not_called()
+
+    def test_runner_rejects_invalid_wealth_and_explicit_overrides_for_other_operations(self):
+        configure = dict(operation='currency_wars_prepare', currency_locate=True, currency_configure=True)
+        for value in (0, 51, True, 1.5, '40'):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                Runner(Settings(), **configure, currency_wealth=value)
+        for operation, locate_enabled, configure_enabled in (
+                ('currency_wars_prepare', True, False), ('currency_wars_standard', True, True),
+                ('currency_wars_points', True, False), ('daily', False, False)):
+            with self.subTest(operation=operation), self.assertRaises(ValueError):
+                Runner(Settings(), operation=operation, currency_locate=locate_enabled,
+                       currency_configure=configure_enabled, currency_wealth=40)
 
 
 if __name__ == '__main__':

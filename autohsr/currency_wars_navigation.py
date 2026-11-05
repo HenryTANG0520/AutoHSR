@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .currency_wars import CurrencyWarsWorkflow, TASK, observe
 from .currency_wars_prepare import PREPARATION_OPERATIONS, prepare, trusted
+from .currency_wars_standard import DEFAULT_WEALTH, MAX_WEALTH, MIN_WEALTH, NAVIGATION_BLOCKERS
 from .models import AutomationError, EmptyCapture, TaskResult, Token, normalize
 from .storage import replace_file
 from .workflows import DailyWorkflow
@@ -59,10 +60,16 @@ def page_kind(scene, confidence=.65):
     return 'unknown'
 
 
+def _requested_wealth(context):
+    if getattr(getattr(context, 'report', None), 'operation', None) == 'currency_wars_prepare':
+        return getattr(context.runner, 'currency_wealth', None)
+    return None
+
+
 def next_action(scene, context):
     confidence = context.settings.ocr_confidence
     clean = trusted(scene, confidence)
-    if clean.has(('密码', '验证码', '扫码登录', '用户协议', '资源下载', '更新游戏')):
+    if clean.has(NAVIGATION_BLOCKERS):
         raise AutomationError('导航出现账号验证、协议或更新，未输入。')
     kind = page_kind(scene, confidence)
     if getattr(getattr(context,'report',None),'operation',None) in ('currency_wars_points','currency_wars_rewards'):
@@ -111,7 +118,8 @@ def next_action(scene, context):
                                 unique(clean, '标准博弈', (0, .16, .2, .27)))
     if kind == 'standard_difficulty' and getattr(context.runner, 'currency_configure', False):
         from .currency_wars_standard import rank_target
-        choice = rank_target(scene, confidence)
+        requested = _requested_wealth(context)
+        choice = rank_target(scene, confidence, wealth=DEFAULT_WEALTH if requested is None else requested)
         if choice is None:
             return None
         value, target = choice
@@ -150,9 +158,13 @@ def locate(c, *, stop_at_lobby=False):
         return str(screenshot)
     guard = CurrencyWarsWorkflow(c)
     used = set()
+    requested = _requested_wealth(c)
+    target_wealth = DEFAULT_WEALTH if requested is None else requested
+    # Explicit targets can span the entire list, with each move progressing at least one rank.
+    step_limit = 24 if requested is None else 24 + MAX_WEALTH - MIN_WEALTH
     persist()
     scene = c.snapshot()
-    for _ in range(24):
+    for _ in range(step_limit):
         c.checkpoint()
         guard._require_current_scene(scene)
         if stop_at_lobby and page_kind(scene,c.settings.ocr_confidence)=='lobby':
@@ -165,10 +177,10 @@ def locate(c, *, stop_at_lobby=False):
                 rank = selected_rank(scene, c.settings.ocr_confidence)
             except AutomationError:
                 rank = None
-            if rank == 40:
-                data.update(entry_ready=True, rank_verified=True, rank=8, wealth=40,
+            if rank == target_wealth:
+                data.update(entry_ready=True, rank_verified=True, rank=8, wealth=rank,
                             page_kind='standard_difficulty', action_status='rank_ready',
-                            screenshot=evidence(scene, 'currency_rank_40_ready'))
+                            screenshot=evidence(scene, f'currency_rank_{rank}_ready'))
                 persist()
                 break
         if not stop_at_lobby and standard_selected(scene, c.settings.ocr_confidence) and not getattr(c.runner, 'currency_configure', False):
@@ -239,7 +251,8 @@ def locate(c, *, stop_at_lobby=False):
     if stop_at_lobby:
         c.report.safe_next='仅核对当前主页积分；不开始对局或领取积分奖励。'
         return TaskResult(TASK,'partial','已到达积分主页。' if data['entry_ready'] else data.get('reason','主页定位未完成。'))
-    c.report.safe_next = '核对标准博弈难度与A8-40控制；本次未提交新对局。'
-    return TaskResult(TASK, 'partial', '已核实标准A8财富造物主40，未开始对局。' if data.get('rank_verified') else
+    c.report.safe_next = ('复核标准博弈目标档位。独立配置在开局前结束。' if requested is not None else
+                          '核对标准博弈难度与A8-40控制；本次未提交新对局。')
+    return TaskResult(TASK, 'partial', f'已核实标准A8财富造物主{data["wealth"]}，未开始对局。' if data.get('rank_verified') else
                       '已定位标准博弈配置，未开始对局。' if data['entry_ready'] else
                       data.get('reason', '导航未完成，已留证。'))

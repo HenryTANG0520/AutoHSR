@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--currency-wars-check", action="store_true", help="货币战争只读识别与证据保存；自动玩法尚未开放")
     mode.add_argument("--currency-wars-prepare", action="store_true", help="启动或复用游戏，进入已有登录及主界面；不开始对局")
     mode.add_argument("--currency-wars-locate", action="store_true", help="启动准备并通过指南定位货币战争标准模式；不开始对局")
-    mode.add_argument("--currency-wars-configure", action="store_true", help="定位标准博弈并配置A8财富造物主40；不开始对局")
+    mode.add_argument("--currency-wars-configure", action="store_true", help="定位并配置标准A8财富档位（默认40），不开始对局")
     mode.add_argument("--currency-wars-standard", action="store_true", help="标准A8-40开发：核实配置后新开局；未知页面停下留证")
     mode.add_argument('--currency-wars-loop', action='store_true', help='标准A8-40连续开发：逐局核实结算与保存，失败或未知即停止')
     mode.add_argument('--currency-wars-points',action='store_true',help='导航到货币战争主页，核对当前积分、账号与游戏周；不开始对局或领取积分奖励')
@@ -100,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--support-fallback',choices=('stop','friend','skip'),help='偏好未核实时停止、另借好友或不借支援；仅用于日常／计划')
     parser.add_argument('--support-daily-only',action='store_true',help='仅当当前实训明确需要时借用支援；只影响本次日常／计划的刷本，不保存配置')
     parser.add_argument("--resume-active-currency", action="store_true", help="仅配合标准开发入口，接续有记录且已核实开始的货币战争")
+    parser.add_argument('--currency-wealth', type=int, metavar='1–50',
+                        help='本次标准A8财富档位，默认40，仅用于 --currency-wars-configure')
     parser.add_argument('--currency-runs', type=int, help='循环局数；积分目标启用时为新局上限，0表示无局数上限；仅用于 --currency-wars-loop，不保存配置')
     parser.add_argument('--resume-currency-loop', action='store_true', help='明确接续原循环的剩余局数与原设置；仅用于 --currency-wars-loop')
     parser.add_argument('--resume-currency-rewards',action='store_true',help='明确接续已核实步骤后的积分领奖，或只读补存回执；未知领取不重放')
@@ -113,6 +115,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    if args.currency_wealth is not None:
+        if not args.currency_wars_configure:
+            parser.error('--currency-wealth 仅用于 --currency-wars-configure。')
+        from .currency_wars_standard import validate_wealth
+        try:
+            validate_wealth(args.currency_wealth)
+        except ValueError as error:
+            parser.error(str(error))
     from .du_rewards_cli import validate_arguments as validate_du_rewards_arguments
     validate_du_rewards_arguments(args, parser, raw_args)
     from .challenge_cli import dispatch as dispatch_challenge
@@ -355,6 +365,7 @@ def main(argv: list[str] | None = None) -> int:
                             **(dict(currency_rewards_resume=args.resume_currency_rewards) if args.currency_wars_rewards else {}),
                             **(dict(currency_locate=True) if args.currency_wars_locate or args.currency_wars_configure else {}),
                             **(dict(currency_configure=True) if args.currency_wars_configure else {}),
+                            **(dict(currency_wealth=args.currency_wealth) if args.currency_wealth is not None else {}),
                             **(dict(currency_resume=args.resume_active_currency) if args.currency_wars_standard else {}),
                             **(dict(currency_strategy=args.currency_strategy) if args.currency_strategy is not None else {}),
                             **(dict(currency_remembrance_name=args.currency_remembrance_name) if args.currency_remembrance_name is not None else {}),
