@@ -64,6 +64,8 @@ python -m autohsr --challenge-prepare --challenge-plan .\my-challenge.json
 
 页面探测与选层反馈各自在 30 秒活动时限和 100 次采集上限内观察。两阶段遇到空帧都会核对运行状态和输入代次，随后从晚于该空帧的画面重新组成配对。选层反馈须晚于点击发送完成时刻，暂缺完整账号、重复或倒序时间戳会打断其连续计数。核实成功需要同一账号、同一输入代次的连续两张当前层备战画面。已有备战和刚选层两路均在第二张证据写盘后复核当前状态，最终记录在每次实际替换前再次核对窗口、页面、账号、画面时效、输入代次和原活动时限。共享锁重试期间失效会保留观察，已提交的选层保持待核对。明确换号、多个完整账号候选、模式冲突、暂停或计划变化会中止原选择的核验。[实现](../autohsr/challenge_prepare.py)
 
+备战与槽位对照共用高难账号门禁。绑定账号仍须达到 `max(0.85, OCR 采集阈值)`。在原 UID 区域，达到采集阈值的完整字段会参与冲突判定，多条完整字段或与已绑定账号不同的完整字段均停止。初始观察、选层发送前和最终回执写入前都使用这条规则。异区文字、不完整字段及低于采集阈值的读数不参与。[账号门禁](../autohsr/challenge_account.py)
+
 未知、动画、重复capture、失焦、账号／计划／代次变化、写盘失败或超时不重发选择。私人`run_dir/challenge-preparation.json`及`RunReport.challenge`保存原意图、页面来源和反馈；旧文件不覆盖，未核实选择保留`unknown`。最外层运行结束通知只沿用明确启用的通知配置，将任务标为“高难备战”，不公开名单、账号摘要或截图；本轮没有实际发送。
 
 ## 页面与证据
@@ -92,11 +94,43 @@ python -m autohsr --challenge-prepare --challenge-plan .\my-challenge.json
 
 2026-11-05新增[列表候选观察](../autohsr/challenge_roster.py)。原生准备流程仅在保存已核实同模式备战页时，将`candidate_list`附入来源`basis`；主页、未知页和目标推导不扫描。105幅既有完整头像逐份核对固定manifest、SHA-256、Git blob和尺寸，使用固定上游列表裁剪范围，保留身份、完整框与模板来源。边缘残缺、遮挡及过期画面不作为正候选，跨素材重叠匹配完整保留歧义；没有支援列表行假设或徽章遮罩，也不产出点击目标。
 
-输出的`ownership`、`availability`、`selected`、`complete`均为`unknown`，`execution_supported=false`。混沌与虚构的备战候选使用上游`BaseChallenge.select_characters`的 1920×1080、xywh`(30,115,530,810)`。末日另有候选工具的裁剪参考`(30,110,550,850)`，目前未接入正式任务。名单结构、候选身份、可用性、槽位与实际双队完成各自独立。[列表候选实现](../autohsr/challenge_roster.py)
+列表候选的`ownership`、`availability`、`selected`、`complete`均为`unknown`。混沌与虚构使用上游`BaseChallenge.select_characters`的 1920×1080、xywh`(30,115,530,810)`。末日的只读备战观察采用`(30,110,550,850)`，运行入口仍是混沌与虚构的有限备战。[列表候选实现](../autohsr/challenge_roster.py)
+
+### 槽位与双队对照
+
+`observe_setup_roster(scene)`先核实备战页，再分别读`candidate_list`和`team_slots`。混沌和虚构只在保存备战帧时将两项附入回执，末日`node_setup`可单独调用只读观察。当前三种模式均缺实际槽位校准，`team_slots.reason`为`missing_slot_calibration`，两组四个计划位置的画面坐标、占用、身份与对照结果均保持未知。队伍编号和节点标题能关联队伍，固定上游头像只证明所匹配的素材身份。角色可选性仍须独立状态证据。[槽位实现](../autohsr/challenge_slots.py) · [固定上游队伍列表](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/basechallenge.py#L70) · [固定上游末日控件](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/apocalyptic.py#L193)
+
+合成校准将槽位绑定到当帧所属队伍或节点的标题。每队须有四个完整、互不重叠的槽框，并与候选列表分离。已占槽须有槽框内的完整头像匹配，明确空槽须有独立空位标记。缺读、裁切和冲突保留未知，多个身份同时命中时保留候选歧义。已占槽也不推导该角色当前可选。
+
+`compare_roster_frames`用采集方提供的相邻序号、输入代次和冻结计划摘要绑定两帧，再分别核对首个目标层与同账号。末日还须明确请求的节点，并在两帧各自独立读到该节点。扫描结束复核像素、页面、锚点和账号。相同静态像素可来自两次独立采集，复用缓冲区或时间戳、序号间断、换号、错层和错节点均不能形成对照回执。返回值只含页面与槽位事实，账号核验在本地完成。
+
+两帧分别核实的物理占用、精确身份、队伍成员和槽位顺序用不同字段记录。已确认空槽意味着八槽不完整，缺读保持未知。同队成员对调可使`team_members_match`为真而`slot_order_match`为假。身份按计划里的精确 ID 比对，已核实的同单位关系只用于拒绝重复。`duplicate_unit`的否定范围限于固定身份表。完整的合成比对结果仍为只读，备战回执中的`team_verified`保持未核实。[合成回归](../autohsr/tests/test_challenge_slots.py)
+
+#### 实机最小补证
+
+| 范围 | 需要保留的脱敏区域 |
+| --- | --- |
+| 混沌、虚构和末日 | 同层两张连续新帧，保留模式、当前层、两个队伍或节点标题与八个完整槽框。提供明确入槽头像及至少一个同类槽位的正向空位标记。 |
+| 角色可选状态和形态 | 同一角色卡的可选与禁用对照，保留禁用标记或原因。皮肤、命途和同名形态需保留可区分的实际槽位样式或完整标识。 |
+| 末日节点 | 分别在节点一、节点二激活时保留当前关卡、活动节点标记及其槽位归属。若节点切换改变可见槽框，保留切换前后对应区域。 |
+
+当前公共裁片可能遮住上方层号、末日节点或虚构底部入口。采集时按覆盖诊断核对所需区域，同账号与采集连续性在本地验证。[采集说明](interface-calibration-2026-11-05.md)
 
 19 幅局部原件均固定到上游`7cf6c6bed474539485d3b1504077ac352866829f`，保留作者 moesnow 及其贡献者、GPL v3 与游戏美术权利说明。来源清单记录原路径、尺寸和哈希。[素材说明](../assets/upstream/March7thAssistant/challenge-ui/README.md) · [来源清单](../assets/upstream/March7thAssistant/challenge-ui/sources.json) · [GPL v3](../assets/upstream/March7thAssistant/LICENSE)
 
 ## 验证与未完成项
+
+### 2026-11-06 备战账号冲突
+
+在 `dc8b2cc` 用正式 CLI、Runner、Context 和假窗口复现四个反例。0.80 的第二个完整 UID 出现在已有备战首帧、次帧、选层前或选层后，四例均错误核实了备战，其中选层前一例还发出一次假点击。修复后初始冲突停止在选层前，发送前冲突保留已写入的选择意图和原图，反馈或最终回执冲突将已提交动作保留为 `unknown`。原基线日志留在本工作树的 `runs/high-roster-account-qa/`。[正式入口用例](../autohsr/tests/test_challenge_integration.py) [回执与发送前用例](../autohsr/tests/test_challenge_prepare.py)
+
+**63 项定向回归通过**，其中正式备战与 CLI 39 项，槽位、虚构备战、候选证据和共享 UID 解析 24 项。账号专项 7 项为其中的子集，覆盖干净同号、单条 0.80 字段不足以绑定、明确换号、异区、截断及低于采集阈值的噪声。本批使用虚构标识、固定公开素材和假窗口。当前客户端的 UID 可读性、同层连续转场及真实双队槽位仍待实机核实。
+
+### 2026-11-05 双队槽位对照
+
+定向回归使用固定上游头像、合成槽位与空位标记、虚构账号和末日活动节点字段。公开脱敏的历史饰品预设只作错页反例。当前可在备战回执查看彼此独立的候选与槽位状态，实际高难八槽与角色可选性仍待上述最小样本校准。[定向用例](../autohsr/tests/test_challenge_slots.py)
+
+阶段高难相关回归 123 项通过，日志为`runs/high-roster-qa/related.log`。最终加入按标题定位槽框后，槽位、候选、备战回执及 CLI 共 35 项定向通过，日志为`runs/high-roster-qa/final-focused.log`。两组范围重叠。
 
 ### 2026-11-05 虚构备战与末日观察
 
