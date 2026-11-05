@@ -122,9 +122,9 @@ def _condition(value, previous):
 def _params(task, params):
     allowed = {
         'daily': {'tasks', 'use_power_plan', 'stamina_limit', 'rounds', 'target_name', 'target_location',
-                  'dungeon_category', 'challenge_count', 'use_support', 'redemption_source', 'redemption_server',
-                  'redemption_codes', 'redemption_catalog', 'redemption_claim_mail'},
-        'plan': {'use_power_plan', 'resume_weekly_currency'},
+                  'dungeon_category', 'challenge_count', 'use_support', 'support_daily_only', 'redemption_source',
+                  'redemption_server', 'redemption_codes', 'redemption_catalog', 'redemption_claim_mail'},
+        'plan': {'use_power_plan', 'resume_weekly_currency', 'support_daily_only'},
         'differential_universe': {'runs', 'mode', 'team', 'save', 'rewards', 'resume_active', 'periodic_rank'},
         'currency_wars_loop': {'runs', 'resume', 'strategy', 'until_points', 'continue_after_defeat'},
         'currency_wars_points': set(),
@@ -134,7 +134,7 @@ def _params(task, params):
         'warp_export': {'imports', 'output', 'format', 'selected_uid'},
     }[task]
     _keys(params, allowed)
-    for key in ('use_power_plan', 'use_support', 'resume_weekly_currency', 'save', 'rewards',
+    for key in ('use_power_plan', 'use_support', 'support_daily_only', 'resume_weekly_currency', 'save', 'rewards',
                 'resume_active', 'resume', 'until_points', 'continue_after_defeat', 'use_cassettes'):
         if key in params:
             _boolean(params[key])
@@ -353,6 +353,9 @@ def task_spec(settings: Settings, node, base_dir):
     """Freeze a separate Settings copy; native constructors keep their own gates."""
     task, params = node['task'], deepcopy(node.get('params', {}))
     current = replace(settings)
+    support_daily_only = params.pop('support_daily_only', None) if task in ('daily', 'plan') else None
+    if support_daily_only is not None:
+        current.support_daily_only = support_daily_only
     options = {}
     if task == 'daily':
         selected = params.pop('tasks', [name for name in DAILY_TASKS if getattr(current, 'redemption_enabled' if name == 'redemption' else name)])
@@ -405,4 +408,7 @@ def task_spec(settings: Settings, node, base_dir):
         if 'output' in options:
             options['output'] = str((base_dir / options['output']).resolve())
         options['analysis_only'] = task == 'warp_analysis'
+    if support_daily_only and (not current.battle or not current.allow_stamina_spend
+                               or options.get('resume_weekly_currency')):
+        raise WorkflowError('仅实训需要时借用需要本次启用刷本及已有资源消耗，不能用于只接续周常。')
     return current, options

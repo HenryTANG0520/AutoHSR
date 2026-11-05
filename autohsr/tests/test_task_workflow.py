@@ -368,6 +368,107 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(options['use_power_plan'])
         self.assertEqual(self.settings, before)
 
+    def test_support_daily_only_accepts_only_booleans_for_daily_and_plan(self):
+        for operation in ('daily', 'plan'):
+            for value in (0, 1, 'true', None):
+                with self.subTest(operation=operation, value=value):
+                    with self.assertRaisesRegex(WorkflowError, '流程开关必须为布尔值'):
+                        compile_recipe(recipe(task('support', operation, support_daily_only=value)))
+        with self.assertRaisesRegex(WorkflowError, '流程包含未知字段'):
+            compile_recipe(recipe(task('support', 'differential_universe', support_daily_only=True)))
+
+    def test_support_daily_only_freezes_explicit_override_and_preserves_inheritance(self):
+        for operation in ('daily', 'plan'):
+            for inherited, override in ((False, None), (True, None), (True, False), (False, True)):
+                with self.subTest(operation=operation, inherited=inherited, override=override):
+                    settings = Settings(use_support=False, support_daily_only=inherited)
+                    params = {} if override is None else {'support_daily_only': override}
+                    step = compile_recipe(recipe(task('support', operation, **params))).steps[0]
+                    frozen, options = task_spec(settings, step, self.root)
+                    self.assertIs(frozen.support_daily_only, inherited if override is None else override)
+                    self.assertIs(frozen.use_support, False)
+                    self.assertIs(settings.support_daily_only, inherited)
+                    self.assertEqual(step['params'], params)
+                    self.assertNotIn('support_daily_only', options)
+        settings = Settings(battle=False, support_daily_only=True, weekly_enabled=True, weekly_mode='currency_wars')
+        for operation, extra in (('daily', {'tasks': ['assignments']}),
+                                 ('plan', {'resume_weekly_currency': True})):
+            for params, expected in ((extra, True), (dict(extra, support_daily_only=False), False)):
+                with self.subTest(operation=operation, params=params):
+                    step = compile_recipe(recipe(task('support', operation, **params))).steps[0]
+                    self.assertIs(task_spec(settings, step, self.root)[0].support_daily_only, expected)
+
+    def test_support_daily_only_rejects_disabled_battle_or_spending_and_weekly_resume_before_start(self):
+        cases = (
+            ('daily', Settings(), {'tasks': ['assignments']}),
+            ('daily', Settings(battle=False), {}),
+            ('daily', Settings(allow_stamina_spend=False), {}),
+            ('plan', Settings(battle=False), {}),
+            ('plan', Settings(allow_stamina_spend=False), {}),
+            ('plan', Settings(weekly_enabled=True, weekly_mode='currency_wars'), {'resume_weekly_currency': True}),
+        )
+        factory = Mock()
+        runs = self.root / 'runs'
+        with patch('autohsr.app.find_game') as find, patch('autohsr.app.launch_game') as launch:
+            for operation, settings, params in cases:
+                with self.subTest(operation=operation, params=params):
+                    document = recipe(task('support', operation, support_daily_only=True, **params))
+                    with self.assertRaisesRegex(WorkflowError, '仅实训需要时借用'):
+                        TaskWorkflowRunner(settings, document, root=runs, runner_factory=factory, plan_factory=factory)
+        factory.assert_not_called()
+        find.assert_not_called()
+        launch.assert_not_called()
+        self.assertFalse(runs.exists())
+
+    def test_support_daily_only_reaches_native_battle_through_daily_and_plan(self):
+        from autohsr.app import Runner
+        from autohsr.plan_runner import PlanRunner
+        from autohsr.tests.test_runner_recovery import RunnerRecoveryTests
+
+        for operation in ('daily', 'plan'):
+            with self.subTest(operation=operation):
+                root = self.root / operation
+                root.mkdir()
+                config = root / 'settings.json'
+                Settings(assignments=False, daily=False, overlay_logs=False, stamina_limit=10,
+                         rounds=1, challenge_count=1).save(config)
+                original = config.read_bytes()
+                settings = Settings.load(config)
+                workflow = SimpleNamespace(ensure_main=Mock())
+                context, find = RunnerRecoveryTests.fixture(self, root, workflow)
+
+                def battle():
+                    self.assertIs(context.settings.support_daily_only, True)
+                    self.assertIs(context.settings.use_support, True)
+                    context.battle_budget.reserve(10)
+                    context.battle_budget.confirm(10, completed=1)
+                    return TaskResult('battle', 'ok', '模拟一轮确认')
+
+                def native_factory(frozen, emit, **options):
+                    child = Runner(frozen, emit, **options)
+                    context.runner, context.settings, context.report, context.scene_epoch = child, frozen, child.report, 0
+                    context.snapshot.side_effect = identity_scene
+                    context.checkpoint, context.sleep = child.checkpoint, time.sleep
+                    return child
+
+                def plan_factory(frozen, emit, **options):
+                    return PlanRunner(frozen, emit, runner_factory=native_factory, root=root / 'runs', **options)
+
+                workflow.battle = Mock(side_effect=battle)
+                document = recipe(task('support', operation, support_daily_only=True))
+                runner = TaskWorkflowRunner(settings, document, root=root / 'runs', runner_factory=native_factory,
+                                            plan_factory=plan_factory)
+                document['steps'][0]['params']['support_daily_only'] = False
+                with patch('autohsr.app.launch_game') as launch:
+                    report = runner.run()
+                self.assertEqual(report.status, 'success', report.error)
+                self.assertEqual((report.stamina_spent, report.stamina_pending, report.battle_completed), (10, 0, 1))
+                workflow.battle.assert_called_once()
+                find.assert_called_once()
+                launch.assert_not_called()
+                self.assertIs(settings.support_daily_only, False)
+                self.assertEqual(config.read_bytes(), original)
+
     def test_daily_without_task_overrides_keeps_current_disabled_battle(self):
         self.settings = Settings(assignments=False, battle=False, daily=True, mail=True)
         report = self.runner(recipe(task('daily'))).run()
