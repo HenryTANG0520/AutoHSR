@@ -244,16 +244,19 @@ class GameWindow:
     def emergency_pressed() -> bool:
         return bool(user32.GetAsyncKeyState(0x79) & 0x8001)  # F10, including a brief tap
 
-    def send(self, events: list[INPUT], expected: Geometry | None = None) -> None:
+    def send(self, events: list[INPUT], expected: Geometry | None = None, *, before_send=None) -> None:
+        """Submit a batch after window checks and the optional final source check."""
         self.guard(expected)
         if self.emergency_pressed():
             from .models import Stopped
             raise Stopped("F10 紧急停止。")
         items = (INPUT * len(events))(*events)
+        if before_send is not None:
+            before_send()
         if user32.SendInput(len(items), items, C.sizeof(INPUT)) != len(items):
             raise AutomationError("模拟输入被 Windows 拒绝；请以管理员身份启动 AutoHSR。")
 
-    def click(self, x: float, y: float, expected: Geometry) -> None:
+    def click(self, x: float, y: float, expected: Geometry, *, before_send=None) -> None:
         g = self.guard(expected)
         if not (0 <= x < 1 and 0 <= y < 1):
             raise AutomationError("点击坐标超出游戏客户区。")
@@ -263,7 +266,11 @@ class GameWindow:
         move = INPUT(type=0, mi=MOUSEINPUT(round((px-vx)*65535/(vw-1)), round((py-vy)*65535/(vh-1)), 0, 0xC001, 0, 0))
         down = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, 0x0002, 0, 0))
         up = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, 0x0004, 0, 0))
-        self.send([move, down, up], expected)
+        events = [move, down, up]
+        if before_send is None:
+            self.send(events, expected)
+        else:
+            self.send(events, expected, before_send=before_send)
 
     def click_held(self,x: float,y: float,expected: Geometry,*,checkpoint=lambda:None) -> None:
         """One frame-visible click; release even after a pause or focus loss."""

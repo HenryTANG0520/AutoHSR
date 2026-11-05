@@ -16,6 +16,7 @@ from autohsr.app import Context, Runner
 from autohsr.build_target_read import BuildTargetRead
 from autohsr.config import Settings
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, Scene, Token
+from autohsr.windows import GameWindow, Geometry
 
 
 def token(text, x, y, score=.99):
@@ -57,15 +58,25 @@ class Window:
     def guard(self, expected=None):
         if expected is not None and expected != self.geometry:
             raise AutomationError('fixture geometry changed')
+        return self.geometry
 
     def focus(self):
         self.guard()
 
-    def click(self, x, y, geometry):
+    def click(self, x, y, geometry, *, before_send=None):
         self.guard(geometry)
+        if before_send is not None:
+            before_send()
         self.clicks.append((x, y))
         if self.interrupt_click:
             raise FocusLost('fixture interrupted after submit')
+
+
+class NativeDispatchWindow(Window):
+    geometry = Geometry(0, 0, 1920, 1080)
+    click = GameWindow.click
+    send = GameWindow.send
+    emergency_pressed = staticmethod(GameWindow.emergency_pressed)
 
 
 class BuildTargetReadTests(unittest.TestCase):
@@ -84,8 +95,8 @@ class BuildTargetReadTests(unittest.TestCase):
                       token('隧洞遗器推荐', .47, .64), token('更换培养目标', .22, .88)]
 
     @contextmanager
-    def runtime(self, frames):
-        window = Window(frames)
+    def runtime(self, frames, *, window_type=Window):
+        window = window_type(frames)
         ticks = count(100, .01)
         clock = SimpleNamespace(monotonic=lambda: next(ticks))
         with ExitStack() as stack:
@@ -157,6 +168,9 @@ class BuildTargetReadTests(unittest.TestCase):
             'role picker': [*self.catalogue, token('选择角色', .48, .34), token('确定', .56, .65)],
             'replenishment': [*self.catalogue, token('补充开拓力', .50, .37)],
             'update overlay': [*self.catalogue, token('更新游戏', .50, .45)],
+            'split login overlay': [*self.catalogue, token('登录', .537, .461, .94), token('账号', .509, .461, .93)],
+            'split verification overlay': [*self.catalogue, token('验', .48, .455), token('证', .503, .45),
+                                           token('码', .526, .453)],
             'recommendations alone': [t for t in self.panel if t.text != '培养还需获取资源'],
         }
         for name, frame in cases.items():
@@ -183,10 +197,22 @@ class BuildTargetReadTests(unittest.TestCase):
         self.assertFalse(report.build_target['page_verified'])
 
     def test_visible_section_through_material_overlay_is_not_feedback(self):
-        overlay = [*self.panel, token('获得途径', .48, .48)]
-        report, clicks = self.native([self.catalogue, self.catalogue, overlay, overlay])
-        self.assertEqual((report.status, clicks), ('partial', [self.entry.center]))
-        self.assertFalse(report.build_target['page_verified'])
+        for fragments in ((token('获得途径', .48, .48),),
+                          (token('获得', .509, .501, .91), token('途径', .537, .501, .93))):
+            with self.subTest(fragments=fragments):
+                overlay = [*self.panel, *fragments]
+                report, clicks = self.native([self.catalogue, self.catalogue, overlay, overlay])
+                self.assertEqual((report.status, clicks), ('partial', [self.entry.center]))
+                self.assertEqual(report.build_target['entry_input'], 'sent')
+                self.assertFalse(report.build_target['page_verified'])
+
+    def test_unrelated_fragments_on_different_rows_or_far_apart_are_not_a_modal(self):
+        for x, y in ((.537, .543), (.72, .501)):
+            with self.subTest(x=x, y=y):
+                panel = [*self.panel, token('获得', .509, .501), token('途径', x, y)]
+                report, clicks = self.native([self.catalogue, self.catalogue, panel, panel])
+                self.assertEqual((report.status, clicks), ('success', [self.entry.center]))
+                self.assertTrue(report.build_target['page_verified'])
 
     def test_repeated_capture_time_does_not_verify_the_panel(self):
         original = Context.snapshot
@@ -213,6 +239,40 @@ class BuildTargetReadTests(unittest.TestCase):
         self.assertEqual((report.status, window.clicks), ('partial', [self.entry.center]))
         self.assertEqual(report.build_target['entry_input'], 'unconfirmed')
         self.assertFalse(report.build_target['page_verified'])
+
+    def test_native_click_rechecks_source_after_coordinate_and_input_preparation(self):
+        cases = (('normal', 'success', 'sent', 1),
+                 ('paused', 'failed', 'not_sent', 0),
+                 ('stopped', 'stopped', 'not_sent', 0),
+                 ('short write', 'partial', 'unconfirmed', 1))
+        for phase, status, entry_input, sent in cases:
+            with self.subTest(phase=phase), self.runtime(
+                    [self.catalogue, self.catalogue, self.panel, self.panel], window_type=NativeDispatchWindow):
+                runner = Runner(self.settings, operation='build_target_read')
+                metrics = {76: 0, 77: 0, 78: 1920, 79: 1080}
+                requested = []
+
+                def get_system_metrics(index):
+                    requested.append(index)
+                    if phase == 'paused' and len(requested) == 1:
+                        runner.toggle_pause()
+                        runner.toggle_pause()
+                    return metrics[index]
+
+                def emergency_key(_key):
+                    if phase == 'stopped':
+                        runner.stop()
+                    return 0
+
+                dispatch = Mock(side_effect=lambda count, *_: count - (phase == 'short write'))
+                fake_user32 = SimpleNamespace(GetSystemMetrics=get_system_metrics,
+                                              GetAsyncKeyState=emergency_key, SendInput=dispatch)
+                with patch('autohsr.windows.user32', fake_user32):
+                    report = runner.run()
+                self.assertEqual(requested, [76, 77, 78, 79])
+                self.assertEqual(dispatch.call_count, sent)
+                self.assertEqual((report.status, report.build_target['entry_input']), (status, entry_input))
+                self.assertIs(report.build_target['page_verified'], status == 'success')
 
     def test_evidence_failure_or_expiry_cannot_authorize_input_or_result(self):
         original = Context.evidence

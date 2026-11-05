@@ -168,10 +168,16 @@ class Context:
             raise AutomationError('缺少本次独立培养目标读取及入口证据。')
         self.checkpoint()
         try:
+            self.window.guard(scene.geometry)
             target = reader.authorize_entry(scene)
-            self.last_scene, self._scroll_anchor = None, None
-            reader.record['entry_input'] = 'unconfirmed'
-            self.window.click(*target.center, scene.geometry)
+
+            def before_send():
+                if reader.authorize_entry(scene) != target:
+                    raise AutomationError('培养目标入口在发送前发生变化。')
+                self.last_scene, self._scroll_anchor = None, None
+                reader.record['entry_input'] = 'unconfirmed'
+
+            self.window.click(*target.center, scene.geometry, before_send=before_send)
         except FocusLost:
             self._focus_interrupted()
         reader.record['entry_input'] = 'sent'
