@@ -217,7 +217,7 @@ class Context:
             self._focus_interrupted()
         self.sleep(self.settings.action_delay)
 
-    def challenge_prepare_input(self, scene, action):
+    def challenge_prepare_input(self, scene, action) -> float:
         if self.report.operation != 'challenge_prepare':
             raise AutomationError('当前任务不允许高难备战选择。')
         workflow = getattr(self, 'challenge_preparation', None)
@@ -232,7 +232,9 @@ class Context:
             self.window.click(*action.target.center, scene.geometry)
         except FocusLost:
             self._focus_interrupted()
+        submitted_at = time.monotonic()
         self.sleep(self.settings.action_delay)
+        return submitted_at
 
     def currency_prepare_click(self, scene, intent, target):
         from .currency_wars_prepare import PREPARATION_OPERATIONS
@@ -1941,7 +1943,7 @@ class Runner:
             elif challenge_prepare:
                 from .challenge_prepare import prepare_challenge
                 self.report.failure_task = 'challenge_prepare'
-                self.emit(dict(type='task', task='challenge_prepare', status='running', detail='核实当前混沌主页与首个目标层备战；不开战'))
+                self.emit(dict(type='task', task='challenge_prepare', status='running', detail='核实当前高难模式与首个目标层备战'))
                 result = prepare_challenge(context)
                 self.report.results.append(result)
                 self.report.status = 'success' if result.status == 'ok' else 'partial'

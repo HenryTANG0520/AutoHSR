@@ -36,11 +36,11 @@ class ChallengeIntegrationTests(unittest.TestCase):
             self.assertEqual(Settings().challenge_plan, {})
         with self.assertRaises(SettingsError):
             Settings().validate('challenge_prepare')
-        for mode in ('pure_fiction', 'apocalyptic_shadow'):
-            plan = dict(PLAN, mode=mode, levels=[1, 4])
-            Settings(challenge_plan=plan).validate('save')
-            with self.assertRaises(SettingsError):
-                Settings(challenge_plan=plan).validate('challenge_prepare')
+        Settings(challenge_plan=dict(PLAN, mode='pure_fiction', levels=[1, 4])).validate('challenge_prepare')
+        apocalypse = Settings(challenge_plan=dict(PLAN, mode='apocalyptic_shadow', levels=[1, 4]))
+        apocalypse.validate('save')
+        with self.assertRaises(SettingsError):
+            apocalypse.validate('challenge_prepare')
 
     def test_preview_has_strict_bounded_json_without_loading_config_or_runner(self):
         from autohsr.__main__ import main
@@ -67,15 +67,28 @@ class ChallengeIntegrationTests(unittest.TestCase):
             plan = Path(folder) / 'plan.json'
             Settings().save(config)
             before = config.read_bytes()
-            plan.write_text(json.dumps(PLAN), encoding='utf-8')
-            fake = Mock()
-            fake.run.return_value = RunReport(status='success', operation='challenge_prepare')
-            with patch('autohsr.app.Runner', return_value=fake) as factory, \
+            for values in (PLAN, dict(PLAN, mode='pure_fiction', levels=[2, 4])):
+                with self.subTest(mode=values['mode']):
+                    plan.write_text(json.dumps(values), encoding='utf-8')
+                    fake = Mock()
+                    fake.run.return_value = RunReport(status='success', operation='challenge_prepare')
+                    with patch('autohsr.app.Runner', return_value=fake) as factory, \
+                         redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                        self.assertEqual(main(['--challenge-prepare', '--challenge-plan', str(plan), '--config', str(config)]), 0)
+                    self.assertEqual(factory.call_args.kwargs['operation'], 'challenge_prepare')
+                    self.assertEqual(factory.call_args.args[0].challenge_plan, values)
+                    self.assertEqual(config.read_bytes(), before)
+
+    def test_apocalyptic_plan_does_not_open_the_preparation_runner(self):
+        from autohsr.__main__ import main
+        with tempfile.TemporaryDirectory() as folder:
+            plan = Path(folder) / 'plan.json'
+            config = Path(folder) / 'config.json'
+            Settings().save(config)
+            plan.write_text(json.dumps(dict(PLAN, mode='apocalyptic_shadow', levels=[1, 4])), encoding='utf-8')
+            with patch('autohsr.app.Runner', side_effect=AssertionError('no runner')), \
                  redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-                self.assertEqual(main(['--challenge-prepare', '--challenge-plan', str(plan), '--config', str(config)]), 0)
-            self.assertEqual(factory.call_args.kwargs['operation'], 'challenge_prepare')
-            self.assertEqual(factory.call_args.args[0].challenge_plan, PLAN)
-            self.assertEqual(config.read_bytes(), before)
+                self.assertEqual(main(['--challenge-prepare', '--challenge-plan', str(plan), '--config', str(config)]), 2)
 
     def test_mixed_or_orphan_options_are_rejected_before_config_or_game(self):
         from autohsr.__main__ import main

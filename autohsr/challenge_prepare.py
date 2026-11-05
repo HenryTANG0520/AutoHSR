@@ -54,8 +54,8 @@ class ChallengePreparation:
         context.challenge_preparation = self
         self._persist()
 
-    def _persist(self):
-        raw = _json(self.data).encode('utf-8')
+    def _persist(self, data=None, *, before_replace=None):
+        raw = _json(self.data if data is None else data).encode('utf-8')
         if len(raw) > MAX_BYTES:
             raise AutomationError('高难备战记录超过8 MiB，原记录保留。')
         temporary = self.path.with_suffix('.tmp')
@@ -63,12 +63,16 @@ class ChallengePreparation:
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
-        replace_file(temporary, self.path)
+        if before_replace is None:
+            replace_file(temporary, self.path)
+        else:
+            replace_file(temporary, self.path, before_replace=before_replace)
 
     def _check_attempt(self):
         from .challenge_plan import ChallengePlan
         self.c.checkpoint()
-        if self.c.runner.input_epoch != self.epoch or self.c.scene_epoch != self.epoch:
+        if (self.c.runner.input_epoch != self.epoch
+                or self.c.last_scene is not None and self.c.scene_epoch != self.epoch):
             raise InputInterrupted('高难备战输入代次改变，旧选择不重发。')
         if ChallengePlan.from_dict(self.c.settings.challenge_plan).digest != self.plan.digest:
             raise AutomationError('高难计划已改变，未继续旧层数选择。')
@@ -134,7 +138,7 @@ class ChallengePreparation:
         choices = [token for intent, token in observation.targets
                    if intent == 'select_level' and int(token.text) == level]
         if observation.kind != 'lobby' or observation.mode != self.plan.mode or len(choices) != 1:
-            raise AutomationError('当前混沌主页没有本次层数的唯一导航目标。')
+            raise AutomationError('当前高难主页没有本次层数的唯一导航目标。')
         return PreparationAction('select_level', level, choices[0])
 
     def authorize(self, scene, action):
@@ -171,17 +175,16 @@ class ChallengePreparation:
         frames, previous = [], None
         feedback = after_input is not None
         latest_capture = after_input
-        elapsed = 0.
+        deadline = time.monotonic() - self.c.runner.inactive_duration + 30
         for _ in range(100):
-            started, inactive = time.monotonic(), self.c.runner.inactive_duration
             try:
                 scene = self.c.snapshot()
             except EmptyCapture:
+                self._check_attempt()
+                gap_at = time.monotonic()
+                latest_capture = gap_at if latest_capture is None else max(latest_capture, gap_at)
+                frames, previous = [], None
                 scene = None
-                if feedback:
-                    self._check_attempt()
-                    latest_capture = max(latest_capture, time.monotonic())
-                    frames, previous = [], None
             if scene is not None:
                 account_observed = self._fresh(scene, allow_missing_account=feedback)
                 if self.account is None:
@@ -192,7 +195,7 @@ class ChallengePreparation:
                 observation = observe(scene, self.c.settings.ocr_confidence)
                 if observation.mode is not None and observation.mode != self.plan.mode:
                     raise AutomationError('当前高难模式与明确计划不符。')
-                increasing = not feedback or scene.captured_at > latest_capture
+                increasing = latest_capture is None or scene.captured_at > latest_capture
                 if feedback and increasing:
                     latest_capture = scene.captured_at
                 if account_observed and self.account is not None and increasing and acceptable(scene, observation):
@@ -209,28 +212,27 @@ class ChallengePreparation:
                         self._persist()
                     if len(frames) == 2:
                         self._fresh(scene)
-                        current = max(0., time.monotonic() - started - (self.c.runner.inactive_duration - inactive))
-                        if elapsed + current >= 30:
+                        if time.monotonic() - self.c.runner.inactive_duration >= deadline:
                             break
-                        return scene, observation, frames
+                        return scene, observation, frames, deadline
                 else:
                     frames, previous = [], None
             self.c.sleep(.3)
-            elapsed += max(0., time.monotonic() - started - (self.c.runner.inactive_duration - inactive))
-            if elapsed >= 30:
+            if time.monotonic() - self.c.runner.inactive_duration >= deadline:
                 break
         if scene is not None:
             self.c.evidence(scene, 'challenge_unverified')
         raise AutomationError('高难备战未在有限观察内核实' + description + '，没有重发选择。')
 
     def run(self):
-        from .challenge_pages import target
+        from .challenge_pages import observe, target
         level = self.plan.level_start
         ready = lambda page: page.kind == 'team_setup' and page.level == level and page.mode == self.plan.mode
         try:
-            scene, observation, frames = self._wait(lambda scene, page: ready(page) or
+            scene, observation, frames, deadline = self._wait(lambda scene, page: ready(page) or
                 page.kind == 'lobby' and target(scene, 'select_level', self.c.settings.ocr_confidence,
                                                level=level) is not None, '当前模式与首个目标层')
+            record = None
             if not ready(observation):
                 action = self._derive(scene)
                 record = dict(intent=action.intent, level=level, target=list(action.target.box), status='pending',
@@ -239,20 +241,33 @@ class ChallengePreparation:
                 self.data['actions'].append(record)
                 self.request = action
                 self._persist()
-                self.c.challenge_prepare_input(scene, action)
+                after_input = self.c.challenge_prepare_input(scene, action)
                 self.request = None
-                after_input = time.monotonic()
                 record['status'] = 'submitted'
                 self._persist()
-                scene, observation, frames = self._wait(lambda scene, page: ready(page), '同层备战页面',
-                                                        after_input=after_input)
-                record.update(status='verified', after=frames)
+                scene, _, frames, deadline = self._wait(lambda scene, page: ready(page), '同层备战页面',
+                                                         after_input=after_input)
+
+            prepared = dict(self.data, status='prepared', selected_level=level, preparation_page_verified=True,
+                            preparation_frames=frames)
+            if record is None:
+                prepared['entry'] = 'existing_team_setup'
             else:
-                self.data['entry'] = 'existing_team_setup'
-            self.data.update(status='prepared', selected_level=level, preparation_page_verified=True,
-                             preparation_frames=frames)
-            self._persist()
-            return TaskResult(OPERATION, 'ok', '已核实混沌目标层备战页面；未选角、开战、使用秘技或领奖。')
+                prepared['actions'] = [dict(record, status='verified', after=frames)]
+
+            def recheck():
+                self._fresh(scene)
+                self.c.window.guard(scene.geometry)
+                if (scene.captured_at != frames[-1]['captured_at']
+                        or not ready(observe(scene, self.c.settings.ocr_confidence))):
+                    raise AutomationError('高难备战最终记录与原观察不同。')
+                self._fresh(scene)
+                if time.monotonic() - self.c.runner.inactive_duration >= deadline:
+                    raise AutomationError('高难备战确认超过有限观察时间。')
+
+            self._persist(prepared, before_replace=recheck)
+            self.data.update(prepared)
+            return TaskResult(OPERATION, 'ok', '已核实本次目标层备战页面。')
         except Exception as error:
             if self.data['actions'] and self.data['actions'][-1]['status'] in ('pending', 'submitted'):
                 self.data['actions'][-1]['status'] = 'unknown'

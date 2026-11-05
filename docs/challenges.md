@@ -1,6 +1,6 @@
-# 高难计划与混沌备战
+# 高难计划与备战
 
-更新日期：2026-11-05。完整混沌回忆、虚构叙事、末日幻影自动执行仍在开发。已有明确双队计划、离线计划核对，以及从已打开的混沌主页核实首个目标层并进入备战页的有限原生流程；本次补充有依据的皮肤单位去重及列表候选观察。不把备战任务成功写成通关、星数提升或奖励已领取。上游实现与缺口见[接入研究](march7thassistant-challenge-integration-2026-10-30.md)，全部功能范围见[开发清单](development-roadmap.md)。
+2026-11-05 更新。三种高难都可离线核对明确双队计划。混沌回忆和虚构叙事接入首个目标层的有限原生备战，末日幻影目前只提供页面观察。备战成功只记本次同层页面核实。完整选角、通关与结果仍在开发。[上游接入研究](march7thassistant-challenge-integration-2026-10-30.md) · [开发清单](development-roadmap.md)
 
 用户已明确允许仅这三种高难按明确角色名单编双队，见[开发约定](../AGENTS.md)。日常、差分和饰品等既有预设规则继续保留。配置中的明确名单不证明角色已拥有、解锁、可用或实际入队；本轮原生流程尚不选择角色。
 
@@ -43,7 +43,7 @@
 }
 ```
 
-[Settings](../autohsr/config.py)新增`challenge_plan={}`，空对象表示未配置；仅保存设置才持久化。保存非空计划会校验三种模式的结构，独立备战入口还要求`memory_of_chaos`。目前没有日常自动启用开关、周常组合、任务树、定时或GUI执行入口。当前GUI仍由既有“UX/UI”工作接入，不能从一个新Settings字段推导界面已交付。
+`challenge_plan={}`表示未配置，明确保存时才持久化。三种模式都接受非空计划校验，独立备战入口接受`memory_of_chaos`和`pure_fiction`。该入口目前经 CLI 执行。[Settings](../autohsr/config.py)
 
 ## CLI与原生范围
 
@@ -56,13 +56,13 @@ python -m autohsr --challenge-prepare --challenge-plan .\my-challenge.json
 
 `--challenge-check PATH`只读取所选UTF-8 JSON，最多64 KiB，拒绝重复键与非有限数；先于运行配置加载和Runner创建分流，不联网、不访问游戏、不保存配置。不能与`--config`、通知或运行选项混用。它输出规范计划与摘要，不证明账号角色或页面可识别。
 
-`--challenge-prepare`是实际原生任务，要求游戏已经打开在可核实的混沌主页或本次首个目标层备战页；复用当前窗口、前台及原F9／F10控制。不调用日常启动／登录／指南导航，不创建日常开拓力或沉浸器预算。`--challenge-plan PATH`只覆盖本次，不写回配置；也可使用已明确保存的非空计划。不能混入刷本、资源、新预算、其他玩法或接续参数。读取现有未完成货币战争周常／领奖门禁的行为保留。
+`--challenge-prepare`要求游戏已打开在计划对应的混沌或虚构主页，也可停在本次首个目标层的备战页。流程复用当前窗口、前台及原 F9／F10 控制，范围限于高难备战。`--challenge-plan PATH`只覆盖本次，也可使用已明确保存的非空计划。独立备战排斥刷本、资源、新预算、其他玩法和接续参数，继续检查未完成的货币战争周常与领奖记录。[独立 CLI](../autohsr/challenge_cli.py)
 
 本轮只处理`levels`起层，完整范围仍保留在冻结计划中供后续开发，不运行后续层。先取得当前账号与同一目标的两份新鲜画面；当前原件／页锚支持时只点击该层一次，随后取得两份同模式、同层的备战反馈。已有同层备战页只观察，不重新选层。每次输入在专用[Context入口](../autohsr/app.py)重新推导当前目标，核对账号、输入代次、冻结计划和本次落盘意图；原PNG字节／像素／shape、capture及run归属同时核对。通用点击和按键不能绕过此入口。
 
 窗口检查结束后，点击前再核对目标、落盘意图与原截图，并在读盘后检查画面是否超龄。其间目标、原件或记录失效时停止，保留本次待核对意图。
 
-反馈在 30 秒活动时限和 100 次采集上限内观察。加载帧暂缺完整账号、空帧及重复或倒序时间戳会打断连续计数。核实成功需要同一账号、同一输入代次的连续两张当前层备战画面。已有备战和刚选层两路均在第二张证据写盘后重核停止、画面时效、输入代次与总时限。失效时保留观察，已提交的选层保持待核对。明确换号、多个完整账号候选、模式冲突、暂停或计划变化会中止原选择的核验。[实现](../autohsr/challenge_prepare.py)
+页面探测与选层反馈各自在 30 秒活动时限和 100 次采集上限内观察。两阶段遇到空帧都会核对运行状态和输入代次，随后从晚于该空帧的画面重新组成配对。选层反馈须晚于点击发送完成时刻，暂缺完整账号、重复或倒序时间戳会打断其连续计数。核实成功需要同一账号、同一输入代次的连续两张当前层备战画面。已有备战和刚选层两路均在第二张证据写盘后复核当前状态，最终记录在每次实际替换前再次核对窗口、页面、账号、画面时效、输入代次和原活动时限。共享锁重试期间失效会保留观察，已提交的选层保持待核对。明确换号、多个完整账号候选、模式冲突、暂停或计划变化会中止原选择的核验。[实现](../autohsr/challenge_prepare.py)
 
 未知、动画、重复capture、失焦、账号／计划／代次变化、写盘失败或超时不重发选择。私人`run_dir/challenge-preparation.json`及`RunReport.challenge`保存原意图、页面来源和反馈；旧文件不覆盖，未核实选择保留`unknown`。最外层运行结束通知只沿用明确启用的通知配置，将任务标为“高难备战”，不公开名单、账号摘要或截图；本轮没有实际发送。
 
@@ -70,19 +70,45 @@ python -m autohsr --challenge-prepare --challenge-plan .\my-challenge.json
 
 [challenge_pages](../autohsr/challenge_pages.py)的`observe()`返回`Observation(kind, mode, level, half, stars, targets, basis)`；`target(scene, "select_level", level=N)`从当前完整观察返回唯一导航Token或`None`。完整当前层标题与列表中的某个层号是不同来源，第一项不能充当当前选中层。
 
-主页需要固定模式局部图与对应OCR、独立`N/36`字段及关卡区域内至少两份不同层号。星形分别绑定当前层号的局部区域，遵循固定原星形与金色规则；只给有独立正星来源的层号导航目标，零星／无星条仍为未知，`available`也保持未知。不据标题、金色、过去星数或层号单独授权开战。当前客户端的完整主页、零星与锁定状态未校准，保守规则可能拒绝真实页面。
+### 混沌回忆
 
-备战观察只由独立当前层、模式文字／原件和相互关联的队伍数字／重置／交换图形组补证。数字1／2不代表四名角色已入队，模式文字小图不是完整开战按钮，剩余轮文字／灯泡也不能证明战斗、上下半或胜利。没有重置、交换、选角、秘技、攻击、开战、返回、领奖或结果确认目标。
+主页需要固定模式局部图与对应 OCR、独立`N/36`字段和关卡区域内至少两份不同层号。每个层号独立核对金色星形，只有绑定正星来源的层号才可作为选层目标。没有正星匹配时，该行星数与可用态保持未知。备战用独立当前层、固定模式文字图及两队数字、重置、交换的相互关系补证。[局部图与来源](../assets/upstream/March7thAssistant/challenge-ui/README.md)
+
+### 虚构叙事
+
+主页需要左上固定标题图和完整 OCR，以及关卡区域内至少两个不同且互不重叠的`01`～`04`标签。每层从该标签起点的 120×120 区域核对原始圆点和上游金色规则。与其它层搜索带共享的星点不计入。只有目标层自己的正星证据才开放一次选层。快速解锁、周期「开启故事」、已读的锁定和冲突页面都会阻止导航。开启故事原图可在文字漏读时阻断导航。正星来自历史分数，角色可用与当前层仍各自核实。[固定上游选层源码](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/purefiction.py#L85)
+
+备战由右下「进入故事」图文、同列上下两个队伍数字和上游范围内唯一的重置或交换原图共同支持。层数只接受角色列表右侧、编队控件上方的唯一完整「第 N 层」字段。半角与全角数字使用同一语法，同一行相邻的分词可合读，采用片段最低置信度。采集阈值内的第二个完整字段即使数值一致，也会使层数保持未核实。上游没有给出虚构备战标题的实机字段位置，当前限定区按角色列表和编队控件的分区设置。缺少完整层号时只能观察`team_setup`且`level=None`。已打开的同层备战可走原生只读核验，两帧都须独立读出计划首层。[固定上游备战源码](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/purefiction.py#L134)
+
+### 末日幻影
+
+`observe()`可从固定标题图、完整 OCR 和不同层号识别`lobby`。完整标题与右下独立「更换编队」可辅助识别已挑战关卡的`level_detail`。首次引导与开战都出现「前往挑战」。该文案单独出现，或在同一按钮区与「更换编队」并存时保留未知，含同一行的相邻拆词。[固定上游页面配置](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L980) · [固定上游关卡流程](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/apocalyptic.py#L130)
+
+双节点备战`node_setup`需要两个不同的节点标题和上游限定范围内的重置图。它只记录可见节点标题，关卡、当前节点、角色可用与槽位状态仍未知。末日观察均无输入目标，`--challenge-prepare`会在创建 Runner 前拒绝末日计划。[固定上游节点准备](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/apocalyptic.py#L166)
+
+### 候选与结果
 
 成功备战仅记`preparation_page_verified=true`；`team_verified`、`battle_started`、`completion_verified`仍为false，半场和完整挑战结果未知。`TaskResult("challenge_prepare", "ok", ...)`和父报告success只说明这个有限准备任务完成，不增加战斗完成、挑战星数或奖励计数。
 
 2026-11-05新增[列表候选观察](../autohsr/challenge_roster.py)。原生准备流程仅在保存已核实同模式备战页时，将`candidate_list`附入来源`basis`；主页、未知页和目标推导不扫描。105幅既有完整头像逐份核对固定manifest、SHA-256、Git blob和尺寸，使用固定上游列表裁剪范围，保留身份、完整框与模板来源。边缘残缺、遮挡及过期画面不作为正候选，跨素材重叠匹配完整保留歧义；没有支援列表行假设或徽章遮罩，也不产出点击目标。
 
-输出的`ownership`、`availability`、`selected`、`complete`全部为`unknown`，`execution_supported=false`。候选未知不改变“只完成备战页核实”的结果。混沌／虚构的列表参考为上游`BaseChallenge.select_characters`的1920×1080、xywh`(30,115,530,810)`；末日工具参考为`Apocalyptic.select_characters`的`(30,110,550,850)`。当前实际接线仍仅混沌备战，其他裁剪参考不表示两种模式主页或完整执行已支持。拼图、尺寸量化及遮挡检查也不是真实全页校准。
+输出的`ownership`、`availability`、`selected`、`complete`均为`unknown`，`execution_supported=false`。混沌与虚构的备战候选使用上游`BaseChallenge.select_characters`的 1920×1080、xywh`(30,115,530,810)`。末日另有候选工具的裁剪参考`(30,110,550,850)`，目前未接入正式任务。名单结构、候选身份、可用性、槽位与实际双队完成各自独立。[列表候选实现](../autohsr/challenge_roster.py)
 
-14幅原件、实际可见内容、哈希与许可见[素材说明](../assets/upstream/March7thAssistant/challenge-ui/README.md)及[来源清单](../assets/upstream/March7thAssistant/challenge-ui/sources.json)。固定上游为`7cf6c6bed474539485d3b1504077ac352866829f`，作者moesnow及其贡献者、[GPL v3](../assets/upstream/March7thAssistant/LICENSE)与游戏美术权利说明保留，没有移入上游输入框架或公开账号整图。
+19 幅局部原件均固定到上游`7cf6c6bed474539485d3b1504077ac352866829f`，保留作者 moesnow 及其贡献者、GPL v3 与游戏美术权利说明。来源清单记录原路径、尺寸和哈希。[素材说明](../assets/upstream/March7thAssistant/challenge-ui/README.md) · [来源清单](../assets/upstream/March7thAssistant/challenge-ui/sources.json) · [GPL v3](../assets/upstream/March7thAssistant/LICENSE)
 
 ## 验证与未完成项
+
+### 2026-11-05 虚构备战与末日观察
+
+正例使用固定上游局部原图拼图、合成 OCR 和假窗口。既有脱敏饰品预设整图只作邻近玩法反例。当前仍缺虚构主页至备战的真实连续正帧、备战层标题及空队或禁用态，以及末日首次关卡详情与双节点备战的真实正帧。角色可用性、八个实际槽位、双队归属、增益和分数仍须另行校准。[专项测试](../autohsr/tests/test_challenge_modes.py)
+
+独立工作树的 100 项高难定向回归通过，覆盖三种模式的页面观察、计划、CLI、同账号新帧、持久意图及列表候选。最后复核的 39 项页面与 CLI 检查通过，与定向回归范围重叠。运行日志为`runs/high-challenge-qa/related.log`和`runs/high-challenge-qa/final-pages-cli.log`，CLI 帮助与 19 幅固定原图来源均核对通过。实机正例和主线全量验收待中央整合。
+
+独立复测发现最终备战记录可能在共享锁重试期间换代，虚构的拆词层号可能与完整层号并存，末日的相邻按钮文字也可能冲突。修复后在高难工作树复跑原 8 项独立探针和 112 项高难及原子写盘定向回归，均通过。新增检查覆盖正常重试、原活动时限、不同分词边界和末日按钮局部冲突。
+
+下一轮独立复测发现首轮页面探测会跨空帧配对，也会漏掉全角数字的冲突层号。原样复跑两代探针共 12 项及本轮 76 项定向回归均通过，覆盖空帧后重新配对、旧帧重放、实际点击时间边界和混合宽度数字。当前冻结版的独立验收和真实客户端验证仍待完成。
+
+### 既有混沌验证
 
 19项计划纯检查通过；阶段25项配置／CLI／原生路由检查通过`runs/challenge-integration-first.log`（0.222秒）。首轮13项页面原件拼图通过后，审查发现原文父标题／引号、冲突层标题及低置信度阻断提示三个漏项，已分别补强固定原文组合、歧义与缺失分离、采集阈值阻断先于严格正锚筛选；18项页面检查通过`runs/challenge-pages-reviewed.log`（9.093秒）。不以最初合成夹具通过代替当前完整页面支持。
 
