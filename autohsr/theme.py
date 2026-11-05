@@ -394,7 +394,8 @@ def apply_theme(root, scale):
     style.configure("Settings.Line.TFrame", background="#a5a7ab")
     style.configure("Settings.TLabel", background=SETTING_ROW, foreground=TEXT, font=native_font(root, 12))
     style.configure("Settings.Hint.TLabel", background=SETTING_ROW, foreground="#5d6065", font=native_font(root, 9))
-    style.configure("Settings.Note.TLabel", background=BG, foreground="#bdc0c9", font=native_font(root, 10))
+    style.configure("Settings.Note.TLabel", background=PANEL, foreground=MUTED, font=native_font(root, 10))
+    style.configure("Settings.Heading.TLabel", background=PANEL, foreground=TEXT, font=native_font(root, 13))
     for name,color,ink in (("TLabel",CARD,TEXT),("Card.TLabel",CARD,TEXT),("Muted.TLabel",CARD,MUTED),
         ("CardHint.TLabel",CARD,MUTED),("Hint.TLabel",PANEL,MUTED),("Footer.TLabel",BG,"#b8b8bc"),
         ("FooterStatus.TLabel",BG,LIGHT),("Rail.TLabel",RAIL,LIGHT),("Warning.TLabel",CARD,WARNING)):
@@ -443,11 +444,12 @@ def apply_theme(root, scale):
     style.configure("Hidden.TNotebook", borderwidth=0, tabmargins=0)
     style.layout("Settings.TNotebook", [])
     style.layout("Settings.TNotebook.Tab", [])
-    style.configure("Settings.TNotebook", background=BG, borderwidth=0, tabmargins=0)
-    for name in ("Settings.Nav.TButton", "Settings.Selected.Nav.TButton", "Settings.Close.TButton"):
-        style.layout(name, [("Button.padding", {"sticky": "nswe", "children": [("Button.label", {"sticky": "nswe"})]})])
-        style.configure(name, background=BG, foreground=LIGHT, padding=d(3), borderwidth=0, font=native_font(root, 10), anchor="center")
-        style.map(name, foreground=[("focus", GOLD), ("active", GOLD), ("!disabled", LIGHT)], background=[("active", BG), ("!disabled", BG)])
+    style.configure("Settings.TNotebook", background=PANEL, borderwidth=0, tabmargins=0)
+    for name, fill, ink in (("Settings.Nav.TButton", CARD, TEXT), ("Settings.Selected.Nav.TButton", RAIL, GOLD)):
+        _button(root, style, scale, name, fill, ink, option=True, background=PANEL)
+        style.configure(name, padding=(d(8), d(6)), font=native_font(root, 11), anchor="center")
+        style.map(name, foreground=[("disabled", "#8b8b8b"), ("focus", "#76591d" if fill == CARD else LIGHT),
+                                    ("active", "#76591d" if fill == CARD else LIGHT), ("!disabled", ink)])
     style.configure("Horizontal.TScale",background=CARD,troughcolor="#c1c1c1",sliderlength=d(18))
     style.configure("Vertical.TScrollbar",background="#b0b0b0",troughcolor=PANEL,borderwidth=0,arrowcolor=MUTED)
     return style

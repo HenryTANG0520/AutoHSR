@@ -1,4 +1,4 @@
-"""Compare the bounded settings artwork with the original full-canvas render."""
+"""Check the shared guide artwork while changing settings sections and scale."""
 from pathlib import Path
 import json
 import sys
@@ -7,14 +7,15 @@ import tkinter as tk
 import types
 from unittest.mock import patch
 
-from PIL import Image, ImageChops, ImageGrab, ImageTk
+from PIL import ImageGrab
 from ux_smoke import ROOT, Settings, Window, module
-from autohsr import theme
+from home_feedback_smoke import drawn_text
 from autohsr.desktop_settings import SECTIONS
 
+OUT = ROOT/"runs/settings-paint-ui"
 
 def main():
-    out = ROOT/"runs/settings-paint-ui"
+    out = OUT
     out.mkdir(parents=True, exist_ok=True)
     checks = []
     def check(name, condition):
@@ -50,22 +51,12 @@ def main():
                         # Include the changing run metrics in the comparison.
                         root.update()
                         shell = ui.settings_shell
-                        width, height = shell.winfo_width(), shell.winfo_height()
-                        pixels = ImageTk.getimage(shell._photo).convert("RGB")
-                        actual = Image.new("RGB", (width, height), shell.cget("bg"))
-                        actual.paste(pixels)
-                        painter = theme.Painter(width, height, ui.ui_scale, shell.cget("bg"))
-                        shell.paint(painter)
-                        expected = painter.finish().convert("RGB")
-                        difference = ImageChops.difference(actual, expected)
                         prefix = f"{dpi}_{label}_{section}"
-                        if difference.getbbox():
-                            actual.save(out/(prefix+"-actual.png"))
-                            expected.save(out/(prefix+"-expected.png"))
-                            difference.save(out/(prefix+"-difference.png"))
-                        check(prefix+"_pixels_match_full_render", difference.getbbox() is None)
-                        check(prefix+"_solid_background_is_not_rasterized", pixels.height < height/2)
-                    check(f"{dpi}_{label}_covered_scene_is_not_mapped", not ui.backdrop.winfo_ismapped())
+                        check(prefix+"_settings_inside_book", shell.master is ui.guide.content
+                              and ui.guide.selected_page == "settings" and ui.guide.winfo_ismapped())
+                        check(prefix+"_shared_header_shows_current_metrics",
+                              str(120+sample*10) in drawn_text(ui.header) and f"01:0{5+sample}" in drawn_text(ui.header))
+                    check(f"{dpi}_{label}_shared_scene_is_mapped", ui.backdrop.winfo_ismapped())
                     if dpi == 1.5:
                         ImageGrab.grab(window=root.winfo_id()).save(out/(label+".png"))
                 ui._leave_settings()

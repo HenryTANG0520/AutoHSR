@@ -150,7 +150,7 @@ def present_result(ui, report, *, reused=False):
 class PowerPlanEditor(ttk.Frame):
     def __init__(self, parent, ui):
         from .desktop_settings import SettingRow, BooleanSetting
-        super().__init__(parent, style='Footer.TFrame')
+        super().__init__(parent)
         self.ui = ui
         self.columnconfigure(0, weight=1)
         self.rowconfigure(4, weight=1, minsize=round(96*ui.ui_scale))
@@ -172,7 +172,7 @@ class PowerPlanEditor(ttk.Frame):
         button = ttk.Button(fill.value,text='更换副本',command=self.edit_fallback,style='Settings.TButton')
         button.grid(row=0,column=1,padx=d(8));ui.setting_controls.append(button)
         ui.power_fill_config_button=button
-        body = ttk.Frame(self, style='Footer.TFrame'); body.grid(row=4, column=0, sticky='nsew', pady=d(8))
+        body = ttk.Frame(self); body.grid(row=4, column=0, sticky='nsew', pady=d(8))
         body.columnconfigure(0, weight=1); body.rowconfigure(0, weight=1)
         ui.style.configure('Power.Treeview',background=theme.SETTING_VALUE,fieldbackground=theme.SETTING_VALUE,
             foreground=theme.TEXT,rowheight=d(44),font=theme.native_font(self,14))
@@ -189,7 +189,7 @@ class PowerPlanEditor(ttk.Frame):
         self.table.bind('<Double-1>', lambda _: self.edit())
         self.table.bind('<Return>', lambda _: self.edit())
         self.table.bind('<<TreeviewSelect>>',lambda _:self.refresh_actions())
-        actions = ttk.Frame(self, style='Footer.TFrame'); actions.grid(row=5, column=0, sticky='w')
+        actions = ttk.Frame(self); actions.grid(row=5, column=0, sticky='w')
         self.buttons = []
         for index, (title, command) in enumerate((('添加副本',lambda:self.edit(new=True)),('编辑',self.edit),
                 ('移除',self.remove),('上移',lambda:self.move(-1)),('下移',lambda:self.move(1)))):

@@ -42,7 +42,7 @@ def build_window(ui, task_names, server_names, *, scale=None):
     ui.guide = Guide(root, s, ui)
     ui.guide.grid(row=1, column=0, sticky="ew", padx=d(18))
     def position_guide(event=None):
-        if (event is None or event.widget is window) and getattr(ui, "active_page", "home") != "settings":
+        if event is None or event.widget is window:
             top_gap = min(d(38), max(0, round((window.winfo_height()-d(800))*38/64)))
             margin = max(d(18), round((window.winfo_width()-d(1280))/2))
             ui.guide.art_left = min(d(8), max(0, margin-d(2)))

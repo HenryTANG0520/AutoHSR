@@ -253,16 +253,7 @@ class AutoHSRWindow:
         self.input_focus.cancel_if_obsolete()
         self.page_title.set(PAGE_TITLES[name])
         for key, page in self.pages.items():
-            if key == "settings":
-                page.grid(row=0, column=0, rowspan=2, sticky="nsew") if key == name else page.grid_remove()
-            else:
-                page.grid() if key == name else page.grid_remove()
-        for frame in (self.header, self.guide):
-            frame.grid_remove() if name == "settings" else frame.grid()
-        if name == "settings":
-            self.backdrop.place_forget()
-        else:
-            self.backdrop.place(x=0, y=0, relwidth=1, relheight=1)
+            page.grid() if key == name else page.grid_remove()
         self.position_guide()
         self.guide.select(name)
         if name in ("differential_universe", "currency_wars"):
@@ -325,7 +316,6 @@ class AutoHSRWindow:
         if not currency and not differential_universe and pending and pending.get('resume'):
             self.start_button.configure(text=pending['action'], command=lambda: self._start(run_plan=True, resume_weekly_currency=True))
         self.header.position_plan()
-        self.settings_shell.position()
 
     def _du_action_label(self):
         return ("独立领取红点奖励" if self.du_operation.get() == "独立领奖" else
@@ -347,13 +337,16 @@ class AutoHSRWindow:
         if field in INPUT_FIELDS and str(getattr(self, INPUT_FIELDS[field][2])) == variable:
             self._clear_input_error()
 
-    def _show_weekly_plan(self):
+    def _show_weekly_plan(self, return_focus=None):
+        origin, action = self.active_page, self.action_page
+        focus = theme.focus_widget(self.root)
         self.action_page = "home"
         self._show_page("settings")
         self.settings_tabs.select(self.settings_sections["weekly"])
-        self.settings_return_page = "home"
-        self.settings_return_action = "home"
-        self.settings_return_focus = self.weekly_button
+        if origin != 'settings':
+            self.settings_return_page = origin
+            self.settings_return_action = action
+            self.settings_return_focus = return_focus or (self.weekly_button if origin in ('home', 'tasks', 'logs') else focus)
 
     def _show_daily_tasks(self, task=None):
         self.action_page = "home"
@@ -655,6 +648,8 @@ class AutoHSRWindow:
             exists = path is not None and (path.is_dir() if directory else path.is_file())
             button.configure(state="normal" if can_open and exists else "disabled")
         self.refresh_feedback()
+        if self.active_page == 'settings':
+            self.settings_shell.queue_layout()
 
     def _preset(self, stamina: int, rounds: int) -> None:
         if self.busy or not self.settings.allow_stamina_spend:
