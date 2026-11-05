@@ -43,13 +43,17 @@ class RunnerRecoveryTests(unittest.TestCase):
             first = Runner(settings).run()
             self.assertEqual(first.status, 'partial')
             self.assertEqual((first.stamina_spent, first.stamina_pending), (0, 10))
-            stored = json.loads((root/'runs/battle-session.json').read_text(encoding='utf-8'))
+            path = root/'runs/battle-session.json'
+            before = path.read_bytes()
+            stored = json.loads(before)
             self.assertEqual(stored['pending'], 10)
-            second = Runner(settings).run()
-            self.assertEqual(second.status, 'failed')
-            self.assertIn('新一轮', second.error)
-            self.assertEqual(find.call_count, 1)
-            self.assertEqual(json.loads((root/'runs/battle-session.json').read_text(encoding='utf-8'))['pending'], 10)
+            for explicit in (False, True):
+                with self.subTest(explicit=explicit):
+                    second = Runner(settings, new_battle_run=explicit).run()
+                    self.assertEqual(second.status, 'failed')
+                    self.assertIn('新一轮', second.error)
+                    self.assertEqual(find.call_count, 1)
+                    self.assertEqual(path.read_bytes(), before)
 
     def test_optional_failure_preserves_core_verification_in_saved_report(self):
         with tempfile.TemporaryDirectory() as folder:

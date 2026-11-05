@@ -85,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--du-periodic-rank", type=int,
                         help="接续当前用户已启动的周期演算时提供页面已选难度（1～10）；会将该局计入请求局数")
     parser.add_argument("--reward-only", action="store_true", help="本次仅验证并补领每日实训；不刷本，不保存配置")
-    parser.add_argument("--new-battle-run", action="store_true", help="明确开始新的刷本预算；先人工核对上次已确认及待核对消耗")
+    parser.add_argument("--new-battle-run", action="store_true", help="确认新增刷本预算，要求原支付已核实")
     parser.add_argument('--power-plan',action='store_true',help='本次日常使用多副本／历战体力计划，统一资源预算；仅配合 --run 或 --plan')
     parser.add_argument('--power-plan-file',type=Path,help='本次体力计划JSON列表，不保存配置')
     parser.add_argument('--new-power-plan',action='store_true',help='明确建立相同内容的新体力目标；不核销未知支付，不保存配置')

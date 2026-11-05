@@ -322,7 +322,7 @@ class Context:
         if self.report.operation != 'currency_wars_standard':
             raise AutomationError('当前任务不允许标准博弈开发输入。')
         from .currency_wars import CurrencyWarsWorkflow
-        from .currency_wars_standard_flow import next_action
+        from .currency_wars_standard_flow import loot_sale_input_scope, next_action
         self.checkpoint()
         self._currency_weekly_checkpoint()
         guard = CurrencyWarsWorkflow(self)
@@ -356,7 +356,16 @@ class Context:
                     raise AutomationError('初始环境确认前画面与落盘来源不一致。')
         elif choice.intent.startswith('confirm_standard_environment_') and (not choice.payload or choice.payload == ('1-1',)):
             raise AutomationError('初始环境确认尚未保存专用来源，未发送输入。')
-        if next_action(scene, self.settings.ocr_confidence,session=store.data) != choice:
+        session = data if loot_sale_input_scope(choice, store.data, data) else store.data
+        if choice.intent in ('open_standard_bench_reward', 'choose_standard_reward'):
+            investment = store.data.get('investment', {})
+            if investment != data.get('investment', {}):
+                raise AutomationError('投资来源尚未与落盘记录一致，未发送输入。')
+            if investment.get('status') == 'reward_verifying':
+                from .currency_wars_standard_investment import box_opening_page
+                box_opening_page(data, choice)
+                session = data
+        if next_action(scene, self.settings.ocr_confidence,session=session) != choice:
             raise AutomationError('标准开发动作与当前页面不符。')
         if choice.payload and data['actions'][-1].get('target') != list(choice.payload):
             raise AutomationError('标准动作目标与落盘记录不一致。')

@@ -1,5 +1,19 @@
 # AutoHSR 0.1 验证记录
 
+## 2026-11-05 刷本支付、满场晶矿和投资赠箱
+
+普通日常与计划内的日常在支付待核对时拦截新增预算。差分通关后刷本会在打开花萼前检查根账本及同账号旧批次。主账本缺失时按相应范围回读报告，较晚的独立结算无法结清较早的待核对支付。测试核对拦截前后的原账单字节。 [每日流程](DAILY_FLOW.md)
+
+标准货币战争在本节点商店已核实、场上与备战席均满且已有合法备战出售候选时，可核实退款和空位后重采并领取原晶矿。投资赠箱在开箱和选装前重查持久来源，开箱在同一输入代次取得两帧匹配的连续新画面。假窗口覆盖原记录损坏、反馈错误与接续阻断。真实组合及整局验收仍待完成。 [货币开发记录](docs/currency-wars-development.md)
+
+| 检查 | 结果 |
+| --- | --- |
+| 刷本预算 | **23 项通过**，0.466 秒，`core-budget-gates-20261105-focused.log`。覆盖明确新增预算、旧日报、沉浸器字段成对出现、主账本优先、差分同账号旧批次，以及正式 Runner 在查找游戏前拦截。旧反例保留于 `battle-budget-explicit-pending-before.log`、`battle-budget-immersifier-pair-before.log`、`battle-budget-direct-report-before.log` 与 `battle-budget-older-pending-before.log`。 |
+| 晶矿 | **9 项通过**，20.350 秒，`currency-loot-sale-context-20261105-focused.log`。通过真实 Context 和假窗口验证查看、出售、头像微变后的重采、原领取，以及同一节点缺乏候选、退款不符、晶矿消失和磁盘来源损坏。 |
+| 投资赠箱 | **9 项通过**，6.997 秒，`currency-investment-box-durable-reviewed.log`。覆盖简易与进阶、错箱、空帧、时间戳重放、跨代次、两处点击前落盘损坏和未核实后的接续。修前日志保留于 `currency-investment-box-feedback-first-repro.log` 与 `currency-investment-box-disk-binding-first-repro.log`。 |
+| 整合回归 | 首轮 511 项中 510 项通过，461.325 秒，`core-budget-loot-sale-box-20261105-related.log`。新增赠箱正例的假窗口两帧取到相同系统时间戳，触发重放拦截。仅调整该夹具为递增时间戳，两组投资测试复跑 **28 项通过**，14.365 秒，`core-budget-loot-sale-box-20261105-final-gifts.log`。两轮分别核对 434 份源码／构建文件与 451 份资源。相对首轮仅一个测试文件变化，生产代码与资源哈希一致。 |
+| 最终核对 | 53 份文档与 860 个本地链接、60 份固定上游来源及 GPL 许可核对通过。CLI 帮助退出 0。配置、运行证据与原始截图仍由 Git 忽略。 |
+
 ## 2026-11-05：满备战晶矿腾位与无消耗校准准备
 
 标准货币战争的[主流程](autohsr/currency_wars_standard_flow.py)增加12行编排：已识别晶矿且九个备战槽均完整occupied时，先调用原合法免费部署，再由原Context／pending／双帧反馈／角色迁移链完成单步，重新采集后才进入原领取。无合法容量、未知或缺格仍停止；原初始来源／探查／开箱顺序、未核实动作、账号／代次／版本／资源及反复领取门禁保留，不转出售或交换。完整范围见[开发记录](docs/currency-wars-development.md)。

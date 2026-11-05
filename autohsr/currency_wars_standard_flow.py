@@ -1,8 +1,10 @@
 """Standard A8-40 development flow. Only observed and validated inputs run."""
 from __future__ import annotations
 
-import time
+import hashlib
 import json
+import math
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -11,7 +13,7 @@ from .currency_wars_navigation import locate, unique
 from .currency_wars_prepare import trusted
 from .currency_wars_session import StandardSession,require_session_access
 from .currency_wars_standard import difficulty_page, selected_rank
-from .models import AutomationError, EmptyCapture, TaskResult
+from .models import AutomationError, EmptyCapture, InputInterrupted, TaskResult
 from .models import Token, normalize
 
 
@@ -35,16 +37,210 @@ def _preparation_probe(scene,confidence,known,session=None):
     return None
 
 
+_LOOT_SALE_INSPECTIONS = frozenset(('inspect_standard_unit', 'close_standard_unit', 'close_standard_stale_unit',
+                                    'open_standard_equipment_recommendations'))
+
+
+def _loot_sale_basis(scene, confidence):
+    from .currency_wars_match import read_match
+    from .currency_wars_node import loot_centers
+    crystals = loot_centers(scene)
+    if not crystals:
+        return None
+    state = read_match(scene, confidence)
+    if not state or state.page != 'preparation' or not state.deployment:
+        raise AutomationError('晶矿腾位查看缺少当前备战和出战人数。')
+    return dict(crystals=[list(center) for center in crystals],
+                experience=list(state.experience) if state.experience is not None else None,
+                deployment=list(state.deployment))
+
+
+def _loot_sale_digest(basis):
+    data = json.dumps(basis, sort_keys=True, separators=(',', ':'), allow_nan=False)
+    return hashlib.sha256(data.encode('utf-8')).hexdigest()
+
+
+def _loot_sale_source(action):
+    decision = action.get('decision')
+    marker = decision.get('loot_sale_basis_sha256') if isinstance(decision, dict) else None
+    if marker is None and 'loot_sale_basis' not in action:
+        return None
+    basis = action.get('loot_sale_basis')
+    if isinstance(basis, dict):
+        try:
+            if marker == _loot_sale_digest(basis):
+                return basis
+        except (TypeError, ValueError):
+            pass
+    raise AutomationError('晶矿腾位出售的原晶矿来源缺失或不一致。')
+
+
+def _loot_sale_index(actions):
+    index = len(actions)-1
+    while index >= 0 and actions[index].get('action') in _LOOT_SALE_INSPECTIONS:
+        index -= 1
+    if index >= 1 and actions[index].get('action') == 'sell_standard_owned':
+        return index
+    return None
+
+
+def _loot_sale_input_chain(intent, session):
+    actions = session.get('actions', [])
+    if not actions:
+        return None
+    if intent == 'inspect_standard_sale_unit':
+        source = len(actions)-1
+    elif intent == 'sell_standard_owned':
+        source = len(actions)-2
+    elif intent == 'collect_standard_loot' or intent in _LOOT_SALE_INSPECTIONS:
+        index = _loot_sale_index(actions[:-1])
+        if index is None:
+            return None
+        source = index-1
+    else:
+        return None
+    if source < 0 or _loot_sale_source(actions[source]) is None:
+        return None
+    return actions[source:]
+
+
+def loot_sale_input_scope(choice, current, saved):
+    """Require the durable sale chain before re-deriving a scoped input."""
+    from .currency_wars_standard_sale import same_target
+
+    live_chain = _loot_sale_input_chain(choice.intent, current)
+    saved_chain = _loot_sale_input_chain(choice.intent, saved)
+    if live_chain is None and saved_chain is None:
+        return False
+    reason = '晶矿腾位出售与已落盘来源不一致，未发送输入。'
+    try:
+        same_chain = same_target(live_chain, saved_chain) and same_target(current.get('sale'), saved.get('sale'))
+    except (TypeError, ValueError) as error:
+        raise AutomationError(reason) from error
+    if not same_chain:
+        raise AutomationError(reason)
+    return True
+
+
+def _same_loot_centers(previous, current):
+    if not isinstance(previous, list) or not previous or len(previous) != len(current):
+        return False
+    matches = []
+    for center in previous:
+        if (not isinstance(center, list) or len(center) != 3 or
+                any(type(value) not in (int, float) or not 0 < value < 1 for value in center)):
+            return False
+        x, y, radius = center
+        nearby = [index for index, (a, b, r) in enumerate(current)
+                  if math.hypot(a-x, (b-y)*9/16) < max(18/2560, .8*radius)
+                  and abs(r-radius) <= .25*radius]
+        if len(nearby) != 1:
+            return False
+        matches.append(nearby[0])
+    return len(set(matches)) == len(current)
+
+
+def _loot_sale_board(scene, session, sale_index, receipt, confidence):
+    from .currency_wars_collector import roster_cells
+    from .currency_wars_standard_collection import _board, retained
+    from .currency_wars_standard_sale import same_target
+
+    actions = session['actions']
+    records = session.get('collection', {}).get('units', {})
+    sale = session.get('sale', {})
+    original_units = {(unit['zone'], unit['slot']): unit for unit in sale.get('snapshot', {}).get('roster', ())}
+    current = {(cell.zone, cell.slot): cell for cell in roster_cells(scene, confidence)}
+    if len(current) != len(receipt['cells_after']):
+        return False
+    for (zone, slot), cell in current.items():
+        key = f'{zone}:{slot}'
+        observed = receipt['cells_after'].get(key)
+        if not observed or cell.state != observed[0]:
+            return False
+        if cell.signature == observed[1]:
+            continue
+        # Permit an occupied slot's new signature only after its ordinary
+        # inspection starts from the exact sold-board slot and closes cleanly.
+        record = records.get(key, {})
+        original = original_units.get((zone, slot))
+        inspect_id = record.get('inspection_action_id')
+        close_id = record.get('collection_close_action_id')
+        if (cell.state != 'occupied' or not original or sale.get('status') != 'verified'
+                or sale.get('inspect_action_id') != receipt['inspect_action_id']
+                or type(inspect_id) is not int or type(close_id) is not int
+                or not sale_index < inspect_id < close_id < len(actions)
+                or actions[inspect_id].get('target') != [zone, slot, cell.node, observed[1]]
+                or not same_target(actions[inspect_id].get('collection_basis'), _board(scene, confidence))
+                or any(original.get(field) is not None and not same_target(original[field], record['unit'].get(field))
+                       for field in ('name', 'star', 'tier', 'eligible_zones', 'equipment'))
+                or not retained(scene, cell, record, session)):
+            return False
+    return True
+
+
+def _loot_sale_followup(scene, session, confidence):
+    """The verified sale stays final even if its original loot is now unclear."""
+    actions = session.get('actions', [])
+    index = _loot_sale_index(actions)
+    if index is None:
+        return False
+    sale, source = actions[index], actions[index-1]
+    basis = _loot_sale_source(source)
+    if basis is None:
+        return False
+    from .currency_wars_standard_ledger import valid_receipt
+    from .currency_wars_standard_sale import inspection_target, same_target
+    if (not valid_receipt(sale) or source.get('action') != 'inspect_standard_sale_unit'
+            or source.get('status') != 'verified' or not source.get('before') or not source.get('after')
+            or sale['receipt'].get('inspect_action_id') != source.get('id')
+            or not same_target(source.get('target'), inspection_target(sale['target']))
+            or any(action.get('status') != 'verified' for action in actions[index+1:])):
+        raise AutomationError('晶矿腾位出售缺少已核实的原查看与交易回执。')
+    # A resumed run may need to rebuild its role observations. The role panel
+    # can cover crystals, so only finish an already verified collection view.
+    kind = observe(scene, confidence).page_kind
+    if kind == 'character' and index < len(actions)-1 and actions[-1].get('action') in (
+            'inspect_standard_unit', 'open_standard_equipment_recommendations'):
+        return True
+    from .currency_wars_match import read_match
+    from .currency_wars_standard_hud import experience_observed
+    from .currency_wars_node import loot_centers
+    from .currency_wars_loot import loot_target
+    state, receipt = read_match(scene, confidence), sale['receipt']
+    reason = '已保留出售回执；原晶矿、空位或备战读数尚未重新核实。'
+    if (kind != 'preparation' or not state
+            or (state.node, state.gold, state.hp, state.level) !=
+                (receipt['node'], receipt['gold_after'], receipt['hp_after'], receipt['level_after'])
+            or list(state.deployment or ()) != basis.get('deployment') or not experience_observed(scene, state, confidence)
+            or (list(state.experience) if state.experience is not None else None) != basis.get('experience')
+            or not _same_loot_centers(basis.get('crystals'), loot_centers(scene))):
+        raise AutomationError(reason)
+    try:
+        same_board = _loot_sale_board(scene, session, index, receipt, confidence)
+    except (AutomationError, AttributeError, KeyError, TypeError, ValueError) as error:
+        raise AutomationError(reason) from error
+    if not same_board:
+        raise AutomationError(reason)
+    loot_target(scene, confidence)
+    return True
+
+
 def next_action(scene, confidence=.65, *, session=None):
     """Re-derive only the exact in-flight proposal; never replay old unknown IO."""
     session = session or {}
     actions = session.get('actions', [])
     pending = actions[-1] if actions and actions[-1].get('status') == 'pending' else None
     prior = dict(session, actions=actions[:-1], rederiving_action=pending) if pending else session
+    loot_sale = _loot_sale_followup(scene, prior, confidence)
     choice = _next_action(scene, confidence, session=prior)
+    if loot_sale and choice.intent != 'collect_standard_loot' and choice.intent not in _LOOT_SALE_INSPECTIONS:
+        raise AutomationError('晶矿腾位已核实，只允许重新采集阵容或领取当前晶矿。')
     if pending and (choice.intent != pending.get('action') or choice.expected != pending.get('expected')
                     or json.dumps(list(choice.payload),sort_keys=True,allow_nan=False)!=json.dumps(pending.get('target', []),sort_keys=True,allow_nan=False)):
         raise AutomationError('当前页面推导结果与已落盘意图不同，未替换或重放动作。')
+    if pending and choice.intent == 'inspect_standard_sale_unit':
+        if _loot_sale_source(pending) != _loot_sale_basis(scene, confidence):
+            raise AutomationError('晶矿腾位查看与原准备页来源不一致。')
     return choice
 
 
@@ -62,7 +258,7 @@ def _next_action(scene, confidence=.65, *, session=None):
     equipment = equipment_action(scene,session or {},confidence)
     if equipment is not None:
         return equipment
-    from .currency_wars_standard_sale import active_action as sale_action
+    from .currency_wars_standard_sale import active_action as sale_action, same_target
     sale = sale_action(scene,session or {},confidence)
     if sale is not None:
         return sale
@@ -169,9 +365,7 @@ def _next_action(scene, confidence=.65, *, session=None):
         if loot_centers(scene):
             from .currency_wars_collector import roster_cells
             bench = [cell for cell in roster_cells(scene,confidence) if cell.zone=='bench']
-            # An unread/blocked pickup is not proof of a full bench. Only nine
-            # observed owned cells may use the existing free vacancy deployment;
-            # its normal roster, ledger, capacity and destination gates still run.
+            # Capacity handling requires all nine currently owned bench cells.
             if len(bench)==9 and {cell.slot for cell in bench}==set(range(1,10)) and all(cell.state=='occupied' for cell in bench):
                 from .currency_wars_standard_deployment import standard_deployment, POLICY
                 deployment = standard_deployment(scene,session or {},confidence)
@@ -179,6 +373,15 @@ def _next_action(scene, confidence=.65, *, session=None):
                     plan,unit,score,payload = deployment
                     return StandardAction('deploy_standard_owned','standard_owned_deployed',plan,
                                           details=(unit.name,unit.star,unit.tier,plan.zone,score,POLICY),payload=payload)
+                from .currency_wars_match import read_match
+                state = read_match(scene, confidence)
+                if ('strategy' in (session or {}) and state and state.deployment
+                        and state.deployment[0] == state.deployment[1]
+                        and state.node in session.get('shop_observed_nodes', [])):
+                    from .currency_wars_standard_sale import proposal as sale_proposal
+                    sale = sale_proposal(scene, session, confidence)
+                    if sale is not None and sale.intent == 'inspect_standard_sale_unit':
+                        return sale
             x, y, radius = loot_target(scene, confidence)
             return StandardAction('collect_standard_loot', 'loot_collected',
                                   Token('已核实奖励晶矿', 1., (x-radius,y-radius*16/9,x+radius,y+radius*16/9)),
@@ -243,7 +446,7 @@ def _next_action(scene, confidence=.65, *, session=None):
         profile = current_profile(scene,session,confidence)
         key = profile.zone+':'+str(profile.slot)
         record = (session or {}).get('collection',{}).get('units',{}).get(key)
-        if not record or record.get('unit') != asdict(profile):
+        if not record or not same_target(record.get('unit'), asdict(profile)):
             raise AutomationError('当前角色信息尚未记入本次采集，未关闭面板。')
         if 'strategy' in (session or {}) and profile.zone != 'bench' and 'recommendations' not in record:
             return StandardAction('open_standard_equipment_recommendations','standard_equipment_recommendations',
@@ -286,10 +489,14 @@ def transition_ready(choice, scene, confidence=.65, *, before=None, session=None
         from .currency_wars_standard_investment import feedback
         return session is not None and feedback(choice,scene,session,confidence)
     if choice.expected=='standard_reward_opened':
+        from .currency_wars_standard_investment import box_opening_page
         from .currency_wars_standard_rewards import PAGES
         from .currency_wars_match import read_match
+        box_page = box_opening_page(session, choice)
         state = read_match(scene,confidence,include_rewards=True)
-        return bool(state and state.page in PAGES-{'supply_selection'} and state.node==choice.payload[0])
+        if state is None or state.node != choice.payload[0]:
+            return False
+        return state.page == box_page if box_page else state.page in PAGES-{'supply_selection'}
     if choice.expected in ('standard_reward_returned','standard_supply_selected'):
         from .currency_wars_standard_rewards import feedback
         return before is not None and session is not None and feedback(choice,before,scene,session,confidence)
@@ -662,6 +869,11 @@ def run_standard(c):
         if choice.intent in ('inspect_standard_sale_unit','inspect_standard_field_sale_unit'):
             from .currency_wars_standard_sale import bind_intent
             bind_intent(store.data,choice,scene,c.settings.ocr_confidence)
+            if choice.intent == 'inspect_standard_sale_unit':
+                basis = _loot_sale_basis(scene, c.settings.ocr_confidence)
+                if basis is not None:
+                    action['loot_sale_basis'] = basis
+                    action['decision']['loot_sale_basis_sha256'] = _loot_sale_digest(basis)
             store.persist()
         if choice.intent == 'stage_standard_equipment':
             from .currency_wars_standard_equipment import bind_intent
@@ -678,11 +890,13 @@ def run_standard(c):
             store.data['node_attempt'] = dict(node=choice.payload[0],start_action_id=action['id'],
                                               status='start_pending',node_verified=False,battle_observed=False)
             store.persist()
+        investment_box = False
         if choice.intent in ('start_standard_node','collect_standard_loot','open_standard_bench_reward'):
             from .currency_wars_standard_rewards import bind_source
+            from .currency_wars_standard_investment import bind_reward, box_opening_page
             bind_source(store.data,choice,scene,c.settings.ocr_confidence)
-            from .currency_wars_standard_investment import bind_reward
             bind_reward(store.data,choice)
+            investment_box = box_opening_page(store.data,choice) is not None
             store.persist()
         if choice.intent in ('close_standard_unit','close_standard_stale_unit'):
             from .currency_wars_standard_collection import bind_close
@@ -690,6 +904,7 @@ def run_standard(c):
             store.persist()
         c.report.currency_wars = store.data
         c.log('标准A8-40开发：' + choice.intent)
+        box_observed_at = scene.captured_at
         c.currency_standard_input(scene, choice)
         elapsed, after, stable, previous_popup = 0., None, 0, None
         initial_return_frames, initial_return_paths = [], []
@@ -699,6 +914,10 @@ def run_standard(c):
                 after = c.snapshot()
             except EmptyCapture:
                 after = None
+                if investment_box:
+                    stable = 0
+            if investment_box and c.runner.input_epoch != action['input_epoch']:
+                raise InputInterrupted('开箱后的输入代次已变化，原意图保留待核对。')
             if after is not None:
                 guard._require_current_scene(after)
                 from .currency_wars_identity import account_key
@@ -733,10 +952,15 @@ def run_standard(c):
                         else:
                             initial_return_frames.append(after)
                             initial_return_paths.append(evidence(c, after, 'currency_standard_initial_shop_return_'+str(len(initial_return_frames))))
+                if investment_box:
+                    if after.captured_at > box_observed_at:
+                        box_observed_at = after.captured_at
+                    else:
+                        ready = False
                 stable = (len(initial_return_frames) if choice.expected == 'standard_initial_shop_closed'
                           else stable+1) if ready else 0
                 from .currency_wars_defeat import INTENTS as DEFEAT_INTENTS
-                required = 2 if choice.intent in DEFEAT_INTENTS or choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable','standard_relocate_inspectable',
+                required = 2 if investment_box or choice.intent in DEFEAT_INTENTS or choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable','standard_relocate_inspectable',
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
                                                     'standard_sale_panel','standard_owned_sold','standard_field_sale_panel','standard_field_owned_sold','standard_equipment_inspectable',
                                                     'standard_reward_returned','standard_supply_selected','standard_supply_refreshed',

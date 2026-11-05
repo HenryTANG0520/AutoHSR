@@ -15,7 +15,56 @@ def reward_only_settings(settings):
                    daily_synthesis=False)
 
 
-def recovery_state(runs: Path) -> dict:
+def _historical_battle(data, path):
+    if not isinstance(data, dict):
+        raise ValueError("invalid historical report")
+    operation = data.get("operation", "daily")
+    summary = operation in ("plan", "task_workflow")
+    if operation != "daily" and not summary:
+        return None
+    spent = data.get("stamina_spent", 0)
+    tokens_spent = data.get("immersifiers_spent", 0)
+    if (type(spent) is not int or spent < 0
+            or type(tokens_spent) is not int or not 0 <= tokens_spent <= 12):
+        raise ValueError("invalid historical resource counts")
+    pending = data.get("stamina_pending")
+    pending = pending if type(pending) is int and pending >= 0 else None
+    # Both fields were introduced together. Keep an explicit positive pending
+    # amount from a partial report, but one zero cannot prove both counts.
+    tokens_pending = data.get("immersifiers_pending", 0)
+    tokens_pending = tokens_pending if type(tokens_pending) is int and 0 <= tokens_pending <= 12 else None
+    if tokens_pending == 0 and ("immersifiers_spent" in data) != ("immersifiers_pending" in data):
+        tokens_pending = None
+    limit = data.get("stamina_limit", 0)
+    allocated = operation == "daily" and type(limit) is int and limit > 0
+    explicit_unknown = (pending is None and ("stamina_pending" in data or allocated)) or tokens_pending is None
+    unsettled = explicit_unknown or bool(pending or tokens_pending)
+    # Parent plans and workflows copy their child's totals. Keep any explicit
+    # uncertainty if only a parent report survives, but never use its copied
+    # settled totals to supersede a report from the run that actually paid.
+    if not unsettled and (summary or not (spent or tokens_spent)):
+        return None
+
+    status = data.get("status")
+    if status not in ("active", "success", "partial", "failed", "stopped"):
+        raise ValueError("invalid historical report status")
+    # Before the durable journal, successful reports recorded only confirmed
+    # stamina. Modern or interrupted reports cannot use that exception.
+    journal_fields = ("operation", "budget_scope", "stamina_limit", "stamina_pending",
+                      "immersifiers_spent", "immersifiers_pending", "report_saved")
+    if status == "success" and not any(field in data for field in journal_fields):
+        pending = 0
+    return dict(blocked=status != "success" or pending != 0 or tokens_pending != 0,
+                corrupt=False, spent=spent, pending=pending, source=str(path), legacy=True, status=status,
+                immersifiers_spent=tokens_spent, immersifiers_pending=tokens_pending)
+
+
+def recovery_state(runs: Path, *, direct_report: bool = False) -> dict:
+    """Read the canonical journal or reports in the caller's budget scope.
+
+    A DU batch owns a direct daily report. The ordinary runs root owns reports
+    in its child run directories. A present journal takes precedence.
+    """
     path = runs / "battle-session.json"
     if path.exists():
         try:
@@ -25,6 +74,7 @@ def recovery_state(runs: Path) -> dict:
                     or type(data.get("pending")) is not int or data["pending"] < 0
                     or type(data.get("limit")) is not int or not 10 <= data["limit"] <= 240
                     or data["spent"] + data["pending"] > data["limit"]
+                    or (("immersifiers_spent" in data) != ("immersifiers_pending" in data))
                     or any(type(data.get(k, 0)) is not int or not 0 <= data.get(k, 0) <= 12
                            for k in ('immersifiers_spent', 'immersifiers_pending'))
                     or data.get('immersifiers_spent', 0) + data.get('immersifiers_pending', 0) > 12
@@ -36,23 +86,38 @@ def recovery_state(runs: Path) -> dict:
         except (OSError, ValueError, TypeError):
             return dict(blocked=True, corrupt=True, spent=0, pending=0, source=str(path),
                         reason="刷本记录无法读取；先保留记录并人工核对，不得重建预算。")
-    # Legacy interrupted runs predate the durable journal. Do not let a later
-    # reward-only report hide the last resource-consuming run.
-    reports = sorted(runs.glob("*/report.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    # A later successful report cannot resolve a different run's payment.
+    # Retain the latest settled candidate while looking for older uncertainty.
+    if direct_report:
+        direct = runs / "report.json"
+        reports = (direct,) if direct.exists() else ()
+    else:
+        reports = sorted(runs.glob("*/report.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    latest_settled = None
     for report in reports:
         try:
             data = json.loads(report.read_text(encoding="utf-8"))
-            spent = data.get("stamina_spent", 0)
-            if type(spent) is not int or spent <= 0:
-                continue
-            pending = data.get("stamina_pending")
-            pending = pending if type(pending) is int and pending >= 0 else None
-            return dict(blocked=data.get("status") != "success" or bool(pending), corrupt=False, spent=spent,
-                        pending=pending, source=str(report), legacy=True, status=data.get("status"))
+            if direct_report and (not isinstance(data, dict) or data.get("operation") != "daily"):
+                raise ValueError("invalid direct battle report")
+            state = _historical_battle(data, report)
+            if state is not None:
+                if direct_report or new_budget_block_reason(state) is not None:
+                    return state
+                if latest_settled is None:
+                    latest_settled = state
         except (OSError, ValueError, TypeError, AttributeError):
             return dict(blocked=True, corrupt=True, spent=0, pending=0, source=str(report),
                         reason="历史运行报告无法读取，消耗情况未核实；请先保留记录并人工核对。")
-    return dict(blocked=False, corrupt=False, spent=0, pending=0, source="")
+    return latest_settled or dict(blocked=False, corrupt=False, spent=0, pending=0, source="")
+
+
+def new_budget_block_reason(state) -> str | None:
+    """Return the blocking reason for a state read by ``recovery_state``."""
+    if state["corrupt"]:
+        return state["reason"]
+    if state["pending"] != 0 or state.get("immersifiers_pending", 0) != 0:
+        return "上次刷本支付仍待核对；未开启新一轮刷本。可先仅补领奖，并保留原账单人工核对。"
+    return None
 
 
 class BattleBudget:
@@ -82,17 +147,16 @@ class BattleBudget:
         replace_file(temp,self.path)
 
     def preflight(self, *, new_run=False,protect_pending=False):
-        """Read-only checks shared by ordinary begin and workflow identity prep."""
+        """Check every budget, retaining the existing ``protect_pending`` keyword."""
         state = recovery_state(self.runs)
-        if state["corrupt"]:
-            raise AutomationError(state["reason"])
-        if protect_pending and (state.get('pending') or state.get('immersifiers_pending')):
-            raise AutomationError('原支付仍待核对；新增预算不重置体力计划。')
+        reason = new_budget_block_reason(state)
+        if reason is not None:
+            raise AutomationError(reason)
         if state.get('power_plan'):
             from .power_plan_store import validate
             validate(self.runs,state,settled=True)
         if state["blocked"] and not new_run:
-            pending = state['pending'] if state['pending'] is not None else '未记录'
+            pending = state['pending']
             from .ux import immersifier_text
             raise AutomationError(f"上次刷本未完整结束（已确认{state['spent']}，待核对{pending}开拓力{immersifier_text(state)}）。"
                                   "请先仅补领奖；开始新一轮刷本须明确确认新增预算。")

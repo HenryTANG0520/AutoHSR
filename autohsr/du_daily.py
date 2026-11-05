@@ -241,16 +241,14 @@ def _step(context,action,name):
 def _farm(flow,journal,workflow,settings):
     from .config import ROOT
     from .planar_resources import inventory
-    from .recovery import BattleBudget,recovery_state
+    from .recovery import BattleBudget,new_budget_block_reason,recovery_state
     from .workflows import DailyWorkflow
-    bills=[ROOT/'runs']
-    bills.extend(path.parent for folder in journal.folder.parent.glob('*-'+journal.key)
-                 for path in folder.glob('batch-*/battle-session.json'))
-    for folder in bills:
-        pending=recovery_state(folder)
-        if (pending.get('corrupt') or pending.get('pending') or pending.get('immersifiers_pending')
-                or (pending.get('blocked') and pending.get('pending') is None)):
-            raise AutomationError('仍有未核对的刷本资源记录，未开启通关后刷本。')
+    prior_batches = (batch for day in journal.folder.parent.glob('*-'+journal.key)
+                     for batch in day.glob('batch-*') if batch.is_dir())
+    if (new_budget_block_reason(recovery_state(ROOT/'runs'))
+            or any(new_budget_block_reason(recovery_state(batch, direct_report=True))
+                   for batch in prior_batches)):
+        raise AutomationError('仍有未核对的刷本资源记录，未开启通关后刷本。')
     scene=workflow._disable_quick_refill(workflow._open_calyx())
     available,tokens=workflow._available(scene),inventory(scene)
     if account_key(scene)!=journal.key or available is None or tokens is None:

@@ -8,7 +8,7 @@ from unittest.mock import Mock,patch
 
 from autohsr.config import Settings
 from autohsr.du_daily import CHINA,DayJournal,account_key,game_day,after_win,_farm
-from autohsr.models import AutomationError,InputInterrupted,RunReport,Scene,TaskResult,Token
+from autohsr.models import AutomationError,InputInterrupted,RunReport,Scene,Stopped,TaskResult,Token
 
 
 def page():
@@ -302,10 +302,32 @@ class DailyInterludeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             marker=DayJournal(directory,'account','2026-10-23');marker.begin('run')
             initial=Mock()
-            with patch('autohsr.recovery.recovery_state',return_value={'pending':0,'immersifiers_pending':2}):
+            with patch('autohsr.recovery.recovery_state',
+                       return_value={'pending':0,'immersifiers_pending':2,'corrupt':False}):
                 with self.assertRaisesRegex(AutomationError,'未核对'):
                     _farm(SimpleNamespace(ctx=Mock()),marker,initial,Settings())
             initial._open_calyx.assert_not_called()
+
+    def test_previous_day_falls_back_to_only_the_same_accounts_batch_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker=DayJournal(directory,'account','2026-10-24');marker.begin('run')
+            report=RunReport(operation='daily',status='failed',stamina_limit=240,immersifiers_pending=1)
+            original=json.dumps(report.to_dict()).encode('utf8')
+            foreign=DayJournal(directory,'foreign','2026-10-23').folder/'batch-01'/'report.json'
+            prior=DayJournal(directory,marker.key,'2026-10-23').folder/'batch-01'/'report.json'
+            initial=Mock()
+            initial._open_calyx.side_effect=Stopped('fake dungeon entry')
+            flow=SimpleNamespace(ctx=Mock())
+            with patch('autohsr.config.ROOT',Path(directory)):
+                foreign.parent.mkdir(parents=True);foreign.write_bytes(original)
+                with self.assertRaises(Stopped):
+                    _farm(flow,marker,initial,Settings())
+                initial._open_calyx.reset_mock()
+                prior.parent.mkdir(parents=True);prior.write_bytes(original)
+                with self.assertRaisesRegex(AutomationError,'未核对'):
+                    _farm(flow,marker,initial,Settings())
+                initial._open_calyx.assert_not_called()
+                self.assertEqual(prior.read_bytes(),original)
 
     def test_no_resources_never_starts_a_battle(self):
         with tempfile.TemporaryDirectory() as directory:

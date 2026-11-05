@@ -251,8 +251,18 @@ class InvestmentTests(unittest.TestCase):
         preview['actions'][-1]['status']='verified'
         modal=rewards.modal('advanced_equipment_selection',board,gold=30,destination='2-1');reward_enter(preview,opening,modal)
         claim=next_action(modal,session=preview);after=deliver_box(board,opening,claim)
+        wrong=rewards.modal('equipment_selection',board,gold=30,destination='2-1')
         with tempfile.TemporaryDirectory() as folder:
-            c=exchange.StandardExchangeTests().context(folder,board,session,[scene,marked,marked,board,board,modal,after,after])
+            frames=[scene,marked,marked,board,board,wrong,modal,deepcopy(modal),after,after]
+            c=exchange.StandardExchangeTests().context(folder,board,session,frames)
+            snapshot=c.snapshot
+            started=time.monotonic()-1
+            timestamps=iter(started+index/20 for index in range(len(frames)))
+            def fresh_snapshot():
+                frame=snapshot()
+                frame.captured_at=next(timestamps)
+                return frame
+            c.snapshot=fresh_snapshot
             c.checkpoint=lambda:(_ for _ in ()).throw(Stopped('gift complete')) if getattr(c,'currency_standard_session',None) and c.currency_standard_session.data.get('investment',{}).get('status')=='verified' else None
             with patch('autohsr.currency_wars_replay.save_sample'),self.assertRaises(Stopped):run_standard(c)
             saved=StandardSession(c.currency_standard_session.path).data

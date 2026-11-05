@@ -543,12 +543,15 @@ class AutoHSRWindow:
         self._refresh_controls()
 
     def _refresh_recovery(self):
-        from .recovery import recovery_state
+        from .recovery import new_budget_block_reason, recovery_state
         state = recovery_state(ROOT / "runs")
-        pending = state['pending'] if state['pending'] is not None else '未记录'
-        self.recovery_hint.set((state.get("reason") if state["corrupt"] else
-            f"上次刷本未完整结束：已确认 {state['spent']}，待核对 {pending} 开拓力{immersifier_text(state)}。可先仅补领奖；新刷本需确认新增预算。")
-            if state["blocked"] else "")
+        hint = new_budget_block_reason(state)
+        if state["blocked"] and not state["corrupt"]:
+            pending = state["pending"] if state["pending"] is not None else "未记录"
+            amounts = (f"上次已确认 {state['spent']} 开拓力，待核对 {pending}"
+                       f"{immersifier_text(state)}。")
+            hint = amounts + (hint or "上次刷本未完整结束。可先仅补领奖，刷本需确认新增预算。")
+        self.recovery_hint.set(hint or "")
         from .weekly_feedback import pending_currency_week
         self._weekly_currency_recovery = pending_currency_week(ROOT / 'runs')
         if self._weekly_currency_recovery and not self._weekly_currency_recovery.get('resume'):
@@ -1021,21 +1024,21 @@ class AutoHSRWindow:
         except SettingsError as error:
             self._input_failed(error)
             return
-        from .recovery import recovery_state, reward_only_settings
+        from .recovery import new_budget_block_reason, recovery_state, reward_only_settings
         new_battle_run = False
         if reward_only:
             settings = reward_only_settings(settings)
         elif operation in ('daily', 'plan') and settings.battle and settings.allow_stamina_spend:
             state = recovery_state(ROOT / "runs")
+            reason = new_budget_block_reason(state)
+            if reason is not None:
+                messagebox.showerror("刷本记录待核对", reason, parent=self.root)
+                return
             if state["blocked"]:
-                if state["corrupt"]:
-                    messagebox.showerror("刷本记录待核对", state["reason"], parent=self.root)
-                    return
-                pending = state['pending'] if state['pending'] is not None else '未记录'
                 new_battle_run = messagebox.askyesno("确认新一轮刷本预算",
-                    f"上次已确认 {state['spent']}，待核对 {pending} 开拓力{immersifier_text(state)}。\n"
-                    f"这不是续跑：本次会新增最多 {settings.stamina_limit} 开拓力预算。\n"
-                    "如只需领取每日奖励，请选否，再点“仅补领奖”。\n确定已人工核对，仍要开始新一轮？", default="no", parent=self.root)
+                    f"上次已确认 {state['spent']} 开拓力{immersifier_text(state)}。\n"
+                    f"本次会新增最多 {settings.stamina_limit} 开拓力预算。\n"
+                    "如只需领取每日奖励，请选否，再点“仅补领奖”。\n确认开始新一轮？", default="no", parent=self.root)
                 if not new_battle_run:
                     return
         if operation in ('daily', 'plan', 'reward_only') and not any(getattr(settings, key) for key in TASK_NAMES) and not (operation == "plan" and settings.weekly_enabled):

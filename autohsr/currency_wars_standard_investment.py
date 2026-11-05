@@ -14,6 +14,8 @@ from .models import AutomationError, normalize
 
 SELECT = 'select_standard_investment'
 CONFIRM = 'confirm_standard_investment'
+OPEN_BOX = 'open_standard_bench_reward'
+BOX_PAGES = {1: 'equipment_selection', 2: 'advanced_equipment_selection'}
 
 
 def _origin(actions, index):
@@ -169,16 +171,76 @@ def _claim(session):
     return claim
 
 
+def _bound_box_page(session, opening, claim):
+    data = session['investment']
+    index = opening.get('id')
+    target = opening.get('target', [])
+    if (data.get('status') != 'reward_verifying' or type(index) is not int
+            or not claim['id'] < index < len(session['actions']) or session['actions'][index] is not opening
+            or claim['id'] != data['claim_action_id'] or opening.get('investment_parent_action_id') != claim['id']
+            or opening.get('action') != OPEN_BOX or opening.get('expected') != 'standard_reward_opened'
+            or opening.get('status') not in ('pending', 'verified') or not opening.get('before')
+            or opening['status'] == 'verified' and not opening.get('after')
+            or not isinstance(target, (list, tuple)) or len(target) != 3):
+        raise AutomationError('投资赠箱开启缺少原确认及对应动作来源。')
+    node, slot, signature = target
+    effect = claim['investment_effect']
+    slots = effect['reward_slots']
+    completed = data.get('completed_slots')
+    tier = effect['parameters'].get('box_tier')
+    if (node != effect['node'] or node != data.get('expected_node') or type(slot) is not int
+            or slots != data.get('reward_slots') or str(slot) not in slots or slots[str(slot)] != signature
+            or not isinstance(completed, list) or slot in completed or type(tier) is not int or tier not in BOX_PAGES):
+        raise AutomationError('投资赠箱开启与原确认的节点、待交付槽或箱种不符。')
+    basis = opening.get('reward_basis', {})
+    epoch = opening.get('input_epoch')
+    if (not isinstance(basis, dict) or not isinstance(basis.get('cells'), dict)
+            or basis['cells'].get('bench:' + str(slot)) != ['reward', signature] or basis.get('node') != node
+            or type(epoch) is not int or epoch < 0 or basis.get('input_epoch') != epoch
+            or not isinstance(basis.get('run_dir'), str) or not basis['run_dir']):
+        raise AutomationError('投资赠箱开启缺少当前槽位及输入代次来源。')
+    return BOX_PAGES[tier]
+
+
+def box_opening_page(session, choice):
+    """Expected page for the current pending investment box, or None for an ordinary box."""
+    if choice.intent != OPEN_BOX:
+        return None
+    session = session or {}
+    data = session.get('investment', {})
+    opening = (session.get('actions') or [{}])[-1]
+    if data.get('status') != 'reward_verifying':
+        if 'investment_parent_action_id' in opening:
+            raise AutomationError('投资赠箱开启缺少原待交付义务。')
+        return None
+    if (opening.get('status') != 'pending' or opening.get('expected') != choice.expected
+            or opening.get('target') != list(choice.payload)):
+        raise AutomationError('投资赠箱开启反馈不属于当前待核实意图。')
+    expected = _bound_box_page(session, opening, _claim(session))
+    basis = opening['reward_basis']
+    if (basis['run_dir'] != session.get('account_verified_run')
+            or opening['input_epoch'] != session.get('account_verified_epoch')):
+        raise AutomationError('投资赠箱开启的当前运行或输入代次已改变。')
+    return expected
+
+
 def _reward_action(scene, session, confidence):
     from .currency_wars_standard_flow import StandardAction
     from .currency_wars_standard_rewards import open_bench_action
     data=session['investment'];claim=_claim(session);kind=observe(scene,confidence).page_kind
     reward=session.get('reward',{})
-    if kind in ('equipment_selection','advanced_equipment_selection'):
-        expected='advanced_equipment_selection' if claim['investment_effect']['parameters']['box_tier']==2 else 'equipment_selection'
-        source=reward.get('origin_action_id')
-        parent=session['actions'][source] if type(source) is int and 0<=source<len(session['actions']) else {}
-        if kind!=expected or parent.get('investment_parent_action_id')!=claim['id']:
+    if kind in BOX_PAGES.values():
+        source = reward.get('origin_action_id')
+        actions = session['actions']
+        if type(source) is not int or source != len(actions) - 1 or source < 0:
+            raise AutomationError('投资赠箱选择缺少本次已核实开启来源。')
+        opening = actions[source]
+        expected = _bound_box_page(session, opening, claim)
+        state = read_match(scene, confidence, include_rewards=True)
+        if (opening.get('status') != 'verified' or reward.get('status') != 'awaiting'
+                or kind != expected or reward.get('page') != expected
+                or reward.get('box_slot') != opening['target'][1]
+                or not state or state.page != expected or state.node != opening['target'][0]):
             raise AutomationError('实际武装箱种类或来源与投资策略赠品不同，未选择。')
         return None  # The existing typed reward workflow owns this choice.
     if kind=='character':return None  # Existing fresh-identity collector only.

@@ -677,7 +677,14 @@ def main():
             ui.auto_launch.set(not ui.settings.auto_launch)
             if PACKAGE == 'autohsr':
                 before_count = len(FakeRunner.instances)
-                with patch('autohsr.recovery.recovery_state', return_value=dict(blocked=True, corrupt=False, spent=210, pending=10)):
+                with patch('autohsr.recovery.recovery_state', return_value=dict(blocked=True, corrupt=False, spent=210, pending=10)), \
+                        patch.object(module.messagebox, 'showerror') as pending_error, \
+                        patch.object(module.messagebox, 'askyesno', return_value=True) as budget_prompt:
+                    ui._start()
+                check('pending_payment_stops_before_budget_confirmation',
+                      pending_error.call_count == 1 and budget_prompt.call_count == 0
+                      and len(FakeRunner.instances) == before_count and config.read_bytes() == original)
+                with patch('autohsr.recovery.recovery_state', return_value=dict(blocked=True, corrupt=False, spent=210, pending=0)):
                     ui._start()
                 check('declining_new_budget_does_not_start_or_save', len(FakeRunner.instances) == before_count and config.read_bytes() == original)
             ui._start()

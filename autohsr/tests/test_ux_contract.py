@@ -1,7 +1,8 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from types import SimpleNamespace
 
 from autohsr.config import Settings
@@ -54,6 +55,37 @@ class ContractTests(unittest.TestCase):
         self.assertIn('仅补领奖',recovery_text(report))
         self.assertIn('沉浸器已确认 2，待核对 3',immersifier_text(report))
         self.assertEqual(immersifier_text({}),'')
+
+    def test_daily_and_plan_block_pending_payment_before_confirming_new_budget(self):
+        from autohsr.gui import AutoHSRWindow
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            journal = root / 'runs' / 'battle-session.json'
+            journal.parent.mkdir()
+            ui = SimpleNamespace(busy=False, closing=False, worker=None, root=object(),
+                                 _read_settings=Mock(return_value=Settings()),
+                                 power_mode=SimpleNamespace(get=lambda: '单副本'))
+            with patch('autohsr.gui.ROOT', root):
+                for run_plan in (False, True):
+                    for pending, immersifiers in ((40, 0), (0, 1), (0, 0)):
+                        with self.subTest(plan=run_plan, pending=pending, immersifiers=immersifiers):
+                            journal.write_text(json.dumps(dict(version=1, status='failed', spent=40,
+                                pending=pending, limit=240, immersifiers_spent=0,
+                                immersifiers_pending=immersifiers)), 'utf-8')
+                            original = journal.read_bytes()
+                            with patch('autohsr.gui.messagebox.showerror') as error, \
+                                    patch('autohsr.gui.messagebox.askyesno', return_value=False) as confirm:
+                                AutoHSRWindow._start(ui, run_plan=run_plan)
+                            if pending or immersifiers:
+                                error.assert_called_once()
+                                self.assertIn('待核对', error.call_args.args[1])
+                                confirm.assert_not_called()
+                            else:
+                                confirm.assert_called_once()
+                                error.assert_not_called()
+                            self.assertIsNone(ui.worker)
+                            self.assertEqual(journal.read_bytes(), original)
 
     def test_focus_wait_does_not_force_focus_and_emits_both_states(self):
         from autohsr.app import Runner

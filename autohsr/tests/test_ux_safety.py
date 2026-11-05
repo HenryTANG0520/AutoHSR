@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,6 +31,8 @@ class BudgetRecoveryTests(unittest.TestCase):
         self.assertIsNone(recovery_state(self.root)['pending'])
         with self.assertRaisesRegex(AutomationError, '新一轮|恢复'):
             BattleBudget(self.root, Settings(), RunReport()).begin()
+        with self.assertRaisesRegex(AutomationError, '仍待核对'):
+            BattleBudget(self.root, Settings(), RunReport()).begin(new_run=True)
 
     def test_reservation_survives_restart_and_never_counts_unknown_as_zero(self):
         from autohsr.recovery import BattleBudget, recovery_state
@@ -44,6 +47,254 @@ class BudgetRecoveryTests(unittest.TestCase):
             BattleBudget(self.root, Settings(), RunReport()).begin()
         self.assertEqual(report.stamina_spent, 0)
         self.assertEqual(report.stamina_pending, 10)
+
+    def test_explicit_budget_preserves_pending_cash_and_immersifier_journals(self):
+        from autohsr.recovery import BattleBudget, new_budget_block_reason, recovery_state
+        for cash, tokens in ((40, 0), (0, 1), (40, 1)):
+            with self.subTest(cash=cash, tokens=tokens):
+                root = self.root / f'{cash}-{tokens}'
+                settings = Settings(stamina_limit=40, dungeon_category='planar')
+                report = RunReport(status='stopped')
+                original = BattleBudget(root, settings, report)
+                original.begin()
+                original.reserve(cash, immersifiers=tokens)
+                original.finish()
+                before = original.path.read_bytes()
+                reason = new_budget_block_reason(recovery_state(root))
+                for protect_pending in (False, True):
+                    candidate = BattleBudget(root, settings, RunReport())
+                    with self.assertRaises(AutomationError) as rejected:
+                        candidate.begin(new_run=True, protect_pending=protect_pending)
+                    self.assertEqual(str(rejected.exception), reason)
+                    self.assertFalse(candidate.active)
+                    self.assertEqual(original.path.read_bytes(), before)
+
+    def test_confirmed_partial_battle_allows_explicit_new_budget(self):
+        from autohsr.recovery import BattleBudget, new_budget_block_reason, recovery_state
+        settings = Settings(stamina_limit=40, dungeon_category='planar')
+        original = BattleBudget(self.root, settings, RunReport(status='partial'))
+        original.begin()
+        original.reserve(40, immersifiers=1)
+        original.confirm(40, immersifiers=1)
+        original.finish()
+        state = recovery_state(self.root)
+        self.assertTrue(state['blocked'])
+        self.assertIsNone(new_budget_block_reason(state))
+        candidate = BattleBudget(self.root, settings, RunReport())
+        with self.assertRaisesRegex(AutomationError, '明确确认新增预算'):
+            candidate.begin()
+        candidate.begin(new_run=True)
+        self.assertTrue(candidate.active)
+        self.assertEqual((candidate.report.stamina_spent, candidate.report.immersifiers_spent), (0, 0))
+
+    def historical_report(self, root, name, stamp, **data):
+        path = root/name/'report.json'
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+        os.utime(path, (stamp, stamp))
+        return path
+
+    def test_legacy_first_payment_is_not_hidden_by_later_nonspending_reports(self):
+        from autohsr.recovery import BattleBudget, new_budget_block_reason, recovery_state
+        for cash, tokens in ((40, 0), (0, 1)):
+            with self.subTest(cash=cash, tokens=tokens):
+                root = self.root / f'{cash}-{tokens}'
+                original = self.historical_report(root, 'paid-attempt', 10,
+                    operation='daily', status='stopped', stamina_spent=0, stamina_pending=cash,
+                    immersifiers_spent=0, immersifiers_pending=tokens)
+                self.historical_report(root, 'no-battle', 20, operation='daily', status='success',
+                    stamina_spent=0, stamina_pending=0, immersifiers_spent=0, immersifiers_pending=0)
+                for index, operation in enumerate(('reward_only', 'currency_wars', 'plan'), 30):
+                    self.historical_report(root, operation, index, operation=operation, status='success',
+                        stamina_spent=40, stamina_pending=0, immersifiers_spent=1, immersifiers_pending=0)
+                before = original.read_bytes()
+                state = recovery_state(root)
+                self.assertEqual(state['source'], str(original))
+                self.assertEqual((state['pending'], state['immersifiers_pending']), (cash, tokens))
+                self.assertIsNotNone(new_budget_block_reason(state))
+                with self.assertRaisesRegex(AutomationError, '仍待核对'):
+                    BattleBudget(root, Settings(), RunReport()).begin(new_run=True)
+                self.assertFalse((root/'battle-session.json').exists())
+                self.assertEqual(original.read_bytes(), before)
+
+    def test_later_settled_daily_does_not_settle_an_earlier_unresolved_payment(self):
+        from autohsr.recovery import BattleBudget, new_budget_block_reason, recovery_state
+        older_reports = (
+            RunReport(operation='daily', status='stopped', stamina_limit=40, stamina_pending=40).to_dict(),
+            dict(status='failed', stamina_spent=70, results=[dict(task='battle', status='partial')]),
+        )
+        for index, older in enumerate(older_reports):
+            with self.subTest(pending=older.get('stamina_pending')):
+                root = self.root/str(index)
+                original = self.historical_report(root, 'interrupted', 10, **older)
+                newer = self.historical_report(root, 'different-run', 20,
+                    **RunReport(operation='daily', status='success', stamina_limit=40, stamina_spent=40,
+                                run_dir=str(root/'different-run'), report_saved=True).to_dict())
+                before = original.read_bytes(), newer.read_bytes()
+                state = recovery_state(root)
+                self.assertEqual(state['source'], str(original))
+                self.assertEqual(state['pending'], older.get('stamina_pending'))
+                self.assertIsNotNone(new_budget_block_reason(state))
+                with self.assertRaisesRegex(AutomationError, '仍待核对'):
+                    BattleBudget(root, Settings(), RunReport()).begin(new_run=True)
+                self.assertFalse((root/'battle-session.json').exists())
+                self.assertEqual((original.read_bytes(), newer.read_bytes()), before)
+
+    def test_history_prefers_latest_cleared_report_and_still_rejects_unreadable_history(self):
+        from autohsr.recovery import new_budget_block_reason, recovery_state
+        original = self.historical_report(self.root, 'pre-journal', 10, status='success', stamina_spent=40)
+        newer = self.historical_report(self.root, 'daily', 20,
+            **RunReport(operation='daily', status='partial', stamina_limit=40, stamina_spent=10).to_dict())
+        state = recovery_state(self.root)
+        self.assertEqual(state['source'], str(newer))
+        self.assertTrue(state['blocked'])  # The confirmed partial run still needs explicit consent for a new budget.
+        self.assertIsNone(new_budget_block_reason(state))
+
+        original.write_text('{invalid', encoding='utf-8')
+        os.utime(original, (10, 10))
+        state = recovery_state(self.root)
+        self.assertEqual(state['source'], str(original))
+        self.assertTrue(state['corrupt'])
+        self.assertIsNotNone(new_budget_block_reason(state))
+        self.assertEqual(original.read_text('utf-8'), '{invalid')
+
+    def test_canonical_root_journal_takes_precedence_over_unresolved_historical_report(self):
+        from autohsr.recovery import BattleBudget, new_budget_block_reason, recovery_state
+        settings = Settings(stamina_limit=40)
+        budget = BattleBudget(self.root, settings, RunReport(status='success'))
+        budget.begin()
+        budget.reserve(40)
+        budget.confirm(40)
+        budget.finish()
+        original = self.historical_report(self.root, 'interrupted', 10,
+            **RunReport(operation='daily', status='stopped', stamina_limit=40, stamina_pending=40).to_dict())
+        before = original.read_bytes()
+        state = recovery_state(self.root)
+        self.assertEqual(state['source'], str(budget.path))
+        self.assertIsNone(new_budget_block_reason(state))
+
+        budget.path.write_text('{invalid', encoding='utf-8')
+        state = recovery_state(self.root)
+        self.assertEqual(state['source'], str(budget.path))
+        self.assertTrue(state['corrupt'])
+        self.assertEqual(original.read_bytes(), before)
+
+    def test_parent_report_keeps_explicit_pending_if_child_ledger_is_unavailable(self):
+        from autohsr.recovery import BattleBudget, new_budget_block_reason, recovery_state
+        for operation in ('plan', 'task_workflow'):
+            for cash, tokens in ((40, 0), (0, 1), (0, None)):
+                with self.subTest(operation=operation, cash=cash, tokens=tokens):
+                    root = self.root/f'{operation}-{cash}-{tokens}'
+                    original = self.historical_report(root, 'parent', 10,
+                        **RunReport(operation=operation, status='partial', stamina_pending=cash,
+                                    immersifiers_pending=tokens).to_dict())
+                    before = original.read_bytes()
+                    state = recovery_state(root)
+                    self.assertEqual(state['source'], str(original))
+                    self.assertEqual((state['pending'], state['immersifiers_pending']), (cash, tokens))
+                    self.assertIsNotNone(new_budget_block_reason(state))
+                    with self.assertRaisesRegex(AutomationError, '仍待核对'):
+                        BattleBudget(root, Settings(), RunReport()).begin(new_run=True)
+                    self.assertFalse((root/'battle-session.json').exists())
+                    self.assertEqual(original.read_bytes(), before)
+
+    def test_missing_or_null_current_pending_counts_remain_unverified(self):
+        from autohsr.recovery import BattleBudget, new_budget_block_reason, recovery_state
+        cases = (dict(stamina_spent=40), dict(stamina_spent=40, stamina_pending=None),
+                 dict(stamina_spent=0, stamina_pending=0, immersifiers_spent=1),
+                 dict(stamina_spent=0, stamina_pending=0, immersifiers_pending=0),
+                 dict(stamina_spent=0, stamina_pending=0, immersifiers_pending=1),
+                 dict(stamina_spent=0, stamina_pending=0, immersifiers_spent=0, immersifiers_pending=None))
+        for index, fields in enumerate(cases):
+            with self.subTest(fields=fields):
+                root = self.root/str(index)
+                self.historical_report(root, 'current-format', 10, operation='daily', status='success', **fields)
+                state = recovery_state(root)
+                self.assertTrue(state['blocked'])
+                if fields.get('immersifiers_pending') == 1:
+                    self.assertEqual(state['immersifiers_pending'], 1)
+                self.assertIsNotNone(new_budget_block_reason(state))
+                with self.assertRaisesRegex(AutomationError, '仍待核对'):
+                    BattleBudget(root, Settings(), RunReport()).begin(new_run=True)
+                self.assertFalse((root/'battle-session.json').exists())
+
+    def test_allocated_daily_budget_without_pending_counter_remains_unverified(self):
+        from autohsr.recovery import BattleBudget, new_budget_block_reason, recovery_state
+        for limit in (40, 0):
+            with self.subTest(limit=limit):
+                root = self.root/str(limit)
+                data = RunReport(operation='daily', status='stopped', stamina_limit=limit).to_dict()
+                del data['stamina_pending']
+                original = self.historical_report(root, 'run', 10, **data)
+                before = original.read_bytes()
+                state = recovery_state(root)
+                if limit:
+                    self.assertTrue(state['blocked'])
+                    self.assertIsNone(state['pending'])
+                    self.assertEqual(state['source'], str(original))
+                    with self.assertRaisesRegex(AutomationError, '仍待核对'):
+                        BattleBudget(root, Settings(), RunReport()).begin(new_run=True)
+                    self.assertFalse((root/'battle-session.json').exists())
+                else:
+                    self.assertFalse(state['blocked'])
+                    self.assertIsNone(new_budget_block_reason(state))
+                self.assertEqual(original.read_bytes(), before)
+
+    def test_batch_can_check_its_direct_daily_report_after_journal_loss(self):
+        from autohsr.recovery import new_budget_block_reason, recovery_state
+        original = self.historical_report(self.root, 'batch-01', 10,
+            **RunReport(operation='daily', status='stopped', stamina_limit=40,
+                        immersifiers_pending=1).to_dict())
+        before = original.read_bytes()
+        self.assertFalse(recovery_state(original.parent)['blocked'])
+        state = recovery_state(original.parent, direct_report=True)
+        self.assertEqual(state['source'], str(original))
+        self.assertEqual(state['immersifiers_pending'], 1)
+        self.assertIsNotNone(new_budget_block_reason(state))
+        self.assertEqual(original.read_bytes(), before)
+
+    def test_direct_batch_rejects_report_from_another_operation(self):
+        from autohsr.recovery import new_budget_block_reason, recovery_state
+        original = self.historical_report(self.root, 'batch-01', 10,
+            **RunReport(operation='plan', status='success', stamina_limit=40).to_dict())
+        before = original.read_bytes()
+        state = recovery_state(original.parent, direct_report=True)
+        self.assertEqual(state['source'], str(original))
+        self.assertTrue(state['corrupt'])
+        self.assertIsNotNone(new_budget_block_reason(state))
+        self.assertEqual(original.read_bytes(), before)
+
+    def test_direct_batch_report_cannot_override_present_or_corrupt_journal(self):
+        from autohsr.recovery import BattleBudget, new_budget_block_reason, recovery_state
+        folder = self.root/'batch-01'
+        budget = BattleBudget(folder, Settings(stamina_limit=40), RunReport(status='stopped'))
+        budget.begin()
+        budget.reserve(40)
+        budget.finish()
+        (folder/'report.json').write_text(json.dumps(RunReport(operation='daily', status='success',
+            stamina_limit=40, stamina_spent=40).to_dict()), encoding='utf-8')
+        state = recovery_state(folder, direct_report=True)
+        self.assertEqual(state['source'], str(budget.path))
+        self.assertEqual(state['pending'], 40)
+        budget.path.write_text('{invalid', encoding='utf-8')
+        state = recovery_state(folder, direct_report=True)
+        self.assertEqual(state['source'], str(budget.path))
+        self.assertTrue(state['corrupt'])
+        self.assertIsNotNone(new_budget_block_reason(state))
+        self.assertEqual(budget.path.read_text('utf-8'), '{invalid')
+
+    def test_successful_pre_journal_report_remains_a_usable_history(self):
+        from autohsr.recovery import BattleBudget, new_budget_block_reason, recovery_state
+        original = self.historical_report(self.root, 'pre-journal', 10, status='success', stamina_spent=40,
+            results=[dict(task='battle', status='ok')])
+        before = original.read_bytes()
+        state = recovery_state(self.root)
+        self.assertFalse(state['blocked'])
+        self.assertIsNone(new_budget_block_reason(state))
+        budget = BattleBudget(self.root, Settings(), RunReport())
+        budget.begin()
+        self.assertTrue(budget.active)
+        self.assertEqual(original.read_bytes(), before)
 
     def test_confirmed_cost_is_accounted_once_and_cap_cannot_be_exceeded(self):
         from autohsr.recovery import BattleBudget
@@ -70,6 +321,47 @@ class BudgetRecoveryTests(unittest.TestCase):
         self.assertTrue(settings.daily)
         self.assertFalse(settings.mail)
         self.assertEqual(path.read_text(), '{broken')
+
+    def test_canonical_journal_with_one_missing_immersifier_field_is_preserved(self):
+        from autohsr.recovery import BattleBudget, new_budget_block_reason, recovery_state
+        for missing in ('immersifiers_spent', 'immersifiers_pending'):
+            with self.subTest(missing=missing):
+                root = self.root/missing
+                settings = Settings(stamina_limit=40, dungeon_category='planar')
+                original = BattleBudget(root, settings, RunReport(status='success'))
+                original.begin()
+                original.reserve(40)
+                original.confirm(40)
+                original.finish()
+                data = json.loads(original.path.read_bytes())
+                del data[missing]
+                before = json.dumps(data).encode('utf-8')
+                original.path.write_bytes(before)
+                state = recovery_state(root)
+                self.assertTrue(state['corrupt'])
+                self.assertIsNotNone(new_budget_block_reason(state))
+                with self.assertRaises(AutomationError):
+                    BattleBudget(root, settings, RunReport()).begin(new_run=True)
+                self.assertEqual(original.path.read_bytes(), before)
+
+    def test_pre_immersifier_journal_without_either_field_remains_usable(self):
+        from autohsr.recovery import BattleBudget, new_budget_block_reason, recovery_state
+        settings = Settings(stamina_limit=40)
+        original = BattleBudget(self.root, settings, RunReport(status='success'))
+        original.begin()
+        original.reserve(40)
+        original.confirm(40)
+        original.finish()
+        data = json.loads(original.path.read_bytes())
+        for field in ('immersifiers_spent', 'immersifiers_pending'):
+            del data[field]
+        original.path.write_text(json.dumps(data), encoding='utf-8')
+        state = recovery_state(self.root)
+        self.assertFalse(state['blocked'])
+        self.assertIsNone(new_budget_block_reason(state))
+        candidate = BattleBudget(self.root, settings, RunReport())
+        candidate.begin()
+        self.assertTrue(candidate.active)
 
     def test_failed_atomic_write_never_allows_challenge(self):
         from autohsr.recovery import BattleBudget
