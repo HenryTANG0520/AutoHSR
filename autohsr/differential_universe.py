@@ -2126,44 +2126,8 @@ class DifferentialUniverseWorkflow:
         raise AutomationError("异常区域视觉导航达到上限，已停止并保留进度。")
 
     def _save_victory(self,scene):
-        from .du_saves import next_name,empty_slot,management,rename_dialog
-        entry=self.report['run_results'][-1]
-        target=scene.find('记录本次存档',(.50,.85,.75,.97),exact=True)
-        if target is None:
-            raise AutomationError('通关页没有核实到记录本次存档按钮。')
-        scene,kind=self._click(scene,target,intent='du_save_open',label='save_management')
-        if not management(scene):
-            raise AutomationError('记录存档后未进入存档管理。')
-        name=next_name(scene)
-        slot=empty_slot(scene)
-        if slot is None:
-            entry.update(save_status='skipped_full',save_name=None)
-            self.ctx.log('存档槽已满，本局跳过保存。')
-        else:
-            scene,kind=self._click(scene,slot,intent='du_save_slot',label='save_empty_slot')
-            target=scene.find('保存本轮数据',(.46,.62,.70,.74),exact=True)
-            if target is None:
-                raise AutomationError('空存档槽未显示保存本轮数据按钮。')
-            scene,kind=self._click(scene,target,intent='du_save_create',label='save_name_dialog')
-            if not rename_dialog(scene):
-                raise AutomationError('未核实更改存档名窗口。')
-            target=Token('存档名输入框',1,(.31,.47,.69,.50))
-            scene,kind=self._click(scene,target,intent='du_save_focus',label='save_name_focused')
-            scene=self.ctx.differential_universe_save_name(scene,name)
-            scene=self.ctx.wait(lambda page:rename_dialog(page) and page.has(name,(.30,.46,.70,.51),exact=True),
-                                timeout=15,description='存档名输入核实')
-            confirm=scene.find('确认',(.51,.58,.72,.67),exact=True)
-            scene,kind=self._click(scene,confirm,intent='du_save_confirm',label='save_name_confirmed')
-            scene=self.ctx.wait(lambda page:management(page) and page.has(name,(.01,.14,.18,.65),exact=True)
-                                and page.has(name,(.21,.09,.60,.15),exact=True),
-                                timeout=20,description='存档列表与详情名称核实')
-            entry.update(save_status='saved',save_name=name,save_evidence=str(self.ctx.evidence(scene,'du_archive_saved')))
-        self.ctx.key('esc')
-        scene,kind=self._snapshot('save_management_closed')
-        scene,kind=self._wait_known(scene,kind,'save_management_closed')
-        if kind!='victory':
-            raise AutomationError('关闭存档管理后未回到通关结算。')
-        return scene,kind
+        from .du_archive_workflow import save_victory
+        return save_victory(self, scene)
 
     def _settled_field_entry(self,scene,kind):
         from .du_navigation import field_frame_ready
@@ -2265,9 +2229,12 @@ class DifferentialUniverseWorkflow:
                 if kind == "victory":
                     victory_seen = True
                     self.report["run_results"][-1]["victory_evidence"] = str(self.ctx.evidence(scene, f"du_{self.report['current_run']:02d}_victory"))
+                    entry = self.report['run_results'][-1]
+                    if (self.settings.differential_universe_save and entry.get('save_attempted')
+                            and entry.get('save_status') not in ('saved', 'skipped_full', 'no_verified_empty_slot')):
+                        raise AutomationError('本局存档已尝试但结果未核实，未重复保存或继续返回；原胜利证据保留。')
                     if (self.settings.differential_universe_save and not scene.has('本局已存档')
                             and not self.report['run_results'][-1].get('save_attempted')):
-                        self.report['run_results'][-1]['save_attempted']=True
                         scene,kind=self._save_victory(scene)
                         continue
                     target = self._find(scene, FINAL_RETURN_LABELS, (0.28, 0.65, 1, 1))
@@ -2449,6 +2416,12 @@ class DifferentialUniverseWorkflow:
                 if kind in ("unknown", "du_page"):
                     raise AutomationError("未知差分宇宙画面；停止输入并保留前后截图与 OCR。")
             except InputInterrupted:
+                archive = getattr(self.ctx, 'du_archive_workflow', None)
+                entry = (self.report.get('run_results') or [{}])[-1]
+                if (archive is not None and getattr(archive, 'finished', False) is not True
+                        or self.settings.differential_universe_save and entry.get('save_attempted')
+                        and entry.get('save_status') not in ('saved', 'skipped_full', 'no_verified_empty_slot')):
+                    raise AutomationError('差分存档输入已中断，原保存意图与胜利证据保留，未重发保存或继续返回。')
                 self.ctx.checkpoint()
                 scene, kind = self._snapshot("input_interrupted_refresh")
                 self.ctx.log("操作被暂停或焦点切换中断，已重新识别当前页面。")

@@ -55,6 +55,16 @@ class UniverseFeedbackTests(unittest.TestCase):
         self.assertIn("未到开始日期", detail)
         self.assertNotIn("未完成", detail)
 
+    def test_unverified_empty_slot_and_return_are_distinct_from_full_capacity_or_saved(self):
+        report = self.report(run_results=[dict(save_status="no_verified_empty_slot",
+            save_return_verified=False, save_receipt=dict(journal="private-journal"))])
+        _, detail = universe_result(report)
+        self.assertIn("未核实到空槽 · 1 局未保存", detail)
+        self.assertIn("存档管理返回未核实", detail)
+        self.assertNotIn("存档槽已满", detail)
+        self.assertNotIn("已保存：", detail)
+        self.assertNotIn("private-journal", detail)
+
     def test_resumed_uncounted_is_distinct_from_requested_goal(self):
         report = self.report(run_results=[dict(origin="resumed_trial", status="returned_uncounted", counted=False)])
         _, detail = universe_result(report)

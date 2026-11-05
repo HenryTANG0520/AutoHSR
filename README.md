@@ -18,6 +18,8 @@
 
 高难另补5组有官方依据的皮肤／本体去重，以及已核实混沌备战页的角色列表候选留档；候选不代表实际入队或可开战。完整双队选择、上下半与结果仍待实现，见[高难说明](docs/challenges.md)。窗口检测现可报告当前安装的游戏版本，未知时不使用EXE引擎版本代替。
 
+差分可选保存现使用[持久提交记录](docs/du-archives.md)：未知提交阻断后续输入，已保存与已返回分别核实，同一局不能因重新启动再次保存。仍默认关闭、只用空槽；自动命名与完整保存流程尚未实机验收，旧未索引保存不自动迁移或清账。
+
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-blue)](#运行条件)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)](#安装与启动)
@@ -317,7 +319,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 
 ### 可选：存档
 
-`differential_universe_save`默认关。只用空槽，不覆盖旧档，名称从`AutoHSR-1`开始，后续读最大编号加一，如`AutoHSR - 2`，满槽记录跳过。见 [du_saves.py](autohsr/du_saves.py)。已有AutoHSR-1的存在、日期、队伍实机核实；**自动键盘命名仍需单独实机验证**，不能用存档存在证明该路径通过。
+`differential_universe_save`默认关。只用空槽，不覆盖旧档，名称从`AutoHSR-1`开始，后续读最大编号加一，如`AutoHSR - 2`。未核实到空槽时放弃保存，单独核实返回，不宣称槽位已满；新状态与旧`skipped_full`历史分开展示。见[保存协议](docs/du-archives.md)及[页面规则](autohsr/du_saves.py)。已有AutoHSR-1的存在、日期、队伍实机核实；**自动键盘命名仍需单独实机验证**，不能用存档存在证明该路径通过。
 
 ### 可选：红点领奖
 

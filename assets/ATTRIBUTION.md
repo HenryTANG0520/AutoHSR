@@ -794,6 +794,12 @@ instruction, resized to 1920 pixels with the bottom identifier strip masked.
 Its sidecar retains the source hash and non-identifier OCR. It verifies one
 target card with two automatically attached beacons, not two selections.
 Game artwork remains the property of HoYoverse.
+## 2026-11-05 差分存档持久提交
+
+参考固定March7thAssistant的`process_save_management`、`_save_completed_run`及本轮尝试状态，保留上游作者与GPL v3说明，Git blob及SHA-256见[来源清单](upstream/March7thAssistant/source.json)。[保存工作流](../autohsr/du_archive_workflow.py)与[持久记录](../autohsr/du_archive_store.py)由AutoHSR编写，继续使用既有空槽及递增命名规则，另增加当前来源核验、逐次意图、返回核实与跨运行防重复。没有移入上游坐标、默认名称、重试或输入框架。
+
+本次没有新增或变换游戏素材、模型或真实采集；假窗口与合成页面只验证机制，自动命名及完整保存页面仍需实机验收。旧保存记录不扫描或自动迁移，范围见[说明](../docs/du-archives.md)。
+
 # 2026-10-26 货币战争导航OCR回归
 
 `autohsr/tests/fixtures/currency_wars_navigation.json`仅提取用户授权本地开发截图的固定导航文字、置信度与归一化框；元数据保留原样本相对标识与图像SHA-256以便本地核对。字段采用明确白名单，排除UID、昵称、资源库存和原始图像；文本事实用于界面回归。来源客户端4.6.0，日期2026-10-26；没有新增分发游戏图像，旧`du_guide_tab`与`du_interaction_f`继续使用各自既有来源记录。

@@ -7,6 +7,15 @@
   "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json", "assets/currency-investment/sources.json", "assets/currency-auto/sources.json", "assets/upstream/March7thAssistant/challenge-ui/sources.json"],
   "native_extensions": [
     {
+      "path": "autohsr/du_archive_workflow.py",
+      "reference_source": "tasks/weekly/divergent_universe.py",
+      "reference_functions": ["process_save_management", "_save_completed_run"],
+      "native_files": ["autohsr/du_archive_store.py", "autohsr/app.py", "autohsr/differential_universe.py", "autohsr/ux.py"],
+      "native_references": ["autohsr/du_saves.py", "autohsr/currency_wars_identity.py", "autohsr/currency_wars_initial.py"],
+      "tests": ["autohsr/tests/test_du_archive_workflow.py", "autohsr/tests/test_du_archive_integration.py", "autohsr/tests/test_du_saves.py", "autohsr/tests/test_universe_feedback.py"],
+      "kind": "AutoHSR-authored optional archive submission retaining existing empty-slot and numbered-name rules; inspired by pinned upstream completed-run saving and its per-run attempted flag. Per-input durable attempt/canonical custody, same-account fresh feedback, frozen row/name preservation, saved versus returned evidence, native-entry preflight and bounded explicit predecessor chains prevent unknown replay and same-game resaving. A new UUID does not prove a new game: subsequent saves require actual sent DU launch/history/start sources. Unindexed legacy saves are not scanned, reconciled or migrated. No upstream coordinates, default-name convention, retries or input framework imported; no new images/models. Synthetic Context/Flow tests do not establish live save-page or automatic-name acceptance."
+    },
+    {
       "path": "autohsr/du_rewards_only.py",
       "native_files": ["autohsr/du_reward_store.py", "autohsr/du_rewards_cli.py", "autohsr/app.py", "autohsr/models.py", "autohsr/notify_runtime.py", "autohsr/task_workflow.py", "autohsr/task_workflow_run.py", "autohsr/du_rewards_feedback.py", "autohsr/gui.py", "autohsr/desktop_modes.py", "autohsr/universe_widgets.py", "autohsr/game_widgets.py", "autohsr/ux.py"],
       "native_references": ["autohsr/du_rewards.py", "autohsr/currency_wars_identity.py", "autohsr/currency_wars_initial.py"],

@@ -144,6 +144,9 @@ class Context:
         raise InputInterrupted("焦点恢复后须重新识别，旧输入目标已丢弃。")
 
     def _require_gameplay_input(self):
+        archive = getattr(self, 'du_archive_workflow', None)
+        if archive is not None and (getattr(archive, 'c', None) is not self or getattr(archive, 'finished', False) is not True):
+            raise AutomationError('差分存档流程尚未核实返回，仅允许本次持久保存意图输入。')
         if self.report.operation == 'du_rewards':
             raise AutomationError('差分独立领奖仅允许专用意图入口，不能使用通用点击、按键或移动。')
         if self.report.operation == 'challenge_prepare':
@@ -378,6 +381,8 @@ class Context:
 
     def click(self, scene: Scene, target: Token | tuple[float, float], *, du_intent="navigation"):
         self._require_gameplay_input()
+        if du_intent.startswith('du_save_'):
+            raise AutomationError('差分存档输入须使用本次持久保存意图，未通过通用点击发送。')
         self.checkpoint()
         if self.scene_epoch != self.runner.input_epoch:
             raise InputInterrupted("暂停恢复后须重新识别，未发送旧画面点击。")
@@ -716,12 +721,39 @@ class Context:
         return self._du_field_input(scene,f"switch_party_{slot}",lambda:self.window.key(str(slot)))
 
     def differential_universe_save_name(self,scene: Scene,name: str):
-        from .du_saves import guard_name
-        if not self.settings.differential_universe_save:
-            raise AutomationError('保存通关存档开关未打开。')
-        return self._du_observed_input(scene,'save_archive_name',
-            lambda:self.window.type_du_save_name(name,scene.geometry,checkpoint=self._du_held_checkpoint(scene)),
-            guard=lambda page:guard_name(page,name))
+        raise AutomationError('差分存档名称须绑定本次持久保存意图，未直接输入。')
+
+    def differential_universe_archive_input(self, scene: Scene, action):
+        from .du_archive_workflow import ArchiveAction
+        if (self.report.operation != 'differential_universe' or not self.settings.differential_universe_save
+                or type(action) is not ArchiveAction):
+            raise AutomationError('差分存档需要已开启的保存任务及本次明确动作。')
+        workflow = getattr(self, 'du_archive_workflow', None)
+        if workflow is None or workflow.c is not self:
+            raise AutomationError('缺少本次差分存档流程与落盘意图。')
+        if sum(value is not None for value in (action.target, action.key, action.name)) != 1:
+            raise AutomationError('差分存档动作形态不唯一，未输入。')
+        if (action.target is not None and not isinstance(action.target, Token)
+                or action.key is not None and action.key != 'esc'
+                or action.name is not None and not isinstance(action.name, str)):
+            raise AutomationError('差分存档动作类型未核实，未输入。')
+        self.checkpoint()
+        workflow.authorize(scene, action)
+        self.window.guard(scene.geometry)
+        self.checkpoint()
+        workflow.authorize(scene, action)
+        held = self._du_held_checkpoint(scene) if action.name is not None else None
+        self.last_scene, self._scroll_anchor = None, None
+        try:
+            if action.target is not None:
+                self.window.click(*action.target.center, scene.geometry)
+            elif action.name is not None:
+                self.window.type_du_save_name(action.name, scene.geometry, checkpoint=held)
+            else:
+                self.window.key('esc')
+        except FocusLost:
+            self._focus_interrupted()
+        self.sleep(self.settings.action_delay)
 
     def differential_universe_attack(self, scene, target, intent):
         from .policy import guard_differential_universe_click
@@ -1772,6 +1804,8 @@ class Runner:
             if self.report.operation != 'currency_wars':
                 from .du_reward_store import preflight
                 preflight(directory.parent)
+                from .du_archive_store import preflight as archive_preflight
+                archive_preflight(directory.parent)
             configured_name=''
             if self.report.operation in ('currency_wars_points','currency_wars_rewards'):
                 from .currency_wars_points_run import require_no_active_match

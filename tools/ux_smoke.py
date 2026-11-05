@@ -14,6 +14,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from tools.gui_layout import check_layout
+
 PACKAGE = 'autohsr' if (ROOT / 'autohsr').exists() else 'autozzz'
 importlib.import_module(PACKAGE + '.windows')  # establish DPI before Tk; no game actions
 Settings = importlib.import_module(PACKAGE + '.config').Settings
@@ -42,18 +44,7 @@ def check(name, condition):
 
 
 def layout(root):
-    def walk(widget):
-        for child in widget.winfo_children():
-            if not child.winfo_ismapped():
-                continue
-            x, y = child.winfo_rootx() - root.winfo_rootx(), child.winfo_rooty() - root.winfo_rooty()
-            assert x >= 0 and y >= 0, (str(child), x, y)
-            assert x + child.winfo_width() <= root.winfo_width() + 2, (str(child), 'width')
-            assert y + child.winfo_height() <= root.winfo_height() + 2, (str(child), 'height')
-            if child.winfo_class() in ('TLabel', 'TButton', 'TCheckbutton', 'TEntry', 'TCombobox'):
-                assert child.winfo_height() >= child.winfo_reqheight(), (str(child), 'clipped')
-            walk(child)
-    walk(root)
+    check_layout(root, work_area=importlib.import_module(PACKAGE + '.desktop_dialogs')._work_area)
 
 
 class FakeRunner:

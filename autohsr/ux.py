@@ -241,6 +241,11 @@ def universe_result(report: dict) -> tuple[str, str]:
     full = sum(r.get("save_status") == "skipped_full" for r in results)
     if full:
         lines.append(f"存档槽已满 · {full} 局跳过保存")
+    no_empty = sum(r.get("save_status") == "no_verified_empty_slot" for r in results)
+    if no_empty:
+        lines.append(f"未核实到空槽 · {no_empty} 局未保存")
+    if any(r.get("save_return_verified") is False for r in results):
+        lines.append("存档管理返回未核实")
     rewards = data.get("reward_collection") or {}
     reward_status = rewards.get("status")
     if reward_status and reward_status != "disabled":
