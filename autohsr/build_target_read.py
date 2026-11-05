@@ -17,6 +17,7 @@ SECTIONS = (.36, .25, .70, .84)
 MODAL_AREA = (.24, .18, .95, .98)
 CHANGE_AREA = (.32, .15, .75, .43)
 FRAGMENT_CONFIDENCE = .80
+NARROW_NOISE_WIDTH = .005
 SHORTFALL = '培养还需获取资源'
 RECOMMENDATIONS = ('隧洞遗器推荐', '位面饰品推荐')
 AUTHENTICATION = ('验证码', '账号登录', '扫码登录', '用户协议', '资源下载', '更新游戏')
@@ -24,13 +25,19 @@ MODAL = ('提示', '确认', '确定', '取消', '获得物品', '获得途径',
          '点击空白处关闭', '点击任意位置关闭', '点击空白处继续', '开始挑战')
 
 
-def _has_split_label(scene, labels, roi):
+def _has_split_label(scene, labels, roi, *, exact=True):
     """Match a known label across neighboring OCR boxes on one visual line."""
     parts = [(token, normalize(token.text)) for token in scene.tokens if token.within(roi)]
     parts = sorted(((token, text) for token, text in parts if text), key=lambda part: part[0].box[0])
     for index, (first, text) in enumerate(parts):
-        matches = tuple(label for label in labels if text != label and label.startswith(text))
-        if first.score < FRAGMENT_CONFIDENCE or not matches:
+        if first.score < FRAGMENT_CONFIDENCE:
+            continue
+        if exact:
+            endings = tuple(label[len(text):] for label in labels if text != label and label.startswith(text))
+        else:
+            endings = tuple(label[size:] for label in labels for size in range(1, len(label))
+                            if text.endswith(label[:size]))
+        if not endings:
             continue
         left = first
         line_top, line_bottom = first.box[1], first.box[3]
@@ -45,11 +52,13 @@ def _has_split_label(scene, labels, roi):
             if gap < -.006 or bottom - top < .5 * height:
                 continue
             if right.score < FRAGMENT_CONFIDENCE:
+                if right.box[2] - right.box[0] <= NARROW_NOISE_WIDTH:
+                    continue  # The next strong box must still be close to left.
                 break
-            text += suffix
-            if text in matches:
+            if suffix in endings or (not exact and any(suffix.startswith(end) for end in endings)):
                 return True
-            if not any(label.startswith(text) for label in matches):
+            endings = tuple(end[len(suffix):] for end in endings if end.startswith(suffix))
+            if not endings:
                 break
             left = right
             line_top, line_bottom, shortest = top, bottom, height
@@ -97,7 +106,7 @@ class BuildTargetRead:
         if (replenishment_dialog(scene) or scene.has(AUTHENTICATION)
                 or scene.has(MODAL, MODAL_AREA, exact=True)
                 or scene.has('更换培养目标', CHANGE_AREA, exact=True)
-                or _has_split_label(fragments, AUTHENTICATION, FULL)
+                or _has_split_label(fragments, AUTHENTICATION, FULL, exact=False)
                 or _has_split_label(fragments, MODAL, MODAL_AREA)
                 or _has_split_label(fragments, ('更换培养目标',), CHANGE_AREA)
                 or scene.has(FORBIDDEN + ('每日实训', '旷宇纷争', '行动摘要'), TITLE, exact=True)):

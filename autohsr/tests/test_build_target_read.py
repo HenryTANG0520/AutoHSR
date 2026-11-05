@@ -19,8 +19,8 @@ from autohsr.models import AutomationError, EmptyCapture, FocusLost, Scene, Toke
 from autohsr.windows import GameWindow, Geometry
 
 
-def token(text, x, y, score=.99):
-    return Token(text, score, (x - .01, y - .01, x + .01, y + .01))
+def token(text, x, y, score=.99, *, width=.02):
+    return Token(text, score, (x - width / 2, y - .01, x + width / 2, y + .01))
 
 
 def directory_fields(suffix):
@@ -213,6 +213,28 @@ class BuildTargetReadTests(unittest.TestCase):
                 report, clicks = self.native([self.catalogue, self.catalogue, panel, panel])
                 self.assertEqual((report.status, clicks), ('success', [self.entry.center]))
                 self.assertTrue(report.build_target['page_verified'])
+
+    def test_authentication_sentence_blocks_when_split_across_neighboring_boxes(self):
+        for fragments in ((token('请完成账号登录后继续', .506, .461, width=.151),),
+                          (token('请完成账号', .466, .461, width=.070),
+                           token('登录后继续', .542, .463, width=.070)),
+                          (token('请完成账', .46, .461, width=.060),
+                           token('号', .503, .462, width=.020),
+                           token('登录后继续', .554, .462, width=.070))):
+            with self.subTest(fragments=fragments):
+                report, clicks = self.native([[*self.catalogue, *fragments]])
+                self.assertEqual((report.status, clicks), ('failed', []))
+
+    def test_narrow_weak_noise_does_not_change_the_gap_between_authentication_boxes(self):
+        for x, expected_status, expected_clicks in ((.539, 'failed', []),
+                                                     (.556, 'success', [self.entry.center])):
+            with self.subTest(x=x):
+                catalogue = [*self.catalogue, token('账号', .505, .461, width=.026),
+                             token('-', .522, .462, .42, width=.003),
+                             token('登录', x, .461, width=.026)]
+                frames = [catalogue, catalogue, self.panel, self.panel] if expected_clicks else [catalogue]
+                report, clicks = self.native(frames)
+                self.assertEqual((report.status, clicks), (expected_status, expected_clicks))
 
     def test_repeated_capture_time_does_not_verify_the_panel(self):
         original = Context.snapshot
