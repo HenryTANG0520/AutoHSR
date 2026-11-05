@@ -13,32 +13,45 @@ from .models import AutomationError, Scene, normalize
 
 def guide_rows(scene: Scene, category: str, *, strict=True):
     """Only complete visible rows: title, map and one associated entry."""
+    return [(mission, button) for mission, button, _, _ in guide_row_fields(scene, category, strict=strict)]
+
+
+def guide_row_fields(scene: Scene, category: str, *, strict=True, catalogue=None):
+    """Yield each bound row with its OCR fields.
+
+    An exact catalogue match can refute a different page even when extra text
+    would make the row unsafe for navigation.
+    """
     buttons = [t for t in scene.tokens if t.within((.74, .28, .88, .80))
                and normalize(t.text) in ("进入", "传送", "前往")]
-    result = []
+    planar = category == "planar" and scene.has("位面饰品", (.14, .26, .35, .83), exact=True)
     offset = .09 if category == "echo_of_war" else 0 if category == "planar" else .02
     for button in buttons:
         names = [t for t in scene.tokens if t.within((.44, .26, .70, .82))
                  and abs(t.center[1] - (button.center[1] - offset)) < .018
                  and re.search(r"[\u4e00-\u9fff]", t.text)
                  and normalize(t.text) not in ("基础掉落", "推荐属性", "基础奖励")]
-        if len(names) != 1:
+        if catalogue is None and len(names) != 1:
             continue
-        name = names[0]
-        if category == "planar" and scene.has("位面饰品", (.14,.26,.35,.83), exact=True):
-            result.append((Dungeon(category, name.text.strip(), "位面饰品"), button))
-            continue
-        if strict and category == "calyx_golden" and name.text not in ("回忆之蕾", "以太之蕾", "藏珍之蕾"):
-            continue
-        if strict and category == "calyx_crimson" and not re.fullmatch(r"[\u4e00-\u9fff]{2}之蕾", name.text):
-            continue
-        places = [t for t in scene.tokens if t.within((.45, .26, .72, .83))
-                  and .015 < t.center[1] - name.center[1] < .055
-                  and re.search(r"[\u4e00-\u9fff]", t.text)]
-        if len(places) != 1:
-            continue
-        result.append((Dungeon(category, mission_name(category, name.text), mission_map(places[0].text)), button))
-    return result
+        for name in names:
+            if strict and category == "calyx_golden" and name.text not in ("回忆之蕾", "以太之蕾", "藏珍之蕾"):
+                continue
+            if strict and category == "calyx_crimson" and not re.fullmatch(r"[\u4e00-\u9fff]{2}之蕾", name.text):
+                continue
+            if planar:
+                mission = Dungeon(category, name.text.strip(), "位面饰品")
+                if catalogue is None or mission in catalogue:
+                    yield mission, button, name, None
+                continue
+            places = [t for t in scene.tokens if t.within((.45, .26, .72, .83))
+                      and .015 < t.center[1] - name.center[1] < .055
+                      and re.search(r"[\u4e00-\u9fff]", t.text)]
+            if catalogue is None and len(places) != 1:
+                continue
+            for place in places:
+                mission = Dungeon(category, mission_name(category, name.text), mission_map(place.text))
+                if catalogue is None or mission in catalogue:
+                    yield mission, button, name, place
 
 
 def refine_scene(workflow, scene, category):

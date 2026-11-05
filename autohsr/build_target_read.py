@@ -65,11 +65,30 @@ def _has_split_label(scene, labels, roi, *, exact=True):
     return False
 
 
+def guide_blocked(scene, *, modal=MODAL):
+    fragments = trusted(scene, 0.)
+    return (replenishment_dialog(scene) or scene.has(AUTHENTICATION)
+            or scene.has(modal, MODAL_AREA, exact=True)
+            or scene.has('更换培养目标', CHANGE_AREA, exact=True)
+            or _has_split_label(fragments, AUTHENTICATION, FULL, exact=False)
+            or _has_split_label(fragments, modal, MODAL_AREA)
+            or _has_split_label(fragments, ('更换培养目标',), CHANGE_AREA)
+            or scene.has(FORBIDDEN + ('每日实训', '旷宇纷争', '行动摘要'), TITLE, exact=True))
+
+
+def guide_entry(scene, page):
+    if not (page.has('星际和平指南', TITLE, exact=True) and page.has('生存索引', TITLE, exact=True)):
+        return None
+    entries = [token for token in scene.tokens if token.within(ENTRY) and normalize(token.text) == '培养目标']
+    return entries[0] if len(entries) == 1 and entries[0] in page.tokens else None
+
+
 class BuildTargetRead:
     def __init__(self, ctx):
         self.ctx = ctx
         self.epoch = ctx.runner.input_epoch
-        self.confidence = max(.85, ctx.settings.ocr_confidence)
+        self.collection_confidence = ctx.settings.ocr_confidence
+        self.confidence = max(.85, self.collection_confidence)
         self.catalogue = set(load_catalogue(RESOURCE_ROOT / 'assets' / 'dungeons.json'))
         self.account = None
         self.geometry = None
@@ -77,10 +96,6 @@ class BuildTargetRead:
         self.record = {'entry_input': 'not_sent', 'page_verified': False}
 
     def _current_account(self, scene):
-        try:
-            key = account_key(scene, self.confidence)
-        except AccountNotObserved:
-            key = None
         age = time.monotonic() - scene.captured_at
         if self.ctx.runner.stop_requested:
             raise Stopped('任务已停止。')
@@ -93,42 +108,42 @@ class BuildTargetRead:
             self.geometry = scene.geometry
         elif scene.geometry != self.geometry:
             raise AutomationError('培养目标观察期间窗口位置或大小已改变。')
-        if key is None:
+        confidence = (self.collection_confidence if self.ctx.report.operation == 'build_target_preview'
+                      else self.confidence)
+        try:
+            key = account_key(scene, confidence)
+            if self.account is not None and self.account != key:
+                raise AutomationError('培养目标观察期间当前账号已改变。')
+            if confidence < self.confidence:
+                account_key(scene, self.confidence)
+        except AccountNotObserved:
             return False
-        if self.account is None:
-            self.account = key
-        elif self.account != key:
-            raise AutomationError('培养目标观察期间当前账号已改变。')
+        self.account = key
         return True
 
     def _classify(self, scene):
-        fragments = trusted(scene, 0.)
-        if (replenishment_dialog(scene) or scene.has(AUTHENTICATION)
-                or scene.has(MODAL, MODAL_AREA, exact=True)
-                or scene.has('更换培养目标', CHANGE_AREA, exact=True)
-                or _has_split_label(fragments, AUTHENTICATION, FULL, exact=False)
-                or _has_split_label(fragments, MODAL, MODAL_AREA)
-                or _has_split_label(fragments, ('更换培养目标',), CHANGE_AREA)
-                or scene.has(FORBIDDEN + ('每日实训', '旷宇纷争', '行动摘要'), TITLE, exact=True)):
+        if guide_blocked(scene):
             return None, None
         page = trusted(scene, self.confidence)
-        if not (page.has('星际和平指南', TITLE, exact=True) and page.has('生存索引', TITLE, exact=True)):
-            return None, None
-        entries = [token for token in scene.tokens if token.within(ENTRY) and normalize(token.text) == '培养目标']
-        if len(entries) != 1 or entries[0] not in page.tokens:
+        entry = guide_entry(scene, page)
+        if entry is None:
             return None, None
         headings = (SHORTFALL, *RECOMMENDATIONS)
         panel = page.has(SHORTFALL, SECTIONS, exact=True)
-        catalogue_row = any(mission in self.catalogue for category in CATEGORIES
-                            for mission, _ in guide_rows(page, category.key))
+        catalogue_row = self._has_catalogue_row(page)
         if panel and not catalogue_row:
-            return 'panel', entries[0]
+            return 'panel', entry
         if (catalogue_row and not scene.has(headings, SECTIONS, exact=True)
-                and not _has_split_label(fragments, headings, SECTIONS)):
-            return 'catalogue', entries[0]
+                and not _has_split_label(trusted(scene, 0.), headings, SECTIONS)):
+            return 'catalogue', entry
         return None, None
 
-    def _observe(self, *, after=None):
+    def _has_catalogue_row(self, page):
+        return any(mission in self.catalogue for category in CATEGORIES
+                   for mission, _ in guide_rows(page, category.key))
+
+    def _observe(self, *, after=None, classify=None):
+        classify = self._classify if classify is None else classify
         previous = None
         for attempt in range(8):
             if attempt:
@@ -142,7 +157,7 @@ class BuildTargetRead:
             if not self._current_account(scene):
                 previous = None
                 continue
-            kind, entry = self._classify(scene)
+            kind, entry = classify(scene)
             if kind is None or after is not None and (kind != 'panel' or scene.captured_at <= after.captured_at):
                 previous = None
                 continue
@@ -162,6 +177,12 @@ class BuildTargetRead:
         if path is None or not Path(path).is_file():
             raise AutomationError('培养目标画面未保存。')
         return Path(path).name
+
+    def _verify_observation(self, scene):
+        self.ctx.checkpoint()
+        self.ctx.window.guard(scene.geometry)
+        if not self._current_account(scene):
+            raise AutomationError('保存培养目标页后无法核实当前账号。')
 
     def authorize_entry(self, scene):
         if (scene is not self.source or self.record['entry_input'] != 'not_sent'
@@ -185,9 +206,6 @@ class BuildTargetRead:
             self.ctx.sleep(self.ctx.settings.action_delay)
             scene, _ = self._observe(after=self.source)
         self.record['panel_evidence'] = self._save(scene, 'build_target_panel')
-        self.ctx.checkpoint()
-        self.ctx.window.guard(scene.geometry)
-        if not self._current_account(scene):
-            raise AutomationError('保存培养目标页后无法核实当前账号。')
+        self._verify_observation(scene)
         self.record['page_verified'] = True
         return TaskResult('build_target_read', 'ok', '已核实培养目标页并保存本地证据。材料缺口与副本来源待校准。')

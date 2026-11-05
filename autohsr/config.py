@@ -128,7 +128,9 @@ class Settings:
         except ValueError as error:raise SettingsError('currency_remembrance_name',str(error)) from error
         if not isinstance(self.game_path, str) or not self.game_path.lower().endswith("starrail.exe"):
             raise SettingsError("game_path", "请选择 StarRail.exe 游戏程序。")
-        if operation == "save" or (operation in ("daily", "plan") and self.battle and self.allow_stamina_spend) or operation=='power_plan':
+        validate_battle = (operation in ('save', 'power_plan')
+                           or operation in ('daily', 'plan') and self.battle and self.allow_stamina_spend)
+        if validate_battle:
             use_default=operation!='power_plan' or self.power_plan_fill
             if use_default and (not isinstance(self.target_name, str) or len(self.target_name.strip()) < 2):
                 raise SettingsError("target_name", "请选择副本，例如：回忆之蕾。")
@@ -136,8 +138,10 @@ class Settings:
                 raise SettingsError("target_location", "副本地点必须是文字；留空时仅允许唯一匹配目标。")
             if use_default and operation in ("daily", "plan",'power_plan') and not self.target_location.strip():
                 raise SettingsError("target_location", "请填写副本地点，以区分同名花萼。")
+        if validate_battle or operation == 'build_target_preview':
             if isinstance(self.stamina_limit, bool) or not isinstance(self.stamina_limit, int) or not 10 <= self.stamina_limit <= 240 or self.stamina_limit % 10:
                 raise SettingsError("stamina_limit", "本次开拓力上限应为 10～240 之间的 10 的倍数。")
+        if validate_battle:
             if isinstance(self.rounds, bool) or not isinstance(self.rounds, int) or not 1 <= self.rounds <= 6:
                 raise SettingsError("rounds", "每次挑战轮数应为 1～6。")
             from .dungeons import category_for, count_limit

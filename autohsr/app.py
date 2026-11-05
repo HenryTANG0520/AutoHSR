@@ -155,6 +155,8 @@ class Context:
             raise AutomationError('高难备战只允许专用层数核验入口，不能使用通用点击或按键。')
         if self.report.operation == 'build_target_read':
             raise AutomationError('培养目标读取只允许核实后的生存索引入口点击。')
+        if self.report.operation == 'build_target_preview':
+            raise AutomationError('培养材料预览只观察当前画面。')
         if self.report.operation.startswith("currency_wars"):
             raise AutomationError("货币战争当前仅允许只读识别，禁止发送游戏输入。")
 
@@ -998,7 +1000,7 @@ class Context:
         self._scroll_anchor = (point, scene.geometry, self.scene_epoch)
 
     def drag(self, scene: Scene, start: tuple[float, float], end: tuple[float, float], *, du_intent=None):
-        if self.report.operation in ('du_rewards', 'build_target_read'):
+        if self.report.operation in ('du_rewards', 'build_target_read', 'build_target_preview'):
             self._require_gameplay_input()
         if self.report.operation == "differential_universe":
             if du_intent!='du_reward_gallery_pan' or not self.settings.differential_universe_rewards:
@@ -1544,7 +1546,7 @@ class Runner:
                  use_power_plan=False,new_power_plan=False):
         from dataclasses import replace
         settings=replace(settings)
-        if operation == 'build_target_read' and new_battle_run:
+        if operation in ('build_target_read', 'build_target_preview') and new_battle_run:
             raise ValueError('培养目标读取不能建立刷本预算。')
         if type(du_use_cassettes) is not bool or du_use_cassettes and operation != 'du_rewards':
             raise ValueError('已有月下卡带选项仅用于独立差分领奖。')
@@ -1947,9 +1949,12 @@ class Runner:
         monitor_started = False
         defer_battle_budget = False
         build_target_read = self.report.operation == 'build_target_read'
-        build_target_safe_next = '请在当前账号的生存索引核对培养目标页。材料详情与副本来源待校准。'
-        if build_target_read:
-            self.report.failure_task = 'build_target_read'
+        build_target_preview = self.report.operation == 'build_target_preview'
+        build_target = build_target_read or build_target_preview
+        build_target_safe_next = ('请核对当前培养目标或打开同一材料的获得途径。'
+                                  if build_target_preview else '请在当前账号的生存索引核对培养目标页。材料详情与副本来源待校准。')
+        if build_target:
+            self.report.failure_task = self.report.operation
         try:
             if not mutex or already_running:
                 raise AutomationError("另一个 AutoHSR 任务正在运行，请先停止后重试。")
@@ -1958,13 +1963,13 @@ class Runner:
             currency_wars = self.report.operation in ("currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test")
             differential_universe = self.report.operation == "differential_universe"
             catalogue = self.report.operation == "dungeon_catalogue"
-            guide_only = catalogue or build_target_read
+            guide_only = catalogue or build_target
             redemption = self.report.operation == 'redemption'
             challenge_prepare = self.report.operation == 'challenge_prepare'
             du_rewards = self.report.operation == 'du_rewards'
             if not guide_only and self.report.operation not in ("daily", "reward_only", "redemption", "challenge_prepare", "du_rewards", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe"):
                 raise AutomationError("未知运行类型，未访问游戏。")
-            self.settings.validate('du_rewards' if du_rewards else 'challenge_prepare' if challenge_prepare else "check" if guide_only else "currency_wars" if currency_wars else "differential_universe" if differential_universe else 'redemption' if redemption else "power_plan" if self.use_power_plan else "daily")
+            self.settings.validate('build_target_preview' if build_target_preview else 'du_rewards' if du_rewards else 'challenge_prepare' if challenge_prepare else "check" if guide_only else "currency_wars" if currency_wars else "differential_universe" if differential_universe else 'redemption' if redemption else "power_plan" if self.use_power_plan else "daily")
             if self.report.operation != 'currency_wars':
                 from .du_reward_store import preflight
                 preflight(directory.parent)
@@ -2036,7 +2041,7 @@ class Runner:
             context = Context(self, self._window, vision)
             context.battle_budget = self.battle_budget
             from .workflow_identity import prepare as prepare_workflow_identity
-            if not build_target_read:
+            if not build_target:
                 prepare_workflow_identity(context)
             if defer_battle_budget:
                 self.battle_budget.begin(new_run=self.new_battle_run,
@@ -2053,6 +2058,14 @@ class Runner:
                 self.report.results.append(result)
                 self.report.status = 'success'
                 self.report.failure_task = ''
+                self.emit(dict(type='task', **result.__dict__))
+            elif build_target_preview:
+                from .build_target_preview import run_preview
+                self.emit(dict(type='task', task='build_target_preview', status='running', detail='观察材料与副本候选'))
+                result = run_preview(context)
+                self.report.results.append(result)
+                self.report.status = 'partial'
+                self.report.safe_next = build_target_safe_next
                 self.emit(dict(type='task', **result.__dict__))
             elif du_rewards:
                 from .du_rewards_only import run_rewards
@@ -2129,7 +2142,7 @@ class Runner:
             self.report.status = "stopped"
             self.report.error = str(error)
             self.report.safe_next = ("货币战争操作已停止；核对画面和本次动作记录后重新识别。" if self.report.operation.startswith("currency_wars") else
-                                     build_target_safe_next if build_target_read else
+                                     build_target_safe_next if build_target else
                                      '差分领奖已停止；保留原意图及已核实领取，不重放未知动作；本次未开始演算。' if self.report.operation == 'du_rewards' else
                                      '高难备战已停止；保留层数选择记录，重新核对当前页面；本次未开战。' if self.report.operation == 'challenge_prepare' else
                                      '兑换已停止；已核实逐码结果保留，先核对未知提交，不重复确认。' if self.report.operation == 'redemption' else
@@ -2141,7 +2154,7 @@ class Runner:
             self.report.status = "partial" if self.report.daily_verified or self.report.redemption.get('results') or self.report.challenge.get('actions') or self.report.du_rewards.get('actions') or target_input else "failed"
             self.report.error = str(error)
             self.report.safe_next = ("积分领奖未完成；保留原报告和领奖记录，未知领取不重发；仅已核实步骤可明确接续。" if self.report.operation=='currency_wars_rewards' else
-                                     build_target_safe_next if build_target_read else
+                                     build_target_safe_next if build_target else
                                      '差分领奖未完整核实；保留原意图和已核实领取，未知动作不重放；本次未开始演算。' if self.report.operation == 'du_rewards' else
                                      '高难备战未完整核实；查看原层数选择和页面证据，不自动重发；本次未开战。' if self.report.operation == 'challenge_prepare' else
                                      '兑换批次未完成；先核对逐码结果和未知提交，已保存成功不重试。' if self.report.operation == 'redemption' else
@@ -2187,7 +2200,7 @@ class Runner:
                 self.report.status = "partial" if self.report.daily_verified else "failed"
                 self.report.error = (self.report.error + "；" if self.report.error else "") + f"报告保存失败：{error}"
                 self.report.safe_next = ("报告未保存；保留动作记录和截图，人工核对后重新识别。" if self.report.operation.startswith("currency_wars") else
-                                         build_target_safe_next if build_target_read else
+                                         build_target_safe_next if build_target else
                                          '高难备战报告未保存；保留原选择与页面证据，核对当前层数；本次未开战。' if self.report.operation == 'challenge_prepare' else
                                          "差分宇宙报告保存失败；保留当前目录，人工核对当前存档和动作。" if self.report.operation == "differential_universe" else
                                          "报告未保存；保留当前证据与刷本记录，人工核对消耗，不要直接重跑刷本。")
