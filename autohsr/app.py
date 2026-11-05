@@ -1829,7 +1829,7 @@ class Runner:
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
                  currency_configure=False, currency_wealth=None, currency_resume=False, weekly_plan=None, currency_strategy=None,
                  currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None,currency_rewards_resume=False,currency_weekly_guard=None,
-                 use_power_plan=False,new_power_plan=False):
+                 use_power_plan=False,new_power_plan=False,currency_overclock_open_a0=False):
         from dataclasses import replace
         settings=replace(settings)
         if operation in ('build_target_read', 'build_target_preview') and new_battle_run:
@@ -1858,6 +1858,10 @@ class Runner:
         if type(currency_rewards_resume) is not bool or currency_rewards_resume and operation!='currency_wars_rewards':
             raise ValueError('积分领奖接续仅用于独立积分领奖入口。')
         self.currency_rewards_resume=currency_rewards_resume
+        if (type(currency_overclock_open_a0) is not bool or currency_overclock_open_a0 and
+                (operation != 'currency_wars_overclock_configure' or new_battle_run)):
+            raise ValueError('打开超频 A0 难度页需要独立超频入口。')
+        self.currency_overclock_open_a0 = currency_overclock_open_a0
         self.settings = settings
         self._emit = emit or (lambda event: None)
         self._overlay = None
@@ -2011,7 +2015,9 @@ class Runner:
         from .currency_wars_overclock import OPERATION as OVERCLOCK_CONFIGURE, configure_overclock
         self.report.failure_task = TASK
         self.report.safe_next = SAFE_NEXT
-        self.emit(dict(type="task", task=TASK, status="running", detail="核对并配置当前模式页的超频选择" if self.report.operation==OVERCLOCK_CONFIGURE else "核对并领取当前可领取积分奖励" if self.report.operation=='currency_wars_rewards' else "核对当前积分与游戏周" if self.report.operation=='currency_wars_points' else "标准A8-40开发：核实开局与当前局面" if self.report.operation == 'currency_wars_standard' else "启动准备：进入游戏，不开始对局" if self.report.operation == 'currency_wars_prepare' else "连续战斗与结算推进验证" if self.report.operation == "currency_wars_flow_test" else "当前节点战斗验证" if self.report.operation == "currency_wars_node_test" else "单次部署验证" if self.report.operation == "currency_wars_deploy_test" else "单次前台拖动验证" if self.report.operation == "currency_wars_drag_test" else "只读识别与证据保存"))
+        overclock_detail = ("打开并核对超频 A0 难度页" if self.currency_overclock_open_a0
+                            else "核对并配置当前模式页的超频选择")
+        self.emit(dict(type="task", task=TASK, status="running", detail=overclock_detail if self.report.operation==OVERCLOCK_CONFIGURE else "核对并领取当前可领取积分奖励" if self.report.operation=='currency_wars_rewards' else "核对当前积分与游戏周" if self.report.operation=='currency_wars_points' else "标准A8-40开发：核实开局与当前局面" if self.report.operation == 'currency_wars_standard' else "启动准备：进入游戏，不开始对局" if self.report.operation == 'currency_wars_prepare' else "连续战斗与结算推进验证" if self.report.operation == "currency_wars_flow_test" else "当前节点战斗验证" if self.report.operation == "currency_wars_node_test" else "单次部署验证" if self.report.operation == "currency_wars_deploy_test" else "单次前台拖动验证" if self.report.operation == "currency_wars_drag_test" else "只读识别与证据保存"))
         if self.report.operation == 'currency_wars_rewards':
             from .currency_wars_weekly_reward_run import inspect_rewards
             result=inspect_rewards(context)
@@ -2062,6 +2068,7 @@ class Runner:
                          and data.get('rewards_verified') is True and data.get('completion_verified') is False)
         mode_configured = (self.report.operation == OVERCLOCK_CONFIGURE and result.status == 'ok'
                            and data.get('mode_verified') is True and data.get('match_started') is False
+                           and (not self.currency_overclock_open_a0 or data.get('difficulty_verified') is True)
                            and data.get('completion_verified') is False)
         self.report.status = 'success' if completed or points_checked or rewards_checked or mode_configured else 'partial'
         if self.report.status == 'success':

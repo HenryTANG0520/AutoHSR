@@ -1,6 +1,7 @@
-"""Explicit mode selection and read-only diagnostics for the calibrated overclock page."""
+"""Explicit mode selection and access to the calibrated overclock A0 page."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 import hashlib
 import json
@@ -10,7 +11,7 @@ import re
 import time
 
 from .currency_wars import CurrencyWarsWorkflow, TASK, observe
-from .currency_wars_identity import AccountNotObserved, account_key
+from .currency_wars_identity import AccountNotObserved, account_key, installed_client
 from .currency_wars_prepare import trusted
 from .currency_wars_standard import NAVIGATION_BLOCKERS
 from .currency_wars_state import strict_json
@@ -27,7 +28,10 @@ CW_TITLE = (0, 0, .15, .08)
 ACTIVE_MATCH = ('继续对局', '继续挑战', '继续货币战争', '未结算对局', '未结算的对局',
                 '对局未完成', '对局进行中', '结束并结算', '放弃并结算')
 READY_STATES = ('overclock_selected', 'a0_observed')
-START_STATES = ('standard_selected', *READY_STATES)
+CALIBRATED_CLIENT = '4.6.0'
+A0_OBJECTIVE = 'a0_difficulty'
+A0_VETO_STATES = ('blocked', 'unexpected_page', 'standard_selected', 'rank_unsupported',
+                  'controls_conflicting', 'effects_conflicting')
 OBSERVE_SECONDS = 30.
 MAX_FRAME_AGE = 8.
 MAX_EVIDENCE_BYTES = 64 * 1024 * 1024
@@ -45,15 +49,29 @@ class OverclockObservation:
     enemy_difficulty: int | None = None
 
 
+@dataclass(frozen=True)
+class _Step:
+    action: str
+    before: str
+    after: str
+    label: str
+    roi: tuple[float, float, float, float]
+
+
+_SELECT = _Step('select_overclock', 'standard_selected', 'overclock_selected', '超频博弈', MODE_ROW)
+_OPEN_A0 = _Step('open_overclock_difficulty', 'overclock_selected', 'a0_observed', '进入超频博弈', MODE_ENTRY)
+_STEPS = {step.action: step for step in (_SELECT, _OPEN_A0)}
+
+
 def _text(text):
-    return normalize(text).translate(_DECORATION)
+    return normalize(text).translate(_DECORATION).replace('＋', '+')
 
 
 def _matches(scene, labels, roi):
     return [t for t in scene.tokens if t.within(roi) and _text(t.text) in labels]
 
 
-def read_overclock(scene, confidence=.65) -> OverclockObservation:
+def read_overclock(scene, confidence=.65, *, require_a0_details=False) -> OverclockObservation:
     """One frame describes visible controls, without authorizing a start or rank change."""
     clean = trusted(scene, confidence)
     kind = observe(scene, confidence).page_kind
@@ -69,10 +87,14 @@ def read_overclock(scene, confidence=.65) -> OverclockObservation:
         _matches(clean, ('超频博弈',), RANK_MODE)
         or a0_rank and clean.has('当前职级难度效果', (.34, .24, .70, .34))
     ))
+    if (require_a0_details or mode_page or rank_page) and clean.has((*NAVIGATION_BLOCKERS, *ACTIVE_MATCH)):
+        return OverclockObservation('blocked')
+    if require_a0_details and kind not in ('unknown', 'mode_select', 'difficulty_select'):
+        return OverclockObservation('unexpected_page')
     if not (mode_page or rank_page):
         return OverclockObservation('other_page')
-    if clean.has((*NAVIGATION_BLOCKERS, *ACTIVE_MATCH)):
-        return OverclockObservation('blocked')
+    if require_a0_details and rank_page and entries:
+        return OverclockObservation('controls_conflicting')
     if mode_page:
         if (kind != 'mode_select' or rank_page or len(title) != 1 or len(rows) != 1
                 or len(headings) != 1 or len(entries) != 1
@@ -101,16 +123,28 @@ def read_overclock(scene, confidence=.65) -> OverclockObservation:
     bonus = _matches(clean, ('开局时获得【精密拆装扳手】',), (.36, .34, .65, .39))
     effects = [t for t in clean.tokens if '敌人难度' in _text(t.text) and t.within((.36, .38, .55, .44))]
     summary = [t for t in clean.tokens if '敌人难度' in _text(t.text) and t.within((.36, .17, .55, .23))]
+    if require_a0_details:
+        values = [_text(t.text) for t in (*effects, *summary)]
+        if any(re.fullmatch(r'敌人难度\+[0-9]+', value) and value != '敌人难度+1' for value in values):
+            return OverclockObservation('effects_conflicting', 'overclock', 'A0')
+        detail_titles = _matches(clean, ('当前职级难度效果', '当前职级难度效果*效果叠加生效中'),
+                                 (.36, .27, .64, .33))
+        if len(detail_titles) != 1:
+            return OverclockObservation('effects_unverified', 'overclock', 'A0')
     if (len(bonus) != 1 or any(len(field) != 1 or _text(field[0].text) != '敌人难度+1'
                                 for field in (effects, summary))):
         return OverclockObservation('effects_unverified', 'overclock', 'A0')
     return OverclockObservation('a0_observed', 'overclock', 'A0', 1)
 
 
-def _select_target(scene, confidence) -> Token:
-    if read_overclock(scene, confidence).state != 'standard_selected':
-        raise AutomationError('当前标准模式选中状态或超频入口未核实。')
-    return _matches(trusted(scene, confidence), ('超频博弈',), MODE_ROW)[0]
+def _target(scene, confidence, step) -> Token:
+    if read_overclock(scene, confidence, require_a0_details=step is _OPEN_A0).state != step.before:
+        raise AutomationError('当前超频配置的模式页或入口未核实。')
+    minimum = max(.85, confidence) if step is _OPEN_A0 else confidence
+    targets = _matches(trusted(scene, minimum), (step.label,), step.roi)
+    if len(targets) != 1:
+        raise AutomationError('当前超频配置入口没有唯一可核实的目标。')
+    return targets[0]
 
 
 @dataclass(frozen=True, repr=False)
@@ -234,7 +268,7 @@ def _recorded_evidence(value, state):
     return _Evidence(path, digest, stamp, state)
 
 
-def _resolved_selection(data, directory, *, check_source=None):
+def _resolved_configuration(data, directory, *, check_source=None):
     if (type(data) is not dict or data.get('mode') != 'overclock_configuration'
             or data.get('match_started') is not False or data.get('completion_verified') is not False):
         return False
@@ -246,20 +280,31 @@ def _resolved_selection(data, directory, *, check_source=None):
     if len(actions) != 1 or type(actions[0]) is not dict:
         return False
     action = actions[0]
+    intent = action.get('action')
+    step = _STEPS.get(intent) if isinstance(intent, str) else None
+    if step is None:
+        return False
+    a0 = step is _OPEN_A0
     epoch, box = action.get('input_epoch'), action.get('target')
     observation, feedback = data.get('observation'), data.get('feedback')
-    if (action.get('action') != 'select_overclock' or action.get('status') != 'verified'
+    if (action.get('status') != 'verified'
             or data.get('status') != 'verified' or data.get('mode_verified') is not True
-            or data.get('difficulty_verified') is not False
+            or data.get('difficulty_verified') is not a0
             or type(epoch) is not int or epoch < 0 or type(box) is not list or len(box) != 4
             or any(type(edge) not in (int, float) or not 0 <= edge <= 1 for edge in box)
-            or box[0] >= box[2] or box[1] >= box[3] or not Token('超频博弈', 1., tuple(box)).within(MODE_ROW)
-            or type(observation) is not dict or observation.get('state') != 'overclock_selected'
-            or observation.get('mode') != 'overclock' or observation.get('rank') is not None
-            or observation.get('enemy_difficulty') is not None or type(feedback) is not list or len(feedback) != 2):
+            or box[0] >= box[2] or box[1] >= box[3] or not Token(step.label, 1., tuple(box)).within(step.roi)
+            or type(observation) is not dict or observation.get('state') != step.after
+            or observation.get('mode') != 'overclock' or type(feedback) is not list or len(feedback) != 2):
         return False
-    before = _recorded_evidence(action.get('before'), 'standard_selected')
-    first, second = (_recorded_evidence(row, 'overclock_selected') for row in feedback)
+    if a0:
+        difficulty = observation.get('enemy_difficulty')
+        if (data.get('objective') != A0_OBJECTIVE or data.get('client_version') != CALIBRATED_CLIENT
+                or observation.get('rank') != 'A0' or type(difficulty) is not int or difficulty != 1):
+            return False
+    elif observation.get('rank') is not None or observation.get('enemy_difficulty') is not None:
+        return False
+    before = _recorded_evidence(action.get('before'), step.before)
+    first, second = (_recorded_evidence(row, step.after) for row in feedback)
     if not before.captured_at < first.captured_at < second.captured_at <= first.captured_at + MAX_FRAME_AGE:
         return False
     return len({_check_evidence(proof, directory, check_source=check_source) for proof in (before, first, second)}) == 3
@@ -276,6 +321,11 @@ class _Configuration:
             raise AutomationError('超频模式配置的运行目录无效或已有记录。')
         self.epoch = context.runner.input_epoch
         self.confidence = context.settings.ocr_confidence
+        self.step = _OPEN_A0 if context.runner.currency_overclock_open_a0 else _SELECT
+        self.ready_states = ('a0_observed',) if self.step is _OPEN_A0 else READY_STATES
+        self.start_states = (self.step.before, *self.ready_states)
+        self.client = None
+        self.client_window = None
         self.account = None
         self.geometry = None
         self.pending = None
@@ -284,8 +334,27 @@ class _Configuration:
         self.data = dict(mode='overclock_configuration', status='observing', mode_verified=False,
                          difficulty_verified=False, match_started=False, completion_verified=False,
                          actions=[], observation=None, feedback=[])
+        if self.step is _OPEN_A0:
+            self.data['objective'] = A0_OBJECTIVE
 
-    def _persist(self, data, *, check_sources=None, check_frames=None):
+    def _require_client(self):
+        if self.step is not _OPEN_A0:
+            return
+        window = self.c.window
+        source_window = (window, window.hwnd)
+        client = installed_client(window.current_executable())
+        if client['full_version'] != CALIBRATED_CLIENT or self.client is not None and client != self.client:
+            raise AutomationError('当前客户端与超频 A0 难度页的原版本证据不一致。')
+        if self.client_window is None:
+            self.client_window = source_window
+        self._require_client_window()
+        self.client = client
+
+    def _require_client_window(self):
+        if self.client_window is not None and self.client_window != (self.c.window, self.c.window.hwnd):
+            raise AutomationError('超频 A0 难度页的原窗口已改变。')
+
+    def _persist(self, data, *, check_sources=None, check_frames=None, read_sources=()):
         payload = json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
         if len(payload) > MAX_JOURNAL_BYTES:
             raise AutomationError('超频配置记录超过 1 MiB，原记录保留。')
@@ -305,7 +374,21 @@ class _Configuration:
             if check_frames is not None:
                 check_frames()
 
-        replace_file(temporary, self.path, before_replace=recheck)
+        if read_sources:
+            @contextmanager
+            def verified_attempt():
+                revisions = {}
+                for path in read_sources:
+                    _require_stable_source(path, revisions)
+                with hold_read_sources(read_sources):
+                    for path in read_sources:
+                        _require_stable_source(path, revisions)
+                    recheck()
+                    yield
+
+            replace_file(temporary, self.path, attempt_scope=verified_attempt)
+        else:
+            replace_file(temporary, self.path, before_replace=recheck)
         self.saved_journal = payload
         self.data = self.c.report.currency_wars = data
         return payload
@@ -327,7 +410,7 @@ class _Configuration:
         if self._history_paths() != expected:
             raise AutomationError('超频配置旧记录集合已改变，未发送输入。')
 
-    def _history_allows_selection(self, paths, *, check_source=None):
+    def _history_allows_input(self, paths, *, check_source=None):
         # The native Runner mutex serializes configurations under this runs root.
         # Older journals carry no account binding, so ambiguous history vetoes input.
         try:
@@ -336,7 +419,7 @@ class _Configuration:
                     return False
                 original = _read_bytes(path, MAX_JOURNAL_BYTES, check_source=check_source)
                 data = strict_json(original.decode('utf-8'))
-                if (not _resolved_selection(data, path.parent, check_source=check_source)
+                if (not _resolved_configuration(data, path.parent, check_source=check_source)
                         or path.resolve(strict=True) != path
                         or _read_bytes(path, MAX_JOURNAL_BYTES, check_source=check_source) != original):
                     return False
@@ -371,6 +454,9 @@ class _Configuration:
         self.account = key
         return True
 
+    def _observe(self, scene):
+        return read_overclock(scene, self.confidence, require_a0_details=self.step is _OPEN_A0)
+
     def _capture(self):
         try:
             scene = self.c.snapshot()
@@ -380,7 +466,7 @@ class _Configuration:
         if self.geometry is None:
             self.geometry = scene.geometry
         self._current(scene)
-        return _Frame(scene, scene.captured_at, read_overclock(scene, self.confidence),
+        return _Frame(scene, scene.captured_at, self._observe(scene),
                       self._same_account(scene), _pixels(scene.image, self.geometry),
                       self.c.capture_occlusion_count)
 
@@ -394,7 +480,7 @@ class _Configuration:
     def _check_frame(self, frame, *, current=True):
         scene = frame.scene
         self._require_frame(frame, current=current)
-        if (not self._same_account(scene) or read_overclock(scene, self.confidence) != frame.observation
+        if (not self._same_account(scene) or self._observe(scene) != frame.observation
                 or _pixels(scene.image, self.geometry) != frame.pixels):
             raise AutomationError('超频配置证据的账号、页面或像素已改变。')
         self._require_frame(frame, current=current)
@@ -422,7 +508,7 @@ class _Configuration:
     def authorize(self, scene, target, *, consume=False, read_sources=None):
         pending = self.pending
         if pending is None or scene is not pending.frame.scene or target != pending.target:
-            raise AutomationError('超频选择缺少本次未使用的待核对意图。')
+            raise AutomationError('超频配置缺少本次未使用的待核对意图。')
         self._require_current(scene)
         self._require_history(pending.history)
         revisions = {}
@@ -438,8 +524,10 @@ class _Configuration:
                 raise AutomationError('超频配置原生发送缺少共享读保护。')
             for path in (self.path, Path(pending.proof.screenshot)):
                 hold_source(path)
-        if not self._history_allows_selection(pending.history, check_source=hold_source if consume else None):
-            raise AutomationError('旧超频选择未核实，禁止再次发送。')
+            if self.step is _OPEN_A0:
+                hold_source(Path(self.client['source']))
+        if not self._history_allows_input(pending.history, check_source=hold_source if consume else None):
+            raise AutomationError('旧超频配置未核实，禁止再次发送。')
         self._check_saved(pending.proof)
         self._check_journal(pending.journal)
         if consume:
@@ -451,16 +539,18 @@ class _Configuration:
             scene.image = frozen_image
             checked_tokens = tuple(scene.tokens)
         self._check_frame(pending.frame)
-        if _select_target(scene, self.confidence) != target:
-            raise AutomationError('超频选择的当前页面目标已改变。')
+        if _target(scene, self.confidence, self.step) != target:
+            raise AutomationError('超频配置的当前页面目标已改变。')
         if consume:
+            self._require_client()
             require_unchanged_history = _hold_history_names(self.directory.parent, read_sources)
             for path in revisions:
                 _require_stable_source(path, revisions)
             self._require_history(pending.history)
+            self.c.window.guard(self.geometry)
+            self._require_client_window()
             if self.c.window.emergency_pressed():
                 raise Stopped('F10 紧急停止。')
-            self.c.window.guard(self.geometry)
             require_unchanged_history()
             if (scene.image is not frozen_image or frozen_image.shape != shape or frozen_image.dtype != np.uint8
                     or not frozen_image.flags.c_contiguous or frozen_image.flags.writeable
@@ -474,6 +564,8 @@ class _Configuration:
 
     def _initial(self, deadline):
         last = None
+        stop_states = (A0_VETO_STATES if self.step is _OPEN_A0
+                       else ('blocked', 'other_page', 'rank_unsupported'))
         for attempt in range(3):
             if time.monotonic() >= deadline:
                 break
@@ -482,9 +574,9 @@ class _Configuration:
             frame = self._capture()
             if frame is not None:
                 last = frame
-                if frame.observation.state in ('blocked', 'other_page', 'rank_unsupported'):
+                if frame.observation.state in stop_states:
                     break
-                if frame.account_observed and frame.observation.state in START_STATES:
+                if frame.account_observed and frame.observation.state in self.start_states:
                     break
         return last
 
@@ -502,6 +594,8 @@ class _Configuration:
             last_observation = frame.observation
             increasing = frame.captured_at > latest
             latest = max(latest, frame.captured_at)
+            if increasing and self.step is _OPEN_A0 and last_observation.state in A0_VETO_STATES:
+                return self._partial(last_observation.state, last_observation)
             if not increasing or not frame.account_observed or frame.observation.state != state:
                 first = None
                 continue
@@ -523,7 +617,9 @@ class _Configuration:
 
             def check_sources():
                 self._current(frame.scene)
+                self._require_client()
                 self.c.window.guard(frame.scene.geometry)
+                self._require_client_window()
                 for proof in proofs:
                     self._check_saved(proof)
 
@@ -533,7 +629,10 @@ class _Configuration:
                 if time.monotonic() >= deadline or time.monotonic() - original.captured_at > MAX_FRAME_AGE:
                     raise AutomationError('超频配置双帧回执已过期或原证据改变。')
 
-            self._persist(data, check_sources=check_sources, check_frames=check_frames)
+            sources = ()
+            if self.step is _OPEN_A0:
+                sources = (Path(self.client['source']), *(Path(proof.screenshot) for proof in proofs))
+            self._persist(data, check_sources=check_sources, check_frames=check_frames, read_sources=sources)
             return TaskResult(TASK, 'ok', '已核实超频 A0 黑铁与敌人难度 1。' if data['difficulty_verified']
                               else '已核实超频模式选中。档位可在已打开的难度页核对。')
         return self._partial('feedback_unverified', last_observation)
@@ -549,43 +648,47 @@ class _Configuration:
         return TaskResult(TASK, 'partial', '超频配置未取得可用的双帧核验，原因见本次报告。')
 
     def run(self):
+        self._require_client()
+        if self.client is not None:
+            self.data['client_version'] = self.client['full_version']
         self._persist(self.data)
         deadline = time.monotonic() + OBSERVE_SECONDS
         first = self._initial(deadline)
         if first is None:
             return self._partial('no_frame', None)
         state = first.observation.state
-        if state not in START_STATES or not first.account_observed:
-            return self._partial(state if state not in START_STATES else 'account_unverified', first.observation)
+        if state not in self.start_states or not first.account_observed:
+            return self._partial(state if state not in self.start_states else 'account_unverified', first.observation)
         if time.monotonic() >= deadline:
             return self._partial('feedback_unverified', first.observation)
-        if state in READY_STATES:
+        if state in self.ready_states:
             return self._verify(state, deadline, first.captured_at, (first, self._evidence(first, 'feedback_first')))
         try:
             history = self._history_paths()
         except OSError:
             return self._partial('previous_selection_unresolved', first.observation)
-        if not self._history_allows_selection(history):
+        if not self._history_allows_input(history):
             return self._partial('previous_selection_unresolved', first.observation)
 
-        target = _select_target(first.scene, self.confidence)
-        before = self._evidence(first, 'before_select')
-        action = dict(action='select_overclock', status='pending', input_epoch=self.epoch,
+        target = _target(first.scene, self.confidence, self.step)
+        before = self._evidence(first, 'before_open_difficulty' if self.step is _OPEN_A0 else 'before_select')
+        action = dict(action=self.step.action, status='pending', input_epoch=self.epoch,
                       target=list(target.box), before=asdict(before))
         payload = self._persist(dict(self.data, status='pending', actions=[action],
                                      observation=asdict(first.observation)))
         self.pending = _Pending(first, target, before, payload, deadline, history)
         self.c.currency_overclock_input(first.scene, target)
         if self.pending is not None:
-            raise AutomationError('超频选择未经过本次输入门禁。')
+            raise AutomationError('超频配置未经过本次输入门禁。')
         sent_after = time.monotonic()
-        return self._verify('overclock_selected', sent_after + OBSERVE_SECONDS, sent_after, before_input=before)
+        return self._verify(self.step.after, sent_after + OBSERVE_SECONDS, sent_after, before_input=before)
 
 
 def configure_overclock(context):
     flow = _Configuration(context)
     context._currency_overclock_configuration = flow
-    context.report.safe_next = '只核对超频模式与可见 A0 档位。对局操作使用原有独立入口。'
+    context.report.safe_next = ('请核对当前超频难度页与原页面切换记录。'
+                                if flow.step is _OPEN_A0 else '只核对超频模式与可见 A0 档位。对局操作使用原有独立入口。')
     try:
         result = flow.run()
         context.runner.emit(dict(type=TASK, data=context.report.currency_wars))

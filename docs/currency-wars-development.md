@@ -1,5 +1,17 @@
 # 货币战争重启开发记录
 
+## 2026-11-06 超频 A0 难度页单步
+
+`python -m autohsr --currency-wars-open-overclock-a0` 只接受可选的 `--config`。打开命令前，模式页须已选中超频博弈。程序读取当前窗口进程安装目录的 `game_version`，按已校准的 `4.6.0` 核验版本。左侧模式、右侧选中标题和职级提示一致时，只点击一次当前 OCR 定位的「进入超频博弈」。已打开 A0 时直接观察。标准选中、认证、更新和可见旧局提示都挡住发送。[CLI 入口](../autohsr/__main__.py) · [模式及难度读取](../autohsr/currency_wars_overclock.py)
+
+固定三月七把进入超频难度页、调整职级和提交开局分成独立动作。4.6.0 历史脱敏 OCR 分别显示标准入口、超频入口，以及难度页上独立的「开始对局」。本步骤的输入止于超频入口，换档、开局和资源操作均在授权范围外。[固定上游模式页](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L721-L774) · [固定上游开局流程](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/weekly/currency_wars.py#L376-L455) · [标准选中](../autohsr/tests/fixtures/currency_wars_navigation.json) · [超频选中](../autohsr/tests/fixtures/currency_wars_overclock_selected.json) · [A0 难度页](../autohsr/tests/fixtures/currency_wars_pages.json)
+
+发送前保存原图和 `open_overclock_difficulty` 待核对意图，并在原生发送时重核原图、历史回执、当前版本、账号、窗口与输入代次。回执需要两张新鲜的同账号画面，分别读到 A0 黑铁、超频标识、职级效果标题、精密拆装扳手、概要与效果区的「敌人难度+1」和独立开局控件。遇到非 A0、可见旧局、首领预览等其他已识别页面或明确冲突时停止观察，保留这次动作待核对。过渡和漏读只做有界复读。成功报告中 `difficulty_verified=true`、`match_started=false`、`completion_verified=false`。
+
+未核实结束的标准局在窗口访问前拦截。两条超频命令共用同一 `runs` 下的历史回执门禁，旧 `pending`、`unknown` 或原证据损坏时阻止新点击，已打开 A0 仍可独立零点击核实。历史脱敏样本来自不同采集时点。实机验收至少需要同一客户端的一次切换，留存点击前的超频模式页和点击后两张新鲜 A0 画面。[验证记录](../VALIDATION.md#2026-11-06-超频-a0-难度页单步)
+
+原生发送前取得当前版本文件的 Windows 共享读句柄，持有期间重读窗口进程的安装来源与版本，并在最后窗口检查后核对原窗口。发送返回时释放句柄。每次原子替换 A0 回执前也先持有版本文件、两张反馈图以及适用的点击前原图，核对来源及回执后持有到替换结束。遇到共享冲突时释放本次句柄，下一次尝试重新取得并核对证据。来源改变时保留原待核对回执。
+
 ## 2026-11-06 标准节点失利后继续
 
 同局出战已核实后，普通「挑战结束」页面可按当前节点、唯一「继续挑战」和正生命值核验。生命值可为同一文字字段，或同一行相邻的标签与数值。连续两张同账号、同节点和同生命值的画面形成原失利回执。标准流程把失利单独保存为 `node_loss_verified`，胜利字段保持未核实。固定三月七源码区分普通继续和零生命终局，本项目采用现有结果区的字段位置和原生逐步核验。[固定上游](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/weekly/currency_wars.py#L2644-L2675)
