@@ -30,7 +30,7 @@
 
 差分祝福确认后，同类奖励页需从连续新帧核实实际新卡，标题文字与像素共同用于判断。[差分宇宙](docs/differential-universe.md)
 
-差分奇物舍弃在确认前保存同账号待核对记录。接续遇到该账号未核实的旧舍弃时会在选卡前停止。奖励弹层与实际离页都要连续两帧核实原账号。[差分验证](docs/du-validation.md#2026-11-05-强制舍弃奇物反馈)
+差分奇物舍弃在确认前保存同账号待核对记录。同一 `runs` 数据根内接续，遇到该账号未核实的旧舍弃时会在选卡前停止。奖励弹层与实际离页都要连续两帧核实原账号。[差分验证](docs/du-validation.md#2026-11-05-强制舍弃奇物反馈)
 
 源码、正式包和实机验收按各自版本记录。[验证记录](VALIDATION.md)
 
@@ -555,6 +555,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build.ps1
 ```
 
 关闭空闲旧助手后构建。先到`build/package-...`暂存，复制依赖、最后发布EXE；配置和运行记录原位保留并备份到`build/userdata-时间戳`。输出带OCR依赖、模板、ONNX、许可证、说明，资源在`_internal/assets/`。
+
+源码版本以 Git 提交为准。构建已结束且 `dist/AutoHSR` 正式包已核对后，可清理 `build/AutoHSR` 的 PyInstaller 中间产物和无占用的 `build/package-*`。`build/userdata-*` 存放配置与运行记录备份，按用户数据保留。
 
 ### 结构与维护
 

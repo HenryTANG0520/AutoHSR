@@ -14,8 +14,9 @@ from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.currency_wars_navigation import locate, next_action, page_kind, standard_selected
 from autohsr.models import AutomationError, InputInterrupted, RunReport, Scene, Token
+from autohsr.storage import replace_file
 from autohsr.tests.test_currency_wars_prepare import phone
-from autohsr.tests.test_currency_wars_standard import rank_page
+from autohsr.tests.test_currency_wars_standard import rank_page as standard_rank_page
 
 
 def scene(*items):
@@ -55,6 +56,13 @@ def lobby():
 def points_rewards():
     return scene(('积分奖励', (.04, .30, .1, .33)), ('规则说明', (.82, .30, .87, .33)),
                  ('当前积分', (.08, .65, .14, .68)))
+
+
+def rank_page(current=50, values=(50, 49, 48), *, account=1):
+    state = standard_rank_page(current, values)
+    if account is not None:
+        state.tokens.append(Token(f'UID{10**8+account}', .99, (.02, .96, .13, .99)))
+    return state
 
 
 class NavigationTests(unittest.TestCase):
@@ -184,6 +192,27 @@ class NavigationTests(unittest.TestCase):
         c.currency_navigation_input = Mock(side_effect=submit)
         return c
 
+    def rank_context(self, folder, states, *, target=48):
+        runner = Runner(Settings(), operation='currency_wars_prepare', currency_locate=True,
+                        currency_configure=True, currency_wealth=target)
+        runner.report.run_dir = str(folder)
+        runner.report.currency_wars = dict(game_ready=True)
+        c = Context(runner, Mock(), Mock())
+        c.checkpoint, c.sleep = Mock(), Mock()
+        pending = iter(states)
+        captured_at = time.monotonic() - .1
+
+        def snapshot():
+            nonlocal captured_at
+            c.last_scene = state = next(pending)
+            captured_at += .001
+            state.captured_at = captured_at
+            return state
+
+        c.snapshot = Mock(side_effect=snapshot)
+        c.evidence = lambda state, label: Path(folder)/(label+'.png')
+        return c
+
     def test_one_step_journal_verified_before_next_and_stops_at_standard(self):
         with tempfile.TemporaryDirectory() as folder:
             c = self.flow_context(Path(folder), [menu(), universe(True), lobby(), mode()])
@@ -217,28 +246,20 @@ class NavigationTests(unittest.TestCase):
 
     def test_configured_wealth_is_reported_after_fresh_selected_rank_through_context(self):
         with tempfile.TemporaryDirectory() as folder:
-            runner = Runner(Settings(), operation='currency_wars_prepare', currency_locate=True,
-                            currency_configure=True, currency_wealth=48)
-            runner.report.run_dir = folder
-            runner.report.currency_wars = dict(game_ready=True)
-            window = Mock()
-            c = Context(runner, window, Mock())
-            c.checkpoint, c.sleep = Mock(), Mock()
             initial = rank_page(50, (50, 49))
             intermediate = rank_page(49, (50, 49, 48))
             unselected = rank_page(49, (49, 48, 47))
             selected = rank_page(48, (49, 48, 47))
-            states = iter((initial, intermediate, unselected, selected))
+            c = self.rank_context(folder, (initial, intermediate, unselected, selected))
+            window, capture = c.window, c.snapshot
             journal = Path(folder)/'currency-navigation.json'
 
             def snapshot():
-                state = next(states)
+                state = capture()
                 if state is unselected:
                     data = json.loads(journal.read_text(encoding='utf-8'))
                     self.assertNotIn('wealth', data)
                     self.assertEqual(data['actions'][-1]['status'], 'pending')
-                state.captured_at = time.monotonic()
-                c.last_scene = state
                 return state
 
             def check_pending(*_):
@@ -247,7 +268,6 @@ class NavigationTests(unittest.TestCase):
                 self.assertNotIn('wealth', data)
 
             c.snapshot = snapshot
-            c.evidence = lambda state, label: Path(folder)/(label+'.png')
             window.click.side_effect = check_pending
             with patch('autohsr.currency_wars_navigation.prepare'), patch('autohsr.currency_wars_replay.save_sample'):
                 result = locate(c)
@@ -265,12 +285,169 @@ class NavigationTests(unittest.TestCase):
             self.assertIn('A8财富造物主48', result.detail)
             self.assertEqual(Path(data['screenshot']).name, 'currency_rank_48_ready.png')
 
+    def test_account_change_keeps_original_rank_intents_without_further_input(self):
+        for change_at, statuses in ((49, ['pending']), (48, ['verified', 'pending'])):
+            with self.subTest(change_at=change_at), tempfile.TemporaryDirectory() as folder:
+                initial = rank_page(50, (50, 49))
+                intermediate = rank_page(49, (50, 49, 48), account=2 if change_at == 49 else 1)
+                selected = rank_page(48, account=2)
+                c = self.rank_context(folder, (initial, intermediate, selected))
+                with patch('autohsr.currency_wars_navigation.prepare'), patch('autohsr.currency_wars_replay.save_sample'), \
+                     self.assertRaisesRegex(AutomationError, '账号.*不同'):
+                    locate(c)
+                data = json.loads((Path(folder)/'currency-navigation.json').read_text(encoding='utf-8'))
+                self.assertEqual(c.window.click.call_count, len(statuses))
+                self.assertEqual([a['status'] for a in data['actions']], statuses)
+                self.assertNotIn('rank_verified', data)
+                self.assertNotIn('wealth', data)
+
+    def test_missing_rank_account_is_bounded_before_input_and_can_recover_in_feedback(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c = self.rank_context(folder, (rank_page(48, account=None) for _ in range(3)))
+            with patch('autohsr.currency_wars_navigation.prepare'), patch('autohsr.currency_wars_replay.save_sample'):
+                locate(c)
+            self.assertEqual(c.snapshot.call_count, 3)
+            self.assertEqual(c.report.currency_wars['action_status'], 'needs_observation')
+            self.assertNotIn('rank_verified', c.report.currency_wars)
+            c.window.click.assert_not_called()
+        with tempfile.TemporaryDirectory() as folder:
+            states = (rank_page(49, account=None), rank_page(49), rank_page(48, account=None), rank_page(48))
+            c = self.rank_context(folder, states)
+            with patch('autohsr.currency_wars_navigation.prepare'), patch('autohsr.currency_wars_replay.save_sample'):
+                locate(c)
+            self.assertEqual(c.snapshot.call_count, 4)
+            self.assertEqual(c.report.currency_wars['wealth'], 48)
+            c.window.click.assert_called_once()
+
+    def test_evidence_write_interruptions_keep_rank_and_action_unverified(self):
+        for label, ranks, statuses in (
+                ('currency_rank_48_ready', (48,), []),
+                ('currency_navigation_after_select_rank_48', (49, 48), ['pending'])):
+            for cause in ('epoch', 'age'):
+                with self.subTest(label=label, cause=cause), tempfile.TemporaryDirectory() as folder:
+                    c = self.rank_context(folder, (rank_page(rank) for rank in ranks))
+                    evidence = c.evidence
+
+                    def interrupt(state, saved_label):
+                        if saved_label == label:
+                            if cause == 'epoch':
+                                c.runner.input_epoch += 1
+                            else:
+                                state.captured_at -= 9
+                        return evidence(state, saved_label)
+
+                    c.evidence = interrupt
+                    with patch('autohsr.currency_wars_navigation.prepare'), patch('autohsr.currency_wars_replay.save_sample'), \
+                         self.assertRaises(InputInterrupted if cause == 'epoch' else AutomationError):
+                        locate(c)
+                    data = json.loads((Path(folder)/'currency-navigation.json').read_text(encoding='utf-8'))
+                    self.assertEqual(c.window.click.call_count, len(statuses))
+                    self.assertEqual([a['status'] for a in data['actions']], statuses)
+                    self.assertNotIn('rank_verified', data)
+                    self.assertNotIn('wealth', data)
+
+    def test_rank_send_rechecks_current_account_and_durable_intent(self):
+        for change in ('account', 'journal'):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as folder:
+                c = self.rank_context(folder, (rank_page(49),))
+                journal = Path(folder)/'currency-navigation.json'
+
+                def before_send(_):
+                    if change == 'account':
+                        c.last_scene.tokens[-1] = rank_page(49, account=2).tokens[-1]
+                    else:
+                        journal.write_text('{}', encoding='utf-8')
+
+                c.log = Mock(side_effect=before_send)
+                message = '账号.*不同' if change == 'account' else '意图未完整落盘'
+                with patch('autohsr.currency_wars_navigation.prepare'), patch('autohsr.currency_wars_replay.save_sample'), \
+                     self.assertRaisesRegex(AutomationError, message):
+                    locate(c)
+                c.window.click.assert_not_called()
+                self.assertEqual(c.report.currency_wars['actions'][0]['status'], 'pending')
+                self.assertNotIn('rank_verified', c.report.currency_wars)
+
+    def test_rank_send_rechecks_epoch_after_target_rederivation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c = self.rank_context(folder, (rank_page(49),))
+            calls = 0
+
+            def derive(scene, context):
+                nonlocal calls
+                choice = next_action(scene, context)
+                calls += 1
+                if calls == 2:
+                    c.runner.toggle_pause()
+                    c.runner.toggle_pause()
+                return choice
+
+            with patch('autohsr.currency_wars_navigation.prepare'), patch('autohsr.currency_wars_replay.save_sample'), \
+                 patch('autohsr.currency_wars_navigation.next_action', side_effect=derive), \
+                 self.assertRaises(InputInterrupted):
+                locate(c)
+            c.window.click.assert_not_called()
+            journal = json.loads((Path(folder)/'currency-navigation.json').read_text(encoding='utf-8'))
+            self.assertEqual(journal['actions'][0]['status'], 'pending')
+            self.assertNotIn('rank_verified', journal)
+
+    def test_failed_rank_receipt_replacement_preserves_pending_in_report_and_journal(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c = self.rank_context(folder, (rank_page(49), rank_page(48)))
+
+            def fail_verified(source, destination, *, before_replace=None):
+                record = json.loads(source.read_text(encoding='utf-8'))
+                if record['action_status'] == 'transition_verified':
+                    raise OSError('synthetic receipt replacement failure')
+                replace_file(source, destination, before_replace=before_replace)
+
+            with patch('autohsr.currency_wars_navigation.prepare'), patch('autohsr.currency_wars_replay.save_sample'), \
+                 patch('autohsr.currency_wars_navigation.replace_file', side_effect=fail_verified), \
+                 self.assertRaises(OSError):
+                locate(c)
+            c.window.click.assert_called_once()
+            journal = json.loads((Path(folder)/'currency-navigation.json').read_text(encoding='utf-8'))
+            self.assertEqual(c.report.currency_wars, journal)
+            self.assertEqual(journal['actions'][0]['status'], 'pending')
+            self.assertNotIn('rank_verified', journal)
+
+    def test_rank_receipt_retry_rechecks_epoch_before_replacing_journal(self):
+        for ranks, status, click_count in (((48,), 'rank_ready', 0), ((49, 48), 'transition_verified', 1)):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as folder:
+                c = self.rank_context(folder, (rank_page(rank) for rank in ranks))
+                journal = Path(folder)/'currency-navigation.json'
+                attempts = []
+                original_replace = Path.replace
+
+                def lock_once(source, destination):
+                    if Path(destination) == journal:
+                        record = json.loads(source.read_text(encoding='utf-8'))
+                        if record['action_status'] == status:
+                            attempts.append(status)
+                            if len(attempts) == 1:
+                                raise PermissionError('synthetic sharing lock')
+                    return original_replace(source, destination)
+
+                def invalidate(_):
+                    c.runner.input_epoch += 1
+
+                with patch('autohsr.currency_wars_navigation.prepare'), patch('autohsr.currency_wars_replay.save_sample'), \
+                     patch.object(Path, 'replace', lock_once), patch('autohsr.storage.time.sleep', side_effect=invalidate), \
+                     self.assertRaises(InputInterrupted):
+                    locate(c)
+                saved = json.loads(journal.read_text(encoding='utf-8'))
+                self.assertEqual(attempts, [status])
+                self.assertEqual(c.window.click.call_count, click_count)
+                self.assertEqual([action['status'] for action in saved['actions']], ['pending'] * click_count)
+                self.assertEqual(c.report.currency_wars, saved)
+                self.assertNotIn('rank_verified', saved)
+
     def test_explicit_wealth_can_cross_the_full_range_with_confirmed_single_steps(self):
         def frames():
-            for current in range(50, 0, -1):
+            started = time.monotonic() - .1
+            for step, current in enumerate(range(50, 0, -1)):
                 values = (current, current-1) if current > 1 else (2, 1)
                 state = rank_page(current, values)
-                state.captured_at = time.monotonic()
+                state.captured_at = started + .001 * step
                 yield state
 
         with tempfile.TemporaryDirectory() as folder:

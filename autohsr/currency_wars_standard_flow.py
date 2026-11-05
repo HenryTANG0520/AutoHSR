@@ -1060,6 +1060,9 @@ def transition_ready(choice, scene, confidence=.65, *, before=None, session=None
     if choice.expected in ('standard_investment_selected','standard_investment_applied'):
         from .currency_wars_standard_investment import feedback
         return session is not None and feedback(choice,scene,session,confidence)
+    if choice.expected == 'standard_investment_refreshed':
+        from .currency_wars_standard_investment_refresh import feedback
+        return session is not None and feedback(choice,before,scene,session,confidence) is not None
     if choice.expected == 'standard_investment_shop_closed':
         from .currency_wars_standard_investment import shop_return_feedback
         return session is not None and shop_return_feedback(choice, scene, session, confidence) is not None
@@ -1174,6 +1177,7 @@ def run_standard(c):
         CLOSE_SHOP as INVESTMENT_SHOP_CLOSE, CONFIRM as INVESTMENT_CONFIRM,
         confirmation_board, observe_automatic_shop, shop_return_feedback,
     )
+    from .currency_wars_standard_investment_refresh import ACTION as INVESTMENT_REFRESH, BINDING as INVESTMENT_REFRESH_BINDING
     from .currency_wars_standard_ledger import FINANCIAL_ACTIONS
     from .currency_wars_standard_progress import BOSS_INTRO_ACTION, boss_destination, node_progress_feedback
     if c.report.operation != 'currency_wars_standard':
@@ -1436,6 +1440,10 @@ def run_standard(c):
         if investment_shop is not None:
             action['investment_shop_observation'] = deepcopy(investment_shop)
             store.persist()
+        if choice.intent == INVESTMENT_REFRESH:
+            from .currency_wars_standard_investment_refresh import bind_intent as bind_investment_refresh
+            bind_investment_refresh(store.data,choice,scene,c.settings.ocr_confidence)
+            store.persist()
         if choice.intent.startswith('confirm_standard_environment_') and (not choice.payload or choice.payload == ('1-1',)):
             from .currency_wars_initial import begin as begin_initial
             begin_initial(store.data, action['id'], run_dir=c.report.run_dir, epoch=c.runner.input_epoch)
@@ -1527,9 +1535,11 @@ def run_standard(c):
         boss_progress = node_progress and boss_destination(choice.payload[0]) is not None
         investment_confirmation = choice.intent == INVESTMENT_CONFIRM
         closing_investment_shop = choice.intent == INVESTMENT_SHOP_CLOSE
-        investment_progress = investment_confirmation or closing_investment_shop
+        refreshing_investment = choice.intent == INVESTMENT_REFRESH
+        investment_progress = investment_confirmation or closing_investment_shop or refreshing_investment
         strict_feedback = (defeat_step or investment_box or loot_click or loot_box is not None
-                           or loot_claim is not None or boss_progress or investment_progress)
+                           or loot_claim is not None or boss_progress or investment_progress
+                           or INVESTMENT_REFRESH_BINDING in action)
         observed_at = scene.captured_at
         c.currency_standard_input(scene, choice)
         elapsed, after, stable, previous_popup = 0., None, 0, None
@@ -1567,6 +1577,10 @@ def run_standard(c):
                     popup_stamp=popup_arrival(choice,after,store.data,c.settings.ocr_confidence)
                     if node_progress:
                         progress = node_progress_feedback(choice, after, c.settings.ocr_confidence)
+                        ready = progress is not None
+                    elif refreshing_investment:
+                        from .currency_wars_standard_investment_refresh import feedback as investment_refresh_feedback
+                        progress = investment_refresh_feedback(choice, scene, after, store.data, c.settings.ocr_confidence)
                         ready = progress is not None
                     elif investment_progress:
                         investment_feedback = confirmation_board if investment_confirmation else shop_return_feedback
@@ -1789,6 +1803,9 @@ def run_standard(c):
                     elif closing_investment_shop:
                         from .currency_wars_standard_investment import record_shop_return
                         record_shop_return(action, store.data['actions'], paired_progress)
+                    elif refreshing_investment:
+                        from .currency_wars_standard_investment_refresh import record_feedback as record_investment_refresh
+                        record_investment_refresh(action, store.data, paired_progress)
                     from .currency_wars_standard_rewards import enter, returned
                     enter(store.data,choice,after,c.settings.ocr_confidence)
                     if choice.intent in ('choose_standard_reward','confirm_standard_supply'):

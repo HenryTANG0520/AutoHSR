@@ -6,10 +6,12 @@ import time
 REPLACE_RETRY_DELAYS=(.02,.04,.08,.16,.32,.50)
 
 
-def replace_file(source, destination):
-    """Retry only the final rename, never the write or a game action."""
+def replace_file(source, destination, *, before_replace=None):
+    """Retry the rename, checking caller state before each attempt when requested."""
     source,destination=Path(source),Path(destination)
     for attempt in range(len(REPLACE_RETRY_DELAYS)+1):
+        if before_replace is not None:
+            before_replace()
         try:
             source.replace(destination)
             return

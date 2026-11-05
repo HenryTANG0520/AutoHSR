@@ -278,12 +278,13 @@ class Context:
         if self.report.operation not in PREPARATION_OPERATIONS or not self.runner.currency_locate:
             raise AutomationError('当前任务未请求货币战争入口导航。')
         from .currency_wars import CurrencyWarsWorkflow
-        from .currency_wars_navigation import next_action
+        from .currency_wars_navigation import next_action, require_rank_input
         self.checkpoint()
         self._currency_weekly_checkpoint()
         CurrencyWarsWorkflow(self)._require_current_scene(scene)
         if next_action(scene, self) != choice:
             raise AutomationError('入口导航目标改变，未发送旧输入。')
+        require_rank_input(self, scene, choice)
         self.last_scene, self._scroll_anchor = None, None
         try:
             if choice.key is not None:
@@ -357,10 +358,12 @@ class Context:
         elif choice.intent.startswith('confirm_standard_environment_') and (not choice.payload or choice.payload == ('1-1',)):
             raise AutomationError('初始环境确认尚未保存专用来源，未发送输入。')
         from .currency_wars_standard_investment import shop_input_scope
+        from .currency_wars_standard_investment_refresh import input_scope as investment_refresh_input_scope
         from .currency_wars_standard_progress import progress_input_scope
         use_durable_source = (loot_sale_input_scope(choice, store.data, data)
                               or progress_input_scope(choice.intent, store.data, data)
-                              or shop_input_scope(choice.intent, store.data, data))
+                              or shop_input_scope(choice.intent, store.data, data)
+                              or investment_refresh_input_scope(choice.intent, store.data, data))
         session = data if use_durable_source else store.data
         if choice.intent in ('open_standard_bench_reward', 'choose_standard_reward'):
             investment = store.data.get('investment', {})

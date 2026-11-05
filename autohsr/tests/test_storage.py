@@ -44,6 +44,18 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(self.destination.read_text(),'old')
         self.assertEqual(self.source.read_text(),'new')
 
+    def test_before_replace_rechecks_retry_and_propagates_a_veto(self):
+        recheck = Mock(side_effect=(None, PermissionError('state changed')))
+        with patch.object(Path, 'replace', side_effect=PermissionError('sharing lock')) as rename, \
+             patch('autohsr.storage.time.sleep') as sleep, \
+             self.assertRaisesRegex(PermissionError, 'state changed'):
+            replace_file(self.source, self.destination, before_replace=recheck)
+        self.assertEqual(recheck.call_count, 2)
+        rename.assert_called_once()
+        sleep.assert_called_once_with(REPLACE_RETRY_DELAYS[0])
+        self.assertEqual(self.destination.read_text(), 'old')
+        self.assertEqual(self.source.read_text(), 'new')
+
     def test_disk_full_is_not_treated_as_a_temporary_sharing_lock(self):
         with patch.object(Path,'replace',side_effect=OSError(errno.ENOSPC,'full')) as rename, \
              patch('autohsr.storage.time.sleep') as sleep:

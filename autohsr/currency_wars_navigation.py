@@ -7,9 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .currency_wars import CurrencyWarsWorkflow, TASK, observe
+from .currency_wars_identity import AccountNotObserved, account_key
 from .currency_wars_prepare import PREPARATION_OPERATIONS, prepare, trusted
-from .currency_wars_standard import DEFAULT_WEALTH, MAX_WEALTH, MIN_WEALTH, NAVIGATION_BLOCKERS
-from .models import AutomationError, EmptyCapture, TaskResult, Token, normalize
+from .currency_wars_standard import (DEFAULT_WEALTH, MAX_WEALTH, MIN_WEALTH, NAVIGATION_BLOCKERS,
+                                    difficulty_page, selected_rank)
+from .models import AutomationError, EmptyCapture, InputInterrupted, Scene, TaskResult, Token, normalize
 from .storage import replace_file
 from .workflows import DailyWorkflow
 
@@ -20,6 +22,81 @@ class NavigationAction:
     expected: tuple[str, ...]
     target: Token | None = None
     key: str | None = None
+
+
+@dataclass(frozen=True, repr=False)
+class _RankInput:
+    scene: Scene
+    captured_at: float
+    choice: NavigationAction
+    epoch: int
+    account: str
+    journal_text: str
+
+
+def _current_rank_frame(c, guard, scene, epoch):
+    c.checkpoint()
+    if c.runner.input_epoch != epoch:
+        raise InputInterrupted('标准档位配置的输入代次改变，原记录保留。')
+    if scene is not None:
+        guard._require_current_scene(scene)
+
+
+def _rank_account(scene, confidence, expected):
+    current = account_key(scene, max(.85, confidence))
+    if expected is not None and current != expected:
+        raise AutomationError('当前账号与本次标准档位配置不同，原记录保留。')
+    return current
+
+
+def _rank_page_with_account(c, guard, scene, epoch, expected):
+    last = scene
+    confidence = c.settings.ocr_confidence
+    for attempt in range(3):
+        if attempt:
+            c.sleep(.5)
+            try:
+                scene = c.snapshot()
+            except EmptyCapture:
+                scene = None
+        _current_rank_frame(c, guard, scene, epoch)
+        if scene is None:
+            continue
+        last = scene
+        try:
+            current = _rank_account(scene, confidence, expected)
+        except AccountNotObserved:
+            continue
+        if difficulty_page(scene, confidence):
+            return scene, current
+    return last, None
+
+
+def _observed_rank(scene, confidence):
+    try:
+        return selected_rank(scene, confidence)
+    except AutomationError:
+        return None
+
+
+def require_rank_input(c, scene, choice):
+    if not choice.intent.startswith('select_rank_'):
+        return
+    source = getattr(c, '_currency_rank_input', None)
+    if source is None or source.scene is not scene or source.choice != choice:
+        raise AutomationError('标准档位选择缺少本次当前画面和待核对意图。')
+    path = Path(c.report.run_dir) / 'currency-navigation.json'
+    try:
+        with path.open(encoding='utf-8') as stream:
+            saved = stream.read(len(source.journal_text) + 1)
+    except (OSError, UnicodeError):
+        saved = None
+    if saved != source.journal_text:
+        raise AutomationError('标准档位待核对意图未完整落盘。')
+    _current_rank_frame(c, CurrencyWarsWorkflow(c), scene, source.epoch)
+    if source.captured_at != scene.captured_at:
+        raise InputInterrupted('标准档位选择的原画面已改变，原记录保留。')
+    _rank_account(scene, c.settings.ocr_confidence, source.account)
 
 
 def unique(scene, labels, roi):
@@ -35,7 +112,6 @@ def unique(scene, labels, roi):
 
 def page_kind(scene, confidence=.65):
     scene = trusted(scene, confidence)
-    from .currency_wars_standard import difficulty_page
     if difficulty_page(scene, confidence):
         return 'standard_difficulty'
     if (scene.has('积分奖励', (.02, .28, .15, .35), exact=True)
@@ -146,11 +222,18 @@ def locate(c, *, stop_at_lobby=False):
     data = dict(mode='entry_navigation', startup=bootstrap, actions=[], entry_ready=False,
                 completion_verified=False, action_status='observing')
     journal = Path(c.report.run_dir) / 'currency-navigation.json'
-    def persist():
+    def persist(verified=None, *, recheck=None):
         c.report.currency_wars = data
         temp = journal.with_suffix('.tmp')
-        temp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
-        replace_file(temp, journal)
+        payload = json.dumps(data if verified is None else verified, ensure_ascii=False, indent=2)
+        temp.write_text(payload, encoding='utf-8')
+        if recheck is None:
+            replace_file(temp, journal)
+        else:
+            replace_file(temp, journal, before_replace=recheck)
+        if verified is not None:
+            data.update(verified)
+        return payload
     def evidence(scene, label):
         screenshot = c.evidence(scene, label)
         from .currency_wars_replay import save_sample
@@ -158,8 +241,27 @@ def locate(c, *, stop_at_lobby=False):
         return str(screenshot)
     guard = CurrencyWarsWorkflow(c)
     used = set()
+    rank_account = rank_epoch = None
+    confidence = c.settings.ocr_confidence
+    configuring = getattr(c.runner, 'currency_configure', False)
     requested = _requested_wealth(c)
     target_wealth = DEFAULT_WEALTH if requested is None else requested
+
+    def persist_rank(scene, label, expected_rank, *, action=None, **updates):
+        captured_at = scene.captured_at
+        path = evidence(scene, label)
+        verified = dict(data, screenshot=path, **updates)
+        if action is not None:
+            verified['actions'] = [*data['actions'][:-1], dict(action, status='verified', after=path)]
+
+        def recheck():
+            _current_rank_frame(c, guard, scene, rank_epoch)
+            _rank_account(scene, confidence, rank_account)
+            if scene.captured_at != captured_at or _observed_rank(scene, confidence) != expected_rank:
+                raise AutomationError('标准档位证据保存后，当前画面未核实为同一档位。')
+
+        persist(verified, recheck=recheck)
+
     # Explicit targets can span the entire list, with each move progressing at least one rank.
     step_limit = 24 if requested is None else 24 + MAX_WEALTH - MIN_WEALTH
     persist()
@@ -171,17 +273,21 @@ def locate(c, *, stop_at_lobby=False):
             data.update(entry_ready=True,page_kind='lobby',action_status='points_lobby_ready',
                         screenshot=evidence(scene,'currency_points_lobby_ready'))
             persist();break
-        if getattr(c.runner, 'currency_configure', False) and page_kind(scene, c.settings.ocr_confidence) == 'standard_difficulty':
-            from .currency_wars_standard import selected_rank
-            try:
-                rank = selected_rank(scene, c.settings.ocr_confidence)
-            except AutomationError:
-                rank = None
-            if rank == target_wealth:
-                data.update(entry_ready=True, rank_verified=True, rank=8, wealth=rank,
-                            page_kind='standard_difficulty', action_status='rank_ready',
-                            screenshot=evidence(scene, f'currency_rank_{rank}_ready'))
+        if configuring and (rank_epoch is not None or difficulty_page(scene, confidence)):
+            if rank_epoch is None:
+                rank_epoch = c.runner.input_epoch
+            scene, observed_account = _rank_page_with_account(c, guard, scene, rank_epoch, rank_account)
+            if observed_account is None:
+                data.update(action_status='needs_observation', reason='当前标准档位页或账号未在有限观察内核实。',
+                            screenshot=evidence(scene, 'currency_rank_account_unverified'))
                 persist()
+                break
+            rank_account = observed_account
+            rank = _observed_rank(scene, confidence)
+            if rank == target_wealth:
+                persist_rank(scene, f'currency_rank_{rank}_ready', rank,
+                             entry_ready=True, rank_verified=True, rank=8, wealth=rank,
+                             page_kind='standard_difficulty', action_status='rank_ready')
                 break
         if not stop_at_lobby and standard_selected(scene, c.settings.ocr_confidence) and not getattr(c.runner, 'currency_configure', False):
             data.update(entry_ready=True, page_kind='standard_selected', action_status='entry_ready',
@@ -200,13 +306,22 @@ def locate(c, *, stop_at_lobby=False):
             persist()
             break
         used.add(choice.intent)
+        rank_click = choice.intent.startswith('select_rank_')
+        captured_at = scene.captured_at
         action = dict(action=choice.intent, status='pending', expected=list(choice.expected),
                       before=evidence(scene, 'currency_navigation_' + choice.intent))
         data['actions'].append(action)
         data.update(action_status='pending', screenshot=action['before'])
-        persist()
+        payload = persist()
         c.log('货币战争入口导航：' + choice.intent)
-        c.currency_navigation_input(scene, choice)
+        if rank_click:
+            c._currency_rank_input = _RankInput(scene, captured_at, choice, rank_epoch, rank_account, payload)
+            try:
+                c.currency_navigation_input(scene, choice)
+            finally:
+                c._currency_rank_input = None
+        else:
+            c.currency_navigation_input(scene, choice)
         elapsed, after = 0., None
         while elapsed < 60:
             started, inactive = time.monotonic(), c.runner.inactive_duration
@@ -214,21 +329,33 @@ def locate(c, *, stop_at_lobby=False):
                 after = c.snapshot()
             except EmptyCapture:
                 after = None
-            if after is not None:
+            if rank_click:
+                _current_rank_frame(c, guard, after, rank_epoch)
+            elif after is not None:
                 guard._require_current_scene(after)
+            if after is not None:
                 kind = page_kind(after, c.settings.ocr_confidence)
-                rank_ready = False
-                if choice.expected[0].startswith('rank_') and kind == 'standard_difficulty':
-                    from .currency_wars_standard import selected_rank
+                if rank_click:
+                    expected_rank = int(choice.expected[0][5:])
+                    ready = False
                     try:
-                        rank_ready = selected_rank(after, c.settings.ocr_confidence) == int(choice.expected[0][5:])
-                    except AutomationError:
+                        _rank_account(after, confidence, rank_account)
+                    except AccountNotObserved:
                         pass
-                if rank_ready or kind in choice.expected or ('standard_selected' in choice.expected and
-                                               standard_selected(after, c.settings.ocr_confidence)):
-                    action.update(status='verified', after=evidence(after, 'currency_navigation_after_' + choice.intent))
-                    data.update(action_status='transition_verified', screenshot=action['after'])
-                    persist()
+                    else:
+                        ready = (after.captured_at > captured_at and kind == 'standard_difficulty'
+                                 and _observed_rank(after, confidence) == expected_rank)
+                else:
+                    ready = (kind in choice.expected or 'standard_selected' in choice.expected
+                             and standard_selected(after, c.settings.ocr_confidence))
+                if ready:
+                    label = 'currency_navigation_after_' + choice.intent
+                    if rank_click:
+                        persist_rank(after, label, expected_rank, action=action, action_status='transition_verified')
+                    else:
+                        action.update(status='verified', after=evidence(after, label))
+                        data.update(action_status='transition_verified', screenshot=action['after'])
+                        persist()
                     scene = after
                     # A verified rewards detour can consume the first entry
                     # click. After closing it, derive one new lobby click.

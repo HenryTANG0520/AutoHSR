@@ -286,9 +286,11 @@ class DifferentialUniverseWorkflow:
         self.resume_active = resume_active
         self.periodic_rank = periodic_rank
         self.report = context.report.differential_universe
+        from .du_periodic_points import unverified as unverified_periodic_points
         self.report.update(requested_runs=runs, completed_runs=0, current_run=0,
                            mode="周期演算" if self.settings.differential_universe_mode=='periodic' else "常规演算", season="乐园漫记",
                            actions=[], page_history=[], run_results=[],
+                           periodic_points=unverified_periodic_points(),
                            stamina_budget_used=False, premium_currency_used=False,
                            fuel_used=False)
         self.session_id = str(uuid.uuid4())
@@ -304,6 +306,7 @@ class DifferentialUniverseWorkflow:
         self._combat_chest_attempts = 0
         self._reward_overlay_budget = 0
         self._curio_launch_origin = None
+        self._periodic_points_observation = None
         self._last_progress = None
         self.report["timeouts"] = dict(room_seconds=ROOM_TIMEOUT,run_seconds=RUN_TIMEOUT)
         run_dir=getattr(context.report,"run_dir",None)
@@ -333,6 +336,7 @@ class DifferentialUniverseWorkflow:
             "run_results": self.report["run_results"],
             "actions": self.report["actions"],
             "page_history": self.report["page_history"],
+            "periodic_points": self.report["periodic_points"],
             "reward_collection": self.report.get('reward_collection'),
             "navigation_observations": self.report.get('navigation_observations',[]),
             "device_detours": self.report.get('device_detours',[]),
@@ -637,6 +641,10 @@ class DifferentialUniverseWorkflow:
         return scene
 
     def _guide_entry(self, scene):
+        from .du_periodic_points import GuidePointsObservation
+        points = GuidePointsObservation(self.ctx,scene)
+        self._periodic_points_observation = points
+        self.report['periodic_points'] = dict(points.result)
         if not scene.has(("旷宇纷争","寰宇纷争"),(0,0,.32,.13)):
             match = self.ctx.template(scene,"du_guide_tab",(.28,.15,.35,.24),threshold=.85)
             if not match:
@@ -644,16 +652,47 @@ class DifferentialUniverseWorkflow:
             x,y,score=match
             scene,kind=self._click(scene,Token("差分宇宙指南页签",score,(x-.018,y-.018,x+.018,y+.018)),
                                    intent="du_guide_tab",label="guide_universe_tab")
+            points.after_input(scene)
         target=scene.find("差分宇宙",(.14,.26,.35,.82),exact=True)
         if target is None:
             raise AutomationError("指南旷宇纷争页未识别到差分宇宙分类。")
         scene,kind=self._click(scene,target,intent="du_guide_select",label="guide_du_selected")
+        points.after_input(scene)
         from .policy import du_guide_details
-        scene=self.ctx.wait(du_guide_details,timeout=20,description="差分宇宙指南详情")
+
+        def details_ready(page):
+            if du_guide_details(page):
+                return True
+            points.after_input(page)
+            return False
+
+        scene=self.ctx.wait(details_ready,timeout=20,description="差分宇宙指南详情")
         target=scene.find("前往参与",(.70,.75,.88,.87),exact=True)
         if target is None:
             raise AutomationError("差分宇宙指南详情未识别到前往参与按钮。")
+        points.freeze(scene)
         return self._click(scene,target,intent="du_guide_enter",label="guide_du_entered")
+
+    def _finish_periodic_points(self):
+        points = self._periodic_points_observation
+        if points is None:
+            return
+        self._periodic_points_observation = None
+        self.report['periodic_points'] = points.finish()
+        try:
+            self._persist_ledger()
+            if not points.invalidate_if_stale():
+                return
+        except Exception:
+            if not points.result['verified']:
+                return
+            points.invalidate('ledger_write_unverified')
+        try:
+            self._persist_ledger()
+        except Exception:
+            # The report keeps the downgrade. Any earlier disk read still
+            # carries the original observation time and game week.
+            pass
 
     def _open_differential_universe(self, scene: Scene, kind: str) -> tuple[Scene, str]:
         from .du_rewards import page_kind as reward_page_kind,collect as collect_rewards
@@ -2902,6 +2941,12 @@ class DifferentialUniverseWorkflow:
         raise AutomationError("差分宇宙单局超过 240 个已识别步骤，已停止。")
 
     def run(self) -> TaskResult:
+        try:
+            return self._run()
+        finally:
+            self._finish_periodic_points()
+
+    def _run(self) -> TaskResult:
         scene, kind = self._snapshot("initial")
         self._weekly_boundary()
         if self.resume_active and kind == "home":
