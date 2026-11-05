@@ -3,7 +3,7 @@
 Source and license: assets/upstream/March7thAssistant/source.json.
 Unknown effects stay unexecutable; titles alone never authorize a selection.
 """
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import hashlib
 import json
 import re
@@ -70,6 +70,13 @@ def parse_effect(effect):
     return None,(),None
 
 
+def _effect_parts(scene, name):
+    x = name.center[0]
+    return sorted((t for t in scene.tokens if t.within((x-.125,.48,x+.125,.85))
+                   and not re.fullmatch(r'刷新次数[0-9]{1,2}',normalize(t.text))),
+                  key=lambda t:(round(t.center[1],2),t.center[0]))
+
+
 def options(scene, confidence=.65):
     clean=trusted(scene,confidence)
     if observe(clean,confidence).page_kind!='investment_selection':
@@ -81,9 +88,7 @@ def options(scene, confidence=.65):
     result=[]
     for slot,name in enumerate(names):
         x=name.center[0]
-        parts=sorted((t for t in clean.tokens if t.within((x-.125,.48,x+.125,.85))
-                      and not re.fullmatch(r'刷新次数[0-9]{1,2}',normalize(t.text))),
-                     key=lambda t:(round(t.center[1],2),t.center[0]))
+        parts=_effect_parts(clean,name)
         effect=''.join(t.text for t in parts)
         if not effect:raise AutomationError('投资策略完整说明未读到。')
         kind,parameters,score=parse_effect(effect)
@@ -93,6 +98,25 @@ def options(scene, confidence=.65):
         result.append(InvestmentOption(slot,name,effect,kind,parameters,score,
                                        next(iter(refreshes)) if len(refreshes)==1 else None))
     return tuple(result)
+
+
+def badge_declarations(scene, confidence=.65):
+    """Summarize declarations without changing selection scores or refresh proofs."""
+    from .currency_wars_investment_badges import read_badge_declaration
+
+    try:
+        choices = options(scene, confidence)
+    except AutomationError:
+        return []
+    observed = trusted(scene, 0)
+    declarations = []
+    for choice in choices:
+        declaration = read_badge_declaration(choice.name, _effect_parts(observed, choice.name), confidence)
+        if declaration is None:
+            continue
+        declarations.append(dict(slot=choice.slot, title=normalize(choice.name.text),
+                                 status='delivery_unverified', delivery_verified=False, **asdict(declaration)))
+    return declarations
 
 
 def option_digest(choices):

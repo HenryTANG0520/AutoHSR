@@ -97,6 +97,9 @@ class CurrencyWarsWorkflow:
                                  standard_interest_cap=5, overclock_interest=0),
             blocker=BLOCKER, decision=decision.action, decision_reason=decision.reason, sample=str(sample),
         )
+        if observation.page_kind == 'investment_selection':
+            from .currency_wars_investment_policy import badge_declarations
+            data['investment_badge_declarations'] = badge_declarations(scene, self.c.settings.ocr_confidence)
         from .currency_wars_match import read_match
         match = read_match(scene, self.c.settings.ocr_confidence)
         data["match"] = asdict(match) if match is not None else None
