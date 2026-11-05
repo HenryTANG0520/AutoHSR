@@ -18,11 +18,12 @@ MAX_NODES = 256
 MAX_DEPTH = 12
 MAX_EXECUTIONS = 10000
 GAME_TASKS = {'daily', 'plan', 'differential_universe', 'currency_wars_loop',
-              'currency_wars_points', 'currency_wars_rewards'}
+              'currency_wars_points', 'currency_wars_rewards', 'du_rewards'}
 TASKS = GAME_TASKS | {'warp_analysis', 'warp_export'}
 DAILY_TASKS = ('assignments', 'battle', 'daily', 'redemption', 'mail', 'battlepass')
 FIELDS = {'status': str, 'daily_verified': bool, 'completed_runs': int,
-          'victories': int, 'defeats': int, 'points_verified': bool, 'rewards_verified': bool}
+          'victories': int, 'defeats': int, 'points_verified': bool, 'rewards_verified': bool,
+          'du_rewards_verified': bool}
 
 
 class WorkflowError(ValueError):
@@ -128,12 +129,13 @@ def _params(task, params):
         'currency_wars_loop': {'runs', 'resume', 'strategy', 'until_points', 'continue_after_defeat'},
         'currency_wars_points': set(),
         'currency_wars_rewards': {'resume'},
+        'du_rewards': {'use_cassettes'},
         'warp_analysis': {'imports'},
         'warp_export': {'imports', 'output', 'format', 'selected_uid'},
     }[task]
     _keys(params, allowed)
     for key in ('use_power_plan', 'use_support', 'resume_weekly_currency', 'save', 'rewards',
-                'resume_active', 'resume', 'until_points', 'continue_after_defeat'):
+                'resume_active', 'resume', 'until_points', 'continue_after_defeat', 'use_cassettes'):
         if key in params:
             _boolean(params[key])
     for key in ('target_name', 'target_location', 'team'):
@@ -187,7 +189,8 @@ def _params(task, params):
 
 def _profile(nodes):
     """Worst-case reservations: mutually exclusive branches use max, loops multiply."""
-    total = dict(daily_calls=0, du_calls=0, currency_calls=0, du_runs=0, currency_games=0, executions=0)
+    total = dict(daily_calls=0, du_calls=0, currency_calls=0, du_runs=0, currency_games=0,
+                 du_rewards_calls=0, executions=0)
     for node in nodes:
         kind = node['type']
         current = dict.fromkeys(total, 0)
@@ -204,6 +207,8 @@ def _profile(nodes):
                 current.update(du_calls=1, du_runs=params.get('runs', 1) if task != 'plan' else 10)
             if task in ('currency_wars_loop', 'plan'):
                 current.update(currency_calls=1, currency_games=params.get('runs', 1) if task != 'plan' else 10)
+            if task == 'du_rewards':
+                current['du_rewards_calls'] = 1
         if kind in ('if', 'for', 'while'):
             nested = _profile(node['steps'])
             if kind == 'if':
@@ -215,6 +220,32 @@ def _profile(nodes):
         for key in total:
             total[key] += current[key]
     return total
+
+
+def _du_cassette_paths(nodes):
+    """Four bounded owner combinations; exclusive branches stay exclusive."""
+    def combine(left, right):
+        return {(a or c, b or d) for a, b in left for c, d in right}
+    paths = {(False, False)}
+    for node in nodes:
+        if not node.get('enabled', True):
+            continue
+        kind = node['type']
+        current = {(False, False)}
+        if kind == 'task':
+            params = node.get('params', {})
+            current = {(node['task'] == 'differential_universe' and params.get('rewards', False) is True,
+                        node['task'] == 'du_rewards' and params.get('use_cassettes', False) is True)}
+        elif kind == 'if':
+            current = _du_cassette_paths(node['steps']) | _du_cassette_paths(node.get('else_steps', []))
+        elif kind in ('for', 'while'):
+            nested = _du_cassette_paths(node['steps'])
+            # Boolean ownership saturates after two iterations. The separate
+            # call reservation rejects repeated independent rewards outright.
+            for _ in range(min(2, node.get('count', node.get('max_iterations', 1)))):
+                current = combine(current, nested)
+        paths = combine(paths, current)
+    return paths
 
 
 @dataclass(frozen=True)
@@ -292,6 +323,10 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
     if not isinstance(document['steps'], list) or not document['steps']:
         raise WorkflowError('流程至少需要一个步骤。')
     walk(document['steps'])
+    if _profile(document['steps'])['du_rewards_calls'] > 1:
+        raise WorkflowError('整个流程每条可能路径最多一次独立差分领奖，不能用重复步骤累计卡带预算。')
+    if (True, True) in _du_cassette_paths(document['steps']):
+        raise WorkflowError('同一流程路径不能同时用旧差分领奖和独立领奖消费卡带；独立免费领奖仍可组合。')
     path = step_path(selected_path)
     selected = document['steps']
     try:
@@ -307,6 +342,10 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
         raise WorkflowError('一个流程路径最多一份日常预算、一个差分批次和一个货币战争批次；不能用重复步骤新增预算。')
     if profile['executions'] > MAX_EXECUTIONS:
         raise WorkflowError('流程展开超过10000步。')
+    # Existing frozen scheduler manifests compare this exact public mapping.
+    # Keep the old key set when the selected scope has no new reward owner.
+    if profile['du_rewards_calls'] == 0:
+        profile.pop('du_rewards_calls')
     return Recipe(document, selected, path, profile, Path(base_dir or ROOT).resolve())
 
 
@@ -352,6 +391,9 @@ def task_spec(settings: Settings, node, base_dir):
         options = {('currency_strategy' if key == 'strategy' else key): value for key, value in params.items()}
         options.setdefault('runs', 1)
         current.validate('currency_wars')
+    elif task == 'du_rewards':
+        options = dict(operation=task, du_use_cassettes=params.get('use_cassettes', False))
+        current.validate('du_rewards')
     elif task in ('currency_wars_points', 'currency_wars_rewards'):
         options = dict(operation=task)
         if task == 'currency_wars_rewards':

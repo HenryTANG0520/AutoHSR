@@ -1,5 +1,11 @@
 # AutoHSR resource attribution
 
+## 2026-11-05 差分独立红点领奖
+
+[独立领奖](../autohsr/du_rewards_only.py)与[领取记录](../autohsr/du_reward_store.py)为AutoHSR原生扩展，复用既有[奖励页面](../autohsr/du_rewards.py)及脱敏的拟合／稳态／月下／画廊素材；没有新增图片、模型或原始账号截图。各原素材来源及游戏美术权利说明保持，新增文件／测试及范围记入[source.json](upstream/March7thAssistant/source.json)。
+
+固定March7thAssistant的`check_divergent_universe_score`与`get_reward`另有周期积分／邮件发放语义，本次没有移植其盲点或把原生右侧红点当成周积分奖励。已有作者moesnow及贡献者与[GPL许可](upstream/March7thAssistant/LICENSE)保持；接口、请求范围和未实机边界见[独立领奖说明](../docs/du-rewards-only.md)。
+
 ## 2026-11-05 高难单位与列表候选
 
 [列表候选观察](../autohsr/challenge_roster.py)为AutoHSR原生实现，参考固定March7thAssistant `7cf6c6bed474539485d3b1504077ac352866829f`的`BaseChallenge.select_characters`及`Apocalyptic.select_characters`列表裁剪关系，继续使用既有105幅[原始头像及来源清单](upstream/March7thAssistant/support/sources.json)。作者moesnow及贡献者、[GPL v3](upstream/March7thAssistant/LICENSE)与游戏美术权利说明保持；没有新增图片、模型、上游输入框架或账号整图，候选、歧义与完整入队分开，接线范围记在[source.json](upstream/March7thAssistant/source.json)。

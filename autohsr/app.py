@@ -114,6 +114,8 @@ class Context:
                         self.vision.refine_du_reward_balance(scene)
                 elif self.report.operation == 'daily' and self.settings.daily_synthesis:
                     self.vision.refine_daily_synthesis(scene)
+                elif self.report.operation == 'du_rewards':
+                    self.vision.refine_du_reward_balance(scene)
                 if self.report.operation == 'redemption' or self.report.operation == 'daily' and self.settings.redemption_enabled:
                     self.vision.refine_redemption(scene)
                 scene.captured_at = captured_at
@@ -142,6 +144,8 @@ class Context:
         raise InputInterrupted("焦点恢复后须重新识别，旧输入目标已丢弃。")
 
     def _require_gameplay_input(self):
+        if self.report.operation == 'du_rewards':
+            raise AutomationError('差分独立领奖仅允许专用意图入口，不能使用通用点击、按键或移动。')
         if self.report.operation == 'challenge_prepare':
             raise AutomationError('高难备战只允许专用层数核验入口，不能使用通用点击或按键。')
         if self.report.operation.startswith("currency_wars"):
@@ -150,6 +154,35 @@ class Context:
     def _currency_weekly_checkpoint(self):
         guard=getattr(self.runner,'currency_weekly_guard',None)
         if guard is not None:guard.current()
+
+    def du_rewards_input(self, scene, action):
+        from .du_rewards_only import RewardAction
+        if self.report.operation != 'du_rewards' or type(action) is not RewardAction:
+            raise AutomationError('差分独立领奖需要本次专用任务及明确动作。')
+        workflow = getattr(self, 'du_rewards_workflow', None)
+        if workflow is None or workflow.c is not self:
+            raise AutomationError('缺少本次差分领奖流程与落盘意图。')
+        if sum(value is not None for value in (action.target, action.key, action.drag)) != 1:
+            raise AutomationError('差分领奖动作形态不唯一，未发送输入。')
+        self.checkpoint()
+        workflow.authorize(scene, action)
+        self.window.guard(scene.geometry)
+        self.checkpoint()
+        workflow.authorize(scene, action)
+        held_checkpoint = self._du_held_checkpoint(scene) if action.drag is not None else None
+        self.last_scene, self._scroll_anchor = None, None
+        try:
+            if action.target is not None:
+                self.window.click(*action.target.center, scene.geometry)
+            elif action.key == 'esc':
+                self.window.key('esc')
+            elif action.drag is not None:
+                self.window.drag(*action.drag, scene.geometry, checkpoint=held_checkpoint)
+            else:
+                raise AutomationError('差分独立领奖只允许已核实的返回键。')
+        except FocusLost:
+            self._focus_interrupted()
+        self.sleep(self.settings.action_delay)
 
     def redemption_input(self, scene, action):
         if not (self.report.operation == 'redemption' or self.report.operation == 'daily' and self.settings.redemption_enabled):
@@ -814,6 +847,8 @@ class Context:
         self._scroll_anchor = (point, scene.geometry, self.scene_epoch)
 
     def drag(self, scene: Scene, start: tuple[float, float], end: tuple[float, float], *, du_intent=None):
+        if self.report.operation == 'du_rewards':
+            self._require_gameplay_input()
         if self.report.operation == "differential_universe":
             if du_intent!='du_reward_gallery_pan' or not self.settings.differential_universe_rewards:
                 raise AutomationError("差分宇宙仅允许已开启领奖时的画廊平移。")
@@ -1350,7 +1385,7 @@ class Context:
 
 class Runner:
     def __init__(self, settings: Settings, emit=None, *, new_battle_run=False, operation="daily",
-                 du_runs=None, du_resume_active=False, du_periodic_rank=None,
+                 du_runs=None, du_resume_active=False, du_periodic_rank=None, du_use_cassettes=False,
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
                  currency_configure=False, currency_resume=False, weekly_plan=None, currency_strategy=None,
@@ -1358,6 +1393,9 @@ class Runner:
                  use_power_plan=False,new_power_plan=False):
         from dataclasses import replace
         settings=replace(settings)
+        if type(du_use_cassettes) is not bool or du_use_cassettes and operation != 'du_rewards':
+            raise ValueError('已有月下卡带选项仅用于独立差分领奖。')
+        self.du_use_cassettes = du_use_cassettes
         if (type(use_power_plan) is not bool or type(new_power_plan) is not bool or new_power_plan and not use_power_plan
                 or use_power_plan and (operation!='daily' or not settings.battle)):
             raise ValueError('体力计划仅用于已选择刷本的日常入口，新目标须明确启用体力计划。')
@@ -1727,9 +1765,13 @@ class Runner:
             catalogue = self.report.operation == "dungeon_catalogue"
             redemption = self.report.operation == 'redemption'
             challenge_prepare = self.report.operation == 'challenge_prepare'
-            if self.report.operation not in ("daily", "reward_only", "redemption", "challenge_prepare", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
+            du_rewards = self.report.operation == 'du_rewards'
+            if self.report.operation not in ("daily", "reward_only", "redemption", "challenge_prepare", "du_rewards", "currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", "currency_wars_flow_test", "differential_universe", "dungeon_catalogue"):
                 raise AutomationError("未知运行类型，未访问游戏。")
-            self.settings.validate('challenge_prepare' if challenge_prepare else "check" if catalogue else "currency_wars" if currency_wars else "differential_universe" if differential_universe else 'redemption' if redemption else "power_plan" if self.use_power_plan else "daily")
+            self.settings.validate('du_rewards' if du_rewards else 'challenge_prepare' if challenge_prepare else "check" if catalogue else "currency_wars" if currency_wars else "differential_universe" if differential_universe else 'redemption' if redemption else "power_plan" if self.use_power_plan else "daily")
+            if self.report.operation != 'currency_wars':
+                from .du_reward_store import preflight
+                preflight(directory.parent)
             configured_name=''
             if self.report.operation in ('currency_wars_points','currency_wars_rewards'):
                 from .currency_wars_points_run import require_no_active_match
@@ -1762,7 +1804,7 @@ class Runner:
                     require_session_access(saved,self.currency_resume)
                 configured_name=resolve_name(self.settings,self.currency_remembrance_name,saved,resume=self.currency_resume)
                 resolve_fast_mode(self.settings,self.currency_fast_mode,saved,resume=self.currency_resume)
-            if not catalogue and not currency_wars and not differential_universe and not redemption and not challenge_prepare and self.settings.battle and self.settings.allow_stamina_spend:
+            if not catalogue and not currency_wars and not differential_universe and not redemption and not challenge_prepare and not du_rewards and self.settings.battle and self.settings.allow_stamina_spend:
                 from .recovery import BattleBudget
                 self.battle_budget = BattleBudget(ROOT / "runs", self.settings, self.report)
                 from .workflow_identity import active as workflow_identity_active
@@ -1774,7 +1816,7 @@ class Runner:
             monitor = threading.Thread(target=self._hotkeys, name="AutoHSR-hotkeys", daemon=True)
             monitor.start()
             monitor_started = True
-            if (not catalogue and not currency_wars and not differential_universe and not challenge_prepare) or self.weekly_plan is not None or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard', 'currency_wars_points', 'currency_wars_rewards'):
+            if (not catalogue and not currency_wars and not differential_universe and not challenge_prepare and not du_rewards) or self.weekly_plan is not None or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard', 'currency_wars_points', 'currency_wars_rewards'):
                 self._prepare_daily_game()
             self._window = self._window or find_game(self.settings.game_path)
             if self.report.operation != "currency_wars" and is_elevated(self._window.hwnd) is True and not is_admin():
@@ -1805,6 +1847,15 @@ class Runner:
                 result = scan_catalogue(DailyWorkflow(context))
                 self.report.results.append(result)
                 self.report.status = "success" if result.status == "ok" else "partial"
+            elif du_rewards:
+                from .du_rewards_only import run_rewards
+                self.report.failure_task = 'du_rewards'
+                self.emit(dict(type='task', task='du_rewards', status='running', detail='核对并领取已有差分红点奖励；不开始演算'))
+                result = run_rewards(context, use_cassettes=self.du_use_cassettes)
+                self.report.results.append(result)
+                self.report.status = 'success' if result.status == 'ok' else 'partial'
+                self.report.failure_task = '' if result.status == 'ok' else 'du_rewards'
+                self.emit(dict(type='task', **result.__dict__))
             elif challenge_prepare:
                 from .challenge_prepare import prepare_challenge
                 self.report.failure_task = 'challenge_prepare'
@@ -1867,15 +1918,17 @@ class Runner:
             self.report.status = "stopped"
             self.report.error = str(error)
             self.report.safe_next = ("货币战争操作已停止；核对画面和本次动作记录后重新识别。" if self.report.operation.startswith("currency_wars") else
+                                     '差分领奖已停止；保留原意图及已核实领取，不重放未知动作；本次未开始演算。' if self.report.operation == 'du_rewards' else
                                      '高难备战已停止；保留层数选择记录，重新核对当前页面；本次未开战。' if self.report.operation == 'challenge_prepare' else
                                      '兑换已停止；已核实逐码结果保留，先核对未知提交，不重复确认。' if self.report.operation == 'redemption' else
                                      "差分宇宙自动演算已停止；核对本次截图、OCR 与动作记录。不要继续现有未完成存档。" if self.report.operation == "differential_universe" else
                                      "停止请求已生效；核对当前战斗及消耗后，可选择仅补领奖。")
             self.log(str(error), "warning")
         except Exception as error:
-            self.report.status = "partial" if self.report.daily_verified or self.report.redemption.get('results') or self.report.challenge.get('actions') else "failed"
+            self.report.status = "partial" if self.report.daily_verified or self.report.redemption.get('results') or self.report.challenge.get('actions') or self.report.du_rewards.get('actions') else "failed"
             self.report.error = str(error)
             self.report.safe_next = ("积分领奖未完成；保留原报告和领奖记录，未知领取不重发；仅已核实步骤可明确接续。" if self.report.operation=='currency_wars_rewards' else
+                                     '差分领奖未完整核实；保留原意图和已核实领取，未知动作不重放；本次未开始演算。' if self.report.operation == 'du_rewards' else
                                      '高难备战未完整核实；查看原层数选择和页面证据，不自动重发；本次未开战。' if self.report.operation == 'challenge_prepare' else
                                      '兑换批次未完成；先核对逐码结果和未知提交，已保存成功不重试。' if self.report.operation == 'redemption' else
                                      "货币战争操作失败；核对动作记录与前后截图，不自动重放。" if self.report.operation.startswith("currency_wars") else

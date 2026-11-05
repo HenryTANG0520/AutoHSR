@@ -213,6 +213,11 @@ class TaskWorkflowRunner:
 
     def _facts(self, result):
         facts = dict(status=result.get('status', 'failed'))
+        if result.get('operation') == 'du_rewards':
+            value = result.get('du_rewards', {}).get('rewards_verified')
+            if type(value) is bool:
+                facts['du_rewards_verified'] = value
+            return facts
         observed_daily = (result.get('daily_verified') is True or
                           any(row.get('task') == 'daily' for row in result.get('results', []) if isinstance(row, dict)))
         if (result.get('operation') in ('daily', 'plan') and observed_daily
@@ -232,6 +237,9 @@ class TaskWorkflowRunner:
 
     def _copy_totals(self, result):
         # Static reservations admit at most one daily owner. DU post-daily is off.
+        if result.get('operation') == 'du_rewards':
+            self.report.du_rewards = deepcopy(result['du_rewards'])
+            return
         if result.get('operation') in ('daily', 'plan'):
             for key in ('stamina_spent', 'stamina_limit', 'stamina_pending', 'immersifiers_spent', 'immersifiers_pending',
                         'daily_verified', 'daily_synthesis', 'engagement', 'battle_completed', 'battle_requested',
@@ -243,6 +251,26 @@ class TaskWorkflowRunner:
             self.report.workflow.setdefault('currency_results', []).append(deepcopy(result['currency_wars']))
         if result.get('differential_universe'):
             self.report.differential_universe = deepcopy(result['differential_universe'])
+
+    def _du_rewards(self, result, entry, node):
+        value = result.get('du_rewards')
+        if type(value) is not dict:
+            raise WorkflowError('独立差分领奖没有返回原生领奖记录。')
+        entry['du_rewards'] = deepcopy(value)
+        requested = self.specs[node['id']][1]['du_use_cassettes']
+        categories = value.get('requested_categories')
+        expected_categories = {'拟合等级', '稳态数组', '可能性画廊'} | ({'月下奇谭'} if requested else set())
+        if (type(value.get('schema')) is not int or value['schema'] != 1
+                or value.get('operation') != 'du_rewards'
+                or value.get('status') not in ('running', 'complete', 'partial', 'unknown', 'stopped', 'abort_before_input')
+                or type(value.get('rewards_verified')) is not bool
+                or value.get('battle_started') is not False or value.get('use_cassettes') is not requested
+                or type(categories) is not list or len(categories) != len(expected_categories)
+                or any(type(category) is not str for category in categories)
+                or set(categories) != expected_categories):
+            raise WorkflowError('独立差分领奖记录与原生范围或明确卡带授权不一致。')
+        if result.get('status') == 'success' and (value['status'] != 'complete' or value['rewards_verified'] is not True):
+            raise WorkflowError('独立差分领奖尚未核实红点完成，不能按完整成功推进。')
 
     def _task(self, node, entry):
         game = node['task'] in GAME_TASKS
@@ -277,6 +305,8 @@ class TaskWorkflowRunner:
             if not isinstance(result, dict) or result.get('status') not in ('success', 'partial', 'failed', 'stopped'):
                 raise WorkflowError('任务返回了未知结果。')
             entry['source'] = self._source(result, expected)
+            if node['task'] == 'du_rewards':
+                self._du_rewards(result, entry, node)
             if not game or self._identity.has_step_proof(identity_mark):
                 self._copy_totals(result)
             if game:

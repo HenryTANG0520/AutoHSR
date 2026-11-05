@@ -7,6 +7,13 @@
   "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json", "assets/currency-investment/sources.json", "assets/currency-auto/sources.json", "assets/upstream/March7thAssistant/challenge-ui/sources.json"],
   "native_extensions": [
     {
+      "path": "autohsr/du_rewards_only.py",
+      "native_files": ["autohsr/du_reward_store.py", "autohsr/du_rewards_cli.py", "autohsr/app.py", "autohsr/models.py", "autohsr/notify_runtime.py", "autohsr/task_workflow.py", "autohsr/task_workflow_run.py"],
+      "native_references": ["autohsr/du_rewards.py", "autohsr/currency_wars_identity.py", "autohsr/currency_wars_initial.py"],
+      "tests": ["autohsr/tests/test_du_rewards_only.py", "autohsr/tests/test_du_rewards_integration.py", "autohsr/tests/test_task_workflow_du_rewards.py"],
+      "kind": "AutoHSR-authored standalone collection of existing DU notification rewards using already attributed native reward pages, targets and evidence helpers. This is not the pinned upstream weekly-score claim or a new DU battle run. Explicit free fitting/steady/gallery scope, optional existing moon cassettes with a frozen observed ceiling, per-input durable two-file custody, dedicated Context authorization, independent fresh feedback and source-bound receipts. Unknown obligations block input-capable native entries; an exact no-input abort remains a failed record without inventing identity/completion. Task-tree results preserve requested-scope rewards separately from run counts and weekly score rewards, with one independent call and no dual cassette owner on a single path. No new images, models, upstream input framework or account captures; current full standalone paths still require live acceptance."
+    },
+    {
       "path": "autohsr/challenge_plan.py",
       "reference_source": "tasks/challenge/__init__.py",
       "native_files": [

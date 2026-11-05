@@ -42,10 +42,28 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw 'PyInstaller is not installed in the existing project environment. Build stopped; no dependencies installed.'
     }
+    # Private audit captures stay beside the source, outside the runtime bundle.
+    $taskAssetSourceRoot = Join-Path $projectRoot 'assets'
+    $taskAssetSourcePrefix = $taskAssetSourceRoot.TrimEnd('\') + '\'
+    $taskRuntimeAssets = [IO.Path]::GetFullPath((Join-Path $taskStagingRoot 'runtime-assets'))
+    $taskRuntimeAssetPrefix = $taskRuntimeAssets.TrimEnd('\') + '\'
+    New-Item -ItemType Directory -Path $taskRuntimeAssets -Force | Out-Null
+    foreach ($taskAssetFile in Get-ChildItem -LiteralPath $taskAssetSourceRoot -Recurse -File -Force) {
+        $taskAssetRelativePath = $taskAssetFile.FullName.Substring($taskAssetSourcePrefix.Length)
+        if ($taskAssetRelativePath.StartsWith('currency-auto\audit\', [StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+        $taskAssetTarget = [IO.Path]::GetFullPath((Join-Path $taskRuntimeAssets $taskAssetRelativePath))
+        if (-not $taskAssetTarget.StartsWith($taskRuntimeAssetPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'A staged asset path is outside the intended package staging directory.'
+        }
+        New-Item -ItemType Directory -Path (Split-Path -Parent $taskAssetTarget) -Force | Out-Null
+        Copy-Item -LiteralPath $taskAssetFile.FullName -Destination $taskAssetTarget -Force
+    }
     # Build elsewhere: Explorer or a process can keep the output directory itself open.
     & $taskVenvPython -m PyInstaller --noconfirm --onedir --windowed --name AutoHSR --distpath $taskStagingRoot `
         --collect-all rapidocr_onnxruntime --collect-all onnxruntime `
-        --add-data 'assets;assets' --add-data 'LICENSE;.' launcher.py
+        --add-data "$taskRuntimeAssets;assets" --add-data 'LICENSE;.' launcher.py
     if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed. See output above.' }
     New-Item -ItemType Directory -Path $taskOutputDirectory -Force | Out-Null
     $taskStagingPrefix = $taskStagingOutput.TrimEnd('\') + '\'

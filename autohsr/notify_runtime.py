@@ -23,7 +23,7 @@ OPERATIONS = {'daily': '日常', 'reward_only': '补领奖', 'plan': '日常与�
               'differential_universe': '差分宇宙', 'currency_wars_loop': '货币战争循环',
               'currency_wars_standard': '货币战争', 'currency_wars_points': '货币战争积分',
               'currency_wars_rewards': '货币战争领奖', 'task_workflow': '任务流程',
-              'challenge_prepare': '高难备战'}
+              'challenge_prepare': '高难备战', 'du_rewards': '差分奖励'}
 STATUS_LABELS = dict(success='完成', partial='部分完成', failed='失败', stopped='停止')
 
 
@@ -80,6 +80,9 @@ def report_message(settings, report):
     du = report.get('differential_universe')
     if isinstance(du, dict) and du:
         lines.append('差分完成：' + number(du.get('completed_runs')) + '/' + number(du.get('requested_runs')))
+    du_rewards = report.get('du_rewards')
+    if isinstance(du_rewards, dict) and du_rewards:
+        lines.append('差分所选红点奖励：' + ('已核实' if du_rewards.get('rewards_verified') is True else '未完整核实'))
     currency = report.get('currency_wars')
     if isinstance(currency, dict) and currency:
         if 'completed' in currency:

@@ -1,6 +1,6 @@
 # 可编辑任务流程后端
 
-更新：2026-10-30。此项接通正式任务级的树形编排、独立CLI和结果协议，供现有AutoHSR界面接入。GUI编辑器、实机组合及三月七的底层图文／鼠标／键盘流程尚未交付。没有操作游戏、读取真实账号记录、消耗资源或构建EXE。
+更新：2026-11-05。此项接通正式任务级的树形编排、独立CLI和结果协议，供现有AutoHSR界面接入。本次另接[独立差分红点领奖](du-rewards-only.md)，不为领奖请求新局。GUI编辑器、实机组合及三月七的底层图文／鼠标／键盘流程尚未交付。没有操作游戏、读取真实账号记录或消耗资源。
 
 ## 与三月七的关系
 
@@ -14,9 +14,10 @@
 
 | task | 正式实现 | params与默认行为 |
 | --- | --- | --- |
-| `daily` | `Runner(operation='daily')` | 不填`tasks`时沿用当前五项日常开关；可明确指定`assignments/battle/daily/mail/battlepass`子集。可覆盖`stamina_limit/rounds/target_name/target_location/dungeon_category/challenge_count/use_support`；`use_power_plan`默认false |
+| `daily` | `Runner(operation='daily')` | 不填`tasks`时沿用当前日常开关；可明确指定`assignments/battle/daily/redemption/mail/battlepass`子集。可覆盖`stamina_limit/rounds/target_name/target_location/dungeon_category/challenge_count/use_support`；`use_power_plan`默认false |
 | `plan` | `PlanRunner` | 沿用现有日常→到期周常；`use_power_plan`、`resume_weekly_currency`默认false。原周目标及接续规则保持 |
 | `differential_universe` | `Runner(operation='differential_universe')` | `runs`默认1、范围1～10；`mode`默认periodic，可选normal；`team`默认沿用当前预设；`save/rewards/resume_active`默认false；`periodic_rank`仅用于明确接续；通关后日常固定关闭 |
+| `du_rewards` | `Runner(operation='du_rewards')` | 已打开差分主页，独立处理三类免费已有红点；`use_cassettes`默认false，明确true才加入月下；不演算，不改变保存设置，不等于周积分领奖 |
 | `currency_wars_loop` | `CurrencyLoopRunner` | `runs`默认1、范围1～10，不接受0／无限批次；`resume`默认false；可选`strategy/until_points/continue_after_defeat`。未指定的后三项沿用原生默认及冻结设置；接续仍须核对原局数和原账本 |
 | `currency_wars_points` | 原生积分Runner | 无参数；仍会导航和核对当前账号／游戏周，属于游戏输入任务 |
 | `currency_wars_rewards` | 原生积分领奖Runner | `resume`默认false；不开始对局，不清理满额资源，未知领取不重放 |
@@ -43,7 +44,7 @@ UTF-8 JSON顶层为`version:1`、`name`、`steps`；不接受重复JSON键、NaN
 
 条件形如`{"step":"daily","field":"daily_verified","op":"eq","value":true}`。只能引用树中前面出现的步骤结果；所引用分支本次没执行、步骤被禁用而字段未知、类型不一致时停止，不将缺值视作false。`step:"@last"`表示最近一次实际执行的task结果，可用于有界观察循环；普通控制步骤不会替换它。
 
-字段为`status`、`daily_verified`、`completed_runs`、`victories`、`defeats`、`points_verified`、`rewards_verified`。只有对应子报告确实存在且含该字段时才可比较；其他玩法报告的默认实训false，以及未执行实训的日常默认false，都不是实训条件事实。计数支持`eq/ne/lt/le/gt/ge`，状态和布尔值只支持`eq/ne`。`completed_runs`分别指差分已完成数或CW已结束数，CW失败另见`defeats`，不等于胜利。
+字段为`status`、`daily_verified`、`completed_runs`、`victories`、`defeats`、`points_verified`、`rewards_verified`及独立差分的`du_rewards_verified`。后者只表示明确请求的红点奖励核实，不表示全部红点清空或周积分领奖。只有对应子报告确实存在且含该字段时才可比较；其他玩法报告的默认实训false，以及未执行实训的日常默认false，都不是实训条件事实。计数支持`eq/ne/lt/le/gt/ge`，状态和布尔值只支持`eq/ne`。`completed_runs`分别指差分已完成数或CW已结束数，CW失败另见`defeats`，不等于胜利。
 
 上限为1 MiB定义、256个节点、12层、最多10000次展开执行；禁用节点也计执行数量。每个可能路径最多一份日常预算、一个差分批次、一个CW批次；循环乘算，互斥分支取最大值。不能用两个daily步骤或for循环重复创建240预算。`plan`保守预留日常、差分与CW各一个所有者，不能再叠加独立同类任务；其10局预留值仅为静态最大值，不是实际请求或完成数。
 

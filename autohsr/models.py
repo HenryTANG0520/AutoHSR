@@ -104,6 +104,7 @@ class RunReport:
     daily_synthesis: dict = field(default_factory=dict)
     redemption: dict = field(default_factory=dict)
     challenge: dict = field(default_factory=dict)
+    du_rewards: dict = field(default_factory=dict)
     execution_identity: dict = field(default_factory=dict)
     engagement: int | None = None
     run_dir: str = ""
