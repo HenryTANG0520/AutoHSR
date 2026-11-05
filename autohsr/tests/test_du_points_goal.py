@@ -9,10 +9,10 @@ from time import time as wall_time
 import unittest
 from unittest.mock import Mock, patch
 
-from autohsr.app import Context
-from autohsr.differential_universe import DifferentialUniverseWorkflow
-from autohsr.du_periodic_points import GuidePointsUnverified, read_home_points
-from autohsr.models import AutomationError, EmptyCapture, Scene
+from autohsr.app import Context, Runner
+from autohsr.differential_universe import DifferentialUniverseWorkflow, classify_page
+from autohsr.du_periodic_points import GuidePointsUnverified, read_home_points, read_periodic_setup
+from autohsr.models import AutomationError, EmptyCapture, FocusLost, Scene
 from autohsr.tests.test_du_periodic_points import ACCOUNT, OTHER, replace, token, with_account
 from autohsr.tests.test_du_team import fixture
 from autohsr.weekly_plan import CHINA
@@ -53,6 +53,28 @@ class HomePointsTests(unittest.TestCase):
             with self.subTest(invalid=len(invalid.tokens)), self.assertRaises(GuidePointsUnverified):
                 read_home_points(invalid,NOW,WEEK)
 
+    def test_periodic_setup_requires_its_own_complete_headings_and_start(self):
+        page = fixture('periodic_setup')
+        rank, start = read_periodic_setup(page, .85)
+        self.assertEqual(rank, 5)
+        self.assertIs(start, page.find('启动「差分宇宙」', exact=True))
+        split = replace(page, '差分宇宙：乐园漫记丨难度V',
+                        token('差分宇宙：乐园漫记', .572, .118, .696, .147),
+                        token('难度Ⅹ', .700, .119, .75, .147))
+        self.assertEqual(read_periodic_setup(split, .85)[0], 10)
+
+        def with_extra(extra):
+            return Scene([*page.tokens, extra], page.image, page.geometry)
+
+        for kind, invalid in (
+                ('weak_competing_mode', with_extra(token('常规演算', .62, .31, .75, .37, .70))),
+                ('misplaced_mode', replace(page, '周期演算：不可亵玩', token('周期演算', .61, .32, .75, .36))),
+                ('missing_boss', replace(page, '本周首领敌人')),
+                ('competing_launch', with_extra(token('启动差分宇宙演算', .82, .91, .95, .94))),
+                ('ambiguous_button', with_extra(token('开始演算', .82, .91, .95, .94)))):
+            with self.subTest(kind=kind), self.assertRaises(GuidePointsUnverified):
+                read_periodic_setup(invalid, .85)
+
 
 class PointsGoalWorkflowTests(unittest.TestCase):
     def setUp(self):
@@ -69,6 +91,12 @@ class PointsGoalWorkflowTests(unittest.TestCase):
         setup.geometry = self.page.geometry
         field = Scene([token('(1/13)第一位面-战斗',.04,.028,.24,.05)],self.page.image,self.page.geometry)
         return setup,field
+
+    def mixed_setup(self):
+        setup, _ = self.setup_and_field()
+        return Scene([*setup.tokens, token('乐园漫记', .12, .04, .19, .08),
+                      token('常规演算', .62, .31, .75, .37),
+                      token('难度I', .06, .12, .11, .17)], setup.image, setup.geometry)
 
     @contextmanager
     def flow(self, pages, *, maximum=3):
@@ -166,22 +194,112 @@ class PointsGoalWorkflowTests(unittest.TestCase):
             self.assertEqual(flow.report['run_results'][0]['status'],'completed')
             self.assertEqual(flow.report['periodic_points_goal']['status'],'unverified')
 
-    def test_new_epoch_at_final_native_callback_blocks_old_start(self):
-        pages = [self.home(8000),self.home(8000),self.setup_and_field()[0]]
-        with self.flow(pages) as (flow,window,_,sent):
+    def test_mixed_setup_stops_before_a_preset_or_after_its_return(self):
+        for after_preset in (False, True):
+            pages = [self.home(8000), self.home(8000)]
+            if after_preset:
+                pages.append(self.setup_and_field()[0])
+            mixed = self.mixed_setup()
+            self.assertEqual(classify_page(mixed), 'difficulty_setup')
+            with self.subTest(after_preset=after_preset), self.flow([*pages, mixed]) as (flow, window, _, sent):
+                prepare = flow._prepare_and_start
+
+                def next_setup():
+                    current = flow.ctx.snapshot()
+                    return current, classify_page(current)
+
+                flow._prepare_and_start = lambda _page, _kind: prepare(*next_setup())
+                flow._select_preset_team = Mock(side_effect=lambda _page: next_setup())
+                with self.assertRaisesRegex(AutomationError, '周期备战页'):
+                    flow.run()
+                self.assertEqual(flow._select_preset_team.call_count, int(after_preset))
+                window.click.assert_not_called()
+                self.assertFalse(sent)
+                self.assertEqual(flow.report['mode'], '周期演算')
+                ledger = json.loads(Path(flow.report['ledger_path']).read_text('utf-8'))
+                self.assertEqual(ledger['periodic_points_goal']['status'], 'unverified')
+                self.assertEqual(ledger['run_results'][-1]['status'], 'not_started')
+
+    def test_context_rejects_launch_control_under_a_navigation_intent(self):
+        setup = self.setup_and_field()[0]
+        obscured = replace(replace(setup, '本周首领敌人'), '启动「差分宇宙」',
+                           token('开始游戏', .826, .884, .920, .909))
+        self.assertEqual(classify_page(obscured), 'home')
+        for page in (setup, self.mixed_setup(), obscured):
+            with self.flow([page]) as (flow, window, _, sent):
+                current = flow.ctx.snapshot()
+                observed = current.find(('启动「差分宇宙」', '开始游戏'), exact=True)
+                for target in (observed, token('启动差分宇宙演算', *observed.box), token('开始演算', *observed.box)):
+                    with self.subTest(label=target.text), self.assertRaisesRegex(AutomationError, '专用启动检查'):
+                        flow.ctx.click(current, target)
+                window.click.assert_not_called()
+                self.assertFalse(sent)
+
+    def test_final_native_block_preserves_the_request_as_not_sent_in_both_reports(self):
+        for failure in ('epoch', 'week', 'focus'):
+            pages = [self.home(8000), self.home(8000), self.setup_and_field()[0]]
+            with self.subTest(failure=failure), self.flow(pages) as (flow, window, clock, sent):
+                self.seed_launch_and_win(flow)
+                send = window.click.side_effect
+
+                def interrupt(*args, **kwargs):
+                    if failure == 'epoch':
+                        flow.ctx.runner.input_epoch += 1
+                    elif failure == 'week':
+                        clock['now'] = RESET
+                    else:
+                        window.guard.side_effect = FocusLost('synthetic foreground loss')
+                    return send(*args, **kwargs)
+
+                window.click.side_effect = interrupt
+                with self.assertRaises(AutomationError):
+                    flow.run()
+                self.assertFalse(sent)
+                ledger = json.loads(Path(flow.report['ledger_path']).read_text('utf-8'))
+                for record in (flow.report, ledger):
+                    self.assertEqual(record['requested_runs'], 3)
+                    self.assertEqual(record['completed_runs'], 0)
+                    self.assertEqual(record['periodic_points_goal']['status'], 'unverified')
+                    self.assertEqual(record['run_results'][-1]['status'], 'not_started')
+                    self.assertEqual(record['actions'][-1]['status'], 'not_sent')
+                    request = next(a for a in record['actions'] if a.get('intent') == 'periodic_start')
+                    self.assertEqual((request['run'], request['status']), (1, 'not_sent'))
+
+    def test_report_retry_after_week_reset_preserves_the_verified_win_and_observations(self):
+        pages = [self.home(8000), self.home(8000), *self.setup_and_field(), self.home(), self.home()]
+        with self.flow(pages) as (flow, _, clock, sent):
             self.seed_launch_and_win(flow)
-            send = window.click.side_effect
+            report = flow.ctx.report
+            report.results.append(flow.run())
+            report.status = 'success'
+            report.report_saved = True
+            folder = Path(report.run_dir)
+            original = Path.replace
+            publication_attempts = []
 
-            def interrupt(*args,**kwargs):
-                flow.ctx.runner.input_epoch += 1
-                return send(*args,**kwargs)
+            def replace_report(temp, destination):
+                if Path(destination).name == 'report.json':
+                    publication_attempts.append(json.loads(temp.read_text('utf-8'))['status'])
+                    if len(publication_attempts) == 1:
+                        clock['now'] = RESET
+                        raise PermissionError('synthetic report sharing violation')
+                return original(temp, destination)
 
-            window.click.side_effect = interrupt
-            with self.assertRaises(AutomationError):
-                flow.run()
-            self.assertFalse(sent)
-            self.assertEqual(flow.report['completed_runs'],0)
-            self.assertEqual(flow.report['actions'][-1]['status'],'not_sent')
+            with patch.object(Path, 'replace', replace_report):
+                Runner._save_run_report(flow.ctx.runner, folder, flow)
+
+            self.assertEqual(publication_attempts, ['success', 'partial'])
+            self.assertEqual(len(sent), 1)
+            saved = json.loads((folder / 'report.json').read_text('utf-8'))
+            self.assertEqual((saved['status'], saved['results'][-1]['status']), ('partial', 'partial'))
+            ledger = json.loads(Path(flow.report['ledger_path']).read_text('utf-8'))
+            for record in (saved['differential_universe'], ledger):
+                self.assertEqual(record['completed_runs'], 1)
+                self.assertEqual(record['run_results'][0]['status'], 'completed')
+                goal = record['periodic_points_goal']
+                self.assertEqual((goal['status'], goal['reason']), ('unverified', 'game_week_changed'))
+                self.assertEqual([(row['current'], row['game_week']) for row in goal['observations']],
+                                 [(8000, WEEK), (18000, WEEK)])
 
     def test_week_crossing_during_points_evidence_cannot_complete_the_goal(self):
         with self.flow([self.home(),self.home()]) as (flow,_,clock,sent):

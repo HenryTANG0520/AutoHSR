@@ -9,10 +9,10 @@ import time
 
 from .currency_wars_identity import account_key
 from .currency_wars_initial import evidence_ref
-from .currency_wars_points import compact, game_week, local_now
+from .currency_wars_points import anchor_text, compact, game_week, local_now
 from .currency_wars_prepare import trusted
 from .models import AutomationError, EmptyCapture, Scene, Token, normalize
-from .policy import du_guide_details
+from .policy import du_guide_details, replenishment_dialog
 from .weekly_plan import CHINA, WeeklyGuard
 
 
@@ -27,6 +27,16 @@ PANEL = (.128,.763,.356,.860)
 HOME_SCORE = (.065,.892,.262,.958)
 HOME_TIME = (.0,.848,.213,.891)
 HOME_PANEL = (.0,.848,.262,.958)
+SETUP_HEADING = (0,0,.24,.13)
+SETUP_RANK = (.54,.10,.86,.155)
+SETUP_MODE = (.55,.23,.90,.30)
+SETUP_BOSS = (.53,.51,.80,.59)
+SETUP_START = (.72,.82,1,.98)
+SETUP_START_LABELS = ('启动「差分宇宙」', '启动差分宇宙')
+OTHER_START_LABELS = ('开始游戏', '开始演算', '开始挑战', '开始模拟', '开始探索', '确认出战')
+SETUP_CONFLICTS = ('常规演算', '星阶模式', '拓星模式', '练习模式', '模式选择', '下载角色',
+                   '继续进度', '结束并结算', '账号验证', '账号登录', '游戏更新')
+ROMAN_RANKS = ('i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x')
 NUMBER = r'(?:0|[1-9][0-9]{0,8}|[1-9][0-9]{0,2}(?:,[0-9]{3}){1,2})'
 RATIO = re.compile(rf'({NUMBER})/({NUMBER})')
 COUNTDOWN = re.compile(r'(?:(\d{1,2})天)?(?:(\d{1,3})小时)?(?:(\d{1,2})分钟)?')
@@ -133,7 +143,7 @@ def _require_countdown(text, captured_at, week):
         raise GuidePointsUnverified('week_countdown_conflict')
 
 
-def _home_row(scene, bounds, confidence, reason):
+def _horizontal_row(scene, bounds, confidence, reason):
     parts = sorted((token for token in scene.tokens if token.within(bounds)),key=lambda token:token.box[0])
     if (not 1 <= len(parts) <= 4 or any(not _inside(token,bounds,confidence) for token in parts)
             or any(not -.003 <= right.box[0]-left.box[2] <= .025
@@ -149,15 +159,66 @@ def read_home_points(scene, captured_at, week, confidence=.85):
     if (not home(clean) or not clean.has('更新内容',(.84,.03,.96,.09),exact=True)
             or scene.has(('账号验证','账号登录','验证码','用户协议','资源下载','继续进度','结束并结算'))):
         raise GuidePointsUnverified('home_points_page_unverified')
-    score = _home_row(scene,HOME_SCORE,confidence,'home_score_row_unverified')
+    score = _horizontal_row(scene,HOME_SCORE,confidence,'home_score_row_unverified')
     current,cap = _score(score)
-    timer = _home_row(scene,HOME_TIME,confidence,'home_countdown_unverified')
+    timer = _horizontal_row(scene,HOME_TIME,confidence,'home_countdown_unverified')
     time_text = compact(''.join(token.text for token in timer).lstrip().removeprefix('①'))
     prefix = '本期剩余时间'
     if not time_text.startswith(prefix):
         raise GuidePointsUnverified('home_countdown_unverified')
     _require_countdown(time_text.removeprefix(prefix).removeprefix(':'),captured_at,week)
     return GuidePoints(current,cap,(*timer,*score))
+
+
+def _launch_label(text):
+    return anchor_text(text).startswith('启动差分宇宙')
+
+
+def is_setup_launch_click(scene, target):
+    """Keep the launch area out of ordinary clicks even on conflicting setup frames."""
+    if not isinstance(target, Token):
+        return False
+    if _launch_label(target.text):
+        return True
+    if not target.within(SETUP_START):
+        return False
+    from .differential_universe import classify_page
+    if (any(t.within(SETUP_START) and _launch_label(t.text) for t in scene.tokens)
+            or classify_page(scene) in ('periodic_setup', 'difficulty_setup', 'star_rank_setup')):
+        return True
+    return (anchor_text(target.text).startswith(OTHER_START_LABELS)
+            and (scene.has('本周首领敌人', SETUP_BOSS, exact=True)
+                 or scene.has('难度', SETUP_RANK) and scene.has('乐园漫记', SETUP_RANK)))
+
+
+def read_periodic_setup(scene, confidence):
+    from .currency_wars_standard import NAVIGATION_BLOCKERS
+    from .differential_universe import classify_page
+
+    reason = 'periodic_setup_unverified'
+    observed = trusted(scene, 0)
+    if (classify_page(observed) != 'periodic_setup' or observed.has((*SETUP_CONFLICTS, *NAVIGATION_BLOCKERS))
+            or replenishment_dialog(observed)
+            or not any(normalize(t.text) == '差分宇宙' and _inside(t, SETUP_HEADING, confidence)
+                       for t in observed.tokens)):
+        raise GuidePointsUnverified(reason)
+    _label(observed, '本周首领敌人', SETUP_BOSS, confidence, reason)
+    modes = [t for t in observed.tokens if t.within(SETUP_MODE)
+             and (compact(t.text) == '周期演算' or compact(t.text).startswith('周期演算:'))]
+    if len(modes) != 1 or not _inside(modes[0], SETUP_MODE, confidence):
+        raise GuidePointsUnverified(reason)
+    header = _horizontal_row(observed, SETUP_RANK, confidence, reason)
+    text = normalize(compact(''.join(t.text for t in header)))
+    match = re.fullmatch(r'差分宇宙乐园漫记[丨|/-]?难度([ivx]+|10|[1-9])', text)
+    if match is None or not (match[1].isdigit() or match[1] in ROMAN_RANKS):
+        raise GuidePointsUnverified(reason)
+    rank = int(match[1]) if match[1].isdigit() else ROMAN_RANKS.index(match[1]) + 1
+    starts = [t for t in observed.tokens if t.within(SETUP_START)
+              and (_launch_label(t.text) or anchor_text(t.text).startswith(OTHER_START_LABELS))]
+    if (len(starts) != 1 or normalize(starts[0].text) not in SETUP_START_LABELS
+            or not _inside(starts[0], SETUP_START, confidence)):
+        raise GuidePointsUnverified(reason)
+    return rank, starts[0]
 
 
 @dataclass(frozen=True)
@@ -256,6 +317,27 @@ class PeriodicPointsGoal:
         self.identity = None
         self.source = None
 
+    def invalidate(self, reason):
+        self.result.update(status='unverified', reason=self.result.get('reason') or reason)
+
+    def expire_at_publication(self):
+        if (self.source is None or self.result['status'] not in ('capped', 'exhausted')
+                or game_week(local_now()) == self.source.week):
+            return False
+        self.invalidate('game_week_changed')
+        return True
+
+    def require_setup(self, scene, *, target=None):
+        try:
+            setup = read_periodic_setup(scene, self.confidence)
+            if target is not None and target is not setup[1]:
+                raise GuidePointsUnverified('periodic_start_target_unverified')
+        except GuidePointsUnverified as error:
+            self.invalidate(str(error))
+            raise AutomationError('差分周期积分目标的周期备战页或启动按钮未核实。') from error
+        self.require_current(scene, launch=True)
+        return setup
+
     def _capture(self, scene):
         capture = _capture(self.context,scene,self.confidence)
         identity = (capture.account,capture.week,capture.window,capture.directory)
@@ -267,8 +349,11 @@ class PeriodicPointsGoal:
 
     def require_current(self, scene, *, launch=False):
         try:
+            if launch:
+                self.context.window.guard(scene.geometry)
             self.context.checkpoint()
-            self.context.window.guard(scene.geometry)
+            if not launch:
+                self.context.window.guard(scene.geometry)
             current = self._capture(scene)
             source = self.source
             if (source is None or current.epoch != source.epoch or current.geometry != source.geometry
@@ -278,8 +363,18 @@ class PeriodicPointsGoal:
                 raise GuidePointsUnverified('points_launch_unverified')
             if not launch and current.stamp != source.stamp:
                 raise GuidePointsUnverified('capture_not_fresh')
+            if launch:
+                self.context.window.guard(scene.geometry)
+                if (scene is not self.context.last_scene or current.geometry != scene.geometry
+                        or current.window != self.context.window.hwnd or current.directory != self.context.report.run_dir
+                        or current.epoch != self.context.scene_epoch or current.epoch != self.context.runner.input_epoch):
+                    raise GuidePointsUnverified('capture_scope_unverified')
+                if not 0 <= time.monotonic() - current.stamp <= 8:
+                    raise GuidePointsUnverified('capture_not_fresh')
+                if game_week(local_now()) != current.week:
+                    raise GuidePointsUnverified('game_week_changed')
         except GuidePointsUnverified as error:
-            self.result.update(status='unverified',reason=str(error))
+            self.invalidate(str(error))
             raise AutomationError('差分周期积分目标的当前画面或账号未核实，停止启动。') from error
 
     def observe(self, scene, completed):

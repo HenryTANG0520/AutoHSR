@@ -415,11 +415,27 @@ class Context:
         weekly_start_guard = None
         synthesis_resource_guard = None
         points_goal = None
+        points_request = None
         if self.report.operation == "differential_universe":
+            goal = getattr(self, 'du_points_goal', None)
+            if goal is not None or getattr(self.runner, 'du_until_points', False) is True:
+                from .du_periodic_points import is_setup_launch_click
+                if du_intent != 'periodic_start' and is_setup_launch_click(scene, target):
+                    raise AutomationError('周期积分目标的启动按钮须走专用启动检查，未发送点击。')
+                if du_intent in ('periodic_start', 'du_team_open'):
+                    if goal is None:
+                        raise AutomationError('本次周期积分来源未核实，未发送点击。')
+                    goal.require_setup(scene, target=target if du_intent == 'periodic_start' else None)
             if du_intent=='periodic_start':
-                points_goal = getattr(self,'du_points_goal',None)
+                points_goal = goal
                 if points_goal is not None:
-                    points_goal.require_current(scene,launch=True)
+                    report = self.report.differential_universe
+                    actions = report.get('actions', [])
+                    points_request = actions[-1] if actions else {}
+                    if (points_request.get('intent') != 'periodic_start' or points_request.get('status') != 'requested'
+                            or points_request.get('run') != report.get('current_run')
+                            or points_request.get('action') != getattr(target, 'text', None)):
+                        raise AutomationError('本局周期积分启动缺少已记录的请求，未发送点击。')
                 from .weekly_plan import WeeklyGuard
                 candidate=getattr(self.runner,'weekly_plan',None)
                 if isinstance(candidate,WeeklyGuard):
@@ -472,7 +488,8 @@ class Context:
                     raise AutomationError('强制舍弃奇物反馈待核对，已超过观察时限，未发送输入。')
                 if not 0 <= now - scene.captured_at <= 8:
                     raise AutomationError('奇物舍弃证据保存后画面已过期，反馈待核对，未发送输入。')
-            du_record = {"action": label, "status": "sent", "before": str(before), "page_text": scene.text}
+            du_record = {"action": label, "status": "requested" if points_goal is not None else "sent",
+                         "before": str(before), "page_text": scene.text}
             self.report.differential_universe.setdefault("actions", []).append(du_record)
         if weekly_start_guard is not None:
             try:
@@ -498,13 +515,19 @@ class Context:
                 self.window.click(*coordinates,scene.geometry)
             else:
                 def check_points_before_send():
-                    try:
-                        points_goal.require_current(scene,launch=True)
-                    except (AutomationError,Stopped) as error:
+                    points_goal.require_setup(scene, target=target)
+                    points_request['status'] = du_record['status'] = 'unknown'
+
+                try:
+                    self.window.click(*coordinates,scene.geometry,before_send=check_points_before_send)
+                except (AutomationError, OSError) as error:
+                    if du_record['status'] == 'requested':
                         du_record.update(status='not_sent',reason='points_goal_revalidation_failed',detail=str(error))
-                        raise
-                self.window.click(*coordinates,scene.geometry,before_send=check_points_before_send)
+                    raise
+                points_request['status'] = du_record['status'] = 'sent'
         except FocusLost:
+            if points_goal is not None:
+                raise
             self._focus_interrupted()
         self.last_scene = None
         self.sleep(self.settings.action_delay)
@@ -1834,6 +1857,32 @@ class Runner:
             self.stop()
             self._control_checkpoint()
 
+    def _save_run_report(self, directory, points_workflow=None):
+        temporary = directory / 'report.tmp'
+
+        def write_report():
+            temporary.write_text(json.dumps(self.report.to_dict(), ensure_ascii=False, indent=2), encoding='utf-8')
+
+        write_report()
+        if points_workflow is None:
+            replace_file(temporary, directory / 'report.json')
+            return
+
+        def check_publication_week():
+            if not points_workflow.expire_points_at_publication():
+                return
+            if self.report.status == 'success':
+                self.report.status = 'partial'
+            if self.report.status == 'partial':
+                self.report.failure_task = 'differential_universe'
+            for result in self.report.results:
+                if result.task == 'differential_universe':
+                    result.status = 'partial'
+                    result.detail = points_workflow.report['last_message']
+            write_report()
+
+        replace_file(temporary, directory / 'report.json', before_replace=check_publication_week)
+
     def run(self) -> RunReport:
         from .workflows import DailyWorkflow
         from .windows import kernel32
@@ -1852,6 +1901,7 @@ class Runner:
         mutex = kernel32.CreateMutexW(None, False, "Local\\AutoHSR.DailyRunner")
         already_running = C.get_last_error() == 183
         context = None
+        points_workflow = None
         monitor = None
         monitor_started = False
         defer_battle_budget = False
@@ -1983,9 +2033,12 @@ class Runner:
                 # A universe may already have begun; never replay the whole run
                 # after an interrupted input or pause. Preserve evidence and stop.
                 if self.weekly_plan is None or self.weekly_plan.prepare(context):
-                    result = DifferentialUniverseWorkflow(context, self.du_runs,
+                    du_workflow = DifferentialUniverseWorkflow(context, self.du_runs,
                         resume_active=self.du_resume_active, periodic_rank=self.du_periodic_rank,
-                        **({'until_points': True} if self.du_until_points else {})).run()
+                        **({'until_points': True} if self.du_until_points else {}))
+                    if self.du_until_points:
+                        points_workflow = du_workflow
+                    result = du_workflow.run()
                 else:
                     result = TaskResult("weekly", "ok", "本周演算已完成，已跳过。")
                 self.report.results.append(result)
@@ -2069,9 +2122,7 @@ class Runner:
                 kernel32.CloseHandle(mutex)
             try:
                 self.report.report_saved = True
-                temporary = directory / "report.tmp"
-                temporary.write_text(json.dumps(self.report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-                replace_file(temporary,directory / "report.json")
+                self._save_run_report(directory, points_workflow)
             except OSError as error:
                 self.report.report_saved = False
                 self.report.report_write_error = str(error)
@@ -2125,9 +2176,7 @@ class Runner:
                     self.report.safe_next = "报告已保存，但证据清单不完整；核对当前目录与差分宇宙存档后再处理。"
                     self.log(f"证据清单保存失败：{error}", "error")
                     try:
-                        temporary = directory / "report.tmp"
-                        temporary.write_text(json.dumps(self.report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-                        replace_file(temporary,directory / "report.json")
+                        self._save_run_report(directory, points_workflow)
                     except OSError:
                         pass
             self._logger.removeHandler(handler)

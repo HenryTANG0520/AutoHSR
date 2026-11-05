@@ -752,6 +752,7 @@ class DifferentialUniverseWorkflow:
         scene, kind = self._open_differential_universe(scene, kind)
         team_verified=False
         for _ in range(8):
+            points_setup = None
             self.ctx.checkpoint()
             self._weekly_boundary()
             if kind == "active_save":
@@ -777,12 +778,17 @@ class DifferentialUniverseWorkflow:
             if kind in ('difficulty_setup','star_rank_setup','periodic_setup','team_selection'):
                 # A remembered setup is mode-specific; never silently launch it
                 # when the requested mode differs.
-                mode_periodic=scene.has('周期演算')
-                if mode_periodic != (self.settings.differential_universe_mode=='periodic'):
+                if self.points_goal is not None:
+                    points_setup = self.points_goal.require_setup(scene)
+                elif scene.has('周期演算') != (self.settings.differential_universe_mode=='periodic'):
                     raise AutomationError('当前备战页与所选演算模式不一致，请返回模式选择；未启动其他模式。')
                 if not team_verified:
                     scene,kind=self._select_preset_team(scene)
                     team_verified=True
+                    if self.points_goal is not None:
+                        points_setup = self.points_goal.require_setup(scene)
+                if points_setup is not None:
+                    kind = 'periodic_setup'
             if kind == "difficulty_setup":
                 scene = self._select_lowest_difficulty(scene)
                 target = scene.find("进入星阶模式", exact=True)
@@ -818,7 +824,8 @@ class DifferentialUniverseWorkflow:
             if kind == "periodic_setup":
                 # Preserve the selected periodic rank; choose the named preset
                 # independently because this page remembers its own old team.
-                rank = self._displayed_difficulty_rank(scene)
+                rank, start = (points_setup if points_setup is not None
+                               else (self._displayed_difficulty_rank(scene), None))
                 if rank is None:
                     raise AutomationError("周期演算页未能核实当前显示的难度；未启动。")
                 if self.periodic_rank is not None and rank != self.periodic_rank:
@@ -831,7 +838,8 @@ class DifferentialUniverseWorkflow:
                     "user_selected": True, "before": str(before),
                 }
                 self._persist_ledger()
-                start = self._find(scene, ("启动「差分宇宙」", "启动差分宇宙"), (0.72, 0.82, 1, 0.98))
+                if start is None:
+                    start = self._find(scene, ("启动「差分宇宙」", "启动差分宇宙"), (0.72, 0.82, 1, 0.98))
                 if start is None:
                     raise AutomationError("周期演算页未识别到启动差分宇宙按钮。")
                 scene, kind = self._click(scene, start, intent="periodic_start", label="periodic_run_started")
@@ -886,12 +894,22 @@ class DifferentialUniverseWorkflow:
             goal.require_current(scene)
             return scene,kind
         except (AutomationError,OSError):
-            goal.result.update(status='unverified',reason=goal.result.get('reason') or 'points_check_failed')
+            goal.invalidate('points_check_failed')
             try:
                 self._persist_ledger()
             except OSError:
                 pass
             raise
+
+    def expire_points_at_publication(self):
+        if self.points_goal is None or not self.points_goal.expire_at_publication():
+            return False
+        self.report['last_message'] = '保存差分报告前游戏周已切换，保留原游戏周积分观察和已核实胜利。'
+        try:
+            self._persist_ledger()
+        except OSError:
+            self.points_goal.result['ledger_updated'] = False
+        return True
 
     def _after_completed_run(self,scene,kind,label):
         if self.settings.differential_universe_rewards:
@@ -3085,7 +3103,19 @@ class DifferentialUniverseWorkflow:
                 "run_id": run_id, "origin": "fresh", "counted": False,
                 "status": "starting", "started_at": time.time()})
             self._persist_ledger()
-            scene, kind = self._prepare_and_start(scene, kind)
+            try:
+                scene, kind = self._prepare_and_start(scene, kind)
+            except (AutomationError, OSError):
+                if self.points_goal is not None:
+                    self.points_goal.invalidate('points_launch_unverified')
+                    request = next((action for action in reversed(self.report['actions'])
+                                    if action.get('run') == attempt_no and action.get('intent') == 'periodic_start'), None)
+                    if request is not None and request['status'] == 'requested':
+                        request.update(status='not_sent', reason='points_goal_revalidation_failed')
+                    if request is None or request['status'] == 'not_sent':
+                        self.report['run_results'][-1]['status'] = 'not_started'
+                    self._persist_ledger()
+                raise
             start_evidence = self.report["page_history"][-1]["evidence"] if self.report["page_history"] else ""
             difficulty = dict(self.report.get("difficulty_selection", {}))
             periodic = self.report.get("mode") == "周期演算"
