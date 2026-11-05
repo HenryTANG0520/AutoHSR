@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-11-06 高难结算反馈局部图
+
+新增固定 March7thAssistant 的两幅模式返回图、一幅节点去向图和一幅红色「败」字图。四幅原件保留原始字节，作者为 moesnow 及其贡献者，游戏美术权利归 HoYoverse 及相应权利人。原路径、尺寸、Git blob、SHA-256 和观察用途记入来源清单。[局部图说明](upstream/March7thAssistant/challenge-ui/README.md) · [原图清单](upstream/March7thAssistant/challenge-ui/sources.json) · [GPL v3](upstream/March7thAssistant/LICENSE)
+
 ## 2026-11-05 货币战争满席历史裁片
 
 新增三张历史超频 A0 的地面晶矿裁片，仅保留晶矿区域。三帧为同一历史事件的前后观察，原件留在本地。标准局回归将裁片与合成备战、提示和假窗口组合。游戏美术归 HoYoverse 及相应权利人。原件 SHA-256、变换、游戏版本和裁片哈希见[来源清单](../autohsr/tests/fixtures/currency_crystals/sources.json)。

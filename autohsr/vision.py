@@ -14,6 +14,8 @@ def helper_overlay(scene):
 
 
 class Vision:
+    uid_counterevidence_floor = None
+
     def __init__(self, confidence: float = 0.65):
         from rapidocr_onnxruntime import RapidOCR
         # Models bundled by RapidOCR keep AutoHSR independently installable.
@@ -28,12 +30,26 @@ class Vision:
         sample = cv2.resize(image, None, fx=scale, fy=scale) if scale < 1 else image
         results, _ = self.engine(sample, use_cls=False)
         tokens = []
+        uid_candidates = []
+        uid_floor = self.uid_counterevidence_floor
+        if uid_floor is not None:
+            from .currency_wars_identity import UID_COUNTEREVIDENCE, complete_uid
         for box, text, score in results or []:
-            if float(score) < self.confidence:
+            score = float(score)
+            below_threshold = score < self.confidence
+            if below_threshold and (uid_floor is None or score < uid_floor):
                 continue
             xs, ys = zip(*box)
-            tokens.append(Token(str(text), float(score), (min(xs)/(width*scale), min(ys)/(height*scale), max(xs)/(width*scale), max(ys)/(height*scale))))
-        return Scene(tokens, image, geometry, captured_at)
+            token = Token(str(text), score, (min(xs)/(width*scale), min(ys)/(height*scale),
+                                             max(xs)/(width*scale), max(ys)/(height*scale)))
+            if not below_threshold:
+                tokens.append(token)
+            elif complete_uid(token):
+                uid_candidates.append(token)
+        scene = Scene(tokens, image, geometry, captured_at)
+        if uid_candidates:
+            scene.field_reads[UID_COUNTEREVIDENCE] = tuple(uid_candidates)
+        return scene
 
     def template(self, scene: Scene, path: Path, roi=(0, 0, 1, 1), threshold=0.88):
         """Optional local UI anchor matching, resized to the 1080p baseline."""

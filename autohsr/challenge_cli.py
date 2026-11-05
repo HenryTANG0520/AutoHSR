@@ -1,4 +1,4 @@
-"""Explicit high-difficulty preparation and a file-only plan preview."""
+"""Explicit challenge preparation, result observation and file-only plan preview."""
 import json
 from pathlib import Path
 import sys
@@ -17,6 +17,7 @@ def read_plan(path):
 def add_arguments(mode, parser):
     mode.add_argument('--challenge-check', type=Path, help='离线核对高难双队与层数计划；不访问游戏或保存配置')
     mode.add_argument('--challenge-prepare', action='store_true', help='从已打开的混沌回忆或虚构叙事主页进入首个目标层备战，仅核实页面')
+    mode.add_argument('--challenge-result', action='store_true', help='只读核对前台高难结算反馈，保存本次独立证据')
     parser.add_argument('--challenge-plan', type=Path, help='仅用于本次高难备战的明确双队JSON计划；不保存配置')
 
 
@@ -34,6 +35,10 @@ def dispatch(args, parser, raw_args):
             return 2
     if args.challenge_plan is not None and not args.challenge_prepare:
         parser.error('--challenge-plan仅用于明确的--challenge-prepare入口。')
+    if args.challenge_result:
+        allowed = {'--challenge-result', '--config', '--game-path'}
+        if any(token.startswith('--') and token.split('=')[0] not in allowed for token in raw_args):
+            parser.error('高难结算只读观察仅接受配置与游戏路径，不能混入其他操作。')
     if args.challenge_prepare:
         allowed = {'--challenge-prepare', '--challenge-plan', '--config', '--game-path',
                    '--notify', '--no-notify', '--notify-profile'}

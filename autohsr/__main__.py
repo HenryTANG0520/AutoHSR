@@ -262,7 +262,12 @@ def main(argv: list[str] | None = None) -> int:
         tests = unittest.defaultTestLoader.discover(str(test_path))
         result = unittest.TextTestRunner(verbosity=2).run(tests)
         return 0 if result.wasSuccessful() else 1
-    if not any((args.check, args.scan_dungeons, build_target, args.launch, args.run, args.plan, args.redeem_codes, args.challenge_prepare, args.du_rewards_only, args.currency_wars_check, args.currency_wars_prepare, args.currency_wars_locate, args.currency_wars_configure, args.currency_wars_configure_overclock, args.currency_wars_standard, args.currency_wars_loop, args.currency_wars_points, args.currency_wars_rewards, args.differential_universe)):
+    if not any((args.check, args.scan_dungeons, build_target, args.launch, args.run, args.plan,
+                args.redeem_codes, args.challenge_prepare, args.challenge_result, args.du_rewards_only,
+                args.currency_wars_check, args.currency_wars_prepare, args.currency_wars_locate,
+                args.currency_wars_configure, args.currency_wars_configure_overclock,
+                args.currency_wars_standard, args.currency_wars_loop, args.currency_wars_points,
+                args.currency_wars_rewards, args.differential_universe)):
         if any(getattr(args, key) is not None for key in ('redemption_server', 'redemption_source', 'redemption_code', 'redemption_catalog', 'with_redemption', 'redemption_mail')):
             parser.error('兑换码运行选项需要明确的 --redeem-codes 或 --run/--plan 入口。')
         from .admin_launch import AdminLaunchError, handoff, is_admin
@@ -354,7 +359,8 @@ def main(argv: list[str] | None = None) -> int:
             settings = reward_only_settings(settings)
         from .redemption_cli import apply_overrides as apply_redemption_overrides
         apply_redemption_overrides(args, parser, settings)
-        settings.validate('build_target_preview' if args.preview_build_target else 'du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "check" if args.check or args.scan_dungeons or args.read_build_target else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or args.currency_wars_configure_overclock or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "power_plan" if args.power_plan else "daily")
+        check_only = args.check or args.scan_dungeons or args.read_build_target or args.challenge_result
+        settings.validate('build_target_preview' if args.preview_build_target else 'du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "check" if check_only else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or args.currency_wars_configure_overclock or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "power_plan" if args.power_plan else "daily")
         from .app import Runner, inspect_game, launch_game
         if args.check:
             print(_json(inspect_game(settings)))
@@ -367,10 +373,12 @@ def main(argv: list[str] | None = None) -> int:
             if kind != "finished":
                 print(json.dumps(event, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
         wrap_notifications = None
-        if not (build_target or args.currency_wars_configure_overclock):
+        if not (build_target or args.challenge_result or args.currency_wars_configure_overclock):
             from .notify_runtime import hooks as notification_hooks
             emit, wrap_notifications = notification_hooks(settings, emit)
-        if build_target:
+        if args.challenge_result:
+            runner = Runner(settings, emit, operation='challenge_result')
+        elif build_target:
             operation = 'build_target_preview' if args.preview_build_target else 'build_target_read'
             runner = Runner(settings, emit, operation=operation)
         elif args.currency_wars_loop:

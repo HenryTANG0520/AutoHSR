@@ -72,6 +72,16 @@
       "kind": "AutoHSR-authored independent preparation Runner, not a complete challenge executor. Current-window only, no daily startup or spending budget. Freeze plan/account/epoch, require distinct fresh observations, durable same-run source PNG byte/pixel/shape proof and intent, derive the current first-level target again at the dedicated Context boundary, click at most once and require two same-level preparation returns. Saved verified setup observations now include read-only list-portrait candidates; unknown candidates do not change the preparation-only result and no candidates authorize input. Unknown/interrupted selection is retained, never replayed; existing verified setup is observed without input. No reset, selected-team claim, movement, technique, combat, rewards, arbitrary coordinates or imported upstream input framework."
     },
     {
+      "path": "autohsr/challenge_result.py",
+      "reference_source": "tasks/challenge/purefiction.py",
+      "reference_sources": ["tasks/challenge/purefiction.py", "tasks/challenge/apocalyptic.py", "tasks/challenge/memoryofchaos.py"],
+      "reference_functions": ["PureFiction.check_fight", "Apocalyptic.check_fight", "MemoryOfChaos.check_fight"],
+      "native_files": ["autohsr/challenge_pages.py", "autohsr/challenge_cli.py", "autohsr/__main__.py", "autohsr/app.py", "autohsr/models.py"],
+      "asset_manifest": "assets/upstream/March7thAssistant/challenge-ui/sources.json",
+      "tests": ["autohsr/tests/test_challenge_result.py"],
+      "kind": "AutoHSR-authored standalone observation of pinned return and node-transition crops plus a red failure glyph. Captions require aligned OCR, and evidence is bound to two uninterrupted fresh same-account and same-window frames. Half, reached node, scores, stars, outcome, settlement and reward state are unknown pending real full-frame calibration. Existing preparation and its receipts are separate. No upstream navigation, input or absent-failure success inference is imported."
+    },
+    {
       "path": "autohsr/redemption_server.py",
       "reference_source": "utils/registry/star_rail_setting.py",
       "reference_functions": ["get_game_path"],

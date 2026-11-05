@@ -62,7 +62,7 @@ def setup_scene(level=1):
 class ChallengePageTests(unittest.TestCase):
     def test_original_reference_manifest_and_bytes_are_required(self):
         data = json.loads((pages.ASSET_ROOT / 'sources.json').read_text(encoding='utf-8'))
-        self.assertEqual(len(data['images']), 19)
+        self.assertEqual(len(data['images']), 23)
         self.assertEqual(set(pages._references()), set(pages._FILES))
         import hashlib
         for row in data['images']:

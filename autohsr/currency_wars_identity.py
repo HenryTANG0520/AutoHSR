@@ -10,14 +10,21 @@ from .currency_wars_prepare import trusted
 from .models import AutomationError, normalize
 
 
+UID_COUNTEREVIDENCE = 'uid_counterevidence'
+
+
 class AccountNotObserved(AutomationError):
     """The current frame contains no complete, trusted account candidate."""
 
 
+def complete_uid(token):
+    if token.within((0, .94, .23, 1)):
+        return re.fullmatch(r'uid([0-9]{8,10})', normalize(token.text))
+    return None
+
+
 def account_key(scene, confidence=.85):
-    values = [match[1] for token in trusted(scene,confidence).tokens
-              if token.within((0,.94,.23,1)) and
-              (match := re.fullmatch(r'uid([0-9]{8,10})',normalize(token.text)))]
+    values = [match[1] for token in trusted(scene, confidence).tokens if (match := complete_uid(token))]
     if len(values) != 1:
         failure = AccountNotObserved if not values else AutomationError
         raise failure('当前账号标识未完整核实，未沿用旧对局事实。')

@@ -135,7 +135,11 @@ class RunReport:
     power_plan: dict = field(default_factory=dict)
     report_saved: bool = False
     report_write_error: str = ""
+    challenge_result: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         from dataclasses import asdict
-        return asdict(self)
+        data = asdict(self)
+        if self.operation != 'challenge_result':
+            del data['challenge_result']
+        return data

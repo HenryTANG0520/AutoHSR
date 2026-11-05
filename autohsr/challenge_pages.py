@@ -50,8 +50,13 @@ _BLOCKED = ('确认', '取消', '是否退出', '重新挑战', '挑战失败', 
             '支付', '购买', '充值', '验证码', '连接失败', '重新连接', '加载中',
             '模拟宇宙', '货币战争', '未解锁', '无法挑战', '未开放', '已锁定')
 _SIDE_BLOCKED = ('选择最高解锁关卡', '开启故事', '已更新', '切换命途', '下一步', '前往编队',
-                 '挑战结束', '前往节点二', '返回末日幻影', '特遣支援挑战队伍')
+                 '挑战结束', '前往节点二', '返回末日幻影', '返回虚构叙事',
+                 '将清空当前挑战队伍', '特遣支援挑战队伍')
 _FICTION_REFERENCES = frozenset(('fiction_title', 'fiction_caption', 'fiction_star', 'fiction_modal'))
+_OPTIONAL_REFERENCES = _FICTION_REFERENCES | {
+    'apocalyptic_title', 'fiction_result_return', 'apocalyptic_result_next', 'apocalyptic_result_return',
+    'result_failure',
+}
 
 _FILES = {
     'title': 'screen/forgottenhall/memory_of_chaos.png',
@@ -63,6 +68,10 @@ _FILES = {
     'fiction_star': 'purefiction/star.png',
     'fiction_modal': 'purefiction/start_story.png',
     'apocalyptic_title': 'screen/apocalyptic/apocalyptic.png',
+    'fiction_result_return': 'purefiction/back.png',
+    'apocalyptic_result_next': 'apocalyptic/next_node.png',
+    'apocalyptic_result_return': 'apocalyptic/back.png',
+    'result_failure': 'purefiction/fail.png',
 }
 _HASHES = {
     'title': 'ae954987947ac37732b76e9da7e3e9dea1ff9200b6af08ea387effeb0708c5b4',
@@ -77,6 +86,10 @@ _HASHES = {
     'fiction_star': 'ca15135a7ca2fabeeb97388ee3f77f46d21f084fdb6c13bb1e3907c9c8de4392',
     'fiction_modal': '96842542322542fc436551aa2a20f89ff4219002893523bdae46a6e2ecb68ead',
     'apocalyptic_title': 'b846e779820a8a7337e621ebe9b2e59ae006c26119d9299a7771db6982ce11a1',
+    'fiction_result_return': 'f9994c2e977613f37330f7a26cbbbfd05e984044021984aa578a1d9126051b22',
+    'apocalyptic_result_next': '1220e8197486e8f1972a7f0ef8111523c54b8df00c8752f326c96c11241fed2f',
+    'apocalyptic_result_return': 'ddb1b2e5d43568f9823faf8ef8ce623f83dc588c229ff907918eeeb521ae95bd',
+    'result_failure': 'e0bc3f80a2b7984e947cbf190114fa3dc31bbfd9f06bcbd4a6a380eeef816c33',
 }
 
 
@@ -100,7 +113,7 @@ def _inside(box, roi):
         a <= b for a, b in zip(box[2:], roi[2:]))
 
 
-def _clean(scene, confidence):
+def _clean(scene, confidence, *, blockers=_BLOCKED):
     image = getattr(scene, 'image', None)
     stamp = getattr(scene, 'captured_at', None)
     if (not isinstance(image, np.ndarray) or image.dtype != np.uint8 or image.ndim != 3
@@ -121,7 +134,7 @@ def _clean(scene, confidence):
                 and token.box[0] < token.box[2] and token.box[1] < token.box[3]):
             observed.append(token)
     # Dialog text wins over a still visible lobby behind it.
-    if any(any(word in normalize(token.text) for word in _BLOCKED) for token in observed):
+    if any(any(word in normalize(token.text) for word in blockers) for token in observed):
         return None
     return Scene(observed, image, scene.geometry, stamp)
 
@@ -157,7 +170,7 @@ def _references():
             try:
                 result[name] = _load_reference(rows, name, file)
             except errors:
-                if name not in _FICTION_REFERENCES and name != 'apocalyptic_title':
+                if name not in _OPTIONAL_REFERENCES:
                     raise
         return result
     except errors:

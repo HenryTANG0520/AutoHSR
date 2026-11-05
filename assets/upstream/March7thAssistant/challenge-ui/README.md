@@ -1,6 +1,6 @@
 # 固定挑战局部图与有限准备观察
 
-参考版本为 March7thAssistant `7cf6c6bed474539485d3b1504077ac352866829f`，作者为 moesnow 及其贡献者。初批 14 幅和本批 5 幅局部图逐份核对固定树的 Git blob、字节数、尺寸与 SHA-256，均保留原始字节。游戏美术归 HoYoverse 及相应权利人。[原路径、哈希和用途](sources.json) · [GPL v3 原许可](../LICENSE)
+参考版本为 March7thAssistant `7cf6c6bed474539485d3b1504077ac352866829f`，作者为 moesnow 及其贡献者。19 幅页面局部图与 4 幅结算反馈局部图逐份核对固定提交的 Git blob、字节数、尺寸与 SHA-256，均保留原始字节。游戏美术归 HoYoverse 及相应权利人。[原路径、哈希和用途](sources.json) · [GPL v3 原许可](../LICENSE)
 
 ## 原件实际能证明什么
 
@@ -13,6 +13,7 @@
 - `screen/purefiction/purefiction.png`含蓝色菱形及「虚构叙事」文字。`purefiction/star.png`为 13×13 的亮点轮廓，按上游颜色过滤并绑定独立层号，用于证明历史正星。
 - `purefiction/start.png`是「进入故事」局部图，用于备战页互证。`purefiction/start_story.png`是周期弹窗的「开启故事」局部图，仅用于阻止自动选层。
 - `screen/apocalyptic/apocalyptic.png`含沙漏和「末日幻影」标题，只作末日主页与已挑战关卡详情互证。
+- `purefiction/back.png`显示「返回虚构叙事」，`apocalyptic/back.png`显示「返回末日幻影」，`apocalyptic/next_node.png`显示「前往节点二」。三个原件只支持各自的可见控件，后者记录文字所指去向。`purefiction/fail.png`只裁红色「败」字，虚构与末日可在模式已核实的画面中独立记录此标记。当前缺完整结算、分数或星数来源。[结算观察](../../../../docs/challenges.md#独立结算观察)
 
 ## 本轮模块与API
 

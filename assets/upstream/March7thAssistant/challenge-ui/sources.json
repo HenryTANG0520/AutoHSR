@@ -242,12 +242,56 @@
       "retrieved": "2026-11-05",
       "transform": "unchanged original bytes",
       "usage": "read-only Apocalyptic Shadow title corroboration for overview and previous-challenge detail"
+    },
+    {
+      "file": "purefiction/back.png",
+      "source_path": "assets/images/purefiction/back.png",
+      "git_blob": "f18d2bb5944997d7d59720b51f8b190146a9d354",
+      "sha256": "f9994c2e977613f37330f7a26cbbbfd05e984044021984aa578a1d9126051b22",
+      "bytes": 4554,
+      "size": [143, 23],
+      "retrieved": "2026-11-06",
+      "transform": "unchanged original bytes",
+      "usage": "Pure Fiction return caption, corroborated by complete OCR in its match box"
+    },
+    {
+      "file": "purefiction/fail.png",
+      "source_path": "assets/images/purefiction/fail.png",
+      "git_blob": "c29fa8950737e774af8270fd6536ffc106a154fc",
+      "sha256": "e0bc3f80a2b7984e947cbf190114fa3dc31bbfd9f06bcbd4a6a380eeef816c33",
+      "bytes": 4080,
+      "size": [55, 54],
+      "retrieved": "2026-11-06",
+      "transform": "unchanged original bytes",
+      "usage": "red failure glyph, observed alongside a mode-specific return or transition caption"
+    },
+    {
+      "file": "apocalyptic/next_node.png",
+      "source_path": "assets/images/apocalyptic/next_node.png",
+      "git_blob": "ae0b83f598db91a25d33f8b06c8e7746d5de8c61",
+      "sha256": "1220e8197486e8f1972a7f0ef8111523c54b8df00c8752f326c96c11241fed2f",
+      "bytes": 2771,
+      "size": [135, 31],
+      "retrieved": "2026-11-06",
+      "transform": "unchanged original bytes",
+      "usage": "Apocalyptic Shadow node-two destination caption; actual reached and completed nodes are unknown"
+    },
+    {
+      "file": "apocalyptic/back.png",
+      "source_path": "assets/images/apocalyptic/back.png",
+      "git_blob": "86d2c49003e5c09c6ce0c1c7ad3eee70ff55be0a",
+      "sha256": "ddb1b2e5d43568f9823faf8ef8ce623f83dc588c229ff907918eeeb521ae95bd",
+      "bytes": 3297,
+      "size": [144, 25],
+      "retrieved": "2026-11-06",
+      "transform": "unchanged original bytes",
+      "usage": "Apocalyptic Shadow return caption, corroborated by complete OCR in its match box"
     }
   ],
   "limitations": [
     "No full real challenge page or selected/full-team feedback reference.",
     "No current Pure Fiction level-header, disabled setup or Apocalyptic Shadow selected-level/node reference.",
-    "No real upper/lower-half, field/battle/result calibration.",
+    "The result crops identify individual captions and a glyph. Full battle, half/node transition and result layouts are still missing.",
     "Support character originals are existing candidate identity references only; no friend-row geometry or selected-state meaning is reused."
   ]
 }

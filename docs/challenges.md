@@ -1,6 +1,6 @@
 # 高难计划与备战
 
-2026-11-05 更新。三种高难都可离线核对明确双队计划。混沌回忆和虚构叙事接入首个目标层的有限原生备战，末日幻影目前只提供页面观察。备战成功只记本次同层页面核实。完整选角、通关与结果仍在开发。[上游接入研究](march7thassistant-challenge-integration-2026-10-30.md) · [开发清单](development-roadmap.md)
+2026-11-06 更新。三种高难都可离线核对明确双队计划。混沌回忆和虚构叙事接入首个目标层的有限原生备战，末日幻影可只读观察关卡详情和节点备战。独立结算入口可核对虚构与末日的部分可见反馈。完整选角、通关与结算校准仍在开发。[上游接入研究](march7thassistant-challenge-integration-2026-10-30.md) · [开发清单](development-roadmap.md)
 
 用户已明确允许仅这三种高难按明确角色名单编双队，见[开发约定](../AGENTS.md)。日常、差分和饰品等既有预设规则继续保留。配置中的明确名单不证明角色已拥有、解锁、可用或实际入队；本轮原生流程尚不选择角色。
 
@@ -47,11 +47,12 @@
 
 ## CLI与原生范围
 
-[独立CLI](../autohsr/challenge_cli.py)提供两个入口。以下是用法示例，本轮没有执行访问游戏的命令：
+[独立 CLI](../autohsr/challenge_cli.py)提供计划预览、有限备战和结算观察三个入口。
 
 ```powershell
 python -m autohsr --challenge-check .\my-challenge.json
 python -m autohsr --challenge-prepare --challenge-plan .\my-challenge.json
+python -m autohsr --challenge-result
 ```
 
 `--challenge-check PATH`只读取所选UTF-8 JSON，最多64 KiB，拒绝重复键与非有限数；先于运行配置加载和Runner创建分流，不联网、不访问游戏、不保存配置。不能与`--config`、通知或运行选项混用。它输出规范计划与摘要，不证明账号角色或页面可识别。
@@ -116,7 +117,27 @@ python -m autohsr --challenge-prepare --challenge-plan .\my-challenge.json
 
 当前公共裁片可能遮住上方层号、末日节点或虚构底部入口。采集时按覆盖诊断核对所需区域，同账号与采集连续性在本地验证。[采集说明](interface-calibration-2026-11-05.md)
 
-19 幅局部原件均固定到上游`7cf6c6bed474539485d3b1504077ac352866829f`，保留作者 moesnow 及其贡献者、GPL v3 与游戏美术权利说明。来源清单记录原路径、尺寸和哈希。[素材说明](../assets/upstream/March7thAssistant/challenge-ui/README.md) · [来源清单](../assets/upstream/March7thAssistant/challenge-ui/sources.json) · [GPL v3](../assets/upstream/March7thAssistant/LICENSE)
+19 幅页面局部原件和 4 幅结算反馈原件均固定到上游`7cf6c6bed474539485d3b1504077ac352866829f`，保留作者 moesnow 及其贡献者、GPL v3 与游戏美术权利说明。来源清单记录原路径、尺寸和哈希。[素材说明](../assets/upstream/March7thAssistant/challenge-ui/README.md) · [来源清单](../assets/upstream/March7thAssistant/challenge-ui/sources.json) · [GPL v3](../assets/upstream/March7thAssistant/LICENSE)
+
+## 独立结算观察
+
+`--challenge-result` 从已在前台打开的窗口只读采集，最多八次外层读取，失焦即结束。仅接受 `--config` 与 `--game-path` 覆盖。观察源为当前画面，局部回执独立保存到本次 `challenge-result.json` 及 `RunReport.challenge_result`。同账号、同窗口、同代次的相邻新帧需看到相同反馈，空帧、漏读和采集层丢弃的助手遮挡帧会断开配对。[实现](../autohsr/challenge_result.py)
+
+Windows 发布回执时持有两张 PNG 的只读句柄，发布最终报告时同时持有回执和两张 PNG。每次共享锁重试都复核原文件、帧时效和输入代次，并在 OCR 和读盘之后查询实际前台。暂停与停止监视持续到最终报告发布结束。最终复核失败时报告与 CLI 保留 `unknown`，已写回执及原证据留存。普通 OCR 沿用配置阈值，账号正向确认仍要求至少 0.85。仅高难结果将配置阈值过滤掉但达到 0.65 的完整 UID 留作冲突反证。账号仅在本次内存核验中使用，公开裁片仍需去 UID。[复验记录](../VALIDATION.md#2026-11-06-高难结算来源复核)
+
+「返回虚构叙事」「前往节点二」「返回末日幻影」各需唯一局部原件与同位置完整 OCR。出现异模式结算原件或支付、确认领取等遮挡迹象时保留未核实。「前往节点二」只记文字所指去向，单独出现时模式也保持未知。红色「败」字是可见标记，需与模式专属返回控件同帧。固定上游的判断分支也在不同战况复用返回或节点去向控件。混沌的「返回忘却之庭」缺少能区分常驻回忆的结果页锚。[虚构结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/purefiction.py#L184-L204) · [末日结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/apocalyptic.py#L268-L294) · [混沌结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/memoryofchaos.py#L176-L203)
+
+双帧核实模式反馈后 `challenge_result.status=feedback_verified`，只有去向文案时为 `caption_verified`，证据不足时为 `unknown`。实际半场、已到节点、各半场或节点分、总分、星数、胜负与最终结算分别留空或为 `unknown`，`completion_verified` 和 `rewards_verified` 为 `false`。当前局部反馈的运行状态为 `partial`，CLI 退出 1。已有主页星数仍属于主页历史观察，备战回执仍由 `--challenge-prepare` 独立记录。[本批验证](../VALIDATION.md#2026-11-06-高难结算只读反馈)
+
+当前发布的素材仅覆盖局部控件。下一次实机校准需要下列画面，保留模式、层号、分项标题及原相对位置，导出时遮盖 UID 与无关个人信息。每个用于核实的状态留同账号连续两帧。
+
+| 模式 | 所需的最小页面证据 |
+| --- | --- |
+| 虚构叙事 | 同层上半结束、下半接续、最终总览。总览保留两半得分、总分、星数和结束标识。另留失败或主动退出对照 |
+| 末日幻影 | 首节点成功与失败反馈、节点二实际到达、最终总览的两节点分、总分和星。已挑战详情单独留历史分字段作对照 |
+| 混沌回忆 | 可区别常驻回忆的结算页锚、同层上下半交接、成功与失败结算。保留本次所得星和逐项目标 |
+
+领奖可用与已领取状态各需独立页面证据。现有入口的边界为观察当前结果反馈。
 
 ## 验证与未完成项
 
