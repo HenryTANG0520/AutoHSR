@@ -22,6 +22,10 @@
 
 5组有限皮肤去重为原生配置规则，另依据官方文章全文核实外观所属角色；[身份模块](../autohsr/challenge_identities.py)保留4篇官方页面URL、CMS编号及读取正文SHA-256，没有分发文章全文或将其当成完整形态／单位表。具体对应关系、来源链接及未覆盖范围见[高难说明](../docs/challenges.md)。
 
+## 2026-11-05 虚构备战与末日观察
+
+沿用固定 March7thAssistant 提交，增加虚构标题、金色星点形状、「进入故事」、「开启故事」和末日标题共 5 幅原始局部图。选层与页面观察使用原件哈希和源裁剪关系，原生输入继续经过 AutoHSR 的账号、窗口及持久意图门禁。原件未经变换，保留作者 moesnow 及贡献者、GPL v3 和游戏美术权利说明。[原图清单](upstream/March7thAssistant/challenge-ui/sources.json) · [适配记录](upstream/March7thAssistant/source.json) · [GPL v3](upstream/March7thAssistant/LICENSE)
+
 ## 2026-11-05 周目标与首次收店执行来源
 
 差分周常的当前周门禁及货币初始商店的当前执行证明均为AutoHSR原生协议，继续使用既有[来源清单](upstream/March7thAssistant/source.json)与[GPL许可](upstream/March7thAssistant/LICENSE)，没有新增上游截图、模型或输入框架。周目标保持冻结，历史确认与重新观察分开；新的只读双帧证明不授权交易或重放未知输入。边界及验证见[周常说明](../docs/weekly-plan.md)、[初始环境说明](../docs/currency-wars-initial-environment.md)及[验证记录](../VALIDATION.md)。

@@ -187,10 +187,66 @@
       ],
       "transform": "unchanged original bytes",
       "usage": "limited page/level corroboration; no team selection or start authority"
+    },
+    {
+      "file": "screen/purefiction/purefiction.png",
+      "source_path": "assets/images/screen/purefiction/purefiction.png",
+      "git_blob": "1f1cac881d119b1af7bda98746b26b47b069dea3",
+      "sha256": "94e5b67a38f1957268213321ecf4d5683a32b8e138c8913b1ed9d0b4be5fc857",
+      "bytes": 4517,
+      "size": [106, 23],
+      "retrieved": "2026-11-05",
+      "transform": "unchanged original bytes",
+      "usage": "Pure Fiction lobby title corroboration with exact OCR and independent level labels"
+    },
+    {
+      "file": "purefiction/star.png",
+      "source_path": "assets/images/purefiction/star.png",
+      "git_blob": "4c8e65e8b135251d5ebac190f9462d1382eb2514",
+      "sha256": "ca15135a7ca2fabeeb97388ee3f77f46d21f084fdb6c13bb1e3907c9c8de4392",
+      "bytes": 195,
+      "size": [13, 13],
+      "retrieved": "2026-11-05",
+      "transform": "unchanged original bytes",
+      "usage": "historically earned Pure Fiction star shape, with the pinned gold filter and one level label"
+    },
+    {
+      "file": "purefiction/start.png",
+      "source_path": "assets/images/purefiction/start.png",
+      "git_blob": "2796d921692f229148368fa95965eb045d436bba",
+      "sha256": "7d9471c5bed44b1d0cf29eb096962ef9733c141314e0a97b3f30ccc9e8dbe5c3",
+      "bytes": 3701,
+      "size": [108, 32],
+      "retrieved": "2026-11-05",
+      "transform": "unchanged original bytes",
+      "usage": "Pure Fiction setup caption corroboration only; no start, buff or slot authority"
+    },
+    {
+      "file": "purefiction/start_story.png",
+      "source_path": "assets/images/purefiction/start_story.png",
+      "git_blob": "964e8688c36fa13933356cdeecf316b900f941b4",
+      "sha256": "96842542322542fc436551aa2a20f89ff4219002893523bdae46a6e2ecb68ead",
+      "bytes": 4207,
+      "size": [140, 32],
+      "retrieved": "2026-11-05",
+      "transform": "unchanged original bytes",
+      "usage": "cycle story overlay blocker only; cannot generate an input target"
+    },
+    {
+      "file": "screen/apocalyptic/apocalyptic.png",
+      "source_path": "assets/images/screen/apocalyptic/apocalyptic.png",
+      "git_blob": "33103bc12e5dc49b890e0e4c715b05a860c3a47e",
+      "sha256": "b846e779820a8a7337e621ebe9b2e59ae006c26119d9299a7771db6982ce11a1",
+      "bytes": 9738,
+      "size": [155, 57],
+      "retrieved": "2026-11-05",
+      "transform": "unchanged original bytes",
+      "usage": "read-only Apocalyptic Shadow title corroboration for overview and previous-challenge detail"
     }
   ],
   "limitations": [
     "No full real challenge page or selected/full-team feedback reference.",
+    "No current Pure Fiction level-header, disabled setup or Apocalyptic Shadow selected-level/node reference.",
     "No real upper/lower-half, field/battle/result calibration.",
     "Support character originals are existing candidate identity references only; no friend-row geometry or selected-state meaning is reused."
   ]

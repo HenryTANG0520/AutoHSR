@@ -9,6 +9,7 @@ from functools import lru_cache
 import hashlib
 import json
 import math
+import re
 import time
 
 import cv2
@@ -19,15 +20,49 @@ from .models import Scene, Token, normalize
 
 
 MODE = 'memory_of_chaos'
+FICTION = 'pure_fiction'
+APOCALYPTIC = 'apocalyptic_shadow'
+_MODE_WORDS = {MODE: '混沌回忆', FICTION: '虚构叙事', APOCALYPTIC: '末日幻影'}
 _AMBIGUOUS_LEVEL = object()
 ASSET_ROOT = RESOURCE_ROOT / 'assets/upstream/March7thAssistant/challenge-ui'
 LEVEL_REGION = (540 / 1920, 406 / 1080, 1696 / 1920, 922 / 1080)
 TEAM_REGION = (592 / 1920, 432 / 1080, 1911 / 1920, 980 / 1080)
+
+
+def _region(left, top, right, bottom):
+    return left / 1920, top / 1080, right / 1920, bottom / 1080
+
+
+# Fixed upstream xywh crops converted to edges in the 1920x1080 reference.
+_SIDE_TITLE = _region(0, 1, 552, 213)
+_FICTION_LEVELS = _region(331, 97, 1893, 895)
+_FICTION_TEAMS = _region(592, 556, 848, 980)
+_FICTION_CONTROLS = _region(617, 432, 1911, 942)
+_FICTION_CAPTION = _region(1546, 962, 1889, 1024)
+# A complete layer header must be separate from the portrait list and teams.
+_FICTION_LEVEL_HEADER = _region(592, 0, 1911, 432)
+_APOCALYPTIC_LEVELS = _region(330, 90, 1892, 1080)
+_APOCALYPTIC_DETAIL = _region(1624, 804, 1916, 872)
+_APOCALYPTIC_NODE_ONE = _region(963, 209, 1761, 461)
+_APOCALYPTIC_NODES = _region(755, 203, 1769, 747)
+_APOCALYPTIC_RESET = _region(1280, 115, 1495, 174)
+_BLOCKED = ('确认', '取消', '是否退出', '重新挑战', '挑战失败', '挑战成功', '获得奖励',
+            '支付', '购买', '充值', '验证码', '连接失败', '重新连接', '加载中',
+            '模拟宇宙', '货币战争', '未解锁', '无法挑战', '未开放', '已锁定')
+_SIDE_BLOCKED = ('选择最高解锁关卡', '开启故事', '已更新', '切换命途', '下一步', '前往编队',
+                 '挑战结束', '前往节点二', '返回末日幻影', '特遣支援挑战队伍')
+_FICTION_REFERENCES = frozenset(('fiction_title', 'fiction_caption', 'fiction_star', 'fiction_modal'))
+
 _FILES = {
     'title': 'screen/forgottenhall/memory_of_chaos.png',
     'team1': 'forgottenhall/team1.png', 'team2': 'forgottenhall/team2.png',
     'reset': 'forgottenhall/reset.png', 'switch': 'forgottenhall/switch.png',
     'star': 'forgottenhall/star.png', 'caption': 'forgottenhall/start.png',
+    'fiction_title': 'screen/purefiction/purefiction.png',
+    'fiction_caption': 'purefiction/start.png',
+    'fiction_star': 'purefiction/star.png',
+    'fiction_modal': 'purefiction/start_story.png',
+    'apocalyptic_title': 'screen/apocalyptic/apocalyptic.png',
 }
 _HASHES = {
     'title': 'ae954987947ac37732b76e9da7e3e9dea1ff9200b6af08ea387effeb0708c5b4',
@@ -37,6 +72,11 @@ _HASHES = {
     'switch': '755a291709111ad4f340c55bd36b5f684369dbbd419caf89c7a012653e485a91',
     'star': '88eed2945f375bbd983dd52e5d7c8ff8a99b7e5b8b21bba7b335063fc57e728e',
     'caption': '0f8bc303e60c56ca5d8f3383f1c771ca530a106c561e2c843a929f5ccf67d031',
+    'fiction_title': '94e5b67a38f1957268213321ecf4d5683a32b8e138c8913b1ed9d0b4be5fc857',
+    'fiction_caption': '7d9471c5bed44b1d0cf29eb096962ef9733c141314e0a97b3f30ccc9e8dbe5c3',
+    'fiction_star': 'ca15135a7ca2fabeeb97388ee3f77f46d21f084fdb6c13bb1e3907c9c8de4392',
+    'fiction_modal': '96842542322542fc436551aa2a20f89ff4219002893523bdae46a6e2ecb68ead',
+    'apocalyptic_title': 'b846e779820a8a7337e621ebe9b2e59ae006c26119d9299a7771db6982ce11a1',
 }
 
 
@@ -81,17 +121,29 @@ def _clean(scene, confidence):
                 and token.box[0] < token.box[2] and token.box[1] < token.box[3]):
             observed.append(token)
     # Dialog text wins over a still visible lobby behind it.
-    blocked = ('确认', '取消', '是否退出', '重新挑战', '挑战失败', '挑战成功', '获得奖励',
-               '支付', '购买', '充值', '验证码', '连接失败', '重新连接', '加载中',
-               '虚构叙事', '末日幻影', '模拟宇宙', '货币战争', '未解锁', '无法挑战', '未开放', '已锁定')
-    if any(any(word in normalize(token.text) for word in blocked) for token in observed):
+    if any(any(word in normalize(token.text) for word in _BLOCKED) for token in observed):
         return None
-    tokens = [token for token in observed if token.score >= max(.85, confidence)]
-    return Scene(tokens, image, scene.geometry, stamp)
+    return Scene(observed, image, scene.geometry, stamp)
+
+
+def _load_reference(rows, name, file):
+    entries = [r for r in rows if r.get('file') == file]
+    if len(entries) != 1:
+        raise ValueError('ambiguous reference')
+    row = entries[0]
+    content = (ASSET_ROOT / file).read_bytes()
+    if (len(content) > 65536 or row['sha256'] != _HASHES[name]
+            or hashlib.sha256(content).hexdigest() != _HASHES[name]):
+        raise ValueError('changed reference')
+    image = cv2.imdecode(np.frombuffer(content, np.uint8), cv2.IMREAD_COLOR)
+    if image is None or [image.shape[1], image.shape[0]] != row['size']:
+        raise ValueError('invalid reference image')
+    return image, row['sha256']
 
 
 @lru_cache(maxsize=1)
 def _references():
+    errors = (OSError, ValueError, TypeError, KeyError, AttributeError)
     try:
         raw = (ASSET_ROOT / 'sources.json').read_bytes()
         if len(raw) > 128 * 1024:
@@ -102,20 +154,13 @@ def _references():
         rows = data['images']
         result = {}
         for name, file in _FILES.items():
-            entries = [r for r in rows if r.get('file') == file]
-            if len(entries) != 1:
-                return {}
-            row = entries[0]
-            content = (ASSET_ROOT / file).read_bytes()
-            if (len(content) > 65536 or row['sha256'] != _HASHES[name]
-                    or hashlib.sha256(content).hexdigest() != _HASHES[name]):
-                return {}
-            image = cv2.imdecode(np.frombuffer(content, np.uint8), cv2.IMREAD_COLOR)
-            if image is None or [image.shape[1], image.shape[0]] != row['size']:
-                return {}
-            result[name] = image, row['sha256']
+            try:
+                result[name] = _load_reference(rows, name, file)
+            except errors:
+                if name not in _FICTION_REFERENCES and name != 'apocalyptic_title':
+                    raise
         return result
-    except (OSError, ValueError, TypeError, KeyError):
+    except errors:
         return {}
 
 
@@ -161,12 +206,7 @@ def _proof(name, token):
     return dict(asset=_FILES[name], sha256=_references()[name][1], box=list(token.box), score=token.score)
 
 
-def _mode(scene, name, roi):
-    hits = _hits(scene, name, roi)
-    if len(hits) != 1:
-        return None
-    hit = hits[0]
-    tokens = [t for t in scene.tokens if t.within(hit.box)]
+def _line_words(tokens, gap=None):
     lines = []
     for token in sorted(tokens, key=lambda t: (t.center[1], t.box[0])):
         row = next((row for row in lines if min(row[0].box[3], token.box[3]) -
@@ -176,42 +216,67 @@ def _mode(scene, name, roi):
             lines.append([token])
         else:
             row.append(token)
-    words = tuple(''.join(normalize(t.text) for t in sorted(row, key=lambda t: t.box[0])) for row in lines)
+    words = []
+    for row in lines:
+        parts, right = [], None
+        for token in sorted(row, key=lambda t: t.box[0]):
+            if gap is not None and right is not None and token.box[0] - right > gap:
+                words.append(''.join(parts))
+                parts = []
+            parts.append(normalize(token.text))
+            right = max(right, token.box[2]) if right is not None else token.box[2]
+        words.append(''.join(parts))
+    return tuple(words)
+
+
+def _mode(scene, name, roi):
+    hits = _hits(scene, name, roi)
+    if len(hits) != 1:
+        return None
+    hit = hits[0]
+    words = _line_words(t for t in scene.tokens if t.within(hit.box))
     # These are the complete texts actually present in the pinned images.
     # A missing parent title/quote, reversed words or any extra text is not a
     # substring match. OCR may merge both title lines or split a printed line.
     allowed = {
         'title': (('忘却之庭', '混沌回忆'), ('忘却之庭混沌回忆',)),
         'caption': (('「混沌回忆」',), ('「混沌', '回忆」')),
+        'fiction_title': (('虚构叙事',),),
+        'fiction_caption': (('进入故事',),),
+        'apocalyptic_title': (('末日幻影',),),
     }
     if words not in allowed.get(name, ()):
         return None
     return hit
 
 
-def _current_level(scene):
-    import re
+def _current_level(scene, region=(0, 0, 1, .38), pattern=r'第(0?[1-9]|1[0-2])层'):
     values = []
     for token in scene.tokens:
-        match = re.fullmatch(r'第(0?[1-9]|1[0-2])层', normalize(token.text))
-        if match and _inside(token.box, (0, 0, 1, .38)):
+        match = re.fullmatch(pattern, normalize(token.text))
+        if match and _inside(token.box, region):
             values.append((int(match[1]), token))
     return values[0] if len(values) == 1 else _AMBIGUOUS_LEVEL if values else None
 
 
-def _stars(scene, label, all_labels):
+def _star_strip(label):
+    left, top = label.box[:2]
+    return left, top, left + 120 / 1920, top + 120 / 1080
+
+
+def _stars(scene, label, all_labels, *, name='star', region=LEVEL_REGION, bgr=(112, 200, 255)):
     """Positive original star silhouettes only; absent stars never mean zero."""
-    reference = _references().get('star')
+    reference = _references().get(name)
     if reference is None:
         return None
     h, w = scene.image.shape[:2]
-    roi = (label.box[0], label.box[1], label.box[0] + 120 / 1920, label.box[1] + 120 / 1080)
-    if not _inside(roi, LEVEL_REGION) or any(t is not label and t.within(roi) for t in all_labels):
+    roi = _star_strip(label)
+    if not _inside(roi, region) or any(t is not label and t.within(roi) for t in all_labels):
         return None
     x1, y1, x2, y2 = [round(v * size) for v, size in zip(roi, (w, h, w, h))]
     patch = scene.image[y1:y2, x1:x2]
-    # The pinned upstream judge_stars explicitly filters this gold colour.
-    gold = np.max(np.abs(patch.astype(np.int16) - np.array([112, 200, 255])), axis=2) <= 20
+    # Each pinned upstream judge_stars uses a mode-specific gold colour.
+    gold = np.max(np.abs(patch.astype(np.int16) - np.array(bgr)), axis=2) <= 20
     shape = cv2.cvtColor(reference[0], cv2.COLOR_BGR2GRAY)
     shape = cv2.resize(shape, (max(1, round(shape.shape[1] * w / 1920)),
                                max(1, round(shape.shape[0] * w / 1920))), interpolation=cv2.INTER_NEAREST)
@@ -231,10 +296,45 @@ def _stars(scene, label, all_labels):
 
 
 def observe(scene, confidence=.65):
-    import re
-    clean = _clean(scene, confidence)
-    if clean is None or not _references():
+    collected = _clean(scene, confidence)
+    if collected is None or not (references := _references()):
         return _unknown('invalid_stale_blocked_or_missing_reference')
+    # Collected text may veto an action before it reaches the stricter
+    # positive threshold. Close fragments in the same OCR row can veto too.
+    words = tuple(normalize(t.text) for t in collected.tokens) + _line_words(collected.tokens, gap=.02)
+    modes = {mode for mode, name in _MODE_WORDS.items() if any(name in word for word in words)}
+    if len(modes) > 1:
+        return _unknown('conflicting_modes')
+    minimum = max(.85, confidence)
+    clean = Scene([t for t in collected.tokens if t.score >= minimum],
+                  collected.image, collected.geometry, collected.captured_at)
+    if modes == {MODE}:
+        return _observe_chaos(clean)
+
+    fiction_title = fiction_caption = apocalypse_title = None
+    if not modes or FICTION in modes:
+        fiction_title = _mode(clean, 'fiction_title', _SIDE_TITLE)
+        fiction_caption = _mode(clean, 'fiction_caption', _FICTION_CAPTION)
+    if not modes or APOCALYPTIC in modes:
+        apocalypse_title = _mode(clean, 'apocalyptic_title', _SIDE_TITLE)
+    if fiction_title or fiction_caption:
+        modes.add(FICTION)
+    if apocalypse_title or any(word in ('节点一', '节点二') for word in words):
+        modes.add(APOCALYPTIC)
+    if len(modes) > 1:
+        return _unknown('conflicting_modes')
+    if modes and any(fragment in word for word in words for fragment in _BLOCKED + _SIDE_BLOCKED):
+        return _unknown('challenge_transition_or_dialog')
+    if FICTION in modes:
+        if not _FICTION_REFERENCES.issubset(references):
+            return _unknown('missing_fiction_reference')
+        return _observe_fiction(collected, minimum, fiction_title, fiction_caption)
+    if APOCALYPTIC in modes:
+        return _observe_apocalyptic(collected, minimum, apocalypse_title, words)
+    return _observe_chaos(clean)
+
+
+def _observe_chaos(clean):
     title = _mode(clean, 'title', (0, 0, .45, .35))
     current = _current_level(clean)
     if current is _AMBIGUOUS_LEVEL:
@@ -280,6 +380,112 @@ def observe(scene, confidence=.65):
     stars = next((r['stars'] for r in levels if current and r['level'] == current[0]), None)
     return Observation('lobby', MODE, current[0] if current else None, stars=stars,
                        targets=tuple(targets), basis=basis)
+
+
+def _short_levels(scene, region):
+    labels = [t for t in scene.tokens if _inside(t.box, region) and re.fullmatch(r'0[1-4]', t.text)]
+    if (len({t.text for t in labels}) != len(labels)
+            or any(_overlaps(a.box, b.box) for index, a in enumerate(labels) for b in labels[index + 1:])):
+        return []
+    return sorted(labels, key=lambda t: int(t.text))
+
+
+def _overlaps(first, second):
+    return all(max(first[i], second[i]) < min(first[i + 2], second[i + 2]) for i in (0, 1))
+
+
+def _observe_fiction(scene, minimum, title, caption):
+    if (title or caption) and _hits(scene, 'fiction_modal', (0, 0, 1, 1)):
+        return _unknown('fiction_story_dialog')
+    current = _current_level(scene, _FICTION_LEVEL_HEADER, r'第([0-9]{1,2})层')
+    if current is _AMBIGUOUS_LEVEL or (current and not 1 <= current[0] <= 4):
+        return _unknown('ambiguous_or_out_of_range_fiction_level')
+    if current and current[1].score < minimum:
+        current = None
+    labels = _short_levels(scene, _FICTION_LEVELS)
+    positive_labels = [label for label in labels if label.score >= minimum]
+    teams = [_hits(scene, name, _FICTION_TEAMS) for name in ('team1', 'team2')]
+    controls = {name: _hits(scene, name, _FICTION_CONTROLS) for name in ('reset', 'switch')}
+    if caption or any(teams) or any(controls.values()):
+        if (not caption or any(len(hits) != 1 for hits in teams) or not any(controls.values())
+                or any(len(hits) > 1 for hits in controls.values())):
+            return _unknown('incomplete_fiction_team_setup')
+        if title and len(positive_labels) >= 2:
+            return _unknown('conflicting_fiction_lobby_and_setup')
+        one, two = teams[0][0], teams[1][0]
+        if one.box[3] > two.box[1] or abs(one.center[0] - two.center[0]) >= .05:
+            return _unknown('unpaired_fiction_team_headers')
+        matches = [_proof('fiction_caption', caption), _proof('team1', one), _proof('team2', two)]
+        matches.extend(_proof(name, hits[0]) for name, hits in controls.items() if hits)
+        basis = dict(schema=1, page='team_setup', matches=matches, team_feedback='unknown',
+                     role_availability='unknown', slot_feedback='unknown', execution_supported=False)
+        if current:
+            basis['level_box'] = list(current[1].box)
+        return Observation('team_setup', FICTION, current[0] if current else None, basis=basis)
+
+    if title is None or len(positive_labels) < 2:
+        return _unknown('no_complete_fiction_lobby')
+    if current and all(int(label.text) != current[0] for label in positive_labels):
+        return _unknown('current_level_not_in_observed_group')
+    levels, targets = [], []
+    for label in positive_labels:
+        stars = (_stars(scene, label, labels, name='fiction_star', region=_FICTION_LEVELS, bgr=(95, 198, 255))
+                 if _inside(label.box, _star_strip(label)) else None)
+        if stars and any(_overlaps(hit['box'], _star_strip(other)) for hit in stars['matches']
+                         for other in labels if other is not label):
+            stars = None
+        row = dict(level=int(label.text), label_box=list(label.box), stars=stars['count'] if stars else None,
+                   star_source=stars, available=None)
+        if stars:
+            row['selection_reference'] = 'level_label_with_positive_gold_star_strip'
+            targets.append(('select_level', label))
+        levels.append(row)
+    basis = dict(schema=1, page='lobby', matches=[_proof('fiction_title', title)], levels=levels,
+                 team_feedback='unknown', full_real_page_calibrated=False)
+    if current:
+        basis['level_box'] = list(current[1].box)
+    stars = next((row['stars'] for row in levels if current and row['level'] == current[0]), None)
+    return Observation('lobby', FICTION, current[0] if current else None, stars=stars,
+                       targets=tuple(targets), basis=basis)
+
+
+def _exact(scene, word, region):
+    return [t for t in scene.tokens if normalize(t.text) == word and _inside(t.box, region)]
+
+
+def _observe_apocalyptic(scene, minimum, title, words):
+    one = _exact(scene, '节点一', _APOCALYPTIC_NODES)
+    two = _exact(scene, '节点二', _APOCALYPTIC_NODES)
+    reset = _hits(scene, 'reset', _APOCALYPTIC_RESET)
+    detail = _exact(scene, '更换编队', _APOCALYPTIC_DETAIL)
+    if one or two or reset:
+        if (detail or len(one) != 1 or len(two) != 1 or len(reset) != 1
+                or min(one[0].score, two[0].score) < minimum
+                or not _inside(one[0].box, _APOCALYPTIC_NODE_ONE) or one[0].box[3] > two[0].box[1]):
+            return _unknown('incomplete_apocalyptic_node_setup')
+        basis = dict(schema=1, page='node_setup', matches=[_proof('reset', reset[0])],
+                     nodes=[dict(node=1, label_box=list(one[0].box)), dict(node=2, label_box=list(two[0].box))],
+                     selected_node=None, team_feedback='unknown', role_availability='unknown',
+                     slot_feedback='unknown', execution_supported=False)
+        return Observation('node_setup', APOCALYPTIC, basis=basis)
+    if title is None or len(detail) > 1:
+        return _unknown('unverified_apocalyptic_title_or_detail')
+    basis = dict(schema=1, matches=[_proof('apocalyptic_title', title)], execution_supported=False)
+    if detail:
+        if detail[0].score < minimum:
+            return _unknown('unverified_apocalyptic_detail')
+        basis.update(page='level_detail', change_team_caption_box=list(detail[0].box))
+        return Observation('level_detail', APOCALYPTIC, basis=basis)
+    # The same caption may lead to setup or start battle. It cannot establish
+    # a detail page, even if the lobby title is still visible behind it.
+    if any('前往挑战' in word for word in words):
+        return _unknown('ambiguous_apocalyptic_challenge_caption')
+    labels = [t for t in _short_levels(scene, _APOCALYPTIC_LEVELS) if t.score >= minimum]
+    if len(labels) < 2:
+        return _unknown('no_apocalyptic_level_group')
+    basis.update(page='lobby', levels=[dict(level=int(t.text), label_box=list(t.box),
+                                          stars=None, available=None) for t in labels])
+    return Observation('lobby', APOCALYPTIC, basis=basis)
 
 
 def target(scene, intent, confidence=.65, level=None):

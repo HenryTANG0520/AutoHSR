@@ -1,6 +1,6 @@
 # 固定挑战局部图与有限准备观察
 
-参考版本：March7thAssistant `7cf6c6bed474539485d3b1504077ac352866829f`，作者为moesnow及其贡献者，保留[GPL v3原许可](../LICENSE)。14幅原始最小局部图按固定tree重新核对Git blob／字节数及SHA-256，并逐张查看后原样复制；原路径、公开相对路径、尺寸、哈希和用途见[sources.json](sources.json)。没有重编码、派生完整页面、真实账号内容或新实机截图。游戏美术归HoYoverse及相应权利人，源码许可不授予额外美术权利。
+参考版本为 March7thAssistant `7cf6c6bed474539485d3b1504077ac352866829f`，作者为 moesnow 及其贡献者。初批 14 幅和本批 5 幅局部图逐份核对固定树的 Git blob、字节数、尺寸与 SHA-256，均保留原始字节。游戏美术归 HoYoverse 及相应权利人。[原路径、哈希和用途](sources.json) · [GPL v3 原许可](../LICENSE)
 
 ## 原件实际能证明什么
 
@@ -10,16 +10,19 @@
 - `back`／`again`为对应返回／再次挑战文字；`pause`呈交叉兵刃图形。文件名不构成当前页面或动作语义授权。
 - `star.png`是17×17黑白星形；源`MemoryOfChaos.judge_stars`另按金色像素筛选并在层号起点的120×120范围数星。没有独立零星、空槽、锁定、选中和完整结果原件。
 - `screen/forgottenhall/memory_of_chaos.png`是完整模式局部标识，仍需当前OCR及其它页内关系补证，标题单独不能授权输入。
+- `screen/purefiction/purefiction.png`含蓝色菱形及「虚构叙事」文字。`purefiction/star.png`为 13×13 的亮点轮廓，按上游颜色过滤并绑定独立层号，用于证明历史正星。
+- `purefiction/start.png`是「进入故事」局部图，用于备战页互证。`purefiction/start_story.png`是周期弹窗的「开启故事」局部图，仅用于阻止自动选层。
+- `screen/apocalyptic/apocalyptic.png`含沙漏和「末日幻影」标题，只作末日主页与已挑战关卡详情互证。
 
 ## 本轮模块与API
 
-[challenge_pages.py](../../../../autohsr/challenge_pages.py)只读取新鲜Scene；`observe(scene, confidence=.65)`返回冻结`Observation(kind, mode, level, half, stars, targets, basis)`，`target(scene, "select_level", confidence=.65, level=N)`重新推导唯一层号Token或返回`None`。模式采用`memory_of_chaos`／`pure_fiction`／`apocalyptic_shadow`命名，本轮只有第一种有限观察；另两种及未知页面均不生成目标。
+`observe(scene, confidence=.65)`读取新鲜 Scene 并返回`Observation(kind, mode, level, half, stars, targets, basis)`。`target(scene, "select_level", confidence=.65, level=N)`重推混沌或虚构的唯一层号 Token。末日主页、详情、双节点备战都只观察，目标列表为空。[页面实现](../../../../autohsr/challenge_pages.py)
 
-主页须同时有原完整模式局部图与一致OCR、独立`N/36`字段及至少两份不重复的两位层号，且层号在上游关卡区域内。逐层星形从该层号单独限定范围读取；只采用原始星形与原固定金色规则的正匹配，不把未见星形补为0。只有独立正星条的层号可能成为选层导航目标，不能据此授权开战；`available`仍为未知。重复、重叠、裁边、总星数冲突、暗淡、锁定、支付／退出／加载或其它玩法冲突均阻止相应观察或目标。
+混沌主页用完整图文、独立`N/36`与关卡组互证，虚构主页用完整图文与互不重叠的`01`～`04`关卡组互证。两者分别使用自己的源星形与固定金色规则。正星与目标层号独立绑定，未读星数及当前可用性保持未知。模态、锁定、加载或其它玩法冲突优先阻断选层。[高难说明](../../../../docs/challenges.md)
 
 主页列表中的第一项不等于当前选中层。`Observation.level`只来自独立完整“第N层”字段；`basis.levels`分别保存列表层号与星形来源。没有当前层证明时`level=None`，没有正星来源时该行`stars=None`。`half`始终未知，不能从数字队伍标识推断上下半。匿名basis只记录原件SHA-256、匹配范围／分数、字段范围及有限关系，不包含UID、原始日志、私人截图或账号值。
 
-备战观察须有当前独立层号、对应模式文字／原件，以及相互关联的两队数字、重置／交换图形组；它只返回`team_setup`，`team_feedback="unknown"`且`execution_supported=false`。没有任何重置、交换、角色、秘技、攻击、开战、返回、领奖或结果确认目标。原件与完整页锚不够时返回`unknown`，不借用差分或通用页面授权。
+混沌与虚构备战用各自的文字图、两队编号和对应控件互证。`team_setup`的`team_feedback`始终为`unknown`。虚构缺少独立层标题时仍可观察备战页，原生任务需在同账号连续两帧各自核实计划目标层。末日的节点名称与重置只支持节点布局，当前节点与槽位仍待校准。[高难说明](../../../../docs/challenges.md)
 
 ## 角色参考与验证限制
 
@@ -27,4 +30,4 @@
 
 [首轮13项纯Scene／合成图检查](../../../../autohsr/tests/test_challenge_pages.py)通过（4.783秒）；审查后纠正原件父标题／引号识别，区分冲突与缺失层标题，且采集到的锁定／模态提示先于严格正锚筛选，18项检查通过`runs/challenge-pages-reviewed.log`（9.093秒）。夹具`lobby_scene(levels=(1,2), stars=..., total=..., selected=...)`及`setup_scene(level=...)`使用上述原始局部图和人为构造的OCR／布局，只验证关联、未知门禁与源哈希，不是真实页面样本或独立留出。素材／纯观察专项没有运行Runner、项目CLI或游戏；整合检查另见[高难说明](../../../../docs/challenges.md)。
 
-仍缺完整真实混沌主页与备战页、当前层数显示、零星／锁定、选中／已选四人／角色禁用、上下半、战斗及胜负结果的独立校准。保守规则可能无法识别当前客户端；本轮只能声明有限观察机制与来源记录，不能声明真实准备路径或完整挑战已验收。
+虚构与末日专项的正例使用原件拼图及合成 OCR，历史脱敏饰品编队只作反例。三种模式仍缺完整实机备战正例，虚构缺实际层标题和空队、禁用态，末日缺首次详情、当前关卡与选中节点。选角槽位、角色可用、上下半和结果各自需要独立校准。[专项测试](../../../../autohsr/tests/test_challenge_modes.py)

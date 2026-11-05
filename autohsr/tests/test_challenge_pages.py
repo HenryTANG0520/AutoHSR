@@ -62,13 +62,14 @@ def setup_scene(level=1):
 class ChallengePageTests(unittest.TestCase):
     def test_original_reference_manifest_and_bytes_are_required(self):
         data = json.loads((pages.ASSET_ROOT / 'sources.json').read_text(encoding='utf-8'))
-        self.assertEqual(len(data['images']), 14)
+        self.assertEqual(len(data['images']), 19)
         self.assertEqual(set(pages._references()), set(pages._FILES))
         import hashlib
         for row in data['images']:
             raw = (pages.ASSET_ROOT / row['file']).read_bytes()
             self.assertEqual(hashlib.sha256(raw).hexdigest(), row['sha256'])
             self.assertEqual(len(raw), row['bytes'])
+            self.assertEqual(hashlib.sha1(f'blob {len(raw)}\0'.encode('ascii') + raw).hexdigest(), row['git_blob'])
 
     def test_lobby_group_binds_each_positive_star_strip_to_its_label(self):
         scene = lobby_scene((1, 2, 3), stars={1: 1, 2: 2, 3: 3})

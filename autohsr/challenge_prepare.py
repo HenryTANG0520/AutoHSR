@@ -134,7 +134,7 @@ class ChallengePreparation:
         choices = [token for intent, token in observation.targets
                    if intent == 'select_level' and int(token.text) == level]
         if observation.kind != 'lobby' or observation.mode != self.plan.mode or len(choices) != 1:
-            raise AutomationError('当前混沌主页没有本次层数的唯一导航目标。')
+            raise AutomationError('当前高难主页没有本次层数的唯一导航目标。')
         return PreparationAction('select_level', level, choices[0])
 
     def authorize(self, scene, action):
@@ -252,7 +252,7 @@ class ChallengePreparation:
             self.data.update(status='prepared', selected_level=level, preparation_page_verified=True,
                              preparation_frames=frames)
             self._persist()
-            return TaskResult(OPERATION, 'ok', '已核实混沌目标层备战页面；未选角、开战、使用秘技或领奖。')
+            return TaskResult(OPERATION, 'ok', '已核实本次目标层备战页面。')
         except Exception as error:
             if self.data['actions'] and self.data['actions'][-1]['status'] in ('pending', 'submitted'):
                 self.data['actions'][-1]['status'] = 'unknown'

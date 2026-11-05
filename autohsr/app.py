@@ -1938,7 +1938,7 @@ class Runner:
             elif challenge_prepare:
                 from .challenge_prepare import prepare_challenge
                 self.report.failure_task = 'challenge_prepare'
-                self.emit(dict(type='task', task='challenge_prepare', status='running', detail='核实当前混沌主页与首个目标层备战；不开战'))
+                self.emit(dict(type='task', task='challenge_prepare', status='running', detail='核实当前高难模式与首个目标层备战'))
                 result = prepare_challenge(context)
                 self.report.results.append(result)
                 self.report.status = 'success' if result.status == 'ok' else 'partial'
