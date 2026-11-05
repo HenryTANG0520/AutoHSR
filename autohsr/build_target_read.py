@@ -95,7 +95,7 @@ class BuildTargetRead:
         self.source = None
         self.record = {'entry_input': 'not_sent', 'page_verified': False}
 
-    def _current_account(self, scene):
+    def _require_current_capture(self, scene):
         age = time.monotonic() - scene.captured_at
         if self.ctx.runner.stop_requested:
             raise Stopped('任务已停止。')
@@ -108,7 +108,10 @@ class BuildTargetRead:
             self.geometry = scene.geometry
         elif scene.geometry != self.geometry:
             raise AutomationError('培养目标观察期间窗口位置或大小已改变。')
-        confidence = (self.collection_confidence if self.ctx.report.operation == 'build_target_preview'
+
+    def _current_account(self, scene):
+        self._require_current_capture(scene)
+        confidence = (self.collection_confidence if self.ctx.report.operation in ('build_target_preview', 'build_target_plan')
                       else self.confidence)
         try:
             key = account_key(scene, confidence)

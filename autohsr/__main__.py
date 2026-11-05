@@ -53,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--scan-dungeons", action="store_true", help="采集生存索引全部副本入口；不开始挑战或消耗资源")
     mode.add_argument("--read-build-target", action="store_true", help="从已打开的生存索引核对培养目标页入口并留证")
     mode.add_argument("--preview-build-target", action="store_true", help="只读观察已打开的培养目标或材料详情，预览体力计划候选")
+    mode.add_argument('--build-target', action='store_true', help='核实用户指定的培养材料来源并生成单项体力草稿；只读')
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
     mode.add_argument("--run", action="store_true", help="按配置执行每日任务；F10 紧急停止")
     mode.add_argument("--plan", action="store_true", help="执行日常和到期周常计划；不登记定时任务")
@@ -69,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--game-path", help="命令行模式：StarRail.exe 路径")
     parser.add_argument("--target", help="命令行模式：副本中文名称")
     parser.add_argument("--location", help="命令行模式：刷本必填副本地点，区分同名副本")
+    parser.add_argument('--material', help='--build-target 所选的完整培养材料名')
     parser.add_argument("--stamina", type=int, help="命令行模式：开拓力上限，10～240，10 的倍数")
     parser.add_argument("--rounds", type=int, help="命令行模式：每次挑战轮数，1～6")
     parser.add_argument("--category", help="副本分类：calyx_golden/calyx_crimson/stagnant_shadow/cavern/echo_of_war/planar")
@@ -131,8 +133,20 @@ def main(argv: list[str] | None = None) -> int:
         for arg in raw_args if arg.startswith("--")
     ):
         parser.error("超频模式配置为独立入口，仅可附带 --config。")
-    build_target = args.read_build_target or args.preview_build_target
-    if build_target and any(value is not None for value in
+    build_target = args.read_build_target or args.preview_build_target or args.build_target
+    build_target_selection = None
+    if args.build_target:
+        allowed = {'--build-target', '--material', '--location', '--count', '--config'}
+        if any(arg.partition('=')[0] not in allowed for arg in raw_args if arg.startswith('--')):
+            parser.error('培养草稿仅接受明确材料、地点、次数及配置路径。')
+        from .build_target_preview import BuildTargetSelection
+        try:
+            build_target_selection = BuildTargetSelection(args.material, args.location, args.count)
+        except ValueError as error:
+            parser.error(str(error))
+    elif args.material is not None:
+        parser.error('--material 仅用于 --build-target。')
+    if (args.read_build_target or args.preview_build_target) and any(value is not None for value in
             (args.target, args.location, args.stamina, args.rounds, args.category, args.count)):
         parser.error('培养目标读取和预览不能指定副本、次数或体力预算。')
     if args.currency_wealth is not None:
@@ -326,7 +340,7 @@ def main(argv: list[str] | None = None) -> int:
             settings.support_daily_only = True
         for argument, field in (("game_path", "game_path"), ("target", "target_name"), ("location", "target_location"), ("stamina", "stamina_limit"), ("rounds", "rounds"), ("category", "dungeon_category"), ("count", "challenge_count")):
             value = getattr(args, argument)
-            if value is not None:
+            if value is not None and not args.build_target:
                 setattr(settings, field, value)
         if args.du_runs is not None:
             settings.differential_universe_runs = args.du_runs
@@ -368,7 +382,7 @@ def main(argv: list[str] | None = None) -> int:
         from .redemption_cli import apply_overrides as apply_redemption_overrides
         apply_redemption_overrides(args, parser, settings)
         check_only = args.check or args.scan_dungeons or args.read_build_target or args.challenge_result
-        settings.validate('build_target_preview' if args.preview_build_target else 'du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "check" if check_only else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or overclock_config or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "power_plan" if args.power_plan else "daily")
+        settings.validate('build_target_preview' if args.preview_build_target or args.build_target else 'du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "check" if check_only else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or overclock_config or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "power_plan" if args.power_plan else "daily")
         from .app import Runner, inspect_game, launch_game
         if args.check:
             print(_json(inspect_game(settings)))
@@ -386,6 +400,8 @@ def main(argv: list[str] | None = None) -> int:
             emit, wrap_notifications = notification_hooks(settings, emit)
         if args.challenge_result:
             runner = Runner(settings, emit, operation='challenge_result')
+        elif args.build_target:
+            runner = Runner(settings, emit, operation='build_target_plan', build_target_selection=build_target_selection)
         elif build_target:
             operation = 'build_target_preview' if args.preview_build_target else 'build_target_read'
             runner = Runner(settings, emit, operation=operation)

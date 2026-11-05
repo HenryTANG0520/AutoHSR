@@ -63,6 +63,9 @@ class Window:
     def focus(self):
         self.guard()
 
+    def emergency_pressed(self):
+        return False
+
     def click(self, x, y, geometry, *, before_send=None):
         self.guard(geometry)
         if before_send is not None:

@@ -163,7 +163,7 @@ class Context:
             raise AutomationError('高难结果只允许观察当前画面。')
         if self.report.operation == 'build_target_read':
             raise AutomationError('培养目标读取只允许核实后的生存索引入口点击。')
-        if self.report.operation == 'build_target_preview':
+        if self.report.operation in ('build_target_preview', 'build_target_plan'):
             raise AutomationError('培养材料预览只观察当前画面。')
         if self.report.operation.startswith("currency_wars"):
             raise AutomationError("货币战争当前仅允许只读识别，禁止发送游戏输入。")
@@ -1286,7 +1286,7 @@ class Context:
         self._scroll_anchor = (point, scene.geometry, self.scene_epoch)
 
     def drag(self, scene: Scene, start: tuple[float, float], end: tuple[float, float], *, du_intent=None):
-        if self.report.operation in ('du_rewards', 'build_target_read', 'build_target_preview'):
+        if self.report.operation in ('du_rewards', 'build_target_read', 'build_target_preview', 'build_target_plan'):
             self._require_gameplay_input()
         if self.report.operation == "differential_universe":
             if du_intent!='du_reward_gallery_pan' or not self.settings.differential_universe_rewards:
@@ -1829,11 +1829,16 @@ class Runner:
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
                  currency_configure=False, currency_wealth=None, currency_resume=False, weekly_plan=None, currency_strategy=None,
                  currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None,currency_rewards_resume=False,currency_weekly_guard=None,
-                 use_power_plan=False,new_power_plan=False,currency_overclock_open_a0=False):
+                 use_power_plan=False,new_power_plan=False,currency_overclock_open_a0=False,build_target_selection=None):
         from dataclasses import replace
         settings=replace(settings)
-        if operation in ('build_target_read', 'build_target_preview') and new_battle_run:
+        if operation in ('build_target_read', 'build_target_preview', 'build_target_plan') and new_battle_run:
             raise ValueError('培养目标读取不能建立刷本预算。')
+        if operation == 'build_target_plan' or build_target_selection is not None:
+            from .build_target_preview import BuildTargetSelection
+            if operation != 'build_target_plan' or type(build_target_selection) is not BuildTargetSelection:
+                raise ValueError('培养草稿需要独立入口和明确选择。')
+        self.build_target_selection = build_target_selection
         if type(du_use_cassettes) is not bool or du_use_cassettes and operation != 'du_rewards':
             raise ValueError('已有月下卡带选项仅用于独立差分领奖。')
         self.du_use_cassettes = du_use_cassettes
@@ -2263,9 +2268,11 @@ class Runner:
         monitor_started = False
         defer_battle_budget = False
         build_target_read = self.report.operation == 'build_target_read'
-        build_target_preview = self.report.operation == 'build_target_preview'
+        build_target_plan = self.report.operation == 'build_target_plan'
+        build_target_preview = self.report.operation == 'build_target_preview' or build_target_plan
         build_target = build_target_read or build_target_preview
         challenge_result = self.report.operation == 'challenge_result'
+        guard_publication = challenge_result or build_target_plan
         build_target_safe_next = ('请核对当前培养目标或打开同一材料的获得途径。'
                                   if build_target_preview else '请在当前账号的生存索引核对培养目标页。材料详情与副本来源待校准。')
         if build_target or challenge_result:
@@ -2386,12 +2393,13 @@ class Runner:
                 self.emit(dict(type='task', **result.__dict__))
             elif build_target_preview:
                 from .build_target_preview import run_preview
-                self.emit(dict(type='task', task='build_target_preview', status='running', detail='观察材料与副本候选'))
-                result = run_preview(context)
+                self.emit(dict(type='task', task=self.report.operation, status='running', detail='观察材料与副本候选'))
+                result = run_preview(context, selection=self.build_target_selection)
                 self.report.results.append(result)
                 self.report.status = 'partial'
                 self.report.safe_next = build_target_safe_next
-                self.emit(dict(type='task', **result.__dict__))
+                if not build_target_plan:
+                    self.emit(dict(type='task', **result.__dict__))
             elif du_rewards:
                 from .du_rewards_only import run_rewards
                 self.report.failure_task = 'du_rewards'
@@ -2472,6 +2480,13 @@ class Runner:
                     workflow.ensure_main()
                 self._run_tasks(context, workflow)
             self.log("任务已结束；请查看报告中的验证状态与证据。")
+        except KeyboardInterrupt:
+            if build_target_plan:
+                self.stop()
+                self.report.status = 'stopped'
+                self.report.error = '培养草稿已停止。'
+                self.report.safe_next = build_target_safe_next
+            raise
         except Stopped as error:
             self.stop()
             self.report.status = "stopped"
@@ -2518,7 +2533,7 @@ class Runner:
                 except Exception as error:
                     self.log(f'日志字幕关闭失败：{error}', 'warning')
                 self._overlay = None
-            if not challenge_result:
+            if not guard_publication:
                 self._monitor_end.set()
                 if monitor_started:
                     monitor.join(timeout=1)
@@ -2530,13 +2545,17 @@ class Runner:
                     self.report.status = "partial"
                     self.report.error = f"刷本记录保存失败：{error}"
                     self.report.safe_next = "保留现有记录，人工核对消耗；不要直接开始新一轮刷本。"
-            if mutex and self.report.operation not in ('currency_wars_points','currency_wars_rewards','challenge_result'):
+            if mutex and not guard_publication and self.report.operation not in ('currency_wars_points','currency_wars_rewards'):
                 kernel32.CloseHandle(mutex)
             try:
-                self.report.report_saved = True
-                if challenge_reader is None:
+                if build_target_plan:
+                    from .build_target_draft import publish_report
+                    publish_report(self, directory, context)
+                elif challenge_reader is None:
+                    self.report.report_saved = True
                     self._save_run_report(directory, points_workflow)
                 else:
+                    self.report.report_saved = True
                     self._save_run_report(directory, challenge_reader=challenge_reader)
             except OSError as error:
                 self.report.report_saved = False
@@ -2551,7 +2570,7 @@ class Runner:
                                          "报告未保存；保留当前证据与刷本记录，人工核对消耗，不要直接重跑刷本。")
                 self.log(f"报告保存失败：{error}", "error")
             finally:
-                if challenge_result:
+                if guard_publication:
                     self._monitor_end.set()
                     if monitor_started:
                         monitor.join(timeout=1)

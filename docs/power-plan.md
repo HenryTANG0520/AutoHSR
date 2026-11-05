@@ -155,6 +155,29 @@
 
 旧实机记录展示了省略金赤分类的花萼来源行。漫游指南的三个来源中，城郊雪原同时有金花回忆之蕾和赤花巡猎之蕾。赤花材料的名称、地点与关卡关系另由游戏官方新增关卡说明和固定掉落索引支持。现有材料名与来源行出自分段采样，预览测试中的同屏布局为合成。[旧实机 OCR 记录](https://github.com/moesnow/March7thAssistant/issues/886) [固定掉落索引](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/instance_drops.json) [4.0 官方关卡](https://www.miyoushe.com/sr/article/73078555) [4.2 官方关卡](https://www.miyoushe.com/sr/article/74594359)
 
+### 明确选择并生成体力草稿
+
+打开所选培养材料的详情，保持「获得途径」及完整地点可见。使用 `--build-target` 指定一项材料、一处来源及 1～6 次挑战。程序重新核实同一账号连续两帧、独立培养区标题和随包目录。所选地点必须有唯一可用来源行，出现截断来源或预算超出当前配置上限时停止准备。以下用漫游指南的城郊雪原作为示例。
+
+```powershell
+$draft = .\.venv\Scripts\python.exe -m autohsr --build-target --material '漫游指南' --location '城郊雪原' --count 1 | ConvertFrom-Json
+```
+
+命令输出的 `status=success` 与 `build_target.draft.state=prepared` 表示草稿已发布。`build_target.draft.file` 指向 `run_dir` 内的新建 `power-plan.json`，内容只有一条分类、名称、地点和次数。`stamina_required` 是按目录费用算出的预计开拓力。草稿阶段开战、支付及游戏输入均为零，材料缺口、单轮产量和实际预算仍为未知。
+
+本次 `report.json` 先保存 `partial/staged` 审计回执，记录所选条目、草稿 SHA-256 和所引用的原始截图。最终草稿随后在同一 NTFS 运行目录独占发布，磁盘回执保留在 `staged` 阶段。同名文件保留原样，截图或回执发生变化、停止或发布失败时，命令返回失败或停止并保留已有记录。旧同名文件即使字节相同，也可能让 `staged` 回执与现有文件哈希一致。应核对本次命令的 `success/prepared` 输出和当前草稿哈希来确认本次发布。
+
+审阅草稿后，如要执行，先在游戏内返回可识别的普通导航页，再显式运行既有体力计划。仅刷这一个副本时，使用已启用刷本和已有资源消耗、且已关闭其他日常任务的配置。下面的选项关闭默认补刷和历战，并把草稿的次数用于本次明确的固定计划。
+
+```powershell
+if ($draft.status -ne 'success' -or $draft.build_target.draft.state -ne 'prepared') { throw '培养草稿未发布' }
+$planFile = Join-Path $draft.run_dir $draft.build_target.draft.file
+if ((Get-FileHash -LiteralPath $planFile -Algorithm SHA256).Hash -ne $draft.build_target.draft.sha256) { throw '培养草稿与本次回执不同' }
+.\.venv\Scripts\python.exe -m autohsr --run --power-plan --power-plan-file $planFile --keep-power-plan --no-fill-power-plan --no-echo-of-war
+```
+
+正式运行按当前账号、副本、支援设置及实际已有开拓力复核，原待核对支付仍会阻止新预算。核对该行 `power_plan.done[0]` 和本次对应支付回执判断实际完成次数。旧目标进度或 CLI 的 `success` 可能对应本次零开战。材料补足仍需读取实际掉落或新的培养缺口。
+
 #### 当前客户端补样
 
 - 同一材料行打开前、打开详情、关闭后的连续裁片。保留缺口数字与本行材料图标、完整材料名、获得途径标题、完整来源行及可用或锁定标记。先采漫游指南的两个地点与任一赤花材料。若需要滚动，在相邻帧保留能证明同一材料的标题或图标。保留裁片在客户区的位置，账号区域留在本地私有记录。

@@ -10,6 +10,7 @@ from .currency_wars_prepare import trusted
 from .dungeon_workflow import guide_row_fields
 from .dungeons import BY_KEY, CATEGORIES, Dungeon, count_limit
 from .models import AutomationError, TaskResult, normalize
+from .power_plan import items
 
 
 # The pinned BuildTarget uses the first crop for a compact material detail.
@@ -42,6 +43,23 @@ class MaterialDetail:
     unreadable_calyx_rows: int
     lock_marker_rows: int
     target_section_visible: bool
+    repeated_locations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class BuildTargetSelection:
+    material: str
+    location: str
+    count: int
+
+    def __post_init__(self):
+        if type(self.material) is not str or self.material not in CALYX_BY_MATERIAL:
+            raise ValueError('请指定当前支持的完整培养材料名。')
+        if (type(self.location) is not str or not 2 <= len(self.location) <= 64
+                or self.location != self.location.strip() or any(c in self.location for c in '\r\n')):
+            raise ValueError('请指定获得途径中的完整副本地点。')
+        if type(self.count) is not int or not 1 <= self.count <= 6:
+            raise ValueError('培养草稿需明确指定 1～6 次挑战。')
 
 
 def _inside(token, region):
@@ -62,13 +80,21 @@ def _calyx_locations(scene, page, fragments, heading):
                    and token.box[1] >= heading.box[3] and token.text.strip().startswith('拟造花萼')),
                   key=lambda token: token.box[1])
     locations = []
+    seen, repeated = set(), set()
     unreadable = 0
     locked = 0
     for token in rows:
         match = CALYX_SOURCE.fullmatch(token.text.strip())
+        if not match:
+            unreadable += 1
+            continue
+        location = match[1].strip()
+        if location in seen:
+            repeated.add(location)
+        seen.add(location)
         overlaps = any(other is not token and min(other.box[3], token.box[3]) > max(other.box[1], token.box[1])
                        for other in rows)
-        if not match or token not in page.tokens or not _inside(token, SOURCE_BODY) or overlaps:
+        if token not in page.tokens or not _inside(token, SOURCE_BODY) or overlaps:
             unreadable += 1
             continue
         row_area = (SOURCE_BODY[0], token.box[1], MODAL_AREA[2], token.box[3])
@@ -76,8 +102,8 @@ def _calyx_locations(scene, page, fragments, heading):
                 or _has_split_label(fragments, LOCK_MARKERS, row_area)):
             locked += 1
             continue
-        locations.append(match[1].strip())
-    return tuple(dict.fromkeys(locations)), unreadable, locked
+        locations.append(location)
+    return tuple(dict.fromkeys(locations)), unreadable, locked, tuple(sorted(repeated))
 
 
 def _classify(reader, scene):
@@ -110,12 +136,12 @@ def _classify(reader, scene):
     fragments = trusted(scene, 0.)
     if _has_split_label(fragments, (SOURCE_LABEL,), MODAL_AREA):
         return None, None
-    locations, unreadable, locked = _calyx_locations(scene, page, fragments, heading)
+    locations, unreadable, locked, repeated = _calyx_locations(scene, page, fragments, heading)
     target_titles = [token for token in scene.tokens if token.within(SECTIONS)
                      and normalize(token.text) == SHORTFALL]
     target_visible = (len(target_titles) == 1 and target_titles[0] in page.tokens
                       and target_titles[0].box[3] <= title.box[1] and not catalogue_rows)
-    return MaterialDetail(title.text.strip(), locations, unreadable, locked, target_visible), entry
+    return MaterialDetail(title.text.strip(), locations, unreadable, locked, target_visible, repeated), entry
 
 
 def _catalogue_sources(detail, catalogue):
@@ -130,8 +156,9 @@ def _catalogue_sources(detail, catalogue):
     return sources
 
 
-def run_preview(ctx):
-    if ctx.report.operation != 'build_target_preview':
+def run_preview(ctx, *, selection=None):
+    operation = 'build_target_preview' if selection is None else 'build_target_plan'
+    if ctx.report.operation != operation:
         raise AutomationError('材料预览需要独立只读入口。')
     reader = BuildTargetRead(ctx)
     limit = ctx.settings.stamina_limit
@@ -147,7 +174,15 @@ def run_preview(ctx):
             rule = BY_KEY[source.category]
             candidates.append(dict(category=source.category, target=source.name, location=source.location,
                                    stamina_cost=rule.cost, max_challenges_by_config=count_limit(rule, limit)))
-    preview['evidence'] = reader._save(scene, 'build_target_preview')
+    if selection is None:
+        preview['evidence'] = reader._save(scene, 'build_target_preview')
+    else:
+        from .build_target_draft import BuildTargetDraft, DraftSource
+        source = DraftSource(reader, scene)
+        preview['evidence'] = source.path.name
+        preview['evidence_sha256'] = source.digest
+        if _classify(reader, scene)[0] != observation:
+            raise AutomationError('保存画面后培养材料或来源发生变化，未生成体力草稿。')
     reader._verify_observation(scene)
     if observation == 'panel':
         ctx.report.build_target['page_verified'] = True
@@ -161,4 +196,21 @@ def run_preview(ctx):
                        lock_marker_rows=observation.lock_marker_rows,
                        unmatched_calyx_rows=observation.unreadable_calyx_rows + len(observation.locations) - len(sources))
         detail = f'已观察材料「{observation.material}」及 {len(candidates)} 项目录候选，缺口和单轮产量待核实。'
-    return TaskResult('build_target_preview', 'partial', detail)
+    if selection is None:
+        return TaskResult(operation, 'partial', detail)
+
+    if (not isinstance(observation, MaterialDetail) or observation.material != selection.material
+            or observation.unreadable_calyx_rows or selection.location in observation.repeated_locations):
+        raise AutomationError('当前材料详情或指定来源未完整核实，未生成体力草稿。')
+    candidate = next((row for row in candidates if row['location'] == selection.location), None)
+    if candidate is None:
+        raise AutomationError('指定地点缺少已核实、可用的培养来源，未生成体力草稿。')
+    cost = candidate['stamina_cost'] * selection.count
+    if cost > limit:
+        raise AutomationError('指定次数的预计消耗超过当前配置的开拓力上限。')
+    row = {key: candidate[key] for key in ('category', 'target', 'location')}
+    item, = items([dict(row, count=selection.count)])
+    draft = BuildTargetDraft(source, [item.to_dict()], selection.material, cost)
+    ctx.build_target_draft = draft
+    ctx.report.build_target['draft'] = draft.metadata
+    return TaskResult(operation, 'partial', '已核实指定材料和来源，体力草稿待发布。')

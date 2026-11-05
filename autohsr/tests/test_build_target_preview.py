@@ -1,8 +1,10 @@
 """Synthetic material layouts with released catalogue fields and the native runner."""
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import replace
+import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -10,6 +12,8 @@ from unittest.mock import patch
 
 from autohsr.__main__ import main
 from autohsr.app import Context, Runner
+from autohsr import build_target_draft
+from autohsr.build_target_preview import BuildTargetSelection
 from autohsr.config import Settings, SettingsError
 from autohsr.models import AutomationError, EmptyCapture, Scene
 from autohsr.power_plan import items
@@ -49,7 +53,7 @@ class BuildTargetPreviewTests(unittest.TestCase):
         self.assertEqual((report.stamina_spent, report.stamina_pending, report.battle_completed), (0, 0, 0))
         return report
 
-    def cli(self, frames):
+    def cli(self, frames, *, args=('--preview-build-target',), operation='build_target_preview', code=1):
         config = self.root / 'config.json'
         self.settings.save(config)
         original = config.read_bytes()
@@ -61,12 +65,12 @@ class BuildTargetPreviewTests(unittest.TestCase):
         with (self.runtime(frames) as window, patch('autohsr.notify_runtime.hooks') as notify,
               patch('autohsr.recovery.BattleBudget') as budget,
               redirect_stdout(output), redirect_stderr(logs)):
-            self.assertEqual(main(['--preview-build-target', '--config', str(config)]), 1)
+            self.assertEqual(main([*args, '--config', str(config)]), code, logs.getvalue())
         notify.assert_not_called()
         budget.assert_not_called()
         self.assertEqual(window.clicks, [])
         report = json.loads(output.getvalue())
-        self.assertEqual(report['operation'], 'build_target_preview')
+        self.assertEqual(report['operation'], operation)
         self.assertEqual(report['build_target']['entry_input'], 'not_sent')
         self.assertEqual(report['power_plan'], {})
         self.assertEqual((report['stamina_spent'], report['stamina_pending'], report['battle_completed']), (0, 0, 0))
@@ -75,6 +79,344 @@ class BuildTargetPreviewTests(unittest.TestCase):
         self.assertEqual(config.read_bytes(), original)
         self.assertEqual(ledger.read_bytes(), b'existing payment evidence')
         return report
+
+    def draft_cli(self, frames, *, material='漫游指南', location='城郊雪原', count=1, code=0):
+        args = ('--build-target', '--material', material, '--location', location, '--count', str(count))
+        return self.cli(frames, args=args, operation='build_target_plan', code=code)
+
+    def test_explicit_draft_persists_one_selected_power_item_without_input_or_spend(self):
+        self.settings.allow_stamina_spend = False
+        frame = [*self.material(), self.route('流云渡', .46), self.route('城郊雪原', .50),
+                 token('129', .45, .60), token('10', .70, .51)]
+        report = self.draft_cli([frame, frame], count=2)
+        self.assertEqual(report['status'], 'success')
+        self.assertTrue(report['report_saved'])
+        preview = report['build_target']['preview']
+        self.assertTrue(all(preview[field] is None for field in ('shortfall', 'units_per_challenge', 'count', 'effective_limit')))
+        draft = report['build_target']['draft']
+        self.assertEqual((draft['state'], draft['mode'], draft['material'], draft['stamina_required']),
+                         ('prepared', 'dry_run', '漫游指南', 20))
+        path = Path(report['run_dir']) / draft['file']
+        self.assertEqual(path.name, 'power-plan.json')
+        selected, = items(json.loads(path.read_text(encoding='utf-8')))
+        self.assertEqual((selected.category, selected.target, selected.location, selected.count),
+                         ('calyx_golden', '回忆之蕾', '城郊雪原', 2))
+        self.assertEqual(draft['items'], [selected.to_dict()])
+
+    def test_draft_supports_exact_crimson_material_and_location(self):
+        material, location = '法吉娜之心', '「辉痕圣林」神悟树庭'
+        frame = [*self.material(material), self.route('流云渡', .46), self.route(location, .52)]
+        report = self.draft_cli([frame, frame], material=material, location=location)
+        self.assertEqual(report['build_target']['draft']['items'],
+                         [dict(category='calyx_crimson', target='虚无之蕾', location=location, count=1)])
+
+    def test_draft_refuses_unproven_source_and_out_of_budget_request(self):
+        valid = [*self.material(), self.route('城郊雪原', .50)]
+        locked = token('未解锁', .73, .50, width=.065)
+        cases = {
+            'different_material': [*self.material('凝缩以太'), self.route('城郊雪原', .50)],
+            'different_location': [*self.material(), self.route('流云渡', .50)],
+            'no_target_anchor': [*self.material(in_target=False), self.route('城郊雪原', .50)],
+            'locked': [*valid, locked],
+            'conflicting_same_location': [*valid, self.route('城郊雪原', .56), token('未解锁', .73, .56, width=.065)],
+            'truncated_source': [*valid, token('拟造花萼〖城郊', .56, .56, width=.14)],
+            'second_account': [*valid, token(fixtures.OTHER.text, .14, .97, score=.80)],
+            'above_configured_limit': valid,
+        }
+        for name, frame in cases.items():
+            with self.subTest(name=name):
+                report = self.draft_cli([frame, frame], code=1, count=3 if name == 'above_configured_limit' else 1)
+                self.assertEqual(report['status'], 'failed')
+                self.assertNotIn('draft', report['build_target'])
+                self.assertFalse((Path(report['run_dir']) / 'power-plan.json').exists())
+
+    def test_draft_needs_two_consecutive_new_frames(self):
+        frame = [*self.material(), self.route('城郊雪原', .50)]
+        other = [*self.material(), self.route('流云渡', .50)]
+        for frames in ([frame, EmptyCapture(), frame, []], [frame, other, frame, []]):
+            with self.subTest(frames=len(frames)):
+                report = self.draft_cli(frames, code=1)
+                self.assertNotIn('draft', report['build_target'])
+
+    def test_draft_needs_saved_current_evidence_and_preserves_existing_file(self):
+        frame = [*self.material(), self.route('城郊雪原', .50)]
+        with patch.object(Context, 'evidence', return_value=None):
+            report = self.draft_cli([frame, frame], code=1)
+        self.assertNotIn('draft', report['build_target'])
+        self.assertFalse((Path(report['run_dir']) / 'power-plan.json').exists())
+
+        evidence = Context.evidence
+        def collision(context, scene, label, **kwargs):
+            if label == 'build_target_preview':
+                (Path(context.report.run_dir) / 'power-plan.json').write_bytes(b'prior evidence')
+            return evidence(context, scene, label, **kwargs)
+
+        with patch.object(Context, 'evidence', collision):
+            report = self.draft_cli([frame, frame], code=1)
+        self.assertEqual(report['build_target']['draft']['state'], 'publication_failed')
+        self.assertNotIn('file', report['build_target']['draft'])
+        self.assertEqual((Path(report['run_dir']) / 'power-plan.json').read_bytes(), b'prior evidence')
+
+    def test_draft_publishes_only_after_audit_and_holds_originals_during_each_link(self):
+        frame = [*self.material(), self.route('城郊雪原', .50)]
+        link = os.link
+        publications = []
+
+        def observe(source, destination):
+            with self.assertRaises(PermissionError):
+                Path(source).read_bytes()
+            directory = destination.parent
+            evidence, = directory.glob('*_build_target_preview.png')
+            with self.assertRaises(PermissionError):
+                evidence.unlink()
+            plan = directory / 'power-plan.json'
+            self.assertFalse(plan.exists())
+            if destination == plan:
+                report = directory / 'report.json'
+                audit = json.loads(report.read_bytes())
+                self.assertEqual(audit['status'], 'partial')
+                self.assertEqual(audit['build_target']['draft']['state'], 'staged')
+                self.assertNotIn('file', audit['build_target']['draft'])
+                with self.assertRaises(PermissionError):
+                    report.unlink()
+            publications.append(destination.name)
+            return link(source, destination)
+
+        with patch('autohsr.build_target_draft.os.link', side_effect=observe):
+            report = self.draft_cli([frame, frame])
+        directory = Path(report['run_dir'])
+        self.assertEqual(publications, ['report.json', 'power-plan.json'])
+        self.assertEqual(report['build_target']['draft']['state'], 'prepared')
+        self.assertEqual(hashlib.sha256((directory / 'power-plan.json').read_bytes()).hexdigest(),
+                         report['build_target']['draft']['sha256'])
+        self.assertEqual(list(directory.glob('.build-target-*.tmp')), [])
+
+    def test_draft_does_not_publish_if_original_png_or_audit_changes_between_links(self):
+        frame = [*self.material(), self.route('城郊雪原', .50)]
+        hold = build_target_draft.hold_read_sources
+        for original in ('screenshot', 'report'):
+            with self.subTest(original=original):
+                changed = []
+
+                @contextmanager
+                def race(paths):
+                    if len(paths) == 2:
+                        victim = paths[0] if original == 'screenshot' else paths[1]
+                        replacement = victim.with_suffix('.replacement')
+                        replacement.write_bytes(victim.read_bytes() + b' ')
+                        replacement.replace(victim)
+                        changed.append(victim)
+                    with hold(paths):
+                        yield
+
+                with patch.object(build_target_draft, 'hold_read_sources', side_effect=race):
+                    report = self.draft_cli([frame, frame], code=1)
+                directory = Path(report['run_dir'])
+                self.assertEqual(len(changed), 1)
+                self.assertTrue(changed[0].read_bytes().endswith(b' '))
+                self.assertEqual(report['build_target']['draft']['state'], 'publication_failed')
+                self.assertFalse((directory / 'power-plan.json').exists())
+                self.assertEqual(list(directory.glob('.build-target-*.tmp')), [])
+
+    def test_draft_preserves_a_report_or_plan_appearing_at_its_exclusive_link(self):
+        frame = [*self.material(), self.route('城郊雪原', .50)]
+        link = os.link
+        for filename in ('report.json', 'power-plan.json'):
+            with self.subTest(filename=filename):
+                def race(source, destination):
+                    if destination.name == filename:
+                        destination.write_bytes(b'earlier report or plan')
+                        with build_target_draft.hold_read_sources((destination,)):
+                            return link(source, destination)
+                    return link(source, destination)
+
+                with patch('autohsr.build_target_draft.os.link', side_effect=race):
+                    report = self.draft_cli([frame, frame], code=1)
+                directory = Path(report['run_dir'])
+                self.assertEqual(report['report_saved'], filename == 'power-plan.json')
+                self.assertEqual((directory / filename).read_bytes(), b'earlier report or plan')
+                self.assertEqual((directory / 'power-plan.json').exists(), filename == 'power-plan.json')
+                self.assertNotIn('file', report['build_target']['draft'])
+                self.assertEqual(list(directory.glob('.build-target-*.tmp')), [])
+
+    def test_draft_f10_epoch_or_link_failure_after_audit_does_not_publish(self):
+        frame = [*self.material(), self.route('城郊雪原', .50)]
+        link = os.link
+        guard = build_target_draft.DraftSource.guard
+        for failure in ('f10', 'epoch', 'write'):
+            with self.subTest(failure=failure):
+                def interrupt(source):
+                    if (source.directory / 'report.json').exists() and failure == 'epoch':
+                        runner = source.reader.ctx.runner
+                        runner.toggle_pause()
+                        runner.toggle_pause()
+                    return guard(source)
+
+                def fail_link(source, destination):
+                    if destination.name == 'power-plan.json' and failure == 'write':
+                        raise OSError('simulated plan publication failure')
+                    return link(source, destination)
+
+                with (patch.object(fixtures.Window, 'emergency_pressed', side_effect=[False, failure == 'f10']),
+                      patch.object(build_target_draft.DraftSource, 'guard', interrupt),
+                      patch('autohsr.build_target_draft.os.link', side_effect=fail_link)):
+                    report = self.draft_cli([frame, frame], code=1)
+                directory = Path(report['run_dir'])
+                self.assertEqual(report['status'], 'stopped' if failure == 'f10' else 'failed')
+                self.assertTrue(report['report_saved'])
+                self.assertEqual(report['build_target']['draft']['state'], 'publication_failed')
+                self.assertNotIn('file', report['build_target']['draft'])
+                self.assertFalse((directory / 'power-plan.json').exists())
+                self.assertEqual(list(directory.glob('.build-target-*.tmp')), [])
+
+    def test_draft_rechecks_window_and_controls_after_account_read_before_each_link(self):
+        from autohsr.build_target_read import account_key
+        from autohsr.models import FocusLost
+
+        frame = [*self.material(), self.route('城郊雪原', .50)]
+        guard = build_target_draft.DraftSource.guard
+        for audit_exists in (False, True):
+            for failure in ('focus', 'f10', 'stop', 'epoch'):
+                with self.subTest(audit_exists=audit_exists, failure=failure):
+                    changed = []
+
+                    def interrupt(source):
+                        if (source.directory / 'report.json').exists() != audit_exists:
+                            return guard(source)
+                        ctx = source.reader.ctx
+
+                        def lost(expected):
+                            raise FocusLost('fixture window lost focus during account read')
+
+                        def read_account(scene, confidence):
+                            key = account_key(scene, confidence)
+                            if confidence >= source.reader.confidence:
+                                changed.append(True)
+                                if failure == 'focus':
+                                    ctx.window.guard = lost
+                                elif failure == 'f10':
+                                    ctx.window.emergency_pressed = lambda: True
+                                elif failure == 'stop':
+                                    ctx.runner.stop()
+                                else:
+                                    ctx.runner.input_epoch += 1
+                            return key
+
+                        with patch('autohsr.build_target_read.account_key', side_effect=read_account):
+                            return guard(source)
+
+                    with patch.object(build_target_draft.DraftSource, 'guard', interrupt):
+                        report = self.draft_cli([frame, frame], code=1)
+                    directory = Path(report['run_dir'])
+                    self.assertEqual(changed, [True])
+                    self.assertEqual(report['status'], 'stopped' if failure in ('f10', 'stop') else 'failed')
+                    self.assertEqual(report['report_saved'], audit_exists)
+                    self.assertEqual(report['build_target']['draft']['state'], 'publication_failed')
+                    self.assertNotIn('file', report['build_target']['draft'])
+                    audit = directory / 'report.json'
+                    self.assertEqual(audit.is_file(), audit_exists)
+                    if audit_exists:
+                        self.assertEqual(json.loads(audit.read_bytes())['build_target']['draft']['state'], 'staged')
+                    self.assertFalse((directory / 'power-plan.json').exists())
+                    self.assertEqual(list(directory.glob('.build-target-*.tmp')), [])
+
+    def test_draft_stop_or_epoch_in_final_key_poll_prevents_publication(self):
+        frame = [*self.material(), self.route('城郊雪原', .50)]
+        guard = build_target_draft.DraftSource.guard
+        for failure in ('stop', 'epoch'):
+            with self.subTest(failure=failure):
+                def interrupt(source):
+                    if (source.directory / 'report.json').is_file():
+                        ctx = source.reader.ctx
+
+                        def poll():
+                            if failure == 'stop':
+                                ctx.runner.stop()
+                            else:
+                                ctx.runner.input_epoch += 1
+                            return False
+
+                        ctx.window.emergency_pressed = poll
+                    return guard(source)
+
+                with patch.object(build_target_draft.DraftSource, 'guard', interrupt):
+                    report = self.draft_cli([frame, frame], code=1)
+                self.assertTrue(report['report_saved'])
+                self.assertEqual(report['status'], 'stopped' if failure == 'stop' else 'failed')
+                self.assertEqual(report['build_target']['draft']['state'], 'publication_failed')
+                self.assertFalse((Path(report['run_dir']) / 'power-plan.json').exists())
+
+    def test_draft_requires_explicit_scoped_arguments_before_loading_settings(self):
+        valid = ['--build-target', '--material', '漫游指南', '--location', '城郊雪原', '--count', '1']
+        cases = (valid[:-2], ['--run', *valid], [*valid, '--stamina', '240'],
+                 [*valid, '--power-plan'], [*valid, '--output-plan', 'battle-session.json'],
+                 ['--preview-build-target', '--material', '漫游指南'],
+                 [*valid[:-1], '0'], [*valid[:-1], '7'])
+        for argv in cases:
+            with (self.subTest(argv=argv), patch.object(Settings, 'load') as load,
+                  redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error):
+                main(argv)
+            self.assertEqual(error.exception.code, 2)
+            load.assert_not_called()
+
+    def test_draft_context_blocks_gameplay_input_and_budget_options(self):
+        request = BuildTargetSelection('漫游指南', '城郊雪原', 1)
+        with self.assertRaises(ValueError):
+            Runner(self.settings, operation='build_target_plan')
+        with self.assertRaises(ValueError):
+            Runner(self.settings, operation='build_target_plan', build_target_selection=request, new_battle_run=True)
+        runner = Runner(self.settings, operation='build_target_plan', build_target_selection=request)
+        context = Context(runner, object(), None)
+        for action in (lambda: context.key('esc'), lambda: context.click(None, self.entry),
+                       lambda: context.move(None, self.entry.center), lambda: context.scroll(120),
+                       lambda: context.drag(None, (.2,.2), (.3,.3))):
+            with self.assertRaisesRegex(AutomationError, '只观察'):
+                action()
+
+    def test_generated_file_can_be_explicitly_run_by_the_existing_power_plan_entry(self):
+        from autohsr.power_plan_store import read, validate
+        from autohsr.tests.test_power_plan import World, row
+        from autohsr.tests.test_power_plan_entry import runtime
+
+        frame = [*self.material(), self.route('城郊雪原', .50)]
+        draft = self.draft_cli([frame, frame])
+        path = Path(draft['run_dir']) / draft['build_target']['draft']['file']
+        original = path.read_bytes()
+        settings = Settings(assignments=False, daily=False, daily_synthesis=False, use_support=False,
+                            overlay_logs=False, stamina_limit=20, target_location='绘世学院',
+                            power_plan=[row('cavern', 1, '侵蚀隧洞', '残响回廊')], echo_of_war_enabled=True)
+        config = self.root / 'battle-config.json'
+        settings.save(config)
+        saved = config.read_bytes()
+        for owned, completed in ((20, 1), (9, 0)):
+            with self.subTest(owned=owned):
+                root = self.root / f'run-{owned}'
+                world = World(stamina=owned)
+                output, logs = io.StringIO(), io.StringIO()
+                with (runtime(root, settings, world) as (window, _), redirect_stdout(output), redirect_stderr(logs)):
+                    def create(*args, **kwargs):
+                        runner = Runner(*args, **kwargs)
+                        window.owner = runner
+                        return runner
+
+                    with patch('autohsr.app.Runner', side_effect=create):
+                        self.assertEqual(main(['--run', '--config', str(config), '--power-plan', '--power-plan-file',
+                                               str(path), '--keep-power-plan', '--no-fill-power-plan',
+                                               '--no-echo-of-war']), 0, logs.getvalue())
+                report = json.loads(output.getvalue())
+                ledger = read(root / 'runs' / 'battle-session.json')
+                validate(root / 'runs', ledger, settled=True)
+                self.assertEqual(report['operation'], 'daily')
+                self.assertEqual(report['build_target'], {})
+                self.assertEqual(ledger['power_plan']['items'], json.loads(original))
+                self.assertEqual(ledger['power_plan']['before'], [0])
+                self.assertEqual(ledger['power_plan']['done'], [completed])
+                self.assertEqual(ledger['power_plan']['goal_complete'], bool(completed))
+                self.assertEqual([charge['row'] for charge in ledger['power_plan']['charges']], [0] * completed)
+                self.assertEqual((ledger['spent'], ledger['completed'], ledger['pending']), (10 * completed, completed, 0))
+                self.assertEqual(world.paid, [('回忆之蕾', 1, 10)] * completed)
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(config.read_bytes(), saved)
 
     def test_cli_preserves_every_exact_location_without_claiming_a_plan_or_quantity(self):
         frame = [*self.material(), self.route('流云渡', .46), self.route('城郊雪原', .50),
