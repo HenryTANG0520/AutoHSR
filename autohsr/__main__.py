@@ -98,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--support-preferences-file',type=Path,help='本次支援偏好JSON列表，含character和friend，不保存配置')
     parser.add_argument('--support-scroll-pages',type=int,help='本次支援查找页数1～20，包含当前页，仅用于日常／计划')
     parser.add_argument('--support-fallback',choices=('stop','friend','skip'),help='偏好未核实时停止、另借好友或不借支援；仅用于日常／计划')
+    parser.add_argument('--support-daily-only',action='store_true',help='仅当当前实训明确需要时借用支援；只影响本次日常／计划的刷本，不保存配置')
     parser.add_argument("--resume-active-currency", action="store_true", help="仅配合标准开发入口，接续有记录且已核实开始的货币战争")
     parser.add_argument('--currency-runs', type=int, help='循环局数；积分目标启用时为新局上限，0表示无局数上限；仅用于 --currency-wars-loop，不保存配置')
     parser.add_argument('--resume-currency-loop', action='store_true', help='明确接续原循环的剩余局数与原设置；仅用于 --currency-wars-loop')
@@ -137,9 +138,9 @@ def main(argv: list[str] | None = None) -> int:
             args.currency_wars_locate, args.currency_wars_configure, args.currency_wars_standard,
             args.currency_wars_loop, args.currency_wars_points, args.currency_wars_rewards, args.scan_dungeons)):
         parser.error('本次通知选项需要明确的运行入口；检测、启动和工具操作不隐式发送。')
-    if (args.support_preferences_file is not None or args.support_scroll_pages is not None or args.support_fallback is not None) and (
+    if (args.support_preferences_file is not None or args.support_scroll_pages is not None or args.support_fallback is not None or args.support_daily_only) and (
             not (args.run or args.plan) or args.reward_only or args.resume_weekly_currency):
-        parser.error('支援偏好参数仅用于 --run/--plan 的本次日常，不能用于仅补领奖或只接续周常。')
+        parser.error('支援选项仅用于 --run/--plan 的本次日常，不能用于仅补领奖或只接续周常。')
     if (args.power_plan and (not (args.run or args.plan) or args.reward_only or args.resume_weekly_currency)
             or not args.power_plan and (args.power_plan_file is not None or args.new_power_plan or args.keep_power_plan is not None or args.fill_power_plan is not None)):
         parser.error('体力计划覆盖仅用于 --run/--plan --power-plan，不能用于仅补领奖或只接续周常。')
@@ -277,6 +278,10 @@ def main(argv: list[str] | None = None) -> int:
             for value,field in ((args.echo_of_war,'echo_of_war_enabled'),(args.echo_start_day,'echo_of_war_start_day'),
                                 (args.echo_target,'echo_of_war_target'),(args.echo_location,'echo_of_war_location')):
                 if value is not None:setattr(settings,field,value)
+        if args.support_daily_only:
+            if not settings.battle or not settings.allow_stamina_spend:
+                raise ValueError('仅实训需要时借用需要本次启用刷本及已有资源消耗。')
+            settings.support_daily_only = True
         for argument, field in (("game_path", "game_path"), ("target", "target_name"), ("location", "target_location"), ("stamina", "stamina_limit"), ("rounds", "rounds"), ("category", "dungeon_category"), ("count", "challenge_count")):
             value = getattr(args, argument)
             if value is not None:

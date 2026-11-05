@@ -449,6 +449,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 | `assignments` / `battle` / `daily` | 均`true` | 委托、副本、实训 |
 | `mail` / `battlepass` | 均`false` | 邮件、免费勋礼 |
 | `use_support` | `true` | 副本支援；通关后指定预设饰品流程用`false` |
+| `support_daily_only` | `false` | 借用支援已开启时，按本批实训需求借用 |
 | `allow_stamina_spend` | `true` | 关后锁定刷本，GUI无自授权开关 |
 | `daily_synthesis` / `overlay_logs` | 均`true` | 单件合成、前台字幕 |
 | `action_delay` / `battle_timeout` / `ocr_confidence` | `1.0` / `900` / `0.65` | 操作间隔秒、战斗超时秒、一般OCR阈值 |
@@ -476,6 +477,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 .\.venv\Scripts\python.exe -m autohsr --du-rewards-only
 # 按配置执行每日
 .\.venv\Scripts\python.exe -m autohsr --run
+# 日常刷本按当前实训需求借用支援
+.\.venv\Scripts\python.exe -m autohsr --run --support-daily-only
 # 按配置执行日常与到期周常，不登记定时任务
 .\.venv\Scripts\python.exe -m autohsr --plan
 # 单轮花萼参数；其他任务开关仍取配置

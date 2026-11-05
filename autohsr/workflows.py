@@ -1026,6 +1026,12 @@ class DailyWorkflow:
         completed = self.ctx.report.battle_completed-completed_base
         while ((category.key=='planar' or self.ctx.report.stamina_spent + category.cost <= self.settings.stamina_limit)
                and (requested is None or completed < requested)):
+            borrow_support = self.settings.use_support
+            support_decision = None
+            if borrow_support and self.settings.support_daily_only:
+                from .daily_support import observe as observe_support
+                support_decision = observe_support(self)
+                borrow_support = support_decision.state == 'needed'
             scene = self._open_calyx()
             scene = self._disable_quick_refill(scene)
             remaining = self.settings.stamina_limit - self.ctx.report.stamina_spent
@@ -1053,15 +1059,28 @@ class DailyWorkflow:
                 return self._result("battle", "partial", "存在阵亡角色或无法挑战提示，需要手动调整队伍。", scene)
             if category.key == 'planar':
                 from .planar_team import select as select_planar_team
-                scene = select_planar_team(self, scene)
-            if self.settings.use_support:
-                scene = self._support(scene)
+                if support_decision is None:
+                    scene = select_planar_team(self, scene)
+                else:
+                    support_decision.require(self.ctx, scene)
+                    if not borrow_support:
+                        from .daily_support import reject_existing_planar_support
+                        reject_existing_planar_support(self, scene)
+                    with support_decision.inputs(self.ctx):
+                        scene = select_planar_team(self, scene)
+            if borrow_support:
+                if support_decision is not None:
+                    support_decision.require(self.ctx, scene)
+                    with support_decision.inputs(self.ctx):
+                        scene = self._support(scene)
+                else:
+                    scene = self._support(scene)
             if category.key == "planar":
                 scene = self._disable_quick_refill(scene)
                 scene, cost = self._limit_batch(scene, remaining)
                 skipped=(getattr(self,'_support_skipped',False) is True and self.settings.support_preferences
                          and self.settings.support_fallback=='skip')
-                if not cost or (self.settings.use_support and not skipped and not self._planar_marker(scene)):
+                if not cost or (borrow_support and not skipped and not self._planar_marker(scene)):
                     raise AutomationError("饰品提取支援后的费用、次数或支援标记发生未核实变化。")
             start = scene.find("开始挑战", BOTTOM, exact=True)
             if start is None or not self._team_page(scene):
@@ -1071,12 +1090,21 @@ class DailyWorkflow:
             if category.key == 'planar' and scene.image is not None:
                 from .planar_resources import payment
                 paid_stamina, paid_immersifiers = payment(self, scene, expected_count=cost//category.cost)
+            if support_decision is not None:
+                if not borrow_support:
+                    from .daily_support import require_unborrowed
+                    require_unborrowed(self, scene, planar=category.key=='planar')
+                support_decision.require(self.ctx, scene)
             if budget is not None:
                 if paid_immersifiers:
                     budget.reserve(paid_stamina, immersifiers=paid_immersifiers)
                 else:
                     budget.reserve(paid_stamina)
-            self._click(scene, start)
+            if support_decision is None:
+                self._click(scene, start)
+            else:
+                with support_decision.inputs(self.ctx, scene=scene):
+                    self._click(scene, start)
             if category.key == "planar":
                 self._enter_planar_battle()
             scene = self._battle_result()
