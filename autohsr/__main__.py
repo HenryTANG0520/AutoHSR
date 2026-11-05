@@ -68,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--category", help="副本分类：calyx_golden/calyx_crimson/stagnant_shadow/cavern/echo_of_war/planar")
     parser.add_argument("--count", type=int, help="本次完成的挑战次数；达到次数即停止，仍受开拓力上限约束")
     parser.add_argument("--du-runs", type=int, help="差分宇宙局数，1～10；仅配合 --differential-universe")
+    parser.add_argument('--du-until-points', action='store_true',
+                        help='周期积分满额即停止；--du-runs 为最多新开局数，仅用于新开周期演算')
     parser.add_argument("--du-team", help="每次开局从预设编队选择此名称；默认哈哈哈哈")
     parser.add_argument("--du-mode", choices=('periodic','normal'), help="演算模式；默认 periodic 周期演算")
     parser.add_argument('--du-custom-stations',action=argparse.BooleanOptionalAction,default=None,
@@ -213,6 +215,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.resume_active_du and not args.differential_universe:
         print(_json({"error": "--resume-active-du 仅用于 --differential-universe。"}), file=sys.stderr)
+        return 2
+    if args.du_until_points and (not args.differential_universe or args.resume_active_du or args.du_mode == 'normal'):
+        print(_json({'error': '--du-until-points 仅用于新开的周期演算。'}), file=sys.stderr)
+        return 2
+    if args.du_until_points and args.du_runs is None:
+        print(_json({'error': '--du-until-points 须配合 --du-runs 指定局数上限。'}), file=sys.stderr)
         return 2
     if args.du_periodic_rank is not None and not args.differential_universe:
         print(_json({"error": "--du-periodic-rank 仅用于 --differential-universe。"}), file=sys.stderr)
@@ -372,7 +380,8 @@ def main(argv: list[str] | None = None) -> int:
                             **(dict(currency_fast_mode=args.currency_fast_mode) if args.currency_fast_mode is not None else {}),
                             **(dict(du_runs=settings.differential_universe_runs,
                                     du_resume_active=args.resume_active_du,
-                                    du_periodic_rank=args.du_periodic_rank) if args.differential_universe else {}))
+                                    du_periodic_rank=args.du_periodic_rank) if args.differential_universe else {}),
+                            **(dict(du_until_points=True) if args.du_until_points else {}))
         runner = wrap_notifications(runner)
         try:
             report = runner.run()

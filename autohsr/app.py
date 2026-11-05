@@ -57,6 +57,7 @@ class Context:
         self.settings, self.report = runner.settings, runner.report
         self.last_scene: Scene | None = None
         self.scene_epoch = 0
+        self.capture_sequence = 0
         self._scroll_anchor = None
         self._currency_deploy_request = None
         self._currency_equipment_request = None
@@ -95,6 +96,7 @@ class Context:
             self._scroll_anchor = None
             capture_epoch = self.runner.input_epoch
             captured_at = time.monotonic()
+            self.capture_sequence += 1
             try:
                 image, geometry = self.window.capture()
                 scene = self.vision.read(image, geometry)
@@ -412,8 +414,12 @@ class Context:
         from .policy import guard_click, guard_differential_universe_click, replenishment_dialog
         weekly_start_guard = None
         synthesis_resource_guard = None
+        points_goal = None
         if self.report.operation == "differential_universe":
             if du_intent=='periodic_start':
+                points_goal = getattr(self,'du_points_goal',None)
+                if points_goal is not None:
+                    points_goal.require_current(scene,launch=True)
                 from .weekly_plan import WeeklyGuard
                 candidate=getattr(self.runner,'weekly_plan',None)
                 if isinstance(candidate,WeeklyGuard):
@@ -488,7 +494,16 @@ class Context:
                 raise AutomationError('合成输入前画面已过期，未发送输入。')
             synthesis_resource_guard(scene, target, du_intent, self.report.daily_synthesis)
         try:
-            self.window.click(*coordinates, scene.geometry)
+            if points_goal is None:
+                self.window.click(*coordinates,scene.geometry)
+            else:
+                def check_points_before_send():
+                    try:
+                        points_goal.require_current(scene,launch=True)
+                    except (AutomationError,Stopped) as error:
+                        du_record.update(status='not_sent',reason='points_goal_revalidation_failed',detail=str(error))
+                        raise
+                self.window.click(*coordinates,scene.geometry,before_send=check_points_before_send)
         except FocusLost:
             self._focus_interrupted()
         self.last_scene = None
@@ -1459,7 +1474,7 @@ class Context:
 
 class Runner:
     def __init__(self, settings: Settings, emit=None, *, new_battle_run=False, operation="daily",
-                 du_runs=None, du_resume_active=False, du_periodic_rank=None, du_use_cassettes=False,
+                 du_runs=None, du_resume_active=False, du_periodic_rank=None, du_use_cassettes=False, du_until_points=False,
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
                  currency_configure=False, currency_wealth=None, currency_resume=False, weekly_plan=None, currency_strategy=None,
@@ -1558,6 +1573,11 @@ class Runner:
             raise ValueError("差分宇宙局数必须是 1～10 的整数。")
         if type(du_resume_active) is not bool or (du_resume_active and operation != "differential_universe"):
             raise ValueError("接续差分宇宙仅适用于差分宇宙操作，且必须为布尔值。")
+        if (type(du_until_points) is not bool or du_until_points and (operation != 'differential_universe'
+                or du_runs is None or du_resume_active or weekly_plan is not None
+                or settings.differential_universe_mode != 'periodic')):
+            raise ValueError('周期积分目标须用于独立新开周期演算，并明确指定局数上限。')
+        self.du_until_points = du_until_points
         if (du_periodic_rank is not None and
                 (isinstance(du_periodic_rank, bool) or not isinstance(du_periodic_rank, int)
                  or not 1 <= du_periodic_rank <= 10 or operation != "differential_universe")):
@@ -1964,7 +1984,8 @@ class Runner:
                 # after an interrupted input or pause. Preserve evidence and stop.
                 if self.weekly_plan is None or self.weekly_plan.prepare(context):
                     result = DifferentialUniverseWorkflow(context, self.du_runs,
-                        resume_active=self.du_resume_active, periodic_rank=self.du_periodic_rank).run()
+                        resume_active=self.du_resume_active, periodic_rank=self.du_periodic_rank,
+                        **({'until_points': True} if self.du_until_points else {})).run()
                 else:
                     result = TaskResult("weekly", "ok", "本周演算已完成，已跳过。")
                 self.report.results.append(result)
