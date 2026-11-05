@@ -46,7 +46,9 @@ class World:
                 Token('+',.99,(.95,.79,.97,.82)),
                 Token('−',.99,(.75,.79,.78,.82) if category.key=='planar' else (.63,.79,.66,.82))]
         if self.mode=='entry':tokens.append(Token('挑战',.99,(.82,.9,.93,.95)))
-        if self.mode=='team':tokens.append(Token('开始挑战',.99,(.82,.9,.95,.95)))
+        if self.mode=='team':
+            tokens.append(Token('开始挑战',.99,(.82,.9,.95,.95)))
+            if category.key!='planar':tokens.append(Token('队伍',.99,(.04,.04,.14,.08)))
         if category.key=='planar' and self.mode=='team':
             tokens.extend([Token('位面饰品提取',.99,(.01,.02,.2,.08)),
                            Token('下载角色',.99,(.32,.67,.45,.72))])
@@ -102,6 +104,10 @@ class FakeContext:
             self.world.mode='success'
             if self.world.after_payment:self.world.after_payment(self.world)
         else:raise AssertionError('unexpected fixture click '+target.text)
+
+    def power_plan_battle_input(self, scene, target, cost, *, support_decision=None):
+        self.battle_budget.reserve(cost)
+        self.click(scene, target)
 
     def wait(self,predicate,**kwargs):
         scene=self.snapshot()

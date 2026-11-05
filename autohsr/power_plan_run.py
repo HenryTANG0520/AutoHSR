@@ -3,18 +3,25 @@ from dataclasses import replace
 import time
 import uuid
 
-from .models import AutomationError,DungeonQuotaExhausted,InputInterrupted,Scene,TaskResult
+from .models import AutomationError, DungeonQuotaExhausted, DungeonStaminaExhausted, InputInterrupted, Scene, TaskResult
 from .power_plan import PowerItem,plan_spec,row_keys,digest
 from .power_plan_store import folder,write,prior,file_ref,pointer,fs_path
 
 
 def account(ctx,scene):
+    from .daily_support import complete_uid_label
     from .du_daily import account_key
     ctx.checkpoint()
     if (not isinstance(scene,Scene) or scene is not ctx.last_scene or ctx.scene_epoch!=ctx.runner.input_epoch
-            or scene.captured_at<=0 or time.monotonic()-scene.captured_at>8):
+            or scene.captured_at<=0 or not 0<=time.monotonic()-scene.captured_at<=8):
         raise AutomationError('体力计划画面代次已变化，需要重新识别。')
-    return digest(account_key(Scene([t for t in scene.tokens if t.score>=max(.85,ctx.settings.ocr_confidence)])))
+    label = complete_uid_label(scene)
+    if label is None or not max(.85, ctx.settings.ocr_confidence) <= label.score <= 1:
+        raise AutomationError('体力计划当前账号未核实。')
+    try:
+        return digest(account_key(Scene([label])))
+    except AutomationError as error:
+        raise AutomationError('体力计划当前账号未核实。') from error
 
 
 class PowerRun:
@@ -118,8 +125,17 @@ class PowerRun:
         if self.data['intent'] is not None or self.report.stamina_pending or self.report.immersifiers_pending:
             raise AutomationError('体力计划原支付尚未核实，未重放或切换目标。')
 
-    def witness(self,ctx,scene,label):
+    def require_account(self,ctx,scene):
         if account(ctx,scene)!=self.data['account']:raise AutomationError('当前账号与原体力计划不同。')
+
+    def require_balance(self,ctx,scene,available):
+        self.require_account(ctx,scene)
+        if type(available) is not int or not 0<=available<=999:
+            raise AutomationError('体力计划本项当前开拓力余额未核实。')
+        return available
+
+    def witness(self,ctx,scene,label):
+        self.require_account(ctx,scene)
         return file_ref(self.root,ctx.evidence(scene,label))
 
     def freeze_resources(self,ctx,scene,available,immersifiers):
@@ -173,6 +189,40 @@ class PowerRun:
         evidence=self.witness(self.ctx,self.ctx.last_scene,'power_plan_before_'+str(len(self.data['charges'])))
         self.data['intent']=dict(id=len(self.data['charges']),row=row,count=count,stamina=cost,immersifiers=immersifiers,
             before_completed=self.report.battle_completed,account=self.data['account'],epoch=self.ctx.runner.input_epoch,before=evidence)
+
+    def require_ordinary_intent(self, ctx, intent):
+        if (self.ctx is not ctx or ctx.battle_budget is not self.budget or not self.budget.active
+                or self.budget.power_plan is not self or ctx.report is not self.report or self.report.power_plan is not self.data
+                or intent is None or self.data['intent'] is not intent
+                or intent['row'] != self.data['active_row'] or intent['id'] != len(self.data['charges'])
+                or intent['account'] != self.data['account'] or self.report.battle_completed != intent['before_completed']
+                or intent['immersifiers'] or self.report.immersifiers_pending
+                or self.report.stamina_pending != intent['stamina']):
+            raise AutomationError('体力计划本批支付意图已变化，保留待核对记录。')
+
+    def record_unsent(self, ctx, intent, detail):
+        """Retire only the current intent that was vetoed before native submission."""
+        from .power_plan_store import read, read_ref
+        self.require_ordinary_intent(ctx, intent)
+        saved = read(self.budget.path)
+        if (saved.get('run_dir') != self.report.run_dir or saved.get('power_plan') != self.data
+                or saved.get('pending') != intent['stamina'] or saved.get('immersifiers_pending') != 0
+                or saved.get('spent') != self.report.stamina_spent or saved.get('completed') != self.report.battle_completed):
+            raise AutomationError('体力计划原支付记录已变化，保留待核对状态。')
+        read_ref(self.root, intent['before'])
+        previous_status = self.data['run_status']
+        self.data.update(intent=None, run_status='partial')
+        self.report.stamina_pending = 0
+        results = self.data['results']
+        results.append(dict(row=intent['row'], requested=intent['count'], completed=0, stamina=0, immersifiers=0,
+                            status='partial', reason='payment_not_sent', detail=detail, evidence=intent['before']))
+        try:
+            self.budget._write()
+        except Exception:
+            results.pop()
+            self.data.update(intent=intent, run_status=previous_status)
+            self.report.stamina_pending = intent['stamina']
+            raise
 
     def confirm(self,cost,immersifiers):
         intent=self.data['intent']
@@ -238,16 +288,15 @@ class PowerWorkflow:
         except DungeonQuotaExhausted as error:
             if index==-2:
                 state.observe_echo(view,error.scene,0)
-                self.ctx.last_scene,self.ctx.scene_epoch=view.last_scene,view.scene_epoch
                 return None
             proof=state.witness(view,error.scene,'power_plan_weekly_exhausted')
             state.data['results'].append(dict(row=index,requested=requested,completed=0,stamina=0,immersifiers=0,
                 status='deferred',reason='weekly_exhausted',detail=str(error),evidence=proof))
             state.budget._write()
-            self.ctx.last_scene,self.ctx.scene_epoch=view.last_scene,view.scene_epoch
             return None
-        available=workflow._available(scene)
-        if type(available) is not int:raise AutomationError('本项体力余额未核实。')
+        finally:
+            self.ctx.last_scene,self.ctx.scene_epoch=view.last_scene,view.scene_epoch
+        available=state.require_balance(view,scene,workflow._available(scene))
         remaining=max(0,min(state.data['effective_limit']-state.report.stamina_spent,available))
         tokens=0
         if item.category=='planar':
@@ -259,17 +308,37 @@ class PowerWorkflow:
             if type(quota) is not int or not 0<=quota<=3:raise AutomationError('历战当前周次数未核实。')
             if index==-2:state.observe_echo(view,scene,quota,proof=getattr(workflow,'_weekly_rewards_proof',None))
             count=min(count,quota)
-        if count<=0:return None
+        base = state.report.battle_completed
+        before, immersifiers = state.report.stamina_spent, state.report.immersifiers_spent
+
+        def defer_stamina(scene):
+            state.check()
+            balance = state.require_balance(view, scene, workflow._available(scene))
+            if item.category == 'planar' or balance >= item.dungeon.cost:
+                raise AutomationError('未核实当前副本余额不足，未转入补刷。')
+            proof = state.witness(view, scene, 'power_plan_stamina_deferred')
+            detail = f'当前开拓力 {balance} 不足以支付单轮 {item.dungeon.cost}，保留未完成次数。'
+            state.data['results'].append(dict(row=index, requested=requested, completed=state.report.battle_completed-base,
+                stamina=state.report.stamina_spent-before, immersifiers=state.report.immersifiers_spent-immersifiers,
+                status='deferred', reason='insufficient_stamina', detail=detail, evidence=proof))
+            state.budget._write()
+
+        if count <= 0:
+            if item.category != 'planar' and available < item.dungeon.cost:
+                defer_stamina(scene)
+            return None
         view.settings=replace(view.settings,challenge_count=count);workflow.settings=view.settings
-        state.bind(view,index,count);base=state.report.battle_completed
-        before=state.report.stamina_spent;immersifiers=state.report.immersifiers_spent
+        state.bind(view,index,count)
         try:
-            try:result=workflow.battle(completed_base=base,aggregate=True)
-            except DungeonQuotaExhausted as error:
-                state.check()
-                if index==-2:state.observe_echo(view,error.scene,0)
-                else:state.witness(view,error.scene,'power_plan_weekly_exhausted')
-                result=TaskResult('battle','ok','已核实本周额度用尽，未完成的原次数保留。')
+            result=workflow.battle(completed_base=base,aggregate=True)
+        except DungeonQuotaExhausted as error:
+            state.check()
+            if index==-2:state.observe_echo(view,error.scene,0)
+            else:state.witness(view,error.scene,'power_plan_weekly_exhausted')
+            result=TaskResult('battle','ok','已核实本周额度用尽，未完成的原次数保留。')
+        except DungeonStaminaExhausted as error:
+            defer_stamina(error.scene)
+            return None
         finally:self.ctx.last_scene,self.ctx.scene_epoch=view.last_scene,view.scene_epoch
         state.data['results'].append(dict(row=index,requested=count,completed=state.report.battle_completed-base,
             stamina=state.report.stamina_spent-before,immersifiers=state.report.immersifiers_spent-immersifiers,status=result.status,detail=result.detail))

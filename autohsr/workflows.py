@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 import re
 import time
-from .models import AutomationError, FocusLost, ROI, Scene, Stopped, TaskResult, Token, normalize
+from .models import AutomationError, DungeonStaminaExhausted, FocusLost, ROI, Scene, Stopped, TaskResult, Token, normalize
 from .policy import replenishment_dialog
 from .dungeons import category_for
 
@@ -13,6 +14,12 @@ REWARDS: ROI = (0.20, 0.22, 0.94, 0.40)
 REWARD_SLOTS: tuple[ROI, ...] = tuple((a, 0.22, b, 0.40) for a, b in
     ((0.20, 0.36), (0.36, 0.51), (0.51, 0.65), (0.65, 0.79), (0.79, 0.94)))
 TABS: ROI = (0.15, 0.14, 0.55, 0.25)
+STAMINA_SLOT: ROI = (.70, 0, .94, .14)
+STAMINA_DIGITS: ROI = (.70, 0, .86, .14)
+STAMINA_COUNTER = re.compile(r"(\d{1,3})\s*/\s*(\d{2,3})\s*[|丨+＋]*")
+STAMINA_LABEL = re.compile(r"^(?:当前|已有)?开拓力\s*[:：]?\s*")
+STAMINA_INCOMPLETE = re.compile(r"[^/]{0,8}/\s*[\dOoＯ?？]{3}[\s|丨+＋]*")
+STAMINA_FRAGMENT = re.compile(r"(?:[\dOoＯ?？]{1,3}|[\dOoＯ?？]{0,3}\s*/\s*[\dOoＯ?？]{0,3})[\s|丨+＋]*")
 
 
 class DailyWorkflow:
@@ -486,14 +493,38 @@ class DailyWorkflow:
         return values[0] if len(values) == 1 else None
 
     @staticmethod
-    def _available(scene: Scene) -> int | None:
+    def _stamina_number(text: str) -> int | None:
+        match = STAMINA_COUNTER.fullmatch(text)
+        if match and 100 <= int(match[2]) and 0 <= int(match[1]) <= int(match[2]):
+            return int(match[1])
+        return None
+
+    @classmethod
+    def _available(cls, scene: Scene) -> int | None:
         values = []
         for token in scene.tokens:
-            if token.within((0.70, 0, 0.94, 0.14)):
-                match = re.fullmatch(r"(\d{1,3})\s*/\s*(\d{2,3})\s*[|丨+＋]*", token.text.strip())
-                if match and 100 <= int(match.group(2)) and 0 <= int(match.group(1)) <= int(match.group(2)):
-                    values.append(int(match.group(1)))
+            if token.within(STAMINA_SLOT):
+                value = cls._stamina_number(token.text.strip())
+                if value is not None:
+                    values.append(value)
         return values[0] if len(values) == 1 else None
+
+    @classmethod
+    def _team_stamina(cls, scene: Scene, confidence: float) -> tuple[bool, int | None]:
+        """Distinguish the legacy empty layout from a visible unreadable counter."""
+        labelled = False
+        balances = []
+        for token in scene.tokens:
+            if not token.within(STAMINA_SLOT):
+                continue
+            raw = token.text.strip().replace('／', '/')
+            text = STAMINA_LABEL.sub('', raw)
+            labelled = labelled or text != raw
+            value = cls._stamina_number(text)
+            if (value is not None or STAMINA_INCOMPLETE.fullmatch(text)
+                    or token.within(STAMINA_DIGITS) and STAMINA_FRAGMENT.fullmatch(text)):
+                balances.append(value if confidence <= token.score <= 1 else None)
+        return labelled or bool(balances), balances[0] if len(balances) == 1 else None
 
     @staticmethod
     def _round_count(scene: Scene) -> int | None:
@@ -523,14 +554,19 @@ class DailyWorkflow:
 
     def _limit_batch(self, scene: Scene, remaining: int) -> tuple[Scene, int]:
         category = category_for(self.settings)
+        plan = getattr(getattr(self.ctx, 'battle_budget', None), 'power_plan', None)
         if category.key == 'planar' and scene.image is not None:
             from .planar_resources import limit_batch
+            if plan is not None:
+                plan.require_account(self.ctx, scene)
             return limit_batch(self, scene, remaining)
         unit = category.cost
         desired = min(remaining, min(self.settings.rounds, category.batch) * unit)
         if category.weekly_limit and getattr(self, "_weekly_rewards", None) is not None:
             desired = min(desired, self._weekly_rewards * unit)
         available = self._available(scene)
+        if plan is not None:
+            plan.require_balance(self.ctx, scene, available)
         if available is not None:
             desired = min(desired, available // unit * unit)
         if desired < unit:
@@ -563,18 +599,22 @@ class DailyWorkflow:
                 scene = self._wait(lambda s: self._calyx(s) and self._cost(s) == cost + unit
                                    and self._round_count(s) == rounds + 1,
                                    description="双重验证挑战次数增加")
-                continue
-            minus_roi = (.74,.78,.80,.86) if category.key == "planar" else (0.61, 0.74, 0.69, 0.85)
-            minus = scene.find(("−", "-", "－"), minus_roi, exact=True)
-            if minus is None:
-                minus = self._icon(scene, "count_minus", minus_roi)
-            if minus is None:
-                raise AutomationError("本次挑战消耗超过限制，且未识别到减少次数按钮。")
-            before = cost
-            self._click(scene, minus)
-            scene = self._wait(lambda s: self._calyx(s) and self._cost(s) == before - unit
-                               and self._round_count(s) == rounds - 1,
-                               description="双重验证挑战次数减少")
+            else:
+                minus_roi = (.74,.78,.80,.86) if category.key == "planar" else (0.61, 0.74, 0.69, 0.85)
+                minus = scene.find(("−", "-", "－"), minus_roi, exact=True)
+                if minus is None:
+                    minus = self._icon(scene, "count_minus", minus_roi)
+                if minus is None:
+                    raise AutomationError("本次挑战消耗超过限制，且未识别到减少次数按钮。")
+                self._click(scene, minus)
+                scene = self._wait(lambda s: self._calyx(s) and self._cost(s) == cost - unit
+                                   and self._round_count(s) == rounds - 1,
+                                   description="双重验证挑战次数减少")
+            if plan is not None:
+                available = plan.require_balance(self.ctx, scene, self._available(scene))
+                desired = min(desired, available // unit * unit)
+                if desired < unit:
+                    return scene, 0
         raise AutomationError("调整挑战次数超过上限。")
 
     @staticmethod
@@ -1010,6 +1050,15 @@ class DailyWorkflow:
         self._click(scene, target)
         self._wait(lambda s: not s.has(("挑战成功", "战斗失败", "退出关卡", "再来一次")), description="确认退出关卡")
 
+    def _start_challenge(self, scene, target, *, plan_cost, support_decision):
+        with support_decision.inputs(self.ctx, scene=scene) if support_decision is not None else nullcontext():
+            if plan_cost is None:
+                self._click(scene, target)
+            else:
+                self.ctx.power_plan_battle_input(scene, target, plan_cost, support_decision=support_decision)
+                self._pause()
+                self._snapshot()
+
     def battle(self, *, completed_base=0,aggregate=False) -> TaskResult:
         if type(completed_base) is not int or not 0<=completed_base<=self.ctx.report.battle_completed or type(aggregate) is not bool:
             raise AutomationError('本项挑战的完成次数来源无效。')
@@ -1019,6 +1068,8 @@ class DailyWorkflow:
         if not self._snapshot().tokens:
             raise AutomationError("画面中没有可识别文字，无法选择花萼。")
         category = category_for(self.settings)
+        budget = getattr(self.ctx, "battle_budget", None)
+        plan = getattr(budget, "power_plan", None)
         requested = self.settings.challenge_count
         if category.weekly_limit:
             requested = min(requested or category.weekly_limit, category.weekly_limit)
@@ -1039,6 +1090,10 @@ class DailyWorkflow:
                 remaining = min(remaining, (requested - completed) * category.cost)
             scene, cost = self._limit_batch(scene, remaining)
             if cost == 0:
+                if plan is not None and category.key != 'planar':
+                    available = plan.require_balance(self.ctx, scene, self._available(scene))
+                    if available < category.cost:
+                        raise DungeonStaminaExhausted(scene)
                 return self._result("battle", "partial", f"可用开拓力不足{category.cost}，停止刷本；已完成{completed}次，确认消耗{self.ctx.report.stamina_spent}。", scene)
             if category.key == 'planar' and scene.image is not None:
                 from .planar_resources import payment
@@ -1085,7 +1140,6 @@ class DailyWorkflow:
             start = scene.find("开始挑战", BOTTOM, exact=True)
             if start is None or not self._team_page(scene):
                 raise AutomationError("未验证队伍页与开始挑战按钮。")
-            budget = getattr(self.ctx, "battle_budget", None)
             paid_stamina, paid_immersifiers = cost, 0
             if category.key == 'planar' and scene.image is not None:
                 from .planar_resources import payment
@@ -1095,16 +1149,21 @@ class DailyWorkflow:
                     from .daily_support import require_unborrowed
                     require_unborrowed(self, scene, planar=category.key=='planar')
                 support_decision.require(self.ctx, scene)
-            if budget is not None:
+            ordinary_plan = plan is not None and category.key != 'planar'
+            if ordinary_plan:
+                visible, balance = self._team_stamina(scene, self.settings.ocr_confidence)
+                if visible:
+                    available = plan.require_balance(self.ctx, scene, balance)
+                    if available < paid_stamina:
+                        return self._result('battle', 'partial',
+                            f'队伍页当前开拓力 {available} 低于原费用 {paid_stamina}，未开始挑战。', scene)
+            if budget is not None and not ordinary_plan:
                 if paid_immersifiers:
                     budget.reserve(paid_stamina, immersifiers=paid_immersifiers)
                 else:
                     budget.reserve(paid_stamina)
-            if support_decision is None:
-                self._click(scene, start)
-            else:
-                with support_decision.inputs(self.ctx, scene=scene):
-                    self._click(scene, start)
+            self._start_challenge(scene, start, plan_cost=paid_stamina if ordinary_plan else None,
+                                  support_decision=support_decision)
             if category.key == "planar":
                 self._enter_planar_battle()
             scene = self._battle_result()

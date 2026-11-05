@@ -9,6 +9,10 @@ from .models import AutomationError
 _permission = ContextVar('autohsr_du_points_followup', default=None)
 
 
+class FollowupWeekExpired(AutomationError):
+    """The accepted DU observation can no longer authorize follow-up input."""
+
+
 @dataclass
 class FollowupWeek:
     week: str
@@ -19,7 +23,7 @@ class FollowupWeek:
 
         if self.expired or game_week(local_now()) != self.week:
             self.expired = True
-            raise AutomationError('差分积分后续任务的游戏周已切换，原周输入权限失效。')
+            raise FollowupWeekExpired('差分积分后续任务的游戏周已切换，原周输入权限失效。')
 
 
 @contextmanager

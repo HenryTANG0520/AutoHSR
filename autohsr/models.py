@@ -76,6 +76,14 @@ class DungeonQuotaExhausted(AutomationError):
         self.scene=scene
 
 
+class DungeonStaminaExhausted(AutomationError):
+    """The verified dungeon entry balance cannot pay for one batch round."""
+
+    def __init__(self, scene):
+        super().__init__('当前副本余额不足一轮，保留未完成次数。')
+        self.scene = scene
+
+
 class Stopped(AutomationError):
     pass
 
