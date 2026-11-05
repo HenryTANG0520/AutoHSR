@@ -7,6 +7,15 @@
   "asset_manifests": ["assets/upstream/March7thAssistant/equipment/sources.json", "assets/currency-consumables/sources.json", "assets/currency-supply/sources.json", "assets/upstream/March7thAssistant/support/sources.json", "assets/currency-investment/sources.json", "assets/currency-auto/sources.json", "assets/upstream/March7thAssistant/challenge-ui/sources.json"],
   "native_extensions": [
     {
+      "path": "autohsr/build_target_read.py",
+      "native_files": ["autohsr/app.py", "autohsr/__main__.py"],
+      "reference_source": "tasks/daily/buildtarget.py",
+      "reference_functions": ["BuildTarget._enter_build_target_page", "DefaultHandler.collect", "DropHandler.collect"],
+      "additional_references": [{"source": "assets/config/instance_drops.json", "scope": "name and location coverage comparison"}],
+      "tests": ["autohsr/tests/test_build_target_read.py"],
+      "kind": "AutoHSR-authored entry and panel observation using released CN 4.6 directory fields, an official 3.1 layout example, and the native account and window guards. Pinned upstream references document the compared routes. The result records panel evidence only."
+    },
+    {
       "path": "autohsr/du_archive_workflow.py",
       "reference_source": "tasks/weekly/divergent_universe.py",
       "reference_functions": ["process_save_management", "_save_completed_run"],
@@ -500,6 +509,18 @@
       "path": "tasks/power/instance.py",
       "git_blob": "0859381134b79de365345b813d49f2b6a779a13b",
       "sha256": "d0928d6044e249f2fc89a74e453c1fdc53cf90e902dc69b59a9913418f8547f3"
+    },
+    {
+      "path": "tasks/daily/buildtarget.py",
+      "retrieved": "2026-11-05",
+      "git_blob": "6e46d9886c2923097263fb2f9329c7df3109f9aa",
+      "sha256": "f9c0754ca627b08cbb1fe9ce123d6aab717220ca9906a16a888372dedfc9d355"
+    },
+    {
+      "path": "assets/config/instance_drops.json",
+      "retrieved": "2026-11-05",
+      "git_blob": "0ca8b06aca570af36e0d703530f0e8307824cf86",
+      "sha256": "70ecba455df8568b8888bb8559c22d20575f37081e78b32ec1e17be0b2c1e867"
     },
     {
       "path": "main.py",
