@@ -44,23 +44,32 @@ def loot_centers(scene):
     return tuple(((x+1700)/2560,(y+330)/1440,r/2560) for x,y,r in found)
 
 
-def start_target(scene, confidence=.65):
+def _start_target(scene, confidence, *, encounter=False):
     state = read_match(scene, confidence)
     if (state is None or state.page != 'preparation' or not state.node or state.hp is None or state.hp <= 0
-            or not state.deployment or state.deployment[0] != state.deployment[1]):
+            or not state.deployment or state.deployment[0] != state.deployment[1]
+            or encounter and state.deployment[0] == 0):
         raise AutomationError('节点验证需要无遮挡备战页、满员阵容和明确生命值。')
     if scene.image is None or not any(_texture(_crop(scene.image, (cx-.02,.34,cx+.02,.40))) >= 15
                                     for cx in (990/2560,1180/2560,1370/2560,1560/2560)):
         raise AutomationError('没有已确认的前台角色，未出战。')
-    if not any(t.score >= confidence and normalize(t.text) in ('战斗','奖励','首领') and t.within((.28,.07,.73,.105)) for t in scene.tokens):
+    if not encounter and not any(t.score >= confidence and normalize(t.text) in ('战斗','奖励','首领')
+                                 and t.within((.28,.07,.73,.105)) for t in scene.tokens):
         raise AutomationError('当前节点尚未确认为战斗；未点击出战。')
     if loot_centers(scene):
         raise AutomationError('奖励区域仍有待领取晶矿，先处理掉落再出战。')
-    target = next((t for t in scene.tokens if confidence <= t.score <= 1
-                   and normalize(t.text) == '出战' and t.within((.9,.65,1,.75))), None)
-    if target is None:
+    if encounter:
+        from .currency_wars_prepare import trusted
+        scene = trusted(scene, confidence)
+    targets = [t for t in scene.tokens if confidence <= t.score <= 1
+               and normalize(t.text) == '出战' and t.within((.9,.65,1,.75))]
+    if not targets or encounter and len(targets) != 1:
         raise AutomationError('出战按钮未核实。')
-    return target
+    return targets[0]
+
+
+def start_target(scene, confidence=.65):
+    return _start_target(scene, confidence)
 
 
 def result_nodes(scene, confidence=.65):

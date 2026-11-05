@@ -259,7 +259,8 @@ def progress_action(scene, session, confidence=.65):
         if (not source_valid or previous.get('feedback') != arrival
                 or state.gold is None or state.level is None):
             raise AutomationError('自动展开商店缺少同节点到达反馈或余额等级。')
-        return StandardAction(intent, expected, unique(trusted(scene, confidence), '收起', (.81,.88,.89,.95)), payload=payload)
+        return StandardAction(intent, expected, unique(trusted(scene, confidence), '收起', (.81,.88,.89,.95)),
+                              payload=payload, encounter_arrival=previous['id'] if previous['action'] == ENCOUNTER_CONFIRM else None)
     return None
 
 

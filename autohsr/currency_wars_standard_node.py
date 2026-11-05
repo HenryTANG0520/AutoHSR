@@ -203,6 +203,10 @@ def observe_started_node(c, store, scene):
             or not actions[action_id].get('target')
             or actions[action_id]['target'][0]!=attempt.get('node')):
         raise AutomationError('当前战斗缺少已核实标准出战来源，未执行战斗输入。')
+    from .currency_wars_standard_encounter_battle import BINDING, entry_stamp, require_started
+    encounter = BINDING in actions[action_id]
+    if encounter:
+        require_started(store.data, actions[action_id])
     guard = CurrencyWarsWorkflow(c)
     if attempt.get('node_loss_verified') is True:
         guard._require_current_scene(scene)
@@ -243,6 +247,8 @@ def observe_started_node(c, store, scene):
                 latest_stamp = scene.captured_at
             try:
                 observed_account = account_key(scene,max(.85,c.settings.ocr_confidence))
+                if encounter and account_key(scene, min(.65, c.settings.ocr_confidence)) != observed_account:
+                    raise AutomationError('遭遇战斗或结算账号字段有冲突。')
             except (Stopped, InputInterrupted, FocusLost):
                 raise
             except AutomationError:
@@ -259,6 +265,9 @@ def observe_started_node(c, store, scene):
                 identity_gap = False
                 if fresh:
                     kind = observe(scene,c.settings.ocr_confidence).page_kind
+                    if (encounter and kind in ('battle', 'node_result', 'node_loss', 'match_defeat', 'final_victory')
+                            and entry_stamp(scene, attempt['node'], c.settings.ocr_confidence) is None):
+                        kind = 'unknown'
             if kind!='match_defeat':defeat_frames=[]
             if kind != 'node_loss':
                 loss_frames.clear()

@@ -1,6 +1,7 @@
 """The standard encounter continuation and its native input boundary."""
 from contextlib import ExitStack
 from dataclasses import replace
+from contextlib import ExitStack
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -12,11 +13,12 @@ import numpy as np
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.currency_wars_encounter import EncounterCard, EncounterObservation
-from autohsr.currency_wars_identity import account_key
+from autohsr.currency_wars_identity import account_key, installed_client
 from autohsr.currency_wars_match import read_match
 from autohsr.currency_wars_session import StandardSession, require_session_access
 from autohsr.currency_wars_standard_budget import StandardBudget
 from autohsr.currency_wars_standard_encounter import CONFIRM, OFFER, SELECT, record_start
+from autohsr.currency_wars_standard_encounter_battle import BINDING, START
 from autohsr.currency_wars_standard_flow import next_action, run_standard
 from autohsr.currency_wars_standard_ledger import ledger_status
 from autohsr.models import AutomationError, EmptyCapture, InputInterrupted, Scene, Stopped, Token
@@ -81,29 +83,44 @@ def fake_observation(scene, confidence):
 
 class StandardEncounterTests(unittest.TestCase):
     def run_path(self, node, scenes, *, original=True, stale=(), native_failure=None, stop_at_arrival=True,
-                 actual_readers=False):
+                 actual_readers=False, battle_node=None):
         sandbox = TemporaryDirectory(prefix='cw-enc-')
         self.addCleanup(sandbox.cleanup)
         root = Path(sandbox.name)
         run_dir = root / 'r'
         run_dir.mkdir()
+        client_dir = root / 'client'
+        client_dir.mkdir()
+        executable, version_file = client_dir / 'StarRail.exe', client_dir / 'config.ini'
+        executable.touch()
+        version_file.write_text('[General]\ngame_version=4.6.0\n', encoding='utf-8')
+        client = dict(installed_client(executable), verified_run=str(run_dir), input_epoch=0)
         store = StandardSession(root / 'currency-standard-session.json')
         store.begin(run_dir, dict(rank_verified=True, rank=8, wealth=40))
         store.data.update(status='active', start_verified=True, account_key=account_key(Scene([UID])),
                           account_verified_run=str(run_dir), account_verified_epoch=0, rules_version='4.6',
-                          client=dict(version='4.6', verified_run=str(run_dir), input_epoch=0, sha256='4'*64))
+                          client=client)
+        if battle_node is not None:
+            store.data['shop_observed_nodes'] = [battle_node]
 
         runner = Runner(Settings(ocr_confidence=.78), operation='currency_wars_standard', currency_resume=True)
         runner.report.run_dir = str(run_dir)
         runner.wait_for_focus = Mock()
         window = object.__new__(GameWindow)
-        window.hwnd, window.path = 43021, None
+        window.hwnd, window.path = 43021, str(executable)
         c = Context(runner, window, Mock())
         now, last_stamp, frame_id = 100., 99., 0
 
         def capture(scene, stamp, tone):
-            image = scene.image if actual_readers and scene.image is not None else np.full((270, 480, 3), tone, dtype=np.uint8)
-            return replace(scene, tokens=list(scene.tokens), geometry=GEOMETRY, image=image, captured_at=stamp)
+            if actual_readers and scene.image is not None:
+                image = scene.image
+            elif battle_node is not None and isinstance(scene.image, np.ndarray):
+                image = scene.image[::2, ::2].copy()
+                image[0, 0] = tone
+            else:
+                image = np.full((270, 480, 3), tone, dtype=np.uint8)
+            return replace(scene, tokens=list(scene.tokens), geometry=GEOMETRY,
+                           image=image, captured_at=stamp)
 
         before = capture(preparation(node, known_type=True), 98., 40)
         entered = capture(current('battle', node), 99., 41)
@@ -123,6 +140,11 @@ class StandardEncounterTests(unittest.TestCase):
             active = getattr(c, 'currency_standard_session', None)
             if stop_at_arrival and active is not None and active.data.get('node_history'):
                 raise Stopped('synthetic verified arrival')
+
+        def log(_message):
+            active = c.currency_standard_session.data['node_attempt']
+            if battle_node == active['node'] and active.get('status') == 'verified':
+                raise Stopped('synthetic encounter result verified')
 
         def snapshot():
             nonlocal frame_id, now, last_stamp
@@ -144,6 +166,8 @@ class StandardEncounterTests(unittest.TestCase):
             now += 65. if frame_id >= len(scenes) else seconds
 
         c.checkpoint, c.snapshot, c.sleep = checkpoint, snapshot, sleep
+        if battle_node is not None:
+            c.log = log
         calls, injected = [], []
         guards = {}
         native = Mock()
@@ -167,7 +191,18 @@ class StandardEncounterTests(unittest.TestCase):
                 if native_failure == 'intent':
                     injected.append('intent')
                     c.currency_standard_session.data['actions'][-1]['target'][-1] = 2
+            if guards[intent] == 3 and intent == START and native_failure == 'start_epoch':
+                injected.append('start_epoch')
+                runner.input_epoch += 1
+            if guards[intent] == 3 and intent == START and native_failure == 'start_focus':
+                injected.append('start_focus')
+                return 112
             return window.hwnd
+
+        def confirmed_files():
+            durable = StandardSession(store.path).data
+            index = durable['node_history'][-1]['encounter_arrival_action_id']
+            return [Path(frame['source']['path']) for frame in durable['actions'][index]['encounter_frames']]
 
         def key_state(_key):
             intent = active_intent()
@@ -180,6 +215,17 @@ class StandardEncounterTests(unittest.TestCase):
                 Path(selected['after']).write_bytes(b'replaced synthetic selection PNG')
             if intent == SELECT and guards[intent] == 3 and native_failure == 'f10':
                 injected.append('f10')
+                return 0x8001
+            if intent == START and guards[intent] == 2:
+                if native_failure in ('arrival_first', 'arrival_last'):
+                    index = 0 if native_failure == 'arrival_first' else 1
+                    confirmed_files()[index].write_bytes(b'replaced original arrival PNG')
+                    injected.append(native_failure)
+                if native_failure == 'version':
+                    version_file.write_text('[General]\ngame_version=4.7.0\n', encoding='utf-8')
+                    injected.append(native_failure)
+            if intent == START and guards[intent] == 3 and native_failure == 'start_f10':
+                injected.append('start_f10')
                 return 0x8001
             return 0
 
@@ -198,6 +244,17 @@ class StandardEncounterTests(unittest.TestCase):
                     self.assertEqual(path.read_bytes(), expected)
                 self.assertFalse(c.last_scene.image.flags.writeable)
                 injected.append('holds')
+            if native_failure == 'battle_holds' and intent == START:
+                for path in [*confirmed_files(), version_file, store.path]:
+                    expected = path.read_bytes()
+                    with self.assertRaises(PermissionError):
+                        path.write_bytes(b'tampered while sending')
+                    self.assertEqual(path.read_bytes(), expected)
+                self.assertFalse(c.last_scene.image.flags.writeable)
+                injected.append('battle_holds')
+            if native_failure == 'partial_start' and intent == START:
+                injected.append('partial_start')
+                return 1
             return count
 
         native.GetForegroundWindow.side_effect = foreground
@@ -208,30 +265,38 @@ class StandardEncounterTests(unittest.TestCase):
 
         def save(instance):
             active = instance.data['actions']
-            if active and active[-1]['action'] == CONFIRM and active[-1]['status'] == 'verified':
-                if native_failure == 'publish':
-                    injected.append('publish')
-                    raise PermissionError('synthetic locked receipt')
-                if native_failure == 'publish_holds':
-                    for frame in active[-1]['encounter_frames']:
-                        path = Path(frame['source']['path'])
-                        expected = path.read_bytes()
-                        with self.assertRaises(PermissionError):
-                            path.write_bytes(b'tampered during receipt publication')
-                        self.assertEqual(path.read_bytes(), expected)
-                    injected.append('publish_holds')
+            blocked = {'publish': CONFIRM, 'battle_publish': START}.get(native_failure)
+            if (blocked is not None and active and active[-1]['action'] == blocked and active[-1]['status'] == 'verified'
+                    and (blocked != START or BINDING in active[-1])):
+                injected.append(native_failure)
+                raise PermissionError('synthetic locked receipt')
+            if (native_failure == 'publish_holds' and active and active[-1]['action'] == CONFIRM
+                    and active[-1]['status'] == 'verified'):
+                for frame in active[-1]['encounter_frames']:
+                    path = Path(frame['source']['path'])
+                    expected = path.read_bytes()
+                    with self.assertRaises(PermissionError):
+                        path.write_bytes(b'tampered during receipt publication')
+                    self.assertEqual(path.read_bytes(), expected)
+                injected.append('publish_holds')
             persist(instance)
 
         error = None
-        with (patch('autohsr.windows.user32', native), patch('autohsr.windows.geometry', return_value=GEOMETRY),
+        with (ExitStack() as strategy, patch('autohsr.windows.user32', native), patch('autohsr.windows.geometry', return_value=GEOMETRY),
               patch('autohsr.currency_wars.time', clock), patch('autohsr.currency_wars_standard_flow.time', clock),
               patch('autohsr.currency_wars_standard_node.time', clock),
-              patch.object(StandardSession, 'persist', save), ExitStack() as readers):
+              patch.object(StandardSession, 'persist', save)):
             if not actual_readers:
-                readers.enter_context(patch('autohsr.currency_wars_encounter.read_encounter', fake_observation))
-                readers.enter_context(patch('autohsr.currency_wars_encounter.read_encounter_targets', fake_targets))
-                readers.enter_context(patch('autohsr.currency_wars_encounter.encounter_overlay_present',
+                strategy.enter_context(patch('autohsr.currency_wars_encounter.read_encounter', fake_observation))
+                strategy.enter_context(patch('autohsr.currency_wars_encounter.read_encounter_targets', fake_targets))
+                strategy.enter_context(patch('autohsr.currency_wars_encounter.encounter_overlay_present',
                                       lambda scene, _: any(token.text == 'synthetic_encounter_overlay' for token in scene.tokens)))
+            if battle_node is not None:
+                for item in ('standard_flow._preparation_probe', 'standard_sale.proposal', 'standard_exchange.exchange_proposal',
+                             'standard_reorder.proposal', 'standard_deployment.standard_deployment',
+                             'standard_trading.experience_action', 'standard_equipment.proposal',
+                             'standard_consumables.proposal'):
+                    strategy.enter_context(patch('autohsr.currency_wars_'+item, return_value=None))
             try:
                 run_standard(c)
             except (AutomationError, PermissionError) as caught:

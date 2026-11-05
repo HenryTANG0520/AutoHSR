@@ -574,7 +574,7 @@ class Context:
 
     def _currency_standard_evidenced_click(self, scene, choice, guard, store, data, loop_guard, start_sources,
                                           *, encounter_sources=()):
-        from .currency_wars_identity import account_key
+        from .currency_wars_identity import account_key, installed_client
         from .currency_wars_initial import _pixels, evidence_ref, source_file_ref
         from .currency_wars_points_goal import require_start_window
         from .currency_wars_standard_encounter import dispatch_sources, require_files, same_account
@@ -582,29 +582,47 @@ class Context:
         from .currency_wars_standard_node import original_loss_files
 
         starting = choice.intent == 'start_standard_a8_40'
+        encounter_followup = choice.encounter_arrival is not None
         operation = '标准开局' if starting else '遭遇推进' if encounter_sources else '节点失利推进'
         before = data['actions'][-1].get('before')
         if not isinstance(before, str) or not before:
             raise AutomationError(operation + '缺少原始画面，未发送输入。')
-        losses = (original_loss_files(data, store.path.parent)
-                  if not starting and data['node_attempt'].get('node_loss_verified') is True else ())
         journal, window = store.path, self.window
         run_dir, epoch, confidence = self.report.run_dir, self.runner.input_epoch, self.settings.ocr_confidence
+        origin = data['node_history'][-1] if encounter_followup else data.get('node_attempt', {})
+        losses = (original_loss_files(dict(data, node_attempt=origin), journal.parent)
+                  if not starting and origin.get('node_loss_verified') is True else ())
         files = [store.path, Path(before), *(Path(source) for source in start_sources),
                  *(path for path, _ in losses), *(path for path, _ in encounter_sources)]
         if loop_guard is not None:
             files.append(loop_guard.store.path)
+        executable = getattr(window, 'path', None)
+        hwnd = getattr(window, 'hwnd', None)
+        if encounter_followup:
+            version_file = data.get('client', {}).get('source')
+            if not isinstance(version_file, str) or not version_file:
+                raise AutomationError('遭遇出战缺少当前客户端版本来源。')
+            files.append(Path(version_file))
         geometry, captured_at, image = scene.geometry, scene.captured_at, scene.image
 
         def encounter_scope_matches(saved):
             live = store.data
-            start = saved['node_attempt']['start_action_id']
+            start = origin['start_action_id']
+            if encounter_followup:
+                end = choice.encounter_arrival + 2
+                if (live.get('node_history', [])[-1:] != saved['node_history'][-1:]
+                        or live['actions'][-1:] != saved['actions'][-1:]
+                        or live['actions'][start:end] != saved['actions'][start:end]
+                        or getattr(window, 'hwnd', None) != hwnd
+                        or getattr(window, 'path', None) != executable):
+                    return False
+            elif live['actions'][start:] != saved['actions'][start:]:
+                return False
             fields = ('node_attempt', 'client', 'account_key', 'account_verified_run', 'account_verified_epoch',
                       'match_id', 'status', 'start_verified', 'rules_version', 'loop_owner',
                       'entry', 'mode', 'rank', 'wealth')
             return (self.window is window and getattr(self, 'currency_standard_session', None) is store and store.path == journal
                     and self.report.run_dir == run_dir and len(live['actions']) == len(saved['actions'])
-                    and live['actions'][start:] == saved['actions'][start:]
                     and all(live.get(key) == saved.get(key) for key in fields))
 
         def revisions():
@@ -630,6 +648,10 @@ class Context:
                         or reference != encounter_sources[-1][1]):
                     raise AutomationError('遭遇当前输入来源与原落盘意图不一致。')
                 require_files(encounter_sources, run_dir)
+            if encounter_followup:
+                client = installed_client(executable)
+                if any(saved['client'].get(key) != value for key, value in client.items()):
+                    raise AutomationError('遭遇出战的安装版本来源已改变，未发送输入。')
             if any(source_file_ref(path, path.parent)['sha256'] != digest for path, digest in losses):
                 raise AutomationError('原节点失利证据已改变，未继续挑战。')
             self._currency_weekly_checkpoint()

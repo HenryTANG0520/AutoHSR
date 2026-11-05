@@ -78,8 +78,9 @@ def record_start(session, action, scene, phase, run_dir, epoch, confidence):
             return
     except AutomationError:
         return
-    origin = action.setdefault(_ORIGIN, dict(scope=scope))
+    origin = dict(action.get(_ORIGIN, dict(scope=scope)))
     origin[phase] = _frame(scene, action[phase], scope)
+    action[_ORIGIN] = origin
 
 
 def record_result(c, session, attempt, action, scene):
@@ -308,11 +309,11 @@ def feedback(choice, scene, session, confidence):
     return None
 
 
-def arrival_receipt(session, attempt):
+def arrival_evidence(session, attempt):
     try:
         actions = session['actions']
-        opened, _ = _opening(actions, attempt)
-        selected, _ = _selected(actions, attempt, opened)
+        opened, original = _opening(actions, attempt)
+        selected, selection = _selected(actions, attempt, opened)
         index, scope = selected['id']+1, attempt['encounter']['scope']
         item = actions[index]
         arrived = item['feedback']
@@ -334,11 +335,14 @@ def arrival_receipt(session, attempt):
                     or any(type(value) is not int for value in deployment)
                     or not 0 <= deployment[0] <= deployment[1] <= 20):
                 raise AutomationError(_ERROR)
-        _source(item['encounter_before'], scope, item['before'])
-        _pair(item, scope, item['encounter_before'])
-        return item
+        before = _source(item['encounter_before'], scope, item['before'])
+        return item, (*original, *selection, before, *_pair(item, scope, item['encounter_before']))
     except (IndexError, KeyError, TypeError, ValueError) as error:
         raise AutomationError(_ERROR) from error
+
+
+def arrival_receipt(session, attempt):
+    return arrival_evidence(session, attempt)[0]
 
 
 def commit_feedback(c, store, guard, choice, captures, result, write_evidence):
@@ -363,7 +367,10 @@ def commit_feedback(c, store, guard, choice, captures, result, write_evidence):
         frames.append(_frame(scene, path, scope))
     action.update(encounter_frames=frames, feedback=result)
     attempt, actions = session['node_attempt'], session['actions']
-    if action['action'] == _CONTINUE:
+    if choice.encounter_arrival is not None:
+        from .currency_wars_standard_encounter_battle import complete
+        complete(c, session, action, choice, after, scope)
+    elif action['action'] == _CONTINUE:
         pending = dict(attempt, status='encounter_pending', continue_action_id=action['id'],
                        encounter=dict(scope=scope, expected_node=result['expected_node'], panel=result['panel']))
         _opening(actions, pending)
@@ -403,6 +410,9 @@ def commit_feedback(c, store, guard, choice, captures, result, write_evidence):
 
 def dispatch_sources(session, choice, run_dir, epoch, runs_root):
     """Resolve the original run files before the native read-hold begins."""
+    if choice.encounter_arrival is not None:
+        from .currency_wars_standard_encounter_battle import dispatch_sources as battle_sources
+        return battle_sources(session, choice, run_dir, epoch, runs_root)
     items = session['actions']
     current = items[-1]
     if choice.intent not in INTENTS and (choice.intent != _CONTINUE or _ORIGIN not in current):
@@ -430,15 +440,19 @@ def dispatch_sources(session, choice, run_dir, epoch, runs_root):
                 _, selected = _selected(items, attempt, opened)
                 refs += selected
             refs += (_source(current['encounter_before'], scope, current['before']),)
-        directory = Path(run_dir).resolve(strict=True)
-        if directory.parent != Path(runs_root).resolve():
-            raise AutomationError(_ERROR)
-        paths = tuple(Path(ref['path']).resolve(strict=True) for ref in refs)
-        if any(path.parent != directory or str(path) != ref['path'] for path, ref in zip(paths, refs)):
-            raise AutomationError(_ERROR)
-        return tuple(zip(paths, refs))
+        return resolve_sources(refs, run_dir, runs_root)
     except (IndexError, KeyError, OSError, TypeError, ValueError) as error:
         raise AutomationError(_ERROR) from error
+
+
+def resolve_sources(refs, run_dir, runs_root):
+    directory = Path(run_dir).resolve(strict=True)
+    if directory.parent != Path(runs_root).resolve():
+        raise AutomationError(_ERROR)
+    paths = tuple(Path(ref['path']).resolve(strict=True) for ref in refs)
+    if any(path.parent != directory or str(path) != ref['path'] for path, ref in zip(paths, refs)):
+        raise AutomationError(_ERROR)
+    return tuple(zip(paths, refs))
 
 
 def require_files(refs, run_dir):

@@ -28,6 +28,7 @@ class StandardAction:
     target: object
     details: tuple = ()
     payload: tuple = ()
+    encounter_arrival: int | None = None
 
 
 def _preparation_probe(scene,confidence,known,session=None):
@@ -1037,6 +1038,10 @@ def _next_action(scene, confidence=.65, *, session=None, loot_box=None):
                                        and attempt.get('status')=='start_pending')
                     if attempt.get('node')==state.node and not own_pending:
                         raise AutomationError('本节点已有出战提交，未重复出战。')
+                    from .currency_wars_standard_encounter_battle import proposal as encounter_start
+                    encounter = encounter_start(scene, session, state, confidence)
+                    if encounter is not None:
+                        return encounter
                     from .currency_wars_node import start_target
                     return StandardAction('start_standard_node','standard_node_entered',start_target(scene,confidence),
                                           payload=(state.node,state.gold,state.hp,state.level))
@@ -1226,6 +1231,7 @@ def run_standard(c):
         commit_feedback as commit_encounter, continuation_feedback as encounter_after_continue,
         feedback as encounter_feedback, record_start as record_encounter_start,
     )
+    from .currency_wars_standard_encounter_battle import bind_input as bind_encounter_followup, feedback as encounter_followup_feedback
     if c.report.operation != 'currency_wars_standard':
         raise AutomationError('标准对局开发须使用独立入口。')
     # This initial path is intentionally not an acceptance counter. Any repair
@@ -1544,7 +1550,10 @@ def run_standard(c):
             record_encounter_start(store.data, action, scene, 'before', c.report.run_dir,
                                    c.runner.input_epoch, c.settings.ocr_confidence)
             store.persist()
-        encounter_input = bind_encounter(store.data, choice, scene, c.report.run_dir, c.runner.input_epoch)
+        encounter_followup = choice.encounter_arrival is not None
+        if encounter_followup:
+            bind_encounter_followup(store.data, choice, scene, c.report.run_dir, c.runner.input_epoch)
+        encounter_input = encounter_followup or bind_encounter(store.data, choice, scene, c.report.run_dir, c.runner.input_epoch)
         if encounter_input:
             store.persist()
         investment_box = False
@@ -1632,7 +1641,10 @@ def run_standard(c):
                     same_account = True
                     from .currency_wars_standard_popup import arrival as popup_arrival
                     popup_stamp=popup_arrival(choice,after,store.data,c.settings.ocr_confidence)
-                    if node_progress:
+                    if encounter_followup:
+                        progress = encounter_followup_feedback(choice, after, c.settings.ocr_confidence)
+                        ready = progress is not None
+                    elif node_progress:
                         if not closing_intro:
                             progress = encounter_after_continue(choice, after, store.data, c.settings.ocr_confidence)
                         if progress is None:
@@ -1679,10 +1691,10 @@ def run_standard(c):
                     else:
                         ready = False
                 paired_progress = (progress if ready and progress is not None
-                                   and (investment_progress or closing_intro or loss_progress or encounter_step
+                                   and (investment_progress or closing_intro or loss_progress or encounter_step or encounter_followup
                                         or progress.get('page_kind') in ('boss_intro', ENCOUNTER_OFFER))
                                    else None)
-                if ((encounter_step or paired_progress and paired_progress.get('page_kind') == ENCOUNTER_OFFER)
+                if ((encounter_followup or encounter_step or paired_progress and paired_progress.get('page_kind') == ENCOUNTER_OFFER)
                         and progress_frames and progress_frames[-1][1] is after):
                     ready, paired_progress = False, None
                 if paired_progress != previous_progress:
@@ -1727,7 +1739,7 @@ def run_standard(c):
                                                     'standard_consumable_applied','standard_consumable_returned','standard_consumable_board',
                                                     'standard_initial_shop_closed')) else 1
                 if stable >= required:
-                    if encounter_step or paired_progress and paired_progress.get('page_kind') == ENCOUNTER_OFFER:
+                    if encounter_followup or encounter_step or paired_progress and paired_progress.get('page_kind') == ENCOUNTER_OFFER:
                         commit_encounter(c, store, guard, choice, progress_frames, paired_progress,
                                          lambda frame, label: evidence(c, frame, label))
                         scene = after
@@ -1897,8 +1909,11 @@ def run_standard(c):
             if encounter_input and store.require_pending(choice.intent, action['input_epoch']) != store.data:
                 raise AutomationError('遭遇落盘意图已改变，保留原画面待核对。')
             action['status'] = 'unknown'
-            reason = ('遭遇选择或确认后的双帧反馈未核实，原意图保留待核对。'
-                      if encounter_step else _loot_timeout_reason(action))
+            if encounter_followup:
+                reason = '遭遇收店或出战后的双帧反馈未核实，原意图保留待核对。'
+            else:
+                reason = ('遭遇选择或确认后的双帧反馈未核实，原意图保留待核对。'
+                          if encounter_step else _loot_timeout_reason(action))
             store.data.update(action_status='unknown', reason=reason)
             if after is not None:
                 store.data['screenshot'] = evidence(c, after, 'currency_standard_transition_unknown')
