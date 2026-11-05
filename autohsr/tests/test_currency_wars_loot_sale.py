@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import cv2
 import numpy as np
 
 from autohsr.currency_wars_collector import roster_cells
@@ -19,7 +20,8 @@ from autohsr.currency_wars_standard_flow import next_action
 from autohsr.currency_wars_standard_ledger import ledger_status, valid_receipt
 from autohsr.currency_wars_standard_sale import proposal
 from autohsr.models import AutomationError, Stopped
-from autohsr.tests.test_currency_wars_loot_capacity import Harness, clone, fixture as loot_fixture
+from autohsr.tests.test_currency_wars_loot_capacity import ROOT as CRYSTALS, Harness, clone, fixture as loot_fixture
+from autohsr.tests.test_currency_wars_standard_equipment import recommend
 from autohsr.tests.test_currency_wars_standard_sale import character, sold
 from autohsr.tests.test_currency_wars_standard_trading import hud
 
@@ -84,15 +86,19 @@ class SaleHarness(Harness):
         store.data['shop_observed_nodes'] = data['shop_observed_nodes']
         store.persist()
 
-    def corrupt_before_input(self, intent, mutate):
+    def corrupt_before_input(self, intent, mutate, *, occurrence=1):
         dispatch = self.c.currency_standard_input
+        seen = 0
 
         def invoke(scene, choice):
+            nonlocal seen
             if choice.intent == intent:
-                saved = json.loads(self.path.read_text(encoding='utf-8'))
-                mutate(saved['actions'])
-                self.tampered_bytes = json.dumps(saved, ensure_ascii=False).encode('utf-8')
-                self.path.write_bytes(self.tampered_bytes)
+                seen += 1
+                if seen == occurrence:
+                    saved = json.loads(self.path.read_text(encoding='utf-8'))
+                    mutate(saved['actions'])
+                    self.tampered_bytes = json.dumps(saved, ensure_ascii=False).encode('utf-8')
+                    self.path.write_bytes(self.tampered_bytes)
             return dispatch(scene, choice)
 
         self.c.currency_standard_input = invoke
@@ -143,7 +149,225 @@ class SaleHarness(Harness):
             return super().run()
 
 
+class DoubleSaleHarness(SaleHarness):
+    """Sales around visible pickups, with configurable bench refills."""
+    def __init__(self, folder, *, changed_survivor=False, second_candidate=True, third_candidate=False,
+                 crystal_count=2, refill_at=(1,)):
+        super().__init__(folder)
+        self.changed_survivor = changed_survivor
+        self.crystal_count = crystal_count
+        self.refill_at = refill_at
+        actual_crop = cv2.imread(str(CRYSTALS/'four_blue.png'))
+        loot = self.board.image[330:690,1700:2180]
+        loot[:] = 0
+        for x, y in ((108, 127), (406, 200), (287, 62))[:crystal_count]:
+            loot[y-55:y+55,x-55:x+55] = actual_crop[y-55:y+55,x-55:x+55]
+        self.crystal_counts = [len(loot_centers(self.board))]
+        store = StandardSession(self.path)
+        records = store.data['collection']['units']
+        for zone, names in (('front', ('大丽花', '符玄', '杰帕德')),
+                            ('bench', ('停云', '瓦尔特', '花火', '三月七', '阮梅', '知更鸟', '桂乃芬', '符玄', '大丽花'))):
+            for slot, name in enumerate(names, 1):
+                records[f'{zone}:{slot}']['unit'].update(name=name, traits=('测试',))
+        records['bench:8']['unit'].update(star=2, tier=2)
+        if not second_candidate:
+            records['bench:8']['unit']['name'] = '镜流'
+        if third_candidate:
+            records['bench:7']['unit'].update(name='杰帕德', star=3, tier=3)
+        self.units = {key: deepcopy(record['unit']) for key, record in records.items()}
+        store.persist()
+
+    def checkpoint(self):
+        store = getattr(self.c, 'currency_standard_session', None)
+        actions = store.data['actions'] if store is not None else []
+        if len(actions) > 60*self.crystal_count:
+            raise AssertionError('pickup fixture exceeded the expected action bound')
+        if sum(action['action']=='collect_standard_loot' and action['status']=='verified' for action in actions) == self.crystal_count:
+            raise Stopped('all fixture crystals collected')
+
+    def click(self, *args):
+        store = self.c.currency_standard_session
+        action = store.data['actions'][-1]
+        intent, target = action['action'], action['target']
+        self.inputs.append(intent)
+        if intent in ('inspect_standard_sale_unit', 'inspect_standard_unit'):
+            self.prep = self.board
+            if intent == 'inspect_standard_sale_unit':
+                zone, slot = 'bench', target[4]
+                refund = 10-slot
+            else:
+                zone, slot = target[:2]
+                refund = 1
+            profile = {'unit': self.units[f'{zone}:{slot}']}
+            sources = {'collection': {'units': {f'bench:{slot}': profile}}}
+            self.board = character(self.prep, sources, slot=slot, refund=refund)
+        elif intent == 'open_standard_equipment_recommendations':
+            self.board = recommend(self.board)
+        elif intent == 'close_standard_unit':
+            self.board = self.prep
+        elif intent == 'sell_standard_owned':
+            self.board = sold(self.prep, SimpleNamespace(payload=target))
+            self.freed_slot = target[4]
+            del self.units[f'bench:{self.freed_slot}']
+        elif intent == 'collect_standard_loot':
+            x, y, radius = target
+            cx, cy, margin = round(x*2560), round(y*1440), round(radius*2560)+8
+            self.board.image[cy-margin:cy+margin,cx-margin:cx+margin] = 0
+            if len(self.crystal_counts) in self.refill_at:
+                slot = self.freed_slot
+                portrait = _crop(self.board.image, bench_face(slot))
+                portrait[:] = np.random.default_rng(481+slot).integers(0,256,portrait.shape,dtype=np.uint8)
+                self.units[f'bench:{slot}'] = dict(name='罗刹' if slot==9 else '阿兰', zone='bench', slot=slot,
+                                                  star=1, tier=1, eligible_zones=('front',), traits=('测试',), equipment=())
+                if self.changed_survivor:
+                    x, y, radius = loot_centers(self.board)[0]
+                    cx, cy, margin = round(x*2560), round(y*1440), round(radius*2560)+8
+                    old = self.board.image[cy-margin:cy+margin,cx-margin:cx+margin]
+                    self.board.image[560-margin:560+margin,1940-margin:1940+margin] = old.copy()
+                    old[:] = 0
+            self.crystal_counts.append(len(loot_centers(self.board)))
+        else:
+            raise AssertionError(f'unexpected fixture input {intent}')
+
+
 class LootSaleContextTests(unittest.TestCase):
+    def test_full_field_recovers_second_crystal_after_first_refills_the_freed_slot(self):
+        with tempfile.TemporaryDirectory() as folder:
+            harness = DoubleSaleHarness(folder)
+            try:
+                result = harness.run()
+            except Stopped:
+                pass
+            else:
+                data = StandardSession(harness.path).data
+                self.assertEqual(harness.crystal_counts, [2, 1, 0],
+                                 f'{result.detail}，商店来源 {data.get("shop_observed_nodes")}')
+                self.fail('fixture did not reach the second verified pickup')
+            data = StandardSession(harness.path).data
+            actions = [action for action in data['actions']
+                       if action['action'] in ('inspect_standard_sale_unit', 'sell_standard_owned', 'collect_standard_loot')]
+            self.assertEqual([a['action'] for a in actions],
+                             ['inspect_standard_sale_unit', 'sell_standard_owned', 'collect_standard_loot']*2)
+            self.assertTrue(all(a['status']=='verified' for a in actions))
+            self.assertEqual(harness.crystal_counts, [2, 1, 0])
+            self.assertEqual([actions[index]['target'][4] for index in (1,4)], [9, 8])
+            self.assertTrue(all(valid_receipt(actions[index]) for index in (1,4)))
+            self.assertEqual([actions[index]['receipt']['refund'] for index in (1,4)], [1, 2])
+            self.assertEqual(ledger_status(data['actions']), 'clear')
+            reread = data['actions'][actions[2]['id']+1:actions[3]['id']]
+            closed = [action['collection_read']['unit'] for action in reread if action['action']=='close_standard_unit']
+            self.assertEqual(len(closed), 12)
+            self.assertEqual(len({(unit['zone'], unit['slot']) for unit in closed}), 12)
+            self.assertEqual([unit['name'] for unit in closed if unit['zone']=='bench' and unit['slot']==9], ['罗刹'])
+            after_second_sale = data['actions'][actions[4]['id']+1:actions[5]['id']]
+            reread_slots = [tuple(action['target'][1:3]) for action in after_second_sale if action['action']=='close_standard_unit']
+            self.assertEqual(len(reread_slots), 11)
+            self.assertEqual(len(set(reread_slots)), 11)
+            self.assertNotIn('open_standard_shop', harness.inputs)
+            self.assertEqual(data['shop_observed_nodes'], [])
+            harness.c.window.drag.assert_not_called()
+
+    def test_second_crystal_requires_same_survivor_and_a_current_safe_sale_candidate(self):
+        for options in (dict(changed_survivor=True), dict(second_candidate=False)):
+            with self.subTest(**options), tempfile.TemporaryDirectory() as folder:
+                harness = DoubleSaleHarness(folder, **options)
+                self.assertEqual(harness.run().status, 'partial')
+                data = StandardSession(harness.path).data
+                self.assertEqual(harness.crystal_counts, [2, 1])
+                self.assertEqual(harness.inputs.count('inspect_standard_sale_unit'), 1)
+                self.assertEqual(harness.inputs.count('sell_standard_owned'), 1)
+                first_sale, first_loot = data['actions'][1:3]
+                self.assertTrue(valid_receipt(first_sale))
+                self.assertEqual(first_loot['status'], 'verified')
+                self.assertEqual(data['shop_observed_nodes'], [])
+
+    def test_second_pickup_with_empty_bench_uses_original_path_without_another_sale(self):
+        with tempfile.TemporaryDirectory() as folder:
+            harness = DoubleSaleHarness(folder, refill_at=())
+            with self.assertRaises(Stopped):
+                harness.run()
+            self.assertEqual(harness.crystal_counts, [2, 1, 0])
+            self.assertEqual(harness.inputs.count('inspect_standard_sale_unit'), 1)
+            self.assertEqual(harness.inputs.count('sell_standard_owned'), 1)
+            self.assertEqual(harness.inputs.count('collect_standard_loot'), 2)
+            self.assertNotIn('open_standard_shop', harness.inputs)
+
+    def test_third_pickup_keeps_sale_source_across_an_intermediate_free_pickup(self):
+        with tempfile.TemporaryDirectory() as folder:
+            harness = DoubleSaleHarness(folder, crystal_count=3, refill_at=(2,))
+            self.assertEqual(harness.crystal_counts, [3])
+            try:
+                result = harness.run()
+            except Stopped:
+                pass
+            else:
+                self.fail(f'{result.detail}，晶矿计数 {harness.crystal_counts}')
+            saved = StandardSession(harness.path).data
+            actions = [action for action in saved['actions']
+                       if action['action'] in ('inspect_standard_sale_unit', 'sell_standard_owned', 'collect_standard_loot')]
+            self.assertEqual([action['action'] for action in actions], [
+                'inspect_standard_sale_unit', 'sell_standard_owned', 'collect_standard_loot', 'collect_standard_loot',
+                'inspect_standard_sale_unit', 'sell_standard_owned', 'collect_standard_loot',
+            ])
+            self.assertTrue(all(action['status']=='verified' for action in actions))
+            self.assertEqual(harness.crystal_counts, [3, 2, 1, 0])
+            self.assertEqual([actions[index]['loot_sale_action_id'] for index in (2, 3, 6)],
+                             [actions[1]['id'], actions[1]['id'], actions[5]['id']])
+            self.assertEqual([actions[index]['reward_basis']['cells']['bench:9'][0] for index in (2,3,6)],
+                             ['empty', 'empty', 'occupied'])
+            self.assertTrue(all(valid_receipt(actions[index]) for index in (1,5)))
+            self.assertNotIn('open_standard_shop', harness.inputs)
+            self.assertEqual(saved['shop_observed_nodes'], [])
+
+    def test_third_sale_rechecks_first_pickup_ancestor(self):
+        for missing_ancestor in (True, False):
+            with self.subTest(missing_ancestor=missing_ancestor), tempfile.TemporaryDirectory() as folder:
+                harness = DoubleSaleHarness(folder, crystal_count=3, refill_at=(1,2), third_candidate=True)
+                if missing_ancestor:
+                    def remove_first_pickup(actions):
+                        next(action for action in actions if action['action']=='collect_standard_loot').pop('loot_pickup')
+
+                    harness.corrupt_before_input('inspect_standard_sale_unit', remove_first_pickup, occurrence=3)
+                    with self.assertRaisesRegex(AutomationError, '连续晶矿缺少前次已核实'):
+                        harness.run()
+                    self.assertEqual(harness.path.read_bytes(), harness.tampered_bytes)
+                else:
+                    try:
+                        result = harness.run()
+                    except Stopped:
+                        pass
+                    else:
+                        self.fail(f'{result.detail}，晶矿计数 {harness.crystal_counts}')
+                data = StandardSession(harness.path).data
+                sales = [action for action in data['actions'] if action['action']=='sell_standard_owned']
+                pickups = [action for action in data['actions'] if action['action']=='collect_standard_loot']
+                slots = [9, 8] if missing_ancestor else [9, 8, 7]
+                self.assertEqual(harness.inputs.count('inspect_standard_sale_unit'), len(slots))
+                self.assertEqual(harness.inputs.count('sell_standard_owned'), len(slots))
+                self.assertEqual(harness.crystal_counts, [3,2,1] if missing_ancestor else [3,2,1,0])
+                self.assertEqual([sale['target'][4] for sale in sales], slots)
+                self.assertTrue(all(valid_receipt(sale) for sale in sales))
+                self.assertEqual([pickup['loot_sale_action_id'] for pickup in pickups], [sale['id'] for sale in sales])
+                if missing_ancestor:
+                    self.assertEqual(data['actions'][-1]['status'], 'pending')
+                    self.assertEqual(data['actions'][-1]['target'][4], 7)
+                    self.assertNotIn('loot_pickup', pickups[0])
+                    self.assertIn('loot_pickup', pickups[1])
+                self.assertNotIn('open_standard_shop', harness.inputs)
+
+    def test_missing_durable_first_pickup_feedback_blocks_the_second_sale_inspection(self):
+        with tempfile.TemporaryDirectory() as folder:
+            harness = DoubleSaleHarness(folder)
+            harness.corrupt_before_input('inspect_standard_sale_unit', lambda actions: actions[2].pop('after'), occurrence=2)
+            with self.assertRaises(AutomationError):
+                harness.run()
+            self.assertEqual(harness.inputs.count('inspect_standard_sale_unit'), 1)
+            self.assertEqual(harness.inputs.count('sell_standard_owned'), 1)
+            self.assertEqual(harness.crystal_counts, [2, 1])
+            self.assertEqual(harness.path.read_bytes(), harness.tampered_bytes)
+            saved = StandardSession(harness.path).data
+            self.assertTrue(valid_receipt(saved['actions'][1]))
+
     def test_durable_source_loss_blocks_inspect_sale_and_followup_clicks(self):
         cases = (
             ('inspect_standard_sale_unit', 'normal', lambda actions: actions[0].pop('loot_sale_basis'), []),

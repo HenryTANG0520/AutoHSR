@@ -2,12 +2,13 @@
 import threading
 import time
 import unittest
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from autohsr.app import Context
 from autohsr.config import Settings
 from autohsr.differential_universe import DifferentialUniverseWorkflow, classify_page
-from autohsr.models import AutomationError, InputInterrupted, RunReport, Scene, Token, normalize
+from autohsr.models import AutomationError, EmptyCapture, InputInterrupted, RunReport, Scene, Token, normalize
 from autohsr.policy import guard_differential_universe_click
 
 
@@ -2588,17 +2589,175 @@ class DuRuntimeTests(unittest.TestCase):
             with self.assertRaisesRegex(AutomationError,'画面过渡等待超过30秒'):
                 flow._wait_known(unknown,'unknown','attack')
 
+    @contextmanager
+    def blessing_confirmation(self, pages):
+        runner=SimpleNamespace(settings=Settings(),report=RunReport(operation='differential_universe'),
+                               input_epoch=0,inactive_duration=0,checkpoint=Mock(),log=Mock())
+        window,vision=Mock(),Mock()
+        window.capture.side_effect=[(page.image,page.geometry) if isinstance(page,Scene) else page
+                                    for page in pages]
+        vision.read.side_effect=[page for page in pages if isinstance(page,Scene)]
+        context=Context(runner,window,vision)
+        context.evidence=Mock(return_value='fixture.png')
+        now=10.0
+
+        def sleep(seconds):
+            nonlocal now
+            now+=seconds
+
+        context.sleep=sleep
+        clock=SimpleNamespace(monotonic=lambda:now)
+        with patch('autohsr.app.time',clock),patch('autohsr.differential_universe.time',clock):
+            yield DifferentialUniverseWorkflow(context,1),window
+
+    def test_blessing_confirmation_does_not_treat_stable_ocr_variation_as_a_bonus(self):
+        import cv2
+        from pathlib import Path
+        from autohsr.du_strategy import same_blessing_titles
+        root=Path(__file__).parent/'fixtures/du_runtime'
+        images=[cv2.imread(str(root/f'blessing_title_variant_{i}.png')) for i in range(2)]
+        tokens=[t('选择祝福'),t('新星爆发',.25,.47),t('无存在者',.5,.47),
+                t('死神骑车来',.75,.47),t('确认',.88,.89)]
+        altered=[Token('无存任者',v.score,v.box) if v.text=='无存在者' else v for v in tokens]
+        before=Scene(tokens,images[0])
+        first=Scene(altered,images[1]);second=Scene(altered,images[1].copy())
+        station=Scene([t('选择下一站'),t('战斗',.25,.47)])
+        self.assertTrue(same_blessing_titles(before,first))
+        self.assertNotEqual(DifferentialUniverseWorkflow._choice_identity(before,'blessing_choice'),
+                            DifferentialUniverseWorkflow._choice_identity(first,'blessing_choice'))
+        with self.blessing_confirmation([before,first,second,station]) as (flow,window):
+            flow.ctx.snapshot()
+            self.assertEqual(flow._confirm_choice(before,'blessing_choice'),(station,'station_choice'))
+            window.click.assert_called_once()
+
     def test_bonus_blessing_is_a_new_choice_and_body_text_is_not_the_anchor(self):
+        from autohsr.tests.test_du_strategy import page
         context=Mock(settings=Settings(),report=Mock(differential_universe={}))
         flow=DifferentialUniverseWorkflow(context,1)
-        before=Scene([t('新星爆发',.25,.47),t('无存在者',.5,.47),t('死神骑车来',.75,.47),
+        example=Scene([t('新星爆发',.25,.47),t('无存在者',.5,.47),t('死神骑车来',.75,.47),
                       t('次。',.16,.67),t('确认',.88,.89)])
-        bonus=Scene([t('晶体谐振的灯塔',.25,.47),t('活的隐喻',.5,.47),t('昭质既设',.75,.47)])
-        self.assertEqual(flow._choice_target(before,'blessing_choice').text,'新星爆发')
-        flow._click=Mock(return_value=(before,'blessing_choice'))
-        flow._snapshot=Mock(return_value=(bonus,'blessing_choice'))
-        self.assertEqual(flow._confirm_choice(before,'blessing_choice'),(bonus,'blessing_choice'))
-        self.assertEqual(flow._click.call_count,1)
+        self.assertEqual(flow._choice_target(example,'blessing_choice').text,'新星爆发')
+        before,_=page('right');bonus,_=page('none')
+        second=Scene(bonus.tokens,bonus.image.copy())
+        with self.blessing_confirmation([before,bonus,second]) as (flow,window):
+            flow.ctx.snapshot()
+            self.assertEqual(flow._confirm_choice(before,'blessing_choice'),(second,'blessing_choice'))
+            self.assertLess(bonus.captured_at,second.captured_at)
+            window.click.assert_called_once()
+
+    def test_same_capture_cannot_verify_a_second_blessing_reward(self):
+        from autohsr.tests.test_du_strategy import page
+        before,_=page('right');bonus,_=page('none')
+        replay=Scene(bonus.tokens,bonus.image.copy());last=Scene(bonus.tokens,bonus.image.copy())
+        station=Scene([t('选择下一站'),t('战斗',.25,.47)])
+        with self.blessing_confirmation([before,bonus,replay,last,station]) as (flow,window):
+            snapshot=flow.ctx.snapshot
+
+            def reuse_timestamp():
+                scene=snapshot()
+                if scene is replay:
+                    scene.captured_at=bonus.captured_at
+                return scene
+
+            flow.ctx.snapshot=reuse_timestamp
+            flow.ctx.snapshot()
+            self.assertEqual(flow._confirm_choice(before,'blessing_choice'),(station,'station_choice'))
+            window.click.assert_called_once()
+
+    def test_blank_blessing_capture_breaks_consecutive_feedback(self):
+        from autohsr.tests.test_du_strategy import page
+        before,_=page('right');bonus,_=page('none')
+        second=Scene(bonus.tokens,bonus.image.copy())
+        station=Scene([t('选择下一站'),t('战斗',.25,.47)])
+        with self.blessing_confirmation([before,bonus,EmptyCapture('transition'),second,station]) as (flow,window):
+            flow.ctx.snapshot()
+            self.assertEqual(flow._confirm_choice(before,'blessing_choice'),(station,'station_choice'))
+            window.click.assert_called_once()
+
+    def test_incomplete_blessing_titles_or_pixels_are_not_new_group_proof(self):
+        import numpy as np
+        from autohsr.tests.test_du_strategy import page
+        before,_=page('right');bonus,_=page('none')
+        unread=[v for v in bonus.tokens if not v.within((.39,.445,.61,.495))]
+        for name,partial in [('ocr',Scene(unread,bonus.image)),
+                             ('pixels',Scene(bonus.tokens,np.zeros_like(bonus.image)))]:
+            with self.subTest(name=name):
+                second=Scene(partial.tokens,partial.image.copy())
+                station=Scene([t('选择下一站'),t('战斗',.25,.47)])
+                with self.blessing_confirmation([before,partial,second,station]) as (flow,window):
+                    flow.ctx.snapshot()
+                    self.assertEqual(flow._confirm_choice(before,'blessing_choice'),(station,'station_choice'))
+                    window.click.assert_called_once()
+
+    def test_partially_hidden_blessing_title_is_not_a_different_glyph(self):
+        from autohsr.tests.test_du_strategy import page
+        from autohsr.du_strategy import compare_blessing_title_glyphs
+        before,_=page('right')
+        masked=before.image.copy();h,w=masked.shape[:2]
+        masked[round(.45*h):round(.495*h),round(.25*w):round(.35*w)]=0
+        tokens=[Token('通奏',v.score,v.box) if v.text=='通奏的低音' else v for v in before.tokens]
+        partial=Scene(tokens,masked);second=Scene(tokens,masked.copy())
+        station=Scene([t('选择下一站'),t('战斗',.25,.47)])
+        with self.blessing_confirmation([before,partial,second,station]) as (flow,window):
+            _,_,original=flow._blessing_confirmation_titles(before)
+            _,_,visible=flow._blessing_confirmation_titles(partial)
+            self.assertIsNone(compare_blessing_title_glyphs(original[0],visible[0]))
+            flow.ctx.snapshot()
+            self.assertEqual(flow._confirm_choice(before,'blessing_choice'),(station,'station_choice'))
+            window.click.assert_called_once()
+
+    def test_blessing_feedback_after_deadline_does_not_verify_the_reward(self):
+        from autohsr.tests.test_du_strategy import page
+        before,_=page('right');bonus,_=page('none')
+        second=Scene(bonus.tokens,bonus.image.copy())
+        with self.blessing_confirmation([before,bonus,second]) as (flow,window):
+            def evidence(scene,label):
+                if scene is second:
+                    flow.ctx.sleep(15)
+                return 'fixture.png'
+
+            flow.ctx.evidence.side_effect=evidence
+            flow.ctx.snapshot()
+            with self.assertRaisesRegex(AutomationError,'祝福奖励确认等待超过15秒'):
+                flow._confirm_choice(before,'blessing_choice')
+            window.click.assert_called_once()
+
+    def test_new_blessing_group_accepts_a_complete_two_or_one_card_layout(self):
+        import cv2
+        import numpy as np
+        from autohsr.du_strategy import blessing_columns
+        from autohsr.tests.test_du_strategy import page
+        before,_=page('right')
+        two=self.optional_device_fixture('blessing_two_choices')
+        # Existing one-card geometry is synthetic. Reuse the recorded glyph
+        # row of a real two-card title, centered inside that single card.
+        image=np.zeros((540,960,3),np.uint8)
+        cv2.rectangle(image,(376,120),(584,423),(190,190,190),2)
+        two_image=cv2.resize(two.image,(960,540))
+        image[243:267,389:571]=two_image[243:267,269:451]
+        size=before.image.shape[1],before.image.shape[0]
+        two=Scene(two.tokens,cv2.resize(two.image,size))
+        one=Scene([t('选择祝福'),t('唇须',.5,.472)],cv2.resize(image,size))
+        for expected,bonus in [(2,two),(1,one)]:
+            with self.subTest(cards=expected):
+                self.assertEqual(len(blessing_columns(bonus)),expected)
+                second=Scene(bonus.tokens,bonus.image.copy())
+                with self.blessing_confirmation([before,bonus,second]) as (flow,window):
+                    flow.ctx.snapshot()
+                    self.assertEqual(flow._confirm_choice(before,'blessing_choice'),(second,'blessing_choice'))
+                    window.click.assert_called_once()
+
+    def test_blessing_confirmation_interruption_does_not_reenter_click_path(self):
+        from autohsr.tests.test_du_strategy import page
+        before,_=page('right')
+        before.tokens.append(t('已选择',.8,.82))
+        with self.blessing_confirmation([before]) as (flow,window):
+            flow.ctx.snapshot()
+            flow.ctx.sleep=Mock(side_effect=InputInterrupted('test interruption after input'))
+            with self.assertRaisesRegex(AutomationError,'未重复点击') as error:
+                flow._progress_run(before,'blessing_choice')
+            self.assertNotIsInstance(error.exception,InputInterrupted)
+            window.click.assert_called_once()
 
     def test_bonus_equation_and_elation_path_are_recognized(self):
         context=Mock(settings=Settings(),report=Mock(differential_universe={}))

@@ -54,37 +54,50 @@ def curio_card_selected(scene,target):
     return True
 
 
-def same_blessing_titles(before,after):
-    """Corroborate short OCR variations with every visible card's glyph row."""
-    if before.image is None or after.image is None:
-        return False
+def blessing_title_glyphs(scene,columns):
+    """Read every card's white title ink, or return no usable evidence."""
+    if scene.image is None:
+        return None
     import cv2
     import numpy as np
-    if before.image.shape!=after.image.shape:
+    h,w=scene.image.shape[:2]
+    glyphs=[]
+    for left,right in columns:
+        x=(left+right)/2
+        patch=scene.image[round(.45*h):round(.495*h),round((x-.095)*w):round((x+.095)*w)]
+        if not patch.size:
+            return None
+        # Card artwork and glow can change while the title ink stays fixed.
+        hsv=cv2.cvtColor(cv2.resize(patch,(320,64)),cv2.COLOR_BGR2HSV)
+        edge=(hsv[:,:,1]<65)&(hsv[:,:,2]>180)
+        if np.count_nonzero(edge)<30:
+            return None
+        glyphs.append(edge)
+    return tuple(glyphs)
+
+
+def compare_blessing_title_glyphs(before,after):
+    """Return same, distinct, or None if one mask may be partially hidden."""
+    import cv2
+    import numpy as np
+    matches=[]
+    for source,target in ((before,after),(after,before)):
+        near=cv2.dilate(target.astype(np.uint8),np.ones((3,3),np.uint8))>0
+        matches.append(bool(np.count_nonzero(source&near)/np.count_nonzero(source)>=.93))
+    return matches[0] if matches[0]==matches[1] else None
+
+
+def same_blessing_titles(before,after):
+    """Corroborate short OCR variations with every visible card's glyph row."""
+    if before.image is None or after.image is None or before.image.shape!=after.image.shape:
         return False
     columns=blessing_columns(before)
     if columns!=blessing_columns(after):
         return False
-    h,w=before.image.shape[:2]
-    for left,right in columns:
-        x=(left+right)/2
-        edges=[]
-        for page in (before,after):
-            patch=page.image[round(.45*h):round(.495*h),round((x-.095)*w):round((x+.095)*w)]
-            if not patch.size:
-                return False
-            # White title ink stays fixed while card artwork/glow changes
-            # during a reversible preview. Do not compare those decorations.
-            hsv=cv2.cvtColor(cv2.resize(patch,(320,64)),cv2.COLOR_BGR2HSV)
-            edge=(hsv[:,:,1]<65)&(hsv[:,:,2]>180)
-            if np.count_nonzero(edge)<30:
-                return False
-            edges.append(edge)
-        for source,target in (edges,edges[::-1]):
-            near=cv2.dilate(target.astype(np.uint8),np.ones((3,3),np.uint8))>0
-            if np.count_nonzero(source&near)/np.count_nonzero(source)<.93:
-                return False
-    return True
+    original=blessing_title_glyphs(before,columns)
+    current=blessing_title_glyphs(after,columns)
+    return original is not None and current is not None and all(
+        compare_blessing_title_glyphs(old,new) is True for old,new in zip(original,current))
 
 
 def rarity(scene, x):

@@ -13,7 +13,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from .models import AutomationError, InputInterrupted, Scene, TaskResult, Token, normalize
+from .models import AutomationError, EmptyCapture, InputInterrupted, Scene, TaskResult, Token, normalize
 from .du_card_effects import station_card_effect,preview_beacons
 from .policy import has_du_field_plane_marker, du_miracle_target_labels, du_miracle_randomize_two, du_event_free_leave,du_event_free_choice,du_flea_market_choice,du_tutorial_close_prompt
 from .workflows import DailyWorkflow
@@ -937,10 +937,12 @@ class DifferentialUniverseWorkflow:
         return ()
 
     def _confirm_choice(self, scene: Scene, kind: str) -> tuple[Scene, str]:
-        before = self._choice_identity(scene, kind)
         target = self._find(scene,("确认选择","确认","确定"),(.56,.78,.99,.98))
         if target is None:
             raise AutomationError(f"{kind}选中后未识别到确认按钮。")
+        if kind == 'blessing_choice':
+            return self._confirm_blessing(scene,target)
+        before = self._choice_identity(scene, kind)
         scene, after_kind = self._click(scene,target,intent="choice_confirm",label=kind+"_confirmed")
         started,inactive_before=time.monotonic(),self._inactive()
         candidate_identity=None
@@ -959,6 +961,75 @@ class DifferentialUniverseWorkflow:
             self.ctx.sleep(.7)
             scene,after_kind=self._snapshot(kind+"_confirmation_settled")
         return scene,after_kind
+
+    @staticmethod
+    def _blessing_confirmation_titles(scene):
+        from .du_strategy import blessing_columns,blessing_title_glyphs
+        columns=blessing_columns(scene)
+        names=[]
+        for left,right in columns:
+            titles={normalize(t.text) for t in scene.tokens if t.within((left,.445,right,.495))
+                    and re.search(r'[\u3400-\u9fff]',t.text)}
+            if len(titles)!=1:
+                return None
+            names.append(titles.pop())
+        glyphs=blessing_title_glyphs(scene,columns)
+        return (columns,tuple(names),glyphs) if glyphs is not None else None
+
+    def _confirm_blessing(self, before, target):
+        from .du_strategy import compare_blessing_title_glyphs
+        epoch=self.ctx.scene_epoch
+        latest=before.captured_at
+        original=self._blessing_confirmation_titles(before)
+        candidate=None
+        try:
+            scene,kind=self._click(before,target,intent='choice_confirm',label='blessing_choice_confirmed')
+            started,inactive_before=time.monotonic(),self._inactive()
+            while True:
+                self.ctx.checkpoint()
+                if self.ctx.runner.input_epoch!=epoch or self.ctx.scene_epoch!=epoch:
+                    raise InputInterrupted('祝福确认期间输入代次改变。')
+                self._check_deadline(started,inactive_before,15,'祝福奖励确认等待')
+                current=None
+                if scene is not None and scene is self.ctx.last_scene and scene.captured_at>latest:
+                    latest=scene.captured_at
+                    if 0<=time.monotonic()-latest<=8:
+                        if kind not in ('blessing_choice','unknown','du_page'):
+                            return scene,kind
+                        if (kind=='blessing_choice' and original is not None and scene.image is not None
+                                and scene.image.shape==before.image.shape and scene.geometry==before.geometry):
+                            current=self._blessing_confirmation_titles(scene)
+                if current is not None:
+                    columns,names,glyphs=current
+                    _,old_names,old_glyphs=original
+                    # A card must be new in both OCR and its own pixels. An
+                    # old title moved to a different column is still old.
+                    if any(all(name!=old_name and compare_blessing_title_glyphs(glyph,old_glyph) is False
+                               for old_name,old_glyph in zip(old_names,old_glyphs))
+                           for name,glyph in zip(names,glyphs)):
+                        if candidate is not None and (columns,names)==candidate[:2] and all(
+                                compare_blessing_title_glyphs(old,new) is True
+                                for old,new in zip(candidate[2],glyphs)):
+                            self.ctx.checkpoint()
+                            if self.ctx.runner.input_epoch!=epoch or self.ctx.scene_epoch!=epoch:
+                                raise InputInterrupted('祝福确认期间输入代次改变。')
+                            self._check_deadline(started,inactive_before,15,'祝福奖励确认等待')
+                            if scene is self.ctx.last_scene and 0<=time.monotonic()-scene.captured_at<=8:
+                                return scene,kind
+                    else:
+                        current=None
+                candidate=current
+                self.ctx.sleep(.7)
+                try:
+                    scene=self.ctx.snapshot()
+                except EmptyCapture:
+                    scene=None
+                else:
+                    kind=self._observe(scene,'blessing_choice_confirmation_settled')
+        except InputInterrupted as error:
+            # The confirmation may already have reached the game. Do not
+            # let the outer input-interruption retry send it again.
+            raise AutomationError('祝福确认已中断，未核实奖励反馈，未重复点击。') from error
 
     @staticmethod
     def _area_choice_target(scene: Scene) -> Token | None:
