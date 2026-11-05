@@ -79,6 +79,14 @@ def runner(states,**kwargs):
 
 
 class WeeklyRewardTests(unittest.TestCase):
+    def _block_claim(self,root):
+        states=[points.lobby(18000) for _ in range(3)]+[panel(),panel(),limit(),limit()]
+        with runtime(root):
+            report=runner(states).run()
+        self.assertEqual(report.status,'partial',report.error)
+        self.assertEqual(report.currency_wars['phase'],'blocked')
+        return Path(report.run_dir)/'report.json'
+
     def test_available_and_disabled_controls_have_distinct_pixel_proof(self):
         self.assertEqual(panel_control(panel())[0],'available')
         self.assertEqual(panel_control(panel(enabled=False))[0],'settled')
@@ -141,6 +149,176 @@ class WeeklyRewardTests(unittest.TestCase):
             self.assertEqual(report.currency_wars['phase'],'blocked')
             self.assertEqual(report.currency_wars['actions'][-1]['result'],'fuel_ticket_limit')
             self.assertTrue(all(a['status']=='verified' for a in report.currency_wars['actions']))
+
+    def test_manual_limit_recovery_retries_once_from_same_available_panel(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);original=self._block_claim(root);original_bytes=original.read_bytes()
+            states=[panel(),panel(),overlay(),overlay()]+[panel(enabled=False) for _ in range(4)]+[points.lobby(18000) for _ in range(2)]
+            submitted=[]
+
+            def click(*coordinates,before_send=None):
+                if before_send is not None:before_send()
+                submitted.append(before_send is not None)
+
+            with runtime(root) as window:
+                window.click.side_effect=click
+                report=runner(states,currency_rewards_resume=True).run()
+            self.assertEqual(report.status,'success',report.error)
+            self.assertEqual(submitted,[True,False]);window.key.assert_called_once_with('esc')
+            data=report.currency_wars
+            self.assertEqual([a['result'] for a in data['actions']],
+                             ['points_rewards','fuel_ticket_limit','reward_overlay','points_rewards','lobby'])
+            self.assertEqual(data['limit_recovery']['panel_state'],'available')
+            self.assertTrue(data['claimed_now']);self.assertTrue(data['weekly_rewards_verified'])
+            store=RewardStore(root/'runs');store.load();store.check_receipt()
+            self.assertEqual(original.read_bytes(),original_bytes)
+
+    def test_already_settled_after_manual_recovery_does_not_claim_or_invent_delivery(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self._block_claim(root)
+            states=[panel(enabled=False),panel(enabled=False),points.lobby(18000),points.lobby(18000)]
+            with runtime(root) as window:report=runner(states,currency_rewards_resume=True).run()
+            self.assertEqual(report.status,'success',report.error)
+            window.click.assert_not_called();window.key.assert_called_once_with('esc')
+            self.assertEqual(report.currency_wars['limit_recovery']['panel_state'],'settled')
+            self.assertFalse(report.currency_wars['claimed_now'])
+            self.assertEqual([a['result'] for a in report.currency_wars['actions']],
+                             ['points_rewards','fuel_ticket_limit','lobby'])
+            store=RewardStore(root/'runs');store.load();store.check_receipt()
+
+    def test_second_limit_keeps_both_rejections_and_prevents_another_claim(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self._block_claim(root)
+            with runtime(root) as window:
+                window.click.side_effect=lambda *args,before_send=None:before_send()
+                result=runner([panel(),panel(),limit(),limit()],currency_rewards_resume=True).run()
+            self.assertEqual(result.status,'partial',result.error);window.click.assert_called_once()
+            self.assertEqual([a['result'] for a in result.currency_wars['actions']],
+                             ['points_rewards','fuel_ticket_limit','fuel_ticket_limit'])
+            with runtime(root) as window:
+                again=runner([panel()],currency_rewards_resume=True).run()
+            self.assertEqual(again.status,'partial',again.error)
+            window.click.assert_not_called();window.key.assert_not_called()
+            self.assertEqual(again.currency_wars['actions'],result.currency_wars['actions'])
+
+    def test_generic_overlay_and_other_account_cannot_resume_a_blocked_claim(self):
+        for scene,account,status in ((overlay(),'100000000','partial'),(panel(),'100000001','failed')):
+            with self.subTest(status=status),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);self._block_claim(root)
+                child=runner([scene],currency_rewards_resume=True);child._loop_test_account=account
+                with runtime(root) as window:report=child.run()
+                self.assertEqual(report.status,status,report.error)
+                window.click.assert_not_called();window.key.assert_not_called()
+                store=RewardStore(root/'runs');store.load()
+                self.assertNotIn('limit_recovery',store.data)
+                self.assertEqual(store.data['phase'],'blocked')
+
+    def test_reused_scene_object_cannot_be_both_recovery_frames(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self._block_claim(root)
+            repeated=panel()
+            states=[repeated,repeated]+[overlay() for _ in range(38)]
+            with runtime(root) as window:report=runner(states,currency_rewards_resume=True).run()
+            self.assertEqual(report.status,'failed',report.error)
+            window.click.assert_not_called()
+            store=RewardStore(root/'runs');store.load()
+            self.assertNotIn('limit_recovery',store.data)
+
+    def test_recovery_frame_rejects_a_second_complete_low_confidence_account(self):
+        from autohsr.currency_wars_weekly_reward_run import current_frame
+
+        child=runner([]);context=Context(child,Mock(),Mock())
+        scene=panel();scene.captured_at=time.monotonic()
+        scene.tokens.extend((Token('UID:100000000',.99,(.01,.96,.10,.99)),
+                             Token('UID:100000001',.80,(.11,.96,.20,.99))))
+        context.last_scene=scene
+        with self.assertRaisesRegex(AutomationError,'不同的完整账号标识'):
+            current_frame(context,scene)
+
+    def test_recovery_ledger_replacement_rechecks_epoch_before_enabling_a_claim(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self._block_claim(root)
+            child=runner([panel(),panel()],currency_rewards_resume=True)
+            replace_path=Path.replace
+            attempts=[]
+
+            def replace(temp,destination):
+                if Path(destination).name=='session.json' and 'limit_recovery' in json.loads(temp.read_text('utf-8')):
+                    attempts.append(True)
+                    if len(attempts)==1:
+                        child.input_epoch+=1
+                        raise PermissionError('synthetic sharing violation')
+                return replace_path(temp,destination)
+
+            with runtime(root) as window,patch.object(Path,'replace',replace):report=child.run()
+            self.assertEqual(report.status,'failed',report.error)
+            self.assertEqual(len(attempts),1);window.click.assert_not_called()
+            store=RewardStore(root/'runs');store.load()
+            self.assertNotIn('limit_recovery',store.data);self.assertEqual(store.data['phase'],'blocked')
+
+    def test_recovered_claim_epoch_change_in_native_callback_keeps_original_rejection(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self._block_claim(root)
+            child=runner([panel(),panel()],currency_rewards_resume=True);submitted=[]
+
+            def change_before_send(*coordinates,before_send=None):
+                child.input_epoch+=1
+                before_send()
+                submitted.append(True)
+
+            with runtime(root) as window:
+                window.click.side_effect=change_before_send
+                report=child.run()
+            self.assertEqual(report.status,'failed',report.error);self.assertFalse(submitted)
+            store=RewardStore(root/'runs');store.load()
+            self.assertEqual(store.data['actions'][1]['result'],'fuel_ticket_limit')
+            self.assertEqual(store.data['actions'][2]['status'],'unknown')
+            with self.assertRaisesRegex(AutomationError,'上次积分领奖输入尚未核实'):
+                store.preflight(resume=True)
+
+    def test_recovery_rename_retry_checks_original_rejection_images(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self._block_claim(root)
+            store=RewardStore(root/'runs');store.load()
+            rejection=Path(store.data['actions'][1]['after'][0]['path'])
+            replace_path=Path.replace
+            attempts=[]
+
+            def change_original(temp,destination):
+                if Path(destination).name=='session.json' and 'limit_recovery' in json.loads(temp.read_text('utf-8')):
+                    attempts.append(True)
+                    if len(attempts)==1:
+                        rejection.write_bytes(b'altered synthetic evidence')
+                        raise PermissionError('synthetic sharing violation')
+                return replace_path(temp,destination)
+
+            with runtime(root) as window,patch.object(Path,'replace',change_original):
+                report=runner([panel(),panel()],currency_rewards_resume=True).run()
+            self.assertEqual(report.status,'failed',report.error)
+            self.assertEqual(len(attempts),1);window.click.assert_not_called()
+            store.load();self.assertEqual(store.data['phase'],'blocked')
+            self.assertNotIn('limit_recovery',store.data)
+
+    def test_changed_pending_intent_at_native_boundary_is_not_sent_or_overwritten(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self._block_claim(root)
+            submitted=[];modified=[]
+
+            def change_intent(*coordinates,before_send=None):
+                store=RewardStore(root/'runs');store.load()
+                store.data['actions'][-1].update(status='unknown',error='synthetic external edit')
+                raw=json.dumps(store.data,ensure_ascii=False).encode('utf-8')
+                store.path.write_bytes(raw)
+                modified.append((store.path,raw))
+                before_send()
+                submitted.append(True)
+
+            with runtime(root) as window:
+                window.click.side_effect=change_intent
+                report=runner([panel(),panel()],currency_rewards_resume=True).run()
+            self.assertEqual(report.status,'failed',report.error);self.assertFalse(submitted)
+            path,raw=modified[0];self.assertEqual(path.read_bytes(),raw)
+            self.assertFalse((path.parent/'receipt.json').exists())
 
     def test_unknown_claim_is_preserved_and_resume_denied_before_game(self):
         with tempfile.TemporaryDirectory() as folder:

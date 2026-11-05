@@ -20,14 +20,25 @@ def client(c):
     return {key:metadata[key] for key in ('version','full_version','kind','sha256') if key in metadata}
 
 
-def current(c,scene,data=None):
-    c.checkpoint();CurrencyWarsWorkflow(c)._require_current_scene(scene)
+def current_frame(c,scene,data=None):
+    """Recheck the live frame and clock without a wait or a journal read."""
+    CurrencyWarsWorkflow(c)._require_current_scene(scene)
+    visible={normalize(token.text) for token in scene.tokens
+             if token.within((0,.94,.23,1)) and re.fullmatch(r'uid[0-9]{8,10}',normalize(token.text))}
+    if len(visible)>1:raise AutomationError('积分领奖画面出现不同的完整账号标识。')
     identity=account_key(scene,max(.85,c.settings.ocr_confidence))
-    weekly=getattr(c.runner,'currency_weekly_guard',None)
-    if weekly is not None:weekly.require_observation(identity,game_week(local_now()))
+    week=game_week(local_now())
     if data is not None:
         if identity!=data['account_key']:raise AutomationError('当前账号与积分领奖记录不同。')
-        if game_week(local_now())!=data['game_week']:raise AutomationError('积分领奖已跨游戏周，未使用旧目标继续输入。')
+        if week!=data['game_week']:raise AutomationError('积分领奖已跨游戏周，未使用旧目标继续输入。')
+    return identity,week
+
+
+def current(c,scene,data=None):
+    c.checkpoint()
+    identity,week=current_frame(c,scene,data)
+    weekly=getattr(c.runner,'currency_weekly_guard',None)
+    if weekly is not None:weekly.require_observation(identity,week)
     return identity
 
 
@@ -66,16 +77,20 @@ def _publish(c,store):
     c.runner.emit(dict(type=TASK,data=deepcopy(store.data)))
 
 
-def _stable(c,store,expected,*,settled=False,epoch=None):
+def _stable(c,store,expected,*,settled=False,epoch=None,panel_state=False,first_scene=None):
     """Unknown/loading is bounded rereading, never a repeated submission."""
-    sources=[];signature=None
+    sources=[];signature=None;previous_scene=None
     confidence=max(.85,c.settings.ocr_confidence)
     epoch=c.runner.input_epoch if epoch is None else epoch
-    for _ in range(40):
+    for attempt in range(40):
         c.checkpoint()
         if c.runner.input_epoch!=epoch:raise AutomationError('积分领奖输入代次改变，旧反馈资格已丢弃。')
-        try:scene=c.snapshot()
-        except EmptyCapture:c.sleep(.3);continue
+        capture_sequence=c.capture_sequence
+        try:scene=first_scene if attempt==0 and first_scene is not None else c.snapshot()
+        except EmptyCapture:
+            sources=[];c.sleep(.3);continue
+        if c.capture_sequence>capture_sequence+1:
+            sources=[]
         if c.runner.input_epoch!=epoch:raise AutomationError('积分领奖反馈截图代次改变。')
         CurrencyWarsWorkflow(c)._require_current_scene(scene)
         page=kind(scene,confidence)
@@ -93,16 +108,23 @@ def _stable(c,store,expected,*,settled=False,epoch=None):
                 if page in ('lobby','points_rewards'):
                     points=read_points(scene,confidence)
                     if points.current!=store.data['current']:raise AutomationError('领奖反馈积分改变。')
-                    if settled and panel_control(scene,confidence)[0]!='settled':
+                    state=panel_control(scene,confidence)[0] if settled or panel_state else None
+                    if settled and state!='settled':
                         sources=[];c.sleep(.3);continue
                     if page=='lobby' and period_evidence(scene,local_now(),confidence)['verified'] is not True:
                         raise AutomationError('领奖返回主页后的游戏周倒计时未核实。')
-                    value=(page,points.current)
+                    value=(page,points.current,state)
                 else:value=(page,tuple(quantities(scene,confidence)))
             except AutomationError:
                 sources=[];c.sleep(.3);continue
         if value!=signature:sources=[]
-        signature=value;sources.append(evidence(c,scene,'feedback_'+page))
+        signature=value
+        if sources and (scene is previous_scene or scene.captured_at<=sources[-1]['captured_at']):
+            sources=[];c.sleep(.3);continue
+        source=evidence(c,scene,'feedback_'+page)
+        current(c,scene,store.data)
+        sources.append(source)
+        previous_scene=scene
         if len(sources)==2:return scene,sources,page
         c.sleep(.3)
     raise AutomationError('积分领奖反馈未获得两帧一致核实，未重发输入。')
@@ -122,7 +144,8 @@ def inspect_rewards(c):
         if client(c)!=prior['client'] or max(.85,c.settings.ocr_confidence)!=prior['confidence']:
             raise AutomationError('当前客户端或识别设置与本次领奖原记录不同。')
         scene=c.snapshot();current(c,scene,store.data)
-        store.data['continuations'].append(c.report.run_dir);store.save()
+        original=deepcopy(store.data)
+        store.data['continuations'].append(c.report.run_dir);store.save(expected=original)
     else:
         result=locate(c,stop_at_lobby=True)
         if not c.report.currency_wars.get('entry_ready'):return result
@@ -138,18 +161,45 @@ def inspect_rewards(c):
         if weekly is not None:weekly.require_observation(identity,game_week(now),points.current)
         store.begin(observed,metadata,c.report.run_dir,weekly_owner=weekly.owner if weekly is not None else None)
         if weekly is not None:weekly.bind_reward(store)
+    retry_panel=None
     try:
         for _ in range(6):
             current(c,scene,store.data)
             phase=store.data['phase']
             if phase=='blocked':
-                c.report.safe_next='助燃券满额已核实，当前没有清理或重复领取；保留原记录，满额处理仍待接入。'
-                _publish(c,store);return TaskResult(TASK,'partial',c.report.safe_next)
+                confidence=max(.85,c.settings.ocr_confidence)
+                if (not c.runner.currency_rewards_resume or not store.can_recover_limit()
+                        or kind(scene,confidence)!='points_rewards'):
+                    c.report.safe_next=('助燃券再次满额，原领取与接续记录均已保存。' if 'limit_recovery' in store.data else
+                        '助燃券满额已核实。手动处理后停在同一积分奖励面板，再接续原记录。')
+                    _publish(c,store);return TaskResult(TASK,'partial',c.report.safe_next)
+                epoch=c.runner.input_epoch
+                scene,sources,_=_stable(c,store,'points_rewards',panel_state=True,first_scene=scene,epoch=epoch)
+
+                def recheck_recovery():
+                    c.window.guard(scene.geometry)
+                    current(c,scene,store.data)
+                    if c.runner.input_epoch!=epoch or panel_control(scene,confidence)[0]!=sources[-1]['panel_state']:
+                        raise AutomationError('助燃券满额恢复面板已改变。')
+
+                store.recover_limit(sources,c.report.run_dir,epoch,before_replace=recheck_recovery,
+                                    after_verify=lambda:current_frame(c,scene,store.data))
+                retry_panel=sources
+                _publish(c,store)
+                phase=store.data['phase']
+            if phase in ('panel','panel_settled') and 'limit_recovery' in store.data and retry_panel is None:
+                scene,retry_panel,_=_stable(c,store,'points_rewards',panel_state=True,
+                                           settled=phase=='panel_settled',first_scene=scene)
+                if phase=='panel_settled':
+                    original=deepcopy(store.data)
+                    store.data['settled_evidence']=retry_panel;store.save(expected=original)
             if phase=='panel_after_claim' or phase=='panel' and panel_control(scene,max(.85,c.settings.ocr_confidence))[0]=='settled':
                 scene,sources,_=_stable(c,store,'points_rewards',settled=True)
-                store.data.update(phase='panel_settled',settled_evidence=sources);store.save()
+                original=deepcopy(store.data) if 'limit_recovery' in store.data else None
+                store.data.update(phase='panel_settled',settled_evidence=sources);store.save(expected=original)
             choice=next_action(scene,store.data,max(.85,c.settings.ocr_confidence))
-            store.pending(choice,c.runner.input_epoch,evidence(c,scene,'before_'+choice.intent))
+            store.pending(choice,c.runner.input_epoch,evidence(c,scene,'before_'+choice.intent),
+                          recovery_panel=retry_panel if choice.intent=='claim_weekly_rewards' else None)
             _publish(c,store)
             c.currency_weekly_reward_input(scene,choice)
             scene,sources,page=_stable(c,store,choice.expected,epoch=store.data['actions'][-1]['epoch'])

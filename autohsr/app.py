@@ -57,6 +57,7 @@ class Context:
         self.settings, self.report = runner.settings, runner.report
         self.last_scene: Scene | None = None
         self.scene_epoch = 0
+        self.capture_sequence = 0
         self._scroll_anchor = None
         self._currency_deploy_request = None
         self._currency_equipment_request = None
@@ -95,6 +96,7 @@ class Context:
             self._scroll_anchor = None
             capture_epoch = self.runner.input_epoch
             captured_at = time.monotonic()
+            self.capture_sequence += 1
             try:
                 image, geometry = self.window.capture()
                 scene = self.vision.read(image, geometry)
@@ -323,7 +325,7 @@ class Context:
 
     def currency_weekly_reward_input(self, scene, choice):
         from .currency_wars_weekly_rewards import OPERATION, next_action
-        from .currency_wars_weekly_reward_run import client, current
+        from .currency_wars_weekly_reward_run import client, current, current_frame
         from .currency_wars import CurrencyWarsWorkflow
         if self.report.operation!=OPERATION:
             raise AutomationError('当前任务不允许货币战争积分领奖输入。')
@@ -338,11 +340,24 @@ class Context:
         if next_action(scene,store.data,max(.85,self.settings.ocr_confidence))!=choice:
             raise AutomationError('积分领奖目标与当前画面不符。')
         CurrencyWarsWorkflow(self)._require_current_scene(scene)
-        self.last_scene,self._scroll_anchor=None,None
+        recovered_claim=choice.intent=='claim_weekly_rewards' and 'limit_recovery' in store.data
+        if not recovered_claim:
+            self.last_scene,self._scroll_anchor=None,None
         try:
             if choice.key is not None:self.window.key(choice.key)
+            elif recovered_claim:
+                def recheck_recovered_claim():
+                    self.window.guard(scene.geometry)
+                    if next_action(scene,store.data,max(.85,self.settings.ocr_confidence))!=choice:
+                        raise AutomationError('接续领取目标已改变。')
+                    current(self,scene,store.data)
+                    store.require_pending(choice,self.runner.input_epoch)
+                    current_frame(self,scene,store.data)
+                self.window.click(*choice.target.center,scene.geometry,before_send=recheck_recovered_claim)
             else:self.window.click(*choice.target.center,scene.geometry)
         except FocusLost:self._focus_interrupted()
+        finally:
+            self.last_scene,self._scroll_anchor=None,None
         self.sleep(self.settings.action_delay)
 
     def currency_standard_input(self, scene, choice):

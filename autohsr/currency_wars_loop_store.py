@@ -44,7 +44,7 @@ def _read(path):
     return strict_json(raw.decode('utf-8'))
 
 
-def _write(path, value):
+def _write(path, value, *, before_replace=None):
     raw = _raw(value)
     if len(raw) > 1024*1024:
         raise AutomationError('循环记录超过大小限制，未继续。')
@@ -55,7 +55,10 @@ def _write(path, value):
         stream.flush()
         import os
         os.fsync(stream.fileno())
-    replace_file(temporary, path)
+    if before_replace is None:
+        replace_file(temporary, path)
+    else:
+        replace_file(temporary, path, before_replace=before_replace)
 
 
 def _immutable(path, value):

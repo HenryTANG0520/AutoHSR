@@ -191,12 +191,13 @@ def _points(report, data):
 def _rewards(report, data):
     current, phase = data.get('current'), data.get('phase')
     actions = data.get('actions')
+    recovery = data.get('limit_recovery')
     valid = (type(data.get('schema')) is int and data['schema'] == 1 and data.get('mode') == 'weekly_rewards'
              and data.get('status') in ('active', 'complete') and phase in _REWARD_PHASES
              and _number(current) and current <= 18000 and _week(data.get('game_week'))
              and data.get('completion_verified') is False and data.get('match_started') is False
              and all(type(data.get(key)) is bool for key in ('rewards_verified', 'weekly_rewards_verified', 'claimed_now'))
-             and type(actions) is list and len(actions) <= 4)
+             and type(actions) is list and len(actions) <= (5 if 'limit_recovery' in data else 4))
     if valid:
         valid = data['weekly_rewards_verified'] is (data['rewards_verified'] and current == 18000)
         for index, action in enumerate(actions):
@@ -209,12 +210,29 @@ def _rewards(report, data):
                 if action.get('result') != expected and not (action['intent'] == 'claim_weekly_rewards' and action.get('result') == 'fuel_ticket_limit'):
                     valid = False
                     break
+    if valid and 'limit_recovery' in data:
+        valid = (type(recovery) is dict and type(recovery.get('blocked_id')) is int
+                 and recovery['blocked_id'] == 1 and recovery.get('panel_state') in ('available', 'settled')
+                 and _number(recovery.get('epoch')) and type(recovery.get('sources')) is list
+                 and len(recovery['sources']) == 2 and len(actions) >= 2
+                 and actions[1]['intent'] == 'claim_weekly_rewards' and actions[1]['status'] == 'verified'
+                 and actions[1].get('result') == 'fuel_ticket_limit'
+                 and all(type(source) is dict and source.get('page') == 'points_rewards'
+                         and source.get('panel_state') == recovery['panel_state']
+                         and source.get('current') == current and source.get('input_epoch') == recovery['epoch']
+                         for source in recovery['sources']))
     complete = (valid and data['status'] == 'complete' and phase == 'returned' and data['rewards_verified'] is True
                 and bool(actions) and actions[-1]['intent'] == 'return_weekly_lobby'
-                and all(action['status'] == 'verified' and action.get('result') == _REWARD_RESULTS[action['intent']] for action in actions))
+                and all(action['status'] == 'verified' and action.get('result') == (
+                    'fuel_ticket_limit' if recovery is not None and action['id'] == 1 else _REWARD_RESULTS[action['intent']])
+                    for action in actions))
     if complete:
         expected = list(_REWARD_INTENTS) if data['claimed_now'] else ['open_points_rewards', 'return_weekly_lobby']
+        if recovery is not None:
+            expected.insert(1, 'claim_weekly_rewards')
         complete = [action['intent'] for action in actions] == expected
+        if complete and recovery is not None and data['claimed_now']:
+            complete = recovery['panel_state'] == 'available'
     verified = complete and report.get('report_saved') is True
     lines = []
     if valid:
@@ -232,7 +250,8 @@ def _rewards(report, data):
           and data['rewards_verified'] is False and data['status'] == 'active'
           and all(action['status'] == 'verified' for action in actions)):
         title = '助燃券满额，领奖未完成'
-        lines.append('满额处理仍未接入，未清理或重发领取。')
+        lines.append('手动处理后停在同一积分奖励面板，使用“接续原领奖记录”。' if recovery is None else
+                     '接续领取再次遇到满额，两次拒绝均已记录。')
     else:
         title = '积分领奖待核对'
         lines.append('领取、返回或原报告保存尚未完整核实；未知领取不重放。')

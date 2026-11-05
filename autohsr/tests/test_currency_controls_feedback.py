@@ -176,10 +176,25 @@ class CurrencyControlsFeedbackTests(unittest.TestCase):
             actions=[dict(id=0, intent='open_points_rewards', status='verified', result='points_rewards'),
                      dict(id=1, intent='claim_weekly_rewards', status='verified', result='fuel_ticket_limit')])
         self.assertIn('助燃券满额', result(blocked)[0])
-        self.assertIn('未清理或重发', result(blocked)[1])
+        self.assertIn('接续原领奖记录', result(blocked)[1])
         blocked['currency_wars']['actions'][-1]['status'] = 'unknown'
         self.assertIn('待核对', result(blocked)[0])
         self.assertNotIn('助燃券满额', result(blocked)[0])
+
+    def test_recovered_limit_has_distinct_delivery_and_settled_routes(self):
+        for claimed,state in ((True,'available'),(False,'settled')):
+            with self.subTest(state=state):
+                value=reward_report(claimed=claimed)
+                data=value['currency_wars']
+                data['actions'].insert(1,dict(intent='claim_weekly_rewards',status='verified',result='fuel_ticket_limit'))
+                for index,action in enumerate(data['actions']):action['id']=index
+                data['limit_recovery']=dict(blocked_id=1,panel_state=state,epoch=2,sources=[
+                    dict(page='points_rewards',panel_state=state,current=18000,input_epoch=2) for _ in range(2)])
+                title,body=result(value)
+                self.assertEqual(title,'积分领奖已核实')
+                self.assertEqual('本次领取与主页返回已核实' in body,claimed)
+                data['limit_recovery']['sources'][1]['panel_state']='unknown'
+                self.assertIn('待核对',result(value)[0])
 
     def test_explicit_verified_action_results_cannot_turn_a_limit_dialog_into_delivery(self):
         for index, wrong in ((0, 'lobby'), (1, 'fuel_ticket_limit'), (2, 'lobby'), (3, 'points_rewards')):
