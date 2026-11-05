@@ -732,6 +732,8 @@
     },
     {
       "path": "autohsr/currency_wars_loop.py",
+      "native_files": ["autohsr/currency_controls_ui.py", "autohsr/currency_controls_feedback.py", "autohsr/gui.py", "autohsr/desktop_modes.py", "autohsr/desktop_focus.py", "autohsr/game_widgets.py", "autohsr/ux.py"],
+      "tests": ["autohsr/tests/test_currency_controls_feedback.py", "tools/currency_controls_smoke.py"],
       "reference_source": "main.py",
       "reference_functions": ["run_sub_task", "_run_loop_task_with_telemetry", "currencywars"],
       "kind": "sequential composition of AutoHSR native standard Runners, finite or until stopped, with an optional weekly score goal bounded by the requested new-game count; frozen options and game week, explicit remaining-goal resume, local account and match ownership, verified terminal settlement, original reports and recoverable hash-bound archives. Verified defeats count against the original ceiling and stop by default, with one-receipt explicit resume or frozen optional auto-continuation; unknown and technical failure always stop. Independent rewards and weekly composition have separate native adapters; other modes and live acceptance remain pending"

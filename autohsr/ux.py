@@ -9,7 +9,9 @@ OPERATIONS = {"plan": "日常与周常计划", "daily": "每日", "reward_only":
               "currency_wars": "货币战争只读识别", "currency_wars_drag_test": "货币战争单次换位",
               "currency_wars_deploy_test": "货币战争单次部署", "currency_wars_node_test": "货币战争节点战斗",
               "currency_wars_flow_test": "货币战争流程推进验证",
-              "differential_universe": "差分宇宙自动演算", "du_rewards": "差分独立领奖"}
+              "differential_universe": "差分宇宙自动演算", "du_rewards": "差分独立领奖",
+              'currency_wars_loop': '货币战争连续运行', 'currency_wars_points': '货币战争积分核对',
+              'currency_wars_rewards': '货币战争积分领奖'}
 
 
 def planned_battle_metrics(category, count, enabled=True):

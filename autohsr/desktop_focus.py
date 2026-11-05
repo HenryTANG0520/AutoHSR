@@ -43,9 +43,13 @@ class InputFocus:
             return False
         field, page, section, _ = self.pending
         ui = self.ui
-        return (not ui.closing and not ui.busy and ui.input_error_field == field
-                and ui.active_page == page and (not section or
-                    ui.settings_tabs.select() == str(ui.settings_sections[section])))
+        if ui.closing or ui.busy or ui.input_error_field != field or ui.active_page != page:
+            return False
+        if not section:
+            return True
+        tabs, sections = ((ui.currency_tabs, ui.currency_sections) if page == 'currency_wars' else
+                          (ui.settings_tabs, ui.settings_sections))
+        return tabs.select() == str(sections[section])
 
     def cancel_if_obsolete(self):
         if (not getattr(getattr(self.ui, "responsive_layout", None), "resizing", False)

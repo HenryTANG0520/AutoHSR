@@ -1,5 +1,7 @@
 from dataclasses import replace
 import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 from autohsr.config import Settings, SettingsError
 from autohsr.ux import issue_text, standard_activity, standard_run_verified
@@ -70,6 +72,40 @@ class InputFeedbackTests(unittest.TestCase):
         self.assertFalse(standard_run_verified(data))
         data["equipment"] = {}
         self.assertEqual(standard_activity(data), "装备结果待核对")
+
+
+class InputFocusSectionTests(unittest.TestCase):
+    def focus(self):
+        from autohsr.desktop_focus import InputFocus
+        focus = InputFocus.__new__(InputFocus)
+        focus.pending = ('currency_runs', 'currency_wars', 'loop', 'currency_runs_entry')
+        focus.ui = SimpleNamespace(closing=False, busy=False, input_error_field='currency_runs',
+            active_page='currency_wars', currency_sections={'loop': 'loop-page'},
+            currency_tabs=SimpleNamespace(select=Mock(return_value='loop-page')),
+            settings_sections={'weekly': 'weekly-page'},
+            settings_tabs=SimpleNamespace(select=Mock(return_value='weekly-page')))
+        return focus
+
+    def test_error_focus_belongs_to_the_visible_currency_or_settings_section(self):
+        focus = self.focus()
+        self.assertTrue(focus.owns_current_page())
+        focus.ui.currency_tabs.select.return_value = 'standard-page'
+        self.assertFalse(focus.owns_current_page())
+        focus.pending = ('weekly_time', 'settings', 'weekly', 'weekly_time_entry')
+        focus.ui.input_error_field, focus.ui.active_page = 'weekly_time', 'settings'
+        self.assertTrue(focus.owns_current_page())
+        focus.ui.settings_tabs.select.return_value = 'game-page'
+        self.assertFalse(focus.owns_current_page())
+
+    def test_cancelled_focus_does_not_access_retired_widgets(self):
+        for change in ({'closing': True}, {'busy': True}, {'input_error_field': None}, {'active_page': 'home'}):
+            with self.subTest(change=change):
+                focus = self.focus()
+                focus.ui.currency_tabs.select.side_effect = RuntimeError('retired widget')
+                for key, value in change.items():
+                    setattr(focus.ui, key, value)
+                self.assertFalse(focus.owns_current_page())
+                focus.ui.currency_tabs.select.assert_not_called()
 
 
 if __name__ == "__main__":

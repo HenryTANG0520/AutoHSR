@@ -188,7 +188,8 @@ def build_currency(ui):
     page.rowconfigure(1, weight=1)
     ui.currency_tabs = tabs
     ui.currency_sections = {}
-    for key, name in (("observe", "观察与准备"), ("standard", "标准开发"), ("debug", "单步调试")):
+    for key, name in (("observe", "观察与准备"), ("standard", "标准开发"),
+                      ("loop", "连续运行"), ("rewards", "积分奖励"), ("debug", "单步调试")):
         frame = ttk.Frame(tabs, style="Card.TFrame", padding=d(16))
         frame.columnconfigure(0, weight=1)
         tabs.add(frame, text=name)
@@ -222,9 +223,11 @@ def build_currency(ui):
                                               values=("默认", "阿格莱雅", "希儿"), state="readonly", width=14)
     ui.currency_strategy_combo.grid(row=0, column=1)
     ui.setting_controls.append(ui.currency_strategy_combo)
-    note(standard, "购买、升级和刷新会消耗局内金币；按策略出售备战角色、穿戴或合成已有装备。", row=2, style="Warning.TLabel", scale=s)
-    buttons(standard, 3, (("新开 A8-40 开发局", ui._currency_standard, None), ("接续已记录开发局", ui._currency_resume, None)))
-    note(standard, "接续沿用本局策略 · 整局未验收", row=4, style="Warning.TLabel", scale=s)
+    note(standard, "购买、升级和刷新会消耗局内金币；名称留空时不配置。", row=3, style="Warning.TLabel", scale=s)
+    buttons(standard, 4, (("新开 A8-40 开发局", ui._currency_standard, None), ("接续已记录开发局", ui._currency_resume, None)))
+    note(standard, "接续沿用本局策略、名称和装备方式 · 整局未验收", row=5, style="Warning.TLabel", scale=s)
+    from .currency_controls_ui import add_controls
+    add_controls(ui, buttons)
 
     debug = ui.currency_sections["debug"]
     ttk.Label(debug, text="单步实验", style="CardTitle.TLabel").grid(row=0, column=0, sticky="w")

@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-11-05 货币战争桌面执行入口
+
+循环、积分核对和普通领奖沿用已适配的固定March7thAssistant流程；新增[桌面控件](../autohsr/currency_controls_ui.py)及[结果投影](../autohsr/currency_controls_feedback.py)为AutoHSR编写，复用既有指南、开发工具和结果页。新循环与原目标接续、积分与奖励、开发胜败与独立验收分别呈现；没有新增图像、模型、账号截图或上游输入框架。关联原生文件及检查记入[source.json](upstream/March7thAssistant/source.json)，原作者、GPL v3和素材权利说明保持。
+
 ## 2026-11-05 差分独立红点领奖
 
 [独立领奖](../autohsr/du_rewards_only.py)与[领取记录](../autohsr/du_reward_store.py)为AutoHSR原生扩展，复用既有[奖励页面](../autohsr/du_rewards.py)及脱敏的拟合／稳态／月下／画廊素材；没有新增图片、模型或原始账号截图。各原素材来源及游戏美术权利说明保持，新增文件／测试及范围记入[source.json](upstream/March7thAssistant/source.json)。
