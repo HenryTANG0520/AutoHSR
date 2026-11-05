@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-11-05 周目标与首次收店执行来源
+
+差分周常的当前周门禁及货币初始商店的当前执行证明均为AutoHSR原生协议，继续使用既有[来源清单](upstream/March7thAssistant/source.json)与[GPL许可](upstream/March7thAssistant/LICENSE)，没有新增上游截图、模型或输入框架。周目标保持冻结，历史确认与重新观察分开；新的只读双帧证明不授权交易或重放未知输入。边界及验证见[周常说明](../docs/weekly-plan.md)、[初始环境说明](../docs/currency-wars-initial-environment.md)及[验证记录](../VALIDATION.md)。
+
 ## 2026-11-05 补给装备列表协议
 
 继续参考固定March7thAssistant `7cf6c6bed474539485d3b1504077ac352866829f`的`check_supply_phase`及“过剩经费”双装备机制，补齐AutoHSR原生候选、策略、确认与交付的装备列表契约。固定[来源清单](upstream/March7thAssistant/source.json)、作者moesnow及贡献者与[GPL许可](upstream/March7thAssistant/LICENSE)保留，没有新增上游源码、图片或模型。双件字段与交付变体为合成机制检查，不称真实布局或独立留出；既有单件校准及未完成项见[补给说明](currency-supply/README.md)。

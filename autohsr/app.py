@@ -296,12 +296,18 @@ class Context:
                 raise AutomationError('标准开局已有提交记录，未重复开始。')
         elif data['status'] != 'active':
             raise AutomationError('尚未核实标准对局已开始。')
-        if any(key in store.data or key in data for key in ('initial_environment', 'initial_shop_return')):
+        if any(key in store.data or key in data for key in ('initial_environment', 'initial_shop_return', 'initial_shop_observation', 'initial_shop_observation_history')):
             from .currency_wars_initial import validate_origin, evidence_ref
-            for key in ('initial_environment', 'initial_shop_return'):
+            for key in ('initial_environment', 'initial_shop_return', 'initial_shop_observation', 'initial_shop_observation_history'):
                 if json.dumps(data.get(key), sort_keys=True, allow_nan=False) != json.dumps(store.data.get(key), sort_keys=True, allow_nan=False):
                     raise AutomationError('初始环境来源尚未与落盘记录一致，未发送输入。')
             origin = validate_origin(data)
+            if 'initial_shop_return' in data:
+                from .currency_wars_initial_shop import validate_return
+                validate_return(data)
+            if 'initial_shop_observation' in data or 'initial_shop_observation_history' in data:
+                from .currency_wars_initial_shop_observation import validate as validate_shop_observation
+                validate_shop_observation(data,current=choice.intent=='close_standard_initial_shop')
             if choice.intent.startswith('confirm_standard_environment_') and origin['action_id'] == data['actions'][-1]['id']:
                 if evidence_ref(scene, data['actions'][-1]['before'], origin['run_dir']) != origin['origin']['before']:
                     raise AutomationError('初始环境确认前画面与落盘来源不一致。')
@@ -338,7 +344,14 @@ class Context:
         if scene is not self.last_scene or time.monotonic() - scene.captured_at > 8:
             raise AutomationError("识别画面已经过期，请重新识别后操作。")
         from .policy import guard_click, guard_differential_universe_click, replenishment_dialog
+        weekly_start_guard = None
         if self.report.operation == "differential_universe":
+            if du_intent=='periodic_start':
+                from .weekly_plan import WeeklyGuard
+                candidate=getattr(self.runner,'weekly_plan',None)
+                if isinstance(candidate,WeeklyGuard):
+                    weekly_start_guard=candidate
+                    weekly_start_guard.require_current_week()
             if du_intent=='blessing_discard_prompt_confirm':
                 from .policy import du_blessing_discard_prompt
                 expected=(self.report.differential_universe.get('reward_decisions') or [{}])[-1]
@@ -376,6 +389,18 @@ class Context:
             before = self.evidence(scene, "du_before_" + re.sub(r"[^\w\u3400-\u9fff-]", "_", label)[:32])
             du_record = {"action": label, "status": "sent", "before": str(before), "page_text": scene.text}
             self.report.differential_universe.setdefault("actions", []).append(du_record)
+        if weekly_start_guard is not None:
+            try:
+                self.checkpoint()
+                if self.scene_epoch!=self.runner.input_epoch or scene is not self.last_scene:
+                    raise InputInterrupted('周常启动前输入代次或当前画面改变，未发送旧目标。')
+                if not 0<=time.monotonic()-scene.captured_at<=8:
+                    raise AutomationError('周常启动证据保存后画面已过期，未发送输入。')
+                weekly_start_guard.require_current_week()
+            except AutomationError as error:
+                if du_record is not None:
+                    du_record.update(status='not_sent',reason='weekly_start_revalidation_failed',detail=str(error))
+                raise
         try:
             self.window.click(*coordinates, scene.geometry)
         except FocusLost:

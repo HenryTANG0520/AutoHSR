@@ -488,6 +488,9 @@ class DifferentialUniverseWorkflow:
             "双卡转换已确认两张仍未离开目标页，停止重复确认。")
 
     def _click(self, scene: Scene, target: Token, *, intent="navigation", label="action") -> tuple[Scene, str]:
+        if intent=='periodic_start':
+            self.ctx.checkpoint()
+            self._weekly_boundary()
         self._action_no += 1
         record={"index": self._action_no, "run": self.report["current_run"],
             "action": target.text, "intent": intent, "status": "requested", "before_ocr": scene.text}
@@ -496,6 +499,9 @@ class DifferentialUniverseWorkflow:
             record['card_effect']=asdict(effect) if effect is not None else None
         self.report["actions"].append(record)
         self._persist_ledger()
+        if intent=='periodic_start':
+            self.ctx.checkpoint()
+            self._weekly_boundary()
         self.ctx.click(scene, target, du_intent=intent)
         current = self.ctx.last_scene
         if current is None:
@@ -654,10 +660,13 @@ class DifferentialUniverseWorkflow:
         return scene, kind
 
     def _prepare_and_start(self, scene: Scene, kind: str) -> tuple[Scene, str]:
+        self.ctx.checkpoint()
+        self._weekly_boundary()
         scene, kind = self._open_differential_universe(scene, kind)
         team_verified=False
         for _ in range(8):
             self.ctx.checkpoint()
+            self._weekly_boundary()
             if kind == "active_save":
                 raise AutomationError("检测到未完成的差分宇宙存档；为保护现有进度，本次未继续。")
             if kind == "home":
@@ -746,6 +755,12 @@ class DifferentialUniverseWorkflow:
                 raise AutomationError("差分宇宙当前页面尚未建立安全导航规则；未继续输入。")
             raise AutomationError(f"差分宇宙页面未识别（{kind}），未发送输入。")
         raise AutomationError("差分宇宙启动流程超过已知页面数，已停止。")
+
+    def _weekly_boundary(self):
+        from .weekly_plan import WeeklyGuard
+        guard=getattr(getattr(self.ctx,'runner',None),'weekly_plan',None)
+        if isinstance(guard,WeeklyGuard):
+            guard.require_current_week()
 
     def _select_preset_team(self,scene):
         from .du_team import select
@@ -2441,6 +2456,7 @@ class DifferentialUniverseWorkflow:
 
     def run(self) -> TaskResult:
         scene, kind = self._snapshot("initial")
+        self._weekly_boundary()
         if self.resume_active and kind == "home":
             target=scene.find("开始游戏",(.68,.72,1,1),exact=True)
             if target is None:
@@ -2528,6 +2544,8 @@ class DifferentialUniverseWorkflow:
         if self.settings.differential_universe_rewards and kind=='home':
             scene,kind=self._collect_rewards(scene,kind,'rewards_before_runs')
         while self.report["completed_runs"] < self.runs:
+            self.ctx.checkpoint()
+            self._weekly_boundary()
             run_no = self.report["completed_runs"] + 1
             attempt_no = len(self.report["run_results"]) + 1
             run_id = str(uuid.uuid4())

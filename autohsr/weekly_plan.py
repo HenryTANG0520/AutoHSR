@@ -121,7 +121,7 @@ class WeeklyReceipt:
             raise ValueError("原始演算证据已变化。")
         return report
 
-    def begin(self, settings):
+    def begin(self, settings, *, before_start=None):
         self.folder.mkdir(parents=True, exist_ok=True)
         for path in sorted(self.folder.glob("*.json")):
             try:
@@ -134,6 +134,8 @@ class WeeklyReceipt:
                 raise AutomationError("有周常记录待核对；保留原报告，未再开局。") from exc
         if self.path.exists():
             return False
+        if before_start is not None:
+            before_start()
         self.data = dict(version=1, week=self.slot.week, state="started",
                          mode=settings.weekly_mode, requested_runs=settings.weekly_runs,
                          due_at=self.slot.due_at.isoformat(), started_at=datetime.now(CHINA).isoformat())
@@ -169,9 +171,16 @@ class WeeklyGuard:
         self.receipt = None
         self.already_complete = False
 
+    def require_current_week(self):
+        current = weekly_slot(self.settings)
+        if not self.slot.due or current.week != self.slot.week:
+            raise AutomationError("原周常演算目标尚未到期或已跨游戏周；保留原目标和已核实局数，未新开局。")
+
     def prepare(self, context):
         from .du_daily import account_key
         from .workflows import DailyWorkflow
+        context.checkpoint()
+        self.require_current_week()
         DailyWorkflow(context).ensure_main()
         context.checkpoint()
         scene = context.snapshot()
@@ -179,8 +188,9 @@ class WeeklyGuard:
             account = account_key(scene)
         except AutomationError as exc:
             raise AutomationError("周常未核实当前账号；未开始演算。") from exc
+        self.require_current_week()
         self.receipt = WeeklyReceipt(self.root, account, self.slot)
-        self.already_complete = not self.receipt.begin(self.settings)
+        self.already_complete = not self.receipt.begin(self.settings, before_start=self.require_current_week)
         return not self.already_complete
 
     def complete(self, report):

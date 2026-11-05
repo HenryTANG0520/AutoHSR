@@ -14,6 +14,8 @@
 
 11月5日恢复核心开发，补齐货币补给完整装备列表、策略及库存／角色穿戴总量核验；两件字段与交付目前为离线机制，真实双装备布局、初始赠品归因及完整整局仍待验收，见[补给协议](assets/currency-supply/README.md)。
 
+同日补齐[差分周常跨周开局](docs/weekly-plan.md)和[初始商店暂停／显式接续](docs/currency-wars-initial-environment.md)的来源边界：保留原周及已核实胜利，初始商店只在从未提交收店时重新观察；已有pending／unknown不重放。离线验证和实机验收分别记录。
+
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-blue)](#运行条件)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)](#安装与启动)

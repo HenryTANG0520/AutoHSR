@@ -458,6 +458,10 @@ def run_standard(c):
             store.data['collection'] = collection
             store.persist()
         kind = observe(scene,c.settings.ocr_confidence).page_kind
+        if kind=='shop':
+            from .currency_wars_initial_shop_observation import ensure as observe_initial_shop
+            scene=observe_initial_shop(c,store,scene)
+            kind=observe(scene,c.settings.ocr_confidence).page_kind
         if kind in ('battle','node_result','final_victory','match_defeat') and store.data.get('exchange',{}).get('status','verified') == 'verified':
             from .currency_wars_standard_node import observe_started_node
             scene, verified = observe_started_node(c,store,scene)
