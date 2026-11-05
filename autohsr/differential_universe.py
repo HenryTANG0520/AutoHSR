@@ -269,7 +269,7 @@ def classify_page(scene: Scene, context=None) -> str:
 
 class DifferentialUniverseWorkflow:
     def __init__(self, context, runs: int = 3, *, resume_active: bool = False,
-                 periodic_rank: int | None = None):
+                 periodic_rank: int | None = None, until_points: bool = False):
         if isinstance(runs, bool) or not isinstance(runs, int) or not 1 <= runs <= 10:
             raise ValueError("差分宇宙局数必须是 1～10 的整数。")
         if type(resume_active) is not bool:
@@ -293,6 +293,13 @@ class DifferentialUniverseWorkflow:
                            periodic_points=unverified_periodic_points(),
                            stamina_budget_used=False, premium_currency_used=False,
                            fuel_used=False)
+        self.points_goal = None
+        if until_points:
+            if resume_active or self.settings.differential_universe_mode != 'periodic':
+                raise ValueError('周期积分目标仅用于新开周期演算。')
+            from .du_periodic_points import PeriodicPointsGoal
+            self.points_goal = context.du_points_goal = PeriodicPointsGoal(context,runs)
+            self.report['periodic_points_goal'] = self.points_goal.result
         self.session_id = str(uuid.uuid4())
         self.report["session_id"] = self.session_id
         self.report['station_preferences']=self.station_preferences.to_dict()
@@ -321,7 +328,7 @@ class DifferentialUniverseWorkflow:
         if time.monotonic()-started-(self._inactive()-inactive_before) >= seconds:
             raise AutomationError(f"差分宇宙{label}超过{seconds}秒，停止输入并保留当前进度。")
 
-    def _persist_ledger(self) -> None:
+    def _persist_ledger(self, *, before_replace=None) -> None:
         root = self.report.get("run_dir")
         if not root:
             return
@@ -343,9 +350,14 @@ class DifferentialUniverseWorkflow:
             "team_selections": self.report.get('team_selections',[]),
             "daily_interludes": self.report.get('daily_interludes',[]),
         }
+        if 'periodic_points_goal' in self.report:
+            payload['periodic_points_goal'] = self.report['periodic_points_goal']
         temp = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
         temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        replace_file(temp,path)
+        if before_replace is None:
+            replace_file(temp,path)
+        else:
+            replace_file(temp,path,before_replace=before_replace)
         self.report["ledger_path"] = str(path)
         progress = (self.report["requested_runs"], self.report["completed_runs"])
         emit = getattr(getattr(self.ctx, "runner", None), "emit", None)
@@ -740,6 +752,7 @@ class DifferentialUniverseWorkflow:
         scene, kind = self._open_differential_universe(scene, kind)
         team_verified=False
         for _ in range(8):
+            points_setup = None
             self.ctx.checkpoint()
             self._weekly_boundary()
             if kind == "active_save":
@@ -765,12 +778,17 @@ class DifferentialUniverseWorkflow:
             if kind in ('difficulty_setup','star_rank_setup','periodic_setup','team_selection'):
                 # A remembered setup is mode-specific; never silently launch it
                 # when the requested mode differs.
-                mode_periodic=scene.has('周期演算')
-                if mode_periodic != (self.settings.differential_universe_mode=='periodic'):
+                if self.points_goal is not None:
+                    points_setup = self.points_goal.require_setup(scene)
+                elif scene.has('周期演算') != (self.settings.differential_universe_mode=='periodic'):
                     raise AutomationError('当前备战页与所选演算模式不一致，请返回模式选择；未启动其他模式。')
                 if not team_verified:
                     scene,kind=self._select_preset_team(scene)
                     team_verified=True
+                    if self.points_goal is not None:
+                        points_setup = self.points_goal.require_setup(scene)
+                if points_setup is not None:
+                    kind = 'periodic_setup'
             if kind == "difficulty_setup":
                 scene = self._select_lowest_difficulty(scene)
                 target = scene.find("进入星阶模式", exact=True)
@@ -806,7 +824,8 @@ class DifferentialUniverseWorkflow:
             if kind == "periodic_setup":
                 # Preserve the selected periodic rank; choose the named preset
                 # independently because this page remembers its own old team.
-                rank = self._displayed_difficulty_rank(scene)
+                rank, start = (points_setup if points_setup is not None
+                               else (self._displayed_difficulty_rank(scene), None))
                 if rank is None:
                     raise AutomationError("周期演算页未能核实当前显示的难度；未启动。")
                 if self.periodic_rank is not None and rank != self.periodic_rank:
@@ -819,7 +838,8 @@ class DifferentialUniverseWorkflow:
                     "user_selected": True, "before": str(before),
                 }
                 self._persist_ledger()
-                start = self._find(scene, ("启动「差分宇宙」", "启动差分宇宙"), (0.72, 0.82, 1, 0.98))
+                if start is None:
+                    start = self._find(scene, ("启动「差分宇宙」", "启动差分宇宙"), (0.72, 0.82, 1, 0.98))
                 if start is None:
                     raise AutomationError("周期演算页未识别到启动差分宇宙按钮。")
                 scene, kind = self._click(scene, start, intent="periodic_start", label="periodic_run_started")
@@ -841,22 +861,55 @@ class DifferentialUniverseWorkflow:
         from .du_team import select
         return select(self,scene)
 
-    def _collect_rewards(self,scene,kind,label):
+    def _return_home_menu(self,scene,kind,*,purpose,observation):
         # A completed run may return to the mode page. Walk back through known
         # setup pages before red-dot collection; never Escape from a live run.
         for _ in range(2):
             if kind=='home':
                 break
             if kind not in ('mode_select','periodic_setup','difficulty_setup','star_rank_setup'):
-                raise AutomationError('领奖前未回到已识别的差分宇宙菜单，未退出当前场景。')
+                raise AutomationError(f'{purpose}前未回到已识别的差分宇宙菜单，未退出当前场景。')
             before=kind
             self.ctx.key('esc')
             scene=self.ctx.wait(lambda page:classify_page(page,self.ctx)!=before,
-                                timeout=12,description='返回差分宇宙领奖主页')
-            kind=self._observe(scene,'rewards_home_navigation')
+                                timeout=12,description=f'返回差分宇宙{purpose}主页')
+            kind=self._observe(scene,observation)
+        return scene,kind
+
+    def _collect_rewards(self,scene,kind,label):
+        scene,kind=self._return_home_menu(scene,kind,purpose='领奖',observation='rewards_home_navigation')
         from .du_rewards import collect
         scene=collect(self,scene)
         return scene,self._observe(scene,label)
+
+    def _verify_periodic_goal(self,scene,kind):
+        goal = self.points_goal
+        try:
+            self._weekly_boundary()
+            scene,kind = self._return_home_menu(scene,kind,purpose='积分核验',observation='points_home_navigation')
+            if kind != 'home':
+                raise AutomationError('积分核验未回到差分宇宙主页。')
+            scene = goal.observe(scene,self.report['completed_runs'])
+            self._persist_ledger(before_replace=lambda:goal.require_current(scene))
+            goal.require_current(scene)
+            return scene,kind
+        except (AutomationError,OSError):
+            goal.invalidate('points_check_failed')
+            try:
+                self._persist_ledger()
+            except OSError:
+                pass
+            raise
+
+    def expire_points_at_publication(self):
+        if self.points_goal is None or not self.points_goal.expire_at_publication():
+            return False
+        self.report['last_message'] = '保存差分报告前游戏周已切换，保留原游戏周积分观察和已核实胜利。'
+        try:
+            self._persist_ledger()
+        except OSError:
+            self.points_goal.result['ledger_updated'] = False
+        return True
 
     def _after_completed_run(self,scene,kind,label):
         if self.settings.differential_universe_rewards:
@@ -3035,7 +3088,11 @@ class DifferentialUniverseWorkflow:
             scene, kind = self._open_differential_universe(scene, kind)
         if self.settings.differential_universe_rewards and kind=='home':
             scene,kind=self._collect_rewards(scene,kind,'rewards_before_runs')
+        if self.points_goal is not None:
+            scene,kind = self._verify_periodic_goal(scene,kind)
         while self.report["completed_runs"] < self.runs:
+            if self.points_goal is not None and self.points_goal.result['status'] == 'capped':
+                break
             self.ctx.checkpoint()
             self._weekly_boundary()
             run_no = self.report["completed_runs"] + 1
@@ -3046,7 +3103,19 @@ class DifferentialUniverseWorkflow:
                 "run_id": run_id, "origin": "fresh", "counted": False,
                 "status": "starting", "started_at": time.time()})
             self._persist_ledger()
-            scene, kind = self._prepare_and_start(scene, kind)
+            try:
+                scene, kind = self._prepare_and_start(scene, kind)
+            except (AutomationError, OSError):
+                if self.points_goal is not None:
+                    self.points_goal.invalidate('points_launch_unverified')
+                    request = next((action for action in reversed(self.report['actions'])
+                                    if action.get('run') == attempt_no and action.get('intent') == 'periodic_start'), None)
+                    if request is not None and request['status'] == 'requested':
+                        request.update(status='not_sent', reason='points_goal_revalidation_failed')
+                    if request is None or request['status'] == 'not_sent':
+                        self.report['run_results'][-1]['status'] = 'not_started'
+                    self._persist_ledger()
+                raise
             start_evidence = self.report["page_history"][-1]["evidence"] if self.report["page_history"] else ""
             difficulty = dict(self.report.get("difficulty_selection", {}))
             periodic = self.report.get("mode") == "周期演算"
@@ -3078,10 +3147,21 @@ class DifferentialUniverseWorkflow:
             mode_label = "周期演算" if periodic else "新开最低难度"
             self.ctx.log(f"差分宇宙{mode_label}第 {run_no}/{self.runs} 局已核实胜利结算并返回。")
             scene,kind=self._after_completed_run(scene,kind,'rewards_after_run')
-            if run_no < self.runs:
+            if self.points_goal is not None:
+                scene,kind = self._verify_periodic_goal(scene,kind)
+            elif run_no < self.runs:
                 # Do not continue an in-progress run; a fresh, completed return
                 # to the mode page is required before the next start.
                 scene, kind = self._snapshot("between_runs")
+        if self.points_goal is not None:
+            goal = self.points_goal.result
+            if goal['status'] == 'capped':
+                self.report['last_message'] = f"差分周期积分已满，核实 {self.report['completed_runs']} 局新开胜利。"
+                return TaskResult(TASK,'ok',self.report['last_message'])
+            goal['status'] = 'exhausted'
+            self._persist_ledger()
+            self.report['last_message'] = f'已达 {self.runs} 局上限，差分周期积分仍未满。'
+            return TaskResult(TASK,'partial',self.report['last_message'])
         if self.report.get("mode") == "周期演算":
             self.report["last_message"] = f"{self.runs} 局周期演算均确认胜利结算并返回。"
         else:
