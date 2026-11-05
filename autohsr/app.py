@@ -407,7 +407,9 @@ class Context:
         store = getattr(self, 'currency_standard_session', None)
         if store is None:
             raise AutomationError('缺少本次标准对局的记录。')
-        data = store.require_pending(choice.intent, self.runner.input_epoch)
+        input_epoch = self.runner.input_epoch
+        captured_at, geometry = scene.captured_at, scene.geometry
+        data = store.require_pending(choice.intent, input_epoch)
         from .currency_wars_identity import account_key
         if data.get('account_key') != account_key(scene,max(.85,self.settings.ocr_confidence)):
             raise AutomationError('当前账号与已记录对局不一致，未发送标准动作。')
@@ -416,9 +418,21 @@ class Context:
                 raise AutomationError('标准开局已有提交记录，未重复开始。')
         elif data['status'] != 'active':
             raise AutomationError('尚未核实标准对局已开始。')
-        if any(key in store.data or key in data for key in ('initial_environment', 'initial_shop_return', 'initial_shop_observation', 'initial_shop_observation_history')):
-            from .currency_wars_initial import validate_origin, evidence_ref
-            for key in ('initial_environment', 'initial_shop_return', 'initial_shop_observation', 'initial_shop_observation_history'):
+        from .currency_wars_environment import ENVIRONMENT_CONFIRM, ENVIRONMENT_SELECT
+        environment_confirm = choice.intent.startswith(ENVIRONMENT_CONFIRM)
+        environment_step = environment_confirm or choice.intent.startswith(ENVIRONMENT_SELECT)
+        initial_confirm = environment_confirm and choice.payload in ((), ('1-1',))
+        environment_scope = ('actions', 'expected_board')
+        if environment_step and any(data.get(key) != store.data.get(key) for key in environment_scope):
+            raise AutomationError('投资环境位面或动作与落盘记录不一致，未发送输入。')
+        if environment_step:
+            from contextlib import ExitStack
+            from .currency_wars_initial import evidence_ref, require_evidence_pixels
+            from .storage import file_revision, hold_read_sources
+        initial_keys = ('initial_environment', 'initial_shop_return', 'initial_shop_observation', 'initial_shop_observation_history')
+        if any(key in store.data or key in data for key in initial_keys):
+            from .currency_wars_initial import validate_origin
+            for key in initial_keys:
                 if json.dumps(data.get(key), sort_keys=True, allow_nan=False) != json.dumps(store.data.get(key), sort_keys=True, allow_nan=False):
                     raise AutomationError('初始环境来源尚未与落盘记录一致，未发送输入。')
             origin = validate_origin(data)
@@ -428,10 +442,11 @@ class Context:
             if 'initial_shop_observation' in data or 'initial_shop_observation_history' in data:
                 from .currency_wars_initial_shop_observation import validate as validate_shop_observation
                 validate_shop_observation(data,current=choice.intent=='close_standard_initial_shop')
-            if choice.intent.startswith('confirm_standard_environment_') and origin['action_id'] == data['actions'][-1]['id']:
-                if evidence_ref(scene, data['actions'][-1]['before'], origin['run_dir']) != origin['origin']['before']:
+            if initial_confirm:
+                if (origin['action_id'] != data['actions'][-1]['id']
+                        or evidence_ref(scene, data['actions'][-1]['before'], origin['run_dir']) != origin['origin']['before']):
                     raise AutomationError('初始环境确认前画面与落盘来源不一致。')
-        elif choice.intent.startswith('confirm_standard_environment_') and (not choice.payload or choice.payload == ('1-1',)):
+        elif initial_confirm:
             raise AutomationError('初始环境确认尚未保存专用来源，未发送输入。')
         from .currency_wars_standard_investment import shop_input_scope
         from .currency_wars_standard_investment_refresh import input_scope as investment_refresh_input_scope
@@ -440,7 +455,7 @@ class Context:
                               or progress_input_scope(choice.intent, store.data, data)
                               or shop_input_scope(choice.intent, store.data, data)
                               or investment_refresh_input_scope(choice.intent, store.data, data))
-        session = data if use_durable_source else store.data
+        session = data if use_durable_source or environment_step else store.data
         if choice.intent in ('open_standard_bench_reward', 'choose_standard_reward'):
             investment = store.data.get('investment', {})
             if investment != data.get('investment', {}):
@@ -473,11 +488,82 @@ class Context:
             self._currency_standard_evidenced_click(scene, choice, guard, store, data, loop_guard, start_sources)
             self.sleep(self.settings.action_delay)
             return
-        self.last_scene, self._scroll_anchor = None, None
+        if environment_step:
+            before = Path(data['actions'][-1]['before'])
+            run_dir = origin['run_dir'] if initial_confirm else self.report.run_dir
+            image = scene.image
+            source = origin['origin']['before'] if initial_confirm else evidence_ref(scene, before, run_dir)
+            journal, window = store.path, self.window
+            confidence = self.settings.ocr_confidence
+
+            def source_revisions():
+                try:
+                    return file_revision(before), file_revision(journal)
+                except OSError as error:
+                    raise AutomationError('初始环境证据或落盘意图不可复核，未发送输入。') from error
+
+            def before_send():
+                self.checkpoint()
+                guard._require_current_scene(scene)
+                try:
+                    source_holds.enter_context(hold_read_sources((journal, before)))
+                except OSError as error:
+                    raise AutomationError('初始环境证据或落盘意图无法保持只读，未发送输入。') from error
+                revisions = source_revisions()
+                if evidence_ref(scene, before, run_dir) != source:
+                    raise AutomationError('初始环境原输入画面证据已改变，未发送输入。')
+                current = store.require_pending(choice.intent, input_epoch)
+                if current != data:
+                    raise AutomationError('初始环境落盘意图在发送前已改变，未发送输入。')
+                if scene.image is not image:
+                    raise AutomationError('初始环境当前采集已更换，未发送输入。')
+                if image.flags.writeable:
+                    image.setflags(write=False)
+                    source_holds.callback(image.setflags, write=True)
+                tokens, fields = tuple(scene.tokens), scene.field_reads.copy()
+                if next_action(scene, confidence, session=current) != choice:
+                    raise AutomationError('初始环境当前卡片与原提交不一致，未发送输入。')
+                if revisions != source_revisions():
+                    raise AutomationError('初始环境证据或落盘意图在发送前已改变，未发送输入。')
+                require_evidence_pixels(scene, source)
+                live = store.data
+                if any(current.get(key) != live.get(key) for key in (*environment_scope, *initial_keys)):
+                    raise AutomationError('投资环境位面或落盘意图在发送前已改变，未发送输入。')
+                if account_key(scene, max(.85, confidence)) != current.get('account_key'):
+                    raise AutomationError('初始环境当前账号与原提交不一致，未发送输入。')
+
+                # Keep the files and pixels protected while the last window check runs.
+                window.guard(geometry)
+                if (self.window is not window or getattr(self, 'currency_standard_session', None) is not store
+                        or store.path != journal or store.data is not live):
+                    raise AutomationError('初始环境落盘意图在发送前已改变，未发送输入。')
+                if (scene.captured_at != captured_at or scene.geometry != geometry
+                        or scene.image is not image or image.flags.writeable
+                        or tuple(scene.tokens) != tokens or scene.field_reads != fields
+                        or self.settings.ocr_confidence != confidence):
+                    raise AutomationError('初始环境当前画面与原提交不一致，未发送输入。')
+                if self.runner.input_epoch != input_epoch:
+                    raise InputInterrupted('初始环境输入代次已改变，未沿用旧意图。')
+                if getattr(self.runner, 'stop_requested', False) is True:
+                    raise Stopped('任务已停止。')
+                guard._require_current_scene(scene)
+                if window.emergency_pressed():
+                    raise Stopped('F10 紧急停止。')
+                self.last_scene, self._scroll_anchor = None, None
+        else:
+            self.last_scene, self._scroll_anchor = None, None
         try:
-            self.window.click(*choice.target.center, scene.geometry)
+            if environment_step:
+                # The final callback acquires the holds through the native submission.
+                with ExitStack() as source_holds:
+                    window.click(*choice.target.center, geometry, before_send=before_send)
+            else:
+                self.window.click(*choice.target.center, scene.geometry)
         except FocusLost:
             self._focus_interrupted()
+        finally:
+            if environment_step:
+                self.last_scene, self._scroll_anchor = None, None
         self.sleep(self.settings.action_delay)
 
     def _currency_standard_evidenced_click(self, scene, choice, guard, store, data, loop_guard, start_sources):

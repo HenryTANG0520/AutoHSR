@@ -66,13 +66,18 @@ def source_file_ref(path, run_dir):
         _fail('初始环境证据文件不可核实，未更换或补造来源。')
 
 
-def evidence_ref(scene, path, run_dir):
-    reference = source_file_ref(path, run_dir)
+def require_evidence_pixels(scene, reference):
+    """Compare the current frame with a reference that has already been read."""
     image = getattr(scene, 'image', None)
     if (not isinstance(image, np.ndarray) or image.dtype != np.uint8 or image.ndim != 3
             or image.shape[2] != 3 or reference['shape'] != list(image.shape)
             or reference['pixel_sha256'] != _pixels(image)):
         _fail('初始环境证据与当前画面像素不符。')
+
+
+def evidence_ref(scene, path, run_dir):
+    reference = source_file_ref(path, run_dir)
+    require_evidence_pixels(scene, reference)
     return reference
 
 

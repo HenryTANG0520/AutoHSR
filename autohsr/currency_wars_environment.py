@@ -8,12 +8,16 @@ import numpy as np
 from .currency_wars import CurrencyWarsWorkflow,observe
 from .currency_wars_deployment import _crop
 from .currency_wars_match import read_match
-from .models import AutomationError,EmptyCapture,normalize
+from .models import AutomationError, EmptyCapture, Scene, normalize
 
 
 CENTERS=(.229,.50,.771)
 
 ENVIRONMENT_POLICY = 'initial-strength-v1'
+ENVIRONMENT_SELECT = 'select_standard_environment_'
+ENVIRONMENT_SELECTED = 'environment_selected_'
+ENVIRONMENT_CONFIRM = 'confirm_standard_environment_'
+ENVIRONMENT_CONFLICTS = 'currency.initial_environment.conflicts'
 
 
 @dataclass(frozen=True)
@@ -25,6 +29,34 @@ class EnvironmentOption:
     parameters: tuple[tuple[str, int], ...] = ()
     score: int | None = None
     reason: str = ''
+
+    @property
+    def details(self):
+        return (self.name.text, self.kind, self.effect, self.parameters, self.score, self.reason, ENVIRONMENT_POLICY)
+
+
+def environment_decision(details):
+    name, kind, effect, parameters, score, reason, policy = details
+    return dict(name=name, kind=kind, effect=effect, parameters=dict(parameters), score=score, reason=reason, policy=policy)
+
+
+def environment_decision_matches(recorded, details):
+    if type(recorded) is not dict:
+        return False
+    name, kind, effect, parameters, score, _, policy = details
+    original_name, original_effect = recorded.get('name'), recorded.get('effect')
+    original_parameters, original_score = recorded.get('parameters'), recorded.get('score')
+    return (isinstance(original_name, str) and normalize(original_name) == normalize(name)
+            and isinstance(original_effect, str) and normalize(original_effect) == normalize(effect)
+            and recorded.get('kind') == kind and recorded.get('policy') == policy
+            and type(original_parameters) is dict and original_parameters == dict(parameters)
+            and all(type(value) is int for value in original_parameters.values())
+            and type(original_score) in (int, float) and original_score == score)
+
+
+def environment_selection_slot(intent, expected):
+    return next((slot for slot in range(len(CENTERS))
+                 if intent == ENVIRONMENT_SELECT+str(slot) and expected == ENVIRONMENT_SELECTED+str(slot)), None)
 
 
 def parse_environment_effect(effect):
@@ -44,30 +76,107 @@ def parse_environment_effect(effect):
     return None, (), None, '效果未完整匹配已核验语法，不生成可执行候选'
 
 
+def _standard_card_text(tokens, left, right):
+    return [t for t in tokens if t is not None and normalize(t.text) and t.box[0] < right and t.box[2] > left
+            and (.34 <= t.center[1] <= .38 or (t.box[1] < .79 and t.box[3] > .38))]
+
+
+def _standard_card_name(tokens, left, right, confidence):
+    names = [t for t in tokens if .34 <= t.center[1] <= .38]
+    if len(names) == 1 and names[0].score >= confidence and left <= names[0].box[0] < names[0].box[2] <= right:
+        return names[0]
+    return None
+
+
+def preserve_environment_conflicts(scene, weak_tokens, confidence):
+    """Keep at most one negative OCR witness per located card."""
+    if observe(scene, confidence).page_kind != 'environment':
+        return
+    from .currency_wars_prepare import trusted
+    strong = trusted(scene, confidence).tokens
+    weak = trusted(Scene(list(weak_tokens)), 0).tokens
+    conflicts = []
+    for center in CENTERS:
+        left, right = center - .115, center + .115
+        title = _standard_card_name(_standard_card_text(strong, left, right), left, right, confidence)
+        if title is not None:
+            conflict = next(iter(_standard_card_text(weak, left, right)), None)
+            if conflict is not None and conflict not in conflicts:
+                conflicts.append(conflict)
+    if conflicts:
+        scene.field_reads[ENVIRONMENT_CONFLICTS] = tuple(conflicts)
+
+
+def _standard_card_body(tokens, name, left, right, confidence):
+    # Include weak or overlapping text in the column so it cannot hide a
+    # trailing condition after the part that happens to match a known effect.
+    parts = [t for t in tokens if t is not name and t.box[1] < .79 and t.box[3] > .38]
+    if not parts or any(t.score < confidence or not left <= t.box[0] < t.box[2] <= right
+                        or t.box[1] < .368 or t.box[3] > .79 for t in parts):
+        return None
+
+    rows = []
+    for token in sorted(parts, key=lambda t: t.center[1]):
+        if not rows or token.center[1] - rows[-1][0].center[1] > .012:
+            rows.append([])
+        rows[-1].append(token)
+
+    previous = None
+    for row in rows:
+        y = row[0].center[1]
+        row.sort(key=lambda t: t.box[0])
+        start = row[0].box[0]
+        top = min(t.box[1] for t in row)
+        bottom = max(t.box[3] for t in row)
+        if previous is None:
+            if not -.008 <= top - name.box[3] <= .045:
+                return None
+        else:
+            last_start, last_y, last_top, last_bottom = previous
+            overlap = min(bottom, last_bottom) - max(top, last_top)
+            if (y - last_y > .05 or top - last_bottom > .022 or abs(start - last_start) > .06
+                    or overlap > min(bottom - top, last_bottom - last_top) / 3):
+                return None
+        for before, after in zip(row, row[1:]):
+            ax1, ay1, ax2, ay2 = before.box
+            bx1, by1, bx2, by2 = after.box
+            allowed_overlap = min(.012, (ax2 - ax1) / 3, (bx2 - bx1) / 3)
+            overlap = min(ay2, by2) - max(ay1, by1)
+            if (not -allowed_overlap <= bx1 - ax2 <= .035
+                    or overlap < min(ay2 - ay1, by2 - by1) / 3):
+                return None
+        previous = start, y, top, bottom
+    return ''.join(t.text for row in rows for t in row)
+
+
 def standard_environment_options(scene, confidence=.65):
     from .currency_wars_prepare import trusted
     clean = trusted(scene, confidence)
     if observe(clean, confidence).page_kind != 'environment':
         raise AutomationError('当前不是投资环境选择页。')
+    tokens = trusted(scene, 0).tokens
+    conflicts = scene.field_reads.get(ENVIRONMENT_CONFLICTS, ())
     options = []
     for slot, cx in enumerate(CENTERS):
-        names = [t for t in clean.tokens if t.within((cx-.115,.34,cx+.115,.38))]
-        if len(names) != 1:
+        left, right = cx - .115, cx + .115
+        column = _standard_card_text(tokens, left, right)
+        name = _standard_card_name(column, left, right, confidence)
+        if name is None:
             continue
-        # Read the full body, including a possible fourth line or lower
-        # condition. A known prefix must not hide an unread penalty below it.
-        parts = sorted((t for t in clean.tokens if t.within((cx-.115,.38,cx+.115,.78))),
-                       key=lambda t:(round(t.center[1],2), t.center[0]))
-        effect = ''.join(t.text for t in parts)
+        effect = None if _standard_card_text(conflicts, left, right) else _standard_card_body(column, name, left, right, confidence)
+        if effect is None:
+            options.append(EnvironmentOption(slot, name, '', None, reason='环境正文的同列、相邻行或清晰度未核实'))
+            continue
         kind, parameters, score, reason = parse_environment_effect(effect)
-        options.append(EnvironmentOption(slot, names[0], effect, kind, parameters, score, reason))
+        options.append(EnvironmentOption(slot, name, effect, kind, parameters, score, reason))
     if not options:
         raise AutomationError('未完整定位投资环境卡片。')
     return tuple(options)
 
 
-def standard_environment_choice(scene, confidence=.65):
-    choices = [choice for choice in standard_environment_options(scene, confidence) if choice.score is not None]
+def standard_environment_choice(scene, confidence=.65, *, slot=None):
+    choices = [choice for choice in standard_environment_options(scene, confidence)
+               if choice.score is not None and (slot is None or choice.slot == slot)]
     if not choices:
         raise AutomationError('没有效果已核实的环境候选，未选择或刷新。')
     # Semantic tie-break, independent of left/middle/right placement.
@@ -75,7 +184,7 @@ def standard_environment_choice(scene, confidence=.65):
 
 
 def standard_environment_confirm(scene, choice, confidence=.65):
-    if standard_environment_choice(scene, confidence) != choice or scene.image is None:
+    if scene.image is None or standard_environment_choice(scene, confidence, slot=choice.slot) != choice:
         raise AutomationError('当前环境选择与本次候选不一致。')
     chosen = []
     for slot, center in enumerate(CENTERS):

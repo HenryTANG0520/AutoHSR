@@ -457,10 +457,16 @@ class StandardProgressTests(unittest.TestCase):
 
     def test_next_plane_environment_feedback_does_not_accept_the_old_board(self):
         from autohsr.tests.test_currency_wars_standard_environment import environment
-        choice = next_action(environment((1,), True), session=dict(expected_board='2-1'))
+        entry = dict(action='advance_standard_next_plane', status='verified',
+                     expected='standard_plane_entered', target=['1-7', 4, '2-1'])
+        session = dict(expected_board='2-1', actions=[entry])
+        choice = next_action(environment((1,), True), session=session)
         self.assertEqual(choice.payload, ('2-1',))
         self.assertTrue(transition_ready(choice, board('2-1')))
         self.assertFalse(transition_ready(choice, board('1-1')))
+        for old_entry in (dict(entry, status='unknown'), dict(entry, target=['2-7', 4, '3-1'])):
+            with self.assertRaises(AutomationError):
+                next_action(environment((1,), True), session=dict(session, actions=[old_entry]))
 
     def test_terminal_pages_without_complete_source_chain_cannot_settle(self):
         with tempfile.TemporaryDirectory() as folder:

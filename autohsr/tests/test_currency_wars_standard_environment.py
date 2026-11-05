@@ -1,15 +1,19 @@
 """Environment effect grammar, semantic ranking and observed selection feedback."""
 import json
+import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import numpy as np
 
-from autohsr.currency_wars_environment import (CENTERS, parse_environment_effect,
+from autohsr.currency_wars_environment import (CENTERS, ENVIRONMENT_CONFLICTS, parse_environment_effect,
     standard_environment_options, standard_environment_choice, standard_environment_confirm)
 from autohsr.currency_wars_standard_flow import next_action, transition_ready
 from autohsr.models import AutomationError, Scene, Token
+from autohsr.ocr_isolation import _field_reads, _ocr_job, _tokens
+from autohsr.vision import Vision
 
 
 def environment(selected=(), enabled=False):
@@ -21,6 +25,37 @@ def environment(selected=(), enabled=False):
     if enabled:
         image[round(.895*1080):round(.925*1080),round(.50*1920):round(.62*1920)] = 230
     return Scene([Token(t['text'],t['score'],tuple(t['box'])) for t in fixture['tokens']], image)
+
+
+def change_text(scene, original, replacement):
+    token = next(t for t in scene.tokens if original in t.text)
+    scene.tokens[scene.tokens.index(token)] = replace(token, text=token.text.replace(original, replacement))
+    return scene
+
+
+def read_ocr(scene, isolated):
+    height, width = scene.image.shape[:2]
+    results = []
+    for token in scene.tokens:
+        x1, y1, x2, y2 = token.box
+        corners = ((x1, y1), (x2, y1), (x2, y2), (x1, y2))
+        results.append(([(x * width, y * height) for x, y in corners], token.text, token.score))
+
+    def configure(reader, confidence):
+        reader.confidence = confidence
+        reader.engine = Mock(return_value=(results, None))
+
+    if not isolated:
+        reader = Vision.__new__(Vision)
+        configure(reader, .65)
+        return reader.read(scene.image, scene.geometry)
+    with tempfile.TemporaryDirectory() as folder:
+        source, output = Path(folder) / 'frame.npy', Path(folder) / 'ocr.json'
+        np.save(source, scene.image, allow_pickle=False)
+        with patch.object(Vision, '__init__', configure):
+            _ocr_job(str(source), str(output), .65)
+        result = json.loads(output.read_text(encoding='utf-8'))
+        return Scene(_tokens(result), scene.image, scene.geometry, field_reads=_field_reads(result))
 
 
 class StandardEnvironmentTests(unittest.TestCase):
@@ -70,6 +105,61 @@ class StandardEnvironmentTests(unittest.TestCase):
         self.assertEqual(choice.name.text,'战力飙升')
         self.assertEqual(choice.slot,2)
 
+    def test_incomplete_or_ambiguous_body_cannot_confirm_selected_card(self):
+        prior_selection = next_action(environment())
+        for case in ('detached_row', 'detached_body', 'cross_column', 'overlaid_row', 'weak_tail', 'crossing_tail'):
+            with self.subTest(case=case):
+                state = environment((1,), True)
+                first, last = [t for t in state.tokens if t.within((.385,.38,.615,.47))]
+                if case == 'detached_body':
+                    for token in (first, last):
+                        x1, y1, x2, y2 = token.box
+                        state.tokens[state.tokens.index(token)] = replace(token, box=(x1,y1+.18,x2,y2+.18))
+                elif case == 'weak_tail':
+                    state.tokens.append(Token('开局时扣除6金币',.50,(.394,.440,.557,.464)))
+                elif case == 'crossing_tail':
+                    state.tokens.append(Token('但每节点扣除生命',.92,(.601,.444,.654,.465)))
+                else:
+                    x1, y1, x2, y2 = last.box
+                    box = {
+                        'detached_row': (x1,.642,x2,.669),
+                        'cross_column': (.380,y1,x2,y2),
+                        'overlaid_row': (x1,.394,x2,.433),
+                    }[case]
+                    state.tokens[state.tokens.index(last)] = replace(last, box=box)
+                self.assertIsNone(standard_environment_options(state)[1].kind)
+                self.assertFalse(transition_ready(prior_selection,state))
+                self.assertEqual(next_action(state).intent,'select_standard_environment_0')
+
+    def test_split_body_uses_same_column_order_with_one_two_or_three_cards(self):
+        prior_selection = next_action(environment())
+        for missing in ((), (0,), (0,2)):
+            with self.subTest(missing=missing):
+                state = environment((1,), True)
+                last = next(t for t in state.tokens if '永久获得' in t.text)
+                state.tokens.remove(last)
+                state.tokens += [
+                    Token('永久获得随机属性加成。', .99, (.465,.417,.584,.442)),
+                    Token('时，这位角色', .99, (.395,.412,.466,.437)),
+                    Token('栏外提示', .50, (.635,.448,.649,.467)),
+                ]
+                state.tokens = [t for t in state.tokens if not any(
+                    t.within((CENTERS[i]-.115,.34,CENTERS[i]+.115,.79)) for i in missing)]
+                self.assertEqual(len(standard_environment_options(state)), 3-len(missing))
+                self.assertTrue(transition_ready(prior_selection, state))
+                self.assertEqual(next_action(state).intent, 'confirm_standard_environment_1')
+
+    def test_far_apart_fragments_of_one_ocr_line_are_not_joined(self):
+        state = environment((1,), True)
+        last = next(t for t in state.tokens if '永久获得' in t.text)
+        state.tokens.remove(last)
+        state.tokens += [
+            Token('时，这位角色', .99, (.395,.413,.439,.439)),
+            Token('永久获得随机属性加成。', .99, (.491,.417,.584,.442)),
+        ]
+        self.assertIsNone(standard_environment_options(state)[1].kind)
+        self.assertEqual(next_action(state).intent,'select_standard_environment_0')
+
     def test_confirmation_needs_single_selected_border_and_enabled_button(self):
         for slots, enabled in (((),False),((1,),False),((0,),True),((0,1),True)):
             state = environment(slots,enabled)
@@ -91,6 +181,43 @@ class StandardEnvironmentTests(unittest.TestCase):
         state.image=None
         with self.assertRaises(AutomationError):
             next_action(state)
+
+    def test_selection_feedback_rejects_different_known_cards_in_same_slot(self):
+        select = next_action(environment())
+        for original, replacement in (('随机2星2费', '随机3星2费'), ('1个随机', '2个随机'),
+                                      ('2星2费', '2星3费'), ('战力飙升', '另一张卡')):
+            with self.subTest(replacement=replacement):
+                selected = change_text(environment((1,), True), original, replacement)
+                self.assertEqual(next_action(selected).intent, 'confirm_standard_environment_1')
+                self.assertFalse(transition_ready(select, selected))
+
+    def test_weak_engine_text_is_only_negative_evidence_for_verified_cards(self):
+        for isolated in (False, True):
+            for case in ('inside', 'crossing', 'outside', 'unverified_page', 'weak_effect'):
+                with self.subTest(isolated=isolated, case=case):
+                    raw = environment((1,), True)
+                    if case == 'weak_effect':
+                        last = next(t for t in raw.tokens if '永久获得' in t.text)
+                        raw.tokens[raw.tokens.index(last)] = replace(last, score=.58)
+                    else:
+                        box = {'crossing': (.605, .442, .655, .464), 'outside': (.635, .442, .649, .464)}
+                        raw.tokens.append(Token('但开局时扣除6金币', .58, box.get(case, (.397, .442, .568, .464))))
+                    if case == 'unverified_page':
+                        raw.tokens = [replace(t, score=.58) if t.text == '投资环境' else t for t in raw.tokens]
+                    scene = read_ocr(raw, isolated)
+                    self.assertTrue(all(t.score >= .65 for t in scene.tokens))
+                    blocked = case in ('inside', 'crossing', 'weak_effect')
+                    self.assertEqual(ENVIRONMENT_CONFLICTS in scene.field_reads, blocked)
+                    if blocked:
+                        witness, = scene.field_reads[ENVIRONMENT_CONFLICTS]
+                        self.assertEqual(witness.score, .58)
+                        self.assertIsNone(standard_environment_options(scene, .55)[1].kind)
+                        self.assertEqual(next_action(scene).intent, 'select_standard_environment_0')
+                    elif case == 'outside':
+                        self.assertEqual(next_action(scene).intent, 'confirm_standard_environment_1')
+                    else:
+                        with self.assertRaises(AutomationError):
+                            standard_environment_options(scene)
 
 
 if __name__ == '__main__':

@@ -10,6 +10,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from .currency_wars import CurrencyWarsWorkflow, TASK, observe
+from .currency_wars_environment import (ENVIRONMENT_CONFIRM, ENVIRONMENT_SELECT, ENVIRONMENT_SELECTED,
+    environment_decision, environment_decision_matches, environment_selection_slot,
+    standard_environment_choice, standard_environment_confirm)
 from .currency_wars_navigation import locate, unique
 from .currency_wars_prepare import trusted
 from .currency_wars_session import StandardSession,require_session_access
@@ -798,6 +801,9 @@ def next_action(scene, confidence=.65, *, session=None):
     if pending and (choice.intent != pending.get('action') or choice.expected != pending.get('expected')
                     or json.dumps(list(choice.payload),sort_keys=True,allow_nan=False)!=json.dumps(pending.get('target', []),sort_keys=True,allow_nan=False)):
         raise AutomationError('当前页面推导结果与已落盘意图不同，未替换或重放动作。')
+    if (pending and choice.intent.startswith((ENVIRONMENT_SELECT, ENVIRONMENT_CONFIRM))
+            and not environment_decision_matches(pending.get('decision'), choice.details)):
+        raise AutomationError('当前投资环境效果与落盘意图不一致，未发送输入。')
     if pending and choice.intent == 'inspect_standard_sale_unit':
         if _loot_sale_source(pending) != _loot_sale_basis(scene, confidence, prior):
             raise AutomationError('晶矿腾位查看与原准备页来源不一致。')
@@ -896,18 +902,44 @@ def _next_action(scene, confidence=.65, *, session=None, loot_box=None):
     if kind == 'environment':
         if scene.image is None:
             raise AutomationError('环境选择缺少当前图像，未发送输入。')
-        from .currency_wars_environment import standard_environment_choice, standard_environment_confirm, ENVIRONMENT_POLICY
-        choice = standard_environment_choice(scene, confidence)
-        details = (choice.name.text, choice.kind, choice.effect, choice.parameters, choice.score,
-                   choice.reason, ENVIRONMENT_POLICY)
+        expected_board = session.get('expected_board')
+        later_plane = expected_board in ('2-1', '3-1')
+        actions = session.get('actions', [])
+        if later_plane:
+            tail = actions[:-1] if actions and actions[-1].get('action', '').startswith(ENVIRONMENT_SELECT) else actions
+            entrance = tail[-1] if tail else {}
+            target = entrance.get('target')
+            if (entrance.get('action') != 'advance_standard_next_plane' or entrance.get('status') != 'verified'
+                    or entrance.get('expected') != 'standard_plane_entered'
+                    or not isinstance(target, list) or len(target) != 3 or target[2] != expected_board):
+                raise AutomationError('当前投资环境缺少已核实的后续位面入口，未选取或确认。')
+            actions = actions[len(tail):]
+        elif expected_board not in (None, '1-1') or any(
+                action.get('action', '').startswith(ENVIRONMENT_CONFIRM) for action in actions):
+            raise AutomationError('当前记录缺少新的初始环境来源，未重复选取或确认。')
+        selection = next((action for action in reversed(actions)
+                          if action.get('action', '').startswith(ENVIRONMENT_SELECT)), None)
+        slot = None
+        if selection is not None:
+            slot = environment_selection_slot(selection['action'], selection.get('expected'))
+            after = selection.get('after')
+            if (selection is not actions[-1] or selection.get('status') != 'verified' or slot is None
+                    or not isinstance(after, str) or not after.strip()
+                    or selection.get('target', []) not in ([], [expected_board])):
+                raise AutomationError('已有投资环境选择缺少同位面核实反馈，未重选或确认。')
+        choice = standard_environment_choice(scene, confidence, slot=slot)
+        if selection is not None and not environment_decision_matches(selection.get('decision'), choice.details):
+            raise AutomationError('当前投资环境效果与已核实选取不一致，未确认。')
+        board_target = (expected_board,) if expected_board else ()
         try:
             target = standard_environment_confirm(scene, choice, confidence)
         except AutomationError:
-            return StandardAction('select_standard_environment_'+str(choice.slot),
-                                  'environment_selected_'+str(choice.slot), choice.name, details)
-        expected_board = (session or {}).get('expected_board')
-        return StandardAction('confirm_standard_environment_'+str(choice.slot), 'initial_board', target, details,
-                              payload=(expected_board,) if expected_board else ())
+            if selection is not None:
+                raise
+            return StandardAction(ENVIRONMENT_SELECT+str(choice.slot), ENVIRONMENT_SELECTED+str(choice.slot),
+                                  choice.name, choice.details, payload=board_target if later_plane else ())
+        return StandardAction(ENVIRONMENT_CONFIRM+str(choice.slot), 'initial_board', target, choice.details,
+                              payload=board_target)
     if kind == 'preparation':
         box_slot = _loot_box_board(scene, loot_box, confidence) if loot_box is not None else None
         initial = (session or {}).get('initial_environment')
@@ -1155,14 +1187,18 @@ def transition_ready(choice, scene, confidence=.65, *, before=None, session=None
             state = read_match(scene,confidence,include_rewards=True)
             if source and (not state or state.node!=source['node']):return False
         return result in ('disappeared','choice_opened')
-    if choice.expected.startswith('environment_selected_'):
-        from .currency_wars_environment import standard_environment_choice, standard_environment_confirm
-        try:
-            picked = standard_environment_choice(scene, confidence)
-            standard_environment_confirm(scene, picked, confidence)
-            return picked.slot == int(choice.expected.rsplit('_',1)[1])
-        except AutomationError:
+    if choice.expected.startswith(ENVIRONMENT_SELECTED):
+        slot = environment_selection_slot(choice.intent, choice.expected)
+        if slot is None:
             return False
+        try:
+            picked = standard_environment_choice(scene, confidence, slot=slot)
+            if not environment_decision_matches(environment_decision(choice.details), picked.details):
+                return False
+            standard_environment_confirm(scene, picked, confidence)
+        except (AutomationError, TypeError, ValueError):
+            return False
+        return True
     if choice.expected == 'initial_board':
         from .currency_wars_match import read_match
         state = read_match(scene, confidence)
@@ -1430,9 +1466,7 @@ def run_standard(c):
             bind_selection(store.data,choice,scene,c.runner.input_epoch,c.report.run_dir,c.settings.ocr_confidence)
             store.persist()
         elif choice.details:
-            action['decision'] = dict(name=choice.details[0], kind=choice.details[1], effect=choice.details[2],
-                                      parameters=dict(choice.details[3]), score=choice.details[4],
-                                      reason=choice.details[5], policy=choice.details[6])
+            action['decision'] = environment_decision(choice.details[:7])
             store.persist()
         if choice.payload:
             action['target'] = list(choice.payload)
@@ -1444,7 +1478,7 @@ def run_standard(c):
             from .currency_wars_standard_investment_refresh import bind_intent as bind_investment_refresh
             bind_investment_refresh(store.data,choice,scene,c.settings.ocr_confidence)
             store.persist()
-        if choice.intent.startswith('confirm_standard_environment_') and (not choice.payload or choice.payload == ('1-1',)):
+        if choice.intent.startswith(ENVIRONMENT_CONFIRM) and choice.payload in ((), ('1-1',)):
             from .currency_wars_initial import begin as begin_initial
             begin_initial(store.data, action['id'], run_dir=c.report.run_dir, epoch=c.runner.input_epoch)
             store.persist()
@@ -1538,9 +1572,11 @@ def run_standard(c):
         closing_investment_shop = choice.intent == INVESTMENT_SHOP_CLOSE
         refreshing_investment = choice.intent == INVESTMENT_REFRESH
         investment_progress = investment_confirmation or closing_investment_shop or refreshing_investment
+        later_environment_board = choice.expected == 'initial_board' and choice.payload not in ((), ('1-1',))
         strict_feedback = (defeat_step or investment_box or loot_click or loot_box is not None
                            or loot_claim is not None or boss_progress or loss_progress or investment_progress
-                           or INVESTMENT_REFRESH_BINDING in action)
+                           or INVESTMENT_REFRESH_BINDING in action
+                           or choice.intent.startswith((ENVIRONMENT_SELECT, ENVIRONMENT_CONFIRM)))
         observed_at = scene.captured_at
         c.currency_standard_input(scene, choice)
         elapsed, after, stable, previous_popup = 0., None, 0, None
@@ -1597,7 +1633,7 @@ def run_standard(c):
                     if ready and choice.expected == 'initial_board' and initial.get('action_id') == action['id']:
                         from .currency_wars_initial import record_arrival
                         frames = initial['arrival_frames']
-                        if frames and after.captured_at <= frames[-1]['captured_at']:
+                        if after.captured_at <= observed_at or (frames and after.captured_at <= frames[-1]['captured_at']):
                             ready = False
                         else:
                             ready = record_arrival(store.data, after,
@@ -1652,7 +1688,8 @@ def run_standard(c):
                 previous_pickup = pickup
                 stable = (len(initial_return_frames) if choice.expected == 'standard_initial_shop_closed'
                           else stable+1) if ready else 0
-                required = 2 if paired_progress is not None or investment_box or loot_box is not None or defeat_step or choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable','standard_relocate_inspectable',
+                required = 2 if (paired_progress is not None or investment_box or loot_box is not None or defeat_step
+                                 or later_environment_board or choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable','standard_relocate_inspectable',
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
                                                     'standard_sale_panel','standard_owned_sold','standard_field_sale_panel','standard_field_owned_sold','standard_equipment_inspectable',
                                                     'standard_reward_returned','standard_supply_selected','standard_supply_refreshed',
@@ -1660,7 +1697,7 @@ def run_standard(c):
                                                     'standard_stale_unit_board','standard_collected_unit_board',
                                                     'standard_movement_star_selected','standard_movement_star_returned','standard_popup_unit_board',
                                                     'standard_consumable_applied','standard_consumable_returned','standard_consumable_board',
-                                                    'standard_initial_shop_closed') else 1
+                                                    'standard_initial_shop_closed')) else 1
                 if stable >= required:
                     after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
                     if paired_progress is not None:
@@ -1695,7 +1732,7 @@ def run_standard(c):
                     if choice.intent == 'start_standard_a8_40':
                         store.data['status'] = 'active'
                         store.data['start_verified'] = True
-                    if choice.intent.startswith('confirm_standard_environment_'):
+                    if choice.intent.startswith(ENVIRONMENT_CONFIRM):
                         store.data['environment'] = action['decision']
                         store.data.pop('expected_board', None)
                         if store.data.get('initial_environment', {}).get('action_id') == action['id']:

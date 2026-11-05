@@ -29,26 +29,30 @@ class Vision:
         scale = min(1.0, 1920 / width)
         sample = cv2.resize(image, None, fx=scale, fy=scale) if scale < 1 else image
         results, _ = self.engine(sample, use_cls=False)
-        tokens = []
-        uid_candidates = []
-        uid_floor = self.uid_counterevidence_floor
-        if uid_floor is not None:
-            from .currency_wars_identity import UID_COUNTEREVIDENCE, complete_uid
+
+        def token(box, text, score):
+            xs, ys = zip(*box)
+            return Token(str(text), score, (min(xs)/(width*scale), min(ys)/(height*scale),
+                                            max(xs)/(width*scale), max(ys)/(height*scale)))
+
+        tokens, weak = [], []
         for box, text, score in results or []:
             score = float(score)
-            below_threshold = score < self.confidence
-            if below_threshold and (uid_floor is None or score < uid_floor):
-                continue
-            xs, ys = zip(*box)
-            token = Token(str(text), score, (min(xs)/(width*scale), min(ys)/(height*scale),
-                                             max(xs)/(width*scale), max(ys)/(height*scale)))
-            if not below_threshold:
-                tokens.append(token)
-            elif complete_uid(token):
-                uid_candidates.append(token)
+            if score < self.confidence:
+                weak.append((box, text, score))
+            else:
+                tokens.append(token(box, text, score))
         scene = Scene(tokens, image, geometry, captured_at)
-        if uid_candidates:
-            scene.field_reads[UID_COUNTEREVIDENCE] = tuple(uid_candidates)
+        if weak:
+            from .currency_wars_environment import preserve_environment_conflicts
+            preserve_environment_conflicts(scene, (token(*item) for item in weak), self.confidence)
+        uid_floor = self.uid_counterevidence_floor
+        if weak and uid_floor is not None:
+            from .currency_wars_identity import UID_COUNTEREVIDENCE, complete_uid
+            candidates = (token(*item) for item in weak if item[2] >= uid_floor)
+            uid_candidates = tuple(candidate for candidate in candidates if complete_uid(candidate))
+            if uid_candidates:
+                scene.field_reads[UID_COUNTEREVIDENCE] = uid_candidates
         return scene
 
     def template(self, scene: Scene, path: Path, roi=(0, 0, 1, 1), threshold=0.88):
