@@ -12,6 +12,30 @@
     "gray_blue": "runs/20261018_110336_918720/110340_425879_currency_loot_before.png",
     "blue_after_gray": "runs/20261018_110336_918720/110350_124739_currency_loot_before.png"
   },
+  "overflow_sequence": {
+    "mode": "historical_overclock_a0",
+    "node": "3-5",
+    "source_size": [3840, 2160],
+    "transform": "OpenCV INTER_LINEAR resize to 2560x1440 then crop roi_2560, PNG compression 9",
+    "excludes_account_pixels": true,
+    "samples": {
+      "overflow_before": {
+        "original_sha256": "2762820d565a1eaac684cd4284e5192e142f295cbf953678bf867266ebd3e3d2",
+        "sha256": "6955363e5f92d6396a4fd2870290b9ec77efd608471a4c71b6d882e714d4008f",
+        "expected_count": 3
+      },
+      "overflow_after": {
+        "original_sha256": "c769afffe844b0e53f4044c8b1f4db80e9c02f98c1fd1782ff9e9fca0d1e13b0",
+        "sha256": "b0794cdf1b47c41387dd8fe2a4616004f14d980a490d2c80ff33a10805770c35",
+        "expected_count": 2
+      },
+      "overflow_later": {
+        "original_sha256": "5eed90d720a97050b341bfce26ff6969c9eb2802e6ab63b508439c2b559c1885",
+        "sha256": "32e7be2f84eb37f02fa0f36fcba4e09b64afa5f294664b70807dd5d142d11288",
+        "expected_count": 2
+      }
+    }
+  },
   "gold_before_boss": {
     "source": "runs\\20261018_121917_327452\\122127_896911_currency_node_before.png",
     "sha256": "5fdec635b4f5aeaa42abd4e3508db2aacb5c0c62a43199761f73580341ed665c",

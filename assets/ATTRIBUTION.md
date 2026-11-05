@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-11-05 货币战争满席历史裁片
+
+新增三张历史超频 A0 的地面晶矿裁片，仅保留晶矿区域。三帧为同一历史事件的前后观察，原件留在本地。标准局回归将裁片与合成备战、提示和假窗口组合。游戏美术归 HoYoverse 及相应权利人。原件 SHA-256、变换、游戏版本和裁片哈希见[来源清单](../autohsr/tests/fixtures/currency_crystals/sources.json)。
+
 ## 2026-11-05 货币战争桌面执行入口
 
 循环、积分核对和普通领奖沿用已适配的固定March7thAssistant流程；新增[桌面控件](../autohsr/currency_controls_ui.py)及[结果投影](../autohsr/currency_controls_feedback.py)为AutoHSR编写，复用既有指南、开发工具和结果页。新循环与原目标接续、积分与奖励、开发胜败与独立验收分别呈现；没有新增图像、模型、账号截图或上游输入框架。关联原生文件及检查记入[source.json](upstream/March7thAssistant/source.json)，原作者、GPL v3和素材权利说明保持。

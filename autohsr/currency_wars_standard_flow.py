@@ -44,6 +44,7 @@ _LOOT_REWARD_PAGES = frozenset(('equipment_selection', 'advanced_equipment_selec
 _LOOT_REWARD_READS = frozenset(('inspect_standard_reward_unit', 'close_standard_reward_unit',
                                  'close_standard_reward_stale_panel'))
 _LOOT_BOX_OPEN = 'open_standard_bench_reward'
+_LOOT_BOARD_FIELDS = ('node', 'hp', 'level', 'experience', 'deployment')
 _LOOT_SALE_COLLECTION = _LOOT_SALE_INSPECTIONS | _LOOT_REWARD_READS | {
     'collect_standard_loot', 'choose_standard_reward', _LOOT_BOX_OPEN}
 _UNRESOLVED_LOOT_BOX = object()
@@ -265,7 +266,7 @@ def _loot_board_values(state):
 
 
 def _loot_basis_values(basis):
-    return tuple(basis.get(key) for key in ('node', 'hp', 'level', 'experience', 'deployment'))
+    return tuple(basis.get(key) for key in _LOOT_BOARD_FIELDS)
 
 
 def _loot_bench_delta(before, after):
@@ -527,6 +528,72 @@ def _loot_board_feedback(scene, state, before, remaining, confidence):
             or not _same_loot_centers(remaining, loot_centers(scene))):
         return None
     return dict(remaining=remaining, gold_after=state.gold)
+
+
+def _loot_overflow_feedback(before, after, target, crystals, remaining, confidence):
+    """Observe the target during a full-bench notice, independently of delivery."""
+    from .currency_wars_loot import changed_crystal_pixels
+    from .currency_wars_match import read_match
+    from .currency_wars_node import loot_centers
+    from .currency_wars_pages import is_bench_full_notice
+    from .currency_wars_standard_hud import experience_observed
+
+    notices = {normalize(t.text) for t in trusted(after, confidence).tokens if is_bench_full_notice(t)}
+    if len(notices) != 1 or remaining is None:
+        return None
+    initial, current = read_match(before, confidence), read_match(after, confidence)
+    if (not initial or not current or initial.page != 'preparation' or current.page != 'bench_full'
+            or not initial.node or initial.hp is None or initial.hp <= 0 or not initial.deployment
+            or _loot_board_values(current) != _loot_board_values(initial)
+            or not experience_observed(before, initial, confidence) or not experience_observed(after, current, confidence)
+            or initial.gold is None or current.gold is None or not initial.gold <= current.gold <= 99999
+            or before.image is None or after.image is None or before.image.shape != after.image.shape):
+        return None
+    observed = loot_centers(after)
+    if _same_loot_centers(crystals, observed):
+        crystal_state = 'present'
+    elif _same_loot_centers(remaining, observed) and changed_crystal_pixels(before, after, target):
+        crystal_state = 'removed'
+    else:
+        crystal_state = 'unclear'
+    return dict(node=current.node, notice=next(iter(notices)), crystal_state=crystal_state,
+                delivery_status='unverified', gold_before=initial.gold, gold_after=current.gold)
+
+
+def _record_loot_overflow(c, store, action, proof, earlier, later):
+    observed = action.setdefault('loot_overflow_observations', [])
+    if any(item['crystal_state'] == proof['crystal_state'] for item in observed):
+        return
+    frames = [dict(captured_at=frame.captured_at, evidence=evidence(c, frame, 'currency_standard_loot_overflow'))
+              for frame in (earlier, later)]
+    observed.append(dict(proof, frames=frames))
+    store.persist()
+
+
+def _loot_timeout_reason(action):
+    observations = action.get('loot_overflow_observations', [])
+    if observations:
+        crystal_state = observations[-1]['crystal_state']
+        ground = {'removed': '已看到本次点击的晶矿消失',
+                  'present': '仍看得到本次点击的晶矿',
+                  'unclear': '本次点击的晶矿状态未核实'}[crystal_state]
+        return '观察到备战席已满，' + ground + '。奖励交付仍待核对，已停止本次输入。'
+    return '标准动作转换未核实，未重复输入。'
+
+
+def _loot_returned_after_overflow(before, after, action, remaining, confidence):
+    from .currency_wars_match import read_match
+
+    state = read_match(after, confidence, include_rewards=True)
+    source = action.get('reward_basis')
+    if state and state.page in _LOOT_REWARD_PAGES:
+        return _loot_modal_feedback(state, source, remaining) is not None
+    if source is None:
+        previous = read_match(before, confidence)
+        if previous is None or previous.gold is None:
+            return False
+        source = dict(zip(_LOOT_BOARD_FIELDS, _loot_board_values(previous)), gold=previous.gold)
+    return _loot_board_feedback(after, state, source, remaining, confidence) is not None
 
 
 def _loot_modal_feedback(state, before, remaining):
@@ -1393,7 +1460,8 @@ def run_standard(c):
                                               status='start_pending',node_verified=False,battle_observed=False)
             store.persist()
         investment_box = False
-        loot_remaining = None
+        loot_click = choice.intent == 'collect_standard_loot'
+        loot_crystals = loot_remaining = None
         loot_box = None
         if choice.intent in ('start_standard_node','collect_standard_loot','open_standard_bench_reward'):
             from .currency_wars_standard_rewards import bind_source
@@ -1401,13 +1469,14 @@ def run_standard(c):
             bind_source(store.data,choice,scene,c.settings.ocr_confidence)
             bind_reward(store.data,choice)
             investment_box = box_opening_page(store.data,choice) is not None
-            if choice.intent == 'collect_standard_loot':
+            if loot_click:
+                from .currency_wars_node import loot_centers
+                loot_crystals = [list(center) for center in loot_centers(scene)]
+                loot_remaining = _loot_remaining(loot_crystals, choice.payload)
                 origin = _loot_pickup_origin(scene, dict(store.data, actions=store.data['actions'][:-1]),
                                              c.settings.ocr_confidence)
                 if origin is not None:
-                    from .currency_wars_node import loot_centers
                     action['loot_sale_action_id'] = origin
-                    loot_remaining = _loot_remaining([list(center) for center in loot_centers(scene)], choice.payload)
             elif choice.intent == _LOOT_BOX_OPEN:
                 loot_box = _loot_waiting_box(store.data['actions'][:-1])
                 if loot_box is not None:
@@ -1421,11 +1490,12 @@ def run_standard(c):
         c.log('标准A8-40开发：' + choice.intent)
         loot_pickup = 'loot_sale_action_id' in action
         loot_claim = _loot_reward_origin(store.data) if choice.intent == 'choose_standard_reward' else None
-        strict_feedback = investment_box or loot_pickup or loot_box is not None or loot_claim is not None
+        strict_feedback = investment_box or loot_click or loot_box is not None or loot_claim is not None
         observed_at = scene.captured_at
         c.currency_standard_input(scene, choice)
         elapsed, after, stable, previous_popup = 0., None, 0, None
         previous_pickup = None
+        overflow_frame = None
         initial_return_frames, initial_return_paths = [], []
         while elapsed < 60:
             started, inactive = time.monotonic(), c.runner.inactive_duration
@@ -1433,6 +1503,7 @@ def run_standard(c):
                 after = c.snapshot()
             except EmptyCapture:
                 after = None
+                overflow_frame = None
                 if strict_feedback:
                     stable = 0
             if strict_feedback and c.runner.input_epoch != action['input_epoch']:
@@ -1440,6 +1511,7 @@ def run_standard(c):
             if after is not None:
                 guard._require_current_scene(after)
                 from .currency_wars_identity import account_key
+                same_account = False
                 try:
                     observed_account = account_key(after, max(.85, c.settings.ocr_confidence))
                 except AutomationError:
@@ -1447,6 +1519,7 @@ def run_standard(c):
                 else:
                     if observed_account != store.data.get('account_key'):
                         raise AutomationError('标准动作反馈账号来源不一致，原意图保留待核对。')
+                    same_account = True
                     from .currency_wars_standard_popup import arrival as popup_arrival
                     popup_stamp=popup_arrival(choice,after,store.data,c.settings.ocr_confidence)
                     ready = bool(popup_stamp) or transition_ready(choice, after, c.settings.ocr_confidence, before=scene,session=store.data)
@@ -1471,11 +1544,22 @@ def run_standard(c):
                         else:
                             initial_return_frames.append(after)
                             initial_return_paths.append(evidence(c, after, 'currency_standard_initial_shop_return_'+str(len(initial_return_frames))))
+                fresh = after.captured_at > observed_at
                 if strict_feedback:
-                    if after.captured_at > observed_at:
+                    if fresh:
                         observed_at = after.captured_at
                     else:
                         ready = False
+                if loot_click:
+                    overflow = (_loot_overflow_feedback(scene, after, choice.payload, loot_crystals,
+                                                        loot_remaining, c.settings.ocr_confidence)
+                                if fresh and same_account and not ready else None)
+                    if overflow is not None and overflow_frame is not None and overflow == overflow_frame[0]:
+                        _record_loot_overflow(c, store, action, overflow, overflow_frame[1], after)
+                    overflow_frame = (overflow, after) if overflow is not None else None
+                    if ready and action.get('loot_overflow_observations'):
+                        ready = _loot_returned_after_overflow(scene, after, action, loot_remaining,
+                                                              c.settings.ocr_confidence)
                 pickup = None
                 if ready and loot_pickup:
                     pickup = _loot_pickup_feedback(after, action, loot_remaining, c.settings.ocr_confidence)
@@ -1648,7 +1732,7 @@ def run_standard(c):
             elapsed += max(0., time.monotonic()-started-(c.runner.inactive_duration-inactive))
         else:
             action['status'] = 'unknown'
-            store.data.update(action_status='unknown', reason='标准动作转换未核实，未重复输入。')
+            store.data.update(action_status='unknown', reason=_loot_timeout_reason(action))
             if after is not None:
                 store.data['screenshot'] = evidence(c, after, 'currency_standard_transition_unknown')
             store.persist()
@@ -1666,5 +1750,9 @@ def run_standard(c):
     if store.data.get('defeat_settlement_verified'):
         c.report.safe_next='本局失败且结算已核实；原报告保留，循环按冻结设置与原局数上限处理，不接续或重打这局。'
         return TaskResult(TASK,'partial',store.data['reason'])
-    c.report.safe_next = '先读取标准对局当前局面，再接续已核实动作；不重开或重放未知交易。'
+    last_action = store.data['actions'][-1] if store.data['actions'] else {}
+    if last_action.get('status') == 'unknown' and last_action.get('loot_overflow_observations'):
+        c.report.safe_next = '请先核对本次奖励与备战席状态，原领取待核对期间不可接续输入。'
+    else:
+        c.report.safe_next = '先读取标准对局当前局面，再接续已核实动作；不重开或重放未知交易。'
     return TaskResult(TASK, 'partial', store.data.get('reason', '标准对局开发未完成，已留证。'))

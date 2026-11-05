@@ -19,9 +19,10 @@ import uuid
 
 
 ROOT = Path(__file__).resolve().parents[1]
+CHALLENGE_LABELS = ('chaos_lobby', 'chaos_setup', 'fiction_lobby', 'fiction_setup',
+                    'apocalyptic_lobby', 'apocalyptic_setup')
 LABELS = ('current', 'preset_1', 'preset_2', 'preset_3', 'preset_4',
-          'currency_lobby', 'currency_entry', 'chaos_lobby', 'chaos_setup',
-          'fiction_lobby', 'fiction_setup', 'apocalyptic_lobby', 'apocalyptic_setup')
+          'currency_lobby', 'currency_entry') + CHALLENGE_LABELS
 SAFE_VIEW = (0., .12, 1., .90)
 # The phone profile occupies this area. Mask it on every page rather than
 # assuming that the caller's label proves the current page or account layout.
@@ -130,6 +131,66 @@ def _mask_rect(box, width, height):
             min(width, math.ceil(box[2]*width)), min(height, math.ceil(box[3]*height)))
 
 
+def _challenge_anchor_regions(label):
+    from autohsr.challenge_pages import LEVEL_REGION, TEAM_REGION
+
+    # The remaining observer windows are the actual regions in
+    # challenge_pages._current_level and observe, not presumed control boxes.
+    if label == 'chaos_lobby':
+        return {name: (box, 'observer_search_region') for name, box in dict(
+            mode_title=(0., 0., .45, .35), current_level_header=(0., 0., 1., .38),
+            total_stars=(.35, 0., 1., .38), level_group=LEVEL_REGION).items()}
+    if not label.endswith('_setup'):
+        return {}
+    from autohsr.challenge_roster import _result as roster_reference
+
+    mode = {'chaos_setup': 'memory_of_chaos', 'fiction_setup': 'pure_fiction',
+            'apocalyptic_setup': 'apocalyptic_shadow'}[label]
+    regions = {'roster_list': (roster_reference(mode)['roi'], 'pinned_upstream_roster_crop')}
+    if label == 'chaos_setup':
+        regions.update(current_level_header=((0., 0., 1., .38), 'observer_search_region'),
+                       mode_caption=((.5, .75, 1., 1.), 'observer_search_region'),
+                       team_controls=(TEAM_REGION, 'observer_search_region'))
+    return regions
+
+
+def _anchor_visibility(region, redaction):
+    import numpy as np
+
+    width, height = redaction['source_size']
+    x1, y1, x2, y2 = _mask_rect(region, width, height)
+    crop = redaction['crop_px']
+    left, top, right, bottom = (max(x1, crop[0]), max(y1, crop[1]),
+                                min(x2, crop[2]), min(y2, crop[3]))
+    if left >= right or top >= bottom:
+        return dict(status='hidden', causes=['crop'])
+    causes = [] if (left, top, right, bottom) == (x1, y1, x2, y2) else ['crop']
+    visible = np.ones((bottom-top, right-left), dtype=bool)
+    for mx1, my1, mx2, my2 in redaction['masks_px']:
+        l, t, r, b = max(mx1, left), max(my1, top), min(mx2, right), min(my2, bottom)
+        if l < r and t < b:
+            visible[t-top:b-top, l-left:r-left] = False
+            if 'mask' not in causes:
+                causes.append('mask')
+    return dict(status=('hidden' if not visible.any() else 'partial' if causes else 'full'), causes=causes)
+
+
+def _challenge_anchor_coverage(label, redaction):
+    """Project known regions onto the public crop, without reading page text."""
+    result = dict(status='unavailable', page_verified=False, regions={})
+    if redaction is None:
+        return dict(result, reason='public_image_not_verified')
+    regions = _challenge_anchor_regions(label)
+    if not regions:
+        return dict(result, reason='no_pinned_page_regions')
+    width, height = redaction['source_size']
+    if abs(width / height - 16 / 9) > .02:
+        return dict(result, reason='non_reference_aspect')
+    return dict(result, status='projected', regions={
+        name: dict(_anchor_visibility(box, redaction), basis=basis)
+        for name, (box, basis) in regions.items()})
+
+
 def _version(window, reader):
     try:
         value = reader(window.current_executable())
@@ -231,17 +292,24 @@ def capture_interface(window, *, output_root, label='current', crop=(0., 0., 1.,
             raise CaptureRejected('sensitive_page')
         if _sensitive_bands(checked):
             raise CaptureRejected('redaction_check_sensitive')
+        coverage = _challenge_anchor_coverage(label, metadata['redaction']) if label in CHALLENGE_LABELS else None
         _write(directory/'public'/f'{label}.png', encoded)
         public_image = dict(file=f'public/{label}.png', sha256=_sha(encoded), width=safe.shape[1], height=safe.shape[0])
         metadata['sources']['public_image'] = public_image
         metadata['redaction']['verification'] = 'fixed_exclusions_and_two_ocr_passes'
         metadata['status'] = 'ready'
+        if coverage is not None:
+            metadata['anchor_coverage'] = coverage
     except CaptureRejected as error:
         metadata['reason'] = str(error)
     except Exception:
         # Third-party, OCR, Windows, and filesystem messages may contain paths,
         # full OCR, or account details. Never interpolate their text here.
         metadata['reason'] = 'capture_or_redaction_unverified'
+    if label in CHALLENGE_LABELS:
+        if 'anchor_coverage' not in metadata:
+            metadata['anchor_coverage'] = _challenge_anchor_coverage(label, None)
+        result['anchor_coverage'] = metadata['anchor_coverage']
     manifest = _json(metadata)
     _write(directory/'manifest.json', manifest)
     _write(directory/'manifest.sha256', (_sha(manifest)+'\n').encode('ascii'))

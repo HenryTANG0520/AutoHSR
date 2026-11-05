@@ -42,10 +42,16 @@ def loot_feedback(before,after,target,confidence=.65):
         return 'unchanged'
     if len(previous_crystals)-len(current_crystals)!=1:
         return 'unknown'
+    return 'disappeared' if changed_crystal_pixels(before, after, target) else 'unknown'
+
+
+def changed_crystal_pixels(before, after, target):
+    if before.image is None or after.image is None or before.image.shape != after.image.shape:
+        return False
+    x, y, radius = target
     roi=(x-radius,y-radius*2560/1440,x+radius,y+radius*2560/1440)
     a,b=_crop(before.image,roi),_crop(after.image,roi)
-    difference=float(np.mean(np.abs(a.astype(float)-b.astype(float))))
-    return 'disappeared' if difference>=8 else 'unknown'
+    return bool(a.size and np.mean(np.abs(a.astype(float)-b.astype(float)))>=8)
 
 
 def collect_loot(c,before,data,persist):

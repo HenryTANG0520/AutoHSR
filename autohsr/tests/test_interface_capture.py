@@ -98,6 +98,10 @@ class InterfaceCaptureTests(unittest.TestCase):
     def public_pixels(self, result):
         return cv2.imdecode(np.frombuffer((self.root/result['image']['file']).read_bytes(), np.uint8), cv2.IMREAD_COLOR)
 
+    def reference_window(self):
+        self.window.image = cv2.resize(self.window.image, (960, 540))
+        self.window.geometry = SimpleNamespace(width=960, height=540)
+
     def test_capture_preserves_original_and_ocr_but_returns_only_safe_metadata(self):
         result = self.run_capture(label='preset_1')
         self.assertEqual(result['status'], 'ready')
@@ -158,6 +162,72 @@ class InterfaceCaptureTests(unittest.TestCase):
         result = self.run_capture(crop=(.1, .2, .4, .6))
         self.assertEqual(self.public_pixels(result).shape, (40, 60, 3))
         np.testing.assert_array_equal(self.public_pixels(result), self.window.image[20:60, 20:80])
+
+    def test_chaos_lobby_coverage_reports_crop_and_mask_without_recognizing_page(self):
+        self.reference_window()
+        result = self.run_capture(label='chaos_lobby')
+        coverage = result['anchor_coverage']
+        self.assertEqual(coverage['status'], 'projected')
+        self.assertFalse(coverage['page_verified'])
+        self.assertEqual(self.manifest(result)['anchor_coverage'], coverage)
+        self.assertEqual(coverage['regions'], {
+            'mode_title': dict(status='partial', causes=['crop'], basis='observer_search_region'),
+            'current_level_header': dict(status='partial', causes=['crop', 'mask'], basis='observer_search_region'),
+            'total_stars': dict(status='partial', causes=['crop', 'mask'], basis='observer_search_region'),
+            'level_group': dict(status='full', causes=[], basis='observer_search_region')})
+        np.testing.assert_array_equal(self.public_pixels(result), self.vision.images[1])
+        self.assertEqual((self.window.capture_count, len(self.vision.images)), (1, 2))
+        public = json.dumps(result, ensure_ascii=False)
+        for private in (SECRET, 'UID', '987654321', '角色列表'):
+            self.assertNotIn(private, public)
+
+    def test_chaos_coverage_accounts_for_mask_union_with_crop(self):
+        self.reference_window()
+        raw = normal_tokens()+[token('UID:987654321', (.02, .378, .25, .389)),
+                               token('UID:123456789', (.06, .403, .25, .414))]
+        for crop, status, causes in ((None, 'partial', ['mask']),
+                                     ((0., .25, 1., .42), 'hidden', ['crop', 'mask'])):
+            with self.subTest(crop=crop):
+                self.vision = FakeVision([raw, safe_tokens()])
+                result = self.run_capture(label='chaos_lobby', **({'crop':crop} if crop else {}))
+                self.assertEqual(result['status'], 'ready')
+                region = result['anchor_coverage']['regions']['level_group']
+                self.assertEqual((region['status'], region['causes']), (status, causes))
+
+    def test_chaos_setup_reports_controls_but_not_selected_party(self):
+        self.reference_window()
+        result = self.run_capture(label='chaos_setup')
+        self.assertEqual(result['anchor_coverage']['regions'], {
+            'current_level_header': dict(status='partial', causes=['crop', 'mask'], basis='observer_search_region'),
+            'mode_caption': dict(status='partial', causes=['crop'], basis='observer_search_region'),
+            'team_controls': dict(status='partial', causes=['crop'], basis='observer_search_region'),
+            'roster_list': dict(status='partial', causes=['crop'], basis='pinned_upstream_roster_crop')})
+
+    def test_other_modes_report_only_their_pinned_roster_crop(self):
+        self.reference_window()
+        for label, expected in (('fiction_setup', 'hidden'), ('apocalyptic_setup', 'partial')):
+            with self.subTest(label=label):
+                self.vision = FakeVision()
+                result = self.run_capture(label=label, crop=(.297, .12, 1., .90))
+                self.assertEqual(result['anchor_coverage']['regions'], {'roster_list':
+                    dict(status=expected, causes=['crop'], basis='pinned_upstream_roster_crop')})
+        for label in ('fiction_lobby', 'apocalyptic_lobby'):
+            with self.subTest(label=label):
+                self.vision = FakeVision()
+                result = self.run_capture(label=label)
+                self.assertEqual(result['anchor_coverage'], dict(status='unavailable', page_verified=False,
+                    regions={}, reason='no_pinned_page_regions'))
+
+    def test_coverage_requires_reference_aspect_and_verified_public_image(self):
+        result = self.run_capture(label='chaos_setup')
+        self.assertEqual(result['anchor_coverage']['reason'], 'non_reference_aspect')
+        self.reference_window()
+        self.vision = FakeVision([normal_tokens(), []])
+        result = self.run_capture(label='chaos_setup')
+        self.assertEqual(result['status'], 'blocked')
+        self.assertNotIn('image', result)
+        self.assertEqual(result['anchor_coverage'], dict(status='unavailable', page_verified=False,
+            regions={}, reason='public_image_not_verified'))
 
     def test_sensitive_second_pass_blocks_image_path_and_keeps_source(self):
         self.vision = FakeVision([normal_tokens(), [token('UID987654321', (.2, .4, .5, .5))]])

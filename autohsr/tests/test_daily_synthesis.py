@@ -1,4 +1,5 @@
 """Single-item synthesis, card binding and durable no-replay regressions."""
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -22,7 +23,7 @@ def card(progress='0/1'):
     return Scene([token('星际和平指南', .09, .04), token('每日实训', .09, .08),
         token('进度'+progress, .53, .40), token('使用1次「万能合成', .566, .46),
         token('机」', .518, .49), token('+100', .577, .65), token('前往', .576, .767),
-        token('UID:101688852', .1, .97)])
+        token('UID:101688852', .1, .97)], captured_at=time.monotonic())
 
 
 def snack(holding=299, quantity=1, materials=(301, 397), name=synthesis.RECIPE):
@@ -147,7 +148,7 @@ class DailySynthesisTests(TestCase):
                         day = new_day
 
                 context.evidence = evidence
-                with patch.object(synthesis, 'ROOT', Path(folder)), patch.object(synthesis, 'game_day', lambda: day), \
+                with patch.object(synthesis, 'ROOT', Path(folder)), patch.object(synthesis, 'game_day', lambda _now=None: day), \
                      patch.object(synthesis, '_save', save), patch('os.fsync', fsync):
                     with self.assertRaisesRegex(AutomationError, '跨游戏日'):
                         synthesis.complete_once(DailyWorkflow(context), context.snapshot())
@@ -175,7 +176,7 @@ class DailySynthesisTests(TestCase):
 
         context.click = click
         with tempfile.TemporaryDirectory() as folder, patch.object(synthesis, 'ROOT', Path(folder)), \
-             patch.object(synthesis, 'game_day', lambda: day):
+             patch.object(synthesis, 'game_day', lambda _now=None: day):
             synthesis.complete_once(DailyWorkflow(context), context.snapshot())
             path, = (Path(folder)/'runs/daily-synthesis').glob('*.json')
             stored = json.loads(path.read_text('utf8'))
@@ -207,12 +208,38 @@ class DailySynthesisTests(TestCase):
                 context = Context(runner, window, Mock())
                 context.last_scene = scene
                 context.sleep = Mock()
-                with patch.object(synthesis, 'game_day', lambda: day):
+                with patch.object(synthesis, 'game_day', lambda _now=None: day):
                     with self.assertRaisesRegex(AutomationError, '跨游戏日'):
                         context.click(scene, target, du_intent=intent)
                 self.assertEqual(day, '2026-11-05')
                 window.click.assert_not_called()
                 self.assertEqual(report.daily_synthesis, record)
+
+    def test_task_card_must_be_captured_in_the_current_game_day(self):
+        now = datetime(2026, 11, 5, 4, 0, 1, tzinfo=timezone(timedelta(hours=8)))
+        game_day = synthesis.game_day
+        for captured_at in (998.0, 999.5):
+            with self.subTest(captured_at=captured_at), tempfile.TemporaryDirectory() as folder:
+                source = card()
+                source.captured_at = captured_at
+                context = SynthesisContext([source, snack(), confirm(), snack(300, materials=(300, 396))])
+                with patch.object(synthesis, 'ROOT', Path(folder)), patch.object(synthesis, 'datetime', wraps=datetime) as wall, \
+                     patch.object(synthesis, 'monotonic', return_value=1000.0, create=True), \
+                     patch.object(synthesis, 'game_day', lambda instant=None: game_day(now if instant is None else instant)):
+                    wall.now.return_value = now
+                    if captured_at == 998.0:
+                        with self.assertRaisesRegex(AutomationError, '任务画面跨游戏日'):
+                            synthesis.complete_once(DailyWorkflow(context), source)
+                    else:
+                        synthesis.complete_once(DailyWorkflow(context), source)
+                journals = list((Path(folder)/'runs/daily-synthesis').glob('*.json'))
+                if captured_at == 998.0:
+                    self.assertEqual(context.clicks, [])
+                    self.assertEqual(journals, [])
+                else:
+                    self.assertEqual(context.clicks, ['前往', '合成', '确认'])
+                    self.assertEqual(len(journals), 1)
+                    self.assertEqual(json.loads(journals[0].read_text('utf8'))['game_day'], '2026-11-05')
 
     def test_pending_modal_resumes_without_replaying_recipe_or_commit(self):
         context = SynthesisContext([confirm(), snack(300, materials=(300, 396))])

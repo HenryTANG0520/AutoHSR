@@ -177,7 +177,7 @@ class StandardFlowTests(unittest.TestCase):
         from autohsr.tests.test_currency_wars_standard_trading import full_board_fixture,hud
         from autohsr.currency_wars_collector import roster_cells
         from autohsr.currency_wars_deployment import _crop
-        from autohsr.models import Scene
+        from autohsr.models import Scene, Stopped
         # Reward collection now observes the current roster first. Provide a
         # real six-slot layout and explicitly empty roster, while retaining
         # the independent two-frame disappearance assertion below.
@@ -190,12 +190,31 @@ class StandardFlowTests(unittest.TestCase):
             store = self.store(folder)
             store.data.update(status='active', start_verified=True)
             store.persist()
-            c = self.context(folder, [before, after, after], resume=True)
-            with patch('autohsr.currency_wars_node.loot_centers', side_effect=lambda s:(TARGET,) if s is before else ()), \
-                 patch('autohsr.currency_wars_loot.loot_centers', side_effect=lambda s:(TARGET,) if s is before else ()), \
-                 patch('autohsr.currency_wars_collector.first_unit_probe', side_effect=AutomationError('fixture ends after loot')), \
-                 patch('autohsr.currency_wars_replay.save_sample'):
+            frames = [before] + [Scene(list(after.tokens), after.image) for _ in range(4)]
+            c = self.context(folder, frames, resume=True)
+            take_snapshot = c.snapshot
+            stamps = iter((10.0, 10.1, 10.1, 10.2, 10.3))
+            captures = []
+
+            def snapshot():
+                scene = take_snapshot()
+                scene.captured_at = next(stamps)
+                captures.append(scene.captured_at)
+                return scene
+
+            def checkpoint():
+                session = getattr(c, 'currency_standard_session', None)
+                if session and session.data['actions'] and session.data['actions'][-1]['status'] == 'verified':
+                    raise Stopped('crystal pickup feedback complete')
+
+            c.snapshot, c.checkpoint = snapshot, checkpoint
+            clock = SimpleNamespace(monotonic=lambda: 10.5)
+            with (patch('autohsr.currency_wars_node.loot_centers', side_effect=lambda s:(TARGET,) if s is before else ()),
+                  patch('autohsr.currency_wars_loot.loot_centers', side_effect=lambda s:(TARGET,) if s is before else ()),
+                  patch('autohsr.currency_wars.time', clock), patch('autohsr.currency_wars_standard_flow.time', clock),
+                  patch('autohsr.currency_wars_replay.save_sample'), self.assertRaises(Stopped)):
                 run_standard(c)
+            self.assertEqual(captures, [10.0, 10.1, 10.1, 10.2, 10.3])
             c.currency_standard_input.assert_called_once()
             action = c.report.currency_wars['actions'][0]
             self.assertEqual(action['action'], 'collect_standard_loot')

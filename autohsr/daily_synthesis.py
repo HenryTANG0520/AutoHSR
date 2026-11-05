@@ -1,13 +1,14 @@
 """One explicitly authorized snack craft to fill a visible daily-training task."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from pathlib import Path
 import re
+from time import monotonic
 
 from .config import ROOT, RESOURCE_ROOT
-from .du_daily import account_key, game_day
+from .du_daily import CHINA, account_key, game_day
 from .models import AutomationError, Scene, Token, normalize
 from .storage import replace_file
 
@@ -131,6 +132,17 @@ def _require_game_day(record):
         raise AutomationError('每日实训已跨游戏日，未发送本次合成输入。')
 
 
+def _task_game_day(scene):
+    now = datetime.now(CHINA)
+    age = monotonic() - scene.captured_at
+    if scene.captured_at <= 0 or not 0 <= age <= 8:
+        raise AutomationError('每日实训任务画面已失效，请重新读取当前任务卡。')
+    day = game_day(now)
+    if game_day(now - timedelta(seconds=age)) != day:
+        raise AutomationError('每日实训任务画面跨游戏日，请重新读取当前任务卡。')
+    return day
+
+
 def guard_click(scene, target, intent, record):
     if not isinstance(target, Token) or record.get('task_verified') is not True:
         raise AutomationError('未核实每日实训合成任务，未操作合成。')
@@ -157,6 +169,8 @@ def guard_click(scene, target, intent, record):
         valid = False
     if not valid:
         raise AutomationError('合成目标、单件数量或任务证据不符，未发送点击。')
+    if intent == 'daily_synthesis_open' and _task_game_day(scene) != record.get('game_day'):
+        raise AutomationError('每日实训已跨游戏日，未打开合成。')
     if intent in RESOURCE_INPUTS:
         _require_game_day(record)
 
@@ -236,7 +250,7 @@ def resume_pending(workflow, scene):
 
 def complete_once(workflow, scene):
     ctx = workflow.ctx
-    key, day = account_key(scene), game_day()
+    key, day = account_key(scene), _task_game_day(scene)
     ctx.report.game_day = day
     folder = ROOT/'runs'/'daily-synthesis'
     path = folder/f'{day}-{key}.json'
