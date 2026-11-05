@@ -16,7 +16,7 @@
 | --- | --- | --- |
 | `daily` | `Runner(operation='daily')` | 不填`tasks`时沿用当前日常开关；可明确指定`assignments/battle/daily/redemption/mail/battlepass`子集。可覆盖`stamina_limit/rounds/target_name/target_location/dungeon_category/challenge_count/use_support/support_daily_only`；`use_power_plan`默认false |
 | `plan` | `PlanRunner` | 沿用现有日常→到期周常。`use_power_plan`、`resume_weekly_currency`默认false，`support_daily_only`可覆盖本次日常。原周目标及接续规则保持 |
-| `differential_universe` | `Runner(operation='differential_universe')` | `runs`默认1、范围1～10；`mode`默认periodic，可选normal；`team`默认沿用当前预设；`save/rewards/resume_active`默认false；`periodic_rank`仅用于明确接续；通关后日常固定关闭 |
+| `differential_universe` | `Runner(operation='differential_universe')` | `runs`默认1、范围1～10；`mode`默认periodic，可选normal；`team`默认沿用当前预设；`save/rewards/resume_active/until_points`默认false；`periodic_rank`仅用于明确接续；通关后日常固定关闭 |
 | `du_rewards` | `Runner(operation='du_rewards')` | 已打开差分主页，独立处理三类免费已有红点；`use_cassettes`默认false，明确true才加入月下；不演算，不改变保存设置，不等于周积分领奖 |
 | `currency_wars_loop` | `CurrencyLoopRunner` | `runs`默认1、范围1～10，不接受0／无限批次；`resume`默认false；可选`strategy/until_points/continue_after_defeat`。未指定的后三项沿用原生默认及冻结设置；接续仍须核对原局数和原账本 |
 | `currency_wars_points` | 原生积分Runner | 无参数；仍会导航和核对当前账号／游戏周，属于游戏输入任务 |
@@ -27,6 +27,12 @@
 记录任务目前只接显式本地JSON；真实缓存／链接获取继续使用[独立工具入口](warp-records.md)，没有在流程中隐式扫描。XLSX仍使用已固定的可选加载引擎，见[统计与Excel](warp-statistics-xlsx.md)。
 
 `daily` 和 `plan` 的 `params.support_daily_only` 只接受布尔值。省略沿用当前设置，显式 `false` 仅关闭本次按需判断。显式 `true` 要求本次选中刷本、允许使用已有资源，且 `plan` 执行范围包含日常。实际借用仍由 `use_support` 决定。冻结参数不保存设置，借用与支付继续由原生日常核实。[按需支援](support-preferences.md#按实训需求借用)
+
+差分节点设置 `"params": {"until_points": true, "runs": 3}` 后，`runs` 是本次新开局上限。该选项需要显式填写 `runs`，只适用于新开周期演算。积分满额可零局完成。达到上限仍未满时保留已核实胜利，任务返回部分完成并遵守原失败策略。附加红点领取仍由 `rewards` 单独指定，周期积分奖励保持独立。[差分积分目标](differential-universe.md)
+
+原生周期积分运行写胜利与返回截图时，同时把原图摘要和本局标识写入局记录。任务树对照原报告、账本、证据清单和原图摘要，核对积分双帧及每局的胜利与返回。条件 `completed_runs` 只读取核实过的实际局数。证据缺失或不一致时，本步为部分完成，局数待核对，后续游戏步骤暂停。
+
+任务树在接收积分结果、判断条件及进入后续游戏步骤时核对游戏周。接续满额结果的游戏任务沿用原游戏周，在原生检查点和发送输入前复核。父流程每次尝试提交最终报告也核对游戏周。跨周时将 `periodic_points_goal` 标为待核对，停止后续游戏输入，保留原报告、原周观察、已核实胜利以及已发生的后续操作及其回执。固定局数仍沿用原流程。
 
 货币战争仍为标准A8财富造物主40开发流程，没有扩大超频、其他模式、资源授权或独立整局计数；历史0/10保持。流程中的差分仍由原生页面、预设与账本核验，不能因为任务树完成就宣称所有模式验收。
 

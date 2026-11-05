@@ -10,6 +10,7 @@ import time
 
 from .models import AutomationError, FocusLost
 from .config import SettingsError
+from .du_points_followup import require_followup_week
 
 user32 = C.WinDLL("user32", use_last_error=True)
 kernel32 = C.WinDLL("kernel32", use_last_error=True)
@@ -253,6 +254,7 @@ class GameWindow:
         items = (INPUT * len(events))(*events)
         if before_send is not None:
             before_send()
+        require_followup_week()
         if user32.SendInput(len(items), items, C.sizeof(INPUT)) != len(items):
             raise AutomationError("模拟输入被 Windows 拒绝；请以管理员身份启动 AutoHSR。")
 

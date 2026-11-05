@@ -359,8 +359,10 @@ class WorkflowIdentity:
     def mark(self):
         return len(self._proofs)
 
-    def has_step_proof(self, before):
-        return len(self._proofs) > before
+    def has_step_proof(self, before, *, run_dir=None):
+        if run_dir is None:
+            return len(self._proofs) > before
+        return any(proof['run_dir'] == run_dir for proof in self._proofs[before:])
 
     def require_step(self, before):
         self._check()

@@ -15,11 +15,13 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
+import cv2
 from autohsr.config import Settings
 from autohsr.models import AutomationError, RunReport, TaskResult, Scene, Token
 import numpy as np
 from autohsr.task_workflow import WorkflowError, compile_recipe, loads, task_spec
 from autohsr.task_workflow_run import TaskWorkflowRunner
+from autohsr.tests.test_du_points_goal import NOW, RESET, WEEK
 from autohsr.workflow_lease import require_workflow_access, workflow_lease
 
 
@@ -57,9 +59,13 @@ class WorkflowTests(unittest.TestCase):
         self.owner = None
         self.accounts = []
         self.settings = Settings()
+        self.clock = NOW
         self.hotkeys = patch.object(TaskWorkflowRunner, '_hotkeys', lambda runner: runner._end.wait())
         self.hotkeys.start()
         self.addCleanup(self.hotkeys.stop)
+        clock = patch('autohsr.du_periodic_points.local_now', lambda: self.clock)
+        clock.start()
+        self.addCleanup(clock.stop)
 
     def factory(self, settings, emit, **options):
         owner = self
@@ -100,8 +106,12 @@ class WorkflowTests(unittest.TestCase):
                 if operation == 'differential_universe':
                     result['differential_universe'] = dict(completed_runs=options['du_runs'])
                 result.update(values)
+                if options.get('du_until_points'):
+                    owner.write_du_sources(folder, result['differential_universe'])
                 raw = json.dumps(result, ensure_ascii=False).encode('utf8')
                 (folder / 'report.json').write_bytes(raw)
+                if options.get('du_until_points'):
+                    owner.seal_du_sources(folder)
                 emit(dict(type='finished', report=result))
                 if owner.after_child:
                     owner.after_child(self, result)
@@ -138,6 +148,365 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(raw).hexdigest(), entry['source']['sha256'])
         with self.assertRaises(WorkflowError):
             runner.run()
+
+    def test_du_points_requires_a_new_periodic_run_and_an_explicit_limit(self):
+        node = task('du', 'differential_universe', runs=3, until_points=True)
+        self.assertEqual(compile_recipe(recipe(node)).profile['du_runs'], 3)
+        _, options = task_spec(self.settings, node, self.root)
+        self.assertEqual(options['du_runs'], 3)
+        self.assertIs(options['du_until_points'], True)
+
+        for params in ({}, {'until_points': False}):
+            fixed = task('fixed', 'differential_universe', **params)
+            self.assertEqual(compile_recipe(recipe(fixed)).profile['du_runs'], 1)
+            _, options = task_spec(self.settings, fixed, self.root)
+            self.assertEqual(options['du_runs'], 1)
+            self.assertNotIn('du_until_points', options)
+
+        for params in ({'until_points': True}, {'until_points': True, 'runs': 0},
+                       {'until_points': True, 'runs': 11}, {'until_points': 1, 'runs': 1},
+                       {'until_points': 'true', 'runs': 1}, {'until_points': True, 'runs': 1, 'mode': 'normal'},
+                       {'until_points': True, 'runs': 1, 'resume_active': True, 'periodic_rank': 5}):
+            with self.subTest(params=params), self.assertRaises(WorkflowError):
+                compile_recipe(recipe(task('bad', 'differential_universe', **params)))
+
+    @staticmethod
+    def du_points_result(maximum, completed, goal_status):
+        capped = goal_status == 'capped'
+        return dict(mode='周期演算', requested_runs=maximum, completed_runs=completed,
+            session_id='synthetic-session', current_run=completed,
+            run_results=[dict(run=i, counted_run=i, run_id=f'synthetic-win-{i}', origin='fresh', status='completed', counted=True,
+                              mode='周期演算', difficulty_verified=True, return_page='home')
+                         for i in range(1, completed + 1)],
+            periodic_points_goal=dict(source='du_home', maximum=maximum, status=goal_status,
+                observations=[dict(current=18000 if i == completed and capped else 8000 + 1000*i,
+                                   cap=18000, capped=i == completed and capped, observed_at=NOW.isoformat(),
+                                   game_week=WEEK, completed_runs=i) for i in range(completed + 1)]))
+
+    @staticmethod
+    def write_du_ledger(folder, data):
+        ledger = dict(schema_version=1, **{key: data[key] for key in
+                      ('session_id', 'requested_runs', 'completed_runs', 'current_run', 'run_results',
+                       'periodic_points_goal') if key in data})
+        (folder / 'differential-universe-ledger.json').write_text(json.dumps(ledger), encoding='utf8')
+
+    @staticmethod
+    def write_du_sources(folder, data):
+        from autohsr.currency_wars_initial import source_file_ref
+
+        def image(label, value):
+            path = folder / f'093000_000000_{label}.png'
+            raw = cv2.imencode('.png', np.full((20, 30, 3), value, dtype=np.uint8))[1].tobytes()
+            path.write_bytes(raw)
+            return path
+
+        data.update(run_dir=str(folder), ledger_path=str(folder / 'differential-universe-ledger.json'))
+        for row in data['run_results']:
+            row['victory_evidence'] = str(image(f"du_{row['run']:02d}_victory", 127))
+            row['return_evidence'] = str(image(f"du_{row['run']:02d}_fresh_return", 190))
+            sources = row['completion_evidence'] = dict(session_id=data['session_id'], run_id=row['run_id'])
+            for role in ('victory', 'return'):
+                path = Path(row[role + '_evidence'])
+                sources[role] = dict(path=str(path), sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+        for row in data.get('periodic_points_goal', {}).get('observations', []):
+            row['evidence'] = [source_file_ref(image(f"du_points_after_{row['completed_runs']}_{i}", 24), folder)
+                               for i in (1, 2)]
+        WorkflowTests.write_du_ledger(folder, data)
+
+    @staticmethod
+    def seal_du_sources(folder):
+        files = [dict(path=path.name, size_bytes=path.stat().st_size, sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+                 for path in folder.iterdir() if path.is_file() and not path.name.startswith('evidence_manifest.')]
+        raw = json.dumps(dict(algorithm='sha256', files=files)).encode('utf8')
+        (folder / 'evidence_manifest.json').write_bytes(raw)
+        (folder / 'evidence_manifest.sha256').write_text(f'{hashlib.sha256(raw).hexdigest()}  evidence_manifest.json\n',
+                                                        encoding='ascii')
+
+    def test_du_points_projects_native_zero_early_cap_and_exhausted_results(self):
+        for maximum, completed, goal_status, status in ((3, 0, 'capped', 'success'),
+                (3, 1, 'capped', 'success'), (2, 2, 'exhausted', 'partial')):
+            with self.subTest(maximum=maximum, completed=completed, status=status):
+                native = self.du_points_result(maximum, completed, goal_status)
+                self.responses = [dict(status=status, differential_universe=native)]
+                duel = task('du', 'differential_universe', runs=maximum, until_points=True)
+                following = [task('later', 'du_rewards')] if status == 'partial' else []
+                report = self.runner(recipe(duel, *following)).run()
+                entry = report.workflow['steps'][0]
+                self.assertEqual((entry['status'], report.status), (status, status))
+                self.assertEqual(entry['facts'], dict(status=status, completed_runs=completed))
+                self.assertEqual(entry['periodic_points_goal'], native['periodic_points_goal'])
+                self.assertEqual(report.differential_universe, native)
+                self.assertEqual(report.du_rewards, {})
+                self.assertEqual(len(report.workflow['steps']), 1)
+                self.assertIs(report.workflow['input_blocked'], status == 'partial')
+                self.assertTrue(entry['account_verified'])
+                self.assertIs(self.calls[-1][1]['du_until_points'], True)
+
+    def test_du_points_success_requires_matching_native_points_and_victories(self):
+        for flaw in ('missing_goal', 'below_cap', 'count_without_win'):
+            with self.subTest(flaw=flaw):
+                native = self.du_points_result(3, 1, 'capped')
+                if flaw == 'missing_goal':
+                    del native['periodic_points_goal']
+                    native['reward_collection'] = {'complete': True}
+                elif flaw == 'below_cap':
+                    native['periodic_points_goal']['observations'][-1]['current'] = 8000
+                else:
+                    native['run_results'] = []
+                self.responses = [dict(differential_universe=native)]
+                first = dict(task('du', 'differential_universe', runs=3, until_points=True), on_failure='continue')
+                report = self.runner(recipe(first, task('later', 'du_rewards'))).run()
+                entry, later = report.workflow['steps']
+                self.assertEqual(entry['facts'], {'status': 'partial'})
+                self.assertTrue(entry.get('source'))
+                self.assertEqual(later['status'], 'partial')
+                self.assertNotIn('source', later)
+                self.assertEqual(report.differential_universe, {})
+
+    def test_du_points_requires_intact_native_ledger_manifest_and_capture_roles(self):
+        for flaw in ('missing_ledger', 'ledger_count', 'resealed_ledger_count', 'points_changed', 'victory_removed',
+                     'return_changed', 'resealed_victory', 'resealed_return', 'missing_capture_source',
+                     'different_run_source', 'duplicate_capture', 'foreign_capture', 'wrong_win_role', 'bad_manifest', 'other_run'):
+            with self.subTest(flaw=flaw):
+                def damage(child, result):
+                    folder = Path(result['run_dir'])
+                    native = result['differential_universe']
+                    ledger_path = Path(native['ledger_path'])
+                    win = native['run_results'][0]
+                    sources = native['periodic_points_goal']['observations'][-1]['evidence']
+                    if flaw == 'missing_ledger':
+                        ledger_path.unlink()
+                    elif flaw in ('ledger_count', 'resealed_ledger_count'):
+                        ledger = json.loads(ledger_path.read_bytes())
+                        ledger['completed_runs'] = 2
+                        ledger_path.write_text(json.dumps(ledger), encoding='utf8')
+                        if flaw == 'resealed_ledger_count':
+                            self.seal_du_sources(folder)
+                    elif flaw == 'points_changed':
+                        Path(sources[0]['path']).write_bytes(Path(win['victory_evidence']).read_bytes())
+                    elif flaw == 'victory_removed':
+                        Path(win['victory_evidence']).unlink()
+                    elif flaw == 'return_changed':
+                        Path(win['return_evidence']).write_bytes(Path(win['victory_evidence']).read_bytes())
+                    elif flaw in ('resealed_victory', 'resealed_return'):
+                        target, replacement = 'victory_evidence', 'return_evidence'
+                        if flaw == 'resealed_return':
+                            target, replacement = replacement, target
+                        Path(win[target]).write_bytes(Path(win[replacement]).read_bytes())
+                        self.seal_du_sources(folder)
+                    elif flaw == 'bad_manifest':
+                        (folder / 'evidence_manifest.sha256').unlink()
+                    else:
+                        if flaw == 'duplicate_capture':
+                            sources[0] = sources[1]
+                        elif flaw == 'missing_capture_source':
+                            del win['completion_evidence']
+                        elif flaw == 'different_run_source':
+                            win['completion_evidence']['run_id'] = 'other-win'
+                        elif flaw == 'foreign_capture':
+                            previous = Path(sources[0]['path'])
+                            foreign = self.root / previous.name
+                            foreign.write_bytes(previous.read_bytes())
+                            sources[0]['path'] = str(foreign)
+                        elif flaw == 'wrong_win_role':
+                            win['victory_evidence'] = win['return_evidence']
+                        elif flaw == 'other_run':
+                            folder = self.root / 'other-child'
+                            folder.mkdir()
+                            result['run_dir'] = str(folder)
+                            self.write_du_sources(folder, native)
+                        self.write_du_ledger(folder, native)
+                        (folder / 'report.json').write_text(json.dumps(result), encoding='utf8')
+                        self.seal_du_sources(folder)
+
+                self.after_child = damage
+                self.responses = [dict(differential_universe=self.du_points_result(3, 1, 'capped'))]
+                first = dict(task('du', 'differential_universe', runs=3, until_points=True), on_failure='continue')
+                guard = dict(id='guard', type='if', condition=condition('du'), steps=[task('next', 'du_rewards')])
+                report = self.runner(recipe(first, guard)).run()
+                entry, branch = report.workflow['steps']
+                self.assertEqual((report.status, entry['facts'], branch['condition']), ('partial', {'status': 'partial'}, False))
+                self.assertTrue(report.workflow['input_blocked'])
+                self.assertEqual(report.differential_universe, {})
+
+    def test_du_points_partial_count_requires_native_report_and_ledger_agreement(self):
+        for changed in (False, True):
+            with self.subTest(changed=changed):
+                def after_child(child, result):
+                    if changed:
+                        result['differential_universe']['completed_runs'] = 8
+                        (Path(result['run_dir']) / 'report.json').write_text(json.dumps(result), encoding='utf8')
+
+                self.after_child = after_child
+                self.responses = [dict(status='partial', differential_universe=self.du_points_result(1, 1, 'exhausted'))]
+                first = dict(task('du', 'differential_universe', runs=1, until_points=True), on_failure='continue')
+                guard = dict(id='guard', type='if', condition=condition('du', 'completed_runs', 1),
+                             steps=[dict(id='local', type='wait', seconds=0)])
+                report = self.runner(recipe(first, guard)).run()
+                entry, branch, *later = report.workflow['steps']
+                self.assertEqual(report.status, 'partial')
+                self.assertTrue(report.workflow['input_blocked'])
+                if changed:
+                    self.assertEqual(entry['facts'], {'status': 'partial'})
+                    self.assertEqual(branch['status'], 'partial')
+                    self.assertFalse(later)
+                else:
+                    self.assertEqual(entry['facts'], {'status': 'partial', 'completed_runs': 1})
+                    self.assertEqual(later[0]['status'], 'success')
+
+    def test_du_points_received_after_reset_preserves_native_week_and_win_only_as_history(self):
+        original = {}
+
+        def after_child(child, result):
+            original['data'] = deepcopy(result['differential_universe'])
+            original['ledger'] = Path(original['data']['ledger_path']).read_bytes()
+            self.clock = RESET
+
+        self.after_child = after_child
+        self.responses = [dict(differential_universe=self.du_points_result(3, 1, 'capped'))]
+        first = dict(task('du', 'differential_universe', runs=3, until_points=True), on_failure='continue')
+        report = self.runner(recipe(first, task('later', 'du_rewards'))).run()
+        entry, later = report.workflow['steps']
+        self.assertEqual((report.status, entry['facts']), ('partial', {'status': 'partial', 'completed_runs': 1}))
+        self.assertEqual((later['status'], self.child_index), ('partial', 1))
+        goal = original['data']['periodic_points_goal']
+        projected = dict(goal, status='unverified', reason='game_week_changed')
+        self.assertEqual(entry['periodic_points_goal'], projected)
+        self.assertEqual(report.differential_universe, dict(original['data'], periodic_points_goal=projected))
+        self.assertEqual(json.loads(Path(entry['source']['path']).read_bytes())['differential_universe'], original['data'])
+        self.assertEqual(Path(original['data']['ledger_path']).read_bytes(), original['ledger'])
+
+    def test_du_points_wait_rechecks_the_game_week_before_conditions_and_game_tasks(self):
+        for scenario in ('same_week', 'crossed_condition', 'crossed_direct', 'crossed_default_stop'):
+            with self.subTest(scenario=scenario):
+                self.clock = NOW
+                count_before = self.child_index
+                native = self.du_points_result(3, 1, 'capped')
+                rewards = dict(schema=1, operation='du_rewards', status='complete', rewards_verified=True,
+                               battle_started=False, use_cassettes=False,
+                               requested_categories=['拟合等级', '稳态数组', '可能性画廊'])
+                self.responses = [dict(differential_universe=native), dict(du_rewards=rewards)]
+                first = task('du', 'differential_universe', runs=3, until_points=True)
+                if scenario != 'crossed_default_stop':
+                    first['on_failure'] = 'continue'
+                later = task('rewards', 'du_rewards')
+                if scenario in ('same_week', 'crossed_condition'):
+                    later = dict(id='branch', type='if', condition=condition('@last'), steps=[later])
+                runner = self.runner(recipe(first, dict(id='wait', type='wait', seconds=0), later))
+                saved = {}
+                original_wait = runner._wait
+
+                def wait(seconds):
+                    original_wait(seconds)
+                    step = runner.report.workflow['steps'][0]
+                    self.assertEqual(step['status'], 'success')
+                    for name in (step['source']['path'], native['ledger_path']):
+                        saved[Path(name)] = Path(name).read_bytes()
+                    if scenario != 'same_week':
+                        self.clock = RESET
+
+                with patch.object(runner, '_wait', wait):
+                    report = runner.run()
+                self.assertTrue(all(path.read_bytes() == raw for path, raw in saved.items()))
+                entry, waited, *tail = report.workflow['steps']
+                self.assertEqual(waited['status'], 'success')
+                history = [json.loads(line) for line in (Path(report.run_dir) / 'steps.jsonl').read_bytes().splitlines()]
+                changes = [row for row in history if row['event'] == 'du_points_revalidation']
+                if scenario == 'same_week':
+                    self.assertEqual((report.status, tail[0]['condition'], self.child_index - count_before), ('success', True, 2))
+                    self.assertTrue(report.du_rewards['rewards_verified'])
+                    self.assertFalse(changes)
+                    continue
+                self.assertEqual((report.status, self.child_index - count_before), ('partial', 1))
+                self.assertEqual(entry['facts'], {'status': 'partial', 'completed_runs': 1})
+                self.assertTrue(report.workflow['input_blocked'])
+                self.assertEqual(entry['periodic_points_goal'], dict(native['periodic_points_goal'],
+                                 status='unverified', reason='game_week_changed'))
+                self.assertEqual(report.differential_universe['run_results'], native['run_results'])
+                self.assertEqual(report.differential_universe['periodic_points_goal'], entry['periodic_points_goal'])
+                self.assertEqual([(row['step'], row['status']) for row in changes], [('du', 'partial')])
+                self.assertTrue(any(row['event'] == 'result' and row['step'] == 'du' and row['status'] == 'success' for row in history))
+                if scenario == 'crossed_condition':
+                    self.assertEqual([(row['step'], row['condition']) for row in tail], [('branch', False)])
+                elif scenario == 'crossed_direct':
+                    self.assertEqual([(row['step'], row['status']) for row in tail], [('rewards', 'partial')])
+                else:
+                    self.assertFalse(tail)
+
+    def test_du_followup_week_is_rechecked_at_native_send_and_scope_is_released(self):
+        from autohsr import windows
+        from autohsr.du_points_followup import FollowupWeek, followup_week_scope
+
+        window = windows.GameWindow.__new__(windows.GameWindow)
+        window.guard = Mock()
+        user32 = Mock()
+        user32.GetAsyncKeyState.return_value = 0
+        user32.SendInput.return_value = 1
+        permission = FollowupWeek(WEEK)
+        events = [windows.INPUT(type=0)]
+
+        def reset_at_send():
+            self.clock = RESET
+
+        with patch.object(windows, 'user32', user32):
+            with followup_week_scope(permission):
+                with self.assertRaisesRegex(AutomationError, '游戏周已切换'):
+                    window.send(events, before_send=reset_at_send)
+                self.assertTrue(permission.expired)
+                self.clock = NOW
+                with self.assertRaises(AutomationError):
+                    window.send(events)
+                user32.SendInput.assert_not_called()
+            self.clock = RESET
+            window.send(events)
+            user32.SendInput.assert_called_once()
+
+    def test_du_points_final_report_retry_refreshes_goal_without_rewriting_completed_rewards(self):
+        for crossed in (False, True):
+            with self.subTest(crossed=crossed):
+                self.clock = NOW
+                native = self.du_points_result(3, 1, 'capped')
+                rewards = dict(schema=1, operation='du_rewards', status='complete', rewards_verified=True,
+                               battle_started=False, use_cassettes=False,
+                               requested_categories=['拟合等级', '稳态数组', '可能性画廊'])
+                self.responses = [dict(differential_universe=native), dict(du_rewards=rewards)]
+                runner = self.runner(recipe(task('du', 'differential_universe', runs=3, until_points=True),
+                                            task('rewards', 'du_rewards')))
+                attempts, child_files = [], {}
+                replace_file = Path.replace
+
+                def commit(source, destination):
+                    if Path(destination).parent == Path(runner.report.run_dir) and Path(destination).name == 'report.json':
+                        candidate = json.loads(source.read_bytes())
+                        if candidate['finished_at']:
+                            attempts.append(candidate)
+                            if len(attempts) == 1:
+                                for step in candidate['workflow']['steps']:
+                                    path = Path(step['source']['path'])
+                                    child_files[path] = path.read_bytes()
+                                path = Path(native['ledger_path'])
+                                child_files[path] = path.read_bytes()
+                                if crossed:
+                                    self.clock = RESET
+                                raise PermissionError('synthetic parent report sharing lock')
+                    return replace_file(source, destination)
+
+                with patch.object(Path, 'replace', commit):
+                    report = runner.run()
+                status = 'partial' if crossed else 'success'
+                self.assertEqual([candidate['status'] for candidate in attempts], ['success', status])
+                self.assertEqual(report.to_dict(), attempts[-1])
+                self.assertEqual(report.results[-1].status, 'partial' if crossed else 'ok')
+                self.assertEqual(json.loads((Path(report.run_dir) / 'report.json').read_bytes()), report.to_dict())
+                self.assertTrue(all(path.read_bytes() == raw for path, raw in child_files.items()))
+                du, reward = report.workflow['steps']
+                self.assertEqual(du['facts'], {'status': status, 'completed_runs': 1})
+                self.assertEqual(du['periodic_points_goal']['status'], 'unverified' if crossed else 'capped')
+                self.assertEqual(du['periodic_points_goal']['observations'], native['periodic_points_goal']['observations'])
+                self.assertEqual(report.differential_universe['run_results'], native['run_results'])
+                self.assertIs(report.workflow['input_blocked'], crossed)
+                self.assertEqual(reward['facts'], {'status': 'success', 'du_rewards_verified': True})
+                self.assertEqual(report.du_rewards, rewards)
 
     def test_unsaved_stopped_child_halts_flow_before_source_validation_can_mask_stop(self):
         first=task('first',tasks=['daily']);first['on_failure']='continue'

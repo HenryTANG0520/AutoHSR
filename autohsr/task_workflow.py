@@ -125,7 +125,8 @@ def _params(task, params):
                   'dungeon_category', 'challenge_count', 'use_support', 'support_daily_only', 'redemption_source',
                   'redemption_server', 'redemption_codes', 'redemption_catalog', 'redemption_claim_mail'},
         'plan': {'use_power_plan', 'resume_weekly_currency', 'support_daily_only'},
-        'differential_universe': {'runs', 'mode', 'team', 'save', 'rewards', 'resume_active', 'periodic_rank'},
+        'differential_universe': {'runs', 'mode', 'team', 'save', 'rewards', 'resume_active', 'periodic_rank',
+                                  'until_points'},
         'currency_wars_loop': {'runs', 'resume', 'strategy', 'until_points', 'continue_after_defeat'},
         'currency_wars_points': set(),
         'currency_wars_rewards': {'resume'},
@@ -162,6 +163,9 @@ def _params(task, params):
     if task == 'differential_universe':
         if params.get('mode', 'periodic') not in ('periodic', 'normal'):
             raise WorkflowError('未知差分模式。')
+        if params.get('until_points', False) and ('runs' not in params or params.get('resume_active', False)
+                                                or params.get('mode', 'periodic') != 'periodic'):
+            raise WorkflowError('周期积分目标仅用于新开周期演算，并须明确指定局数上限。')
         if params.get('resume_active', False) and params.get('runs', 1) != 1:
             raise WorkflowError('接续差分只能完成原有1局。')
         if 'periodic_rank' in params:
@@ -389,6 +393,8 @@ def task_spec(settings: Settings, node, base_dir):
             current.differential_universe_team = params['team']
         options = dict(operation=task, du_runs=params.get('runs', 1), du_resume_active=params.get('resume_active', False),
                        du_periodic_rank=params.get('periodic_rank'))
+        if params.get('until_points') is True:
+            options['du_until_points'] = True
         current.validate('differential_universe')
     elif task == 'currency_wars_loop':
         options = {('currency_strategy' if key == 'strategy' else key): value for key, value in params.items()}

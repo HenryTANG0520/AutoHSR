@@ -12,6 +12,7 @@ import time
 from datetime import datetime
 
 from .config import ROOT, RESOURCE_ROOT, Settings, SettingsError
+from .du_points_followup import require_followup_week
 from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, RunReport, Scene, Stopped, TaskResult, Token, normalize
 from .vision import Vision, save_scene,helper_overlay
 from .ocr_isolation import IsolatedVision
@@ -1014,9 +1015,9 @@ class Context:
             self.evidence(self.last_scene, "timeout")
         raise AutomationError(f"等待{description}超时（{timeout} 秒）。请查看本次运行截图。")
 
-    def evidence(self, scene: Scene, name: str):
+    def evidence(self, scene: Scene, name: str, *, with_sha256=False):
         stamp = datetime.now().strftime("%H%M%S_%f")
-        return save_scene(scene, Path(self.report.run_dir), f"{stamp}_{name}")
+        return save_scene(scene, Path(self.report.run_dir), f"{stamp}_{name}", with_sha256=with_sha256)
 
     def refine_dungeon_rows(self, scene, category):
         self.checkpoint()
@@ -1950,6 +1951,7 @@ class Runner:
 
     def checkpoint(self):
         self._control_checkpoint()
+        require_followup_week()
         if self._overlay is not None:
             for message, level in self._overlay.drain_notices():
                 self.log(message, level)

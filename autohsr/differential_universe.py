@@ -324,6 +324,15 @@ class DifferentialUniverseWorkflow:
         value=getattr(getattr(self.ctx,"runner",None),"inactive_duration",0)
         return value if isinstance(value,(int,float)) else 0
 
+    def _record_completion_image(self, entry, scene, role, label):
+        if self.points_goal is None:
+            entry[role + '_evidence'] = str(self.ctx.evidence(scene, label))
+            return
+        path, digest = self.ctx.evidence(scene, label, with_sha256=True)
+        entry[role + '_evidence'] = str(path)
+        sources = entry.setdefault('completion_evidence', dict(session_id=self.session_id, run_id=entry['run_id']))
+        sources[role] = dict(path=str(path), sha256=digest)
+
     def _check_deadline(self, started, inactive_before, seconds, label):
         if time.monotonic()-started-(self._inactive()-inactive_before) >= seconds:
             raise AutomationError(f"差分宇宙{label}超过{seconds}秒，停止输入并保留当前进度。")
@@ -2787,8 +2796,9 @@ class DifferentialUniverseWorkflow:
                     continue
                 if kind == "victory":
                     victory_seen = True
-                    self.report["run_results"][-1]["victory_evidence"] = str(self.ctx.evidence(scene, f"du_{self.report['current_run']:02d}_victory"))
                     entry = self.report['run_results'][-1]
+                    if self.points_goal is None or 'victory_evidence' not in entry:
+                        self._record_completion_image(entry, scene, 'victory', f"du_{self.report['current_run']:02d}_victory")
                     if (self.settings.differential_universe_save and entry.get('save_attempted')
                             and entry.get('save_status') not in ('saved', 'skipped_full', 'no_verified_empty_slot')):
                         raise AutomationError('本局存档已尝试但结果未核实，未重复保存或继续返回；原胜利证据保留。')
@@ -3139,9 +3149,11 @@ class DifferentialUniverseWorkflow:
             scene, kind, returned = self._progress_run(scene, kind)
             if not returned:
                 raise AutomationError(f"第 {run_no} 局没有核实胜利结算与返回。")
-            return_evidence = self.ctx.evidence(scene, f"du_{attempt_no:02d}_fresh_return")
-            self.report["run_results"][-1].update(status="completed", counted=True,
-                finished_at=time.time(), return_page=kind, return_evidence=str(return_evidence))
+            entry = self.report['run_results'][-1]
+            if self.points_goal is not None and 'victory' not in entry.get('completion_evidence', {}):
+                raise AutomationError('差分周期胜利缺少本局原始截图摘要，待核对。')
+            self._record_completion_image(entry, scene, 'return', f"du_{attempt_no:02d}_fresh_return")
+            entry.update(status="completed", counted=True, finished_at=time.time(), return_page=kind)
             self.report["completed_runs"] = run_no
             self._persist_ledger()
             mode_label = "周期演算" if periodic else "新开最低难度"

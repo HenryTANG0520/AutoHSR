@@ -15,6 +15,7 @@ import time
 import uuid
 
 from .config import ROOT
+from .du_points_followup import FollowupWeek, followup_week_scope
 from .models import RunReport, Stopped, TaskResult
 from .storage import replace_file
 from .task_workflow import GAME_TASKS, FIELDS, MAX_EXECUTIONS, WorkflowError, compile_recipe, task_spec
@@ -29,17 +30,29 @@ def _bytes(value):
     return json.dumps(value, ensure_ascii=False, allow_nan=False, indent=2).encode('utf8')
 
 
-def _write(path, value):
-    raw = _bytes(value)
-    if len(raw) > 64 * 1024 * 1024:
-        raise WorkflowError('流程报告超过64 MiB；原报告保留。')
+def _write(path, value, *, refresh=None):
     temporary = path.with_suffix('.tmp')
-    try:
+
+    def prepare(data):
+        raw = _bytes(data)
+        if len(raw) > 64 * 1024 * 1024:
+            raise WorkflowError('流程报告超过64 MiB；原报告保留。')
         with temporary.open('wb') as stream:
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
-        replace_file(temporary, path)
+
+    def before_replace():
+        revised = refresh()
+        if revised is not None:
+            prepare(revised)
+
+    try:
+        prepare(value)
+        if refresh is None:
+            replace_file(temporary, path)
+        else:
+            replace_file(temporary, path, before_replace=before_replace)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -91,6 +104,7 @@ class TaskWorkflowRunner:
         self._has_failure = False
         self._directory = None
         self._identity = None
+        self._du_points_step = None
 
     @property
     def stop_requested(self):
@@ -158,8 +172,29 @@ class TaskWorkflowRunner:
                 previous = pressed
 
     def _save(self):
-        self.report.report_saved = True
-        _write(self._directory / 'report.json', self.report.to_dict())
+        report = self.report
+        report.report_saved = True
+        path = self._directory / 'report.json'
+        if not report.finished_at or self._du_points_step is None:
+            _write(path, report.to_dict())
+            return
+        expired = None
+
+        def refresh():
+            nonlocal expired
+            change = self._expire_du_points_week()
+            if change is None:
+                return None
+            expired, _ = change
+            if report.status == 'success':
+                report.status = 'partial'
+                report.error = expired['error']
+                report.results[-1].status = 'partial'
+            return report.to_dict()
+
+        _write(path, report.to_dict(), refresh=refresh)
+        if expired is not None:
+            self._emit_du_points_expiry(expired)
 
     def _record(self, data):
         # Intent is durable before child construction/run; no retry on failure.
@@ -170,6 +205,7 @@ class TaskWorkflowRunner:
             os.fsync(stream.fileno())
 
     def _condition(self, condition):
+        self._check_du_points_week()
         previous = self._latest.get(condition['step'])
         field = condition['field']
         if previous is None or type(previous.get(field)) is not FIELDS[field]:
@@ -201,10 +237,12 @@ class TaskWorkflowRunner:
             factory = self.factories['runner'] or Runner
         return factory(replace(settings), lambda event: self._send(event, node), **options)
 
-    def _source(self, result, expected):
+    def _source(self, result, expected, *, native_points=False):
         if result.get('operation') != expected or result.get('report_saved') is not True:
             raise WorkflowError('任务未返回对应的已保存原始报告，未推进下一项。')
         path = Path(result.get('run_dir', '')) / 'report.json'
+        if native_points and (not path.is_absolute() or path.resolve() != path.parent.resolve() / path.name):
+            raise WorkflowError('差分积分的原始报告不在本次子任务目录。')
         with path.open('rb') as stream:
             raw = stream.read(64 * 1024 * 1024 + 1)
         if len(raw) > 64 * 1024 * 1024 or json.loads(raw) != json.loads(_bytes(result)):
@@ -218,6 +256,11 @@ class TaskWorkflowRunner:
             if type(value) is bool:
                 facts['du_rewards_verified'] = value
             return facts
+        if result.get('operation') == 'differential_universe':
+            completed = result.get('differential_universe', {}).get('completed_runs')
+            if type(completed) is int:
+                facts['completed_runs'] = completed
+            return facts
         observed_daily = (result.get('daily_verified') is True or
                           any(row.get('task') == 'daily' for row in result.get('results', []) if isinstance(row, dict)))
         if (result.get('operation') in ('daily', 'plan') and observed_daily
@@ -229,10 +272,6 @@ class TaskWorkflowRunner:
                 facts[name] = currency[name]
         if result.get('operation') == 'currency_wars_loop' and type(currency.get('completed')) is int:
             facts['completed_runs'] = currency['completed']
-        if result.get('operation') == 'differential_universe':
-            completed = result.get('differential_universe', {}).get('completed_runs')
-            if type(completed) is int:
-                facts['completed_runs'] = completed
         return facts
 
     def _copy_totals(self, result):
@@ -246,7 +285,7 @@ class TaskWorkflowRunner:
                         'game_day', 'power_plan', 'team_selections', 'support_selections', 'weekly_plan'):
                 if key in result:
                     setattr(self.report, key, deepcopy(result[key]))
-        if result.get('currency_wars'):
+        if result.get('operation') != 'differential_universe' and result.get('currency_wars'):
             # Keep each task separately; a subsequent points query cannot erase victories.
             self.report.workflow.setdefault('currency_results', []).append(deepcopy(result['currency_wars']))
         if result.get('differential_universe'):
@@ -272,24 +311,83 @@ class TaskWorkflowRunner:
         if result.get('status') == 'success' and (value['status'] != 'complete' or value['rewards_verified'] is not True):
             raise WorkflowError('独立差分领奖尚未核实红点完成，不能按完整成功推进。')
 
+    def _du_points_result(self, result, entry, maximum, identity_mark):
+        from .task_workflow_du_points import current_projection, verify_native_receipt
+
+        last = verify_native_receipt(result, entry['source'], maximum)
+        try:
+            self._identity.require_step(identity_mark)
+        finally:
+            result, expired = current_projection(result, last)
+            # Preserve historical facts even if the account later changed.
+            self._copy_totals(result)
+        entry['account_verified'] = True
+        entry['periodic_points_goal'] = deepcopy(result['differential_universe']['periodic_points_goal'])
+        if expired:
+            entry['error'] = '接收差分结果时游戏周已切换，原游戏周观察和已核实胜利保留。'
+        return result
+
+    def _expire_du_points_week(self):
+        if self._du_points_step is None:
+            return
+        from .task_workflow_du_points import goal_for_current_week
+
+        entry, on_failure, permission = self._du_points_step
+        goal = entry['periodic_points_goal']
+        message = '游戏周已切换。原周积分观察、已核实胜利和实际步骤结果保留。'
+        try:
+            current = (dict(goal, status='unverified', reason='game_week_changed') if permission.expired
+                       else goal_for_current_week(goal, goal['observations'][-1]))
+        except WorkflowError as error:
+            current = dict(goal, status='unverified', reason='observation_time_unverified')
+            message = str(error)
+        if current is goal:
+            return
+        self._du_points_step = None
+        self._has_failure = self._input_blocked = True
+        self.report.workflow['input_blocked'] = True
+        entry.update(status='partial', periodic_points_goal=current, error=message)
+        entry['facts']['status'] = 'partial'
+        self._latest[entry['step']]['status'] = 'partial'
+        self.report.differential_universe['periodic_points_goal'] = deepcopy(current)
+        self._record(dict(event='du_points_revalidation', checked_at=_now(), **entry))
+        return entry, on_failure
+
+    def _emit_du_points_expiry(self, entry):
+        self.emit(dict(type='workflow_step', step=entry['step'], sequence=entry['sequence'], status='partial'))
+
+    def _check_du_points_week(self):
+        change = self._expire_du_points_week()
+        if change is None:
+            return
+        entry, on_failure = change
+        self._save()
+        self._emit_du_points_expiry(entry)
+        if on_failure == 'stop':
+            raise _Halt(entry['error'])
+
     def _task(self, node, entry):
         game = node['task'] in GAME_TASKS
-        if game and self._input_blocked:
-            raise WorkflowError('此前游戏任务未核实完成；失败后继续只能处理本地步骤，不能再发送游戏输入。')
         self.checkpoint()
+        if game:
+            self._check_du_points_week()
+            if self._input_blocked:
+                raise WorkflowError('此前游戏任务未核实完成；失败后继续只能处理本地步骤，不能再发送游戏输入。')
         expected = {'plan': 'plan', 'currency_wars_loop': 'currency_wars_loop'}.get(node['task'], node['task'])
         result = None
         identity_mark = self._identity.mark() if game else None
+        followup = self._du_points_step[2] if game and self._du_points_step is not None else None
         try:
             if game:
-                child = self._make_child(node)
-                with self._lock:
-                    self.child = child
-                    if self._stop.is_set():
-                        child.stop()
-                    if self._paused:
-                        child.toggle_pause()
-                result = child.run()
+                with followup_week_scope(followup):
+                    child = self._make_child(node)
+                    with self._lock:
+                        self.child = child
+                        if self._stop.is_set():
+                            child.stop()
+                        if self._paused:
+                            child.toggle_pause()
+                    result = child.run()
                 self._notice_stopped(result)
                 result = result.to_dict() if hasattr(result, 'to_dict') else result
             else:
@@ -304,16 +402,26 @@ class TaskWorkflowRunner:
                 _write(Path(result['run_dir']) / 'report.json', result)
             if not isinstance(result, dict) or result.get('status') not in ('success', 'partial', 'failed', 'stopped'):
                 raise WorkflowError('任务返回了未知结果。')
-            entry['source'] = self._source(result, expected)
+            options = self.specs[node['id']][1]
+            native_points = options.get('du_until_points') is True
+            if native_points and not self._identity.has_step_proof(identity_mark, run_dir=result.get('run_dir') or ''):
+                raise WorkflowError('差分积分的原始报告未绑定本次子任务的账号观察。')
+            entry['source'] = self._source(result, expected, native_points=native_points)
             if node['task'] == 'du_rewards':
                 self._du_rewards(result, entry, node)
-            if not game or self._identity.has_step_proof(identity_mark):
-                self._copy_totals(result)
-            if game:
-                self._identity.require_step(identity_mark)
-                entry['account_verified'] = True
+            if native_points:
+                result = self._du_points_result(result, entry, options['du_runs'], identity_mark)
+            else:
+                if not game or self._identity.has_step_proof(identity_mark):
+                    self._copy_totals(result)
+                if game:
+                    self._identity.require_step(identity_mark)
+                    entry['account_verified'] = True
             entry['facts'] = self._facts(result)
             entry['status'] = result['status']
+            if native_points and result['status'] == 'success':
+                week = entry['periodic_points_goal']['observations'][-1]['game_week']
+                self._du_points_step = entry, node.get('on_failure', 'stop'), FollowupWeek(week)
         except (Stopped, KeyboardInterrupt):
             self.stop()
             raise Stopped('当前任务已停止；流程未重试或继续下一项。')
@@ -335,6 +443,8 @@ class TaskWorkflowRunner:
                     self.child = None
         if entry['status'] == 'stopped':
             raise Stopped('子任务已停止；未继续后续步骤。')
+        if followup is not None:
+            self._check_du_points_week()
         if entry['status'] != 'success':
             self._has_failure = True
             self._input_blocked |= game
@@ -344,6 +454,7 @@ class TaskWorkflowRunner:
     def _steps(self, nodes, trail=()):
         for node in nodes:
             self.checkpoint()
+            self._check_du_points_week()
             if len(self.report.workflow['steps']) >= MAX_EXECUTIONS:
                 raise WorkflowError('流程已达到10000次执行上限，未继续。')
             entry = dict(sequence=len(self.report.workflow['steps']) + 1, step=node['id'], type=node['type'],
@@ -443,6 +554,7 @@ class TaskWorkflowRunner:
                 monitor.start()
             self._steps(self.recipe.steps)
             self.checkpoint()
+            self._check_du_points_week()
             report.status = 'partial' if self._has_failure else 'success'
         except (Stopped, KeyboardInterrupt) as error:
             self.stop()

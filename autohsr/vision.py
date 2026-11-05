@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import time
 from pathlib import Path
 
@@ -304,13 +305,15 @@ class Vision:
         return None
 
 
-def save_scene(scene: Scene, directory: Path, name: str) -> Path:
+def save_scene(scene: Scene, directory: Path, name: str, *, with_sha256=False) -> Path | tuple[Path, str]:
     import cv2
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{name}.png"
     ok, data = cv2.imencode(".png", scene.image)
     if not ok:
         raise AutomationError("保存截图失败。")
-    path.write_bytes(data.tobytes())
+    raw = data.tobytes()
+    digest = hashlib.sha256(raw).hexdigest() if with_sha256 else None
+    path.write_bytes(raw)
     path.with_suffix(".txt").write_text(scene.text, encoding="utf-8")
-    return path
+    return path if digest is None else (path, digest)

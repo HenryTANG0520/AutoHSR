@@ -1,6 +1,7 @@
 """Public home replays and synthetic launch/return paths for the points target."""
 from contextlib import contextmanager, redirect_stderr
 from datetime import datetime
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -133,6 +134,11 @@ class PointsGoalWorkflowTests(unittest.TestCase):
             return flow._click(setup,target,intent='periodic_start',label='periodic_run_started')
 
         def win(_page,_kind):
+            entry = flow.report['run_results'][-1]
+            image = self.page.image.copy()
+            image[0, 0] = (7, 93, 169)
+            victory = Scene([token('探索成功', .39, .18, .54, .25)], image)
+            flow._record_completion_image(entry, victory, 'victory', f"du_{entry['run']:02d}_victory")
             return flow.ctx.snapshot(),'home',True
 
         flow._prepare_and_start = launch
@@ -170,6 +176,40 @@ class PointsGoalWorkflowTests(unittest.TestCase):
                 self.assertEqual(goal['status'],status)
                 self.assertEqual([row['completed_runs'] for row in goal['observations']],[0,1])
                 self.assertEqual([row['current'] for row in goal['observations']],[8000,score])
+
+    def test_completion_receipt_keeps_capture_hash_when_native_report_is_replaced(self):
+        pages = [self.home(8000), self.home(8000), *self.setup_and_field(), self.home(), self.home()]
+        with self.flow(pages) as (flow, _, _, _):
+            self.seed_launch_and_win(flow)
+            report = flow.ctx.report
+            report.results.append(flow.run())
+            report.status = 'success'
+            report.report_saved = True
+            directory = Path(report.run_dir)
+            entry = flow.report['run_results'][0]
+            victory = Path(entry['victory_evidence'])
+            returned = Path(entry['return_evidence'])
+            original = {role: hashlib.sha256(path.read_bytes()).hexdigest()
+                        for role, path in (('victory', victory), ('return', returned))}
+            self.assertNotEqual(original['victory'], original['return'])
+            replace_file = Path.replace
+
+            def replace_report(path, destination):
+                if Path(destination) == directory / 'report.json':
+                    victory.write_bytes(returned.read_bytes())
+                return replace_file(path, destination)
+
+            with patch.object(Path, 'replace', replace_report):
+                Runner._save_run_report(flow.ctx.runner, directory, flow)
+            raw = json.loads((directory / 'report.json').read_bytes())['differential_universe']
+            ledger = json.loads(Path(flow.report['ledger_path']).read_bytes())
+            source = raw['run_results'][0]['completion_evidence']
+            self.assertEqual(ledger['run_results'], raw['run_results'])
+            self.assertEqual(source['session_id'], raw['session_id'])
+            self.assertEqual(source['run_id'], raw['run_results'][0]['run_id'])
+            self.assertEqual(source['victory'], dict(path=str(victory), sha256=original['victory']))
+            self.assertEqual(source['return'], dict(path=str(returned), sha256=original['return']))
+            self.assertEqual(hashlib.sha256(victory.read_bytes()).hexdigest(), original['return'])
 
     def test_different_account_and_disagreeing_score_never_open_a_run(self):
         cases = ([self.home(),self.home(account=OTHER)],
