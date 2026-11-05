@@ -338,6 +338,8 @@ class DifferentialUniverseWorkflow:
             raise AutomationError(f"差分宇宙{label}超过{seconds}秒，停止输入并保留当前进度。")
 
     def _persist_ledger(self, *, before_replace=None) -> None:
+        from .weekly_plan import WeeklyGuard
+
         root = self.report.get("run_dir")
         if not root:
             return
@@ -361,13 +363,17 @@ class DifferentialUniverseWorkflow:
         }
         if 'periodic_points_goal' in self.report:
             payload['periodic_points_goal'] = self.report['periodic_points_goal']
-        temp = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
-        temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        if before_replace is None:
-            replace_file(temp,path)
+        weekly = getattr(getattr(self.ctx, "runner", None), "weekly_plan", None)
+        if isinstance(weekly, WeeklyGuard) and weekly.until_points:
+            weekly.persist_points_ledger(self.report, payload, before_replace=before_replace)
         else:
-            replace_file(temp,path,before_replace=before_replace)
-        self.report["ledger_path"] = str(path)
+            temp = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
+            temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            if before_replace is None:
+                replace_file(temp,path)
+            else:
+                replace_file(temp,path,before_replace=before_replace)
+            self.report["ledger_path"] = str(path)
         progress = (self.report["requested_runs"], self.report["completed_runs"])
         emit = getattr(getattr(self.ctx, "runner", None), "emit", None)
         if callable(emit) and progress != self._last_progress:
@@ -3105,6 +3111,8 @@ class DifferentialUniverseWorkflow:
                 break
             self.ctx.checkpoint()
             self._weekly_boundary()
+            if self.points_goal is not None:
+                self.points_goal.require_weekly_sources()
             run_no = self.report["completed_runs"] + 1
             attempt_no = len(self.report["run_results"]) + 1
             run_id = str(uuid.uuid4())
@@ -3166,6 +3174,7 @@ class DifferentialUniverseWorkflow:
                 # to the mode page is required before the next start.
                 scene, kind = self._snapshot("between_runs")
         if self.points_goal is not None:
+            self.points_goal.require_weekly_sources()
             goal = self.points_goal.result
             if goal['status'] == 'capped':
                 self.report['last_message'] = f"差分周期积分已满，核实 {self.report['completed_runs']} 局新开胜利。"

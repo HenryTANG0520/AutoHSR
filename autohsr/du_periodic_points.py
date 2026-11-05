@@ -327,7 +327,7 @@ class PeriodicPointsGoal:
         self.invalidate('game_week_changed')
         return True
 
-    def require_setup(self, scene, *, target=None):
+    def require_setup(self, scene, *, target=None, read_sources=None):
         try:
             setup = read_periodic_setup(scene, self.confidence)
             if target is not None and target is not setup[1]:
@@ -335,11 +335,17 @@ class PeriodicPointsGoal:
         except GuidePointsUnverified as error:
             self.invalidate(str(error))
             raise AutomationError('差分周期积分目标的周期备战页或启动按钮未核实。') from error
-        self.require_current(scene, launch=True)
+        self.require_current(scene, launch=True, read_sources=read_sources)
         return setup
 
     def _capture(self, scene):
         capture = _capture(self.context,scene,self.confidence)
+        weekly = getattr(self.context.runner, 'weekly_plan', None)
+        if isinstance(weekly, WeeklyGuard):
+            try:
+                weekly.require_account(scene)
+            except AutomationError as error:
+                raise GuidePointsUnverified('weekly_account_unverified') from error
         identity = (capture.account,capture.week,capture.window,capture.directory)
         if self.identity is None:
             self.identity = identity
@@ -347,7 +353,16 @@ class PeriodicPointsGoal:
             raise GuidePointsUnverified('points_goal_scope_changed')
         return capture
 
-    def require_current(self, scene, *, launch=False):
+    def require_weekly_sources(self, *, read_sources=None):
+        weekly = getattr(self.context.runner, 'weekly_plan', None)
+        if isinstance(weekly, WeeklyGuard) and weekly.until_points:
+            try:
+                weekly.require_points_sources(self.context.report.differential_universe, read_sources=read_sources)
+            except AutomationError:
+                self.invalidate('weekly_sources_unverified')
+                raise
+
+    def require_current(self, scene, *, launch=False, read_sources=None):
         try:
             if launch:
                 self.context.window.guard(scene.geometry)
@@ -365,6 +380,7 @@ class PeriodicPointsGoal:
                 raise GuidePointsUnverified('capture_not_fresh')
             if launch:
                 self.context.window.guard(scene.geometry)
+                self.require_weekly_sources(read_sources=read_sources)
                 if (scene is not self.context.last_scene or current.geometry != scene.geometry
                         or current.window != self.context.window.hwnd or current.directory != self.context.report.run_dir
                         or current.epoch != self.context.scene_epoch or current.epoch != self.context.runner.input_epoch):

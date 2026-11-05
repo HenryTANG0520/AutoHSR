@@ -835,12 +835,13 @@ class Context:
             if points_goal is None:
                 self.window.click(*coordinates,scene.geometry)
             else:
-                def check_points_before_send():
-                    points_goal.require_setup(scene, target=target)
-                    points_request['status'] = du_record['status'] = 'unknown'
-
                 try:
-                    self.window.click(*coordinates,scene.geometry,before_send=check_points_before_send)
+                    with ExitStack() as held:
+                        def check_points_before_send():
+                            points_goal.require_setup(scene, target=target, read_sources=held)
+                            points_request['status'] = du_record['status'] = 'unknown'
+
+                        self.window.click(*coordinates, scene.geometry, before_send=check_points_before_send)
                 except (AutomationError, OSError) as error:
                     if du_record['status'] == 'requested':
                         du_record.update(status='not_sent',reason='points_goal_revalidation_failed',detail=str(error))
@@ -917,6 +918,7 @@ class Context:
         if self.report.operation != "differential_universe" or not self.report.run_dir:
             return
         import json
+        from .weekly_plan import WeeklyGuard
         root = Path(self.report.run_dir)
         ledger = root / "differential-universe-ledger.json"
         du = self.report.differential_universe
@@ -935,8 +937,12 @@ class Context:
             "navigation_observations": du.get('navigation_observations',[]),
         }
         import uuid
-        temp = ledger.with_suffix(f".{uuid.uuid4().hex}.tmp")
         try:
+            weekly = getattr(self.runner, "weekly_plan", None)
+            if isinstance(weekly, WeeklyGuard) and weekly.until_points:
+                weekly.persist_points_ledger(du, payload)
+                return
+            temp = ledger.with_suffix(f".{uuid.uuid4().hex}.tmp")
             temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
             replace_file(temp,ledger)
             du["ledger_path"] = str(ledger)
@@ -1920,9 +1926,13 @@ class Runner:
         if type(du_resume_active) is not bool or (du_resume_active and operation != "differential_universe"):
             raise ValueError("接续差分宇宙仅适用于差分宇宙操作，且必须为布尔值。")
         if (type(du_until_points) is not bool or du_until_points and (operation != 'differential_universe'
-                or du_runs is None or du_resume_active or weekly_plan is not None
+                or du_runs is None or du_resume_active
                 or settings.differential_universe_mode != 'periodic')):
-            raise ValueError('周期积分目标须用于独立新开周期演算，并明确指定局数上限。')
+            raise ValueError('周期积分目标须用于新开周期演算，并明确指定局数上限。')
+        if weekly_plan is not None and (du_until_points != weekly_plan.until_points or du_until_points and (
+                self.du_runs != weekly_plan.settings.weekly_runs or settings.differential_universe_save
+                or settings.differential_universe_rewards or settings.differential_universe_daily or du_use_cassettes)):
+            raise ValueError('差分周常积分目标须沿用原开局上限，只执行周期演算和积分核验。')
         self.du_until_points = du_until_points
         if (du_periodic_rank is not None and
                 (isinstance(du_periodic_rank, bool) or not isinstance(du_periodic_rank, int)
@@ -2423,6 +2433,8 @@ class Runner:
                     if self.du_until_points:
                         points_workflow = du_workflow
                     result = du_workflow.run()
+                elif self.weekly_plan.already_exhausted:
+                    result = TaskResult("weekly", "partial", "本周原开局上限已用完，周期积分仍未满。")
                 else:
                     result = TaskResult("weekly", "ok", "本周演算已完成，已跳过。")
                 self.report.results.append(result)

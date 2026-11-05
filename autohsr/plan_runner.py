@@ -24,7 +24,7 @@ def _daily_tasks(settings):
 
 class PlanRunner:
     def __init__(self, settings, emit=None, *, new_battle_run=False, runner_factory=None, root=None, now=None, resume_weekly_currency=False,
-                 use_power_plan=False,new_power_plan=False):
+                 use_power_plan=False,new_power_plan=False,du_until_points=False):
         from .app import Runner
         if (type(use_power_plan) is not bool or type(new_power_plan) is not bool or new_power_plan and not use_power_plan
                 or use_power_plan and (resume_weekly_currency or not settings.battle)):
@@ -34,6 +34,10 @@ class PlanRunner:
         if (type(resume_weekly_currency) is not bool or resume_weekly_currency and
                 (not settings.weekly_enabled or settings.weekly_mode!='currency_wars' or new_battle_run)):
             raise ValueError('接续货币战争周常须选择该周常，且不新增日常预算。')
+        if (type(du_until_points) is not bool or du_until_points and
+                (not settings.weekly_enabled or settings.weekly_mode != 'differential_universe')):
+            raise ValueError('周期积分目标需要已启用的差分周常。')
+        self.du_until_points = du_until_points
         self.settings = replace(settings)
         if resume_weekly_currency:
             self.settings=replace(self.settings,assignments=False,battle=False,daily=False,mail=False,battlepass=False,
@@ -139,6 +143,55 @@ class PlanRunner:
             report.budget_scope='original_daily_run'
         self.emit(dict(type='plan_daily_result',report=daily,reused=reused))
 
+    def _run_weekly_du(self):
+        self.emit(dict(type="task", task="weekly", status="running", detail="核对本周演算记录"))
+        guard = WeeklyGuard(self.root, self.settings, self.slot, until_points=self.du_until_points)
+        maximum = guard.settings.weekly_runs
+        weekly_settings = replace(self.settings, assignments=False, battle=False, daily=False,
+                                  mail=False, battlepass=False, differential_universe_mode="periodic",
+                                  differential_universe_runs=maximum,
+                                  differential_universe_daily=False, differential_universe_save=False,
+                                  differential_universe_rewards=False)
+        weekly = self._run(weekly_settings, phase="weekly", operation="differential_universe",
+                           du_runs=maximum, weekly_plan=guard,
+                           **(dict(du_until_points=True) if guard.until_points else {}))
+        report = self.report
+        info = report.weekly_plan
+        info["children"].append(dict(operation="differential_universe", run_dir=weekly.get("run_dir", "")))
+        report.differential_universe = weekly.get("differential_universe", {})
+        data = report.differential_universe
+        objective = info["objective"]
+        original = guard.reused_report
+        if original is not None:
+            receipt = guard.receipt.data
+            data = original["differential_universe"]
+            objective, maximum = receipt.get("objective", "fixed_runs"), receipt["requested_runs"]
+            info.update(original_run_dir=original["run_dir"], reused_result=True, due_at=receipt["due_at"])
+        completed = data.get("completed_runs", 0)
+        info.update(objective=objective, requested_runs=maximum, maximum_runs=maximum, completed_runs=completed,
+                    new_completed_runs=0 if original is not None else completed, points_capped=None)
+        status = weekly.get("status")
+        stopped = self.stop_requested or status == "stopped"
+        exhausted = objective == "points" and data.get("periodic_points_goal", {}).get("status") == "exhausted"
+        if stopped or weekly.get("report_saved") is not True or not (status == "success" or status == "partial" and exhausted):
+            report.status = "stopped" if stopped else "partial"
+            report.error, report.safe_next = weekly.get("error", ""), weekly.get("safe_next", "")
+            report.input_error_field = weekly.get("input_error_field", "")
+            self._weekly_result("needs_review", "周常演算未完成；核对原报告后再处理。")
+            return
+        state = guard.receipt.data["state"] if original is not None else guard.complete(weekly, checkpoint=self._checkpoint)
+        if objective == "points":
+            info["points_capped"] = state == "complete"
+        if state == "exhausted":
+            report.status = "partial"
+            self._weekly_result("exhausted", f"本周 {maximum} 局开局上限已用完，周期积分仍未满。")
+        elif guard.already_complete:
+            self._weekly_result("already_complete", "本周原演算目标已完成，已跳过。")
+        elif objective == "points":
+            self._weekly_result("complete", f"本周周期积分已满，核实 {completed} 局新开胜利。")
+        else:
+            self._weekly_result("complete", f"本周 {maximum} 局周期演算已完成；周积分奖励未核实。")
+
     def run(self):
         started = datetime.now(CHINA)
         directory = self.root/(started.strftime("%Y%m%d_%H%M%S_%f")+"_plan_"+uuid.uuid4().hex[:8])
@@ -149,6 +202,8 @@ class PlanRunner:
                                  mode=self.settings.weekly_mode, requested_runs=self.settings.weekly_runs,
                                  daily_tasks=_daily_tasks(self.settings),
                                  status="waiting", score_rewards_verified=False, children=[])
+        if self.settings.weekly_mode == 'differential_universe':
+            report.weekly_plan['objective'] = 'points' if self.du_until_points else 'fixed_runs'
         from .workflow_lease import sequence_lease
         from .workflow_identity import sequence_identity
         scopes = ExitStack()
@@ -233,27 +288,7 @@ class PlanRunner:
                                         reason+('日常结果已保留。' if daily_reference is not None else '')+
                                         ('原目标已保留。' if data.get('loop_id') else ''))
             else:
-                self.emit(dict(type="task", task="weekly", status="running", detail="核对本周演算记录"))
-                guard = WeeklyGuard(self.root, self.settings, self.slot)
-                weekly_settings = replace(self.settings, assignments=False, battle=False, daily=False,
-                                          mail=False, battlepass=False, differential_universe_mode="periodic",
-                                          differential_universe_runs=self.settings.weekly_runs,
-                                          differential_universe_daily=False, differential_universe_save=False,
-                                          differential_universe_rewards=False)
-                weekly = self._run(weekly_settings, phase="weekly", operation="differential_universe",
-                                   du_runs=self.settings.weekly_runs, weekly_plan=guard)
-                report.weekly_plan["children"].append(dict(operation="differential_universe", run_dir=weekly.get("run_dir", "")))
-                report.differential_universe = weekly.get("differential_universe", {})
-                if weekly.get("status") != "success":
-                    report.status = "stopped" if weekly.get("status") == "stopped" else "partial"
-                    report.error, report.safe_next = weekly.get("error", ""), weekly.get("safe_next", "")
-                    report.input_error_field = weekly.get("input_error_field", "")
-                    self._weekly_result("needs_review", "周常演算未完成；核对原报告后再处理。")
-                else:
-                    guard.complete(weekly)
-                    self._weekly_result("already_complete" if guard.already_complete else "complete",
-                                        "本周演算已完成，已跳过。" if guard.already_complete else
-                                        f"本周 {self.settings.weekly_runs} 局周期演算已完成；周积分奖励未核实。")
+                self._run_weekly_du()
         except Stopped as exc:
             self.stop()
             report.status, report.error = "stopped", str(exc)

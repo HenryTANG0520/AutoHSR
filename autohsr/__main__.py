@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--count", type=int, help="本次完成的挑战次数；达到次数即停止，仍受开拓力上限约束")
     parser.add_argument("--du-runs", type=int, help="差分宇宙局数，1～10；仅配合 --differential-universe")
     parser.add_argument('--du-until-points', action='store_true',
-                        help='周期积分满额即停止；--du-runs 为最多新开局数，仅用于新开周期演算')
+                        help='周期积分满额即停止。独立演算用 --du-runs，已启用的差分 --plan 用配置中的周常局数作为上限')
     parser.add_argument("--du-team", help="每次开局从预设编队选择此名称；默认哈哈哈哈")
     parser.add_argument("--du-mode", choices=('periodic','normal'), help="演算模式；默认 periodic 周期演算")
     parser.add_argument('--du-custom-stations',action=argparse.BooleanOptionalAction,default=None,
@@ -229,10 +229,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.resume_active_du and not args.differential_universe:
         print(_json({"error": "--resume-active-du 仅用于 --differential-universe。"}), file=sys.stderr)
         return 2
-    if args.du_until_points and (not args.differential_universe or args.resume_active_du or args.du_mode == 'normal'):
-        print(_json({'error': '--du-until-points 仅用于新开的周期演算。'}), file=sys.stderr)
+    if args.du_until_points and (not (args.differential_universe or args.plan) or args.resume_active_du
+                                 or args.du_mode == 'normal' or args.resume_weekly_currency):
+        print(_json({'error': '--du-until-points 仅用于新开的周期演算或已启用的差分周常。'}), file=sys.stderr)
         return 2
-    if args.du_until_points and args.du_runs is None:
+    if args.du_until_points and args.differential_universe and args.du_runs is None:
         print(_json({'error': '--du-until-points 须配合 --du-runs 指定局数上限。'}), file=sys.stderr)
         return 2
     if args.du_periodic_rank is not None and not args.differential_universe:
@@ -328,6 +329,8 @@ def main(argv: list[str] | None = None) -> int:
             settings.differential_universe_team = args.du_team.strip()
         if args.du_mode is not None:
             settings.differential_universe_mode = args.du_mode
+        if args.plan and args.du_until_points and (not settings.weekly_enabled or settings.weekly_mode != 'differential_universe'):
+            raise ValueError('周期积分目标需要已启用的差分周常。')
         if station_options:
             if args.plan and (not settings.weekly_enabled or settings.weekly_mode!='differential_universe'):
                 raise ValueError('计划中的站点偏好仅用于已启用的差分周常。')
@@ -390,7 +393,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.plan:
             from .plan_runner import PlanRunner
             runner = PlanRunner(settings, emit, new_battle_run=args.new_battle_run,resume_weekly_currency=args.resume_weekly_currency,
-                **(dict(use_power_plan=True,new_power_plan=args.new_power_plan) if args.power_plan else {}))
+                **(dict(use_power_plan=True,new_power_plan=args.new_power_plan) if args.power_plan else {}),
+                **(dict(du_until_points=True) if args.du_until_points else {}))
         else:
             runner = Runner(settings, emit, new_battle_run=args.new_battle_run,
                             **(dict(use_power_plan=True,new_power_plan=args.new_power_plan) if args.power_plan else {}),

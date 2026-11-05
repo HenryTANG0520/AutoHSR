@@ -1,5 +1,5 @@
 """Atomic publication and stable Windows evidence reads."""
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, contextmanager, nullcontext
 import os
 from pathlib import Path
 from stat import S_ISREG
@@ -68,17 +68,18 @@ def file_revision(path: str | Path) -> tuple[int, int, int, int, int]:
         return metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns, change
 
 
-def replace_file(source, destination, *, before_replace=None):
-    """Retry the rename, checking caller state before each attempt when requested."""
+def replace_file(source, destination, *, before_replace=None, attempt_scope=nullcontext):
+    """Retry the rename, entering the optional scope for each attempt."""
     source,destination=Path(source),Path(destination)
     for attempt in range(len(REPLACE_RETRY_DELAYS)+1):
         if before_replace is not None:
             before_replace()
-        try:
-            source.replace(destination)
-            return
-        except OSError as error:
-            sharing=isinstance(error,PermissionError) or getattr(error,'winerror',None) in (5,32,33)
-            if not sharing or attempt==len(REPLACE_RETRY_DELAYS):
-                raise
-            time.sleep(REPLACE_RETRY_DELAYS[attempt])
+        with attempt_scope():
+            try:
+                source.replace(destination)
+                return
+            except OSError as error:
+                sharing=isinstance(error,PermissionError) or getattr(error,'winerror',None) in (5,32,33)
+                if not sharing or attempt==len(REPLACE_RETRY_DELAYS):
+                    raise
+        time.sleep(REPLACE_RETRY_DELAYS[attempt])

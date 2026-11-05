@@ -384,7 +384,7 @@ class PointsGoalWorkflowTests(unittest.TestCase):
         from autohsr.__main__ import main
 
         for args in (('--run',),('--differential-universe',),('--differential-universe','--resume-active-du'),
-                     ('--differential-universe','--du-mode','normal'),('--plan',)):
+                     ('--differential-universe','--du-mode','normal')):
             with self.subTest(args=args), redirect_stderr(io.StringIO()), patch('autohsr.app.Runner') as runner:
                 self.assertEqual(main([*args,'--du-until-points']),2)
                 runner.assert_not_called()
