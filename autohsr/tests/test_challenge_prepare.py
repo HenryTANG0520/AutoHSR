@@ -13,7 +13,7 @@ from unittest.mock import patch
 from autohsr.app import Context
 from autohsr.challenge_prepare import ChallengePreparation, prepare_challenge
 from autohsr.config import Settings
-from autohsr.models import AutomationError, FocusLost, InputInterrupted, Token
+from autohsr.models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, Stopped, Token
 from autohsr.storage import replace_file
 from autohsr.tests.test_challenge_integration import PLAN
 from autohsr.tests import test_challenge_pages as pages
@@ -34,6 +34,22 @@ def context(folder, scenes, **kwargs):
     c.report.operation = 'challenge_prepare'
     c.challenge_prepare_input = lambda scene, action: Context.challenge_prepare_input(c, scene, action)
     return c
+
+
+def track_captures(c, changes):
+    original = c.snapshot
+    seen = []
+
+    def snapshot():
+        scene = original()
+        index = len(seen)
+        seen.append(scene)
+        if index in changes:
+            changes[index](scene)
+        return scene
+
+    c.snapshot = snapshot
+    return seen
 
 
 class ChallengePreparationTests(unittest.TestCase):
@@ -72,6 +88,144 @@ class ChallengePreparationTests(unittest.TestCase):
             self.assertEqual(c.report.challenge['actions'], [])
             c.window.click.assert_not_called()
             c.window.key.assert_not_called()
+
+    def assert_feedback_pair_after_gap(self, gap):
+        with tempfile.TemporaryDirectory() as folder:
+            c = context(folder, [lobby(), lobby(), setup(), setup(), setup(), setup()])
+            seen = track_captures(c, {3: gap})
+            self.assertEqual(self.execute(c).status, 'ok')
+            self.assertEqual(len(seen), 6)
+            action = c.report.challenge['actions'][0]
+            self.assertEqual(action['status'], 'verified')
+            self.assertEqual([item['captured_at'] for item in action['after']],
+                             [scene.captured_at for scene in seen[4:]])
+            c.window.click.assert_called_once()
+            c.window.key.assert_not_called()
+
+    def test_post_selection_missing_account_requires_a_new_consecutive_pair(self):
+        # The fake snapshot appends its sole account token after page tokens.
+        self.assert_feedback_pair_after_gap(lambda scene: scene.tokens.pop())
+
+    def test_post_selection_empty_capture_cannot_bridge_two_setup_frames(self):
+        def empty(scene):
+            raise EmptyCapture('synthetic blank frame')
+
+        self.assert_feedback_pair_after_gap(empty)
+
+    def test_initial_account_check_remains_strict(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c = context(folder, [lobby(), lobby(), lobby()])
+            seen = track_captures(c, {1: lambda scene: scene.tokens.pop()})
+            with self.assertRaisesRegex(AutomationError, '账号标识未完整'):
+                self.execute(c)
+            self.assertEqual(len(seen), 2)
+            self.assertEqual(c.report.challenge['actions'], [])
+            c.window.click.assert_not_called()
+
+    def test_post_selection_rejects_changed_or_conflicting_account_immediately(self):
+        for conflict in (False, True):
+            with self.subTest(conflict=conflict), tempfile.TemporaryDirectory() as folder:
+                c = context(folder, [lobby(), lobby(), setup(), setup(), setup()])
+
+                def change_account(scene):
+                    if not conflict:
+                        scene.tokens.pop()
+                    scene.tokens.append(Token('UID:200000000', .99, (.01, .96, .10, .99)))
+
+                seen = track_captures(c, {2: change_account})
+                with self.assertRaisesRegex(AutomationError, '账号标识未完整' if conflict else '账号改变'):
+                    self.execute(c)
+                self.assertEqual(len(seen), 3)
+                self.assertEqual(c.report.challenge['actions'][0]['status'], 'unknown')
+                c.window.click.assert_called_once()
+
+    def test_post_selection_blank_does_not_hide_epoch_change_or_stop(self):
+        for signal, error in (('epoch', InputInterrupted), ('plan', AutomationError), ('stop', Stopped)):
+            with self.subTest(signal=signal), tempfile.TemporaryDirectory() as folder:
+                c = context(folder, [lobby(), lobby(), setup(), setup(), setup()])
+
+                def interrupt(scene):
+                    if signal == 'epoch':
+                        c.runner.input_epoch += 1
+                    elif signal == 'plan':
+                        c.settings.challenge_plan['levels'] = [8, 8]
+                    else:
+                        c.checkpoint.side_effect = Stopped('synthetic stop')
+                    raise EmptyCapture('synthetic blank frame')
+
+                seen = track_captures(c, {2: interrupt})
+                with self.assertRaises(error):
+                    self.execute(c)
+                self.assertEqual(len(seen), 3)
+                self.assertEqual(c.report.challenge['actions'][0]['status'], 'unknown')
+                c.window.click.assert_called_once()
+
+    def test_post_selection_duplicate_breaks_continuity(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c = context(folder, [lobby(), lobby(), setup(), setup(), setup(), setup()], duplicate_at=(3,))
+            seen = track_captures(c, {})
+            self.assertEqual(self.execute(c).status, 'ok')
+            self.assertEqual(len(seen), 6)
+            action = c.report.challenge['actions'][0]
+            self.assertEqual([item['captured_at'] for item in action['after']],
+                             [scene.captured_at for scene in seen[4:]])
+            c.window.click.assert_called_once()
+
+    def test_post_selection_cannot_use_a_capture_from_before_submission(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c = context(folder, [lobby(), lobby(), setup(), setup(), setup()])
+
+            def old_capture(scene):
+                scene.captured_at = c.report.challenge['actions'][0]['before']['captured_at']
+
+            seen = track_captures(c, {2: old_capture})
+            self.assertEqual(self.execute(c).status, 'ok')
+            self.assertEqual(len(seen), 5)
+            action = c.report.challenge['actions'][0]
+            self.assertEqual([item['captured_at'] for item in action['after']],
+                             [scene.captured_at for scene in seen[3:]])
+            c.window.click.assert_called_once()
+
+    def test_post_selection_reordered_capture_cannot_follow_a_newer_unreadable_frame(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c = context(folder, [lobby(), lobby(), setup(), setup(), setup(), setup(), setup()])
+
+            def reorder(scene):
+                scene.captured_at = (seen[2].captured_at + seen[3].captured_at) / 2
+
+            seen = track_captures(c, {3: lambda scene: scene.tokens.pop(), 4: reorder})
+            self.assertEqual(self.execute(c).status, 'ok')
+            self.assertEqual(len(seen), 7)
+            action = c.report.challenge['actions'][0]
+            self.assertEqual([item['captured_at'] for item in action['after']],
+                             [scene.captured_at for scene in seen[5:]])
+            c.window.click.assert_called_once()
+
+    def test_post_selection_second_frame_persistence_cannot_extend_feedback_deadline(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c = context(folder, [lobby(), lobby(), setup(), setup(), setup()])
+
+            def slow_blank(scene):
+                c.clock.value += 28.9
+                raise EmptyCapture('synthetic slow blank frame')
+
+            def publish(source, destination):
+                data = json.loads(source.read_text(encoding='utf-8'))
+                if (data['actions'] and data['actions'][0]['status'] == 'submitted'
+                        and [frame['kind'] for frame in data['observations'][-2:]] == ['team_setup', 'team_setup']):
+                    c.clock.value += .5
+                return replace_file(source, destination)
+
+            seen = track_captures(c, {2: slow_blank})
+            with patch('autohsr.challenge_prepare.replace_file', side_effect=publish), \
+                    self.assertRaisesRegex(AutomationError, '同层备战页面'):
+                self.execute(c)
+            self.assertEqual(len(seen), 5)
+            action = c.report.challenge['actions'][0]
+            self.assertEqual(action['status'], 'unknown')
+            self.assertNotIn('after', action)
+            self.assertFalse(c.report.challenge['preparation_page_verified'])
+            c.window.click.assert_called_once()
 
     def test_unknown_after_selection_is_preserved_without_replaying_or_overwriting(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -116,7 +270,7 @@ class ChallengePreparationTests(unittest.TestCase):
                 c.window.click.assert_called_once()
 
     def test_guard_epoch_focus_and_changed_plan_drop_pending_target(self):
-        for change in ('epoch', 'focus', 'plan'):
+        for change in ('epoch', 'focus', 'plan', 'account_missing'):
             with self.subTest(change=change), tempfile.TemporaryDirectory() as folder:
                 c = context(folder, [lobby(), lobby()])
                 def guard(*args):
@@ -124,6 +278,8 @@ class ChallengePreparationTests(unittest.TestCase):
                         c.runner.input_epoch += 1
                     elif change == 'plan':
                         c.settings.challenge_plan['levels'] = [8, 8]
+                    elif change == 'account_missing':
+                        c.last_scene.tokens.pop()
                 c.window.guard.side_effect = guard
                 if change == 'focus':
                     c.window.click.side_effect = FocusLost('fake focus loss')

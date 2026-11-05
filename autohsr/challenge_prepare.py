@@ -65,21 +65,31 @@ class ChallengePreparation:
             os.fsync(stream.fileno())
         replace_file(temporary, self.path)
 
-    def _fresh(self, scene):
+    def _check_attempt(self):
         from .challenge_plan import ChallengePlan
         self.c.checkpoint()
         if self.c.runner.input_epoch != self.epoch or self.c.scene_epoch != self.epoch:
             raise InputInterrupted('高难备战输入代次改变，旧选择不重发。')
         if ChallengePlan.from_dict(self.c.settings.challenge_plan).digest != self.plan.digest:
             raise AutomationError('高难计划已改变，未继续旧层数选择。')
+
+    def _fresh(self, scene, *, allow_missing_account=False):
+        self._check_attempt()
         if (scene is not self.c.last_scene or type(scene.captured_at) not in (int, float)
                 or not 0 <= time.monotonic() - scene.captured_at <= 8
                 or scene.image is None or scene.geometry is None):
             raise AutomationError('高难备战需要当前新鲜画面及窗口来源。')
         if self.account is not None:
-            from .currency_wars_identity import account_key
-            if account_key(scene, max(.85, self.c.settings.ocr_confidence)) != self.account:
+            from .currency_wars_identity import AccountNotObserved, account_key
+            try:
+                key = account_key(scene, max(.85, self.c.settings.ocr_confidence))
+            except AccountNotObserved:
+                if allow_missing_account:
+                    return False
+                raise
+            if key != self.account:
                 raise AutomationError('高难备战账号改变，未继续选择。')
+        return True
 
     def _source(self, scene, observation, label):
         self._fresh(scene)
@@ -141,10 +151,12 @@ class ChallengePreparation:
                 or source['captured_at'] != scene.captured_at):
             raise AutomationError('高难层数选择证据与当前画面不同。')
 
-    def _wait(self, acceptable, description):
+    def _wait(self, acceptable, description, *, after_input=None):
         from .challenge_pages import observe, target
         from .currency_wars_identity import account_key
         frames, previous = [], None
+        feedback = after_input is not None
+        latest_capture = after_input
         elapsed = 0.
         for _ in range(100):
             started, inactive = time.monotonic(), self.c.runner.inactive_duration
@@ -152,8 +164,12 @@ class ChallengePreparation:
                 scene = self.c.snapshot()
             except EmptyCapture:
                 scene = None
+                if feedback:
+                    self._check_attempt()
+                    latest_capture = max(latest_capture, time.monotonic())
+                    frames, previous = [], None
             if scene is not None:
-                self._fresh(scene)
+                account_observed = self._fresh(scene, allow_missing_account=feedback)
                 if self.account is None:
                     try:
                         self.account = account_key(scene, max(.85, self.c.settings.ocr_confidence))
@@ -162,7 +178,10 @@ class ChallengePreparation:
                 observation = observe(scene, self.c.settings.ocr_confidence)
                 if observation.mode is not None and observation.mode != self.plan.mode:
                     raise AutomationError('当前高难模式与明确计划不符。')
-                if self.account is not None and acceptable(scene, observation):
+                increasing = not feedback or scene.captured_at > latest_capture
+                if feedback and increasing:
+                    latest_capture = scene.captured_at
+                if account_observed and self.account is not None and increasing and acceptable(scene, observation):
                     token = target(scene, 'select_level', self.c.settings.ocr_confidence, level=self.plan.level_start)
                     signature = (observation.kind, observation.mode, observation.level, observation.stars,
                                  token.box if token is not None else None)
@@ -175,6 +194,11 @@ class ChallengePreparation:
                         self.data['account_key'] = self.account
                         self._persist()
                     if len(frames) == 2:
+                        if feedback:
+                            self._fresh(scene)
+                            current = max(0., time.monotonic() - started - (self.c.runner.inactive_duration - inactive))
+                            if elapsed + current >= 30:
+                                break
                         return scene, observation, frames
                 else:
                     frames, previous = [], None
@@ -203,9 +227,11 @@ class ChallengePreparation:
                 self.request = action
                 self._persist()
                 self.c.challenge_prepare_input(scene, action)
+                after_input = time.monotonic()
                 record['status'] = 'submitted'
                 self._persist()
-                scene, observation, frames = self._wait(lambda scene, page: ready(page), '同层备战页面')
+                scene, observation, frames = self._wait(lambda scene, page: ready(page), '同层备战页面',
+                                                        after_input=after_input)
                 record.update(status='verified', after=frames)
             else:
                 self.data['entry'] = 'existing_team_setup'
