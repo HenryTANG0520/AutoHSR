@@ -4,13 +4,13 @@ from types import SimpleNamespace
 import json
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import cv2
 import numpy as np
 
 from autohsr.currency_wars_collector import roster_cells
-from autohsr.currency_wars_deployment import _crop, bench_face
+from autohsr.currency_wars_deployment import _BENCH_CENTERS, _crop, bench_face
 from autohsr.currency_wars_match import read_match
 from autohsr.currency_wars_node import loot_centers
 from autohsr.currency_wars_session import StandardSession
@@ -20,7 +20,7 @@ from autohsr.currency_wars_standard_flow import _loot_pickup_chain, next_action
 from autohsr.currency_wars_standard_ledger import ledger_status, valid_receipt
 from autohsr.currency_wars_standard_rewards import valid_effect
 from autohsr.currency_wars_standard_sale import proposal
-from autohsr.models import AutomationError, Stopped, normalize
+from autohsr.models import AutomationError, Stopped, Token, normalize
 from autohsr.tests.test_currency_wars_character_rewards import modal as hiring_modal
 from autohsr.tests.test_currency_wars_loot_capacity import ROOT as CRYSTALS, Harness, clone, fixture as loot_fixture
 from autohsr.tests.test_currency_wars_standard_equipment import recommend
@@ -259,14 +259,7 @@ class HiringSaleHarness(DoubleSaleHarness):
             self.inputs.append(intent)
             self.remove_crystal(target)
             self.crystal_counts.append(len(loot_centers(self.board)))
-            self.return_board = self.board
-            state = read_match(self.board)
-            self.board = hiring_modal(self.board, names=(self.hired_name,), tier=1)
-            self.board.tokens = [token for token in self.board.tokens if not normalize(token.text).startswith('uid')]
-            self.board.tokens.extend(token for token in self.return_board.tokens if normalize(token.text).startswith('uid'))
-            hud(self.board, gold=state.gold, level=state.level, xp=state.experience, deployment=state.deployment)
-            self.board.image[330:690,1700:2180] = 0
-            self.stage = 'hiring_open'
+            self.open_hiring()
         elif intent == 'choose_standard_reward':
             self.inputs.append(intent)
             self.board = self.return_board
@@ -287,8 +280,164 @@ class HiringSaleHarness(DoubleSaleHarness):
                 self.stage = 'hiring_recollect'
             super().click(*args)
 
+    def open_hiring(self):
+        self.return_board = self.board
+        state = read_match(self.board)
+        self.board = hiring_modal(self.board, names=(self.hired_name,), tier=1)
+        self.board.tokens = [token for token in self.board.tokens if not normalize(token.text).startswith('uid')]
+        self.board.tokens.extend(token for token in self.return_board.tokens if normalize(token.text).startswith('uid'))
+        hud(self.board, gold=state.gold, level=state.level, xp=state.experience, deployment=state.deployment)
+        self.board.image[330:690,1700:2180] = 0
+        self.stage = 'hiring_open'
+
+
+def place_box(scene, slot, *, pixels=True):
+    x = _BENCH_CENTERS[slot-1]
+    scene.tokens.append(Token('开启', .99, (x-.012, .82, x+.012, .86)))
+    if pixels:
+        art = _crop(scene.image, bench_face(slot))
+        art[:] = np.random.default_rng(322+slot).integers(0, 256, art.shape, dtype=np.uint8)
+
+
+class BenchHiringSaleHarness(HiringSaleHarness):
+    def __init__(self, folder, *, fault=None):
+        super().__init__(folder)
+        self.fault = fault
+        self.c.window.click_held = Mock(side_effect=self.held)
+        self.before_open = self.after_open = None
+        self.first_modal_stamp = None
+        sleep = self.c.sleep
+        self.c.sleep = lambda seconds: sleep(31 if seconds == .5 and fault and self.first_modal_stamp is None
+                                            else seconds)
+
+    def click(self, *args):
+        action = self.c.currency_standard_session.data['actions'][-1]
+        intent = action['action']
+        if intent == 'collect_standard_loot' and len(self.crystal_counts) == 1:
+            self.inputs.append(intent)
+            self.remove_crystal(action['target'])
+            self.crystal_counts.append(len(loot_centers(self.board)))
+            place_box(self.board, self.freed_slot, pixels=self.fault != 'label_only')
+            if self.fault == 'extra_box':
+                place_box(self.board, 3)
+            self.stage = 'box_received'
+            return
+        if intent == 'choose_standard_reward':
+            x = _BENCH_CENTERS[self.freed_slot-1]
+            self.return_board.tokens = [t for t in self.return_board.tokens
+                                        if normalize(t.text) != '开启' or abs(t.center[0]-x) > .01]
+            _crop(self.return_board.image, bench_face(self.freed_slot))[:] = 0
+        super().click(*args)
+
+    def held(self, x, y, geometry, *, checkpoint):
+        checkpoint()
+        action = self.c.currency_standard_session.data['actions'][-1]
+        self.inputs.append(action['action'])
+        self.before_open = (clone(self.board), deepcopy(self.c.currency_standard_session.data))
+        self.open_hiring()
+
+    def snapshot(self):
+        scene = super().snapshot()
+        if self.fault == 'stale_open' and self.stage == 'hiring_open':
+            if self.first_modal_stamp is None:
+                self.first_modal_stamp = scene.captured_at
+            else:
+                scene.captured_at = self.first_modal_stamp
+                self.first_modal_stamp = None
+        return scene
+
+    def checkpoint(self):
+        super().checkpoint()
+        store = getattr(self.c, 'currency_standard_session', None)
+        if store and store.data['actions'] and self.after_open is None:
+            last = store.data['actions'][-1]
+            if last['action'] == 'open_standard_bench_reward' and last['status'] == 'verified':
+                self.after_open = clone(self.board), deepcopy(store.data)
+
 
 class LootSaleContextTests(unittest.TestCase):
+    def test_crystal_bench_box_opens_original_slot_and_hiring_returns_to_it(self):
+        with tempfile.TemporaryDirectory() as folder:
+            harness = BenchHiringSaleHarness(folder)
+            with self.assertRaises(Stopped):
+                harness.run()
+            self.assertEqual(harness.crystal_counts, [2, 1, 0])
+            self.assertEqual(harness.inputs.count('sell_standard_owned'), 2)
+            self.assertEqual(harness.inputs.count('choose_standard_reward'), 1)
+            harness.c.window.click_held.assert_called_once()
+            self.assertEqual(harness.c.window.click_held.call_args.args[:2], (_BENCH_CENTERS[8], 1210/1440))
+            data = StandardSession(harness.path).data
+            actions = data['actions']
+            pickup = next(a for a in actions if a['action'] == 'collect_standard_loot')
+            opening = next(a for a in actions if a['action'] == 'open_standard_bench_reward')
+            claim = actions[opening['id']+1]
+            self.assertEqual(pickup['loot_pickup_kind'], 'bench_box')
+            self.assertEqual(opening['target'][1:], pickup['loot_pickup']['bench_box'])
+            self.assertEqual(opening['loot_box_pickup_action_id'], pickup['id'])
+            self.assertEqual(claim['target'][1:3], [opening['id'], 'hiring_selection'])
+            self.assertEqual(claim['loot_reward_return']['added_bench_slot'], 9)
+            self.assertTrue(claim['loot_reward_return']['unit_slot_verified'])
+            self.assertTrue(valid_effect(claim, actions))
+            self.assertEqual(ledger_status(actions), 'clear')
+            self.assertGreaterEqual(sum(stage == 'box_received' for stage,_ in harness.captures), 2)
+            self.assertGreaterEqual(sum(stage == 'hiring_open' for stage,_ in harness.captures), 2)
+
+            board, pending = harness.before_open
+            waiting = dict(pending, actions=deepcopy(pending['actions'][:-1]))
+            wrong = clone(board)
+            place_box(wrong, 3)  # A visible unrelated opening must never replace the bound one.
+            with self.assertRaisesRegex(AutomationError, '原槽'):
+                next_action(wrong, session=waiting)
+            existing = deepcopy(waiting)
+            cell3 = next(c for c in roster_cells(wrong) if (c.zone, c.slot) == ('bench', 3))
+            existing['actions'][pickup['id']]['reward_basis']['cells']['bench:3'] = [cell3.state, cell3.signature]
+            existing['collection']['units'].pop('bench:3')
+            self.assertEqual(next_action(wrong, session=existing).payload, tuple(opening['target']))
+            changed = clone(board)
+            _crop(changed.image, bench_face(9))[0, 0] ^= 255
+            with self.assertRaisesRegex(AutomationError, '原槽'):
+                next_action(changed, session=waiting)
+            missing = deepcopy(waiting)
+            missing['actions'][pickup['id']]['loot_pickup'].pop('bench_box')
+            with self.assertRaisesRegex(AutomationError, '领取和槽位来源'):
+                next_action(board, session=missing)
+            page, active = harness.after_open
+            history = deepcopy(active)
+            history['reward']['origin_action_id'] = pickup['loot_sale_action_id']
+            with self.assertRaisesRegex(AutomationError, '开启来源'):
+                next_action(page, session=history)
+
+    def test_pending_open_never_uses_a_different_durable_pickup(self):
+        with tempfile.TemporaryDirectory() as folder:
+            harness = BenchHiringSaleHarness(folder)
+            def substitute(actions):
+                actions[-1]['loot_box_pickup_action_id'] = actions[0]['id']
+
+            harness.corrupt_before_input('open_standard_bench_reward', substitute)
+            with self.assertRaisesRegex(AutomationError, '落盘槽位'):
+                harness.run()
+            harness.c.window.click_held.assert_not_called()
+            self.assertNotIn('choose_standard_reward', harness.inputs)
+            self.assertEqual(harness.path.read_bytes(), harness.tampered_bytes)
+            self.assertEqual(StandardSession(harness.path).data['actions'][-1]['status'], 'pending')
+
+    def test_unresolved_bench_box_is_never_replayed(self):
+        for fault in ('label_only', 'extra_box', 'stale_open'):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as folder:
+                harness = BenchHiringSaleHarness(folder, fault=fault)
+                self.assertEqual(harness.run().status, 'partial')
+                held = 1 if fault == 'stale_open' else 0
+                self.assertEqual(harness.c.window.click_held.call_count, held)
+                self.assertNotIn('choose_standard_reward', harness.inputs)
+                saved_bytes = harness.path.read_bytes()
+                last = StandardSession(harness.path).data['actions'][-1]
+                self.assertEqual(last['status'], 'unknown')
+                self.assertEqual(last['action'], 'open_standard_bench_reward' if held else 'collect_standard_loot')
+                with self.assertRaisesRegex(AutomationError, '上次标准动作尚未核实'):
+                    harness.run()
+                self.assertEqual(harness.path.read_bytes(), saved_bytes)
+                self.assertEqual(harness.c.window.click_held.call_count, held)
+
     def test_hiring_reward_refills_slot_then_remaining_crystal_can_be_collected(self):
         for same_name in (False, True):
             with self.subTest(same_name=same_name), tempfile.TemporaryDirectory() as folder:

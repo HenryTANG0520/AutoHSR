@@ -311,6 +311,45 @@ class ChallengePreparationTests(unittest.TestCase):
                     self.execute(c)
                 c.window.click.assert_not_called()
 
+    def test_changed_target_intent_or_png_during_window_guard_blocks_click(self):
+        for changed in ('target', 'intent', 'png'):
+            with self.subTest(changed=changed), tempfile.TemporaryDirectory() as folder:
+                c = context(folder, [lobby(), lobby(), setup(), setup()])
+
+                def guard(*args):
+                    if changed == 'target':
+                        c.last_scene.tokens = [token for token in c.last_scene.tokens if token.text != '07']
+                    elif changed == 'intent':
+                        (Path(c.report.run_dir) / 'challenge-preparation.json').write_text('{}', encoding='utf-8')
+                    else:
+                        source = c.report.challenge['actions'][0]['before']
+                        Path(source['path']).write_bytes(b'changed after authorization')
+
+                c.window.guard.side_effect = guard
+                with self.assertRaises(AutomationError):
+                    try:
+                        self.execute(c)
+                    finally:
+                        c.window.click.assert_not_called()
+                self.assertFalse(c.report.challenge['preparation_page_verified'])
+                self.assertEqual(c.report.challenge['actions'][0]['status'], 'unknown')
+
+    def test_final_png_reread_cannot_expire_the_scene_before_click(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c = context(folder, [lobby(), lobby(), setup(), setup()])
+            open_file = Path.open
+
+            def delayed_open(path, *args, **kwargs):
+                if c.window.guard.called and path == Path(c.report.challenge['actions'][0]['before']['path']):
+                    c.clock.value = c.last_scene.captured_at + 8.01
+                return open_file(path, *args, **kwargs)
+
+            with patch.object(Path, 'open', delayed_open), \
+                 self.assertRaisesRegex(AutomationError, '当前新鲜画面'):
+                self.execute(c)
+            c.window.click.assert_not_called()
+            self.assertEqual(c.report.challenge['actions'][0]['status'], 'unknown')
+
     def test_duplicate_capture_cannot_be_second_independent_lobby(self):
         with tempfile.TemporaryDirectory() as folder:
             c = context(folder, [lobby(), lobby(), lobby(), setup(), setup()], duplicate_at=(1,))

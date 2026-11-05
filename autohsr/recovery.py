@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -187,30 +188,34 @@ class BattleBudget:
         # Must complete before any Start Challenge input; an I/O failure stops.
         self._write()
 
-    def confirm(self, cost: int, *, immersifiers=0):
+    def confirm(self, cost: int, *, immersifiers=0, completed: int | None = None):
         if (not self.active or type(cost) is not int or type(immersifiers) is not int
                 or self.report.stamina_pending != cost or cost < 0
                 or self.report.immersifiers_pending != immersifiers or cost + immersifiers <= 0):
             raise AutomationError("本次结算没有唯一待核对消耗，禁止重复记账。")
-        previous=None
-        if self.power_plan is not None:
-            from copy import deepcopy
-            previous=(deepcopy(self.report.power_plan),self.report.stamina_spent,self.report.stamina_pending,
-                self.report.immersifiers_spent,self.report.immersifiers_pending,self.report.battle_completed)
+        report = self.report
+        if completed is not None and (self.power_plan is not None or type(completed) is not int
+                                      or completed <= report.battle_completed):
+            raise AutomationError("本次结算完成次数与原记录不一致。")
+        previous = (report.stamina_spent, report.stamina_pending, report.immersifiers_spent,
+                    report.immersifiers_pending, report.battle_completed)
+        plan = deepcopy(report.power_plan) if self.power_plan is not None else None
         try:
-            if self.power_plan is not None:self.power_plan.confirm(cost,immersifiers)
-            self.report.stamina_spent += cost
-            self.report.stamina_pending = 0
-            self.report.immersifiers_spent += immersifiers
-            self.report.immersifiers_pending = 0
+            if self.power_plan is not None:
+                self.power_plan.confirm(cost, immersifiers)
+            elif completed is not None:
+                report.battle_completed = completed
+            report.stamina_spent += cost
+            report.stamina_pending = 0
+            report.immersifiers_spent += immersifiers
+            report.immersifiers_pending = 0
             self._write()
         except Exception:
-            if previous is not None:
-                plan,spent,pending,tokens,token_pending,completed=previous
-                self.report.power_plan.clear();self.report.power_plan.update(plan)
-                self.report.stamina_spent,self.report.stamina_pending=spent,pending
-                self.report.immersifiers_spent,self.report.immersifiers_pending=tokens,token_pending
-                self.report.battle_completed=completed
+            (report.stamina_spent, report.stamina_pending, report.immersifiers_spent,
+             report.immersifiers_pending, report.battle_completed) = previous
+            if plan is not None:
+                report.power_plan.clear()
+                report.power_plan.update(plan)
             raise
         if self.power_plan is not None:self.power_plan.publish('confirmed')
 

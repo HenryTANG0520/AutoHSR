@@ -9,15 +9,21 @@ from .currency_wars_supply import BASICS
 from .models import AutomationError,EmptyCapture,normalize
 
 
-def open_reward_target(scene,confidence=.65):
+def open_reward_target(scene,confidence=.65,*,slot=None):
     state=read_match(scene,confidence)
     if not state or state.page!='preparation' or not state.node:
         raise AutomationError('开启备战物品需要明确的备战节点。')
-    for slot,cx in enumerate(_BENCH_CENTERS,1):
-        targets=[t for t in scene.tokens if confidence<=t.score<=1 and normalize(t.text)=='开启'
-                 and t.within((cx-.035,.78,cx+.035,.91))]
-        if len(targets)==1:
+    labels = [t for t in scene.tokens if confidence<=t.score<=1 and normalize(t.text)=='开启']
+    matches = {index: [t for t in labels if t.within((cx-.035,.78,cx+.035,.91))]
+               for index,cx in enumerate(_BENCH_CENTERS,1)}
+    if slot is not None:
+        targets = matches.get(slot, ())
+        if len(targets)==1 and sum(targets[0] in values for values in matches.values())==1:
             return slot,targets[0]
+        raise AutomationError('晶矿备战箱的开启按钮未唯一对应已核实槽位。')
+    for index,targets in matches.items():
+        if len(targets)==1:
+            return index,targets[0]
     raise AutomationError('没有已识别的备战物品开启按钮。')
 
 

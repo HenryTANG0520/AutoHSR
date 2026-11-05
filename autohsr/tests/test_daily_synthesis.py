@@ -1,13 +1,17 @@
 """Single-item synthesis, card binding and durable no-replay regressions."""
 import json
+import os
 from pathlib import Path
 import tempfile
+import time
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
 from autohsr import daily_synthesis as synthesis
+from autohsr.app import Context
 from autohsr.config import Settings
-from autohsr.models import AutomationError, InputInterrupted, Scene
+from autohsr.models import AutomationError, InputInterrupted, RunReport, Scene
 from autohsr.recovery import reward_only_settings
 from autohsr.workflows import DailyWorkflow
 from autohsr.vision import Vision
@@ -66,7 +70,7 @@ class DailySynthesisTests(TestCase):
     def test_commit_requires_pending_record_and_exact_current_balances(self):
         scene = snack()
         record = dict(task_verified=True, status='pending', recipe=synthesis.RECIPE, quantity=1,
-                      before_holding=299, before_materials=[(301, 1), (397, 1)])
+                      before_holding=299, before_materials=[(301, 1), (397, 1)], game_day=synthesis.game_day())
         target = scene.find('合成', (.5, .86, .75, .96), exact=True)
         synthesis.guard_click(scene, target, 'daily_synthesis_commit', record)
         for field, value in (('status', 'complete'), ('quantity', 2), ('before_holding', 298),
@@ -115,6 +119,100 @@ class DailySynthesisTests(TestCase):
             self.assertEqual(stored['status'], 'complete')
             self.assertTrue(stored['confirmation_sent'])
             self.assertEqual(context.clicks, ['前往', '合成', '确认'])
+
+    def test_game_day_rollover_blocks_commit_or_confirmation_after_evidence_and_writes(self):
+        old_day, new_day = '2026-11-04', '2026-11-05'
+        for boundary in ('before_evidence', 'commit_write', 'confirmation_write'):
+            with self.subTest(boundary=boundary), tempfile.TemporaryDirectory() as folder:
+                context = SynthesisContext([card(), snack(), confirm(), snack(300, materials=(300, 396))])
+                day = old_day
+                original_evidence, original_save, original_fsync = context.evidence, synthesis._save, os.fsync
+
+                def evidence(scene, label):
+                    nonlocal day
+                    if boundary == 'before_evidence' and label == 'daily_synthesis_before':
+                        day = new_day
+                    return original_evidence(scene, label)
+
+                def fsync(handle):
+                    nonlocal day
+                    original_fsync(handle)
+                    if boundary == 'commit_write':
+                        day = new_day
+
+                def save(record, path):
+                    nonlocal day
+                    original_save(record, path)
+                    if boundary == 'confirmation_write' and record.get('confirmation_sent') is True:
+                        day = new_day
+
+                context.evidence = evidence
+                with patch.object(synthesis, 'ROOT', Path(folder)), patch.object(synthesis, 'game_day', lambda: day), \
+                     patch.object(synthesis, '_save', save), patch('os.fsync', fsync):
+                    with self.assertRaisesRegex(AutomationError, '跨游戏日'):
+                        synthesis.complete_once(DailyWorkflow(context), context.snapshot())
+                files = list((Path(folder)/'runs/daily-synthesis').glob('*.json'))
+                if boundary == 'before_evidence':
+                    self.assertEqual(files, [])
+                else:
+                    self.assertEqual(len(files), 1)
+                    stored = json.loads(files[0].read_text('utf8'))
+                    self.assertEqual((stored['game_day'], stored['status']), (old_day, 'pending'))
+                self.assertEqual(context.clicks, ['前往', '合成'] if boundary == 'confirmation_write' else ['前往'])
+
+    def test_sent_confirmation_can_settle_its_original_game_day_after_rollover(self):
+        receipt = Scene([token('获得物品', .5, .15), token('奇巧零食', .5, .5),
+                         token('点击空白处关闭', .5, .9), token('UID:101688852', .1, .97)])
+        context = SynthesisContext([card(), snack(), confirm(), receipt, snack(300, materials=(300, 396))])
+        old_day = day = '2026-11-04'
+        original_click = context.click
+
+        def click(scene, target, *, du_intent):
+            nonlocal day
+            original_click(scene, target, du_intent=du_intent)
+            if du_intent == 'daily_synthesis_confirm':
+                day = '2026-11-05'
+
+        context.click = click
+        with tempfile.TemporaryDirectory() as folder, patch.object(synthesis, 'ROOT', Path(folder)), \
+             patch.object(synthesis, 'game_day', lambda: day):
+            synthesis.complete_once(DailyWorkflow(context), context.snapshot())
+            path, = (Path(folder)/'runs/daily-synthesis').glob('*.json')
+            stored = json.loads(path.read_text('utf8'))
+            self.assertEqual((stored['game_day'], stored['status']), (old_day, 'complete'))
+            self.assertEqual(stored['after_holding'], 300)
+            self.assertEqual(context.clicks, ['前往', '合成', '确认', '点击空白处关闭'])
+
+    def test_context_rechecks_frozen_day_after_logging_before_resource_click(self):
+        for intent in ('daily_synthesis_commit', 'daily_synthesis_confirm'):
+            with self.subTest(intent=intent):
+                old_day = day = '2026-11-04'
+                scene = confirm() if intent.endswith('confirm') else snack()
+                target = synthesis.confirmation(scene) if intent.endswith('confirm') else scene.find(
+                    '合成', (.5, .86, .75, .96), exact=True)
+                scene.captured_at = time.monotonic()
+                report = RunReport(operation='daily')
+                record = dict(task_verified=True, status='pending', recipe=synthesis.RECIPE, quantity=1,
+                              before_holding=299, before_materials=[(301, 1), (397, 1)],
+                              game_day=old_day, confirmation_sent=True)
+                report.daily_synthesis = record.copy()
+
+                def log(*args):
+                    nonlocal day
+                    day = '2026-11-05'
+
+                runner = SimpleNamespace(settings=Settings(daily_synthesis=True), report=report,
+                                         input_epoch=0, checkpoint=Mock(), log=log)
+                window = Mock()
+                context = Context(runner, window, Mock())
+                context.last_scene = scene
+                context.sleep = Mock()
+                with patch.object(synthesis, 'game_day', lambda: day):
+                    with self.assertRaisesRegex(AutomationError, '跨游戏日'):
+                        context.click(scene, target, du_intent=intent)
+                self.assertEqual(day, '2026-11-05')
+                window.click.assert_not_called()
+                self.assertEqual(report.daily_synthesis, record)
 
     def test_pending_modal_resumes_without_replaying_recipe_or_commit(self):
         context = SynthesisContext([confirm(), snack(300, materials=(300, 396))])

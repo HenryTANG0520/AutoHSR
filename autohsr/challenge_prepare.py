@@ -74,6 +74,15 @@ class ChallengePreparation:
             raise AutomationError('高难计划已改变，未继续旧层数选择。')
 
     def _fresh(self, scene, *, allow_missing_account=False):
+        current = self._require_current(scene, allow_missing_account=allow_missing_account)
+        if current and self.request is not None:
+            # Context calls this again after the window guard, at the last
+            # gate before sending the pending level selection.
+            self._verify_request(scene)
+            self._require_current(scene)
+        return current
+
+    def _require_current(self, scene, *, allow_missing_account=False):
         self._check_attempt()
         if (scene is not self.c.last_scene or type(scene.captured_at) not in (int, float)
                 or not 0 <= time.monotonic() - scene.captured_at <= 8
@@ -119,17 +128,22 @@ class ChallengePreparation:
         return record
 
     def _derive(self, scene):
-        from .challenge_pages import observe, target
+        from .challenge_pages import observe
         observation = observe(scene, self.c.settings.ocr_confidence)
         level = self.plan.level_start
-        token = target(scene, 'select_level', self.c.settings.ocr_confidence, level=level)
-        if observation.kind != 'lobby' or observation.mode != self.plan.mode or token is None:
+        choices = [token for intent, token in observation.targets
+                   if intent == 'select_level' and int(token.text) == level]
+        if observation.kind != 'lobby' or observation.mode != self.plan.mode or len(choices) != 1:
             raise AutomationError('当前混沌主页没有本次层数的唯一导航目标。')
-        return PreparationAction('select_level', level, token)
+        return PreparationAction('select_level', level, choices[0])
 
     def authorize(self, scene, action):
+        if self.request is None or self.request != action:
+            raise AutomationError('高难层数选择与当前页面或冻结计划不符。')
         self._fresh(scene)
-        if self.request != action or self._derive(scene) != action:
+
+    def _verify_request(self, scene):
+        if self._derive(scene) != self.request:
             raise AutomationError('高难层数选择与当前页面或冻结计划不符。')
         with self.path.open('rb') as stream:
             raw = stream.read(MAX_BYTES + 1)
@@ -227,6 +241,7 @@ class ChallengePreparation:
                 self.request = action
                 self._persist()
                 self.c.challenge_prepare_input(scene, action)
+                self.request = None
                 after_input = time.monotonic()
                 record['status'] = 'submitted'
                 self._persist()

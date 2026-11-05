@@ -13,6 +13,7 @@ from .storage import replace_file
 
 RECIPE = '奇巧零食'
 TITLE = (0, 0, .32, .13)
+RESOURCE_INPUTS = frozenset(('daily_synthesis_commit', 'daily_synthesis_confirm'))
 
 
 def compact(text):
@@ -125,6 +126,11 @@ def confirmation(scene):
     return scene.find('确认', (.51, .62, .71, .68), exact=True)
 
 
+def _require_game_day(record):
+    if record.get('game_day') != game_day():
+        raise AutomationError('每日实训已跨游戏日，未发送本次合成输入。')
+
+
 def guard_click(scene, target, intent, record):
     if not isinstance(target, Token) or record.get('task_verified') is not True:
         raise AutomationError('未核实每日实训合成任务，未操作合成。')
@@ -151,6 +157,8 @@ def guard_click(scene, target, intent, record):
         valid = False
     if not valid:
         raise AutomationError('合成目标、单件数量或任务证据不符，未发送点击。')
+    if intent in RESOURCE_INPUTS:
+        _require_game_day(record)
 
 
 def _save(record, path):
@@ -175,8 +183,9 @@ def _finish(workflow, scene, record, path):
     if target is not None:
         if record.get('confirmation_sent'):
             raise AutomationError('此前已发送合成确认，保留待核对记录，不重复确认。')
-        record.update(confirmation_sent=True,
-                      confirmation_evidence=str(ctx.evidence(scene, 'daily_synthesis_confirmation')))
+        confirmation_evidence = str(ctx.evidence(scene, 'daily_synthesis_confirmation'))
+        _require_game_day(record)
+        record.update(confirmation_sent=True, confirmation_evidence=confirmation_evidence)
         _save(record, path)
         ctx.log('已核实确认弹窗为奇巧零食×1，发送一次合成确认。')
         ctx.click(scene, target, du_intent='daily_synthesis_confirm')
@@ -262,9 +271,10 @@ def complete_once(workflow, scene):
     scene = workflow._wait(ready, timeout=12, description='核实仅合成1个奇巧零食及两种普通材料各1个')
     if account_key(scene) != key:
         raise AutomationError('合成页账号与每日实训不一致，未消耗材料。')
+    before_evidence = str(ctx.evidence(scene, 'daily_synthesis_before'))
+    _require_game_day(record)
     record.update(status='pending', before_holding=holding(scene), before_materials=materials(scene),
-                  before_evidence=str(ctx.evidence(scene, 'daily_synthesis_before')),
-                  started_at=datetime.now().astimezone().isoformat())
+                  before_evidence=before_evidence, started_at=datetime.now().astimezone().isoformat())
     folder.mkdir(parents=True, exist_ok=True)
     # Exclusive durable intent before the only consuming click. Never replay it.
     with path.open('x', encoding='utf8') as handle:

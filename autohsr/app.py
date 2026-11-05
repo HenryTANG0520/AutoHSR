@@ -399,6 +399,7 @@ class Context:
             raise AutomationError("识别画面已经过期，请重新识别后操作。")
         from .policy import guard_click, guard_differential_universe_click, replenishment_dialog
         weekly_start_guard = None
+        synthesis_resource_guard = None
         if self.report.operation == "differential_universe":
             if du_intent=='periodic_start':
                 from .weekly_plan import WeeklyGuard
@@ -422,8 +423,10 @@ class Context:
         elif du_intent.startswith('daily_synthesis_'):
             if self.report.operation != 'daily' or not self.settings.daily_synthesis:
                 raise AutomationError('日常合成仅用于已开启的每日实训补足步骤。')
-            from .daily_synthesis import guard_click as guard_synthesis_click
+            from .daily_synthesis import RESOURCE_INPUTS, guard_click as guard_synthesis_click
             guard_synthesis_click(scene, target, du_intent, self.report.daily_synthesis)
+            if du_intent in RESOURCE_INPUTS:
+                synthesis_resource_guard = guard_synthesis_click
         elif du_intent.startswith('planar_team_'):
             if self.report.operation != 'daily' or self.settings.dungeon_category != 'planar':
                 raise AutomationError('饰品提取预设选角仅用于该副本日常流程。')
@@ -455,6 +458,13 @@ class Context:
                 if du_record is not None:
                     du_record.update(status='not_sent',reason='weekly_start_revalidation_failed',detail=str(error))
                 raise
+        if synthesis_resource_guard is not None:
+            self.checkpoint()
+            if self.scene_epoch != self.runner.input_epoch or scene is not self.last_scene:
+                raise InputInterrupted('合成输入前代次或当前画面改变，未发送旧目标。')
+            if not 0 <= time.monotonic() - scene.captured_at <= 8:
+                raise AutomationError('合成输入前画面已过期，未发送输入。')
+            synthesis_resource_guard(scene, target, du_intent, self.report.daily_synthesis)
         try:
             self.window.click(*coordinates, scene.geometry)
         except FocusLost:

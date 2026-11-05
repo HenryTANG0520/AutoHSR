@@ -43,7 +43,10 @@ _LOOT_REWARD_PAGES = frozenset(('equipment_selection', 'advanced_equipment_selec
                                 'expert_selection', 'hiring_selection'))
 _LOOT_REWARD_READS = frozenset(('inspect_standard_reward_unit', 'close_standard_reward_unit',
                                  'close_standard_reward_stale_panel'))
-_LOOT_SALE_COLLECTION = _LOOT_SALE_INSPECTIONS | _LOOT_REWARD_READS | {'collect_standard_loot', 'choose_standard_reward'}
+_LOOT_BOX_OPEN = 'open_standard_bench_reward'
+_LOOT_SALE_COLLECTION = _LOOT_SALE_INSPECTIONS | _LOOT_REWARD_READS | {
+    'collect_standard_loot', 'choose_standard_reward', _LOOT_BOX_OPEN}
+_UNRESOLVED_LOOT_BOX = object()
 
 
 def _loot_sale_basis(scene, confidence, session):
@@ -107,15 +110,56 @@ def _loot_pickup_sale(actions, index, limit):
     return sale_id
 
 
+def _loot_reward_proof(origin):
+    return origin.get('loot_box_open' if origin.get('action') == _LOOT_BOX_OPEN else 'loot_pickup')
+
+
 def _loot_reward_origin(session):
     reward = session.get('reward', {})
     index = reward.get('origin_action_id')
     actions = session.get('actions', [])
+    cursor = len(actions)-1
+    if cursor >= 0 and actions[cursor].get('status') == 'pending':
+        cursor -= 1
+    while cursor >= 0 and actions[cursor].get('action') in _LOOT_REWARD_READS:
+        cursor -= 1
+    claim = None
+    if cursor >= 0 and actions[cursor].get('action') == 'choose_standard_reward':
+        claim = actions[cursor]
+        cursor -= 1
+    if cursor >= 0 and actions[cursor].get('action') == _LOOT_BOX_OPEN:
+        origin = actions[cursor]
+        proof = _loot_reward_proof(origin)
+        pickup = _loot_waiting_box(actions[:cursor])
+        if pickup is not None or 'loot_box_pickup_action_id' in origin or 'loot_box_open' in origin:
+            if (type(index) is not int or index != cursor or origin.get('id') != cursor or origin.get('status') != 'verified'
+                    or pickup is None or not _loot_opened_box(origin, pickup, pickup['loot_pickup']['remaining'])
+                    or proof['reward_page'] != reward.get('page') or origin['target'][1] != reward.get('box_slot')
+                    or proof['gold_before_claim'] != reward.get('basis', {}).get('gold')):
+                raise AutomationError('晶矿备战箱的开启来源与当前选奖记录不一致。')
+            status = reward.get('status')
+            if claim is None and status == 'awaiting':
+                return origin
+            target = claim.get('target') if claim is not None else None
+            if (claim is not None and claim.get('status') == 'verified'
+                    and claim.get('id') == reward.get('claim_action_id') == cursor+1
+                    and isinstance(target, list) and len(target) >= 3 and target[1] == cursor):
+                if status == 'unit_verifying':
+                    return origin
+                from .currency_wars_standard_rewards import valid_effect
+                if (status == 'verified' and origin.get('reward_verified') is True
+                        and claim.get('reward_verified') is True and valid_effect(claim, actions)):
+                    return None
+            raise AutomationError('晶矿备战箱的选奖尚未核实。')
     if (reward.get('status') not in ('awaiting', 'unit_verifying') or type(index) is not int
             or not 0 <= index < len(actions)):
         return None
     origin = actions[index]
-    proof = origin.get('loot_pickup')
+    proof = _loot_reward_proof(origin)
+    if origin.get('action') == _LOOT_BOX_OPEN:
+        if 'loot_box_pickup_action_id' in origin or 'loot_box_open' in origin:
+            raise AutomationError('不能用历史开箱替代当前晶矿备战箱。')
+        return None
     if (origin.get('action') == 'collect_standard_loot' and origin.get('status') == 'verified'
             and isinstance(origin.get('reward_basis'), dict)
             and isinstance(proof, dict) and isinstance(proof.get('reward_page'), str)
@@ -139,9 +183,19 @@ def _loot_sale_input_chain(intent, session):
         origin = _loot_reward_origin(session)
         if origin is None:
             return None
-        source = origin['loot_sale_action_id']-1
+        pickup = actions[origin['loot_box_pickup_action_id']] if origin['action'] == _LOOT_BOX_OPEN else origin
+        source = pickup['loot_sale_action_id']-1
+    elif intent == _LOOT_BOX_OPEN:
+        pickup = _loot_waiting_box(actions[:-1])
+        if pickup is None and 'loot_box_pickup_action_id' not in actions[-1]:
+            return None
+        if pickup is None or not _loot_box_open_source(actions[-1], pickup):
+            raise AutomationError('晶矿备战箱的落盘槽位与原领取回执不一致。')
+        source = pickup['loot_sale_action_id']-1
     elif intent == 'collect_standard_loot' or intent in _LOOT_SALE_INSPECTIONS:
-        index = _loot_sale_index(actions[:-1])
+        prior = actions[:-1]
+        pickup = _loot_waiting_box(prior) if intent in _LOOT_SALE_INSPECTIONS else None
+        index = pickup['loot_sale_action_id'] if pickup is not None else _loot_sale_index(prior)
         if index is None and intent == 'collect_standard_loot':
             index = actions[-1].get('loot_sale_action_id')
         if index is None:
@@ -210,6 +264,69 @@ def _loot_board_values(state):
             list(state.deployment or ()))
 
 
+def _loot_basis_values(basis):
+    return tuple(basis.get(key) for key in ('node', 'hp', 'level', 'experience', 'deployment'))
+
+
+def _loot_bench_delta(before, after):
+    """Return one new box, () for no box change, or None for ambiguous delivery."""
+    if not isinstance(before, dict) or not isinstance(after, dict) or before.keys() != after.keys():
+        return None
+    bench = {f'bench:{slot}': slot for slot in range(1, 10)}
+    if not bench.keys() <= before.keys() or any(
+            not isinstance(cell, list) or len(cell) != 2 or cell[0] not in ('empty', 'occupied', 'reward')
+            for cells in (before, after) for cell in cells.values()):
+        return None
+    old = {key: cell for key, cell in before.items() if cell[0] == 'reward'}
+    new = {key: cell for key, cell in after.items() if cell[0] == 'reward'}
+    if old == new:
+        return ()
+    added = new.keys() - old.keys()
+    if len(added) != 1:
+        return None
+    key = next(iter(added))
+    if (key not in bench or before[key][0] != 'empty' or before[key][1] == new[key][1]
+            or any(after[other] != cell for other, cell in before.items() if other != key)):
+        return None
+    return [bench[key], new[key][1]]
+
+
+def _loot_box_marker(pickup):
+    box = pickup['loot_pickup'].get('bench_box')
+    before = pickup['reward_basis'].get('cells')
+    if not isinstance(box, list) or len(box) != 2 or not isinstance(before, dict):
+        return None
+    slot, signature = box
+    if type(slot) is not int or not 1 <= slot <= 9 or not isinstance(signature, str) or len(signature) != 64:
+        return None
+    cell = before.get(f'bench:{slot}')
+    if (not isinstance(cell, list) or len(cell) != 2 or cell[0] != 'empty' or cell[1] == signature
+            or any(char not in '0123456789abcdef' for char in signature)):
+        return None
+    return box
+
+
+def _loot_box_open_source(action, pickup):
+    box = _loot_box_marker(pickup)
+    before, collected_before = action.get('reward_basis'), pickup['reward_basis']
+    return (box is not None and action.get('action') == _LOOT_BOX_OPEN
+            and action.get('expected') == 'standard_reward_opened' and action.get('before')
+            and action.get('loot_box_pickup_action_id') == pickup['id']
+            and action.get('target') == [collected_before['node'], *box]
+            and isinstance(before, dict) and _loot_basis_values(before) == _loot_basis_values(collected_before)
+            and before.get('gold') == pickup['loot_pickup']['gold_after']
+            and _loot_bench_delta(collected_before.get('cells'), before.get('cells')) == box)
+
+
+def _loot_opened_box(action, pickup, remaining):
+    proof = action.get('loot_box_open')
+    return (_loot_box_open_source(action, pickup) and action.get('after') and isinstance(proof, dict)
+            and isinstance(proof.get('reward_page'), str) and proof['reward_page'] in _LOOT_REWARD_PAGES
+            and type(proof.get('gold_before_claim')) is int
+            and proof['gold_before_claim'] == pickup['loot_pickup']['gold_after']
+            and _same_loot_centers(remaining, proof.get('remaining')))
+
+
 def _loot_unit_read_matches(returned, claim, actions, end, node, slot):
     proof = returned.get('unit_slot_read')
     if not isinstance(proof, dict):
@@ -231,7 +348,7 @@ def _loot_unit_read_matches(returned, claim, actions, end, node, slot):
 def _loot_reward_gold(origin, claim, actions, remaining, end):
     from .currency_wars_standard_rewards import valid_effect
 
-    proof = origin['loot_pickup']
+    proof = _loot_reward_proof(origin)
     returned = claim.get('loot_reward_return')
     if (claim.get('id') != origin['id']+1 or claim.get('expected') != 'standard_reward_returned'
             or origin.get('reward_verified') is not True or claim.get('reward_verified') is not True
@@ -252,7 +369,8 @@ def _loot_reward_gold(origin, claim, actions, remaining, end):
         if returned.get('unit_slot_verified') is not True:
             return None
         cell = cells.get(f'bench:{slot}') if slot else None
-        if slot and (not isinstance(cell, list) or not cell or cell[0] != 'empty'
+        initial_state = 'reward' if slot and origin['action'] == _LOOT_BOX_OPEN and slot == origin['target'][1] else 'empty'
+        if slot and (not isinstance(cell, list) or not cell or cell[0] != initial_state
                      or not _loot_unit_read_matches(returned, claim, actions, end, before['node'], slot)):
             return None
     elif slot or (effect.get('unit') and delivery != 'advisor_selection'):
@@ -260,12 +378,12 @@ def _loot_reward_gold(origin, claim, actions, remaining, end):
     return effect['gold_after']
 
 
-def _loot_pickup_chain(actions, index, end, basis):
+def _loot_pickup_chain(actions, index, end, basis, *, waiting_for_box=False):
     """Rebuild the remaining set and balance between two sales."""
     receipt = actions[index]['receipt']
     values = (receipt['node'], receipt['hp_after'], receipt['level_after'], basis.get('experience'), basis.get('deployment'))
     remaining, gold, pickup = basis.get('crystals'), receipt['gold_after'], None
-    open_reward, read_reward_unit = None, False
+    unopened, open_reward, read_reward_unit = None, None, False
     for offset, action in enumerate(actions[index+1:end], index+1):
         intent = action.get('action')
         if (action.get('id') != offset or action.get('status') != 'verified'
@@ -279,7 +397,14 @@ def _loot_pickup_chain(actions, index, end, basis):
             read_reward_unit = bool(action['reward_effect'].get('unit'))
             open_reward = None
             continue
-        if intent == 'choose_standard_reward':
+        if unopened is not None:
+            if intent in _LOOT_SALE_INSPECTIONS and action.get('before') and action.get('after'):
+                continue
+            if not _loot_opened_box(action, unopened, remaining):
+                return None
+            open_reward, unopened = action, None
+            continue
+        if intent in ('choose_standard_reward', _LOOT_BOX_OPEN):
             return None
         if intent in _LOOT_REWARD_READS:
             if not read_reward_unit or not action.get('before') or not action.get('after'):
@@ -297,13 +422,15 @@ def _loot_pickup_chain(actions, index, end, basis):
         if (action.get('loot_sale_action_id') != index or action.get('expected') != 'loot_collected'
                 or any(not isinstance(action.get(key), str) or not action[key] for key in ('before', 'after'))
                 or not isinstance(proof, dict) or not isinstance(before, dict) or remaining is None
-                or tuple(before.get(key) for key in ('node', 'hp', 'level', 'experience', 'deployment')) != values
+                or _loot_basis_values(before) != values
                 or before.get('gold') != gold or not _same_loot_centers(remaining, proof.get('remaining'))):
             return None
         pickup = action
+        if ('bench_box' in proof) != (action.get('loot_pickup_kind') == 'bench_box'):
+            return None
         if 'reward_page' in proof:
             page, modal_gold = proof['reward_page'], proof.get('gold_before_claim')
-            if (not isinstance(page, str) or page not in _LOOT_REWARD_PAGES
+            if ('bench_box' in proof or not isinstance(page, str) or page not in _LOOT_REWARD_PAGES
                     or type(modal_gold) is not int or not gold <= modal_gold <= 99999):
                 return None
             open_reward = action
@@ -312,7 +439,33 @@ def _loot_pickup_chain(actions, index, end, basis):
             if type(after_gold) is not int or not gold <= after_gold <= 99999:
                 return None
             gold = after_gold
-    return (values, remaining, gold, pickup) if open_reward is None and pickup is not None and remaining else None
+            if 'bench_box' in proof:
+                if _loot_box_marker(pickup) is None:
+                    return None
+                unopened = pickup
+    if waiting_for_box:
+        return (values, remaining, gold, pickup) if unopened is not None else None
+    return (values, remaining, gold, pickup) if unopened is None and open_reward is None and pickup is not None and remaining else None
+
+
+def _loot_waiting_box(actions):
+    """Recover an unopened box only from the current verified loot sequence."""
+    cursor = len(actions)-1
+    while cursor >= 0 and actions[cursor].get('action') in _LOOT_SALE_INSPECTIONS:
+        cursor -= 1
+    if cursor < 0:
+        return None
+    pickup = actions[cursor]
+    proof = pickup.get('loot_pickup')
+    if pickup.get('loot_pickup_kind') != 'bench_box' and (not isinstance(proof, dict) or 'bench_box' not in proof):
+        return None
+    index = _loot_pickup_sale(actions, cursor, len(actions))
+    basis = _verified_loot_sale(actions, index)
+    chain = _loot_pickup_chain(actions, index, len(actions), basis, waiting_for_box=True) if basis is not None else None
+    if chain is None or chain[3] is not pickup:
+        raise AutomationError('晶矿备战箱缺少完整的领取和槽位来源。')
+    _loot_sale_root(actions, index-1, basis)
+    return pickup
 
 
 def _loot_sale_root(actions, source, basis):
@@ -369,18 +522,14 @@ def _loot_board_feedback(scene, state, before, remaining, confidence):
     from .currency_wars_standard_hud import experience_observed
 
     if (not before or not state or state.page != 'preparation' or not experience_observed(scene, state, confidence)
-            or _loot_board_values(state) != tuple(before.get(key) for key in ('node', 'hp', 'level', 'experience', 'deployment'))
+            or _loot_board_values(state) != _loot_basis_values(before)
             or state.gold is None or not before['gold'] <= state.gold <= 99999
             or not _same_loot_centers(remaining, loot_centers(scene))):
         return None
     return dict(remaining=remaining, gold_after=state.gold)
 
 
-def _loot_pickup_feedback(scene, action, remaining, confidence):
-    from .currency_wars_match import read_match
-
-    before = action.get('reward_basis')
-    state = read_match(scene, confidence, include_rewards=True)
+def _loot_modal_feedback(state, before, remaining):
     if before and state and state.page in _LOOT_REWARD_PAGES and remaining is not None:
         if state.node != before['node']:
             return None
@@ -394,20 +543,76 @@ def _loot_pickup_feedback(scene, action, remaining, confidence):
             # The reward overlay hides the ground. The surviving crystals
             # still need to be observed on the return to preparation.
             return dict(remaining=remaining, reward_page=state.page, gold_before_claim=gold)
+    return None
+
+
+def _loot_live_box(scene, before, confidence):
+    from .currency_wars_collector import roster_cells
+    from .currency_wars_rewards import open_reward_target
+
+    try:
+        cells = {f'{cell.zone}:{cell.slot}': [cell.state, cell.signature]
+                 for cell in roster_cells(scene, confidence)}
+        box = _loot_bench_delta(before.get('cells'), cells)
+        if box:
+            open_reward_target(scene, confidence, slot=box[0])
+        return box
+    except AutomationError:
         return None
-    return _loot_board_feedback(scene, state, before, remaining, confidence)
+
+
+def _loot_pickup_feedback(scene, action, remaining, confidence):
+    from .currency_wars_match import read_match
+
+    before = action.get('reward_basis')
+    state = read_match(scene, confidence, include_rewards=True)
+    if not before or not state or state.page != 'preparation':
+        return _loot_modal_feedback(state, before, remaining)
+    result = _loot_board_feedback(scene, state, before, remaining, confidence)
+    box = _loot_live_box(scene, before, confidence)
+    if box == ():
+        return result  # Ordinary disappearance may still be verified without continuation.
+    if box and result is not None:
+        return dict(result, bench_box=box)
+    if box is None and not any(cell[0] == 'reward' for cell in before['cells'].values()) and not any(
+            normalize(t.text) == '开启' and t.within((.18, .78, .80, .92)) for t in trusted(scene, confidence).tokens):
+        return None  # No box signal; retain the existing disappearance-only outcome.
+    return _UNRESOLVED_LOOT_BOX
+
+
+def _loot_box_board(scene, pickup, confidence):
+    from .currency_wars_match import read_match
+
+    before, proof = pickup['reward_basis'], pickup['loot_pickup']
+    state = read_match(scene, confidence)
+    result = _loot_board_feedback(scene, state, before, proof['remaining'], confidence)
+    if (result is None or result['gold_after'] != proof['gold_after']
+            or _loot_live_box(scene, before, confidence) != proof['bench_box']):
+        raise AutomationError('晶矿备战箱的原槽、其余备战格或剩余晶矿未重新核实。')
+    return proof['bench_box'][0]
+
+
+def _loot_box_feedback(scene, action, pickup, confidence):
+    from .currency_wars_match import read_match
+
+    result = _loot_modal_feedback(read_match(scene, confidence, include_rewards=True),
+                                  action['reward_basis'], pickup['loot_pickup']['remaining'])
+    if result is not None and result['gold_before_claim'] == pickup['loot_pickup']['gold_after']:
+        return result
+    return None
 
 
 def _loot_reward_feedback(scene, origin, choice, confidence):
     from .currency_wars_match import read_match
     from .currency_wars_standard_rewards import added_loot_bench_slot
 
-    before, proof = origin['reward_basis'], origin['loot_pickup']
+    before, proof = origin['reward_basis'], _loot_reward_proof(origin)
     state = read_match(scene, confidence)
     result = _loot_board_feedback(scene, state, before, proof['remaining'], confidence)
     if result is None or result['gold_after'] != proof['gold_before_claim'] + choice.payload[7]:
         return None
-    slot = added_loot_bench_slot(scene, before['cells'], confidence)
+    box_slot = origin['target'][1] if origin['action'] == _LOOT_BOX_OPEN else None
+    slot = added_loot_bench_slot(scene, before['cells'], confidence, box_slot=box_slot)
     if slot is None:
         return None
     return dict(result, added_bench_slot=slot)
@@ -515,9 +720,13 @@ def next_action(scene, confidence=.65, *, session=None):
     pending = actions[-1] if actions and actions[-1].get('status') == 'pending' else None
     prior = dict(session, actions=actions[:-1], rederiving_action=pending) if pending else session
     loot_sale = _loot_sale_followup(scene, prior, confidence)
-    choice = _next_action(scene, confidence, session=prior)
+    loot_box = _loot_waiting_box(prior.get('actions', []))
+    _loot_reward_origin(prior)
+    choice = _next_action(scene, confidence, session=prior, loot_box=loot_box)
     if loot_sale and choice.intent != 'collect_standard_loot' and choice.intent not in _LOOT_SALE_INSPECTIONS:
         raise AutomationError('晶矿腾位已核实，只允许重新采集阵容或领取当前晶矿。')
+    if loot_box is not None and choice.intent != _LOOT_BOX_OPEN and choice.intent not in _LOOT_SALE_INSPECTIONS:
+        raise AutomationError('晶矿备战箱待开启，只允许重新采集阵容或开启原槽。')
     if pending and (choice.intent != pending.get('action') or choice.expected != pending.get('expected')
                     or json.dumps(list(choice.payload),sort_keys=True,allow_nan=False)!=json.dumps(pending.get('target', []),sort_keys=True,allow_nan=False)):
         raise AutomationError('当前页面推导结果与已落盘意图不同，未替换或重放动作。')
@@ -527,10 +736,14 @@ def next_action(scene, confidence=.65, *, session=None):
     if pending and choice.intent == 'collect_standard_loot':
         if pending.get('loot_sale_action_id') != _loot_pickup_origin(scene, prior, confidence):
             raise AutomationError('晶矿领取与原落盘腾位来源不一致。')
+    if pending and choice.intent == _LOOT_BOX_OPEN and (
+            loot_box is not None or 'loot_box_pickup_action_id' in pending):
+        if loot_box is None or not _loot_box_open_source(pending, loot_box):
+            raise AutomationError('晶矿备战箱开启与原落盘领取来源不一致。')
     return choice
 
 
-def _next_action(scene, confidence=.65, *, session=None):
+def _next_action(scene, confidence=.65, *, session=None, loot_box=None):
     from .currency_wars_standard_popup import active_action as popup_action
     popup=popup_action(scene,session or {},confidence)
     if popup is not None:return popup
@@ -625,6 +838,7 @@ def _next_action(scene, confidence=.65, *, session=None):
         return StandardAction('confirm_standard_environment_'+str(choice.slot), 'initial_board', target, details,
                               payload=(expected_board,) if expected_board else ())
     if kind == 'preparation':
+        box_slot = _loot_box_board(scene, loot_box, confidence) if loot_box is not None else None
         initial = (session or {}).get('initial_environment')
         if initial and initial.get('post_choice_observation') is None:
             from .currency_wars_initial import validate_origin
@@ -645,7 +859,7 @@ def _next_action(scene, confidence=.65, *, session=None):
                                       payload=(cell.zone,cell.slot,cell.node,cell.signature))
         if 'strategy' in (session or {}):
             from .currency_wars_standard_rewards import open_bench_action
-            opening = open_bench_action(scene,session,confidence)
+            opening = open_bench_action(scene,session,confidence,slot=box_slot)
             if opening is not None:return opening
         from .currency_wars_loot import loot_target
         if loot_centers(scene):
@@ -1180,6 +1394,7 @@ def run_standard(c):
             store.persist()
         investment_box = False
         loot_remaining = None
+        loot_box = None
         if choice.intent in ('start_standard_node','collect_standard_loot','open_standard_bench_reward'):
             from .currency_wars_standard_rewards import bind_source
             from .currency_wars_standard_investment import bind_reward, box_opening_page
@@ -1193,6 +1408,10 @@ def run_standard(c):
                     from .currency_wars_node import loot_centers
                     action['loot_sale_action_id'] = origin
                     loot_remaining = _loot_remaining([list(center) for center in loot_centers(scene)], choice.payload)
+            elif choice.intent == _LOOT_BOX_OPEN:
+                loot_box = _loot_waiting_box(store.data['actions'][:-1])
+                if loot_box is not None:
+                    action['loot_box_pickup_action_id'] = loot_box['id']
             store.persist()
         if choice.intent in ('close_standard_unit','close_standard_stale_unit'):
             from .currency_wars_standard_collection import bind_close
@@ -1202,7 +1421,7 @@ def run_standard(c):
         c.log('标准A8-40开发：' + choice.intent)
         loot_pickup = 'loot_sale_action_id' in action
         loot_claim = _loot_reward_origin(store.data) if choice.intent == 'choose_standard_reward' else None
-        strict_feedback = investment_box or loot_pickup or loot_claim is not None
+        strict_feedback = investment_box or loot_pickup or loot_box is not None or loot_claim is not None
         observed_at = scene.captured_at
         c.currency_standard_input(scene, choice)
         elapsed, after, stable, previous_popup = 0., None, 0, None
@@ -1260,6 +1479,11 @@ def run_standard(c):
                 pickup = None
                 if ready and loot_pickup:
                     pickup = _loot_pickup_feedback(after, action, loot_remaining, c.settings.ocr_confidence)
+                    if pickup is _UNRESOLVED_LOOT_BOX:
+                        ready, pickup = False, None
+                elif ready and loot_box is not None:
+                    pickup = _loot_box_feedback(after, action, loot_box, c.settings.ocr_confidence)
+                    ready = pickup is not None
                 elif ready and loot_claim is not None:
                     pickup = _loot_reward_feedback(after, loot_claim, choice, c.settings.ocr_confidence)
                 if pickup != previous_pickup:
@@ -1268,7 +1492,7 @@ def run_standard(c):
                 stable = (len(initial_return_frames) if choice.expected == 'standard_initial_shop_closed'
                           else stable+1) if ready else 0
                 from .currency_wars_defeat import INTENTS as DEFEAT_INTENTS
-                required = 2 if investment_box or choice.intent in DEFEAT_INTENTS or choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable','standard_relocate_inspectable',
+                required = 2 if investment_box or loot_box is not None or choice.intent in DEFEAT_INTENTS or choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable','standard_relocate_inspectable',
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
                                                     'standard_sale_panel','standard_owned_sold','standard_field_sale_panel','standard_field_owned_sold','standard_equipment_inspectable',
                                                     'standard_reward_returned','standard_supply_selected','standard_supply_refreshed',
@@ -1293,7 +1517,10 @@ def run_standard(c):
                             raise AutomationError('标准交易收据与原意图不符，保留待核对状态。')
                     action.update(status='verified', after=after_path)
                     if pickup is not None:
-                        action['loot_pickup' if loot_pickup else 'loot_reward_return'] = pickup
+                        key = 'loot_pickup' if loot_pickup else 'loot_box_open' if loot_box is not None else 'loot_reward_return'
+                        action[key] = pickup
+                        if loot_pickup and 'bench_box' in pickup:
+                            action['loot_pickup_kind'] = 'bench_box'
                     store.data.update(action_status='transition_verified', screenshot=action['after'])
                     if choice.intent in FINANCIAL_ACTIONS:
                         from .currency_wars_standard_trading import record_financial_feedback

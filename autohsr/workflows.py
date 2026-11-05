@@ -1097,14 +1097,12 @@ class DailyWorkflow:
             completed += cost // category.cost
             # A multi-item plan also verifies current account and preserves its
             # evidence before publishing a new completed counter.
-            planned=budget is not None and getattr(budget,'power_plan',None) is not None
-            if not planned:self.ctx.report.battle_completed = completed_base+completed
             if budget is not None:
-                if paid_immersifiers:
-                    budget.confirm(paid_stamina, immersifiers=paid_immersifiers)
-                else:
-                    budget.confirm(paid_stamina)
+                planned = getattr(budget, 'power_plan', None) is not None
+                budget.confirm(paid_stamina, immersifiers=paid_immersifiers,
+                               completed=None if planned else completed_base+completed)
             else:
+                self.ctx.report.battle_completed = completed_base+completed
                 self.ctx.report.stamina_spent += paid_stamina
                 self.ctx.report.immersifiers_spent += paid_immersifiers
             self.ctx.evidence(scene, f"battle_success_{completed}")

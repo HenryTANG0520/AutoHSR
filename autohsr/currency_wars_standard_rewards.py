@@ -71,12 +71,12 @@ def bind_source(session, choice, scene, confidence=.65):
         session['actions'][-1]['reward_basis_missing'] = str(error)
 
 
-def open_bench_action(scene, session, confidence=.65):
+def open_bench_action(scene, session, confidence=.65, *, slot=None):
     from .currency_wars_rewards import open_reward_target
     from .currency_wars_standard_flow import StandardAction
-    if not any(normalize(t.text)=='开启' and t.within((.18,.78,.80,.92)) for t in trusted(scene,confidence).tokens):
+    if slot is None and not any(normalize(t.text)=='开启' and t.within((.18,.78,.80,.92)) for t in trusted(scene,confidence).tokens):
         return None
-    slot,target = open_reward_target(scene,confidence)
+    slot,target = open_reward_target(scene,confidence,slot=slot)
     source = basis(scene,session,'open_standard_bench_reward',confidence)
     if source['cells']['bench:'+str(slot)][0]!='reward':
         raise AutomationError('待开启位置没有对应的奖励物品，未点击。')
@@ -352,7 +352,7 @@ def feedback(choice, before, after, session, confidence=.65):
         return False
 
 
-def added_loot_bench_slot(scene, before, confidence=.65):
+def added_loot_bench_slot(scene, before, confidence=.65, *, box_slot=None):
     """Return the newly occupied bench slot, zero for no addition, or None for unknown."""
     try:
         cells = {(cell.zone, cell.slot): cell.state for cell in roster_cells(scene, confidence)}
@@ -361,6 +361,10 @@ def added_loot_bench_slot(scene, before, confidence=.65):
         added = []
         for (zone, slot), current in cells.items():
             previous = before[f'{zone}:{slot}'][0]
+            if zone == 'bench' and slot == box_slot:
+                if previous != 'reward' or current == 'reward':
+                    return None
+                previous = 'empty'  # The exact source box was consumed.
             if current == previous or (previous, current) == ('occupied', 'empty'):
                 continue
             if zone != 'bench' or (previous, current) != ('empty', 'occupied'):
@@ -378,7 +382,7 @@ def _record_loot_unit_slot(scene, session, data, roster, confidence):
     pickup = claim.get('loot_reward_return')
     if not isinstance(pickup, dict):
         return
-    slot = added_loot_bench_slot(scene, data['basis']['cells'], confidence)
+    slot = added_loot_bench_slot(scene, data['basis']['cells'], confidence, box_slot=data.get('box_slot'))
     if slot is None or slot != pickup.get('added_bench_slot'):
         return
     if slot:
