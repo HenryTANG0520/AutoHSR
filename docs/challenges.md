@@ -125,9 +125,9 @@ python -m autohsr --challenge-result
 
 Windows 发布回执时持有两张 PNG 的只读句柄，发布最终报告时同时持有回执和两张 PNG。每次共享锁重试都复核原文件、帧时效和输入代次，并在 OCR 和读盘之后查询实际前台。暂停与停止监视持续到最终报告发布结束。最终复核失败时报告与 CLI 保留 `unknown`，已写回执及原证据留存。普通 OCR 沿用配置阈值，账号正向确认仍要求至少 0.85。仅高难结果将配置阈值过滤掉但达到 0.65 的完整 UID 留作冲突反证。账号仅在本次内存核验中使用，公开裁片仍需去 UID。[复验记录](../VALIDATION.md#2026-11-06-高难结算来源复核)
 
-「返回虚构叙事」「前往节点二」「返回末日幻影」各需唯一局部原件与同位置完整 OCR。出现异模式结算原件或支付、确认领取等遮挡迹象时保留未核实。「前往节点二」只记文字所指去向，单独出现时模式也保持未知。红色「败」字是可见标记，需与模式专属返回控件同帧。固定上游的判断分支也在不同战况复用返回或节点去向控件。混沌的「返回忘却之庭」缺少能区分常驻回忆的结果页锚。[虚构结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/purefiction.py#L184-L204) · [末日结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/apocalyptic.py#L268-L294) · [混沌结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/memoryofchaos.py#L176-L203)
+一般控件反馈以「返回虚构叙事」「前往节点二」「返回末日幻影」的唯一局部原件及同位置完整 OCR 核对。普通末日终局还可使用下述完整布局核对。出现异模式结算原件或支付、确认领取等遮挡迹象时保留未核实。「前往节点二」只记文字所指去向，单独出现时模式也保持未知。红色「败」字是可见标记，需与模式专属返回控件同帧。固定上游的判断分支也在不同战况复用返回或节点去向控件。混沌的「返回忘却之庭」缺少能区分常驻回忆的结果页锚。[虚构结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/purefiction.py#L184-L204) · [末日结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/apocalyptic.py#L268-L294) · [混沌结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/memoryofchaos.py#L176-L203)
 
-双帧核实模式反馈后 `challenge_result.status=feedback_verified`，只有去向文案时为 `caption_verified`，证据不足时为 `unknown`。总分限于下述已校准布局。实际半场、已到节点、分项、星数、胜负与最终结算分别留空或为 `unknown`，`completion_verified` 和 `rewards_verified` 为 `false`。运行状态为 `partial`，CLI 退出 1。已有主页星数仍属于主页历史观察，备战回执仍由 `--challenge-prepare` 独立记录。[反馈入口验证](../VALIDATION.md#2026-11-06-高难结算只读反馈)
+双帧核实模式反馈后 `challenge_result.status=feedback_verified`，只有去向文案时为 `caption_verified`，证据不足时为 `unknown`。总分和分项按下述已校准布局发布。实际半场、已到节点、星数、胜负与最终结算分别留空或为 `unknown`，`completion_verified` 和 `rewards_verified` 为 `false`。运行状态为 `partial`，CLI 退出 1。已有主页星数仍属于主页历史观察，备战回执仍由 `--challenge-prepare` 独立记录。[反馈入口验证](../VALIDATION.md#2026-11-06-高难结算只读反馈)
 
 ### 普通虚构总分
 
@@ -136,6 +136,12 @@ Windows 发布回执时持有两张 PNG 的只读句柄，发布最终报告时�
 同一对相邻新帧须读到相同的两列分项和总分，且对应文字框重叠。只在本次回执和最终报告的现有证据核验内填入 `total_score`。数字漏读或歧义时，同一对新帧中已核实的控件反馈仍可发布，总分留空。发布重试发现来源已变时，最终报告回到未核实。[总分验证](../VALIDATION.md#2026-11-06-普通虚构本局总分)
 
 公开校准源为 `BV1Qxnz6nEUB` P1，CID `42925294535`。05:47 的节点二入场显示累计 25,840。15:10 为积分动画，15:12.200 与 15:12.500 的完整结果显示节点一 25,840、节点二 40,000、积分 65,840。原片用于核对字段位置，仓库用合成布局与固定上游返回素材。末日星启 10:20 的「挑战结束」及累计分同「前往节点三」并存，属于中间结算。[节点交接](https://www.bilibili.com/video/BV1Qxnz6nEUB/?t=347) · [虚构终局](https://www.bilibili.com/video/BV1Qxnz6nEUB/?t=912) · [末日中间结算](https://www.bilibili.com/video/BV1pq4K6xEg7/?t=620)
+
+### 普通末日双节点终局得分
+
+4.6 常规「支配遗忘」终局在「挑战结束」下显示「积分」及两个节点的分数，底部同排显示「重新挑战」和「返回末日幻影」。两行节点各自核对左侧标签和右侧数值，两个分数相加须等于原读总分。普通节点交接、星启、历史详情和冲突字段会拦住分数发布。连续两张同账号新帧须读得相同的三个数值，且对应文字框重叠。
+
+可复核结果写入 `node_one_score`、`node_two_score` 和 `total_score`。完整布局通过时，回执可用这两个当前 OCR 控件作来源，按实际来源标记。公开的 17:30.650 与 17:31.000 分别读到 3,223、3,505 和 6,728，07:41.600 的节点一结束、07:45 的节点二入场及星启画面作对照。层号、星数、胜负和领奖仍待实机核对。[常规终局](https://www.bilibili.com/video/BV1VxJ266ErP/?t=1050.65) · [节点交接](https://www.bilibili.com/video/BV1VxJ266ErP/?t=461.6) · [星启终局](https://www.bilibili.com/video/BV1pq4K6xEg7/?t=900) · [脱敏字段和原裁片哈希](../autohsr/tests/fixtures/challenge_apocalyptic_result_4_6.json)
 
 下一次原生画面校准需要下列证据，保留模式、层号、分项标题及原相对位置，导出时遮盖 UID 与无关个人信息。每个用于核实的状态留同账号连续两帧。
 

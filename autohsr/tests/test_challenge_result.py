@@ -32,6 +32,7 @@ FLAG = '--challenge-result'
 LOCK = f'Local\\AutoHSR.HighResults.Tests.{os.getpid()}.{uuid4().hex}'
 GEO = Geometry(4, 8, 960, 540)
 FIXTURES = Path(__file__).parent / 'fixtures' / 'du_runtime'
+APOCALYPTIC_SCORE_FIXTURE = FIXTURES.parent / 'challenge_apocalyptic_result_4_6.json'
 
 
 def token(text, xyxy, score=.99):
@@ -86,6 +87,12 @@ def formatted_final():
         token('节点一', (326, 160, 364, 174)), token('25,840', (372, 160, 418, 174)),
         token('节点二', (544, 160, 580, 174)), token('４０，０００', (590, 160, 636, 174)),
     ), extra=(token('新纪录', (540, 109, 579, 128)),))
+
+
+def apocalyptic_score_frame(name):
+    sample = json.loads(APOCALYPTIC_SCORE_FIXTURE.read_text(encoding='utf-8'))['frames'][name]
+    tokens = [Token(row['text'], row['confidence'], tuple(row['box'])) for row in sample['tokens']]
+    return frame(extra=tokens)
 
 
 class FictionScoreObservationTests(unittest.TestCase):
@@ -165,6 +172,52 @@ class FictionScoreObservationTests(unittest.TestCase):
                       fiction_final(extra=(token('通关详情', (695, 41, 768, 58)),))):
             with self.subTest(words=scene.text):
                 self.assertIsNone(observe_feedback(scene).score)
+
+
+class ApocalypticScoreObservationTests(unittest.TestCase):
+    def test_ordinary_ocr_layout_requires_both_nodes_total_and_two_controls(self):
+        scene = apocalyptic_score_frame('terminal_first')
+        observed = observe_feedback(scene)
+        self.assertEqual(observed.mode, pages.APOCALYPTIC)
+        self.assertEqual((observed.score.node_one, observed.score.node_two, observed.score.total),
+                         (3223, 3505, 6728))
+        self.assertEqual([anchor.text for anchor in observed.anchors],
+                         ['apocalyptic_terminal_retry_ocr', 'apocalyptic_terminal_return_ocr'])
+        for missing in ('挑战结束', '积分6728', '节点一', '节点二', '3223', '3505',
+                        '重新挑战', '返回末日幻影'):
+            with self.subTest(missing=missing):
+                altered = replace(scene, tokens=[item for item in scene.tokens if item.text != missing])
+                self.assertIsNone(observe_feedback(altered))
+
+    def test_public_intermediate_and_starward_pages_never_become_ordinary_total(self):
+        for name in ('middle_first', 'middle_second', 'starward_middle', 'starward_terminal'):
+            with self.subTest(name=name):
+                self.assertIsNone(observe_feedback(apocalyptic_score_frame(name)))
+
+    def test_conflicting_fields_incorrect_total_wrong_title_position_and_legacy_pages(self):
+        scene = apocalyptic_score_frame('terminal_first')
+        for bad in (token('节点二', (460, 185, 496, 205)),
+                    token('3506', (420, 191, 460, 208)),
+                    token('积分6800', (563, 133, 612, 149)),
+                    token('返回末日幻影', (370, 485, 452, 502)),
+                    token('前往节点二', (690, 465, 765, 485)),
+                    token('星启模式', (420, 42, 500, 54)),
+                    token('退出', (280, 466, 322, 480)),
+                    token('返回主界面', (670, 483, 750, 504)),
+                    token('确认领取', (397, 240, 457, 258))):
+            with self.subTest(text=bad.text):
+                self.assertIsNone(observe_feedback(replace(scene, tokens=[*scene.tokens, bad])))
+        substitutions = {
+            '挑战结束': token('挑战结束', (406, 145, 544, 173)),
+            '3223': token('3223', (650, 191, 692, 208)),
+            '3505': token('／', (653, 194, 692, 207)),
+            '积分6728': token('积分6730', (432, 131, 525, 152)),
+            '重新挑战': token('重新挑战', (320, 431, 376, 449)),
+        }
+        for old, wrong in substitutions.items():
+            with self.subTest(field=old):
+                altered = replace(scene, tokens=[wrong if item.text == old else item for item in scene.tokens])
+                self.assertIsNone(observe_feedback(altered))
 
 
 class ResultObservationTests(unittest.TestCase):
@@ -337,6 +390,69 @@ class ResultEntryTests(unittest.TestCase):
         self.assertFalse(data['completion_verified'])
         self.assertFalse(data['rewards_verified'])
         self.assertEqual(json.loads((Path(report['run_dir']) / 'challenge-result.json').read_bytes()), data)
+
+    def test_cli_ordinary_apocalyptic_score_is_read_only_and_separate_from_stars_and_settlement(self):
+        first = apocalyptic_score_frame('terminal_first')
+        second = apocalyptic_score_frame('terminal_second')
+        report = self.run_cli([first, second])
+        data = report['challenge_result']
+        self.assertEqual((report['status'], data['status'], data['mode']),
+                         ('partial', 'feedback_verified', pages.APOCALYPTIC))
+        self.assertEqual((data['node_one_score'], data['node_two_score'], data['total_score']), (3223, 3505, 6728))
+        self.assertEqual(data['visible_controls'], ['重新挑战', '返回末日幻影'])
+        self.assertEqual([row['capture_sequence'] for row in data['evidence']], [1, 2])
+        for field in ('level', 'half', 'node', 'destination_node_in_caption', 'stars'):
+            self.assertIsNone(data[field])
+        self.assertEqual((data['outcome'], data['settlement_status']), ('unknown', 'unknown'))
+        self.assertFalse(data['completion_verified'])
+        self.assertFalse(data['rewards_verified'])
+        directory = Path(report['run_dir'])
+        self.assertEqual(json.loads((directory / 'challenge-result.json').read_bytes()), data)
+        for row in data['evidence']:
+            self.assertEqual([proof['source'] for proof in row['anchors']], ['ocr', 'ocr'])
+            self.assertEqual(hashlib.sha256((directory / row['screenshot']).read_bytes()).hexdigest(), row['sha256'])
+
+    def test_cli_apocalyptic_score_requires_same_parts_in_consecutive_complete_frames(self):
+        good = apocalyptic_score_frame('terminal_first')
+        changed = replace(good, tokens=[replace(item, text={'3223': '3224', '3505': '3504'}.get(item.text, item.text))
+                                        for item in good.tokens])
+        result = self.run_cli([good, changed])['challenge_result']
+        self.assertEqual(result['visible_controls'], ['重新挑战', '返回末日幻影'])
+        self.assertTrue(all(result[name] is None for name in ('node_one_score', 'node_two_score', 'total_score')))
+        for interrupted in (apocalyptic_score_frame('middle_first'), EmptyCapture('blank')):
+            with self.subTest(interrupted=type(interrupted).__name__):
+                result = self.run_cli([good, interrupted, good, good])['challenge_result']
+                self.assertEqual(result['total_score'], 6728)
+                self.assertEqual([row['capture_sequence'] for row in result['evidence']], [3, 4])
+
+    def test_apocalyptic_report_retry_rejects_changed_node_read_and_keeps_original_receipt(self):
+        latest = []
+        snapshot = Context.snapshot
+        replace_path = Path.replace
+        attempts = []
+
+        def capture(context):
+            current = snapshot(context)
+            latest.append(current)
+            return current
+
+        def shared(source, destination):
+            if destination.name == 'report.json' and not attempts:
+                attempts.append(destination)
+                current = latest[-1]
+                current.tokens = [replace(item, text='3506') if item.text == '3505' else item
+                                  for item in current.tokens]
+                raise PermissionError('temporary sharing violation')
+            return replace_path(source, destination)
+
+        with patch.object(Context, 'snapshot', capture), patch.object(Path, 'replace', shared):
+            report = self.run_cli([apocalyptic_score_frame('terminal_first'), apocalyptic_score_frame('terminal_second')])
+        self.assertEqual(len(attempts), 1)
+        data = report['challenge_result']
+        self.assertEqual(data['status'], 'unknown')
+        self.assertTrue(all(data[name] is None for name in ('node_one_score', 'node_two_score', 'total_score')))
+        receipt = Path(report['run_dir']) / 'challenge-result.json'
+        self.assertEqual(json.loads(receipt.read_bytes())['total_score'], 6728)
 
     def test_missing_changed_or_displaced_number_retains_the_old_pair(self):
         same_label = token('节点一', (326, 157, 365, 177))

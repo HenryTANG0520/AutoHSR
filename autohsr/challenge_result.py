@@ -51,9 +51,24 @@ _FICTION_NODE_CAP = 40_000
 _SCORE_WIDTH = str.maketrans('０１２３４５６７８９，：　', '0123456789,: ')
 _SCORE_NUMBER = re.compile(r'(?:0|[1-9][0-9]{0,4}|[1-9][0-9]?,[0-9]{3})')
 
+# Ordinary 4.6 Apocalyptic Shadow after the second node. The middle screen
+# also says 挑战结束, but lacks the second score and these two bottom controls.
+_APOCALYPTIC_TITLE = (.40, .165, .60, .249)
+_APOCALYPTIC_TOTAL = (.42, .235, .58, .296)
+_APOCALYPTIC_TOTAL_ROW = (.27, .235, .74, .296)
+_APOCALYPTIC_ROWS = ((.262, .299, .745, .348), (.262, .348, .745, .394))
+_APOCALYPTIC_RETRY = (.32, .848, .418, .915)
+_APOCALYPTIC_RETURN = (.553, .848, .698, .915)
+_APOCALYPTIC_SCORE_BLOCKERS = ('星启', '节点三', '节点3', '节点３', '前往节点', '退出',
+                              '挑战失败', '已挑战', '通关详情', '历史积分', '历史最高', '快速通关',
+                              '返回主界面', '返回主页')
+_APOCALYPTIC_OCR_CONTROLS = {'apocalyptic_terminal_retry_ocr': '重新挑战',
+                            'apocalyptic_terminal_return_ocr': '返回末日幻影'}
+_CONTROL_CAPTIONS = {name: caption for name, (_, caption) in _CONTROLS.items()} | _APOCALYPTIC_OCR_CONTROLS
+
 
 @dataclass(frozen=True)
-class _FictionScore:
+class _ResultScore:
     total: int
     node_one: int
     node_two: int
@@ -69,7 +84,7 @@ class _FictionScore:
 class Feedback:
     mode: str | None
     anchors: tuple[Token, ...]
-    score: _FictionScore | None = None
+    score: _ResultScore | None = None
 
 
 def _same_score_row(parts):
@@ -104,7 +119,9 @@ def _score_value(parts, label):
     text = ''.join(pieces)
     if not text.startswith(label):
         return None
-    digits = text[len(label):].lstrip(' ').removeprefix(':').lstrip(' ')
+    digits = text[len(label):].lstrip(' ')
+    if label:
+        digits = digits.removeprefix(':').lstrip(' ')
     # Label fragments may join on the same line. Two digit fragments need
     # the printed grouping comma to establish that they are one number.
     if (not _SCORE_NUMBER.fullmatch(digits) or not all(pieces)
@@ -145,11 +162,65 @@ def _read_fiction_score(tokens, words, minimum):
     if total == 0 or first > _FICTION_NODE_CAP or second > _FICTION_NODE_CAP or first + second != total:
         return None
     boxes = (_score_box(stage_parts), _score_box(success_parts), total_box, first_box, second_box)
-    return _FictionScore(total, first, second, boxes)
+    return _ResultScore(total, first, second, boxes)
+
+
+def _apocalyptic_node(tokens, roi, label, minimum):
+    left, top, right, bottom = roi
+    row = [token for token in tokens if pages._overlaps(token.box, roi)]
+    name = _score_line(row, (left, top, .356, bottom), minimum)
+    value = _score_line(row, (.649, top, right, bottom), minimum)
+    if (not name or not value or len(name) + len(value) != len(row)
+            or not _same_score_row(row) or _score_text(name).replace(' ', '') != label):
+        return None
+    number = _score_value(value, '')
+    if number is None:
+        return None
+    return name, value, number[0]
+
+
+def _read_apocalyptic_terminal(tokens, words, minimum):
+    if any(blocker in word for word in words for blocker in _APOCALYPTIC_SCORE_BLOCKERS):
+        return None
+    title = _score_line(tokens, _APOCALYPTIC_TITLE, minimum)
+    retry = _score_line(tokens, _APOCALYPTIC_RETRY, minimum)
+    leave = _score_line(tokens, _APOCALYPTIC_RETURN, minimum)
+    controls = (retry, leave)
+    labels = tuple(_APOCALYPTIC_OCR_CONTROLS.values())
+    if (_score_text(title).replace(' ', '') != '挑战结束'
+            or any(_score_text(parts).replace(' ', '') != label for parts, label in zip(controls, labels))
+            or not _same_score_row((*retry, *leave))):
+        return None
+    total = _score_line(tokens, _APOCALYPTIC_TOTAL, minimum)
+    if any(token.within(_APOCALYPTIC_TOTAL_ROW) and token not in total
+           and ('积分' in token.text or any(ch.isdecimal() for ch in token.text)) for token in tokens):
+        return None
+    total_read = _score_value(total, '积分')
+    first, second = (_apocalyptic_node(tokens, roi, label, minimum)
+                     for roi, label in zip(_APOCALYPTIC_ROWS, ('节点一', '节点二')))
+    if total_read is None or first is None or second is None:
+        return None
+    total_score, _ = total_read
+    first_label, first_value, first_score = first
+    second_label, second_value, second_score = second
+    if total_score == 0 or first_score + second_score != total_score:
+        return None
+
+    groups = (title, total, first_label, first_value, second_label, second_value, *controls)
+    known = [token for parts in groups for token in parts]
+    remaining = [token for token in tokens if token not in known]
+    duplicate_labels = ('挑战结束', '积分', '节点一', '节点二', *labels)
+    remaining_words = tuple(normalize(token.text) for token in remaining) + pages._line_words(remaining, gap=.012)
+    if any(label in word for word in remaining_words for label in duplicate_labels):
+        return None
+    score = _ResultScore(total_score, first_score, second_score, tuple(_score_box(parts) for parts in groups))
+    anchors = tuple(Token(name, min(token.score for token in parts), _score_box(parts))
+                    for name, parts in zip(_APOCALYPTIC_OCR_CONTROLS, controls))
+    return score, anchors
 
 
 def observe_feedback(scene, confidence=.65):
-    """Identify visible controls, failure and the calibrated final score."""
+    """Identify visible controls, failure and calibrated final scores."""
     clean = pages._clean(scene, confidence, blockers=())
     if clean is None:
         return None
@@ -179,9 +250,17 @@ def observe_feedback(scene, confidence=.65):
                 or pages._line_words(nearby, gap=.012) != (caption,)):
             continue
         anchors.append(hit)
-    if not anchors:
+    apocalyptic = modes == {pages.APOCALYPTIC}
+    if not anchors and not apocalyptic:
         return None
     if any(pages._hits(clean, name, FULL) for name, (kind, _) in _CONTROLS.items() if kind not in modes):
+        return None
+    if apocalyptic:
+        terminal = _read_apocalyptic_terminal(clean.tokens, words, max(.85, confidence))
+        if terminal is not None and not pages._hits(clean, _FAILURE, FULL):
+            score, structural_anchors = terminal
+            return Feedback(pages.APOCALYPTIC, tuple(anchors) or structural_anchors, score)
+    if not anchors:
         return None
     # The node-two caption contains no mode name. It can corroborate a
     # destination but the returned mode needs a mode-specific return crop.
@@ -221,6 +300,13 @@ def _same_feedback(first, second):
     return (first.mode == second.mode and len(first.anchors) == len(second.anchors)
             and all(a.text == b.text and pages._overlaps(a.box, b.box)
                     for a, b in zip(first.anchors, second.anchors)))
+
+
+def _anchor_proof(anchor):
+    label = _APOCALYPTIC_OCR_CONTROLS.get(anchor.text)
+    if label is not None:
+        return dict(source='ocr', text=label, box=list(anchor.box), score=anchor.score)
+    return pages._proof(anchor.text, anchor)
 
 
 class ResultReader:
@@ -283,7 +369,7 @@ class ResultReader:
         if image is None or _pixels(image) != frame.pixel_sha256:
             raise AutomationError('高难结果证据 PNG 与本次采集不同。')
         return dict(screenshot=path.name, sha256=hashlib.sha256(raw).hexdigest(), captured_at=frame.captured_at,
-                    capture_sequence=frame.sequence, anchors=[pages._proof(a.text, a) for a in frame.feedback.anchors])
+                    capture_sequence=frame.sequence, anchors=[_anchor_proof(a) for a in frame.feedback.anchors])
 
     def _check_sources(self, proof, receipt_path):
         self._require_current(proof.frames[-1].scene)
@@ -316,10 +402,13 @@ class ResultReader:
             raise AutomationError('高难结果观察需要分别保存两张新画面。')
         names = [anchor.text for anchor in frames[-1].feedback.anchors]
         mode = frames[-1].feedback.mode
+        apocalyptic_score = score if mode == pages.APOCALYPTIC else None
         data = dict(self.data, status='feedback_verified' if mode else 'caption_verified', mode=mode,
-                    visible_controls=[_CONTROLS[name][1] for name in names if name in _CONTROLS],
+                    visible_controls=[_CONTROL_CAPTIONS[name] for name in names if name in _CONTROL_CAPTIONS],
                     failure_marker_observed=True if _FAILURE in names else None,
                     destination_node_in_caption=2 if _NEXT_NODE in names else None,
+                    node_one_score=apocalyptic_score.node_one if apocalyptic_score is not None else None,
+                    node_two_score=apocalyptic_score.node_two if apocalyptic_score is not None else None,
                     total_score=score.total if score is not None else None,
                     evidence=evidence)
         path = self.directory / 'challenge-result.json'
@@ -357,9 +446,12 @@ class ResultReader:
         try:
             with hold_read_sources([receipt_path, *(path for path, _ in proof.pngs)]):
                 self.data.update(json.loads(proof.payload))
-                result.detail = ('已核实本次虚构叙事总分，星数与领奖状态待核实。'
-                                 if self.data['total_score'] is not None else
-                                 '已核实当前可见反馈，关卡成绩与领奖状态待核实。')
+                if self.data['node_one_score'] is not None:
+                    result.detail = '已核实本次末日幻影两个节点得分与总分，星数与领奖状态待核实。'
+                elif self.data['total_score'] is not None:
+                    result.detail = '已核实本次虚构叙事总分，星数与领奖状态待核实。'
+                else:
+                    result.detail = '已核实当前可见反馈，关卡成绩与领奖状态待核实。'
                 payload = write_report()
 
                 def recheck():
