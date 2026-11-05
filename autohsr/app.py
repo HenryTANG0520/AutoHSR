@@ -217,7 +217,7 @@ class Context:
             self._focus_interrupted()
         self.sleep(self.settings.action_delay)
 
-    def challenge_prepare_input(self, scene, action):
+    def challenge_prepare_input(self, scene, action) -> float:
         if self.report.operation != 'challenge_prepare':
             raise AutomationError('当前任务不允许高难备战选择。')
         workflow = getattr(self, 'challenge_preparation', None)
@@ -232,7 +232,9 @@ class Context:
             self.window.click(*action.target.center, scene.geometry)
         except FocusLost:
             self._focus_interrupted()
+        submitted_at = time.monotonic()
         self.sleep(self.settings.action_delay)
+        return submitted_at
 
     def currency_prepare_click(self, scene, intent, target):
         from .currency_wars_prepare import PREPARATION_OPERATIONS

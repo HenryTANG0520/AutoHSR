@@ -254,7 +254,7 @@ def _mode(scene, name, roi):
 
 
 def _split_level_headers(tokens, pattern):
-    prefix = re.compile(r'第[0-9]{0,2}')
+    prefix = re.compile(r'第[0-9０-９]{0,2}')
     for first in tokens:
         text = normalize(first.text)
         if not prefix.fullmatch(text):
@@ -426,7 +426,7 @@ def _overlaps(first, second):
 def _observe_fiction(scene, minimum, title, caption):
     if (title or caption) and _hits(scene, 'fiction_modal', (0, 0, 1, 1)):
         return _unknown('fiction_story_dialog')
-    current = _current_level(scene, _FICTION_LEVEL_HEADER, r'第([0-9]{1,2})层', split=True)
+    current = _current_level(scene, _FICTION_LEVEL_HEADER, r'第([0-9０-９]{1,2})层', split=True)
     if current is _AMBIGUOUS_LEVEL or (current and not 1 <= current[0] <= 4):
         return _unknown('ambiguous_or_out_of_range_fiction_level')
     if current and current[1].score < minimum:

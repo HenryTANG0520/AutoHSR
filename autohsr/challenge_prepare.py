@@ -71,7 +71,8 @@ class ChallengePreparation:
     def _check_attempt(self):
         from .challenge_plan import ChallengePlan
         self.c.checkpoint()
-        if self.c.runner.input_epoch != self.epoch or self.c.scene_epoch != self.epoch:
+        if (self.c.runner.input_epoch != self.epoch
+                or self.c.last_scene is not None and self.c.scene_epoch != self.epoch):
             raise InputInterrupted('高难备战输入代次改变，旧选择不重发。')
         if ChallengePlan.from_dict(self.c.settings.challenge_plan).digest != self.plan.digest:
             raise AutomationError('高难计划已改变，未继续旧层数选择。')
@@ -179,11 +180,11 @@ class ChallengePreparation:
             try:
                 scene = self.c.snapshot()
             except EmptyCapture:
+                self._check_attempt()
+                gap_at = time.monotonic()
+                latest_capture = gap_at if latest_capture is None else max(latest_capture, gap_at)
+                frames, previous = [], None
                 scene = None
-                if feedback:
-                    self._check_attempt()
-                    latest_capture = max(latest_capture, time.monotonic())
-                    frames, previous = [], None
             if scene is not None:
                 account_observed = self._fresh(scene, allow_missing_account=feedback)
                 if self.account is None:
@@ -194,7 +195,7 @@ class ChallengePreparation:
                 observation = observe(scene, self.c.settings.ocr_confidence)
                 if observation.mode is not None and observation.mode != self.plan.mode:
                     raise AutomationError('当前高难模式与明确计划不符。')
-                increasing = not feedback or scene.captured_at > latest_capture
+                increasing = latest_capture is None or scene.captured_at > latest_capture
                 if feedback and increasing:
                     latest_capture = scene.captured_at
                 if account_observed and self.account is not None and increasing and acceptable(scene, observation):
@@ -240,9 +241,8 @@ class ChallengePreparation:
                 self.data['actions'].append(record)
                 self.request = action
                 self._persist()
-                self.c.challenge_prepare_input(scene, action)
+                after_input = self.c.challenge_prepare_input(scene, action)
                 self.request = None
-                after_input = time.monotonic()
                 record['status'] = 'submitted'
                 self._persist()
                 scene, _, frames, deadline = self._wait(lambda scene, page: ready(page), '同层备战页面',

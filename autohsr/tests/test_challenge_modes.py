@@ -162,6 +162,14 @@ class ChallengeModePageTests(unittest.TestCase):
                                  [fragments[0].box[0], fragments[0].box[1],
                                   fragments[-1].box[2], fragments[-1].box[3]])
 
+    def test_fiction_setup_reads_fullwidth_and_mixed_width_decimal_headers(self):
+        for words in (('第０４层',), ('第０', '4层'), ('第', '0', '４', '层')):
+            with self.subTest(words=words):
+                scene = fiction_setup(None)
+                scene.tokens.extend(layer_parts(words))
+                result = pages.observe(scene)
+                self.assertEqual((result.kind, result.level), ('team_setup', 4))
+
     def test_fiction_setup_does_not_pair_partial_or_weak_headers(self):
         variants = [
             layer_parts(('第', '02', '层'), x=1835),
@@ -178,7 +186,8 @@ class ChallengeModePageTests(unittest.TestCase):
                 self.assertNotIn('level_box', result.basis)
 
     def test_fiction_setup_requires_a_unique_header_even_with_matching_digits(self):
-        for digits, x, score in (('03', 948, .81), ('05', 948, .99), ('02', 948, .99), ('02', 810, .99)):
+        for digits, x, score in (('03', 948, .81), ('05', 948, .99), ('02', 948, .99), ('02', 810, .99),
+                                 ('０４', 948, .81), ('０２', 948, .99)):
             with self.subTest(digits=digits, x=x, score=score):
                 scene = fiction_setup()
                 scene.tokens.extend(layer_parts(('第', digits, '层'), x=x, score=score))
