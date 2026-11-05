@@ -98,14 +98,20 @@ def active_action(scene, session, confidence=.65):
         raise AutomationError('投资策略选择或交付未核实，未继续其他操作。')
     _scope(session)
     choices=options(scene,confidence)
+    selected=selected_slot(scene,choices)
+    from .currency_wars_standard_investment_refresh import current_binding, proposal as refresh_proposal
+    refreshed=current_binding(scene,session,choices,confidence)
+    if refreshed is not None and selected is None and last.get('action')==SELECT:
+        raise AutomationError('刷新后的投资已有选择记录，未重选或刷新。')
     existing,_,_=refresh_bonus(session,node=data['expected_node'])
     from .currency_wars_investment_units import eligible,baseline
-    candidates=tuple(c for c in choices if (not existing or c.kind!='refresh_experience') and eligible(c,session))
+    candidates=tuple(c for c in choices if c.score is not None and (not existing or c.kind!='refresh_experience') and eligible(c,session))
+    if not candidates and selected is None:
+        return refresh_proposal(scene,session,choices,confidence)
     option=choose(candidates,session.get('strategy','default'))
     payload=(data['expected_node'],data['origin_action_id'],option.slot,normalize(option.name.text),
              option.kind,normalize(option.effect),option_digest(choices),dict(option.parameters).get('boxes',0))
     if option.kind=='unit_gift':payload+=(digest(baseline(session)),)
-    selected=selected_slot(scene,choices)
     if selected is None:
         return StandardAction(SELECT,'standard_investment_selected',option.name,
                               details=(option.name.text,option.kind,option.parameters,POLICY),payload=payload)
@@ -434,6 +440,8 @@ def _gift_slots(claim, actions):
 
 
 def bind_selection(session, choice, scene, epoch, run_dir, confidence=.65):
+    from .currency_wars_standard_investment_refresh import bind_choice
+    if choice.intent in (SELECT, CONFIRM):bind_choice(session, choice, scene, confidence)
     if choice.intent!=CONFIRM:return
     from .currency_wars_standard_trading import _prior
     if active_action(scene,_prior(session,CONFIRM),confidence)!=choice:
@@ -632,6 +640,8 @@ def _valid_effect(action, actions):
     previous=actions[action['id']-1]
     if (previous.get('action')!=SELECT or previous.get('status')!='verified' or previous.get('target')!=list(target)
             or not previous.get('before') or not previous.get('after')):return False
+    from .currency_wars_standard_investment_refresh import BINDING, valid_selection
+    if not valid_selection(previous,actions) or action.get(BINDING)!=previous.get(BINDING):return False
     proof=action.get('selection_proof',{})
     if (not isinstance(proof,dict) or type(proof.get('source_action_id')) is not int or type(proof.get('input_epoch')) is not int
             or proof.get('source_action_id')!=action['id']-1

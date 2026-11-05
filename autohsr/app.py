@@ -357,10 +357,12 @@ class Context:
         elif choice.intent.startswith('confirm_standard_environment_') and (not choice.payload or choice.payload == ('1-1',)):
             raise AutomationError('初始环境确认尚未保存专用来源，未发送输入。')
         from .currency_wars_standard_investment import shop_input_scope
+        from .currency_wars_standard_investment_refresh import input_scope as investment_refresh_input_scope
         from .currency_wars_standard_progress import progress_input_scope
         use_durable_source = (loot_sale_input_scope(choice, store.data, data)
                               or progress_input_scope(choice.intent, store.data, data)
-                              or shop_input_scope(choice.intent, store.data, data))
+                              or shop_input_scope(choice.intent, store.data, data)
+                              or investment_refresh_input_scope(choice.intent, store.data, data))
         session = data if use_durable_source else store.data
         if choice.intent in ('open_standard_bench_reward', 'choose_standard_reward'):
             investment = store.data.get('investment', {})

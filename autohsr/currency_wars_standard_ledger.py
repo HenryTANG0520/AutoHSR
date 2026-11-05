@@ -13,7 +13,7 @@ FREE_ACTIONS = frozenset((
     'stage_standard_equipment','inspect_standard_equipment_unit','close_standard_equipment_unit',
     'close_standard_equipment_stale_panel','open_standard_equipment_recommendations',
     'open_standard_bench_reward','select_standard_supply','inspect_standard_reward_unit',
-    'select_standard_investment','close_standard_stale_unit',
+    'close_standard_stale_unit',
     'close_standard_reward_unit','close_standard_reward_stale_panel',
     'inspect_standard_consumable_unit','close_standard_consumable_unit','close_standard_consumable_stale_panel',
     'open_standard_consumable_recommendations','choose_standard_consumable_gear',
@@ -132,6 +132,14 @@ def ledger_status(actions, *, investment_projection=None, popup_projection=None)
         if name=='refresh_standard_supply':
             from .currency_wars_standard_supply_refresh import valid_receipt as valid_supply_refresh,valid_prefix
             if not valid_supply_refresh(action,actions) or not valid_prefix(action,actions):return 'unknown'
+            continue
+        if name=='refresh_standard_investment':
+            from .currency_wars_standard_investment_refresh import valid_receipt as valid_investment_refresh
+            if not valid_investment_refresh(action,actions):return 'unknown'
+            continue
+        if name=='select_standard_investment':
+            from .currency_wars_standard_investment_refresh import valid_selection
+            if not valid_selection(action,actions):return 'unknown'
             continue
         if name=='confirm_standard_investment':
             from .currency_wars_standard_investment import valid_effect

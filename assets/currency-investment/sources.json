@@ -20,6 +20,23 @@
       "transformation": "original sample and capture unchanged; interpreted role identities and decimal percentage only; no image copied into this directory"
     }
   ],
+  "refresh_control": {
+    "client": "4.6.0",
+    "observed_date": "2026-10-18",
+    "template": "../templates/currency_investment_refresh_4_6.png",
+    "template_sha256": "e677a5f33c76a8844a5763e73bc024a3e71ff440fcf315a6d0b530a5338b20bd",
+    "source_size": [2560, 1440],
+    "crop_xyxy": [483, 1107, 551, 1175],
+    "source_capture": "150-investment-options.png",
+    "source_sha256": "c09552d92241b1af132fb6392138c88559e2949e5b811a13d61dcd4f1fb4bfd2",
+    "adjacent_capture": "164-plane3-investment-options.png",
+    "adjacent_sha256": "9feff29dc1417b46a8b169d6876df14e4d4b9f6640f56421525aaa8439336cca",
+    "transformation": "RGB conversion and direct 68-by-68 control crop; excludes card text, account details and the rest of the page",
+    "normalized_correlations_by_slot": [[0.99999, 0.98696, 0.98506], [0.99999, 0.98695, 0.98506]],
+    "runtime_replay_widths": [960, 1280, 1920, 2560, 3840],
+    "runtime_replay_min_score": 0.957,
+    "scope": "Visible controls and per-card refresh count of one in two historical overclock captures from the same game. Actual click and result transitions are unverified."
+  },
   "validation": {
     "mechanism": "synthetic native Context and full role inspection/close receipts, count/star/tier variants and counterexamples",
     "old_sample_role": "calibration and adjacent replay",
