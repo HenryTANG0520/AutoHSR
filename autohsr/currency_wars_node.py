@@ -9,6 +9,7 @@ from pathlib import Path
 from .currency_wars import CurrencyWarsWorkflow, TASK, observe
 from .currency_wars_match import read_match
 from .currency_wars_deployment import _crop, _texture
+from .currency_wars_pages import RESULT_NODE_REGION, RESULT_NODE_TEXT
 from .models import AutomationError, EmptyCapture, TaskResult, normalize
 
 
@@ -64,8 +65,7 @@ def start_target(scene, confidence=.65):
 
 def result_nodes(scene, confidence=.65):
     return {match[1] for t in scene.tokens if confidence <= t.score <= 1
-            and t.within((.4,.24,.53,.30))
-            and (match := re.fullmatch(r'([1-3]-[1-9][0-9]?)(?:战斗|奖励|首领)?', normalize(t.text)))}
+            and t.within(RESULT_NODE_REGION) and (match := RESULT_NODE_TEXT.fullmatch(normalize(t.text)))}
 
 
 def result_node(scene, confidence=.65):

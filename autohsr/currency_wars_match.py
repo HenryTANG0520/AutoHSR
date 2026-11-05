@@ -5,7 +5,7 @@ import math
 import re
 from dataclasses import dataclass
 
-from .currency_wars_pages import classify_page,is_bench_full_notice
+from .currency_wars_pages import classify_page, is_bench_full_notice, merged_loss_node_hint
 from .models import Scene, Token, normalize
 
 
@@ -97,7 +97,9 @@ def supplement_numbers(scene: Scene, reader) -> Scene:
     """
     import cv2
     page = classify_page(scene.tokens)
-    if scene.image is None or page not in ("preparation", "shop", "character", "bench_full", "battle", "node_result", "final_victory", "expert_selection"):
+    loss_hint = merged_loss_node_hint(scene.tokens) if page == 'unknown' else None
+    if scene.image is None or (loss_hint is None and page not in (
+            'preparation', 'shop', 'character', 'bench_full', 'battle', 'node_result', 'final_victory', 'expert_selection')):
         return scene
     rois = [(.843, .825, .876, .875), (.132, .815, .181, .866)]
     if page=='preparation':
@@ -124,12 +126,15 @@ def supplement_numbers(scene: Scene, reader) -> Scene:
             if re.fullmatch(r'[0-9]{1,2}',normalize(t.text)):
                 tokens.append(Token(t.text,t.score,roi))
         return Scene(tokens,scene.image,scene.geometry,scene.captured_at,scene.field_reads)
-    if page in ('node_result','final_victory'):
+    if page in ('node_result', 'final_victory') or loss_hint is not None:
         # The adjacent crossed-swords icon can join OCR as "X战斗". Read
         # only the bounded node field, without deleting arbitrary letters.
         # Short reward nodes center a compact badge farther right than longer
         # combat/boss labels. Both crops exclude their adjacent type icons.
-        for roi in ((.405,.245,.438,.286),(.462,.245,.485,.286)):
+        # The known loss layout puts the number before the type and streak badge.
+        node_rois = ((.4, .266, .436, .305),) if loss_hint is not None else (
+            (.405, .245, .438, .286), (.462, .245, .485, .286))
+        for roi in node_rois:
             x1,y1,x2,y2=roi
             patch=cv2.resize(scene.image[round(y1*height):round(y2*height),round(x1*width):round(x2*width)],None,fx=3,fy=3)
             parts=reader.read(patch).tokens
@@ -137,9 +142,10 @@ def supplement_numbers(scene: Scene, reader) -> Scene:
                 node=reader.read_node(patch)
                 if node is not None:
                     parts.append(node)
-            for t in parts:
-                if re.fullmatch(r'[1-3]-[1-9][0-9]?',normalize(t.text)):
-                    tokens.append(Token(t.text,t.score,roi))
+            numbers = [t for t in parts if re.fullmatch(r'[1-3]-[1-9][0-9]?', normalize(t.text))]
+            if loss_hint is not None and {normalize(t.text) for t in numbers} != {loss_hint}:
+                continue
+            tokens.extend(Token(t.text, t.score, roi) for t in numbers)
         return Scene(tokens,scene.image,scene.geometry,scene.captured_at,scene.field_reads)
     if page == 'battle':
         # Reward fights expand the HUD with drop counters and shift the node.

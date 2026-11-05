@@ -7,6 +7,7 @@ from pathlib import Path
 from .currency_wars import CurrencyWarsWorkflow, observe
 from .currency_wars_identity import account_key
 from .currency_wars_node import battle_node, result_node, result_nodes
+from .currency_wars_pages import merged_loss_node_numbers
 from .currency_wars_prepare import trusted
 from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, Stopped, normalize
 
@@ -18,8 +19,11 @@ def read_survived_loss(scene, confidence=.65):
     """Read a current, non-terminal loss and its exact Continue target."""
     if observe(scene, confidence).page_kind != 'node_loss':
         return None
-    node = result_node(scene, confidence)
-    tokens = trusted(scene, confidence).tokens
+    clean = trusted(scene, confidence)
+    node = result_node(clean, confidence)
+    tokens = clean.tokens
+    if node is None or merged_loss_node_numbers(tokens) - {node}:
+        return None
     life_row = [t for t in tokens if t.within((.3,.43,.5,.5))]
     lives = [match for t in life_row if (match := re.fullmatch('小队生命值' + _LIFE_VALUE, normalize(t.text)))]
     labels = [t for t in life_row if normalize(t.text) == '小队生命值']
@@ -31,7 +35,7 @@ def read_survived_loss(scene, confidence=.65):
                  and 0 <= t.box[0] - label.box[2] <= .03
                  and (match := re.fullmatch(_LIFE_VALUE, normalize(t.text)))]
     buttons = [t for t in tokens if t.within((.4,.79,.6,.86)) and normalize(t.text) == '继续挑战']
-    if node is None or len(lives) != 1 or len(buttons) != 1:
+    if len(lives) != 1 or len(buttons) != 1:
         return None
     hp = int(lives[0][1])
     maximum = int(lives[0][2]) if lives[0][2] is not None else 100

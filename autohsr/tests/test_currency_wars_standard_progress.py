@@ -13,13 +13,14 @@ import numpy as np
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.currency_wars import observe
+from autohsr.currency_wars_match import supplement_numbers
 from autohsr.currency_wars_node import result_node
 from autohsr.currency_wars_standard_budget import StandardBudget
 from autohsr.currency_wars_session import StandardSession
 from autohsr.currency_wars_standard_flow import StandardAction, next_action, run_standard, transition_ready
 from autohsr.currency_wars_standard_node import observe_started_node, read_survived_loss
 from autohsr.currency_wars_standard_progress import BOSS_INTRO_ACTION, BOSS_INTRO_RETURN, progress_verified
-from autohsr.models import AutomationError, InputInterrupted, Stopped, Token
+from autohsr.models import AutomationError, InputInterrupted, Scene, Stopped, Token
 from autohsr.windows import GameWindow, Geometry
 from autohsr.tests import test_currency_wars_flow as flow_helpers
 from autohsr.tests import test_currency_wars_standard_flow as standard_helpers
@@ -113,6 +114,53 @@ class StandardProgressTests(unittest.TestCase):
 
         context.snapshot, context.checkpoint, context.sleep = snapshot, checkpoint, Mock()
         return context, seed
+
+    def test_encounter_loss_with_exact_node_suffix(self):
+        scene = loss_page('2-5', 1)
+        scene.tokens = [Token('2-5遭遇', t.score, t.box) if t.text.startswith('2-5') else t
+                        for t in scene.tokens]
+        self.assertEqual(read_survived_loss(scene)[:2], ('2-5', 1))
+        scene.tokens = [Token('2-5遭遇3', t.score, t.box) if t.text == '2-5遭遇' else t for t in scene.tokens]
+        self.assertIsNone(read_survived_loss(scene))
+
+    def test_encounter_loss_rejects_conflicting_merged_number_beside_exact_number(self):
+        scene = loss_page('2-5', 1)
+        scene.tokens = [Token('2-5遭遇', t.score, t.box) if t.text.startswith('2-5') else t
+                        for t in scene.tokens]
+        bounds = (.405, .271, .595, .306)
+        scene.tokens.append(Token('2-5Y遗遇火连胜x12', .92, bounds))
+        self.assertEqual(read_survived_loss(scene)[:2], ('2-5', 1))
+        scene.tokens.append(Token('2-6Y遗遇火连胜×0', .92, bounds))
+        self.assertIsNone(read_survived_loss(scene))
+
+    def test_fused_loss_row_requires_independent_number_and_exact_continue(self):
+        for case in ('match', 'different', 'ambiguous', 'unreadable_continue', 'settlement_conflict',
+                     'unrelated_uid', 'unrelated_life'):
+            with self.subTest(case=case):
+                scene = loss_page('2-5', 1)
+                text = {'unrelated_uid': '2-5UID123456789', 'unrelated_life': '2-5小队生命值1'}.get(
+                    case, '2-5Y遗遇火连胜×0')
+                fused = Token(text, .92, (.405, .271, .595, .306))
+                scene.tokens = [fused if t.text.startswith('2-5') else t for t in scene.tokens]
+                if case == 'unreadable_continue':
+                    scene.tokens = [Token('继续挑线', t.score, t.box) if t.text == '继续挑战' else t for t in scene.tokens]
+                elif case == 'settlement_conflict':
+                    scene.tokens.append(Token('前往结算', .99, (.48, .8, .53, .83)))
+                first = Token('2-6' if case == 'different' else '2-5', .98, (0, 0, 1, 1))
+                reader = Mock()
+                reader.read.return_value = (Scene([first, Token('2-6', .98, (0, 0, 1, 1))])
+                                            if case == 'ambiguous' else Scene([]))
+                reader.read_node.return_value = first
+
+                self.assertIsNone(read_survived_loss(scene))
+                revised = supplement_numbers(scene, reader)
+                if case == 'match':
+                    self.assertEqual(read_survived_loss(revised)[:2], ('2-5', 1))
+                    self.assertEqual(reader.read_node.call_count, 1)
+                else:
+                    self.assertIsNone(read_survived_loss(revised))
+                if case in ('unreadable_continue', 'unrelated_uid', 'unrelated_life'):
+                    reader.read.assert_not_called()
 
     def test_standard_survives_node_loss_without_recording_a_win(self):
         with tempfile.TemporaryDirectory() as folder:

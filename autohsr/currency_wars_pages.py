@@ -74,6 +74,16 @@ class _Anchor:
         return value == _text(self.label) if isinstance(self.label, str) else bool(self.label.fullmatch(value))
 
 
+RESULT_NODE_REGION = (.40, .24, .53, .30)
+RESULT_NODE_TEXT = re.compile(r'([1-3]-[1-9][0-9]?)(?:战斗|奖励|首领|遭遇)?')
+_MERGED_LOSS_NODE_TEXT = re.compile(r'([1-3]-[1-9][0-9]?)y?(?:遭遇|遗遇)?火热?连胜[×x][0-9]{1,2}')
+_LOSS_RESULT_CONTEXT = (
+    _Anchor('挑战结束', (.42, .17, .58, .26)),
+    _Anchor(re.compile(r'小队生命值(?:[0-9]{1,3}(?:/[0-9]{1,3})?)?'), (.3, .43, .5, .5)),
+    _Anchor('继续挑战', (.4, .79, .6, .86)),
+)
+
+
 # Modals take precedence over any background text still visible through them.
 _MODALS = {
     "boss_intro": (
@@ -248,10 +258,8 @@ _PAGES = {
         _Anchor("继续挑战", (.4, .79, .6, .86)),
     ),
     "node_loss": (
-        _Anchor("挑战结束", (.42, .17, .58, .26)),
-        _Anchor(re.compile(r"[1-3]-[1-9][0-9]?(?:战斗|奖励|首领)?"), (.40, .24, .53, .30)),
-        _Anchor(re.compile(r"小队生命值(?:[0-9]{1,3}(?:/[0-9]{1,3})?)?"), (.3, .43, .5, .5)),
-        _Anchor("继续挑战", (.4, .79, .6, .86)),
+        _Anchor(RESULT_NODE_TEXT, RESULT_NODE_REGION),
+        *_LOSS_RESULT_CONTEXT,
     ),
     "preparation": (
         _Anchor("备战阶段", (.2, .01, .3, .07)),
@@ -340,6 +348,21 @@ _DEFEAT_PAGES={
         _Anchor(re.compile('下一页|下顶'),(.46,.80,.55,.86)),
     ),
 }
+
+
+def merged_loss_node_numbers(tokens: list[Token]) -> set[str]:
+    """Read node hints from the known row containing a streak badge."""
+    return {match[1] for token in tokens if token.within(RESULT_NODE_REGION)
+            and .39 <= token.box[0] <= .435 and .53 <= token.box[2] <= .62
+            and (match := _MERGED_LOSS_NODE_TEXT.fullmatch(_text(token.text)))}
+
+
+def merged_loss_node_hint(tokens: list[Token]) -> str | None:
+    """Locate the leading number in a fused result row for a separate crop read."""
+    if not all(any(anchor.matches(token) for token in tokens) for anchor in _LOSS_RESULT_CONTEXT):
+        return None
+    numbers = merged_loss_node_numbers(tokens)
+    return next(iter(numbers)) if len(numbers) == 1 else None
 
 
 def classify_page(trusted_tokens: list[Token]) -> str:
