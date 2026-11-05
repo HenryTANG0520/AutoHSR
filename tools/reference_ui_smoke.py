@@ -142,8 +142,8 @@ def main():
                 check(f"{scale}_independent_mode_hides_daily_header", not ui.header.plan.winfo_ismapped())
                 ui._show_weekly_plan()
                 root.update()
-                check(f"{scale}_weekly_returns_plan_in_settings_surface", ui.settings_shell.plan.winfo_ismapped()
-                      and not ui.guide.winfo_ismapped()
+                check(f"{scale}_weekly_shows_plan_in_shared_guide", ui.header.plan.winfo_ismapped()
+                      and ui.guide.winfo_ismapped() and ui.guide.selected_page=='settings'
                       and ui.start_button.cget("text") == "开始计划")
                 ui.target_name.set("长副本名称"*10)
                 root.update()
@@ -154,13 +154,8 @@ def main():
                     button = ui.guide.buttons[key]
                     ui._show_page("home")
                     root.update()
-                    check(f"{scale}_{key}_name_visible_without_hover", button.winfo_ismapped() and
-                          button.cget("text") == caption
-                          and str(button.cget("compound")) == ("left" if key == "settings" else "center"))
-                    button.event_generate("<Enter>")
-                    root.update()
-                    check(f"{scale}_{key}_has_no_duplicate_name_popup", not any(isinstance(child, tk.Toplevel)
-                          for child in button.winfo_children()))
+                    check(f"{scale}_{key}_uses_named_icon_tab", button.winfo_ismapped()
+                          and button.cget("text") == caption and str(button.cget("compound")) == "none")
                     root.focus_force()
                     button.focus_set()
                     button.event_generate("<KeyPress-space>")

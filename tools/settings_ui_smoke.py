@@ -7,26 +7,12 @@ import tkinter as tk
 import types
 from unittest.mock import patch
 
-from PIL import ImageGrab, ImageTk
+from PIL import ImageGrab
 from ux_smoke import ROOT, Settings, Window, module
 from ui_layout_smoke import check_layout
 from home_feedback_smoke import drawn_text
 
 OUT = ROOT/"runs/settings-ui"
-
-
-def selection_marker_visible(shell):
-    button = shell.buttons[shell.section]
-    x = shell.menu.winfo_x()+button.winfo_x()
-    y = shell.menu.winfo_y()+button.winfo_y()+button.winfo_height()
-    width = button.winfo_width()
-    pixels = ImageTk.getimage(shell._photo).convert("RGB")
-    for line in range(y, min(pixels.height, y+round(12*shell.scale))):
-        bright = sum(min(pixels.getpixel((column, line))) > 180
-                     for column in range(x, x+width))
-        if bright > width*.6:
-            return True
-    return False
 
 
 def main():
@@ -196,12 +182,13 @@ def main():
                 root.update()
                 check(f"{scale}_all_daily_choices_restore_readonly", all(control.instate(("readonly",))
                       for control in ui.daily_task_controls.values()))
+                ui._show_page("home")
                 ui._show_weekly_plan()
                 root.update()
-                check(f"{scale}_first_entry_has_selected_underline", selection_marker_visible(ui.settings_shell))
-                check(f"{scale}_settings_owns_surface", ui.settings_shell.winfo_ismapped()
-                      and not ui.guide.winfo_ismapped() and not ui.header.winfo_ismapped()
-                      and ui.settings_shell.plan.winfo_ismapped())
+                check(f"{scale}_selected_secondary_category", ui.settings_buttons["weekly"].cget("style") == "Settings.Selected.Nav.TButton")
+                check(f"{scale}_settings_shares_guide", ui.settings_shell.winfo_ismapped()
+                      and ui.guide.winfo_ismapped() and ui.header.winfo_ismapped()
+                      and ui.header.plan.winfo_ismapped() and ui.guide.selected_page == "settings")
                 check(f"{scale}_initial_draft_unchanged", not ui.dirty and not ui.weekly_enabled.get())
                 choose(root, ui.weekly_enabled_combo, 0)
                 check(f"{scale}_enable_by_value_and_keyboard", ui.weekly_enabled.get() and ui.dirty and "未加入" not in ui.weekly_status.get())
@@ -245,8 +232,9 @@ def main():
                 root.focus_force()
                 root.event_generate("<KeyPress-Escape>")
                 root.update()
-                check(f"{scale}_weekly_returns_home_from_independent_mode", ui.active_page == "home"
-                      and ui.action_page == "home")
+                check(f"{scale}_weekly_returns_to_origin", ui.active_page == "differential_universe"
+                      and ui.action_page == "differential_universe")
+                ui._show_page("home")
                 ui._show_weekly_plan()
                 root.update()
                 ui.settings_buttons["weekly"].focus_force()
@@ -254,18 +242,18 @@ def main():
                 root.update()
                 check(f"{scale}_category_keyboard_moves_and_focuses", ui.settings_tabs.select() == str(ui.settings_sections["run"])
                       and root.focus_get() == ui.settings_buttons["run"])
-                previous_photo = ui.settings_shell._photo
+                previous_photo = ui.header._photo
                 root.withdraw()
                 root.update()
                 ui.stamina.set("120")
                 ui.elapsed_seconds = 65
                 ui._clock()
                 root.update()
-                check(f"{scale}_hidden_surface_does_not_repaint", ui.settings_shell._photo is previous_photo)
+                check(f"{scale}_hidden_surface_does_not_repaint", ui.header._photo is previous_photo)
                 root.deiconify()
                 root.update()
-                check(f"{scale}_restored_surface_has_current_cost_and_time", ui.settings_shell._photo is not previous_photo
-                      and "已用开拓力  120" in drawn_text(ui.settings_shell) and "01:05" in drawn_text(ui.settings_shell))
+                check(f"{scale}_restored_surface_has_current_cost_and_time", ui.header._photo is not previous_photo
+                      and "已用开拓力  120" in drawn_text(ui.header) and "01:05" in drawn_text(ui.header))
                 ui.stamina.set("—")
                 ui.elapsed_seconds = 0
                 ui._clock()
@@ -312,10 +300,32 @@ def main():
                         root.update()
                         check_layout(root)
                         check(f"{scale}_{size}_{name}_reachable", ui.settings_tabs.select() == str(ui.settings_sections[name])
-                              and ui.start_button.cget("text") == "开始计划" and not ui.guide.winfo_ismapped()
+                              and ui.start_button.cget("text") == "开始计划" and ui.guide.winfo_ismapped()
                               and ui.settings_shell.back.winfo_ismapped())
                         if scale == 1.5:
                             ImageGrab.grab(window=root.winfo_id()).save(OUT/(name+"-"+size+".png"))
+                    ui.settings_shell.choose('power')
+                    root.update()
+                    canvas = ui.settings_shell.canvas
+                    canvas.yview_moveto(0)
+                    root.update()
+                    initial = canvas.yview()
+                    click(ui.power_mode_combo)
+                    root.update()
+                    pop = str(root.tk.call("ttk::combobox::PopdownWindow", ui.power_mode_combo))
+                    check(f'{scale}_{size}_dropdown_keeps_form_position',
+                          root.tk.call("winfo", "ismapped", pop) and canvas.yview() == initial)
+                    root.tk.call("ttk::combobox::Unpost", ui.power_mode_combo)
+                    root.update()
+                    canvas.event_generate('<MouseWheel>', delta=-120)
+                    root.update()
+                    check(f'{scale}_{size}_long_form_scrolls_under_fixed_navigation',
+                          canvas.yview()[0] > initial[0] and ui.settings_shell.back.winfo_ismapped())
+                    ui.echo_config_button.focus_force()
+                    root.update()
+                    check(f'{scale}_{size}_focus_reveals_last_control',
+                          ui.echo_config_button.winfo_rooty()+ui.echo_config_button.winfo_height()
+                          <= canvas.winfo_rooty()+canvas.winfo_height())
                 check(f"{scale}_draft_and_navigation_do_not_save", original == config.read_bytes())
                 ui.save_button.invoke()
                 saved = Settings.load(config)

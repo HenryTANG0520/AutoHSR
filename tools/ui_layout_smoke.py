@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import tkinter as tk
+from tkinter import ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from autohsr import windows  # Establish DPI awareness before Tk; no game access.
@@ -27,9 +28,14 @@ def check_layout(widget):
             continue
         x, y, w, h = child.winfo_x(), child.winfo_y(), child.winfo_width(), child.winfo_height()
         bounds = (str(child), child.winfo_class(), (x, y, w, h), (widget.winfo_width(), widget.winfo_height()))
-        assert x >= -2 and y >= -2, ("negative position", bounds)
+        scroll_form = isinstance(widget, tk.Canvas) and isinstance(child, ttk.Notebook)
+        assert x >= -2 and (y >= -2 or scroll_form), ("negative position", bounds)
         assert x+w <= widget.winfo_width()+2, ("outside parent width", bounds)
-        assert y+h <= widget.winfo_height()+2, ("outside parent height", bounds)
+        if scroll_form:
+            extent = tuple(map(int, str(widget.cget("scrollregion")).split()))
+            assert extent == (0, 0, w, h) and y <= 2 and y+h >= widget.winfo_height()-2, ("invalid form viewport", bounds, extent)
+        else:
+            assert y+h <= widget.winfo_height()+2, ("outside parent height", bounds)
         if child.winfo_class() in ("TLabel", "TButton", "TCheckbutton", "TEntry", "TCombobox", "TSpinbox"):
             assert w >= child.winfo_reqwidth(), ("text clipped horizontally", bounds, child.winfo_reqwidth())
             assert h >= child.winfo_reqheight(), ("text clipped vertically", bounds, child.winfo_reqheight())

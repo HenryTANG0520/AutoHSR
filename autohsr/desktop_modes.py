@@ -23,7 +23,7 @@ def universe_page(ui, key):
             ui._show_page(target)
         ttk.Button(menu, text=label, style="Selected.Option.TButton" if target==key else "Option.TButton",
                    command=choose).grid(row=row, column=0, sticky="ew", pady=(0, d(10)))
-    weekly = ttk.Button(menu, text="周常计划", style="Panel.TButton", command=ui._show_weekly_plan)
+    weekly = ttk.Button(menu, text="周常计划", style="Panel.TButton", command=lambda: ui._show_weekly_plan(weekly))
     weekly.grid(row=3, column=0, sticky="ew")
     if key=='differential_universe':
         note(menu, variable=ui.weekly_status, row=4, style="Hint.TLabel", scale=ui.ui_scale)

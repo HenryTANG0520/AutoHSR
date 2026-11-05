@@ -141,12 +141,12 @@ def main():
                     root.update()
                     ui.settings_shell.choose(section)
                     root.update()
-                    check(prefix+section+"_shortcut_changes_return_to_daily_plan", ui.settings_return_page == "home"
-                          and ui.settings_return_action == "home" and ui.action_page == "home")
+                    check(prefix+section+"_category_preserves_return_origin", ui.settings_return_page == "currency_wars"
+                          and ui.settings_return_action == "currency_wars" and ui.action_page == "currency_wars")
                     ui.settings_shell.back.invoke()
                     root.update()
-                    check(prefix+section+"_shortcut_returns_home_with_plan_action", ui.active_page == "home"
-                          and ui.action_page == "home" and ui.start_button.cget("text") == "开始计划")
+                    check(prefix+section+"_category_returns_to_currency", ui.active_page == "currency_wars"
+                          and ui.action_page == "currency_wars" and ui.start_button.cget("text") == "只读识别当前画面")
 
                 ui._show_page("differential_universe")
                 show_mode_view(ui, "differential_universe", "editor")

@@ -3,129 +3,150 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk
-import math
-from PIL import ImageTk
 
 from . import theme as t
-from .game_widgets import PlanRibbon, Surface, paint_run_metrics
 from .weekly_plan import DAYS, MODES
 from .setting_choices import SettingChoice
 
 
-SECTIONS = (("game", "游戏连接", "客户端", "guide-mark.png"),
-            ("daily", "每日任务", "任务安排", "tab-daily.png"),
-            ("power", "体力计划", "任务安排", "tab-survival.png"),
-            ("weekly", "周常计划", "任务安排", "tab-universe.png"),
-            ("run", "运行偏好", "运行功能", "tab-settings.png"),
-            ("recognition", "识别与等待", "识别参数", "tab-survival.png"),
-            ("admin", "管理员启动", "启动权限", "tab-records.png"))
+SECTIONS = (
+    ("game", "游戏连接", "客户端"),
+    ("daily", "每日任务", "任务安排"),
+    ("power", "体力计划", "任务安排"),
+    ("weekly", "周常计划", "任务安排"),
+    ("run", "运行偏好", "运行功能"),
+    ("recognition", "识别与等待", "识别参数"),
+    ("admin", "管理员启动", "启动权限"),
+)
 
 
-class SettingsShell(Surface):
-    """A separate settings surface, with the game's top navigation and return."""
+class SettingsShell(ttk.Frame):
+    """Second-level navigation and a scrollable form inside the guide paper."""
 
     def __init__(self, parent, scale, ui):
-        # The rings end at 126; leave room for the antialiasing filter below.
-        super().__init__(parent, scale, bg=t.BG, paint_height=132)
+        super().__init__(parent)
         self.ui, self.section = ui, "game"
-        self.watch(ui.stamina, ui.elapsed)
-        d = lambda n: round(n*scale)
-        self.menu = ttk.Frame(self, style="Footer.TFrame")
-        self.menu.bind("<Configure>", self.redraw, add="+")
-        self.content = ttk.Frame(self, style="Footer.TFrame")
-        self.content.columnconfigure(0, weight=1)
-        self.content.rowconfigure(0, weight=1)
-        self.plan = PlanRibbon(self, scale, ui, dark=True)
-        self.photos = {}
+        self.scroll_step = round(36 * scale)
+        self._layout_job = None
+        d = lambda n: round(n * scale)
+        self.columnconfigure(0, weight=1)
+        # A pending scale change can briefly leave less space than the menu
+        # needs. Keep the viewport mapped so an open dropdown retains its grab.
+        self.rowconfigure(2, weight=1, minsize=1)
+        menu = ttk.Frame(self)
+        menu.grid(row=0, column=0, sticky="ew", pady=(0, d(8)))
         self.buttons = {}
-        for index, (key, name, _, asset) in enumerate(SECTIONS):
-            for selected in (False, True):
-                p = t.Painter(d(48), d(48), scale, t.BG)
-                if selected:
-                    p.ellipse((3, 3, 45, 45), t.LIGHT)
-                    p.ellipse((0, 0, 48, 48), None, "#787c86", .8)
-                p.asset(asset, (10, 10, 38, 38), t.BG if selected else "#aaadb5")
-                self.photos[key, selected] = ImageTk.PhotoImage(p.finish(), master=self)
-            button = ttk.Button(self.menu, text=name, image=self.photos[key, False],
-                compound="top", style="Settings.Nav.TButton",
-                command=lambda key=key: self.choose(key))
-            button.grid(row=0, column=index, padx=d(8))
-            button.bind("<Map>", self.redraw, add="+")
+        for index, (key, name, _) in enumerate(SECTIONS):
+            menu.columnconfigure(index, weight=1)
+            button = ttk.Button(menu, text=name, style="Settings.Nav.TButton",
+                                command=lambda key=key: self.choose(key))
+            button.grid(row=0, column=index, sticky="ew", padx=(0, d(4)))
             button.bind("<Left>", lambda event, index=index: self.move(index, -1))
             button.bind("<Right>", lambda event, index=index: self.move(index, 1))
             self.buttons[key] = button
-        p = t.Painter(d(36), d(36), scale, t.BG)
-        p.asset("guide/close.png", (2, 2, 34, 34))
-        self.close_photo = ImageTk.PhotoImage(p.finish(), master=self)
-        self.back = ttk.Button(self, text="返回", image=self.close_photo, style="Settings.Close.TButton", command=ui._leave_settings)
-        self.bind("<Configure>", self.position, add="+")
+        self.back = ttk.Button(menu, text="返回", style="Panel.TButton", command=ui._leave_settings)
+        self.back.grid(row=0, column=len(SECTIONS), padx=(d(8), 0))
+        self.heading = ttk.Label(self, style="Settings.Heading.TLabel")
+        self.heading.grid(row=1, column=0, sticky="ew", pady=(0, d(6)))
+
+        viewport = ttk.Frame(self)
+        viewport.grid(row=2, column=0, sticky="nsew")
+        viewport.columnconfigure(0, weight=1)
+        viewport.columnconfigure(1, minsize=d(14))
+        viewport.rowconfigure(0, weight=1, minsize=1)
+        self.canvas = tk.Canvas(viewport, bg=t.PANEL, highlightthickness=0, borderwidth=0,
+                                width=1, height=1, takefocus=False)
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        self.scrollbar = ttk.Scrollbar(viewport, orient="vertical", command=self.canvas.yview)
+        self.scrollbar.grid(row=0, column=1, sticky="ns")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.content = ttk.Notebook(self.canvas, style="Settings.TNotebook")
+        self.form_window = self.canvas.create_window(0, 0, window=self.content, anchor="nw")
+        self.canvas.bind("<Configure>", self.queue_layout, add="+")
+        self.bind("<Map>", self.queue_layout, add="+")
+        self._bindings = [(event, ui.root.bind(event, action, add="+")) for event, action in
+                          (("<MouseWheel>", self._wheel), ("<FocusIn>", self._focus))]
+        self.bind("<Destroy>", self._destroy, add="+")
 
     def choose(self, key):
-        if key == "weekly":
-            self.ui._show_weekly_plan()
-        elif key == "daily":
-            self.ui._show_daily_tasks()
-        elif key == "power":
-            from .power_plan_ui import show
-            show(self.ui)
-        else:
-            self.ui.settings_tabs.select(self.ui.settings_sections[key])
-            self.ui.root.after_idle(self.ui._focus_settings_entry)
+        self.content.select(self.ui.settings_sections[key])
+        self.ui.root.after_idle(self.ui._focus_settings_entry)
 
     def move(self, index, step):
-        key = SECTIONS[(index+step) % len(SECTIONS)][0]
+        key = SECTIONS[(index + step) % len(SECTIONS)][0]
         self.choose(key)
         self.buttons[key].focus_set()
         return "break"
 
     def select(self, key):
-        changed = self.section != key
+        if self.section != key:
+            self.canvas.yview_moveto(0)
         self.section = key
+        self.heading.configure(text=next(group for name, _, group in SECTIONS if name == key))
         for name, button in self.buttons.items():
-            button.configure(image=self.photos[name, name == key],
-                style="Settings.Selected.Nav.TButton" if name == key else "Settings.Nav.TButton")
-        if changed:
-            self.redraw()
+            button.configure(style="Settings.Selected.Nav.TButton" if name == key else "Settings.Nav.TButton")
+        self.queue_layout()
 
-    def position(self, _=None):
-        d = lambda n: round(n*self.scale)
-        w, h = self.winfo_width(), self.winfo_height()
-        margin = max(d(36), round(w*.052))
-        self.menu.place(x=(w-self.menu.winfo_reqwidth())//2, y=d(6))
-        self.back.place(x=w-d(56), y=d(14), width=d(44), height=d(44))
-        daily = getattr(self.ui, "action_page", "home") in ("home", "tasks")
-        reserve = d(70 if daily else 20)
-        self.content.place(x=margin, y=d(126), width=max(1, w-2*margin), height=max(1, h-d(126)-reserve))
-        if daily:
-            self.plan.place(x=margin, y=h-d(58), width=max(1, w-2*margin), height=d(46))
-        else:
-            self.plan.place_forget()
+    def queue_layout(self, _=None):
+        if self._layout_job is None:
+            self._layout_job = self.after_idle(self._layout_form)
 
-    def paint(self, p):
-        self.position()
-        # These are restrained code-drawn rings, not a fabricated game scene.
-        for radius in (82, 112, 150):
-            p.ellipse((35-radius, -24-radius, 35+radius, -24+radius), None, "#222936", .7)
-        for x, y, radius, teeth in ((40, 34, 13, 8), (51, 43, 6, 6)):
-            points = []
-            for step in range(teeth*4):
-                angle = step*math.tau/(teeth*4)
-                r = radius if step % 4 in (1, 2) else radius*.74
-                points.extend((x+r*math.cos(angle), y+r*math.sin(angle)))
-            p.poly(points, t.GOLD)
-            p.ellipse((x-radius*.42, y-radius*.42, x+radius*.42, y+radius*.42), t.BG)
-        name, group = next((name, group) for key, name, group, _ in SECTIONS if key == self.section)
-        p.text((70, 19), "设置", 14, t.GOLD)
-        p.text((70, 41), name, 17, t.LIGHT)
-        paint_run_metrics(p, self.ui)
-        margin = max(36, p.width*.052)
-        p.text((margin, 98), group, 17, t.LIGHT)
-        p.line((margin, 120, p.width-margin, 120), "#4c505b", .8)
-        button = self.buttons[self.section]
-        if button.winfo_ismapped():
-            x = (self.menu.winfo_x()+button.winfo_x())/self.scale
-            width = button.winfo_width()/self.scale
-            p.line((x+8, 84, x+width-8, 84), t.LIGHT, 2)
+    def _layout_form(self):
+        self._layout_job = None
+        selection = self.content.select()
+        if not self.winfo_ismapped() or not selection:
+            return
+        section = self.nametowidget(selection)
+        width, height = self.canvas.winfo_width(), self.canvas.winfo_height()
+        extent = max(height, section.winfo_reqheight())
+        self.canvas.itemconfigure(self.form_window, width=width, height=extent)
+        self.canvas.configure(scrollregion=(0, 0, width, extent))
+        self.scrollbar.state(("!disabled" if extent > height else "disabled",))
+
+    def _wheel(self, event):
+        widget = event.widget
+        if self.ui.settings_shell is not self or not self.winfo_ismapped():
+            return
+        if widget is not self.canvas and not str(widget).startswith(str(self.canvas) + "."):
+            return
+        if isinstance(widget, (ttk.Treeview, tk.Text, tk.Listbox)):
+            return
+        bounds = self.canvas.bbox(self.form_window)
+        if event.delta and bounds and bounds[3] > self.canvas.winfo_height():
+            delta = -self.scroll_step if event.delta > 0 else self.scroll_step
+            self.canvas.yview_moveto((self.canvas.canvasy(0) + delta) / bounds[3])
+            return "break"
+
+    def _focus(self, event):
+        widget = event.widget
+        # Tk also sends FocusIn to ancestors when a native dropdown opens.
+        # Revealing an entire section would scroll away from its active field.
+        if isinstance(widget, tk.Widget) and str(widget) == str(self.tk.call("focus")):
+            self.see(widget)
+
+    def see(self, widget):
+        if not str(widget).startswith(str(self.content) + ".") or not widget.winfo_ismapped():
+            return
+        offset = self.canvas.canvasy(0)
+        top = widget.winfo_rooty() - self.canvas.winfo_rooty() + offset
+        bottom = top + widget.winfo_height()
+        height = self.canvas.winfo_height()
+        bounds = self.canvas.bbox(self.form_window)
+        if not bounds or bounds[3] <= height:
+            return
+        extent = bounds[3]
+        if top < offset:
+            self.canvas.yview_moveto(top / extent)
+        elif bottom > offset + height:
+            self.canvas.yview_moveto((bottom - height) / extent)
+
+    def _destroy(self, event):
+        if event.widget is not self:
+            return
+        if self._layout_job is not None:
+            self.after_cancel(self._layout_job)
+        for sequence, binding in self._bindings:
+            self.ui.root.unbind(sequence, binding)
 
 
 class BooleanSetting(SettingChoice):
@@ -184,16 +205,16 @@ class SettingRow(ttk.Frame):
 def build_settings(ui):
     s = ui.ui_scale
     d = lambda n: round(n*s)
-    ui.settings_shell = SettingsShell(ui.shell, s, ui)
-    page = ui.settings_shell.content
+    ui.settings_shell = SettingsShell(ui.guide.content, s, ui)
     ui.pages["settings"] = ui.settings_shell
-    tabs = ttk.Notebook(page, style="Settings.TNotebook")
-    tabs.grid(row=0, column=0, sticky="nsew")
+    ui.settings_shell.grid(row=0, column=0, sticky="nsew")
+    tabs = ui.settings_shell.content
     ui.settings_tabs = tabs
     ui.settings_sections = {}
     ui.settings_buttons = ui.settings_shell.buttons
-    for key, name, _, _ in SECTIONS:
-        section = ttk.Frame(tabs, style="Footer.TFrame")
+    for key, name, _ in SECTIONS:
+        section = ttk.Frame(tabs)
+        section.bind("<Configure>", ui.settings_shell.queue_layout, add="+")
         section.columnconfigure(0, weight=1)
         tabs.add(section, text=name)
         ui.settings_sections[key] = section
@@ -204,6 +225,7 @@ def build_settings(ui):
             if key is not None:
                 ui.settings_shell.select(key)
     tabs.bind("<<NotebookTabChanged>>", selected)
+    ui.settings_shell.select("game")
 
     def row(section, index, name, **kwargs):
         return SettingRow(ui.settings_sections[section], s, index, name, **kwargs)

@@ -162,6 +162,7 @@ class ResponsiveLayout:
         paths = {widget: path for path, widget in previous.items()}
         focus = paths.get(focus_widget(root))
         return_focus = paths.get(getattr(ui, "settings_return_focus", None))
+        settings_scroll = ui.settings_shell.canvas.yview()[0]
         navigation = {key: getattr(ui, key, None) for key in
             ("active_page", "action_page", "last_universe_page", "settings_return_page", "settings_return_action")}
         mode_views = {key: deck["shown"] for key, deck in ui.mode_decks.items()}
@@ -253,6 +254,7 @@ class ResponsiveLayout:
                                 widget._rendered_geometry != widget._geometry_key()):
                             widget.redraw(layout=True)
             root.update_idletasks()
+            ui.settings_shell.canvas.yview_moveto(settings_scroll)
             for path, (_, yview, _) in texts.items():
                 current[path].yview_moveto(yview)
             for path, (cursor, selection, xview) in edits.items():

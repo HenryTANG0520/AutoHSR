@@ -29,7 +29,8 @@ def main():
                 ui.guide.buttons['logs'].invoke();root.update()
                 check(f'{scale}_records_selects_its_tab',ui.active_page=='logs' and ui.guide.buttons['logs'].cget('style')=='Selected.Nav.TButton')
                 ui.guide.buttons['settings'].invoke();root.update()
-                check(f'{scale}_settings_opens_from_same_row',ui.active_page=='settings' and not ui.guide.winfo_ismapped())
+                check(f'{scale}_settings_opens_inside_same_guide',ui.active_page=='settings' and ui.guide.winfo_ismapped()
+                      and ui.settings_shell.master is ui.guide.content and ui.guide.selected_page=='settings')
                 ui._leave_settings();root.update()
                 check(f'{scale}_settings_returns_to_records',ui.active_page=='logs' and str(root.tk.call('focus','-lastfor',root))==str(ui.guide.buttons['settings']))
                 for key in ('logs','settings'):
