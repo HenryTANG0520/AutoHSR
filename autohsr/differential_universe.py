@@ -1145,24 +1145,24 @@ class DifferentialUniverseWorkflow:
 
     def _safer_station_preview(self,scene,target):
         """Inspect the selected card before committing a dangerous beacon."""
+        if scene.image is not None:
+            previous=None
+            for _ in range(6):
+                self.ctx.sleep(.35)
+                scene,kind=self._snapshot('station_beacon_preview')
+                if kind!='station_choice':
+                    raise AutomationError('站点预览时页面改变，未确认进入。')
+                text=self._station_effect_text(scene)
+                if text and text==previous and '选择一张站点卡' not in text:
+                    break
+                previous=text
+            else:
+                raise AutomationError('站点效果预览未稳定，未确认进入。')
         visited=[target.center[0]]
         for _ in range(6):
-            if scene.image is not None:
-                previous=None
-                for _ in range(6):
-                    self.ctx.sleep(.35)
-                    scene,kind=self._snapshot('station_beacon_preview')
-                    if kind!='station_choice':
-                        raise AutomationError('站点预览时页面改变，未确认进入。')
-                    text=normalize(''.join(t.text for t in scene.tokens if t.within((.08,.14,.92,.33))))
-                    if text and text==previous and '选择一张站点卡' not in text:
-                        break
-                    previous=text
-                else:
-                    raise AutomationError('站点效果预览未稳定，未确认进入。')
             hazard=self._station_hazard(scene)
             if hazard is None:
-                return scene,'station_choice'
+                return scene,'station_choice',len(visited)>1
             self.report.setdefault('station_decisions',[]).append({'run':self.report['current_run'],
                 'action':'avoid','hazard':hazard,'card_x':visited[-1]})
             candidates=self.station_preferences.ordered([t for t in self.station_preferences.candidates(scene)
@@ -1172,10 +1172,84 @@ class DifferentialUniverseWorkflow:
             target=candidates[0]
             self.ctx.log('避开敌人死亡自爆信标，检查其他站点：'+target.text)
             visited.append(target.center[0])
-            scene,kind=self._click(scene,target,intent='station_select',label='station_hazard_alternative')
+            scene=self._select_station_alternative(scene,target)
+        raise AutomationError('站点危险效果检查达到上限，未确认进入。')
+
+    @staticmethod
+    def _station_effect_text(scene):
+        from .du_station_preview import EFFECT_REGION
+        return normalize(''.join(t.text for t in scene.tokens if t.within(EFFECT_REGION)))
+
+    def _select_station_alternative(self,source,target):
+        from .du_station_preview import card_for_label, station_cards, station_effect_covered, station_effect_ink
+        original_card=card_for_label(source,station_cards(source),target)
+        original=station_effect_ink(source)
+        if original_card is None or original is None or not original.danger_rows:
+            raise AutomationError('未核实替代站点卡框及原预览，未切换。')
+        original_text=self._station_effect_text(source)
+        expected=normalize(target.text)
+        epoch=self.ctx.scene_epoch
+        try:
+            scene,kind=self._click(source,target,intent='station_select',label='station_hazard_alternative')
             if kind!='station_choice':
                 raise AutomationError('切换站点预览后页面改变，未确认进入。')
-        raise AutomationError('站点危险效果检查达到上限，未确认进入。')
+            latest=max(source.captured_at,scene.captured_at)
+            previous_text,previous_ink=None,None
+            for _ in range(6):
+                self.ctx.sleep(.35)
+                text,ink=None,None
+                try:
+                    scene=self.ctx.snapshot()
+                except EmptyCapture:
+                    scene=None
+                kind=self._observe(scene,'station_alternative_preview') if scene is not None else 'unknown'
+                if kind not in ('station_choice','unknown','du_page'):
+                    raise AutomationError('替代站点预览时页面改变，未确认进入。')
+                self.ctx.checkpoint()
+                if self.ctx.scene_epoch!=epoch or self.ctx.runner.input_epoch!=epoch:
+                    raise InputInterrupted('替代站点预览期间输入代次改变。')
+                if scene is not None and scene is self.ctx.last_scene and scene.captured_at>latest:
+                    latest=scene.captured_at
+                    if kind=='station_choice' and scene.geometry==source.geometry and 0<=time.monotonic()-latest<=8:
+                        cards=station_cards(scene)
+                        selected=[card for card in cards if card.selected]
+                        if (len(selected)==1 and selected[0].bounds[0]<original_card.center_x<selected[0].bounds[2]
+                                and any(normalize(token.text)==expected and card_for_label(scene,cards,token)==selected[0]
+                                        for token in self.station_preferences.candidates(scene))):
+                            text=self._station_effect_text(scene)
+                            if text and text!=original_text and '选择一张站点卡' not in text:
+                                effect=station_effect_ink(scene)
+                                if (effect is not None and not any(
+                                        station_effect_covered(original.screen[row],effect.screen[row])
+                                        for row in original.danger_rows)):
+                                    ink=effect.ink
+                if ink is not None and not station_effect_covered(ink,original.screen):
+                    if (text==previous_text and previous_ink is not None
+                            and station_effect_covered(ink,previous_ink) and station_effect_covered(previous_ink,ink)
+                            and 0<=time.monotonic()-scene.captured_at<=8):
+                        return scene
+                    previous_text,previous_ink=text,ink
+                else:
+                    previous_text,previous_ink=None,None
+        except InputInterrupted as error:
+            raise AutomationError('替代站点预览中断，未确认进入。') from error
+        raise AutomationError('未核实替代站点选中及新效果，未确认进入。')
+
+    def _wait_alternative_station_confirmation(self,scene,kind):
+        for _ in range(6):
+            if kind not in ('unknown','du_page'):
+                break
+            self.ctx.sleep(.7)
+            try:
+                scene=self.ctx.snapshot()
+            except EmptyCapture:
+                continue
+            kind=self._observe(scene,'station_alternative_confirmation_settled')
+        if kind=='station_choice':
+            raise AutomationError('替代站点确认后仍在原选站页，反馈待核对，未重复点击。')
+        if kind in ('unknown','du_page'):
+            raise AutomationError('替代站点确认反馈未核实，未重复点击。')
+        return scene,kind
 
     def _leave_area(self, scene: Scene, kind: str) -> tuple[Scene, str]:
         target = self._find(scene, ("离开商店", "离开", "返回", "关闭", "跳过", "继续"),
@@ -2412,18 +2486,25 @@ class DifferentialUniverseWorkflow:
                     self._combat_chest_attempts=0
                     if kind != "station_choice":
                         continue
-                    scene,kind=self._safer_station_preview(scene,target)
+                    scene,kind,alternative=self._safer_station_preview(scene,target)
                     confirm = self._find(scene, ("确认", "确定", "进入区域", "进入下一站"),
                                          (0.48, 0.78, 0.98, 0.99))
                     if confirm is None:
                         raise AutomationError("异常区域卡选中后未识别到确认按钮。")
-                    scene, kind = self._click(scene, confirm, intent="station_confirm",
-                                              label="station_confirmed")
-                    if kind == "station_choice":
-                        self.ctx.sleep(1.5)
-                        scene, kind = self._snapshot("station_confirmation_settled")
+                    try:
+                        scene, kind = self._click(scene, confirm, intent="station_confirm",
+                                                  label="station_confirmed")
                         if kind == "station_choice":
-                            raise AutomationError("确认站点卡后页面没有前进；已停止重复点击。")
+                            self.ctx.sleep(1.5)
+                            scene, kind = self._snapshot("station_confirmation_settled")
+                            if not alternative and kind == "station_choice":
+                                raise AutomationError("确认站点卡后页面没有前进；已停止重复点击。")
+                        if alternative:
+                            scene,kind=self._wait_alternative_station_confirmation(scene,kind)
+                    except InputInterrupted as error:
+                        if not alternative:
+                            raise
+                        raise AutomationError('替代站点确认中断，反馈待核对，未重复点击。') from error
                     continue
                 if kind == 'last_area_confirm':
                     scene,kind=self._confirm_last_area(scene)

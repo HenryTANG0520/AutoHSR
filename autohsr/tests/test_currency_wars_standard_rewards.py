@@ -139,6 +139,84 @@ class StandardRewardTests(unittest.TestCase):
             page.tokens.append(Token(str((amount+1)%100),.99,(.828,.26,.849,.292)))
             with self.assertRaises(AutomationError):active_action(page,session)
 
+    def test_direct_equipment_choice_preserves_the_same_crystal_chain(self):
+        from autohsr.currency_wars_node import loot_centers
+        from autohsr.currency_wars_standard_flow import _loot_pickup_chain
+        from autohsr.tests.test_currency_wars_loot_sale import DoubleSaleHarness
+
+        class EquipmentLootHarness(DoubleSaleHarness):
+            def click(self, *args):
+                action = self.c.currency_standard_session.data['actions'][-1]
+                intent, target = action['action'], action.get('target', ())
+                if intent == 'collect_standard_loot' and len(self.crystal_counts) == 1:
+                    self.inputs.append(intent)
+                    self.remove_crystal(target)
+                    self.crystal_counts.append(len(loot_centers(self.board)))
+                    self.return_board = self.board
+                    state = read_match(self.board)
+                    self.board = modal('equipment_selection', self.board, gold=state.gold, destination=state.node)
+                    trading_helpers.hud(self.board, level=state.level, xp=state.experience, deployment=state.deployment)
+                    self.board.tokens = [token for token in self.board.tokens if not normalize(token.text).startswith('uid')]
+                    self.board.tokens.extend(token for token in self.return_board.tokens if normalize(token.text).startswith('uid'))
+                    self.board.image[330:690,1700:2180] = 0
+                elif intent == 'choose_standard_reward':
+                    self.inputs.append(intent)
+                    self.board = self.return_board
+                    equipment_helpers.place(self.board.image, target[5], (2460,330))
+                    self.stage = 'equipment_returned'
+                else:
+                    super().click(*args)
+
+        with tempfile.TemporaryDirectory() as folder:
+            harness = EquipmentLootHarness(folder, crystal_count=3, refill_at=(2,))
+            try:
+                result = harness.run()
+            except Stopped:
+                pass
+            else:
+                self.fail(f'{result.detail}，晶矿计数 {harness.crystal_counts}，动作 {harness.inputs}')
+            self.assertEqual(harness.crystal_counts, [3,2,1,0])
+            self.assertEqual(harness.inputs.count('choose_standard_reward'), 1)
+            self.assertEqual(harness.inputs.count('sell_standard_owned'), 2)
+            self.assertNotIn('open_standard_shop', harness.inputs)
+            self.assertGreaterEqual(sum(stage=='equipment_returned' for stage,_ in harness.captures), 2)
+            saved_bytes = harness.path.read_bytes()
+            actions = StandardSession(harness.path).data['actions']
+            first_sale, second_sale = [action for action in actions if action['action']=='sell_standard_owned']
+            origin, claim = actions[first_sale['id']+1:first_sale['id']+3]
+            self.assertEqual(claim['target'][1:3], [origin['id'], 'equipment_selection'])
+            self.assertTrue(valid_effect(claim, actions))
+            self.assertIs(origin['reward_verified'], True)
+            self.assertIs(claim['reward_verified'], True)
+            self.assertEqual(claim['reward_effect']['item'], 'armor')
+            returned_proof = claim['loot_reward_return']
+            self.assertEqual(returned_proof['added_bench_slot'], 0)
+            self.assertEqual(returned_proof['gold_after'], first_sale['receipt']['gold_after'])
+            self.assertEqual(len(returned_proof['remaining']), 2)
+            self.assertEqual(ledger_status(actions), 'clear')
+
+            basis = actions[first_sale['id']-1]['loot_sale_basis']
+            end = second_sale['id']-1
+            chain = _loot_pickup_chain(actions, first_sale['id'], end, basis)
+            self.assertIsNotNone(chain)
+            self.assertEqual(len(chain[1]), 1)
+            self.assertEqual(chain[2], returned_proof['gold_after'])
+            for mutation in ('missing_gold', 'wrong_origin', 'wrong_survivors'):
+                with self.subTest(mutation=mutation):
+                    changed = deepcopy(actions)
+                    broken = changed[claim['id']]
+                    if mutation=='missing_gold':
+                        del broken['reward_effect']['gold_before']
+                        self.assertTrue(valid_effect(broken, changed))
+                    elif mutation=='wrong_origin':
+                        broken['target'][1] = broken['reward_effect']['origin_action_id'] = first_sale['id']
+                    else:
+                        broken['loot_reward_return']['remaining'].pop()
+                        self.assertTrue(valid_effect(broken, changed))
+                    self.assertIsNone(_loot_pickup_chain(changed, first_sale['id'], end, basis))
+                    self.assertIs(broken['reward_verified'], True)
+            self.assertEqual(harness.path.read_bytes(), saved_bytes)
+
     def test_missing_origin_changed_candidates_missing_price_and_unknown_gear_do_not_fall_back(self):
         for mutation in ('origin','version','gold','missing','cash','unknown'):
             _,page,session=box('expert_selection' if mutation=='cash' else 'equipment_selection')

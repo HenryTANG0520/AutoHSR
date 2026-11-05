@@ -352,6 +352,51 @@ def feedback(choice, before, after, session, confidence=.65):
         return False
 
 
+def added_loot_bench_slot(scene, before, confidence=.65):
+    """Return the newly occupied bench slot, zero for no addition, or None for unknown."""
+    try:
+        cells = {(cell.zone, cell.slot): cell.state for cell in roster_cells(scene, confidence)}
+        if {f'{zone}:{slot}' for zone, slot in cells} != before.keys():
+            return None
+        added = []
+        for (zone, slot), current in cells.items():
+            previous = before[f'{zone}:{slot}'][0]
+            if current == previous or (previous, current) == ('occupied', 'empty'):
+                continue
+            if zone != 'bench' or (previous, current) != ('empty', 'occupied'):
+                return None
+            added.append(slot)
+        if len(added) < 2:
+            return added[0] if added else 0
+    except (AutomationError, AttributeError, IndexError, KeyError, TypeError):
+        pass
+    return None
+
+
+def _record_loot_unit_slot(scene, session, data, roster, confidence):
+    claim = session['actions'][data['claim_action_id']]
+    pickup = claim.get('loot_reward_return')
+    if not isinstance(pickup, dict):
+        return
+    slot = added_loot_bench_slot(scene, data['basis']['cells'], confidence)
+    if slot is None or slot != pickup.get('added_bench_slot'):
+        return
+    if slot:
+        name = data['choice'][6]
+        before = {(unit['zone'], unit['slot']): (unit['star'], unit['tier'], tuple(unit['equipment']))
+                  for unit in data['basis']['snapshot']['roster'] if unit['name'] == name}
+        after = {(unit.zone, unit.slot): (unit.star, unit.tier, tuple(unit.equipment))
+                 for unit in roster if unit.name == name}
+        if after.pop(('bench', slot), None) is None or before != after:
+            return  # An old copy moving into the gap does not prove the new one arrived there.
+        record = session['collection']['units'].get(f'bench:{slot}', {})
+        read_id, signature = record.get('inspection_action_id'), record.get('signature')
+        if type(read_id) is not int or not isinstance(signature, str):
+            return
+        pickup['unit_slot_read'] = dict(action_id=read_id, signature=signature)
+    pickup['unit_slot_verified'] = True
+
+
 def returned(session, choice, scene, confidence=.65):
     data = _active(session);action = session['actions'][-1]
     state = read_match(scene,confidence)
@@ -394,6 +439,7 @@ def _finish(session, preserve_collection=False, action_status='reward_verified')
 
 def _unit_action(scene, session, data, confidence):
     from .currency_wars_standard_flow import StandardAction
+    from .currency_wars_standard_sale import same_target
     state = read_match(scene,confidence)
     if not state:
         raise AutomationError('奖励角色核验需要当前备战或角色面板。')
@@ -404,7 +450,7 @@ def _unit_action(scene, session, data, confidence):
         else:
             profile = owned_profile(scene,inspecting,confidence)
             record = session.get('collection',{}).get('units',{}).get(profile.zone+':'+str(profile.slot),{})
-            if record.get('unit')!=asdict(profile):
+            if not same_target(record.get('unit'), asdict(profile)):
                 raise AutomationError('奖励核验的当前角色尚未记入新采集。')
             intent = 'close_standard_reward_unit'
         return StandardAction(intent,'standard_reward_unit_board',Token('关闭奖励角色核验面板',1.,(.49,.49,.51,.51)))
@@ -501,6 +547,7 @@ def verify_unit(session, scene, epoch, confidence=.65):
         effect.update(tiers_after=tiers,equipment_before=sorted(gear_before.elements()),equipment_after=sorted(gear_after.elements()))
         effect['delivery_kind']='unit'
         data['delivery_kind']='unit'
+    _record_loot_unit_slot(scene, session, data, snapshot.roster, confidence)
     _finish(session,preserve_collection=True)
     return None
 

@@ -467,29 +467,250 @@ class DuRuntimeTests(unittest.TestCase):
             with self.assertRaises(AutomationError):
                 guard_differential_universe_field_input(bad,action='forward')
 
-    def test_native_explosion_beacon_cannot_be_confirmed_and_switches_to_safe_route(self):
-        import json,cv2
-        from pathlib import Path
-        root=Path(__file__).parent/'fixtures/du_runtime/station_explosion_beacon'
-        data=json.loads(root.with_suffix('.json').read_text('utf8'))
-        page=Scene([Token(v['text'],v['score'],tuple(v['box'])) for v in data['tokens']])
-        flow=DifferentialUniverseWorkflow(Mock(settings=Settings(),report=RunReport()),1)
-        self.assertEqual(flow._station_hazard(page),'enemy_death_party_explosion')
-        confirm=page.find('确定',(.48,.78,.98,.99),exact=True)
+    @staticmethod
+    def station_preview_fixture():
+        import cv2
+        page=DuRuntimeTests.optional_device_fixture('station_explosion_beacon')
+        page.image=cv2.resize(page.image,(960,540))
+        # The recorded screenshot contains only the selected battle. Simulate
+        # the switch with its marker over the existing wealth card and a real
+        # glyph row moved inside the effect panel.
+        image=page.image
+        missing=image.copy()
+        missing[184:207,270:295]=image[184:207,235:260]
+        moved=missing.copy()
+        moved[201:224,415:440]=image[184:207,270:295]
+        safe=moved.copy()
+        safe[86:146,95:867]=15
+        glyph_source=DuRuntimeTests.optional_device_fixture('reward_items_twenty')
+        glyph=glyph_source.find('宇宙碎片',exact=True)
+        x,y,r,b=(round(value*scale) for value,scale in zip(glyph.box,(960,540,960,540)))
+        glyph_image=cv2.resize(glyph_source.image,(960,540))[y:b,x:r]
+        left,top=409,126
+        right,bottom=left+r-x,top+b-y
+        safe[top:bottom,left:right]=glyph_image
+        tokens=[token for token in page.tokens if not token.within((.08,.14,.92,.33))]
+        tokens.append(Token(glyph.text,glyph.score,(left/960,top/540,right/960,bottom/540)))
+        return page,Scene(tokens,safe),moved,missing
+
+    def test_native_explosion_beacon_binds_selection_to_battle_across_sizes(self):
+        import cv2
+        from autohsr.du_station_preview import card_for_label,station_cards
+        page=self.optional_device_fixture('station_explosion_beacon')
+        self.assertEqual(DifferentialUniverseWorkflow._station_hazard(page),'enemy_death_party_explosion')
         with self.assertRaises(AutomationError):
-            guard_differential_universe_click(page,confirm,intent='station_confirm')
-        battle=page.find('战斗',(.20,.54,.73,.82),exact=True)
-        safe=Scene([t for t in page.tokens if not t.within((.08,.14,.92,.33))]
-                   +[t('获得宇宙碎片',.3,.24)])
-        page.image=cv2.imread(str(root.with_suffix('.png')))
-        safe.image=page.image
-        flow._snapshot=Mock(side_effect=[(page,'station_choice'),(page,'station_choice'),
-                                        (safe,'station_choice'),(safe,'station_choice')])
-        flow._click=Mock(return_value=(safe,'station_choice'))
-        self.assertEqual(flow._safer_station_preview(page,battle),(safe,'station_choice'))
-        self.assertEqual(flow._click.call_args.args[1].text,'财富')
-        self.assertEqual(flow._click.call_count,1)
-        guard_differential_universe_click(safe,confirm,intent='station_confirm')
+            guard_differential_universe_click(page,page.find('确定',exact=True),intent='station_confirm')
+        for width in (960,1280,1920,3840):
+            with self.subTest(width=width):
+                resized=Scene(page.tokens,cv2.resize(page.image,(width,round(width*9/16))))
+                cards=station_cards(resized)
+                self.assertEqual(len(cards),4)
+                battle=card_for_label(resized,cards,resized.find('战斗',exact=True))
+                self.assertEqual([card for card in cards if card.selected],[battle])
+                self.assertFalse(card_for_label(resized,cards,resized.find('财富',exact=True)).selected)
+
+    def station_preview_frames(self,initial,replacement_frames):
+        before=[Scene(initial.tokens,initial.image) for _ in range(5)]
+        return [*before,*replacement_frames,Scene([t('战斗失败',.5,.2)])]
+
+    def test_station_card_geometry_has_no_fixed_column_count(self):
+        from autohsr.du_station_preview import card_for_label,station_cards
+        page,_,_,_=self.station_preview_fixture()
+        for count,right in ((2,494),(3,626)):
+            with self.subTest(cards=count):
+                # Recenter real card bodies and marker in a synthetic layout.
+                image=page.image.copy()
+                left=198
+                start=(960-(right-left))//2
+                image[183:442,left:755]=(132,91,54)
+                image[183:442,start:start+right-left]=page.image[183:442,left:right]
+                battle=page.find('战斗',exact=True)
+                x1,y1,x2,y2=battle.box
+                offset=(start-left)/960
+                battle=Token(battle.text,battle.score,(x1+offset,y1,x2+offset,y2))
+                scene=Scene([battle],image)
+                cards=station_cards(scene)
+                self.assertEqual(len(cards),count)
+                self.assertEqual([card for card in cards if card.selected],
+                                 [card_for_label(scene,cards,battle)])
+
+    def test_station_confirm_waits_for_selected_alternative_with_new_effect(self):
+        page,safe,old_effect,_=self.station_preview_fixture()
+        frames=self.station_preview_frames(page,[Scene(safe.tokens,old_effect),
+            Scene(safe.tokens,safe.image),Scene(safe.tokens,safe.image)])
+        with self.captured_du_flow(frames) as (flow,window):
+            before=flow.ctx.snapshot()
+            with self.assertRaisesRegex(AutomationError,'差分宇宙已失败'):
+                flow._progress_run(before,'station_choice')
+            self.assertEqual([call.args[:2] for call in window.click.call_args_list],
+                [page.find(name,exact=True).center for name in ('战斗','财富','确定')])
+            self.assertIs(flow.ctx.vision.read.call_args_list[-2].args[0],safe.image)
+
+    def test_safe_ocr_cannot_confirm_an_alternative_while_the_old_card_is_selected(self):
+        page,safe,old_effect,missing=self.station_preview_fixture()
+        conflict=safe.image.copy()
+        conflict[184:207,270:295]=page.image[184:207,270:295]
+        no_marker=safe.image.copy()
+        no_marker[201:224,415:440]=missing[201:224,415:440]
+        nearly_named=[Token('财富间',token.score,token.box) if token.text=='财富' else token
+                      for token in safe.tokens]
+        spans_card=[Token(token.text,token.score,(token.box[0],token.box[1],.52,token.box[3]))
+                    if token.text=='财富' else token for token in safe.tokens]
+        for label,tokens,image in (
+                ('old selected card',safe.tokens,page.image),
+                ('changed OCR on old effect',safe.tokens,old_effect),
+                ('conflicting markers',safe.tokens,conflict),
+                ('missing marker',safe.tokens,no_marker),
+                ('approximate title in selected card',nearly_named,safe.image),
+                ('title extends beyond the selected card',spans_card,safe.image)):
+            with self.subTest(label=label):
+                frames=self.station_preview_frames(page,[Scene(tokens,image) for _ in range(6)])
+                with self.captured_du_flow(frames) as (flow,window):
+                    before=flow.ctx.snapshot()
+                    with self.assertRaisesRegex(AutomationError,'未核实替代站点选中及新效果'):
+                        flow._progress_run(before,'station_choice')
+                    self.assertEqual([call.args[:2] for call in window.click.call_args_list],
+                        [page.find(name,exact=True).center for name in ('战斗','财富')])
+
+    def test_alternative_station_proof_restarts_after_replay_or_empty_capture(self):
+        page,safe,_,_=self.station_preview_fixture()
+        for break_kind in ('repeated_capture','empty_capture','unknown_page'):
+            with self.subTest(break_kind=break_kind):
+                first,duplicate,next_page,last=[Scene(safe.tokens,safe.image) for _ in range(4)]
+                gap={'repeated_capture':duplicate,'empty_capture':EmptyCapture('transition'),
+                     'unknown_page':Scene([],safe.image)}[break_kind]
+                frames=self.station_preview_frames(page,[first,gap,next_page,last])
+                with self.captured_du_flow(frames) as (flow,window):
+                    snapshot=flow.ctx.snapshot
+                    clicked_scenes=[]
+
+                    def read():
+                        scene=snapshot()
+                        if scene is duplicate:
+                            scene.captured_at=first.captured_at
+                        return scene
+
+                    flow.ctx.snapshot=read
+                    window.click.side_effect=lambda *_:clicked_scenes.append(flow.ctx.last_scene)
+                    before=flow.ctx.snapshot()
+                    with self.assertRaisesRegex(AutomationError,'差分宇宙已失败'):
+                        flow._progress_run(before,'station_choice')
+                    self.assertEqual(len(clicked_scenes),3)
+                    self.assertIs(clicked_scenes[-1],last)
+
+    def test_unrelated_white_change_cannot_verify_station_effect_replacement(self):
+        page,safe,old_effect,_=self.station_preview_fixture()
+        outside=old_effect.copy()
+        # Retain the recorded dangerous text. This static white patch sits
+        # below every effect OCR row, but inside the former broad ink region.
+        outside[143:158,650:670]=255
+        frames=self.station_preview_frames(page,[Scene(safe.tokens,outside) for _ in range(6)])
+        with self.captured_du_flow(frames) as (flow,window):
+            before=flow.ctx.snapshot()
+            with self.assertRaises(AutomationError) as failure:
+                flow._progress_run(before,'station_choice')
+            self.assertEqual(window.click.call_count,2)
+            self.assertIn('未核实替代站点选中及新效果',str(failure.exception))
+
+    def test_new_station_effect_requires_real_text_and_removal_of_original_danger(self):
+        page,safe,old_effect,_=self.station_preview_fixture()
+        token=safe.find('宇宙碎片',exact=True)
+        x,y,r,b=(round(value*scale) for value,scale in zip(token.box,(960,540,960,540)))
+        visible_danger=old_effect.copy()
+        visible_danger[y:b,x:r]=safe.image[y:b,x:r]
+        white_block=safe.image.copy()
+        white_block[y:b,x:r]=255
+        for label,image in [('old danger retained beneath new OCR',visible_danger),
+                            ('filled rectangle inside OCR box',white_block)]:
+            with self.subTest(label=label):
+                frames=self.station_preview_frames(page,[Scene(safe.tokens,image) for _ in range(6)])
+                with self.captured_du_flow(frames) as (flow,window):
+                    before=flow.ctx.snapshot()
+                    with self.assertRaisesRegex(AutomationError,'未核实替代站点选中及新效果'):
+                        flow._progress_run(before,'station_choice')
+                    self.assertEqual(window.click.call_count,2)
+
+    def test_split_danger_effect_does_not_treat_shared_description_as_old_hazard(self):
+        page,safe,old_effect,_=self.station_preview_fixture()
+        warning=page.find('跟你爆了')
+        common=page.find('在这个区域中战胜敌人可以获得祝福',exact=True)
+        x1,y1,x2,y2=warning.box
+        cut=437/960
+        chunks=[Token('跟你爆',warning.score,(x1,y1,cut,y2)),
+                Token(warning.text[3:],warning.score,(cut,y1,x2,y2))]
+        index=page.tokens.index(warning)
+        page.tokens[index:index+1]=chunks
+        self.assertEqual(DifferentialUniverseWorkflow._station_hazard(page),'enemy_death_party_explosion')
+        safe.tokens.append(common)
+        x,y,r,b=(round(value*scale) for value,scale in zip(common.box,(960,540,960,540)))
+        safe.image[y:b,x:r]=page.image[y:b,x:r]
+        switched=[Scene(safe.tokens,safe.image) for _ in range(2)]
+        with self.captured_du_flow(self.station_preview_frames(page,switched)) as (flow,window):
+            before=flow.ctx.snapshot()
+            with self.assertRaisesRegex(AutomationError,'差分宇宙已失败'):
+                flow._progress_run(before,'station_choice')
+            self.assertEqual(window.click.call_count,3)
+
+        glyph=safe.find('宇宙碎片',exact=True)
+        x,y,r,b=(round(value*scale) for value,scale in zip(glyph.box,(960,540,960,540)))
+        old_effect[y:b,x:r]=safe.image[y:b,x:r]
+        retained=[Scene(safe.tokens,old_effect) for _ in range(6)]
+        with self.captured_du_flow(self.station_preview_frames(page,retained)) as (flow,window):
+            before=flow.ctx.snapshot()
+            with self.assertRaisesRegex(AutomationError,'未核实替代站点选中及新效果'):
+                flow._progress_run(before,'station_choice')
+            self.assertEqual(window.click.call_count,2)
+
+    def test_alternative_station_does_not_confirm_after_epoch_change_in_feedback(self):
+        page,safe,_,_=self.station_preview_fixture()
+        first,second=[Scene(safe.tokens,safe.image) for _ in range(2)]
+        frames=self.station_preview_frames(page,[first,second])
+        with self.captured_du_flow(frames) as (flow,window):
+            def evidence(scene,label):
+                if scene is second and label.endswith('station_alternative_preview'):
+                    flow.ctx.runner.input_epoch+=1
+                return 'fixture.png'
+
+            flow.ctx.evidence.side_effect=evidence
+            before=flow.ctx.snapshot()
+            with self.assertRaisesRegex(AutomationError,'替代站点预览中断，未确认进入'):
+                flow._progress_run(before,'station_choice')
+            self.assertEqual(window.click.call_count,2)
+
+    def test_interrupted_confirm_of_verified_station_alternative_is_not_replayed(self):
+        page,safe,_,_=self.station_preview_fixture()
+        frames=self.station_preview_frames(page,[Scene(safe.tokens,safe.image) for _ in range(2)])
+        with self.captured_du_flow(frames) as (flow,window):
+            window.click.side_effect=[None,None,InputInterrupted('confirmation interrupted')]
+            before=flow.ctx.snapshot()
+            with self.assertRaisesRegex(AutomationError,'替代站点确认中断，反馈待核对'):
+                flow._progress_run(before,'station_choice')
+            self.assertEqual(window.click.call_count,3)
+
+    def test_unknown_after_alternative_confirmation_cannot_reenter_original_station_page(self):
+        page,safe,_,_=self.station_preview_fixture()
+        previews=[Scene(safe.tokens,safe.image) for _ in range(7)]
+        frames=self.station_preview_frames(page,[*previews[:3],Scene([]),*previews[3:]])
+        with self.captured_du_flow(frames) as (flow,window):
+            before=flow.ctx.snapshot()
+            with self.assertRaises(AutomationError) as failure:
+                flow._progress_run(before,'station_choice')
+            confirm=page.find('确定',exact=True).center
+            self.assertEqual(sum(call.args[:2]==confirm for call in window.click.call_args_list),1)
+            self.assertEqual(window.click.call_count,3)
+            self.assertIn('未重复点击',str(failure.exception))
+
+    def test_alternative_confirmation_observes_unknown_without_blocking_a_known_departure(self):
+        page,safe,_,_=self.station_preview_fixture()
+        for unknowns,expected in ((1,'差分宇宙已失败'),(7,'替代站点确认反馈未核实')):
+            with self.subTest(unknowns=unknowns):
+                previews=[Scene(safe.tokens,safe.image) for _ in range(3)]
+                frames=self.station_preview_frames(page,[*previews,*[Scene([]) for _ in range(unknowns)]])
+                with self.captured_du_flow(frames) as (flow,window):
+                    before=flow.ctx.snapshot()
+                    with self.assertRaisesRegex(AutomationError,expected):
+                        flow._progress_run(before,'station_choice')
+                    self.assertEqual(window.click.call_count,3)
 
     def test_station_hazard_has_bounded_alternatives_and_ignores_unrelated_text(self):
         battle=t('战斗',.36,.70)
@@ -502,7 +723,7 @@ class DuRuntimeTests(unittest.TestCase):
         flow._click.assert_not_called()
         harmless=Scene([t('选择下一站'),battle,t(hazard.text,.6,.8)])
         self.assertIsNone(flow._station_hazard(harmless))
-        self.assertEqual(flow._safer_station_preview(harmless,battle),(harmless,'station_choice'))
+        self.assertEqual(flow._safer_station_preview(harmless,battle),(harmless,'station_choice',False))
 
     def test_card_confidence_precedes_center_bias_in_uncleared_room(self):
         import numpy as np
@@ -2590,7 +2811,7 @@ class DuRuntimeTests(unittest.TestCase):
                 flow._wait_known(unknown,'unknown','attack')
 
     @contextmanager
-    def blessing_confirmation(self, pages):
+    def captured_du_flow(self, pages):
         runner=SimpleNamespace(settings=Settings(),report=RunReport(operation='differential_universe'),
                                input_epoch=0,inactive_duration=0,checkpoint=Mock(),log=Mock())
         window,vision=Mock(),Mock()
@@ -2625,7 +2846,7 @@ class DuRuntimeTests(unittest.TestCase):
         self.assertTrue(same_blessing_titles(before,first))
         self.assertNotEqual(DifferentialUniverseWorkflow._choice_identity(before,'blessing_choice'),
                             DifferentialUniverseWorkflow._choice_identity(first,'blessing_choice'))
-        with self.blessing_confirmation([before,first,second,station]) as (flow,window):
+        with self.captured_du_flow([before,first,second,station]) as (flow,window):
             flow.ctx.snapshot()
             self.assertEqual(flow._confirm_choice(before,'blessing_choice'),(station,'station_choice'))
             window.click.assert_called_once()
@@ -2639,7 +2860,7 @@ class DuRuntimeTests(unittest.TestCase):
         self.assertEqual(flow._choice_target(example,'blessing_choice').text,'新星爆发')
         before,_=page('right');bonus,_=page('none')
         second=Scene(bonus.tokens,bonus.image.copy())
-        with self.blessing_confirmation([before,bonus,second]) as (flow,window):
+        with self.captured_du_flow([before,bonus,second]) as (flow,window):
             flow.ctx.snapshot()
             self.assertEqual(flow._confirm_choice(before,'blessing_choice'),(second,'blessing_choice'))
             self.assertLess(bonus.captured_at,second.captured_at)
@@ -2650,7 +2871,7 @@ class DuRuntimeTests(unittest.TestCase):
         before,_=page('right');bonus,_=page('none')
         replay=Scene(bonus.tokens,bonus.image.copy());last=Scene(bonus.tokens,bonus.image.copy())
         station=Scene([t('选择下一站'),t('战斗',.25,.47)])
-        with self.blessing_confirmation([before,bonus,replay,last,station]) as (flow,window):
+        with self.captured_du_flow([before,bonus,replay,last,station]) as (flow,window):
             snapshot=flow.ctx.snapshot
 
             def reuse_timestamp():
@@ -2669,7 +2890,7 @@ class DuRuntimeTests(unittest.TestCase):
         before,_=page('right');bonus,_=page('none')
         second=Scene(bonus.tokens,bonus.image.copy())
         station=Scene([t('选择下一站'),t('战斗',.25,.47)])
-        with self.blessing_confirmation([before,bonus,EmptyCapture('transition'),second,station]) as (flow,window):
+        with self.captured_du_flow([before,bonus,EmptyCapture('transition'),second,station]) as (flow,window):
             flow.ctx.snapshot()
             self.assertEqual(flow._confirm_choice(before,'blessing_choice'),(station,'station_choice'))
             window.click.assert_called_once()
@@ -2684,7 +2905,7 @@ class DuRuntimeTests(unittest.TestCase):
             with self.subTest(name=name):
                 second=Scene(partial.tokens,partial.image.copy())
                 station=Scene([t('选择下一站'),t('战斗',.25,.47)])
-                with self.blessing_confirmation([before,partial,second,station]) as (flow,window):
+                with self.captured_du_flow([before,partial,second,station]) as (flow,window):
                     flow.ctx.snapshot()
                     self.assertEqual(flow._confirm_choice(before,'blessing_choice'),(station,'station_choice'))
                     window.click.assert_called_once()
@@ -2698,7 +2919,7 @@ class DuRuntimeTests(unittest.TestCase):
         tokens=[Token('通奏',v.score,v.box) if v.text=='通奏的低音' else v for v in before.tokens]
         partial=Scene(tokens,masked);second=Scene(tokens,masked.copy())
         station=Scene([t('选择下一站'),t('战斗',.25,.47)])
-        with self.blessing_confirmation([before,partial,second,station]) as (flow,window):
+        with self.captured_du_flow([before,partial,second,station]) as (flow,window):
             _,_,original=flow._blessing_confirmation_titles(before)
             _,_,visible=flow._blessing_confirmation_titles(partial)
             self.assertIsNone(compare_blessing_title_glyphs(original[0],visible[0]))
@@ -2710,7 +2931,7 @@ class DuRuntimeTests(unittest.TestCase):
         from autohsr.tests.test_du_strategy import page
         before,_=page('right');bonus,_=page('none')
         second=Scene(bonus.tokens,bonus.image.copy())
-        with self.blessing_confirmation([before,bonus,second]) as (flow,window):
+        with self.captured_du_flow([before,bonus,second]) as (flow,window):
             def evidence(scene,label):
                 if scene is second:
                     flow.ctx.sleep(15)
@@ -2742,7 +2963,7 @@ class DuRuntimeTests(unittest.TestCase):
             with self.subTest(cards=expected):
                 self.assertEqual(len(blessing_columns(bonus)),expected)
                 second=Scene(bonus.tokens,bonus.image.copy())
-                with self.blessing_confirmation([before,bonus,second]) as (flow,window):
+                with self.captured_du_flow([before,bonus,second]) as (flow,window):
                     flow.ctx.snapshot()
                     self.assertEqual(flow._confirm_choice(before,'blessing_choice'),(second,'blessing_choice'))
                     window.click.assert_called_once()
@@ -2751,7 +2972,7 @@ class DuRuntimeTests(unittest.TestCase):
         from autohsr.tests.test_du_strategy import page
         before,_=page('right')
         before.tokens.append(t('已选择',.8,.82))
-        with self.blessing_confirmation([before]) as (flow,window):
+        with self.captured_du_flow([before]) as (flow,window):
             flow.ctx.snapshot()
             flow.ctx.sleep=Mock(side_effect=InputInterrupted('test interruption after input'))
             with self.assertRaisesRegex(AutomationError,'未重复点击') as error:

@@ -116,11 +116,12 @@ class StationPreferenceTests(unittest.TestCase):
         current=flow(Settings(differential_universe_station_custom=True,
             differential_universe_station_priority={'战斗':0,'财富':1,'奖励':2},differential_universe_station_disabled=['财富']))
         page=route('战斗','财富','奖励');hazard=token('跟你爆了：敌人被消灭时自爆，对我方全体造成伤害',.6,.2)
-        page.tokens.append(hazard);safe=Scene([t for t in page.tokens if t is not hazard])
-        current._click=Mock(return_value=(safe,'station_choice'))
-        self.assertEqual(current._safer_station_preview(page,page.find('战斗',exact=True)),(safe,'station_choice'))
-        self.assertEqual(current._click.call_args.args[1].text,'奖励');self.assertEqual(current._click.call_count,1)
-        guard_differential_universe_click(safe,safe.find('确定',exact=True),intent='station_confirm')
+        page.tokens.append(hazard)
+        with patch.object(current,'_select_station_alternative',wraps=current._select_station_alternative) as select:
+            with self.assertRaisesRegex(AutomationError,'未核实替代站点卡框'):
+                current._safer_station_preview(page,page.find('战斗',exact=True))
+            select.assert_called_once_with(page,page.find('奖励',exact=True))
+        current.ctx.click.assert_not_called()
 
     def test_no_allowed_safe_alternative_does_not_select_a_disabled_card(self):
         current=flow(Settings(differential_universe_station_custom=True,differential_universe_station_disabled=['财富']))
