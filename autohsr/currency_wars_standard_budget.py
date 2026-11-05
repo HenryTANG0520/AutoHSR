@@ -30,7 +30,8 @@ def _continued(session):
         a,b=actions[start],actions[end];feedback=b['feedback'];plane,number=map(int,entry['node'].split('-'))
         if entry.get('node_verified') is not True:
             from .currency_wars_standard_progress import _paired_progress_evidence
-            if not survived_loss_receipt(entry, a) or not _paired_progress_evidence(b):
+            if (not survived_loss_receipt(entry, a)
+                    or feedback.get('page_kind') != 'encounter_selection' and not _paired_progress_evidence(b)):
                 raise ValueError()
         if (any(type(action.get('id')) is not int or action.get('id')!=index or action.get('status')!='verified'
                     or type(action.get('input_epoch')) is not int or action['input_epoch']<0
@@ -42,6 +43,10 @@ def _continued(session):
                 or b.get('action')!='continue_standard_node' or b.get('expected')!='standard_node_advanced'
                 or not isinstance(b.get('target'),list) or len(b['target'])!=2 or type(b['target'][1]) is not int
                 or b.get('target')!=[entry['node'],start]):raise ValueError()
+        if feedback.get('page_kind') == 'encounter_selection' or 'encounter_arrival_action_id' in entry:
+            from .currency_wars_standard_encounter import arrival_receipt
+            arrival = arrival_receipt(session, entry)
+            return arrival['id'], arrival['feedback']['node']
         if feedback.get('page_kind') == 'boss_intro' or 'arrival_action_id' in entry:
             from .currency_wars_standard_progress import boss_arrival_receipt
             arrival = boss_arrival_receipt(actions, entry)

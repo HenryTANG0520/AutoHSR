@@ -236,6 +236,7 @@ def progress_action(scene, session, confidence=.65):
     if kind == 'shop' and session.get('node_attempt'):
         # Some nodes open the shop automatically. Close only the observed
         # arrival shop so the new board can be collected before any decisions.
+        from .currency_wars_standard_encounter import CONFIRM as ENCOUNTER_CONFIRM, arrival_receipt
         attempt = verified_attempt(session, allow_loss=True)
         node, start_id = attempt['node'], attempt['start_action_id']
         state = read_match(scene, confidence)
@@ -243,13 +244,16 @@ def progress_action(scene, session, confidence=.65):
         intent, expected = 'close_standard_arrival_shop', 'standard_arrival_shop_closed'
         actions = session.get('actions', [])
         previous = actions[-2] if actions and actions[-1].get('action') == intent and actions[-1].get('status') == 'pending' else (actions[-1] if actions else {})
-        if previous.get('action') not in ('continue_standard_node', BOSS_INTRO_ACTION):
+        if previous.get('action') not in ('continue_standard_node', BOSS_INTRO_ACTION, ENCOUNTER_CONFIRM):
             return None  # A normally opened shop keeps its original contract.
         history = _history(session, intent, expected, payload)
         arrival = dict(page_kind='shop', node=state.node)
         if previous['action'] == BOSS_INTRO_ACTION:
             arrival.update(gold=state.gold, level=state.level)
             source_valid = boss_arrival_receipt(history, attempt) is previous
+        elif previous['action'] == ENCOUNTER_CONFIRM:
+            arrival.update(gold=state.gold, level=state.level)
+            source_valid = arrival_receipt(dict(session, actions=history), attempt) is previous
         else:
             source_valid = previous.get('target') == [node, start_id]
         if (not source_valid or previous.get('feedback') != arrival
@@ -260,13 +264,18 @@ def progress_action(scene, session, confidence=.65):
 
 
 def advancement_feedback(scene, source_node, confidence=.65):
+    from .currency_wars_standard_encounter import direct_arrival_ready, overlay_visible
+    kind = observe(scene, confidence).page_kind
+    if overlay_visible(scene, confidence, page_kind=kind):
+        return None
     plane, number = map(int, source_node.split('-'))
     state = read_match(scene, confidence,include_rewards=True)
     if state and state.page in ('preparation', 'shop','supply_selection') and state.node == f'{plane}-{number+1}':
         if state.page == 'preparation' and (state.hp is None or state.hp <= 0):
             return None
+        if not direct_arrival_ready(scene, state.page, confidence):
+            return None
         return dict(page_kind=state.page, node=state.node)
-    kind = observe(scene, confidence).page_kind
     if kind == 'boss_intro':
         return _intro_feedback(scene, boss_destination(source_node), confidence)
     if kind == 'plane_map' and plane < 3:

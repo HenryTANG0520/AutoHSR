@@ -30,6 +30,8 @@ def require_session_access(data,resume):
         return
     if data is None or data['status']!='active':
         raise AutomationError('没有已核实开始且可接续的标准对局；未知开局未重放。')
+    if data.get('node_attempt', {}).get('status') == 'encounter_pending':
+        raise AutomationError('遭遇阶段须保留原运行及输入代次，未跨运行重放或确认。')
     if data['actions'] and data['actions'][-1]['status']!='verified' and data['actions'][-1]['action']!='open_standard_shop':
         raise AutomationError('上次标准动作尚未核实，先核对反馈，未接续输入。')
 

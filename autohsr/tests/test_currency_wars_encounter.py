@@ -15,7 +15,7 @@ from autohsr.__main__ import main
 from autohsr.app import Runner
 from autohsr.config import Settings
 from autohsr.currency_wars import CurrencyWarsWorkflow, observe
-from autohsr.currency_wars_encounter import read_encounter
+from autohsr.currency_wars_encounter import encounter_node_visible, encounter_overlay_present, read_encounter, read_encounter_targets
 from autohsr.currency_wars_standard_flow import next_action
 from autohsr.models import AutomationError, Scene, Token
 from autohsr.tests import test_currency_wars as check_tests
@@ -39,7 +39,8 @@ def encounter(*, selected=None, tiers=(1, 3), badge_counts=None):
             x = center + (mark - (badges - 1) / 2) * .032
             points = np.array([(round(w * (x - .011)), round(h * .436)), (round(w * x), round(h * .460)),
                                (round(w * (x + .011)), round(h * .436))])
-            cv2.polylines(image, [points], False, (225, 102, 53) if index == 0 else (238, 73, 156), 6)
+            mark_color = (73, 37, 228) if tier == 4 else (225, 102, 53) if index == 0 else (238, 73, 156)
+            cv2.polylines(image, [points], False, mark_color, 6)
         edges = (.254, .442) if index == 0 else (.551, .748)
         color = (237, 240, 244) if selected == index + 1 else (177, 75, 133) if index else (55, 61, 76)
         for edge in edges:
@@ -110,7 +111,7 @@ class EncounterTests(unittest.TestCase):
                             for t in source.tokens], image=source.image)
         self.assertFalse(read_encounter(wide_label).layout_verified)
 
-    def test_right_selection_requires_both_borders_button_and_detail(self):
+    def test_selection_requires_both_borders_button_and_detail(self):
         selected = encounter(selected=2)
         result = read_encounter(selected)
         self.assertEqual((result.selection_state, result.confirm_state, result.selected_slot), ('selected', 'enabled', 2))
@@ -123,7 +124,87 @@ class EncounterTests(unittest.TestCase):
         selected.image[round(.42*540):round(.658*540), round(.722*960):round(.771*960)] = (58, 42, 32)
         self.assertEqual(read_encounter(selected).selection_state, 'unknown')
         left = read_encounter(encounter(selected=1))
-        self.assertEqual((left.selection_state, left.confirm_state, left.selected_slot), ('unknown', 'enabled', None))
+        self.assertEqual((left.selection_state, left.confirm_state, left.selected_slot), ('selected', 'enabled', 1))
+
+    def test_rank_four_uses_red_marks_and_previews_basic_equipment_separately(self):
+        frame = encounter(tiers=(1, 4))
+        frame.tokens = [token('随机简易装备', .67, .594) if t.text == '随机4费角色' else t for t in frame.tokens]
+        result = read_encounter(frame)
+        self.assertEqual([card.difficulty for card in result.cards], [1, 4])
+        self.assertEqual(result.cards[1].reward_preview, dict(kind='random_basic_equipment', quantity=2, character_cost=None))
+        self.assertEqual(result.refresh_remaining, 1)
+        rgb = frame.image[round(.423*540):round(.476*540), round(.566*960):round(.735*960)]
+        rgb[rgb[:, :, 2] > 150] = (226, 77, 152)
+        self.assertIsNone(read_encounter(frame).cards[1].difficulty)
+
+    def test_targets_use_exact_current_card_title_and_shared_choice_tokens(self):
+        frame = encounter(selected=1, tiers=(1, 4))
+        frame.tokens.append(token('返回备战界面', .91, .060))
+        targets = read_encounter_targets(frame)
+        self.assertEqual(targets.observation.selected_slot, 1)
+        self.assertIs(targets.cards[0], next(t for t in frame.tokens if t.text == '遭遇其一'))
+        self.assertIs(targets.cards[1], next(t for t in frame.tokens if t.text == '遭遇其四'))
+        self.assertIs(targets.choose, next(t for t in frame.tokens if t.text == '选择'))
+        frame.tokens.append(token('选择', .595, .801))
+        self.assertIsNone(read_encounter_targets(frame))
+
+    def test_still_white_refresh_button_cannot_preserve_old_selection(self):
+        for tier in (2, 4):
+            frame = encounter(selected=1, tiers=(1, tier))
+            self.assertEqual(read_encounter_targets(frame).observation.selected_slot, 1)
+            # Cards change while the shared button remains lit. The current pair
+            # has no selected outline and must lose the earlier target.
+            refreshed = encounter(tiers=(1, 2 if tier == 4 else 3))
+            refreshed.image[round(.775*540):round(.825*540), round(.465*960):round(.663*960)] = 233
+            refreshed.tokens = [token('剩余次数：0', .385, .80) if t.text == '剩余次数：1' else t
+                                for t in refreshed.tokens]
+            result = read_encounter(refreshed)
+            self.assertEqual((result.selected_slot, result.confirm_state, result.refresh_remaining), (None, 'enabled', 0))
+            self.assertIsNone(read_encounter_targets(refreshed))
+            self.assertTrue(encounter_overlay_present(refreshed))
+
+    def test_preparation_bleed_and_no_ocr_card_silhouette_block_reuse(self):
+        frame = encounter(selected=1)
+        for bleed in (token('1-7', .246, .075), token('出战', .951, .699)):
+            with self.subTest(bleed=bleed.text):
+                mixed = Scene([*frame.tokens, bleed], image=frame.image)
+                self.assertFalse(read_encounter(mixed).layout_verified)
+                self.assertIsNone(read_encounter_targets(mixed))
+                self.assertTrue(encounter_overlay_present(mixed))
+        image = np.full((540, 960, 3), (157, 92, 58), np.uint8)
+        image[round(.414*540):round(.665*540), round(.251*960):round(.440*960)] = (83, 67, 58)
+        prep = [token('备战阶段', .234, .054), token('1-7', .246, .075), token('出战', .951, .699)]
+        self.assertTrue(encounter_overlay_present(Scene(prep, image=image)))
+        self.assertTrue(encounter_overlay_present(Scene([*prep, token('备战阶段', .501, .464)])))
+        self.assertFalse(encounter_overlay_present(Scene([*prep, token('难度选择', .14, .135)])))
+
+    def test_route_label_requires_unique_current_chip_and_exact_text(self):
+        fixture = json.loads((Path(__file__).parent / 'fixtures' / 'currency_wars_pages.json').read_text(encoding='utf-8'))
+        stage = [Token(**row) for row in fixture['pages']['preparation']['tokens']]
+        stage = [t for t in stage if not (t.within((.10, .036, .29, .135)) and '-' in t.text)]
+        stage.extend((token('1-7', .244, .081), token('战斗', .366, .088, half_width=.007)))
+        image = np.full((540, 960, 3), (150, 80, 61), np.uint8)
+
+        def current_badge(x):
+            image[round(.079*540):round(.094*540), round((x-.009)*960):round((x+.009)*960)] = (86, 206, 250)
+            image[round(.031*540):round(.042*540), round((x-.006)*960):round((x+.006)*960)] = (86, 206, 250)
+
+        current_badge(.608)
+        scene = Scene(stage, image=image)
+        self.assertIsNone(encounter_node_visible(scene))  # Nearby future node text alone is insufficient.
+        scene.tokens.append(token('战斗', .608, .102, half_width=.007))
+        self.assertIsNone(encounter_node_visible(scene))  # A different row at the same X is still unrelated.
+        scene.tokens.pop()
+        exact = token('遭遇', .608, .088, half_width=.007)
+        scene.tokens.append(exact)
+        self.assertIs(encounter_node_visible(scene), True)
+        scene.tokens[-1] = token('战斗', .608, .088, half_width=.007)
+        self.assertIs(encounter_node_visible(scene), False)
+        scene.tokens.append(exact)
+        self.assertIsNone(encounter_node_visible(scene))
+        scene.tokens.pop(-2)
+        current_badge(.375)
+        self.assertIsNone(encounter_node_visible(scene))
 
     def test_ambiguous_pixels_never_report_dark_button_as_unselected(self):
         frame = encounter()

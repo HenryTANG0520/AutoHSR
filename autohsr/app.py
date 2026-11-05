@@ -451,10 +451,15 @@ class Context:
         from .currency_wars_standard_investment import shop_input_scope
         from .currency_wars_standard_investment_refresh import input_scope as investment_refresh_input_scope
         from .currency_wars_standard_progress import progress_input_scope
+        from .currency_wars_standard_encounter import dispatch_sources as encounter_dispatch_sources
+        encounter_sources = encounter_dispatch_sources(data, choice, self.report.run_dir, input_epoch, store.path.parent)
+        if encounter_sources and data != store.data:
+            raise AutomationError('遭遇原节点或本次意图与落盘记录不一致，未发送输入。')
         use_durable_source = (loot_sale_input_scope(choice, store.data, data)
                               or progress_input_scope(choice.intent, store.data, data)
                               or shop_input_scope(choice.intent, store.data, data)
-                              or investment_refresh_input_scope(choice.intent, store.data, data))
+                              or investment_refresh_input_scope(choice.intent, store.data, data)
+                              or encounter_sources)
         session = data if use_durable_source or environment_step else store.data
         if choice.intent in ('open_standard_bench_reward', 'choose_standard_reward'):
             investment = store.data.get('investment', {})
@@ -484,8 +489,9 @@ class Context:
         loss_progress = (choice.intent in ('continue_standard_node', 'advance_standard_next_plane',
                                            'advance_standard_boss_intro', 'close_standard_arrival_shop')
                          and data.get('node_attempt', {}).get('node_loss_verified') is True)
-        if choice.intent == 'start_standard_a8_40' or loss_progress:
-            self._currency_standard_evidenced_click(scene, choice, guard, store, data, loop_guard, start_sources)
+        if choice.intent == 'start_standard_a8_40' or loss_progress or encounter_sources:
+            self._currency_standard_evidenced_click(scene, choice, guard, store, data, loop_guard, start_sources,
+                                                    encounter_sources=encounter_sources)
             self.sleep(self.settings.action_delay)
             return
         if environment_step:
@@ -566,24 +572,40 @@ class Context:
                 self.last_scene, self._scroll_anchor = None, None
         self.sleep(self.settings.action_delay)
 
-    def _currency_standard_evidenced_click(self, scene, choice, guard, store, data, loop_guard, start_sources):
+    def _currency_standard_evidenced_click(self, scene, choice, guard, store, data, loop_guard, start_sources,
+                                          *, encounter_sources=()):
         from .currency_wars_identity import account_key
         from .currency_wars_initial import _pixels, evidence_ref, source_file_ref
         from .currency_wars_points_goal import require_start_window
+        from .currency_wars_standard_encounter import dispatch_sources, require_files, same_account
         from .currency_wars_standard_flow import next_action
         from .currency_wars_standard_node import original_loss_files
 
         starting = choice.intent == 'start_standard_a8_40'
-        operation = '标准开局' if starting else '节点失利推进'
+        operation = '标准开局' if starting else '遭遇推进' if encounter_sources else '节点失利推进'
         before = data['actions'][-1].get('before')
         if not isinstance(before, str) or not before:
             raise AutomationError(operation + '缺少原始画面，未发送输入。')
-        losses = () if starting else original_loss_files(data, store.path.parent)
+        losses = (original_loss_files(data, store.path.parent)
+                  if not starting and data['node_attempt'].get('node_loss_verified') is True else ())
+        journal, window = store.path, self.window
+        run_dir, epoch, confidence = self.report.run_dir, self.runner.input_epoch, self.settings.ocr_confidence
         files = [store.path, Path(before), *(Path(source) for source in start_sources),
-                 *(path for path, _ in losses)]
+                 *(path for path, _ in losses), *(path for path, _ in encounter_sources)]
         if loop_guard is not None:
             files.append(loop_guard.store.path)
         geometry, captured_at, image = scene.geometry, scene.captured_at, scene.image
+
+        def encounter_scope_matches(saved):
+            live = store.data
+            start = saved['node_attempt']['start_action_id']
+            fields = ('node_attempt', 'client', 'account_key', 'account_verified_run', 'account_verified_epoch',
+                      'match_id', 'status', 'start_verified', 'rules_version', 'loop_owner',
+                      'entry', 'mode', 'rank', 'wealth')
+            return (self.window is window and getattr(self, 'currency_standard_session', None) is store and store.path == journal
+                    and self.report.run_dir == run_dir and len(live['actions']) == len(saved['actions'])
+                    and live['actions'][start:] == saved['actions'][start:]
+                    and all(live.get(key) == saved.get(key) for key in fields))
 
         def revisions():
             try:
@@ -603,6 +625,11 @@ class Context:
                 reference = evidence_ref(scene, before, self.report.run_dir)
             except AutomationError as error:
                 raise AutomationError(operation + '的原始画面与当前采集不符或不可读。') from error
+            if encounter_sources:
+                if (dispatch_sources(saved, choice, run_dir, epoch, journal.parent) != encounter_sources
+                        or reference != encounter_sources[-1][1]):
+                    raise AutomationError('遭遇当前输入来源与原落盘意图不一致。')
+                require_files(encounter_sources, run_dir)
             if any(source_file_ref(path, path.parent)['sha256'] != digest for path, digest in losses):
                 raise AutomationError('原节点失利证据已改变，未继续挑战。')
             self._currency_weekly_checkpoint()
@@ -616,15 +643,17 @@ class Context:
             if image.flags.writeable:
                 image.setflags(write=False)
                 held.callback(image.setflags, write=True)
-            tokens = tuple(scene.tokens)
+            tokens, field_reads = tuple(scene.tokens), scene.field_reads.copy()
+            observed_account = (same_account(scene, saved, confidence) if encounter_sources
+                                else account_key(scene, confidence) == saved['account_key'])
             if (_pixels(image) != reference['pixel_sha256']
-                    or account_key(scene, self.settings.ocr_confidence) != saved['account_key']
-                    or next_action(scene, self.settings.ocr_confidence, session=saved) != choice):
+                    or not observed_account
+                    or next_action(scene, confidence, session=saved) != choice):
                 raise AutomationError(operation + '的当前账号、页面或目标已改变，未发送输入。')
             # The read handles remain held through SendInput. Recheck the
             # window and controls after hashing and re-deriving the target.
-            self.window.guard(geometry)
-            if self.window.emergency_pressed():
+            window.guard(geometry)
+            if window.emergency_pressed():
                 raise Stopped('F10 紧急停止。')
             if starting and loop_guard is not None:
                 require_start_window(loop_guard.store)
@@ -632,12 +661,18 @@ class Context:
             if (scene.geometry != geometry or scene.captured_at != captured_at or scene.image is not image
                     or image.flags.writeable or tuple(scene.tokens) != tokens):
                 raise AutomationError(operation + '的当前采集在发送前已改变。')
+            if encounter_sources:
+                if (not encounter_scope_matches(saved) or scene.field_reads != field_reads
+                        or self.settings.ocr_confidence != confidence):
+                    raise AutomationError('遭遇输入意图或当前画面在发送前已改变。')
+                if self.runner.input_epoch != epoch:
+                    raise InputInterrupted('遭遇输入代次已改变，未沿用旧意图。')
             if self.runner.stop_requested:
                 raise Stopped('任务已停止。')
 
         try:
             with ExitStack() as held:
-                self.window.click(*choice.target.center, geometry, before_send=lambda: before_send(held))
+                window.click(*choice.target.center, geometry, before_send=lambda: before_send(held))
         except FocusLost:
             self._focus_interrupted()
         except (OSError, ValueError) as error:

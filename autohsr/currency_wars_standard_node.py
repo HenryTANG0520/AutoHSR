@@ -89,6 +89,7 @@ def original_loss_files(session, runs_root):
 
 def _record_survived_loss(c, store, guard, action, pair):
     from .currency_wars_initial import evidence_ref
+    from .currency_wars_standard_encounter import record_result as record_encounter_result
     from .currency_wars_standard_flow import evidence
 
     attempt = store.data['node_attempt']
@@ -113,6 +114,7 @@ def _record_survived_loss(c, store, guard, action, pair):
     if not survived_loss_receipt(result, action):
         raise AutomationError('节点失利的两份来源不完整，未继续。')
     attempt.update(result)
+    record_encounter_result(c, store.data, attempt, action, scene)
     store.persist()
     c.log(f'标准节点{node}失利，剩余小队生命值{hp}，已核实可继续。')
 
@@ -325,6 +327,9 @@ def observe_started_node(c, store, scene):
                                    result_kind=kind,
                                    result=evidence(c,scene,'currency_standard_node_result'),
                                    verification='matching_result_after_start' if same else 'wrong_result_node')
+                    if same and kind == 'node_result':
+                        from .currency_wars_standard_encounter import record_result as record_encounter_result
+                        record_encounter_result(c, store.data, attempt, actions[action_id], scene)
                     if same and kind == 'final_victory':
                         store.data.update(match_victory_observed=True, victory_start_action_id=action_id)
                     if not same:

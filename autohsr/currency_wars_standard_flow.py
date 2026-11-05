@@ -818,6 +818,12 @@ def next_action(scene, confidence=.65, *, session=None):
 
 
 def _next_action(scene, confidence=.65, *, session=None, loot_box=None):
+    from .currency_wars_standard_encounter import overlay_visible, proposal as encounter_proposal
+    if session and session.get('node_attempt', {}).get('status') == 'encounter_pending':
+        return encounter_proposal(scene, session, confidence)
+    kind = observe(scene, confidence).page_kind
+    if overlay_visible(scene, confidence, page_kind=kind):
+        raise AutomationError('当前遭遇或过渡缺少本次继续回执，未选择或确认。')
     if session and session.get('node_attempt', {}).get('status') == 'intro_pending':
         from .currency_wars_standard_progress import progress_action
         return progress_action(scene, session, confidence)
@@ -850,7 +856,6 @@ def _next_action(scene, confidence=.65, *, session=None, loot_box=None):
     if difficulty_page(scene, confidence) and selected_rank(scene, confidence) == 40:
         return StandardAction('start_standard_a8_40', 'boss_preview',
                               unique(clean, '开始对局', (.75, .82, .99, .97)))
-    kind = observe(scene, confidence).page_kind
     if kind == 'shop':
         from .currency_wars_initial_shop import proposal as initial_shop_proposal
         initial_shop = initial_shop_proposal(scene, session or {}, confidence)
@@ -1216,6 +1221,11 @@ def run_standard(c):
     from .currency_wars_standard_investment_refresh import ACTION as INVESTMENT_REFRESH, BINDING as INVESTMENT_REFRESH_BINDING
     from .currency_wars_standard_ledger import FINANCIAL_ACTIONS
     from .currency_wars_standard_progress import BOSS_INTRO_ACTION, boss_destination, node_progress_feedback
+    from .currency_wars_standard_encounter import (
+        INTENTS as ENCOUNTER_INTENTS, OFFER as ENCOUNTER_OFFER, bind_input as bind_encounter,
+        commit_feedback as commit_encounter, continuation_feedback as encounter_after_continue,
+        feedback as encounter_feedback, record_start as record_encounter_start,
+    )
     if c.report.operation != 'currency_wars_standard':
         raise AutomationError('标准对局开发须使用独立入口。')
     # This initial path is intentionally not an acceptance counter. Any repair
@@ -1531,6 +1541,11 @@ def run_standard(c):
         if choice.intent == 'start_standard_node':
             store.data['node_attempt'] = dict(node=choice.payload[0],start_action_id=action['id'],
                                               status='start_pending',node_verified=False,battle_observed=False)
+            record_encounter_start(store.data, action, scene, 'before', c.report.run_dir,
+                                   c.runner.input_epoch, c.settings.ocr_confidence)
+            store.persist()
+        encounter_input = bind_encounter(store.data, choice, scene, c.report.run_dir, c.runner.input_epoch)
+        if encounter_input:
             store.persist()
         investment_box = False
         loot_click = choice.intent == 'collect_standard_loot'
@@ -1566,6 +1581,7 @@ def run_standard(c):
         defeat_step = choice.intent in DEFEAT_INTENTS
         closing_intro = choice.intent == BOSS_INTRO_ACTION
         node_progress = closing_intro or choice.intent == 'continue_standard_node'
+        encounter_step = choice.intent in ENCOUNTER_INTENTS
         boss_progress = node_progress and boss_destination(choice.payload[0]) is not None
         loss_progress = choice.intent == 'continue_standard_node' and store.data['node_attempt'].get('node_loss_verified') is True
         investment_confirmation = choice.intent == INVESTMENT_CONFIRM
@@ -1574,7 +1590,7 @@ def run_standard(c):
         investment_progress = investment_confirmation or closing_investment_shop or refreshing_investment
         later_environment_board = choice.expected == 'initial_board' and choice.payload not in ((), ('1-1',))
         strict_feedback = (defeat_step or investment_box or loot_click or loot_box is not None
-                           or loot_claim is not None or boss_progress or loss_progress or investment_progress
+                           or loot_claim is not None or boss_progress or loss_progress or investment_progress or encounter_input
                            or INVESTMENT_REFRESH_BINDING in action
                            or choice.intent.startswith((ENVIRONMENT_SELECT, ENVIRONMENT_CONFIRM)))
         observed_at = scene.captured_at
@@ -1604,6 +1620,8 @@ def run_standard(c):
                 progress = None
                 try:
                     observed_account = account_key(after, max(.85, c.settings.ocr_confidence))
+                    if encounter_input and account_key(after, min(.65, c.settings.ocr_confidence)) != observed_account:
+                        raise AutomationError('遭遇动作反馈的账号字段有冲突。')
                     if loss_progress and account_key(after, c.settings.ocr_confidence) != observed_account:
                         raise AutomationError('失利后的到达画面有账号冲突。')
                 except AutomationError:
@@ -1615,7 +1633,13 @@ def run_standard(c):
                     from .currency_wars_standard_popup import arrival as popup_arrival
                     popup_stamp=popup_arrival(choice,after,store.data,c.settings.ocr_confidence)
                     if node_progress:
-                        progress = node_progress_feedback(choice, after, c.settings.ocr_confidence)
+                        if not closing_intro:
+                            progress = encounter_after_continue(choice, after, store.data, c.settings.ocr_confidence)
+                        if progress is None:
+                            progress = node_progress_feedback(choice, after, c.settings.ocr_confidence)
+                        ready = progress is not None
+                    elif encounter_step:
+                        progress = encounter_feedback(choice, after, store.data, c.settings.ocr_confidence)
                         ready = progress is not None
                     elif refreshing_investment:
                         from .currency_wars_standard_investment_refresh import feedback as investment_refresh_feedback
@@ -1655,8 +1679,12 @@ def run_standard(c):
                     else:
                         ready = False
                 paired_progress = (progress if ready and progress is not None
-                                   and (investment_progress or closing_intro or loss_progress or progress['page_kind'] == 'boss_intro')
+                                   and (investment_progress or closing_intro or loss_progress or encounter_step
+                                        or progress.get('page_kind') in ('boss_intro', ENCOUNTER_OFFER))
                                    else None)
+                if ((encounter_step or paired_progress and paired_progress.get('page_kind') == ENCOUNTER_OFFER)
+                        and progress_frames and progress_frames[-1][1] is after):
+                    ready, paired_progress = False, None
                 if paired_progress != previous_progress:
                     stable = 0
                     progress_frames.clear()
@@ -1699,6 +1727,11 @@ def run_standard(c):
                                                     'standard_consumable_applied','standard_consumable_returned','standard_consumable_board',
                                                     'standard_initial_shop_closed')) else 1
                 if stable >= required:
+                    if encounter_step or paired_progress and paired_progress.get('page_kind') == ENCOUNTER_OFFER:
+                        commit_encounter(c, store, guard, choice, progress_frames, paired_progress,
+                                         lambda frame, label: evidence(c, frame, label))
+                        scene = after
+                        break
                     after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
                     if paired_progress is not None:
                         captured_at, first = progress_frames[0]
@@ -1756,6 +1789,8 @@ def run_standard(c):
                             raise
                     if choice.intent == 'start_standard_node':
                         store.data['node_attempt']['status']='observing'
+                        record_encounter_start(store.data, action, after, 'after', c.report.run_dir,
+                                               c.runner.input_epoch, c.settings.ocr_confidence)
                     if choice.intent in ('inspect_standard_unit','inspect_standard_exchange_unit','inspect_standard_equipment_unit','inspect_standard_reward_unit','inspect_standard_consumable_unit','inspect_standard_popup_unit'):
                         action['inspection_run_dir']=c.report.run_dir
                         store.data['inspecting'] = dict(zone=choice.payload[0],slot=choice.payload[1],
@@ -1859,8 +1894,12 @@ def run_standard(c):
             c.sleep(.5)
             elapsed += max(0., time.monotonic()-started-(c.runner.inactive_duration-inactive))
         else:
+            if encounter_input and store.require_pending(choice.intent, action['input_epoch']) != store.data:
+                raise AutomationError('遭遇落盘意图已改变，保留原画面待核对。')
             action['status'] = 'unknown'
-            store.data.update(action_status='unknown', reason=_loot_timeout_reason(action))
+            reason = ('遭遇选择或确认后的双帧反馈未核实，原意图保留待核对。'
+                      if encounter_step else _loot_timeout_reason(action))
+            store.data.update(action_status='unknown', reason=reason)
             if after is not None:
                 store.data['screenshot'] = evidence(c, after, 'currency_standard_transition_unknown')
             store.persist()
@@ -1879,7 +1918,9 @@ def run_standard(c):
         c.report.safe_next='本局失败且结算已核实；原报告保留，循环按冻结设置与原局数上限处理，不接续或重打这局。'
         return TaskResult(TASK,'partial',store.data['reason'])
     last_action = store.data['actions'][-1] if store.data['actions'] else {}
-    if last_action.get('status') == 'unknown' and last_action.get('loot_overflow_observations'):
+    if store.data.get('node_attempt', {}).get('status') == 'encounter_pending':
+        c.report.safe_next = '请核对本次遭遇卡、选择和回到同节点的画面；原继续与待核对意图均保留。'
+    elif last_action.get('status') == 'unknown' and last_action.get('loot_overflow_observations'):
         c.report.safe_next = '请先核对本次奖励与备战席状态，原领取待核对期间不可接续输入。'
     else:
         c.report.safe_next = '先读取标准对局当前局面，再接续已核实动作；不重开或重放未知交易。'
