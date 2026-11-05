@@ -30,6 +30,8 @@
 
 差分祝福确认后，同类奖励页需从连续新帧核实实际新卡，标题文字与像素共同用于判断。[差分宇宙](docs/differential-universe.md)
 
+差分奇物舍弃在确认前保存同账号待核对记录。接续遇到该账号未核实的旧舍弃时会在选卡前停止。奖励弹层与实际离页都要连续两帧核实原账号。[差分验证](docs/du-validation.md#2026-11-05-强制舍弃奇物反馈)
+
 源码、正式包和实机验收按各自版本记录。[验证记录](VALIDATION.md)
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
