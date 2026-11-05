@@ -112,18 +112,33 @@ def expired(store):
     return store.data['points_goal']['week']!=game_week(local_now())
 
 
-def require_start(store):
-    if not enabled(store.data):
+def require_start_window(store):
+    """Check the age and week of the already validated score summary."""
+    data = store.data
+    if not enabled(data):
         return
-    goal=store.data['points_goal'];data=store.data
-    if expired(store):
+    goal = data['points_goal']
+    now = local_now()
+    if goal['week'] != game_week(now):
         raise AutomationError('周积分目标已跨游戏周，未开始新局；原目标不自动迁移。')
-    current=observation(store)
-    age=(local_now()-datetime.fromisoformat(current['observed_at'])).total_seconds()
+    current = goal['observation']
+    if current is None:
+        raise AutomationError('本循环尚未取得已保存的积分观察。')
+    age = (now - datetime.fromisoformat(current['observed_at'])).total_seconds()
     if (current['game_week']!=goal['week'] or goal['checked_completed']!=data['completed']
-            or not -5<=age<=120 or current['period']['verified'] is not True):
+            or not -5<=age<=120 or current['period_verified'] is not True):
         raise AutomationError('周积分观察过期、周界未核实或未在本局前核对，未开局。')
     if current['score_complete'] is True:
         raise AutomationError('本周积分已满，未开始额外对局。')
     if data['options']['runs'] and data['completed']>=data['options']['runs']:
         raise AutomationError('本循环已达到局数上限，未追加预算。')
+
+
+def require_start(store):
+    """Verify the weekly gate and return the files that proved it."""
+    require_start_window(store)
+    if not enabled(store.data):
+        return ()
+    goal = store.data['points_goal']
+    current = observation(store)
+    return goal['latest']['receipt'], goal['latest']['report'], current['source']

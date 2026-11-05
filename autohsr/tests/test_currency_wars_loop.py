@@ -411,10 +411,21 @@ class CurrencyLoopTests(unittest.TestCase):
             directory=root/'child';directory.mkdir();guard.register_run(directory)
             journal=StandardSession(store.journal);journal.begin(directory,dict(rank_verified=True))
             journal.data.update(strategy='default',remembrance_name='',equipment_fast_mode=False,account_key=account_key(ready()));journal.persist();guard.bind(journal)
-            state=ready();choice=next_action(state);journal.pending(choice.intent,0,str(directory/'before.png'),choice.expected)
+            state=ready();choice=next_action(state)
+            import cv2
+            before=directory/'before.png'
+            self.assertTrue(cv2.imwrite(str(before),state.image))
+            journal.pending(choice.intent,0,before,choice.expected)
             runner=Runner(Settings(),operation='currency_wars_standard',currency_loop_guard=guard)
             c=Context(runner,Mock(),Mock());c.currency_standard_session=journal;c.last_scene=state;c.sleep=Mock();c.checkpoint=Mock()
-            c.window.click.side_effect=lambda *args: self.assertEqual(LoopStore(root).load()['account_key'],account_key(state))
+            c.report.run_dir=str(directory)
+            c.window.emergency_pressed.return_value=False
+
+            def click(*args,before_send):
+                before_send()
+                self.assertEqual(LoopStore(root).load()['account_key'],account_key(state))
+
+            c.window.click.side_effect=click
             c.currency_standard_input(state,choice);c.window.click.assert_called_once()
             state.tokens=[t for t in state.tokens if not normalize(t.text).startswith('uid')]+[Token('UID:200000000',.99,(.01,.96,.10,.99))]
             # Simulate a newly bound native session for the other account. The

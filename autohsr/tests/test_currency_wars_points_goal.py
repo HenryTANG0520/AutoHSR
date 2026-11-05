@@ -9,14 +9,14 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from autohsr.app import Runner
+from autohsr.app import Context, Runner
 from autohsr.config import Settings, SettingsError
 from autohsr import currency_wars_points_goal as goal
 from autohsr.currency_wars_loop import CurrencyLoopRunner
 from autohsr.currency_wars_loop_store import LoopStore, _write
 from autohsr.currency_wars_points_run import OPERATION
 from autohsr.currency_wars_session import StandardSession
-from autohsr.currency_wars_standard_flow import run_standard
+from autohsr.currency_wars_standard_flow import next_action, run_standard
 from autohsr.models import AutomationError, Stopped
 from autohsr.tests import test_currency_wars_loop as loops
 from autohsr.tests import test_currency_wars_points as points
@@ -293,6 +293,54 @@ class PointsGoalTests(unittest.TestCase):
                 if case=='latest':goal.require_start(store)
                 else:
                     with self.assertRaises(AutomationError):goal.require_start(store)
+
+    def test_start_rechecks_bound_points_sources_and_week_after_last_window_check(self):
+        for case in ('normal', 'receipt', 'report', 'image', 'expired_points', 'new_week'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as folder:
+                self.now = points.NOW
+                root = Path(folder)
+                store = self.make_store(root)
+                child = self.read_points(root)
+                goal.record(store, child)
+                guard, journal = self.unstarted(store)
+                observation = child['currency_wars']
+                journal.data['account_key'] = observation['account_key']
+                scene = flow.ready()
+                choice = next_action(scene)
+                before = flow.StandardFlowTests().record_start(journal, scene, choice)
+                pending = journal.path.read_bytes()
+
+                runner = Runner(Settings(), operation='currency_wars_standard', currency_loop_guard=guard)
+                context = Context(runner, Mock(), Mock())
+                context.report.run_dir = str(before.parent)
+                context.last_scene, context.currency_standard_session = scene, journal
+                context.checkpoint, context.sleep = Mock(), Mock()
+                context.window.emergency_pressed.return_value = False
+                sent = Mock()
+
+                def guard_window(_geometry):
+                    if case == 'new_week':
+                        self.now += timedelta(days=7)
+                    elif case == 'expired_points':
+                        self.now += timedelta(seconds=121)
+                    elif case != 'normal':
+                        proof = store.data['points_goal']['latest']
+                        Path(observation['source'] if case == 'image' else proof[case]).write_bytes(b'changed')
+
+                def click(*_args, before_send):
+                    before_send()
+                    sent()
+
+                context.window.guard.side_effect = guard_window
+                context.window.click.side_effect = click
+                if case == 'normal':
+                    context.currency_standard_input(scene, choice)
+                    sent.assert_called_once()
+                else:
+                    with self.assertRaises(AutomationError):
+                        context.currency_standard_input(scene, choice)
+                    sent.assert_not_called()
+                self.assertEqual(journal.path.read_bytes(), pending)
 
     def test_old_or_future_points_cannot_finish_or_authorize_game(self):
         for seconds in (-121,6):

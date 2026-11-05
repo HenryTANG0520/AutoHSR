@@ -1,6 +1,7 @@
 """File-sharing regressions; no game inputs."""
 import errno
 import json
+import mmap
 import os
 from pathlib import Path
 import tempfile
@@ -8,7 +9,7 @@ import threading
 import unittest
 from unittest.mock import Mock,patch
 
-from autohsr.storage import replace_file,REPLACE_RETRY_DELAYS
+from autohsr.storage import hold_read_sources, replace_file, REPLACE_RETRY_DELAYS
 
 
 class StorageTests(unittest.TestCase):
@@ -63,6 +64,30 @@ class StorageTests(unittest.TestCase):
                 replace_file(self.source,self.destination)
         rename.assert_called_once();sleep.assert_not_called()
         self.assertEqual(self.destination.read_text(),'old')
+
+    @unittest.skipUnless(os.name=='nt','Windows sharing semantics')
+    def test_read_hold_blocks_live_mapping_writer_and_replacement_until_exit(self):
+        with self.destination.open('r+b') as writer:
+            mapped = mmap.mmap(writer.fileno(), 0, access=mmap.ACCESS_WRITE)
+        with mapped:
+            with self.assertRaises(OSError), hold_read_sources((self.destination,)):
+                self.fail('read hold unexpectedly shared a writable mapping')
+        with hold_read_sources((self.destination,)):
+            self.assertEqual(self.destination.read_text(), 'old')
+            with self.assertRaises(PermissionError):
+                self.destination.write_text('write')
+            with self.assertRaises(PermissionError):
+                self.source.replace(self.destination)
+            self.assertEqual(self.destination.read_text(), 'old')
+        self.source.replace(self.destination)
+        self.assertEqual(self.destination.read_text(), 'new')
+
+    @unittest.skipUnless(os.name=='nt','Windows sharing semantics')
+    def test_read_hold_releases_earlier_sources_when_a_later_one_is_missing(self):
+        with self.assertRaises(OSError), hold_read_sources((self.destination, self.root/'missing.png')):
+            self.fail('missing evidence unexpectedly acquired')
+        self.destination.write_text('available')
+        self.assertEqual(self.destination.read_text(), 'available')
 
     @unittest.skipUnless(os.name=='nt','Windows sharing semantics')
     def test_real_windows_reader_can_close_during_atomic_publish(self):

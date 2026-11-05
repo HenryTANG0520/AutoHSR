@@ -1,10 +1,12 @@
 """Standard start continuity and input authority; fake game windows only."""
 import io
 import json
+import mmap
+import os
 import tempfile
 import time
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,7 +17,7 @@ from autohsr import currency_wars_standard_market  # Import before patching its 
 from autohsr.config import Settings
 from autohsr.currency_wars_session import StandardSession
 from autohsr.currency_wars_standard_flow import next_action, run_standard
-from autohsr.models import AutomationError, InputInterrupted, RunReport, TaskResult, Token, normalize
+from autohsr.models import AutomationError, FocusLost, InputInterrupted, RunReport, TaskResult, Token, normalize
 from autohsr.tests.test_currency_wars_node import screen
 from autohsr.tests.test_currency_wars_standard import rank_page
 
@@ -36,6 +38,16 @@ class StandardFlowTests(unittest.TestCase):
         store.persist()
         return store
 
+    def record_start(self, store, state, choice):
+        import cv2
+
+        directory = Path(store.data['run_dir'])
+        directory.mkdir(exist_ok=True)
+        before = directory / 'before.png'
+        self.assertTrue(cv2.imwrite(str(before), state.image))
+        store.pending(choice.intent, 0, before, choice.expected)
+        return before
+
     def test_scope_rank_target_and_durable_intent_all_required(self):
         state = ready()
         choice = next_action(state)
@@ -48,10 +60,128 @@ class StandardFlowTests(unittest.TestCase):
                 with self.assertRaises(AutomationError):
                     c.currency_standard_input(state, choice)
                 c.window.click.assert_not_called()
-            store.pending(choice.intent, 0, 'before.png', choice.expected)
+            before = self.record_start(store, state, choice)
+            c.report.run_dir = str(before.parent)
+            c.window.emergency_pressed.return_value = False
+            c.window.click.side_effect = lambda *_args, before_send: before_send()
             c.currency_standard_input(state, choice)
-            c.window.click.assert_called_once_with(*choice.target.center, state.geometry)
+            self.assertEqual(c.window.click.call_args.args, (*choice.target.center, state.geometry))
+            self.assertEqual(c.window.click.call_count, 1)
             self.assertIsNone(c.last_scene)
+
+    def test_native_standard_open_rechecks_window_frame_and_persisted_intent(self):
+        from autohsr.currency_wars_initial import _pixels, evidence_ref
+        from autohsr.windows import GameWindow, Geometry
+
+        cases = ('normal', 'pause', 'pending', 'final_pending', 'final_png', 'final_png_mtime',
+                 'final_pixels', 'final_target', 'final_uid', 'final_age', 'focus', 'late_f10',
+                 'final_f10', 'mapped_pending', 'mapped_png', 'hash_focus')
+        for case in cases:
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as folder, ExitStack() as handles:
+                state = ready()
+                state.geometry = Geometry(0, 0, 1920, 1080)
+                choice = next_action(state)
+                store = self.store(folder)
+                before = self.record_start(store, state, choice)
+                window = object.__new__(GameWindow)
+                child = Runner(Settings(), operation='currency_wars_standard')
+                context = Context(child, window, Mock())
+                context.report.run_dir = str(before.parent)
+                context.last_scene, context.currency_standard_session = state, store
+                context.checkpoint, context.sleep = Mock(), Mock()
+                child.wait_for_focus = Mock()
+                foreground = True
+                final_f10 = False
+                altered = None
+
+                def alter_pending():
+                    nonlocal altered
+                    saved = json.loads(store.path.read_text(encoding='utf-8'))
+                    saved['actions'][0]['status'] = 'unknown'
+                    changed = json.dumps(saved).encode('utf-8')
+                    store.path.write_bytes(changed)
+                    altered = changed
+
+                def guard_window(_geometry):
+                    nonlocal final_f10
+                    if not foreground:
+                        raise FocusLost('合成测试窗口失焦。')
+                    if window.guard.call_count == 3:
+                        if case == 'final_pending':
+                            alter_pending()
+                        if case == 'final_png':
+                            before.write_bytes(b'changed synthetic evidence')
+                        if case == 'final_png_mtime':
+                            stat = before.stat()
+                            with before.open('r+b') as stream:
+                                stream.write(b'X')
+                            os.utime(before, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+                        if case == 'final_pixels':
+                            state.image[0, 0, 0] ^= 1
+                        if case == 'final_target':
+                            state.tokens[:] = [t for t in state.tokens if t.text != '开始对局']
+                        if case == 'final_uid':
+                            state.tokens.append(Token('UID:200000000', .80, (.01, .96, .10, .99)))
+                        if case == 'final_age':
+                            state.captured_at -= 9
+                        if case == 'final_f10':
+                            final_f10 = True
+                    return state.geometry
+
+                def after_evidence(*args):
+                    nonlocal foreground
+                    reference = evidence_ref(*args)
+                    if case == 'focus':
+                        foreground = False
+                    return reference
+
+                def frame_hash(image):
+                    nonlocal foreground
+                    digest = _pixels(image)
+                    if case == 'hash_focus' and image is state.image and not image.flags.writeable:
+                        foreground = False
+                    return digest
+
+                def emergency_state(_key):
+                    if case == 'pause':
+                        child.input_epoch += 1
+                    if case == 'pending':
+                        alter_pending()
+                    if case in ('mapped_pending', 'mapped_png') and native.GetAsyncKeyState.call_count == 1:
+                        path = store.path if case == 'mapped_pending' else before
+                        with path.open('r+b') as writer:
+                            handles.enter_context(mmap.mmap(writer.fileno(), 0, access=mmap.ACCESS_WRITE))
+                    if final_f10 or (case == 'late_f10' and native.GetAsyncKeyState.call_count == 2):
+                        return 1
+                    return 0
+
+                def send(count, _items, _size):
+                    with self.assertRaises(PermissionError):
+                        before.write_bytes(b'concurrent write during SendInput')
+                    return count
+
+                window.guard = Mock(side_effect=guard_window)
+                native = Mock()
+                native.GetSystemMetrics.side_effect = {76:0,77:0,78:1920,79:1080}.__getitem__
+                native.GetAsyncKeyState.side_effect = emergency_state
+                native.SendInput.side_effect = send
+                with (patch('autohsr.windows.user32', native),
+                      patch('autohsr.currency_wars_initial.evidence_ref', after_evidence),
+                      patch('autohsr.currency_wars_initial._pixels', frame_hash)):
+                    if case == 'normal':
+                        context.currency_standard_input(state, choice)
+                        self.assertEqual(native.SendInput.call_args.args[0], 3)
+                        native.SendInput.assert_called_once()
+                    else:
+                        with self.assertRaises(AutomationError):
+                            context.currency_standard_input(state, choice)
+                        native.SendInput.assert_not_called()
+                        if altered is not None:
+                            self.assertEqual(store.path.read_bytes(), altered)
+                        else:
+                            saved = StandardSession(store.path).data
+                            self.assertEqual((saved['status'], saved['actions'][0]['status']), ('start_pending', 'pending'))
+                    self.assertTrue(state.image.flags.writeable)
 
     def test_wrong_rank_forged_target_and_epoch_change_cannot_start(self):
         with self.assertRaises(AutomationError):
@@ -222,7 +352,6 @@ class StandardFlowTests(unittest.TestCase):
             self.assertEqual(action['target'], list(TARGET))
 
     def test_unknown_readonly_shop_open_can_be_observed_without_resending(self):
-        from autohsr.currency_wars_match import MatchState
         with tempfile.TemporaryDirectory() as folder:
             store=self.store(folder)
             store.data.update(status='active',start_verified=True,
@@ -234,10 +363,10 @@ class StandardFlowTests(unittest.TestCase):
             # This fixture proves reconciliation only; without a close target
             # the workflow cannot legitimately dispatch the following action.
             scene.tokens = [t for t in scene.tokens if normalize(t.text) != '收起']
+            scene.tokens.extend((Token('5', .99, (.853, .832, .867, .857)),
+                                 Token('Lv.3', .99, (.135, .823, .167, .847))))
             c=self.context(folder,[scene],resume=True)
-            state=MatchState('shop',node='1-1',gold=5,hp=None,level=3)
-            with patch('autohsr.currency_wars_match.read_match',return_value=state), \
-                 patch('autohsr.currency_wars_replay.save_sample'):
+            with patch('autohsr.currency_wars_replay.save_sample'):
                 run_standard(c)
             c.currency_standard_input.assert_not_called()
             saved=c.report.currency_wars['actions'][-1]

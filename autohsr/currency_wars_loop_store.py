@@ -522,13 +522,14 @@ class LoopGuard:
             raise AutomationError('当前账号与循环记录不同，未开始或继续对局。')
         if data['active']['match_id'] != session['match_id'] or session.get('loop_owner') != self.owner:
             raise AutomationError('本局归属尚未写入，未发送输入。')
-        if session['actions'] and session['actions'][-1]['action'] == 'start_standard_a8_40':
-            self.require_start()
+        start_sources = (self.require_start()
+                         if session['actions'] and session['actions'][-1]['action'] == 'start_standard_a8_40' else ())
         if data['account_key'] is None:
             data['account_key'] = current
             self.store.save()
+        return start_sources
 
     def require_start(self):
         from .currency_wars_points_goal import require_start
         self.current()
-        require_start(self.store)
+        return require_start(self.store)
