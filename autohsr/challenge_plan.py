@@ -15,6 +15,8 @@ import sys
 from types import MappingProxyType
 import unicodedata
 
+from .challenge_identities import unit_key
+
 
 UPSTREAM_COMMIT = '7cf6c6bed474539485d3b1504077ac352866829f'
 # Git text checkout may use LF or CRLF; bind the exact LF-normalized content.
@@ -91,8 +93,8 @@ def _team(value, field):
             character = aliases[name]
         else:
             raise ChallengePlanError(field, '角色未知或名称不唯一，请使用固定目录中的明确角色标识。')
-        if character in result:
-            raise ChallengePlanError(field, '同一队伍不能重复指定角色。')
+        if unit_key(character) in {unit_key(item) for item in result}:
+            raise ChallengePlanError(field, '同一队伍不能重复指定角色或同一单位的已核实皮肤。')
         result.append(character)
     return tuple(result)
 
@@ -114,8 +116,8 @@ class ChallengePlan:
         if not 1 <= first <= last <= MODE_LIMITS[self.mode]:
             raise ChallengePlanError('levels', '层数范围超出本模式范围或起止顺序无效。')
         team1, team2 = _team(self.team1, 'team1'), _team(self.team2, 'team2')
-        if set(team1) & set(team2):
-            raise ChallengePlanError('teams', '两队不能重复指定同一角色。')
+        if {unit_key(item) for item in team1} & {unit_key(item) for item in team2}:
+            raise ChallengePlanError('teams', '两队不能重复指定同一角色或同一单位的已核实皮肤。')
         object.__setattr__(self, 'levels', (first, last))
         object.__setattr__(self, 'team1', team1)
         object.__setattr__(self, 'team2', team2)

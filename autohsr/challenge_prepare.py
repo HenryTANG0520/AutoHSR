@@ -96,10 +96,17 @@ class ChallengePreparation:
         image = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
         if image is None or image.shape != scene.image.shape or not np.array_equal(image, scene.image):
             raise AutomationError('高难备战落盘PNG与当前画面不同。')
-        return dict(path=str(path), sha256=hashlib.sha256(raw).hexdigest(),
+        record = dict(path=str(path), sha256=hashlib.sha256(raw).hexdigest(),
             pixel_sha256=_pixels(scene), shape=list(scene.image.shape), captured_at=scene.captured_at,
             kind=observation.kind, mode=observation.mode, level=observation.level,
             stars=observation.stars, basis=deepcopy(observation.basis))
+        if observation.kind == 'team_setup' and observation.mode == self.plan.mode:
+            # List portraits are read-only candidates, not selected-team proof.
+            # Scan only saved setup observations, keeping lobby/target checks
+            # inexpensive and independent of the optional portrait evidence.
+            from .challenge_roster import observe_candidates
+            record['basis']['candidate_list'] = observe_candidates(scene, mode=observation.mode)
+        return record
 
     def _derive(self, scene):
         from .challenge_pages import observe, target

@@ -43,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument('--currency-wars-loop', action='store_true', help='标准A8-40连续开发：逐局核实结算与保存，失败或未知即停止')
     mode.add_argument('--currency-wars-points',action='store_true',help='导航到货币战争主页，核对当前积分、账号与游戏周；不开始对局或领取积分奖励')
     mode.add_argument('--currency-wars-rewards',action='store_true',help='独立核对并领取当前可领取的货币战争积分奖励；不开始对局或清理满额助燃券')
-    mode.add_argument("--check", action="store_true", help="检测窗口和 OCR，输出 JSON；不操作游戏")
+    mode.add_argument("--check", action="store_true", help="检测窗口、客户端版本和 OCR，输出 JSON；不操作游戏")
     mode.add_argument("--scan-dungeons", action="store_true", help="采集生存索引全部副本入口；不开始挑战或消耗资源")
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
     mode.add_argument("--run", action="store_true", help="按配置执行每日任务；F10 紧急停止")

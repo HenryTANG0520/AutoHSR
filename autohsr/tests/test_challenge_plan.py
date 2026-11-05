@@ -160,8 +160,9 @@ class ChallengePlanTests(unittest.TestCase):
         self.assertEqual(len(set(characters)), 105)
         self.assertIn('StelleRemembrance', characters)
         self.assertIn('March7thImaginary', characters)
+        independent=('Asta','JingYuan','Tingyun','Huohuo','FuXuan','Bronya','Pela','Qingque','Gepard')
         for identity in characters:
-            others = [name for name in characters if name != identity][:7]
+            others = [name for name in independent if name != identity][:7]
             plan = ChallengePlan('memory_of_chaos', (1, 1), (identity, *others[:3]), tuple(others[3:]))
             self.assertEqual(plan.team1[0], identity)
             self.assertEqual(set(plan.to_dict()), {'mode', 'levels', 'team1', 'team2'})
@@ -214,7 +215,7 @@ class ChallengePlanTests(unittest.TestCase):
     def test_standalone_module_validation_does_not_import_settings_runner_or_game_io(self):
         # Execute a separate instance so this checks imports even when other
         # tests in the process have already imported unrelated project code.
-        spec = importlib.util.spec_from_file_location('challenge_plan_import_probe', challenge_plan.__file__)
+        spec = importlib.util.spec_from_file_location('autohsr.challenge_plan_import_probe', challenge_plan.__file__)
         probe = importlib.util.module_from_spec(spec)
         original = builtins.__import__
 

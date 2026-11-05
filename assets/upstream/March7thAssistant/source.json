@@ -10,15 +10,17 @@
       "path": "autohsr/challenge_plan.py",
       "reference_source": "tasks/challenge/__init__.py",
       "native_files": [
+        "autohsr/challenge_identities.py",
         "autohsr/challenge_cli.py",
         "autohsr/config.py",
         "autohsr/__main__.py"
       ],
       "tests": [
         "autohsr/tests/test_challenge_plan.py",
+        "autohsr/tests/test_challenge_plan_identities.py",
         "autohsr/tests/test_challenge_integration.py"
       ],
-      "kind": "AutoHSR-authored explicit two-team configuration for three challenge modes. Strict four-field JSON, fixed mode/level bounds, four exact known asset IDs or unique full display names per team, canonical-ID duplicates rejected and immutable digest. The existing 105-image catalogue supplies identity names only, not ownership, different-form unit equivalence, selected slots or challenge calibration. No techniques, default teams, retry, battle or reward authority. File preview never loads settings or creates a Runner; only explicit settings saving persists."
+      "kind": "AutoHSR-authored explicit two-team configuration for three challenge modes. Strict four-field JSON, fixed mode/level bounds, four exact known asset IDs or unique full display names per team, canonical-ID duplicates rejected and immutable digest. Five finite outfit/base equivalences are independently supported by publisher articles recorded with content hashes in challenge_identities.py; exact outfit IDs remain serialized. No prefix/story-based merging or claim that all path/outfit equivalences are known. The 105-image catalogue does not prove account ownership, selected slots or challenge calibration. No techniques, default teams, retry, battle or reward authority. File preview never loads settings or creates a Runner; only explicit settings saving persists."
     },
     {
       "path": "autohsr/challenge_prepare.py",
@@ -29,10 +31,11 @@
         "autohsr/notify_runtime.py"
       ],
       "tests": [
-        "autohsr/tests/test_challenge_prepare.py"
+        "autohsr/tests/test_challenge_prepare.py",
+        "autohsr/tests/test_challenge_candidate_evidence.py"
       ],
       "asset_manifest": "assets/upstream/March7thAssistant/challenge-ui/sources.json",
-      "kind": "AutoHSR-authored independent preparation Runner, not a complete challenge executor. Current-window only, no daily startup or spending budget. Freeze plan/account/epoch, require distinct fresh observations, durable same-run source PNG byte/pixel/shape proof and intent, derive the current first-level target again at the dedicated Context boundary, click at most once and require two same-level preparation returns. Unknown/interrupted selection is retained, never replayed; existing verified setup is observed without input. No reset, selected-team claim, movement, technique, combat, rewards, arbitrary coordinates or imported upstream input framework."
+      "kind": "AutoHSR-authored independent preparation Runner, not a complete challenge executor. Current-window only, no daily startup or spending budget. Freeze plan/account/epoch, require distinct fresh observations, durable same-run source PNG byte/pixel/shape proof and intent, derive the current first-level target again at the dedicated Context boundary, click at most once and require two same-level preparation returns. Saved verified setup observations now include read-only list-portrait candidates; unknown candidates do not change the preparation-only result and no candidates authorize input. Unknown/interrupted selection is retained, never replayed; existing verified setup is observed without input. No reset, selected-team claim, movement, technique, combat, rewards, arbitrary coordinates or imported upstream input framework."
     },
     {
       "path": "autohsr/redemption_server.py",
@@ -573,12 +576,15 @@
     {
       "path": "autohsr/challenge_pages.py",
       "reference_source": "tasks/challenge/memoryofchaos.py",
+      "reference_sources": ["tasks/challenge/memoryofchaos.py", "tasks/challenge/basechallenge.py", "tasks/challenge/apocalyptic.py"],
+      "native_files": ["autohsr/challenge_roster.py"],
+      "tests": ["autohsr/tests/test_challenge_roster.py"],
       "reference_functions": [
         "find_level",
         "judge_stars",
         "prepare_level"
       ],
-      "kind": "Limited current-scene observation using the separately attributed original challenge crops, source level region and gold-star colour/shape relationship. Original mode image plus exact OCR/header/counter and independent per-level positive star sources; absent stars, availability, full selected teams, halves, combat and results remain unknown. Team number/reset/switch/caption crops corroborate preparation only and never authorize those controls. Full real-page calibration is outstanding; original-crop composites are synthetic mechanism tests."
+      "kind": "Limited current-scene observation using the separately attributed original challenge crops, source level region and gold-star colour/shape relationship. Original mode image plus exact OCR/header/counter and independent per-level positive star sources; absent stars, availability, full selected teams, halves, combat and results remain unknown. Team number/reset/switch/caption crops corroborate preparation only and never authorize those controls. The native challenge_roster helper uses pinned challenge-list xywh crops and independently verifies all 105 existing whole portrait bytes, hashes, Git blobs and dimensions; bounded matches retain cross-identity overlap as ambiguity, reject partial edges and stale frames, and never produce input targets or selected-team authority. Runtime use is limited to saved verified MOC setup observations; other source crops are utility references, not complete mode support. Full real-page calibration is outstanding; original-crop composites are synthetic mechanism tests."
     },
     {
       "path": "autohsr/redemption_codes.py",

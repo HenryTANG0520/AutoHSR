@@ -16,6 +16,8 @@
 
 同日补齐[差分周常跨周开局](docs/weekly-plan.md)和[初始商店暂停／显式接续](docs/currency-wars-initial-environment.md)的来源边界：保留原周及已核实胜利，初始商店只在从未提交收店时重新观察；已有pending／unknown不重放。离线验证和实机验收分别记录。
 
+高难另补5组有官方依据的皮肤／本体去重，以及已核实混沌备战页的角色列表候选留档；候选不代表实际入队或可开战。完整双队选择、上下半与结果仍待实现，见[高难说明](docs/challenges.md)。窗口检测现可报告当前安装的游戏版本，未知时不使用EXE引擎版本代替。
+
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-blue)](#运行条件)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)](#安装与启动)
@@ -447,7 +449,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 `--run`执行配置中开启的所有每日项；`--plan`额外检查已启用且到期的周常。只测单项需明确测试配置。以下覆盖不自动保存。
 
 ```powershell
-# 检测窗口/OCR，不执行任务，但会聚焦游戏
+# 检测窗口、客户端版本和OCR，不执行任务，但会聚焦游戏
 .\.venv\Scripts\python.exe -m autohsr --check
 # 只启动
 .\.venv\Scripts\python.exe -m autohsr --launch
@@ -480,6 +482,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 ```
 
 `--config`指定配置，`--game-path`覆盖路径；`--target/--location/--category/--count/--stamina/--rounds`覆盖副本。差分用`--du-save/--du-rewards/--du-daily`开启可选项，`--du-daily-from YYYY-MM-DD`限起始日，仅用于差分入口。完整参数看`python -m autohsr --help`。
+
+`--check`的`game_client`字段区分版本已核实与未知，只包含游戏版本、来源类型及哈希，不输出安装路径；该命令的原有完整OCR与截图路径仍供本地排查，不是公开脱敏报告。
 
 打包EXE无终端控制台，游戏任务CLI后读EXE同目录`runs/`；终端JSON用源码命令。管理员授权CLI不创建游戏报告，打包版在设置里“刷新状态”核实结果。通常退出码0成功、1未完整成功、2参数或配置错，键盘中断130。
 

@@ -36,6 +36,13 @@ def inspect_game(settings: Settings) -> dict:
     screenshot = save_scene(scene, output, "screen")
     result = dict(window=window.hwnd, title=window.title, width=geometry.width, height=geometry.height,
                   administrator=is_admin(), game_elevated=is_elevated(window.hwnd), ocr_text=scene.text, screenshot=str(screenshot))
+    try:
+        from .currency_wars_identity import installed_client
+        client = installed_client(window.current_executable())
+        result['game_client'] = dict(status='verified', **{key: client[key]
+            for key in ('version', 'full_version', 'kind', 'sha256')})
+    except Exception:
+        result['game_client'] = dict(status='unknown', reason='客户端安装版本未核实；未使用EXE引擎版本代替。')
     from .ux import input_readiness
     result["input_ready"] = input_readiness(result["administrator"], result["game_elevated"])
     result["input_hint"] = ("游戏以管理员运行，请在设置启用管理员免重复确认启动后重开助手，或用管理员启动器。" if result["input_ready"] is False else

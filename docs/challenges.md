@@ -1,6 +1,6 @@
 # 高难计划与混沌备战
 
-更新日期：2026-10-30。完整混沌回忆、虚构叙事、末日幻影自动执行仍在开发。本轮交付明确双队计划、离线计划核对，以及从已打开的混沌主页核实首个目标层并进入备战页的有限原生流程；不把备战任务成功写成通关、星数提升或奖励已领取。上游实现与缺口见[接入研究](march7thassistant-challenge-integration-2026-10-30.md)，全部功能范围见[开发清单](development-roadmap.md)。
+更新日期：2026-11-05。完整混沌回忆、虚构叙事、末日幻影自动执行仍在开发。已有明确双队计划、离线计划核对，以及从已打开的混沌主页核实首个目标层并进入备战页的有限原生流程；本次补充有依据的皮肤单位去重及列表候选观察。不把备战任务成功写成通关、星数提升或奖励已领取。上游实现与缺口见[接入研究](march7thassistant-challenge-integration-2026-10-30.md)，全部功能范围见[开发清单](development-roadmap.md)。
 
 用户已明确允许仅这三种高难按明确角色名单编双队，见[开发约定](../AGENTS.md)。日常、差分和饰品等既有预设规则继续保留。配置中的明确名单不证明角色已拥有、解锁、可用或实际入队；本轮原生流程尚不选择角色。
 
@@ -16,7 +16,19 @@
 | `levels` | 包含起止层的两个整数；混沌1～12，虚构／末日1～4，起层不大于终层 |
 | `team1`、`team2` | 每队明确四个固定角色ID或唯一完整中文名，不猜别名、不自动补队 |
 
-未知字段、缺少字段、布尔／字符串层数、空或带控制字符的名字、未知／不唯一名称、同队与跨队重复的规范ID均拒绝。规范化后冻结为不可变元组，`to_dict()`返回独立数据，`digest`为规范计划SHA-256。已有[105幅头像目录](../assets/upstream/March7thAssistant/support/sources.json)只提供固定ID和完整名字；皮肤、不同形态等不同素材ID不证明对应单位可同时上场，实际两队的单位身份、可用及已选反馈仍待运行协议核实。没有秘技、失败重试、购买或领奖授权字段。
+未知字段、缺少字段、布尔／字符串层数、空或带控制字符的名字、未知／不唯一名称、同队与跨队重复的规范ID均拒绝。另拒绝下述5组已核实皮肤与本体重复；精确皮肤ID仍保留在不可变元组及`to_dict()`中，`digest`仍为具体计划的SHA-256，不把皮肤替换成本体。已有[105幅头像目录](../assets/upstream/March7thAssistant/support/sources.json)只提供固定ID和完整名字，不证明账号拥有、可用或实际入队。没有秘技、失败重试、购买或领奖授权字段。
+
+[单位去重](../autohsr/challenge_identities.py)只采用有限显式对应关系，三种模式的同队与跨队检查一致。官方正文分别明确这些外观所属角色；2026-11-05读取官方CMS完整`sContent`，文章编号及内容SHA-256记在该模块，不依据相似名字或头像猜测：
+
+| 本体／外观ID | 依据 |
+| --- | --- |
+| `March7th`／`March7thNascentSpring` | [3.0更新说明](https://hsr.hoyoverse.com/en-us/news/127987?type=activity) |
+| `Firefly`／`FireflySpringMissive` | [3.4更新说明](https://hsr.hoyoverse.com/en-us/news/157441) |
+| `Castorice`／`CastoriceGossamerFlutter` | [4.2更新说明](https://hsr.hoyoverse.com/en-us/news/163625) |
+| `Hyacine`／`HyacineWarmCottonSkies` | [4.6更新说明](https://hsr.hoyoverse.com/en-us/news/166468) |
+| `Evanescia`／`EvanesciaLunarBlossoming` | [4.6更新说明](https://hsr.hoyoverse.com/en-us/news/166468) |
+
+这不是完整单位关系表。开拓者／三月七的命途互斥及其他未核实外观继续保留缺项，不按前缀或剧情身份归并；丹恒／饮月、停云／忘归人、黑塔／大黑塔等不同目录项也不据叙事名称合并。未被此表拒绝，只说明计划结构可接受，仍须运行时核实实际单位与两队完整性。
 
 以下八名角色只是说明格式的示例，不是本账号名单或默认编队：
 
@@ -58,6 +70,10 @@ python -m autohsr --challenge-prepare --challenge-plan .\my-challenge.json
 
 成功备战仅记`preparation_page_verified=true`；`team_verified`、`battle_started`、`completion_verified`仍为false，半场和完整挑战结果未知。`TaskResult("challenge_prepare", "ok", ...)`和父报告success只说明这个有限准备任务完成，不增加战斗完成、挑战星数或奖励计数。
 
+2026-11-05新增[列表候选观察](../autohsr/challenge_roster.py)。原生准备流程仅在保存已核实同模式备战页时，将`candidate_list`附入来源`basis`；主页、未知页和目标推导不扫描。105幅既有完整头像逐份核对固定manifest、SHA-256、Git blob和尺寸，使用固定上游列表裁剪范围，保留身份、完整框与模板来源。边缘残缺、遮挡及过期画面不作为正候选，跨素材重叠匹配完整保留歧义；没有支援列表行假设或徽章遮罩，也不产出点击目标。
+
+输出的`ownership`、`availability`、`selected`、`complete`全部为`unknown`，`execution_supported=false`。候选未知不改变“只完成备战页核实”的结果。混沌／虚构的列表参考为上游`BaseChallenge.select_characters`的1920×1080、xywh`(30,115,530,810)`；末日工具参考为`Apocalyptic.select_characters`的`(30,110,550,850)`。当前实际接线仍仅混沌备战，其他裁剪参考不表示两种模式主页或完整执行已支持。拼图、尺寸量化及遮挡检查也不是真实全页校准。
+
 14幅原件、实际可见内容、哈希与许可见[素材说明](../assets/upstream/March7thAssistant/challenge-ui/README.md)及[来源清单](../assets/upstream/March7thAssistant/challenge-ui/sources.json)。固定上游为`7cf6c6bed474539485d3b1504077ac352866829f`，作者moesnow及其贡献者、[GPL v3](../assets/upstream/March7thAssistant/LICENSE)与游戏美术权利说明保留，没有移入上游输入框架或公开账号整图。
 
 ## 验证与未完成项
@@ -74,4 +90,10 @@ python -m autohsr --challenge-prepare --challenge-plan .\my-challenge.json
 
 提交前8份说明274处本地链接、60份固定树源码的Git blob／其中56份已声明SHA-256、GPL许可、14幅新增局部图及105幅既有头像、11份研究原件与85处原生文件引用核对通过，见`runs/challenge-final-verification.json`。角色目录的Git索引与工作区按LF内容一致，原始兑换码表字节保持；3个历史私人样本标签保留，不读取或公开原始样本，运行记录、用户配置和凭据未纳入版本控制。
 
-完整角色列表与当前队归属、实际八人完整反馈、角色禁用／皮肤形态同单位、秘技与开怪、自动状态、上下半／节点转换、真实星数／分数与失败／退出／领奖，以及虚构增益和末日节点仍待实现。完整高难执行目标保持，不能因增加备战入口而改写为已完成。没有新实机截图、游戏输入、真实游戏进程／用户注册表访问、外部引擎运行、通知发送或EXE构建；原件拼图、模拟OCR和假IO都不是真实留出或完整无人接管验收。
+完整角色列表与当前队归属、实际八人完整反馈、角色禁用／其余皮肤形态同单位、秘技与开怪、自动状态、上下半／节点转换、真实星数／分数与失败／退出／领奖，以及虚构增益和末日节点仍待实现。完整高难执行目标保持，不能因增加备战入口而改写为已完成。没有新实机截图、游戏输入、真实游戏进程／用户注册表访问、外部引擎运行、通知发送或EXE构建；原件拼图、模拟OCR和假IO都不是真实留出或完整无人接管验收。
+
+## 后续无消耗采样的入口边界
+
+`--check`只聚焦当前窗口并保存截图／OCR，现另从当前窗口的`current_executable()`读取安装配置`game_version`。`game_client`成功时仅增加`version`、`full_version`、`kind`、`sha256`及`status=verified`；缺失、歧义或不可读时为`unknown`，不回落到缓存路径或EXE的Unity版本。新游戏版本不阻断只读检测；其他游戏流程仍按自身版本规则处理。检测结果仍含完整OCR和私人证据路径，原件应留本地，模型只使用去UID裁片与必要非身份字段。
+
+独立`--launch`仅启动／聚焦，不点击进入；`--currency-wars-prepare`及`--currency-wars-locate`包含登录月卡和登录奖励处理，不能直接当“不领奖”采样。`--challenge-prepare`必须先有明确八人计划，也不能填示例名单来解决四预设成员尚缺的前置采样。当前自动到全部目标页的无领奖导航仍缺，旧`live_probe`输入分支不经过Context，不作为替代入口。后续须先取得具体实机范围授权并与AutoZZZ交接；本次仅离线开发，没有执行这些访问游戏的命令。
