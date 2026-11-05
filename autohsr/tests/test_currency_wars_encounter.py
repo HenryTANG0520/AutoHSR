@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import cv2
 import numpy as np
@@ -15,9 +15,11 @@ from autohsr.__main__ import main
 from autohsr.app import Runner
 from autohsr.config import Settings
 from autohsr.currency_wars import CurrencyWarsWorkflow, observe
-from autohsr.currency_wars_encounter import encounter_node_visible, encounter_overlay_present, read_encounter, read_encounter_targets
+from autohsr.currency_wars_encounter import (
+    encounter_node_visible, encounter_overlay_present, read_encounter, read_encounter_targets, supplement_encounter_fields,
+)
 from autohsr.currency_wars_standard_flow import next_action
-from autohsr.models import AutomationError, Scene, Token
+from autohsr.models import AutomationError, FocusLost, Scene, Token
 from autohsr.tests import test_currency_wars as check_tests
 
 
@@ -54,13 +56,29 @@ def encounter(*, selected=None, tiers=(1, 3), badge_counts=None):
     return Scene(fields, image=image)
 
 
+def with_missing_fields(*, selected=None, badge_counts=None):
+    frame = encounter(selected=selected, badge_counts=badge_counts)
+    frame.tokens = [t for t in frame.tokens if t.text not in ('3', '2')
+                    and not (t.center[0] < .5 and t.text in ('难度', '奖励预览'))]
+    frame.tokens.append(token('返回备战界面', .93, .073, half_width=.040))
+    return frame
+
+
+def supplement(frame, *, quantities=('12', '2')):
+    reader = Mock(confidence=.65)
+    replies = [text for text in ('难度', '奖励预览', *quantities) for _ in range(2)]
+    reader._read_field.side_effect = [None if text is None else Token(text, .96, (0, 0, 1, 1))
+                                      for text in replies]
+    return supplement_encounter_fields(frame, reader)
+
+
 class EncounterTests(unittest.TestCase):
     def cli_report(self, frame):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             window, vision, _, daily, launch, budget = check_tests.CoordinatorTests.fixture(self, root)
             window.capture.return_value = (frame.image, None)
-            vision.read.side_effect = lambda image, geometry: Scene(frame.tokens, image, geometry)
+            vision.read.side_effect = lambda image, geometry: Scene(frame.tokens, image, geometry, field_reads=frame.field_reads)
             config = root / 'config.json'
             Settings(auto_launch=True, overlay_logs=False).save(config)
             original = config.read_bytes()
@@ -294,6 +312,121 @@ class EncounterTests(unittest.TestCase):
         result = read_encounter(frame)
         self.assertEqual([card.reward_preview['quantity'] for card in result.cards], [12, None])
         self.assertEqual(result.refresh_remaining, 12)
+
+    def test_local_fields_fill_current_missing_columns_and_stay_readonly(self):
+        raw = with_missing_fields()
+        self.assertFalse(read_encounter(raw).layout_verified)
+        frame = supplement(raw, quantities=('103', '2'))
+        self.assertIs(frame.tokens, raw.tokens)
+        self.assertFalse(raw.field_reads)
+        self.assertEqual(len(frame.field_reads), 4)
+        targets = read_encounter_targets(frame)
+        self.assertEqual(targets.observation.selection_state, 'unselected')
+        self.assertEqual([card.difficulty for card in targets.observation.cards], [1, 3])
+        self.assertEqual([card.reward_preview['quantity'] for card in targets.observation.cards], [103, 2])
+        report = self.cli_report(frame)
+        self.assertEqual(report['page_kind'], 'encounter_selection')
+        self.assertEqual(report['decision'], 'stop_without_input')
+        self.assertFalse(report['strategy_decision']['executable'])
+        self.assertEqual(report['encounter']['cards'][0]['reward_preview']['quantity'], 103)
+
+    def test_local_title_only_completes_the_original_ordinal_and_position(self):
+        raw = with_missing_fields(selected=1)
+        partial = token('遇其一', .346, .372)
+        raw.tokens = [partial if t.text == '遭遇其一' else t for t in raw.tokens]
+        reader = Mock(confidence=.65)
+        for candidate in ('遭遇其二', '遭遇其一'):
+            replies = (candidate, '难度', '奖励预览', '12', '2')
+            reader._read_field.side_effect = [Token(t, .96, (0, 0, 1, 1)) for t in replies for _ in range(2)]
+            frame = supplement_encounter_fields(raw, reader)
+            self.assertIn(partial, frame.tokens)
+            targets = read_encounter_targets(frame)
+            if candidate == '遭遇其一':
+                self.assertEqual(targets.cards[0], Token(candidate, .96, partial.box))
+                self.assertEqual(targets.observation.selected_slot, 1)
+            else:
+                self.assertIsNone(targets)
+        raw.tokens.append(token('遭遇其二', .346, .371))
+        reader.reset_mock()
+        self.assertIs(supplement_encounter_fields(raw, reader), raw)
+        reader._read_field.assert_not_called()
+
+    def test_local_fields_need_a_complete_current_panel_and_stable_controls(self):
+        raw = with_missing_fields(selected=1)
+        old_fields = supplement(raw).field_reads
+        for problem in ('header', 'card', 'partial_pair', 'edge', 'white', 'preparation', 'shop'):
+            with self.subTest(problem=problem):
+                frame = with_missing_fields(selected=1)
+                if problem == 'header':
+                    frame.tokens[0] = token('遗遇节点', .5, .092)
+                elif problem == 'card':
+                    frame.tokens = [t for t in frame.tokens if t.text != '遭遇其三']
+                elif problem == 'partial_pair':
+                    frame.tokens = [Token(t.text[1:], t.score, t.box) if t.text.startswith('遭遇其') else t
+                                    for t in frame.tokens]
+                elif problem == 'edge':
+                    left = frame.image[round(.42 * 540):round(.658 * 540), :round(.46 * 960)]
+                    left[:] = (58, 42, 32)
+                elif problem == 'white':
+                    frame = with_missing_fields()
+                    frame.image[round(.775 * 540):round(.825 * 540), round(.465 * 960):round(.663 * 960)] = 233
+                elif problem == 'preparation':
+                    frame.tokens += [token('1-7', .246, .074), token('出战', .95, .70)]
+                else:
+                    frame.tokens.append(token('补给阶段', .5, .07))
+                reader = Mock(confidence=.65)
+                self.assertIs(supplement_encounter_fields(frame, reader), frame)
+                reader._read_field.assert_not_called()
+                frame.field_reads = old_fields
+                self.assertIsNone(read_encounter_targets(frame))
+
+    def test_local_reads_reject_wrong_columns_disagreement_and_weak_values(self):
+        for problem in ('column', 'different', 'decorated', 'weak'):
+            with self.subTest(problem=problem):
+                frame = supplement(with_missing_fields())
+                left = 'currency_encounter.1.quantity'
+                first, second = frame.field_reads[left]
+                if problem == 'column':
+                    frame.field_reads[left] = frame.field_reads['currency_encounter.2.quantity']
+                elif problem == 'different':
+                    frame.field_reads[left] = first, Token('13', second.score, second.box)
+                elif problem == 'decorated':
+                    frame.field_reads[left] = first, Token('1:2', second.score, second.box)
+                else:
+                    frame.field_reads[left] = first, Token(second.text, .84, second.box)
+                result = read_encounter(frame)
+                self.assertEqual([c.reward_preview['quantity'] for c in result.cards], [None, 2])
+
+    def test_raw_quantity_conflicts_and_difficulty_pixels_survive_refinement(self):
+        frame = supplement(with_missing_fields(badge_counts=(2, 3)))
+        frame.tokens.append(token('7', .309, .617, half_width=.006))
+        cards = read_encounter(frame).cards
+        self.assertIsNone(cards[0].difficulty)
+        self.assertEqual(cards[0].reward_preview['quantity'], 7)
+        frame.tokens.append(token('8', .312, .623, half_width=.006))
+        self.assertIsNone(read_encounter(frame).cards[0].reward_preview['quantity'])
+        self.assertIsNone(read_encounter_targets(frame))
+
+    def test_focus_loss_after_local_ocr_discards_the_completed_frame(self):
+        frame = supplement(with_missing_fields(selected=1))
+        with tempfile.TemporaryDirectory() as folder:
+            window, vision, *_ = check_tests.CoordinatorTests.fixture(self, Path(folder))
+            stale_geometry, fresh_geometry = object(), object()
+            fresh = Scene([], image=np.zeros((90, 160, 3), dtype=np.uint8))
+            window.capture.side_effect = [(frame.image, stale_geometry), (fresh.image, fresh_geometry)]
+            vision.read.side_effect = [frame, fresh]
+
+            def guard(geometry=None):
+                if geometry is stale_geometry:
+                    raise FocusLost('focus changed during local OCR')
+
+            window.guard.side_effect = guard
+            report = Runner(Settings(overlay_logs=False), operation='currency_wars').run()
+            self.assertEqual(report.currency_wars['page_kind'], 'unknown')
+            self.assertNotIn('encounter', report.currency_wars)
+            self.assertEqual(vision.read.call_count, 2)
+            window.click.assert_not_called()
+            window.key.assert_not_called()
 
     def test_partially_visible_settlement_cannot_confirm_encounter_through_readonly_cli(self):
         frame = encounter(selected=2)

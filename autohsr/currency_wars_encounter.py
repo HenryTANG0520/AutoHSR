@@ -1,7 +1,7 @@
 """Observe the two-card encounter layout without authorizing input."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import re
 
 import numpy as np
@@ -14,6 +14,7 @@ from .models import Token, normalize
 _HEADER = (.43, .045, .57, .14)
 _COLUMNS = ((.271, .426), (.566, .735))
 _TITLE = re.compile(r'[遭遗]遇其([一二三四])')
+_PARTIAL_TITLE = re.compile(r'[遭遗]?遇其([一二三四])')
 _DIFFICULTIES = {'一': 1, '二': 2, '三': 3, '四': 4}
 _CONFIRM = (.49, .75, .64, .88)
 _DETAILS = (.455, .17, .548, .29)
@@ -34,6 +35,27 @@ _OTHER_PAGE_FIELDS = (
     (('点击空白处继续',), (.43, .70, .57, .77)),
     (('前往结算', '继续挑战', '下一步'), (.40, .79, .62, .88)),
 )
+# These crops isolate the glyphs within each of the two verified cards.
+# Quantity includes the full text row under the icon, including a multi-digit prefix.
+_FIELD_PREFIX = 'currency_encounter.'
+_FIELD_CROPS = {
+    'title': (
+        (((.3125, .356, .379, .396), 'contrast'), ((.314, .356, .378, .398), 'gray_large')),
+        (((.617, .356, .685, .396), 'contrast'), ((.618, .356, .684, .398), 'gray_large')),
+    ),
+    'difficulty': (
+        (((.333, .396, .365, .423), 'contrast'), ((.332, .398, .366, .425), 'contrast')),
+        (((.633, .400, .667, .423), 'raw_large'), ((.633, .400, .667, .423), 'gray_large')),
+    ),
+    'heading': (
+        (((.324, .519, .372, .554), 'contrast'), ((.324, .519, .372, .554), 'sharp')),
+        (((.628, .521, .674, .552), 'contrast'), ((.628, .521, .674, .552), 'gray_large')),
+    ),
+    'quantity': (
+        (((.293, .600, .320, .627), 'raw'), ((.293, .600, .320, .627), 'gray')),
+        (((.596, .600, .625, .627), 'raw'), ((.596, .600, .625, .627), 'gray')),
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -179,16 +201,14 @@ def _edge_state(image, edges):
     return 'unknown'
 
 
-def _card_silhouette(image):
+def _card_silhouettes(image):
     """During a fade a pair of tall edges can survive the card's OCR."""
     step = max(1, round(image.shape[1] * .0045))
     for edges in _EDGES:
         sides = [_crop(image, (left, .413, right, .665)).mean(axis=2).astype(np.int16)
                  for left, right in edges]
-        if all((np.abs(side[:, step:] - side[:, :-step]).max(axis=1) >= 15).mean() >= .60
-               for side in sides):
-            return True
-    return False
+        yield all((np.abs(side[:, step:] - side[:, :-step]).max(axis=1) >= 15).mean() >= .60
+                  for side in sides)
 
 
 def encounter_overlay_present(scene, confidence=.65):
@@ -198,10 +218,10 @@ def encounter_overlay_present(scene, confidence=.65):
     if (_read(tokens, _HEADER, r'[遭遗遵]?遇节点') or _read(tokens, _RETURN, '返回备战界面')
             or _read(tokens, _CONFIRM, '选择')
             or _read(tokens, _PHASE_BANNER, r'(?:[遭遗]?遇节点|备战阶段)')
-            or any(_read(tokens, (left, .32, right, .415), r'[遭遗]?遇其[一二三四]')
+            or any(_read(tokens, (left, .32, right, .415), _PARTIAL_TITLE)
                    for left, right in _COLUMNS)):
         return True
-    return _visible_image(current.image) and _card_silhouette(current.image)
+    return _visible_image(current.image) and any(_card_silhouettes(current.image))
 
 
 def _gold(patch):
@@ -249,17 +269,126 @@ def encounter_node_visible(scene, confidence=.65):
     return current[0] == '遭遇' if len(current) == 1 else None
 
 
+def _other_page(current):
+    return any(current.has(labels, region, exact=True) for labels, region in _OTHER_PAGE_FIELDS)
+
+
+def _match_hud_present(current):
+    return bool(_read(current.tokens, _NODE_HUD, r'[1-3]-[1-9][0-9]?') or _read(current.tokens, _DEPLOY, '出战')
+                or (_visible_image(current.image) and _current_badge(current.image) is not None))
+
+
+def _controls(image, tokens, button):
+    if not _visible_image(image):
+        return 'unknown', 'unknown', None
+    confirm = _button_state(image, button)
+    left, right = (_edge_state(image, edges) for edges in _EDGES)
+    details = _read(tokens, _DETAILS, r'查看[详评]情')
+    if confirm == 'enabled' and len(details) == 1 and details[0][1][0] == '查看详情':
+        if (left, right) == ('highlighted', 'plain'):
+            return confirm, 'selected', 1
+        if (left, right) == ('plain', 'highlighted'):
+            return confirm, 'selected', 2
+    if confirm == 'disabled' and left == right == 'plain' and not details:
+        return confirm, 'unselected', None
+    return confirm, 'unknown', None
+
+
+def _missing_fields(current):
+    image, tokens = current.image, current.tokens
+    if not _visible_image(image) or _other_page(current):
+        return
+    headers = _read(tokens, _HEADER, r'[遭遗]遇节点')
+    confirms = _read(tokens, _CONFIRM, '选择')
+    returns = _read(tokens, _RETURN, '返回备战界面')
+    names = [_read(tokens, (left, .32, right, .415), _PARTIAL_TITLE) for left, right in _COLUMNS]
+    if (len(headers) != 1 or headers[0][1][0] != '遭遇节点' or len(confirms) != 1 or len(returns) != 1
+            or any(len(column) != 1 for column in names)
+            or not any(column[0][1][0].startswith('遭') for column in names) or _match_hud_present(current)
+            or not all(_card_silhouettes(image))):
+        return
+    _, selection, _ = _controls(image, tokens, confirms[0][0])
+    if selection == 'unknown':
+        return
+    for index, (column, name_reads, number_roi) in enumerate(zip(_COLUMNS, names, _REWARD_NUMBERS)):
+        left, right = column
+        name, title = name_reads[0]
+        prefix = f'{_FIELD_PREFIX}{index + 1}.'
+        if not title[0].startswith('遭'):
+            yield prefix + 'title', _FIELD_CROPS['title'][index], '遭遇其' + title[1], name
+        if not _read(tokens, (left, .391, right, .438), '难度'):
+            yield prefix + 'difficulty', _FIELD_CROPS['difficulty'][index], '难度', None
+        rewards = _read(tokens, (left, .553, right, .628), _REWARD)
+        if len(rewards) != 1:
+            continue
+        if not _read(tokens, (left, .496, right, .573), '奖励预览'):
+            yield prefix + 'heading', _FIELD_CROPS['heading'][index], '奖励预览', None
+        if rewards[0][1][3] is None and not any(token.within(number_roi) and
+                                               re.fullmatch(r'[×x]?[0-9]+', normalize(token.text)) for token in tokens):
+            yield prefix + 'quantity', _FIELD_CROPS['quantity'][index], _QUANTITY, None
+
+
+def _field_pixels(image, roi, mode):
+    import cv2
+
+    patch = _crop(image, roi)
+    if mode not in ('raw', 'raw_large'):
+        gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
+        if mode in ('contrast', 'sharp'):
+            gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
+        if mode == 'sharp':
+            gray = cv2.addWeighted(gray, 1.6, cv2.GaussianBlur(gray, (3, 3), 0), -.6, 0)
+        patch = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    if mode in ('raw', 'gray'):
+        return patch
+    return cv2.resize(patch, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+
+
+def supplement_encounter_fields(scene, reader):
+    """Retain scoped OCR variants separately from the full-frame evidence."""
+    current = trusted(scene, reader.confidence)
+    reads = dict(scene.field_reads)
+    for key, crops, pattern, _ in _missing_fields(current):
+        variants = []
+        for roi, mode in crops:
+            token = reader._read_field(_field_pixels(current.image, roi, mode), pattern)
+            variants.append(None if token is None else Token(token.text, token.score, roi))
+        reads[key] = tuple(variants)
+    return replace(scene, field_reads=reads) if reads != scene.field_reads else scene
+
+
+def _encounter_tokens(current, confidence):
+    if not any(key.startswith(_FIELD_PREFIX) for key in current.field_reads):
+        return current.tokens
+    tokens = list(current.tokens)
+    for key, crops, pattern, partial in _missing_fields(current):
+        variants = current.field_reads.get(key, ())
+        if len(variants) != len(crops) or not all(
+                token is not None and token.box == roi and max(.85, confidence) <= token.score <= 1
+                and re.fullmatch(pattern, token.text) for token, (roi, _) in zip(variants, crops)):
+            continue
+        first, second = variants
+        if first.text != second.text:
+            continue
+        if partial is not None:
+            # Keep the original title location and require both exact same-ordinal reads.
+            tokens[tokens.index(partial)] = Token(first.text, min(first.score, second.score), partial.box)
+        else:
+            tokens.append(first)
+    return tokens
+
+
 def _read_encounter(scene, confidence):
     current = trusted(scene, confidence)
-    if any(current.has(labels, region, exact=True) for labels, region in _OTHER_PAGE_FIELDS):
+    if _other_page(current):
         return None, (), None
-    tokens = current.tokens
+    tokens = _encounter_tokens(current, confidence)
     headers = _read(tokens, _HEADER, r'[遭遗]遇节点')
     names = [_read(tokens, (left, .32, right, .415), _TITLE) for left, right in _COLUMNS]
     confirms = _read(tokens, _CONFIRM, '选择')
     if not headers and not (confirms and any(names)):
         return None, (), None
-    markers = [_read(tokens, (left, .395, right, .573), r'(?:难度|奖励预览)') for left, right in _COLUMNS]
+    markers = [_read(tokens, (left, .391, right, .573), r'(?:难度|奖励预览)') for left, right in _COLUMNS]
     if (len(headers) != 1 or headers[0][1][0] != '遭遇节点' or len(confirms) != 1
             or any(len(column) != 1 or not column[0][1][0].startswith('遭') for column in names)
             or not all(markers)):
@@ -267,8 +396,7 @@ def _read_encounter(scene, confidence):
 
     image = current.image
     visible_pixels = _visible_image(image)
-    if (_read(tokens, _NODE_HUD, r'[1-3]-[1-9][0-9]?') or _read(tokens, _DEPLOY, '出战')
-            or (visible_pixels and _current_badge(image) is not None)):
+    if _match_hud_present(current):
         return EncounterObservation(False), (), None
     cards = []
     for slot, (column, name_reads, number_roi) in enumerate(zip(_COLUMNS, names, _REWARD_NUMBERS), 1):
@@ -277,20 +405,9 @@ def _read_encounter(scene, confidence):
         difficulty = _difficulty(image, tokens, column, name, title) if visible_pixels else None
         cards.append(EncounterCard(slot, title, difficulty, _reward_preview(tokens, column, number_roi)))
 
-    confirm = 'unknown'
-    selection, selected_slot = 'unknown', None
-    if visible_pixels:
-        confirm = _button_state(image, confirms[0][0])
-        left, right = (_edge_state(image, edges) for edges in _EDGES)
-        details = _read(tokens, _DETAILS, r'查看[详评]情')
-        if confirm == 'enabled' and len(details) == 1 and details[0][1][0] == '查看详情':
-            if (left, right) == ('highlighted', 'plain'):
-                selection, selected_slot = 'selected', 1
-            elif (left, right) == ('plain', 'highlighted'):
-                selection, selected_slot = 'selected', 2
-        elif (confirm == 'disabled' and left == right == 'plain' and not details
-              and all(card.difficulty is not None for card in cards)):
-            selection = 'unselected'
+    confirm, selection, selected_slot = _controls(image, tokens, confirms[0][0])
+    if selection == 'unselected' and any(card.difficulty is None for card in cards):
+        selection = 'unknown'
 
     observation = EncounterObservation(True, tuple(cards), selected_slot, selection, confirm, _refresh_remaining(tokens))
     return observation, (names[0][0][0], names[1][0][0]), confirms[0][0]
