@@ -30,7 +30,9 @@ class SettingsShell(ttk.Frame):
         self._layout_job = None
         d = lambda n: round(n * scale)
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
+        # A pending scale change can briefly leave less space than the menu
+        # needs. Keep the viewport mapped so an open dropdown retains its grab.
+        self.rowconfigure(2, weight=1, minsize=1)
         menu = ttk.Frame(self)
         menu.grid(row=0, column=0, sticky="ew", pady=(0, d(8)))
         self.buttons = {}
@@ -51,7 +53,7 @@ class SettingsShell(ttk.Frame):
         viewport.grid(row=2, column=0, sticky="nsew")
         viewport.columnconfigure(0, weight=1)
         viewport.columnconfigure(1, minsize=d(14))
-        viewport.rowconfigure(0, weight=1)
+        viewport.rowconfigure(0, weight=1, minsize=1)
         self.canvas = tk.Canvas(viewport, bg=t.PANEL, highlightthickness=0, borderwidth=0,
                                 width=1, height=1, takefocus=False)
         self.canvas.grid(row=0, column=0, sticky="nsew")
