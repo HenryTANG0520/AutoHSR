@@ -17,7 +17,7 @@ class UniversePoster(Surface):
         self.ui, self.key = ui, key
         self.du = key == "differential_universe"
         self.primary = ttk.Button(self, style="Poster.TButton")
-        self.editor_button = ttk.Button(self, text="演算设置" if self.du else "开发工具",
+        self.editor_button = ttk.Button(self, text="操作设置" if self.du else "开发工具",
                                        style="Poster.TButton", command=lambda: show("editor"))
         self.result_button = ttk.Button(self, text="查看结果", style="Poster.TButton", command=lambda: show("result"))
         self._button_images = {}
@@ -26,12 +26,12 @@ class UniversePoster(Surface):
         self.bind("<Configure>", self.position, add="+")
         self.watch(ui.differential_universe_runs, ui.du_team, ui.du_mode, ui.du_resume_active,
                    ui.du_resume_mode, ui.du_save, ui.du_rewards, ui.du_daily, ui.du_status, ui.currency_status,
-                   ui.weekly_status)
+                   ui.weekly_status, ui.du_operation, ui.du_use_cassettes)
 
     def refresh_actions(self):
         ui=self.ui
         operation=getattr(ui,'active_operation','')
-        active=ui.busy and (operation==self.key or not self.du and operation.startswith('currency_wars') or
+        active=ui.busy and (operation==self.key or self.du and operation=='du_rewards' or not self.du and operation.startswith('currency_wars') or
             operation=='plan' and ui.plan_phase=='weekly' and ui._active_weekly_mode==self.key)
         report=ui.du_result_report if self.du else ui.currency_result_report
         status=ui.du_status.get() if self.du else ui.currency_status.get()
@@ -65,29 +65,33 @@ class UniversePoster(Surface):
         p = t.Painter(max(1, round(966*ratio*self.scale)), max(1, round(639*ratio*self.scale)), ratio*self.scale, bg)
         p.asset("universe/du.png" if light else "universe/cw.png", (0, 0, 966, 639))
         if light:
-            p.text((213, 209), self.ui.differential_universe_runs.get(), 66, "#e8f578", "mt")
+            rewards_only = self.ui.du_operation.get() == '独立领奖'
+            p.text((213, 209), "领奖" if rewards_only else self.ui.differential_universe_runs.get(), 66, "#e8f578", "mt")
             p.box((56, 347, 370, 387), "#20211a")
-            p.text((213, 349), "本次局数", 29, "#b9c743", "mt")
+            p.text((213, 349), "已有奖励" if rewards_only else "本次局数", 29, "#b9c743", "mt")
             p.box((600, 101, 938, 134), "#1e211d")
             for dx, dy in ((610,110), (624,110), (610,124)):
                 p.box((dx,dy,dx+8,dy+8), "#b53576")
             p.text((929, 103), "差分宇宙", 29, "#e3ed7b", "rt")
-            mode = self.ui.du_resume_mode.get() if self.ui.du_resume_active.get() else self.ui.du_mode.get()
+            mode = "独立领取红点奖励" if rewards_only else self.ui.du_resume_mode.get() if self.ui.du_resume_active.get() else self.ui.du_mode.get()
             p.box((688, 150, 938, 194), "#23241e")
             p.text((924, 156), mode, 29, "#ebd997", "rt")
             p.box((746, 58, 939, 91), "#1f211b", 17)
-            p.text((842, 60), "接续当前进度" if self.ui.du_resume_active.get() else "新开演算", 23, "#ebd997", "mt")
-            p.text((688, 217), "预设编队", 20, "#535a3c")
-            p.text((688, 248), p.wrap(self.ui.du_team.get() or "待填写", 250, 23, 4), 23, ink)
-            p.text((427, 375), "通关后", 25, ink)
+            p.text((842, 60), "无需演算" if rewards_only else "接续当前进度" if self.ui.du_resume_active.get() else "新开演算", 23, "#ebd997", "mt")
+            p.text((688, 217), "领取范围" if rewards_only else "预设编队", 20, "#535a3c")
+            scope = "拟合等级 · 稳态数组\n可能性画廊" + (" · 月下奇谭" if self.ui.du_use_cassettes.get() else "")
+            p.text((688, 248), p.wrap(scope if rewards_only else self.ui.du_team.get() or "待填写", 250, 23, 4), 23, ink)
+            p.text((427, 375), "开始前" if rewards_only else "通关后", 25, ink)
             p.line((427, 409, 938, 409), "#777f5c", 1.5)
             options = [label for variable, label in ((self.ui.du_save, "保存到空槽"), (self.ui.du_rewards, "领取红点奖励"),
                                                      (self.ui.du_daily, "完成每日")) if variable.get()]
-            p.text((427, 425), p.wrap(" · ".join(options) or "直接结束", 507, 23, 2), 23, ink)
+            p.text((427, 425), p.wrap("请在游戏中打开差分主页" if rewards_only else " · ".join(options) or "直接结束", 507, 23, 2), 23, ink)
             costs = []
-            if self.ui.du_rewards.get():
+            if rewards_only:
+                costs.append("本次使用已有卡带 · 每次100" if self.ui.du_use_cassettes.get() else "本次不使用月下卡带")
+            elif self.ui.du_rewards.get():
                 costs.append("使用已有卡带")
-            if self.ui.du_daily.get():
+            if not rewards_only and self.ui.du_daily.get():
                 costs.append("每日按独立预算刷本")
             if costs:
                 p.text((427, 488), " · ".join(costs), 19, "#73511d")

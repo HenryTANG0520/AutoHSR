@@ -166,6 +166,9 @@ class SceneButton(ttk.Button):
 
 
 def paint_run_metrics(p, ui):
+    if getattr(ui, 'active_operation', '') == 'du_rewards':
+        p.text((p.width-142, 29), ui.elapsed.get(), 14, t.LIGHT)
+        return
     if ui.stamina.get() != "—":
         p.text((p.width-295, 29), "已用开拓力  "+ui.stamina.get(), 14, t.LIGHT)
         p.text((p.width-142, 29), ui.elapsed.get(), 14, t.LIGHT)

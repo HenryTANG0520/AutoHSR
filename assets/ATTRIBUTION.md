@@ -4,6 +4,8 @@
 
 [独立领奖](../autohsr/du_rewards_only.py)与[领取记录](../autohsr/du_reward_store.py)为AutoHSR原生扩展，复用既有[奖励页面](../autohsr/du_rewards.py)及脱敏的拟合／稳态／月下／画廊素材；没有新增图片、模型或原始账号截图。各原素材来源及游戏美术权利说明保持，新增文件／测试及范围记入[source.json](upstream/March7thAssistant/source.json)。
 
+同日桌面接线复用现有差分插图、控件和结果页；独立模式的范围、卡带选项及[结果投影](../autohsr/du_rewards_feedback.py)为AutoHSR编写，没有新增上游图像、截图或输入框架。
+
 固定March7thAssistant的`check_divergent_universe_score`与`get_reward`另有周期积分／邮件发放语义，本次没有移植其盲点或把原生右侧红点当成周积分奖励。已有作者moesnow及贡献者与[GPL许可](upstream/March7thAssistant/LICENSE)保持；接口、请求范围和未实机边界见[独立领奖说明](../docs/du-rewards-only.md)。
 
 ## 2026-11-05 高难单位与列表候选

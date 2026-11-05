@@ -35,7 +35,7 @@ def universe_page(ui, key):
     deck = {"shown": "hero"}
     ui.mode_decks[key] = deck
     deck["hero"] = UniversePoster(body, ui.ui_scale, ui, key, lambda view: show_mode_view(ui, key, view, focus=True))
-    for view, title in (("editor", "演算设置" if key == "differential_universe" else "开发工具"), ("result", "运行结果")):
+    for view, title in (("editor", "操作设置" if key == "differential_universe" else "开发工具"), ("result", "运行结果")):
         frame = ttk.Frame(body)
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(1, weight=1)
@@ -89,7 +89,7 @@ def _focus_mode_view(ui, key, view, previous):
     elif ui.busy:
         target = deck["back_editor"]
     else:
-        target = ui.du_runs_combo if key == "differential_universe" else ui.currency_tabs
+        target = ui.du_operation_combo if key == "differential_universe" else ui.currency_tabs
     target.focus_set()
 
 
@@ -106,8 +106,26 @@ def build_universe(ui):
     s = ui.ui_scale
     d = lambda n: round(n*s)
     page, result = universe_page(ui, "differential_universe")
+    action = ttk.Frame(page)
+    action.grid(row=0, column=0, sticky="ew", pady=(0, d(12)))
+    ttk.Label(action, text="本次操作", style="Muted.TLabel").pack(side="left", padx=(0, d(14)))
+    ui.du_operation_combo = ttk.Combobox(action, textvariable=ui.du_operation,
+        values=("自动演算", "独立领奖"), state="readonly", width=16)
+    ui.du_operation_combo.pack(side="left")
+    ui.setting_controls.append(ui.du_operation_combo)
+    rewards = ttk.Frame(page, style="Card.TFrame", padding=d(16))
+    rewards.grid(row=1, column=0, sticky="nsew")
+    rewards.columnconfigure(0, weight=1)
+    ui.du_reward_options = rewards
+    ttk.Label(rewards, text="独立领取红点奖励", style="CardTitle.TLabel").grid(row=0, column=0, sticky="w")
+    note(rewards, "请先在游戏中打开差分主页。\n领取拟合等级、稳态数组、可能性画廊已有奖励。", row=1, scale=s)
+    ui.du_cassettes_check = ttk.Checkbutton(rewards, text="本次使用已有月下卡带（每次 100）", variable=ui.du_use_cassettes)
+    ui.du_cassettes_check.grid(row=2, column=0, sticky="w", pady=(d(12), d(8)))
+    ui.setting_controls.append(ui.du_cassettes_check)
+    note(rewards, "卡带默认关闭；开启后按开始时余额冻结额度。\n本次选择不保存；待核对的领取记录会保留。", row=3, scale=s)
     columns = ttk.Frame(page)
     columns.grid(row=1, column=0, sticky="ew")
+    ui.du_run_options = columns
     for col in range(2):
         columns.columnconfigure(col, weight=1, uniform="universe")
     setup = ttk.Frame(columns, style="Card.TFrame", padding=d(16))
@@ -127,6 +145,7 @@ def build_universe(ui):
     ui.du_resume_combo = ttk.Combobox(setup, textvariable=ui.du_resume_mode, values=("常规演算",)+tuple(f"周期难度 {n}" for n in range(1, 11)), state="readonly", width=12)
     ui.du_resume_combo.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(d(6), 0))
     ui.setting_controls.extend((ui.du_resume_check, ui.du_resume_combo))
+    ui.du_run_controls = [ui.du_runs_combo, ui.du_mode_combo, ui.du_team_entry, ui.du_resume_check, ui.du_resume_combo]
     options = ttk.Frame(columns, style="Card.TFrame", padding=d(16))
     options.grid(row=0, column=1, sticky="nsew")
     options.columnconfigure(0, weight=1)
@@ -137,6 +156,7 @@ def build_universe(ui):
         check.grid(row=row, column=0, sticky="w", pady=d(8))
         setattr(ui, attribute, check)
         ui.setting_controls.append(check)
+        ui.du_run_controls.append(check)
     note(options, "红点奖励会使用已有卡带。\n每日按独立预算刷浴火钢心。", row=4, scale=s)
     note(setup, "预设名 1～32 字；难度沿用游戏当前选择。", row=6, scale=s).grid(columnspan=2)
     status = ttk.Frame(result, style="Card.TFrame", padding=d(12))

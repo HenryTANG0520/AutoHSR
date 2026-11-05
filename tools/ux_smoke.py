@@ -68,6 +68,13 @@ class FakeRunner:
         self.instances.append(self)
 
     def run(self):
+        if self.kwargs.get('operation', '') == 'du_rewards':
+            self.report.operation = 'du_rewards'
+            self.emit(dict(type='task', task='du_rewards', status='running', detail='离线独立领奖，无游戏输入'))
+            self.release.wait(5)
+            report = self.rewards_report()
+            self.emit(dict(type='finished', report=report))
+            return report
         if self.kwargs.get('operation', '') == 'differential_universe':
             self.emit(dict(type='task', task='differential_universe', status='running', detail='离线假后端，无游戏输入'))
             self.release.wait(5)
@@ -114,6 +121,26 @@ class FakeRunner:
         self.emit(dict(type='finished', report=report))
         return report
 
+    def rewards_report(self):
+        use = self.kwargs.get('du_use_cassettes', False)
+        stopped = self.stopped
+        claims = [] if stopped else [dict(id=0, action_id=0, source='拟合等级', status='verified')]
+        actions = [] if stopped else [dict(id=0, status='verified', request=dict(intent='du_reward_dot'))]
+        if use and not stopped:
+            claims.append(dict(id=1, action_id=1, source='月下奇谭', status='verified', amount=100,
+                               balance_before=300, balance_after=200))
+            actions.append(dict(id=1, status='verified', request=dict(intent='du_reward_unlock')))
+        data = dict(schema=1, operation='du_rewards', status='unknown' if stopped else 'complete',
+            rewards_verified=not stopped, safe_to_restart=not stopped, battle_started=False, use_cassettes=use,
+            requested_categories=['拟合等级', '稳态数组', '可能性画廊'] + (['月下奇谭'] if use else []),
+            skipped_optional_categories=[] if use else ['月下奇谭'], remaining_categories=[],
+            all_notifications_cleared=use and not stopped, claims=claims, actions=actions, observations=[], obligation=None,
+            cassettes=dict(initial_balance=300 if use else None, limit=300 if use else 0,
+                           spent_verified=100 if use and not stopped else 0), journal='mock-du-rewards.json')
+        return dict(status='stopped' if stopped else 'success', operation='du_rewards', report_saved=True,
+            daily_verified=False, stamina_spent=0, stamina_pending=0, du_rewards=data,
+            results=[dict(task='du_rewards', status='stopped' if stopped else 'ok', detail='离线所选奖励回执')])
+
     def enter_game(self):
         report = dict(status='success', operation='enter_game', results=[dict(task='launch', status='ok', detail='模拟进入')])
         self.emit(dict(type='finished', report=report))
@@ -147,6 +174,186 @@ class LateFinishRunner(FakeRunner):
         if self.fail_after_finish:
             raise RuntimeError('模拟完成通知后的异常')
         return report
+
+
+class LateRewardsFinishRunner(FakeRunner):
+    """A valid reward report emitted before a terminal worker exception."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.early = threading.Event()
+        self.tail = threading.Event()
+
+    def run(self):
+        self.report.operation = 'du_rewards'
+        self.emit(dict(type='finished', report=self.rewards_report()))
+        self.early.set()
+        if not self.tail.wait(3):
+            raise AssertionError('late reward test release timed out')
+        raise RuntimeError('模拟独立领奖完成通知后的异常')
+
+
+def exercise_du_rewards(ui, root, config, original, fake):
+    """One independent GUI operation; all backend work remains synthetic."""
+    from autohsr.desktop_modes import show_mode_view
+
+    check('du_rewards_defaults_to_auto_and_no_cassette_authorization',
+          ui.du_operation.get() == '自动演算' and not ui.du_use_cassettes.get())
+    check('du_rewards_runtime_choices_are_not_saved_form_variables',
+          ui.du_operation not in ui.form_variables and ui.du_use_cassettes not in ui.form_variables)
+    signature, dirty, save_status = ui._form_signature(), ui.dirty, ui.save_status.get()
+    ui.du_operation.set('独立领奖')
+    ui.du_use_cassettes.set(True)
+    pump(root)
+    check('du_rewards_only_runtime_changes_preserve_dirty_signature',
+          ui._form_signature() == signature and ui.dirty == dirty and ui.save_status.get() == save_status
+          and config.read_bytes() == original)
+    ui.du_use_cassettes.set(False)
+    show_mode_view(ui, 'differential_universe', 'editor', focus=True)
+    root.focus_force()
+    pump(root, lambda: root.focus_get() is ui.du_operation_combo)
+    check('du_rewards_editor_focus_is_visible_operation_selector',
+          ui.du_operation_combo.winfo_ismapped() and str(ui.du_operation_combo.cget('state')) == 'readonly'
+          and ui.du_cassettes_check.winfo_ismapped())
+    check('du_rewards_independent_mode_disables_run_controls', all(str(widget.cget('state')) == 'disabled' for widget in (
+        ui.du_runs_combo, ui.du_mode_combo, ui.du_team_entry, ui.du_resume_check, ui.du_resume_combo,
+        ui.du_save_check, ui.du_rewards_check, ui.du_daily_check)))
+    geometry = root.geometry()
+    root.geometry('1100x800')
+    pump(root)
+    layout(root)
+    check('du_rewards_minimum_editor_layout_and_primary_action',
+          ui.start_button.cget('text') == '独立领取红点奖励'
+          and ui.du_operation_combo.winfo_ismapped() and ui.du_cassettes_check.winfo_ismapped())
+    ImageGrab.grab(window=root.winfo_id()).save(OUT / 'du-rewards-editor-minimum.png')
+    root.geometry(geometry)
+
+    variables = (ui.differential_universe_runs, ui.du_team, ui.du_mode, ui.du_resume_active,
+                 ui.du_resume_mode, ui.stamina_limit, ui.rounds, ui.challenge_count)
+    previous = [variable.get() for variable in variables]
+    training, spent, stamina = ui.training_result.get(), ui.confirmed_stamina, ui.stamina.get()
+    ui.differential_universe_runs.set('invalid ignored run count')
+    ui.du_team.set('')
+    ui.du_mode.set('invalid ignored mode')
+    ui.du_resume_active.set(True)
+    ui.du_resume_mode.set('周期难度 invalid')
+    ui.stamina_limit.set('invalid ignored daily budget')
+    ui.rounds.set('invalid ignored daily rounds')
+    ui.challenge_count.set('invalid ignored daily count')
+    ui.training_result.set('verified')
+    ui.confirmed_stamina = 37
+    ui.stamina.set('37')
+    def daily_snapshot():
+        return (ui.training_result.get(), ui.confirmed_stamina, ui.stamina.get(),
+                tuple((key, value.get()) for key, value in ui.tasks.items()),
+                tuple((key, tuple(ui.table.item(key).get('values', ()))) for key in ui.tasks))
+    baseline = daily_snapshot()
+    delayed = None
+    try:
+        ui.start_button.invoke()
+        pump(root, lambda: ui.runner is not None)
+        runner = FakeRunner.instances[-1]
+        check('du_rewards_default_free_scope_ignores_invalid_unrelated_drafts',
+              runner.kwargs.get('operation') == 'du_rewards' and runner.kwargs.get('du_use_cassettes') is False
+              and not any(key in runner.kwargs for key in ('du_runs', 'du_resume_active', 'du_periodic_rank'))
+              and runner.settings.differential_universe_runs == ui.settings.differential_universe_runs
+              and runner.settings.differential_universe_team == ui.settings.differential_universe_team)
+        check('du_rewards_busy_locks_all_settings_and_runtime_controls',
+              all(str(widget.cget('state')) == 'disabled' for widget in ui.setting_controls)
+              and str(ui.du_operation_combo.cget('state')) == 'disabled'
+              and str(ui.du_cassettes_check.cget('state')) == 'disabled')
+        before = ui.du_status.get()
+        ui.emit(dict(type='universe_progress', requested_runs=10, completed_runs=10))
+        pump(root, lambda: ui.events.empty())
+        check('du_rewards_ignores_late_automatic_run_progress', ui.du_status.get() == before)
+        runner.release.set()
+        pump(root, lambda: not ui.busy)
+        check('du_rewards_result_is_separate_from_runs_and_daily',
+              ui.du_result_report['operation'] == 'du_rewards'
+              and ui.du_result_report['du_rewards']['rewards_verified'] is True
+              and ui.du_result_report['du_rewards']['requested_categories'] == ['拟合等级', '稳态数组', '可能性画廊']
+              and 'differential_universe' not in ui.du_result_report
+              and daily_snapshot() == baseline and config.read_bytes() == original
+              and '已核实' in ui.du_status.get()
+              and '演算完成' not in ui.summary.get())
+        show_mode_view(ui, 'differential_universe', 'result', focus=True)
+        pump(root)
+        layout(root)
+        ImageGrab.grab(window=root.winfo_id()).save(OUT / 'du-rewards-result.png')
+        show_mode_view(ui, 'differential_universe', 'hero', focus=True)
+        pump(root)
+        layout(root)
+        ImageGrab.grab(window=root.winfo_id()).save(OUT / 'du-rewards-hero.png')
+
+        ui.du_use_cassettes.set(True)
+        ui.start_button.invoke()
+        pump(root, lambda: ui.runner is not None)
+        runner = FakeRunner.instances[-1]
+        snapshot = json.dumps(vars(runner.settings), ensure_ascii=False, sort_keys=True)
+        ui.du_use_cassettes.set(False)  # Disabled Tk controls still allow fault injection.
+        ui.du_operation.set('自动演算')
+        check('du_rewards_explicit_cassettes_are_frozen_in_running_snapshot',
+              runner.kwargs.get('du_use_cassettes') is True
+              and json.dumps(vars(runner.settings), ensure_ascii=False, sort_keys=True) == snapshot)
+        check('du_rewards_runtime_changes_cannot_unlock_a_busy_form',
+              str(ui.du_operation_combo.cget('state')) == 'disabled'
+              and str(ui.du_runs_combo.cget('state')) == 'disabled')
+        ui.du_operation.set('独立领奖')
+        runner.release.set()
+        pump(root, lambda: not ui.busy)
+        check('du_rewards_explicit_cassette_receipt_preserves_daily_and_file',
+              ui.du_result_report['du_rewards']['use_cassettes'] is True
+              and ui.du_result_report['du_rewards']['cassettes']['spent_verified'] == 100
+              and daily_snapshot() == baseline and config.read_bytes() == original)
+
+        ui.start_button.invoke()
+        pump(root, lambda: ui.runner is not None)
+        ui._pause()
+        pump(root, lambda: ui.paused)
+        check('du_rewards_pause_keeps_stop_and_settings_lock',
+              str(ui.stop_button.cget('state')) == 'normal'
+              and str(ui.du_operation_combo.cget('state')) == 'disabled')
+        ui._pause()
+        pump(root, lambda: not ui.paused)
+        ui._stop()
+        pump(root, lambda: not ui.busy)
+        check('du_rewards_stop_is_not_automatic_run_or_daily_success',
+              ui.du_result_report['operation'] == 'du_rewards'
+              and ui.du_result_report['status'] == 'stopped'
+              and ui.du_result_report['du_rewards']['rewards_verified'] is False
+              and '停止' in ui.du_status.get() and daily_snapshot() == baseline
+              and config.read_bytes() == original)
+
+        fake.Runner = LateRewardsFinishRunner
+        ui.start_button.invoke()
+        pump(root, lambda: ui.runner is not None and ui.runner.early.is_set())
+        delayed = ui.runner
+        check('du_rewards_early_finish_keeps_worker_busy_until_exit',
+              ui.busy and ui.worker.is_alive() and str(ui.start_button.cget('state')) == 'disabled')
+        before_count = len(FakeRunner.instances)
+        ui._start(du_rewards=True)
+        check('du_rewards_early_finish_cannot_start_another_reward_task',
+              len(FakeRunner.instances) == before_count and ui.runner is delayed)
+        delayed.tail.set()
+        pump(root, lambda: not ui.busy)
+        check('du_rewards_late_worker_exception_overrides_early_success',
+              '模拟独立领奖完成通知后的异常' in ui.summary.get()
+              and any(word in ui.du_status.get() for word in ('中断', '失败'))
+              and daily_snapshot() == baseline and config.read_bytes() == original)
+    finally:
+        fake.Runner = FakeRunner
+        if delayed is not None:
+            delayed.tail.set()
+        if ui.worker is not None and ui.worker.is_alive():
+            if ui.runner is not None:
+                ui.runner.stop()
+            ui.worker.join(2)
+        for variable, value in zip(variables, previous):
+            variable.set(value)
+        ui.training_result.set(training)
+        ui.confirmed_stamina = spent
+        ui.stamina.set(stamina)
+        ui.du_use_cassettes.set(False)
+        ui.du_operation.set('自动演算')
 
 
 def main():
@@ -431,6 +638,7 @@ def main():
                     config.read_bytes()==original and str(ui.du_resume_combo.cget('state'))=='readonly')
                 ui.du_resume_active.set(False)
                 ui.du_resume_mode.set('常规演算')
+                exercise_du_rewards(ui, root, config, original, fake)
                 fake.Runner = LateFinishRunner
                 try:
                     ui._currency_wars()
@@ -564,7 +772,7 @@ def main():
             except tk.TclError:
                 pass
         if PACKAGE == 'autohsr':
-            for action in ('currency_wars', 'check'):
+            for action in ('currency_wars', 'check', 'du_rewards'):
                 root = tk.Tk()
                 ui = Window(root, config)
                 callback_errors = []
@@ -578,6 +786,29 @@ def main():
                     if action == 'currency_wars':
                         ui._currency_wars()
                         # Close before runner_ready is necessarily drained.
+                    elif action == 'du_rewards':
+                        ui._show_page('differential_universe')
+                        pump(root)
+                        check('du_rewards_new_window_runtime_defaults_are_not_persisted',
+                              ui.du_operation.get() == '自动演算' and not ui.du_use_cassettes.get() and not ui.dirty)
+                        ui.du_operation.set('独立领奖')
+                        ui.du_team.set('')
+                        root.focus_force()
+                        ui._save_settings()
+                        pump(root, lambda: root.focus_get() is ui.du_team_entry)
+                        check('du_rewards_save_error_reveals_editable_automatic_team_field',
+                              ui.du_operation.get() == '自动演算'
+                              and ui.du_team_entry.winfo_ismapped()
+                              and str(ui.du_team_entry.cget('state')) == 'normal'
+                              and config.read_bytes() == saved)
+                        ui.du_team.set(ui.settings.differential_universe_team)
+                        ui._clear_input_error()
+                        ui.du_operation.set('独立领奖')
+                        ui.du_use_cassettes.set(True)
+                        pump(root)
+                        check('du_rewards_only_runtime_choices_leave_fresh_form_clean',
+                              not ui.dirty and config.read_bytes() == saved)
+                        ui.start_button.invoke()
                     else:
                         fake.inspect_game = blocked_check
                         ui._check()
