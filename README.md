@@ -490,6 +490,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 
 打包EXE无终端控制台，游戏任务CLI后读EXE同目录`runs/`；终端JSON用源码命令。管理员授权CLI不创建游戏报告，打包版在设置里“刷新状态”核实结果。通常退出码0成功、1未完整成功、2参数或配置错，键盘中断130。
 
+2026-11-05本地正式包已同步后端代码`1dcdfe1`，已有设置与记录保留，私有审计素材留在源码侧；构建及核对见[验证记录](VALIDATION.md)。独立红点领奖目前通过CLI／任务流程使用，GUI独立入口仍待接入。
+
 辅助`python -m autohsr.audio`默认只读播放设备。明确要求静音时用`--mute --record-dir <新目录>`保存原状态、静音、复读核验；不启动游戏、不改麦克风、不解除静音，也不是默认每日步骤。
 
 ## 操作边界
