@@ -124,11 +124,9 @@ class ChallengePreparation:
             kind=observation.kind, mode=observation.mode, level=observation.level,
             stars=observation.stars, basis=deepcopy(observation.basis))
         if observation.kind == 'team_setup' and observation.mode == self.plan.mode:
-            # List portraits are read-only candidates, not selected-team proof.
-            # Scan only saved setup observations, keeping lobby/target checks
-            # inexpensive and independent of the optional portrait evidence.
-            from .challenge_roster import observe_candidates
-            record['basis']['candidate_list'] = observe_candidates(scene, mode=observation.mode)
+            # Optional roster observations are separate from page readiness.
+            from .challenge_slots import _setup_roster
+            record['basis'].update(_setup_roster(scene, observation))
         return record
 
     def _derive(self, scene):

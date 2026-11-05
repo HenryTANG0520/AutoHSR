@@ -185,29 +185,39 @@ def _group(matches):
     return sorted(candidates, key=lambda item: (item['box'][1], item['box'][0], item['asset_id'])), ambiguities
 
 
+def _scan_image(scene):
+    image = getattr(scene, 'image', None)
+    if (not _fresh(scene) or not isinstance(image, np.ndarray) or image.dtype != np.uint8
+            or image.ndim != 3 or image.shape[2] != 3 or min(image.shape[:2]) < 540
+            or image.shape[1] < 960 or image.shape[0] * image.shape[1] > 16_777_216
+            or abs(image.shape[1] / image.shape[0] - 16 / 9) > .02):
+        return None
+    if image.shape[1] > 1920:
+        image = cv2.resize(image, (1920, round(image.shape[0] * 1920 / image.shape[1])),
+                           interpolation=cv2.INTER_AREA)
+    return image
+
+
+def _scan_box(image, roi, bank):
+    height, width = image.shape[:2]
+    x1, y1, x2, y2 = [round(v * size) for v, size in zip(roi, (width, height, width, height))]
+    patch = image[y1:y2, x1:x2]
+    return _matches(patch, cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY), bank, (x1, y1), (height, width))
+
+
 def observe_candidates(scene, *, mode='memory_of_chaos'):
     """Return bounded JSON candidate evidence, with no click/selected authority."""
     result = _result(mode)
     if result['source'] is None:
         result['reason'] = 'unsupported_mode'
         return result
-    image = getattr(scene, 'image', None)
-    if (not _fresh(scene) or not isinstance(image, np.ndarray) or image.dtype != np.uint8
-            or image.ndim != 3 or image.shape[2] != 3 or min(image.shape[:2]) < 540
-            or image.shape[1] < 960 or image.shape[0] * image.shape[1] > 16_777_216
-            or abs(image.shape[1] / image.shape[0] - 16 / 9) > .02):
+    image = _scan_image(scene)
+    if image is None:
         result['reason'] = 'invalid_or_stale_scene'
         return result
-    if image.shape[1] > 1920:
-        image = cv2.resize(image, (1920, round(image.shape[0] * 1920 / image.shape[1])),
-                           interpolation=cv2.INTER_AREA)
-    height, width = image.shape[:2]
-    x1, y1, x2, y2 = [round(v * size) for v, size in zip(result['roi'], (width, height, width, height))]
-    patch = image[y1:y2, x1:x2]
     try:
-        bank = _scaled_references(width)
-        matches = _matches(patch, cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY), bank, (x1, y1), (height, width))
-        candidates, ambiguities = _group(matches)
+        bank = _scaled_references(image.shape[1])
+        candidates, ambiguities = _group(_scan_box(image, result['roi'], bank))
     except (OSError, ValueError, KeyError, TypeError, cv2.error):
         result['reason'] = 'unverified_reference_or_scan'
         return result

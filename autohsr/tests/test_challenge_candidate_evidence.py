@@ -36,6 +36,10 @@ class ChallengeCandidateEvidenceTests(unittest.TestCase):
                 self.assertEqual(frame['basis']['candidate_list'], candidates)
                 self.assertEqual(frame['basis']['team_feedback'], 'unknown')
                 self.assertFalse(frame['basis']['execution_supported'])
+                slot_evidence = frame['basis']['team_slots']
+                self.assertEqual(slot_evidence['reason'], 'missing_slot_calibration')
+                self.assertIsNone(slot_evidence['eight_slots_occupied'])
+                self.assertIsNone(slot_evidence['team_members_match'])
             c.window.click.assert_called_once()
             c.window.key.assert_not_called()
             # Each observation owns its data, including after persistence.

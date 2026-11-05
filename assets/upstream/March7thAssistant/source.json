@@ -593,14 +593,14 @@
       "path": "autohsr/challenge_pages.py",
       "reference_source": "tasks/challenge/memoryofchaos.py",
       "reference_sources": ["tasks/challenge/memoryofchaos.py", "tasks/challenge/basechallenge.py", "tasks/challenge/purefiction.py", "tasks/challenge/apocalyptic.py", "assets/config/screens.json"],
-      "native_files": ["autohsr/challenge_roster.py"],
-      "tests": ["autohsr/tests/test_challenge_roster.py", "autohsr/tests/test_challenge_modes.py"],
+      "native_files": ["autohsr/challenge_roster.py", "autohsr/challenge_slots.py"],
+      "tests": ["autohsr/tests/test_challenge_roster.py", "autohsr/tests/test_challenge_modes.py", "autohsr/tests/test_challenge_slots.py"],
       "reference_functions": [
         "find_level",
         "judge_stars",
         "prepare_level"
       ],
-      "kind": "Limited current-scene observation using separately attributed original challenge crops. MOC and Pure Fiction allow one first-level selection only from independent historical positive star evidence on a mode-specific lobby. Preparation reuses native plan, account, epoch, window and durable source checks, and requires two distinct frames with an independently read current level. Pure Fiction story overlays are vetoes only. Apocalyptic Shadow title, previously challenged detail and dual-node layout observations are read-only; current level and selected node remain unknown. The native challenge_roster helper uses pinned xywh crops and verifies all 105 existing whole portraits, retaining overlap as ambiguity. Saved MOC and Pure Fiction setup frames may include candidate identity evidence only. Availability, actual slots, full teams, halves, combat and results require separate evidence. Full real-page calibration is outstanding; crop composites are synthetic, and the redacted planar fixture is a wrong-mode negative."
+      "kind": "Limited current-scene observation using separately attributed original challenge crops. MOC and Pure Fiction allow one first-level selection only from independent historical positive star evidence on a mode-specific lobby. Preparation reuses native plan, account, epoch, window and durable source checks, and requires two distinct frames with an independently read current level. Pure Fiction story overlays are vetoes only. Apocalyptic Shadow title, previously challenged detail and dual-node layout observations are read-only; current level and selected node remain unknown. The native challenge_roster helper uses pinned xywh crops and verifies all 105 existing whole portraits, retaining overlap as ambiguity. The challenge_slots helper reuses those unchanged portraits to compare exact occupied slot identities only under a calibrated layout and a same-account frame pair. Runtime receipts keep candidates separate from unknown slots while real calibration is absent. Availability, actual slots, full teams, halves, combat and results require separate evidence. Positive slot composites are synthetic, and the redacted planar fixture is a wrong-mode negative."
     },
     {
       "path": "autohsr/redemption_codes.py",
