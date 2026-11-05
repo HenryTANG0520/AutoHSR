@@ -127,9 +127,17 @@ Windows 发布回执时持有两张 PNG 的只读句柄，发布最终报告时�
 
 「返回虚构叙事」「前往节点二」「返回末日幻影」各需唯一局部原件与同位置完整 OCR。出现异模式结算原件或支付、确认领取等遮挡迹象时保留未核实。「前往节点二」只记文字所指去向，单独出现时模式也保持未知。红色「败」字是可见标记，需与模式专属返回控件同帧。固定上游的判断分支也在不同战况复用返回或节点去向控件。混沌的「返回忘却之庭」缺少能区分常驻回忆的结果页锚。[虚构结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/purefiction.py#L184-L204) · [末日结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/apocalyptic.py#L268-L294) · [混沌结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/memoryofchaos.py#L176-L203)
 
-双帧核实模式反馈后 `challenge_result.status=feedback_verified`，只有去向文案时为 `caption_verified`，证据不足时为 `unknown`。实际半场、已到节点、各半场或节点分、总分、星数、胜负与最终结算分别留空或为 `unknown`，`completion_verified` 和 `rewards_verified` 为 `false`。当前局部反馈的运行状态为 `partial`，CLI 退出 1。已有主页星数仍属于主页历史观察，备战回执仍由 `--challenge-prepare` 独立记录。[本批验证](../VALIDATION.md#2026-11-06-高难结算只读反馈)
+双帧核实模式反馈后 `challenge_result.status=feedback_verified`，只有去向文案时为 `caption_verified`，证据不足时为 `unknown`。总分限于下述已校准布局。实际半场、已到节点、分项、星数、胜负与最终结算分别留空或为 `unknown`，`completion_verified` 和 `rewards_verified` 为 `false`。运行状态为 `partial`，CLI 退出 1。已有主页星数仍属于主页历史观察，备战回执仍由 `--challenge-prepare` 独立记录。[反馈入口验证](../VALIDATION.md#2026-11-06-高难结算只读反馈)
 
-当前发布的素材仅覆盖局部控件。下一次实机校准需要下列画面，保留模式、层号、分项标题及原相对位置，导出时遮盖 UID 与无关个人信息。每个用于核实的状态留同账号连续两帧。
+### 普通虚构总分
+
+常规「取象为文其四」的结算页须同屏出现底部居中的模式返回锚、上方关卡标题和独立的「挑战成功」。再读标题下方的「积分」原数及同一横栏左右两列的「节点一」「节点二」。各列须由完整标签与相邻数值组成。各节点上限为 40,000，两个分项相加须等于原读总分。合并识别与同一行的 OCR 分片均可核实，数字分片须有规范千位逗号。星级目标和历史详情各自留在原页面范围。[4.6 积分修复公告](https://www.taptap.cn/moment/853651354927762083)
+
+同一对相邻新帧须读到相同的两列分项和总分，且对应文字框重叠。只在本次回执和最终报告的现有证据核验内填入 `total_score`。数字漏读或歧义时，同一对新帧中已核实的控件反馈仍可发布，总分留空。发布重试发现来源已变时，最终报告回到未核实。[总分验证](../VALIDATION.md#2026-11-06-普通虚构本局总分)
+
+公开校准源为 `BV1Qxnz6nEUB` P1，CID `42925294535`。05:47 的节点二入场显示累计 25,840。15:10 为积分动画，15:12.200 与 15:12.500 的完整结果显示节点一 25,840、节点二 40,000、积分 65,840。原片用于核对字段位置，仓库用合成布局与固定上游返回素材。末日星启 10:20 的「挑战结束」及累计分同「前往节点三」并存，属于中间结算。[节点交接](https://www.bilibili.com/video/BV1Qxnz6nEUB/?t=347) · [虚构终局](https://www.bilibili.com/video/BV1Qxnz6nEUB/?t=912) · [末日中间结算](https://www.bilibili.com/video/BV1pq4K6xEg7/?t=620)
+
+下一次原生画面校准需要下列证据，保留模式、层号、分项标题及原相对位置，导出时遮盖 UID 与无关个人信息。每个用于核实的状态留同账号连续两帧。
 
 | 模式 | 所需的最小页面证据 |
 | --- | --- |

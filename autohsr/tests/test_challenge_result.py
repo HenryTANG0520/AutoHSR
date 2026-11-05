@@ -1,5 +1,6 @@
 """Use pinned crops and synthetic layout in the real CLI, Runner and Context."""
 from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout
+from dataclasses import replace
 import hashlib
 import io
 from itertools import count
@@ -40,6 +41,7 @@ def token(text, xyxy, score=.99):
 ACCOUNT = token('UID:123456789', (14, 514, 92, 532))
 OTHER = token('UID:123456780', (14, 514, 92, 532), .74)
 FICTION = ('purefiction/back.png', '返回虚构叙事', 689, 468)
+FICTION_FINAL = (*FICTION[:2], 444, 495)
 NEXT = ('apocalyptic/next_node.png', '前往节点二', 550, 468)
 RETURN = ('apocalyptic/back.png', '返回末日幻影', 688, 468)
 FAILURE = ('purefiction/fail.png', None, 461, 125)
@@ -55,6 +57,114 @@ def frame(*parts, uid=ACCOUNT, extra=()):
         if caption:
             tokens.append(token(caption, (x, y, x + width, y + height)))
     return Scene(tokens + list(extra), image, GEO, time.monotonic())
+
+
+STAGE = token('取象为文其四', (448, 54, 512, 66))
+SUCCESS = token('挑战成功', (414, 70, 546, 105))
+TOTAL = token('积分65840', (431, 109, 528, 128))
+NODE_ONE = token('节点一25840', (326, 160, 417, 174))
+NODE_TWO = token('节点二40000', (544, 160, 635, 174))
+FINAL_FIELDS = (STAGE, SUCCESS, TOTAL, NODE_ONE, NODE_TWO)
+GOALS = (
+    token('获得30000分', (293, 215, 369, 229)),
+    token('获得40000分', (293, 264, 369, 278)),
+    token('获得50000分', (293, 290, 369, 304)),
+    token('获得60000分', (293, 316, 369, 330)),
+)
+
+
+def fiction_final(fields=FINAL_FIELDS, *, uid=ACCOUNT, extra=()):
+    return frame(FICTION_FINAL, uid=uid, extra=(*fields, *GOALS, *extra))
+
+
+def formatted_final():
+    return fiction_final((
+        token('取象为文·', (448, 54, 493, 66)), token('其四', (495, 54, 518, 66)),
+        SUCCESS,
+        token('积分：', (431, 109, 462, 128)), token('６５', (464, 109, 482, 128)),
+        token('，', (483, 111, 488, 128)), token('８４０', (489, 109, 529, 128)),
+        token('节点一', (326, 160, 364, 174)), token('25,840', (372, 160, 418, 174)),
+        token('节点二', (544, 160, 580, 174)), token('４０，０００', (590, 160, 636, 174)),
+    ), extra=(token('新纪录', (540, 109, 579, 128)),))
+
+
+class FictionScoreObservationTests(unittest.TestCase):
+    def test_merged_and_split_comma_fields_read_the_same_total(self):
+        for scene in (fiction_final(), formatted_final()):
+            observed = observe_feedback(scene)
+            self.assertEqual(observed.mode, 'pure_fiction')
+            score = observed.score
+            self.assertEqual((score.total, score.node_one, score.node_two), (65840, 25840, 40000))
+        equal_parts = (STAGE, SUCCESS, replace(TOTAL, text='积分80000'),
+                       replace(NODE_ONE, text='节点一40000'), NODE_TWO)
+        self.assertEqual(observe_feedback(fiction_final(equal_parts)).score.total, 80000)
+
+    def test_title_success_and_three_labeled_reads_are_independently_required(self):
+        variants = [FINAL_FIELDS[:i] + FINAL_FIELDS[i + 1:] for i in range(len(FINAL_FIELDS))]
+        variants.extend((
+            (replace(STAGE, text='立界开篇其四'), *FINAL_FIELDS[1:]),
+            (replace(STAGE, text='取象为文其三'), *FINAL_FIELDS[1:]),
+            (STAGE, replace(SUCCESS, text='挑战成功积分65840'), NODE_ONE, NODE_TWO),
+            (STAGE, replace(SUCCESS, text='挑战结束'), TOTAL, NODE_ONE, NODE_TWO),
+            (STAGE, SUCCESS, replace(TOTAL, text='获得65840分'), NODE_ONE, NODE_TWO),
+            (STAGE, SUCCESS, replace(TOTAL, text='当前积分65840'), NODE_ONE, NODE_TWO),
+            (STAGE, SUCCESS, TOTAL, replace(NODE_ONE, text='25840'), NODE_TWO),
+            (STAGE, SUCCESS, TOTAL, replace(NODE_ONE, text='节点—25840'), NODE_TWO),
+            (STAGE, SUCCESS, TOTAL, NODE_ONE, replace(NODE_TWO, score=.79)),
+        ))
+        for fields in variants:
+            with self.subTest(fields=fields):
+                observed = observe_feedback(fiction_final(fields))
+                self.assertEqual(observed.mode, 'pure_fiction')
+                self.assertIsNone(observed.score)
+
+    def test_exact_numeric_grammar_and_printed_total(self):
+        for text in ('积分6,5840', '积分65，84', '积分65 840', '积分65\n840', '积分65840.0',
+                     '积分+65840', '积分65840分', '积分65841'):
+            with self.subTest(text=text):
+                fields = (STAGE, SUCCESS, replace(TOTAL, text=text), NODE_ONE, NODE_TWO)
+                self.assertIsNone(observe_feedback(fiction_final(fields)).score)
+        split = (token('积分', (431, 109, 456, 128)), token('65', (462, 109, 482, 128)),
+                 token('840', (491, 109, 528, 128)))
+        self.assertIsNone(observe_feedback(fiction_final((STAGE, SUCCESS, *split, NODE_ONE, NODE_TWO))).score)
+        large = (STAGE, SUCCESS, replace(TOTAL, text='积分200000'),
+                 replace(NODE_ONE, text='节点一100000'), replace(NODE_TWO, text='节点二100000'))
+        self.assertIsNone(observe_feedback(fiction_final(large)).score)
+        over_cap = (STAGE, SUCCESS, replace(TOTAL, text='积分65841'),
+                    NODE_ONE, replace(NODE_TWO, text='节点二40001'))
+        self.assertIsNone(observe_feedback(fiction_final(over_cap)).score)
+
+    def test_overlaps_separate_rows_and_displaced_reads_are_ambiguous(self):
+        total_label = token('积分', (431, 109, 464, 126))
+        variants = (
+            (STAGE, SUCCESS, total_label, token('65840', (460, 109, 528, 128)), NODE_ONE, NODE_TWO),
+            (STAGE, SUCCESS, token('积分', (431, 104, 461, 113)),
+             token('65840', (465, 119, 528, 132)), NODE_ONE, NODE_TWO),
+            (STAGE, SUCCESS, token('积分65840', (431, 109, 549, 128)), NODE_ONE, NODE_TWO),
+            (STAGE, SUCCESS, token('积分65840', (431, 190, 528, 204)), NODE_ONE, NODE_TWO),
+            (STAGE, SUCCESS, TOTAL, replace(NODE_ONE, text='节点二40000'), replace(NODE_TWO, text='节点一25840')),
+            (STAGE, SUCCESS, TOTAL, token('节点一25840节点二40000', (326, 160, 635, 174))),
+            (*FINAL_FIELDS, token('1000', (464, 160, 499, 174))),
+            (*FINAL_FIELDS, token('999', (522, 109, 550, 126), .70)),
+            (*FINAL_FIELDS, token('积分70000', (547, 109, 630, 128))),
+            (STAGE, SUCCESS, TOTAL,
+             token('节点一', (326, 156, 363, 178)), token('25840', (371, 157, 417, 163)),
+             token('节点二', (544, 156, 580, 178)), token('40000', (591, 170, 635, 176))),
+        )
+        for fields in variants:
+            with self.subTest(fields=fields):
+                self.assertIsNone(observe_feedback(fiction_final(fields)).score)
+
+    def test_other_modes_and_uncalibrated_returns_keep_only_local_feedback(self):
+        for scene in (frame(NEXT, RETURN, extra=FINAL_FIELDS),
+                      frame(NEXT, RETURN, extra=(replace(SUCCESS, text='挑战结束'), TOTAL, NODE_ONE, NODE_TWO)),
+                      frame(FICTION, extra=FINAL_FIELDS),
+                      frame(FICTION_FINAL, FAILURE, extra=FINAL_FIELDS),
+                      fiction_final(extra=(token('前往节点三', (641, 478, 727, 495)),)),
+                      fiction_final(extra=(token('星启模式', (715, 41, 784, 58)),)),
+                      fiction_final(extra=(token('通关详情', (695, 41, 768, 58)),))):
+            with self.subTest(words=scene.text):
+                self.assertIsNone(observe_feedback(scene).score)
 
 
 class ResultObservationTests(unittest.TestCase):
@@ -211,6 +321,84 @@ class ResultEntryTests(unittest.TestCase):
         self.assertEqual((report['challenge'], report['currency_wars'], report['differential_universe']), ({}, {}, {}))
         self.assertEqual((report['battle_completed'], report['stamina_spent'], report['stamina_pending']), (0, 0, 0))
         return report
+
+    def test_cli_waits_for_complete_feedback_after_the_score_animation(self):
+        intro = frame(extra=(STAGE, SUCCESS, replace(TOTAL, text='积分25840')))
+        animating = frame(extra=(STAGE, SUCCESS, TOTAL))
+        report = self.run_cli([intro, animating, fiction_final(), formatted_final()])
+        data = report['challenge_result']
+        self.assertEqual((report['status'], data['status'], data['total_score']), ('partial', 'feedback_verified', 65840))
+        self.assertIn('已核实本次虚构叙事总分', report['results'][0]['detail'])
+        self.assertEqual([row['capture_sequence'] for row in data['evidence']], [3, 4])
+        for field in ('level', 'half', 'node', 'upper_half_score', 'lower_half_score',
+                      'node_one_score', 'node_two_score', 'stars'):
+            self.assertIsNone(data[field])
+        self.assertEqual((data['outcome'], data['settlement_status']), ('unknown', 'unknown'))
+        self.assertFalse(data['completion_verified'])
+        self.assertFalse(data['rewards_verified'])
+        self.assertEqual(json.loads((Path(report['run_dir']) / 'challenge-result.json').read_bytes()), data)
+
+    def test_missing_changed_or_displaced_number_retains_the_old_pair(self):
+        same_label = token('节点一', (326, 157, 365, 177))
+        left_number = token('25840', (371, 161, 417, 165))
+        right_node = token('节点二40000', (544, 157, 635, 177))
+        first = fiction_final((STAGE, SUCCESS, TOTAL, same_label, left_number, right_node))
+        moved = fiction_final((STAGE, SUCCESS, TOTAL, same_label, token('25840', (371, 169, 417, 173)), right_node))
+        self.assertEqual(observe_feedback(first).score.total, 65840)
+        self.assertEqual(observe_feedback(moved).score.total, 65840)
+        changed_parts = (STAGE, SUCCESS, TOTAL, replace(NODE_ONE, text='节点一27000'),
+                         replace(NODE_TWO, text='节点二38840'))
+        changed_total = (STAGE, SUCCESS, replace(TOTAL, text='积分65841'),
+                         replace(NODE_ONE, text='节点一25841'), NODE_TWO)
+        for second in (fiction_final((STAGE, SUCCESS, TOTAL, NODE_ONE)), fiction_final(changed_parts),
+                       fiction_final(changed_total), moved):
+            with self.subTest(words=second.text):
+                report = self.run_cli([first, second, EmptyCapture('page left after legacy pair')])
+                data = report['challenge_result']
+                self.assertEqual(data['status'], 'feedback_verified')
+                self.assertIsNone(data['total_score'])
+                self.assertEqual([row['capture_sequence'] for row in data['evidence']], [1, 2])
+
+    def test_total_pair_cannot_cross_an_unidentified_frame(self):
+        good = fiction_final()
+        report = self.run_cli([good, fiction_final(uid=None), good, good])
+        data = report['challenge_result']
+        self.assertEqual(data['total_score'], 65840)
+        self.assertEqual([row['capture_sequence'] for row in data['evidence']], [3, 4])
+
+    def test_score_fields_are_rechecked_at_receipt_and_final_report_retries(self):
+        original_snapshot = Context.snapshot
+        replace_path = Path.replace
+        for target in ('challenge-result.json', 'report.json'):
+            with self.subTest(target=target):
+                attempts = []
+                captured = []
+
+                def snapshot(context):
+                    scene = original_snapshot(context)
+                    captured.append(scene)
+                    return scene
+
+                def share(source, destination):
+                    if destination.name == target and not attempts:
+                        attempts.append(destination)
+                        scene = captured[-1]
+                        index = scene.tokens.index(TOTAL)
+                        scene.tokens[index] = replace(TOTAL, text='积分65841')
+                        raise PermissionError('simulated sharing lock')
+                    return replace_path(source, destination)
+
+                with patch.object(Context, 'snapshot', snapshot), patch.object(Path, 'replace', share):
+                    report = self.run_cli([fiction_final(), fiction_final()])
+                self.assertEqual(len(attempts), 1)
+                data = report['challenge_result']
+                self.assertEqual(data['status'], 'unknown')
+                self.assertIsNone(data['total_score'])
+                receipt = Path(report['run_dir']) / 'challenge-result.json'
+                if target == 'report.json':
+                    self.assertEqual(json.loads(receipt.read_bytes())['total_score'], 65840)
+                else:
+                    self.assertFalse(receipt.exists())
 
     def test_formal_cli_preserves_old_roster_and_reports_only_verified_feedback(self):
         historical = self.root / 'runs' / 'old-preparation' / 'challenge-preparation.json'

@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import time
 
 import cv2
@@ -11,7 +12,7 @@ import numpy as np
 
 from . import challenge_pages as pages
 from .currency_wars_identity import UID_COUNTEREVIDENCE, AccountNotObserved, account_key
-from .models import FULL, AutomationError, EmptyCapture, InputInterrupted, Scene, Stopped, TaskResult, Token, normalize
+from .models import FULL, ROI, AutomationError, EmptyCapture, InputInterrupted, Scene, Stopped, TaskResult, Token, normalize
 from .storage import hold_read_sources, replace_file
 
 
@@ -32,15 +33,123 @@ _BLOCKERS = ('验证码', '账号登录', '扫码登录', '用户协议', '资�
              '选择最高解锁关卡', '开启故事', '星际和平指南', '更换编队', '前往编队', '进入故事',
              '差分宇宙', '模拟宇宙', '货币战争', '支付', '购买', '充值', '确认领取')
 
+# Full-frame regions from the 4.6 normal-mode "取象为文其四" result.
+# The record badge beside 积分 and the goals below the node row have their own space.
+_FICTION_STAGE = (.39, .075, .61, .129)
+_FICTION_SUCCESS = (.38, .124, .62, .207)
+_FICTION_TOTAL = (.40, .191, .558, .251)
+_FICTION_TOTAL_ROW = (.32, .191, .68, .251)
+_FICTION_NODE_ROW = (.25, .271, .75, .348)
+_FICTION_NODE_ONE = (.30, .275, .47, .343)
+_FICTION_NODE_TWO = (.53, .275, .70, .343)
+_FICTION_FINAL_RETURN = (.38, .885, .62, .970)
+_FICTION_STAGE_NAMES = ('取象为文其四', '取象为文·其四', '取象为文•其四')
+_FICTION_SCORE_BLOCKERS = ('星启', '节点三', '节点3', '节点３', '前往节点',
+                           '挑战失败', '挑战结束', '已挑战', '通关详情', '历史积分', '历史最高')
+# The 4.6 correction restored the 40,000-point cap on the calibrated stage.
+_FICTION_NODE_CAP = 40_000
+_SCORE_WIDTH = str.maketrans('０１２３４５６７８９，：　', '0123456789,: ')
+_SCORE_NUMBER = re.compile(r'(?:0|[1-9][0-9]{0,4}|[1-9][0-9]?,[0-9]{3})')
+
+
+@dataclass(frozen=True)
+class _FictionScore:
+    total: int
+    node_one: int
+    node_two: int
+    boxes: tuple[ROI, ...]
+
+    def agrees_with(self, other):
+        return (other is not None and self.total == other.total
+                and self.node_one == other.node_one and self.node_two == other.node_two
+                and all(pages._overlaps(a, b) for a, b in zip(self.boxes, other.boxes)))
+
 
 @dataclass(frozen=True)
 class Feedback:
     mode: str | None
     anchors: tuple[Token, ...]
+    score: _FictionScore | None = None
+
+
+def _same_score_row(parts):
+    centers = [token.center[1] for token in parts]
+    top = max(t.box[1] for t in parts)
+    bottom = min(t.box[3] for t in parts)
+    return max(centers) - min(centers) <= .013 and bottom - top >= .25 * min(
+        t.box[3] - t.box[1] for t in parts)
+
+
+def _score_line(tokens, roi, minimum):
+    parts = sorted((token for token in tokens if token.within(roi)), key=lambda token: token.box[0])
+    if (not parts or any(t.score < minimum or not pages._inside(t.box, roi) for t in parts)
+            or not _same_score_row(parts)
+            or any(not 0 <= right.box[0] - left.box[2] <= .022 for left, right in zip(parts, parts[1:]))
+            or any(pages._overlaps(t.box, other.box) for t in parts for other in tokens if t is not other)):
+        return ()
+    return tuple(parts)
+
+
+def _score_text(parts):
+    return ''.join(token.text.translate(_SCORE_WIDTH).strip(' ') for token in parts)
+
+
+def _score_box(parts):
+    return (min(t.box[0] for t in parts), min(t.box[1] for t in parts),
+            max(t.box[2] for t in parts), max(t.box[3] for t in parts))
+
+
+def _score_value(parts, label):
+    pieces = [token.text.translate(_SCORE_WIDTH).strip(' ') for token in parts]
+    text = ''.join(pieces)
+    if not text.startswith(label):
+        return None
+    digits = text[len(label):].lstrip(' ').removeprefix(':').lstrip(' ')
+    # Label fragments may join on the same line. Two digit fragments need
+    # the printed grouping comma to establish that they are one number.
+    if (not _SCORE_NUMBER.fullmatch(digits) or not all(pieces)
+            or any(left[-1].isdigit() and right[0].isdigit() for left, right in zip(pieces, pieces[1:]))):
+        return None
+    number_parts = [token for token, piece in zip(parts, pieces) if any(ch.isdigit() for ch in piece)]
+    return int(digits.replace(',', '')), _score_box(number_parts)
+
+
+def _read_fiction_score(tokens, words, minimum):
+    if any(blocker in word for word in words for blocker in _FICTION_SCORE_BLOCKERS):
+        return None
+    stage_parts = _score_line(tokens, _FICTION_STAGE, minimum)
+    success_parts = _score_line(tokens, _FICTION_SUCCESS, minimum)
+    stage = _score_text(stage_parts).replace(' ', '') in _FICTION_STAGE_NAMES
+    success = _score_text(success_parts).replace(' ', '') == '挑战成功'
+    if not (stage and success):
+        return None
+
+    node_row = [token for token in tokens if pages._overlaps(token.box, _FICTION_NODE_ROW)]
+    one = _score_line(node_row, _FICTION_NODE_ONE, minimum)
+    two = _score_line(node_row, _FICTION_NODE_TWO, minimum)
+    if not one or not two or len(one) + len(two) != len(node_row) or not _same_score_row(node_row):
+        return None
+
+    left_read = _score_value(one, '节点一')
+    right_read = _score_value(two, '节点二')
+    total_parts = _score_line(tokens, _FICTION_TOTAL, minimum)
+    if any(token.within(_FICTION_TOTAL_ROW) and token not in total_parts
+           and ('积分' in token.text or any(ch.isdecimal() for ch in token.text)) for token in tokens):
+        return None
+    total_read = _score_value(total_parts, '积分')
+    if left_read is None or right_read is None or total_read is None:
+        return None
+    first, first_box = left_read
+    second, second_box = right_read
+    total, total_box = total_read
+    if total == 0 or first > _FICTION_NODE_CAP or second > _FICTION_NODE_CAP or first + second != total:
+        return None
+    boxes = (_score_box(stage_parts), _score_box(success_parts), total_box, first_box, second_box)
+    return _FictionScore(total, first, second, boxes)
 
 
 def observe_feedback(scene, confidence=.65):
-    """Identify visible controls and the failure glyph, each at its own scope."""
+    """Identify visible controls, failure and the calibrated final score."""
     clean = pages._clean(scene, confidence, blockers=())
     if clean is None:
         return None
@@ -76,12 +185,16 @@ def observe_feedback(scene, confidence=.65):
         return None
     # The node-two caption contains no mode name. It can corroborate a
     # destination but the returned mode needs a mode-specific return crop.
-    mode = next((_CONTROLS[a.text][0] for a in anchors if a.text != _NEXT_NODE), None)
-    if mode is not None:
+    mode_anchor = next((a for a in anchors if a.text != _NEXT_NODE), None)
+    mode = _CONTROLS[mode_anchor.text][0] if mode_anchor is not None else None
+    score = None
+    if mode_anchor is not None:
         failure = pages._hits(clean, _FAILURE, FULL)
         if len(failure) == 1 and not any(pages._overlaps(failure[0].box, a.box) for a in anchors):
             anchors.append(failure[0])
-    return Feedback(mode, tuple(anchors))
+        if mode == pages.FICTION and not failure and pages._inside(mode_anchor.box, _FICTION_FINAL_RETURN):
+            score = _read_fiction_score(clean.tokens, words, max(.85, confidence))
+    return Feedback(mode, tuple(anchors), score)
 
 
 @dataclass(frozen=True)
@@ -196,7 +309,7 @@ class ResultReader:
         if now >= self.deadline or now - frames[0].captured_at > MAX_AGE:
             raise AutomationError('高难结果观察的双帧证据已过期。')
 
-    def _publish(self, frames):
+    def _publish(self, frames, score):
         self._require_current(frames[-1].scene)
         evidence = [self._save_frame(frame, f'challenge_result_{index}') for index, frame in enumerate(frames, 1)]
         if evidence[0]['screenshot'] == evidence[1]['screenshot']:
@@ -207,6 +320,7 @@ class ResultReader:
                     visible_controls=[_CONTROLS[name][1] for name in names if name in _CONTROLS],
                     failure_marker_observed=True if _FAILURE in names else None,
                     destination_node_in_caption=2 if _NEXT_NODE in names else None,
+                    total_score=score.total if score is not None else None,
                     evidence=evidence)
         path = self.directory / 'challenge-result.json'
         temporary = path.with_suffix('.tmp')
@@ -243,7 +357,9 @@ class ResultReader:
         try:
             with hold_read_sources([receipt_path, *(path for path, _ in proof.pngs)]):
                 self.data.update(json.loads(proof.payload))
-                result.detail = '已核实当前可见反馈，关卡成绩与领奖状态待核实。'
+                result.detail = ('已核实本次虚构叙事总分，星数与领奖状态待核实。'
+                                 if self.data['total_score'] is not None else
+                                 '已核实当前可见反馈，关卡成绩与领奖状态待核实。')
                 payload = write_report()
 
                 def recheck():
@@ -293,7 +409,10 @@ class ResultReader:
             if (previous is not None and frame.sequence == previous.sequence + 1
                     and frame.scene is not previous.scene and time.monotonic() - previous.captured_at <= MAX_AGE
                     and _same_feedback(previous.feedback, frame.feedback)):
-                return self._publish((previous, frame))
+                score = feedback.score
+                if score is not None and not score.agrees_with(previous.feedback.score):
+                    score = None
+                return self._publish((previous, frame), score)
             previous = frame
         if last_scene is not None:
             path = self.c.evidence(last_scene, 'challenge_result_unverified')
