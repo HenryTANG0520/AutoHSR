@@ -278,12 +278,13 @@ class Context:
         if self.report.operation not in PREPARATION_OPERATIONS or not self.runner.currency_locate:
             raise AutomationError('当前任务未请求货币战争入口导航。')
         from .currency_wars import CurrencyWarsWorkflow
-        from .currency_wars_navigation import next_action
+        from .currency_wars_navigation import next_action, require_rank_input
         self.checkpoint()
         self._currency_weekly_checkpoint()
         CurrencyWarsWorkflow(self)._require_current_scene(scene)
         if next_action(scene, self) != choice:
             raise AutomationError('入口导航目标改变，未发送旧输入。')
+        require_rank_input(self, scene, choice)
         self.last_scene, self._scroll_anchor = None, None
         try:
             if choice.key is not None:
