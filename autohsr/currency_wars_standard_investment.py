@@ -1,6 +1,8 @@
 """One investment selection, separate confirmation, and typed reward custody."""
 from copy import deepcopy
+import math
 import re
+import time
 
 from .currency_wars import observe
 from .currency_wars_collector import first_unit_probe, roster_cells
@@ -9,13 +11,16 @@ from .currency_wars_investment_policy import (AVOID, POLICY, choose, digest, opt
 from .currency_wars_match import read_match
 from .currency_wars_navigation import unique
 from .currency_wars_prepare import trusted
-from .models import AutomationError, normalize
+from .models import AutomationError, EmptyCapture, InputInterrupted, normalize
 
 
 SELECT = 'select_standard_investment'
 CONFIRM = 'confirm_standard_investment'
+CLOSE_SHOP = 'close_standard_investment_shop'
+SHOP_CLOSED = 'standard_investment_shop_closed'
 OPEN_BOX = 'open_standard_bench_reward'
 BOX_PAGES = {1: 'equipment_selection', 2: 'advanced_equipment_selection'}
+SHOP_CLOSE_REGION = (.81, .88, .89, .95)
 
 
 def _origin(actions, index):
@@ -50,7 +55,7 @@ def enter(session, scene, confidence=.65):
     session['investment']=dict(status='awaiting',origin_action_id=index,expected_node=node)
 
 
-def _scope(session):
+def _scope(session, *, investment_projection=None):
     from .currency_wars_standard_ledger import ledger_status
     c,client=session.get('collection',{}),session.get('client',{})
     if (session.get('status')!='active' or not session.get('start_verified') or not session.get('entry',{}).get('rank_verified')
@@ -59,7 +64,8 @@ def _scope(session):
             or not session.get('account_key') or session.get('account_verified_run')!=c.get('run_dir')
             or session.get('account_verified_epoch')!=c.get('input_epoch') or client.get('verified_run')!=c.get('run_dir')
             or client.get('input_epoch')!=c.get('input_epoch') or client.get('version')!='4.6'
-            or session.get('rules_version')!='4.6' or ledger_status(session.get('actions',[]))!='clear'):
+            or session.get('rules_version')!='4.6'
+            or ledger_status(session.get('actions',[]),investment_projection=investment_projection)!='clear'):
         raise AutomationError('投资策略的同局、账号、版本或来源账本未核实。')
 
 
@@ -67,6 +73,17 @@ def active_action(scene, session, confidence=.65):
     from .currency_wars_standard_flow import StandardAction
     data=session.get('investment',{})
     kind=observe(scene,confidence).page_kind
+    actions = session.get('actions', [])
+    last = actions[-1] if actions else {}
+    if last.get('action') == CONFIRM:
+        if kind == 'shop':
+            return _close_shop_action(scene, session, confidence)
+        if data.get('shop_observations'):
+            raise AutomationError('已观察到投资后的自动商店，当前反馈待核对，未推进投资或交易。')
+    if last.get('action') == CLOSE_SHOP:
+        if (not valid_shop_return(last, actions)
+                or _same_preparation(scene, actions[-2], confidence, shop_return=True) != last['feedback']):
+            raise AutomationError('本次投资商店已有收起记录，当前未核实返回原备战。')
     if not data or data.get('status')=='verified':
         if kind=='investment_selection':raise AutomationError('当前投资策略页没有本局已核实位面来源。')
         return None
@@ -115,15 +132,305 @@ def feedback(choice, scene, session, confidence=.65):
             choices=options(scene,confidence)
             return option_digest(choices)==choice.payload[6] and selected_slot(scene,choices)==choice.payload[2]
         except AutomationError:return False
+    return confirmation_board(choice, scene, session, confidence) is not None
+
+
+def confirmation_board(choice, scene, session, confidence=.65):
+    data = session.get('investment', {})
+    if (choice.intent != CONFIRM or data.get('status') != 'awaiting'
+            or choice.payload[:2] != (data.get('expected_node'), data.get('origin_action_id'))):
+        return None
+    return _preparation(scene, choice.payload[0], choice.payload[7], confidence)
+
+
+def _preparation(scene, node, count, confidence):
     state=read_match(scene,confidence)
-    if (not state or state.page!='preparation' or state.node!=choice.payload[0] or state.gold is None
+    if (not state or state.page!='preparation' or state.node!=node or state.gold is None
             or state.hp is None or state.hp<=0 or type(state.level) is not int or not 1<=state.level<=10 or not state.deployment
-            or state.experience is None and state.level!=10):return False
+            or state.experience is None and state.level!=10):
+        return None
     try:
-        cells=roster_cells(scene,confidence)
-        return (all(c.state in ('empty','occupied','reward') for c in cells)
-                and sum(c.state=='reward' for c in cells)==choice.payload[7])
-    except AutomationError:return False
+        cells = roster_cells(scene, confidence)
+    except AutomationError:
+        return None
+    slots = {str(cell.slot): cell.signature for cell in cells if cell.state == 'reward'}
+    if len(slots) != count or any(cell.state not in ('empty', 'occupied', 'reward') for cell in cells):
+        return None
+    return dict(board=[state.node, state.gold, state.hp, state.level,
+                       list(state.experience) if state.experience else None, list(state.deployment)],
+                reward_slots=slots)
+
+
+def _shop_target(scene, claim, confidence):
+    state = read_match(scene, confidence)
+    board = claim['investment_effect']['board']
+    experience = tuple(board[4]) if board[4] is not None else None
+    if (state and state.page == 'shop'
+            and (state.node, state.gold, state.level, state.experience) == (board[0], board[1], board[3], experience)):
+        try:
+            return unique(trusted(scene, confidence), '收起', SHOP_CLOSE_REGION)
+        except AutomationError:
+            pass
+    return None
+
+
+def _shop_source(claim):
+    effect = claim['investment_effect']
+    return digest([claim[key] for key in ('id', 'expected', 'before', 'after', 'target', 'selection_proof')]
+                  + [claim.get('progress_frames'), effect['board'], effect['reward_slots'],
+                     effect.get('unit_delivery', {}).get('inventory_after')])
+
+
+def _shop_claim(session):
+    actions = session['actions']
+    claim = actions[-1]
+    data = session.get('investment', {})
+    if (claim.get('id') != len(actions)-1 or claim.get('action') != CONFIRM
+            or claim.get('expected') != 'standard_investment_applied'):
+        raise AutomationError('投资后的商店缺少紧邻的本次确认。')
+    _scope(session, investment_projection=claim['id'])
+    if (data.get('status') not in ('verified', 'reward_verifying', 'unit_verifying')
+            or (data['status'] == 'verified') != (claim.get('investment_verified') is True)
+            or data.get('claim_action_id') != claim['id'] or data.get('choice') != claim.get('target')
+            or data.get('origin_action_id') != claim['target'][1] or data.get('expected_node') != claim['target'][0]
+            or data.get('reward_slots') != claim.get('investment_effect', {}).get('reward_slots')
+            or data.get('completed_slots') != []):
+        raise AutomationError('投资后的商店缺少紧邻的本次确认与原备战来源。')
+    return claim
+
+
+def _same_preparation(scene, claim, confidence, *, shop_return=False):
+    result = _preparation(scene, claim['target'][0], claim['target'][7], confidence)
+    effect = claim['investment_effect']
+    if (result is None or result['board'] != effect['board']
+            or result['reward_slots'].keys() != effect['reward_slots'].keys()):
+        return None
+    if shop_return:
+        from .currency_wars_deployment import _crop, _texture, bench_face
+        from .currency_wars_rewards import open_reward_target
+        slots = sorted(int(slot) for slot in result['reward_slots'])
+        try:
+            for slot in slots:
+                if _texture(_crop(scene.image, bench_face(slot))) < 15:
+                    return None
+                open_reward_target(scene, confidence, slot=slot)
+        except AutomationError:
+            return None
+        result['open_slots'] = slots
+    elif result['reward_slots'] != effect['reward_slots']:
+        return None
+    if effect['kind'] == 'unit_gift':
+        from .currency_wars_investment_units import matches_claim_board
+        if not matches_claim_board(scene, claim, confidence):
+            return None
+    return result
+
+
+def observe_automatic_shop(c, store, scene, *, refresh=False):
+    """Capture the next current page before sending any post-confirmation input."""
+    from .currency_wars import CurrencyWarsWorkflow
+    from .currency_wars_identity import account_key
+    from .currency_wars_standard_flow import evidence, next_action
+
+    session = store.data
+    actions = session['actions']
+    if not actions or actions[-1].get('action') != CONFIRM:
+        return scene
+    claim = _shop_claim(session)
+    data = session['investment']
+    observations = data.get('shop_observations', [])
+    if not isinstance(observations, list) or len(observations) >= 16:
+        raise AutomationError('投资商店只读观察已达上限，原记录保留。')
+    epoch, confidence = c.runner.input_epoch, c.settings.ocr_confidence
+    guard = CurrencyWarsWorkflow(c)
+    last_stamp = scene.captured_at if refresh else None
+    shop_seen = bool(observations)
+    frames, preparation_frames = [], 0
+    deadline = time.monotonic() + 12
+    for index in range(8):
+        c.checkpoint()
+        if index or refresh:
+            if index:
+                c.sleep(.5)
+            try:
+                scene = c.snapshot()
+            except EmptyCapture:
+                scene = None
+        if c.runner.input_epoch != epoch:
+            raise InputInterrupted('投资商店只读观察代次变化，未发送收起或交易。')
+        if time.monotonic() >= deadline:
+            break
+        if scene is None:
+            frames.clear()
+            preparation_frames = 0
+            continue
+        guard._require_current_scene(scene)
+        if last_stamp is not None and scene.captured_at <= last_stamp:
+            frames.clear()
+            preparation_frames = 0
+            continue
+        last_stamp = scene.captured_at
+        try:
+            account = account_key(scene, max(.85, confidence))
+        except AutomationError:
+            frames.clear()
+            preparation_frames = 0
+            continue
+        if account != session['account_key']:
+            raise AutomationError('投资商店只读观察账号不一致，未发送输入。')
+        kind = observe(scene, confidence).page_kind
+        if (index == 0 and not refresh and not shop_seen and kind == 'character'
+                and data['status'] in ('reward_verifying', 'unit_verifying')):
+            from .currency_wars_standard_collection import STALE_CLOSE
+            # Keep the existing read-only cleanup for a stale gift collection panel.
+            try:
+                if next_action(scene, confidence, session=session).intent == STALE_CLOSE:
+                    return scene
+            except AutomationError:
+                pass
+        shop_seen = shop_seen or kind == 'shop'
+        if not shop_seen and _same_preparation(scene, claim, confidence) is not None:
+            preparation_frames += 1
+            if preparation_frames == 2:
+                return scene
+        else:
+            preparation_frames = 0
+        if _shop_target(scene, claim, confidence) is None:
+            frames.clear()
+            continue
+        frames.append(dict(captured_at=scene.captured_at,
+                           evidence=evidence(c, scene, 'currency_standard_investment_shop_'+str(index+1))))
+        if len(frames) == 2:
+            if time.monotonic() >= deadline:
+                break
+            guard._require_current_scene(scene)
+            observation = dict(run_dir=c.report.run_dir, input_epoch=epoch, frames=frames,
+                               source=_shop_source(claim))
+            data.setdefault('shop_observations', []).append(observation)
+            store.persist()
+            return scene
+    reason = '投资确认后的当前备战或自动商店尚未核实，未发送后续输入。'
+    session.update(action_status='needs_observation', reason=reason)
+    if scene is not None:
+        session['screenshot'] = evidence(c, scene, 'currency_standard_investment_shop_unknown')
+    store.persist()
+    raise AutomationError(reason)
+
+
+def _valid_observation(observation, claim):
+    frames = observation['frames']
+    return (isinstance(observation['run_dir'], str) and bool(observation['run_dir'])
+            and type(observation['input_epoch']) is int and observation['input_epoch'] >= 0
+            and observation['source'] == _shop_source(claim) and isinstance(frames, list) and len(frames) == 2
+            and all(type(frame['captured_at']) in (int, float) and 0 <= frame['captured_at'] < math.inf
+                    and isinstance(frame['evidence'], str) and frame['evidence'] for frame in frames)
+            and frames[0]['captured_at'] < frames[1]['captured_at'] and frames[0]['evidence'] != frames[1]['evidence'])
+
+
+def _close_shop_action(scene, session, confidence):
+    from .currency_wars_standard_flow import StandardAction
+    try:
+        claim = _shop_claim(session)
+        observation = session['investment']['shop_observations'][-1]
+        pending = session.get('rederiving_action')
+        target = _shop_target(scene, claim, confidence)
+        if (target is not None and _valid_observation(observation, claim)
+                and observation['run_dir'] == session['account_verified_run']
+                and observation['input_epoch'] == session['account_verified_epoch']
+                and observation['frames'][-1]['captured_at'] == scene.captured_at
+                and (pending is None or pending.get('investment_shop_observation') == observation
+                     and pending.get('before') == observation['frames'][-1]['evidence'])):
+            payload = (claim['target'][0], claim['id'], digest(observation))
+            return StandardAction(CLOSE_SHOP, SHOP_CLOSED, target, payload=payload)
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+        pass
+    raise AutomationError('当前自动商店缺少本次同节点的连续观察来源，未收起或交易。')
+
+
+def _shop_return_after(claim_index, actions):
+    if type(claim_index) is int and 0 <= claim_index < len(actions)-1:
+        candidate = actions[claim_index+1]
+        if candidate.get('action') == CLOSE_SHOP:
+            return candidate
+    return None
+
+
+def shop_input_scope(intent, current, saved):
+    rebound_gift = intent in (OPEN_BOX, 'choose_standard_reward') and any(
+        session.get('investment', {}).get('status') == 'reward_verifying'
+        and _shop_return_after(session['investment'].get('claim_action_id'), session['actions']) is not None
+        for session in (current, saved))
+    if intent != CLOSE_SHOP and not rebound_gift:
+        return False
+    from .currency_wars_standard_sale import same_target
+    fields = ('investment', 'actions', 'collection', 'client', 'account_key', 'rules_version',
+              'account_verified_run', 'account_verified_epoch')
+    if not same_target([current.get(key) for key in fields], [saved.get(key) for key in fields]):
+        raise AutomationError('投资商店的原确认、观察和收起意图与落盘记录不一致，未发送输入。')
+    return True
+
+
+def shop_return_feedback(choice, scene, session, confidence=.65):
+    if choice.intent != CLOSE_SHOP or len(choice.payload) != 3:
+        return None
+    try:
+        action, claim = session['actions'][-1], session['actions'][-2]
+        if (action.get('target') == list(choice.payload) and action.get('action') == CLOSE_SHOP
+                and claim['id'] == choice.payload[1] and claim.get('action') == CONFIRM):
+            return _same_preparation(scene, claim, confidence, shop_return=True)
+    except (AutomationError, AttributeError, IndexError, KeyError, TypeError, ValueError):
+        pass
+    return None
+
+
+def valid_shop_return(action, actions):
+    from .currency_wars_standard_progress import _paired_progress_evidence
+    try:
+        node, index, observed = action['target']
+        if type(index) is not int or not 0 <= index < len(actions)-1:
+            return False
+        claim, observation = actions[index], action['investment_shop_observation']
+        effect, feedback = claim['investment_effect'], action['feedback']
+        slots = feedback['reward_slots']
+        frames = action['progress_frames']
+        slot_set = sorted(int(slot) for slot in effect['reward_slots'])
+        return (action.get('action') == CLOSE_SHOP and action.get('status') == 'verified'
+                and action.get('expected') == SHOP_CLOSED and action.get('id') == index+1
+                and actions[index+1] == action
+                and claim.get('action') == CONFIRM and claim.get('status') == 'verified'
+                and claim.get('id') == index and claim['target'][0] == node
+                and _valid_observation(observation, claim) and digest(observation) == observed
+                and observation['input_epoch'] == action.get('input_epoch')
+                and action.get('before') == observation['frames'][-1]['evidence']
+                and feedback['board'] == effect['board'] and feedback['open_slots'] == slot_set
+                and slots.keys() == effect['reward_slots'].keys()
+                and all(isinstance(signature, str) and re.fullmatch(r'[0-9a-f]{64}', signature)
+                        for signature in slots.values())
+                and _paired_progress_evidence(action)
+                and all(frame.get('reward_slots') == slots and frame.get('open_slots') == slot_set for frame in frames)
+                and frames[0]['captured_at'] > observation['frames'][-1]['captured_at']
+                and action.get('investment_shop_return_digest') == digest([feedback, frames]))
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+        return False
+
+
+def record_shop_return(action, actions, feedback):
+    action['feedback'] = feedback
+    frames = action['progress_frames']
+    for frame in frames:
+        frame.update(reward_slots=deepcopy(feedback['reward_slots']), open_slots=list(feedback['open_slots']))
+    action['investment_shop_return_digest'] = digest([feedback, frames])
+    if not valid_shop_return(action, actions):
+        raise AutomationError('投资商店收起缺少原确认及本次备战反馈，保留待核对。')
+
+
+def _gift_slots(claim, actions):
+    close = _shop_return_after(claim['id'], actions)
+    if close is None:
+        return claim['investment_effect']['reward_slots']
+    if not valid_shop_return(close, actions):
+        raise AutomationError('投资商店的返回回执未核实，未使用当前赠箱签名。')
+    return close['feedback']['reward_slots']
 
 
 def bind_selection(session, choice, scene, epoch, run_dir, confidence=.65):
@@ -136,13 +443,15 @@ def bind_selection(session, choice, scene, epoch, run_dir, confidence=.65):
 
 
 def confirmed(session, choice, scene, confidence=.65):
-    data=session['investment'];action=session['actions'][-1];state=read_match(scene,confidence)
+    data=session['investment'];action=session['actions'][-1]
+    prepared = confirmation_board(choice, scene, session, confidence)
+    if prepared is None:
+        raise AutomationError('投资确认缺少原节点的完整备战和赠箱数量。')
     _,parameters,_=parse_effect(choice.payload[5])
-    slots={str(c.slot):c.signature for c in roster_cells(scene,confidence) if c.state=='reward'}
-    action['investment_effect']=dict(node=state.node,origin_action_id=choice.payload[1],slot=choice.payload[2],
+    slots = prepared['reward_slots']
+    action['investment_effect']=dict(node=choice.payload[0],origin_action_id=choice.payload[1],slot=choice.payload[2],
         name=choice.payload[3],kind=choice.payload[4],parameters=dict(parameters),options=choice.payload[6],
-        board=[state.node,state.gold,state.hp,state.level,list(state.experience) if state.experience else None,list(state.deployment)],
-        reward_slots=slots,reward_actions=[])
+        reward_actions=[], **prepared)
     action['investment_verified']=False
     data.update(claim_action_id=action['id'],choice=list(choice.payload),reward_slots=slots,completed_slots=[])
     session.pop('collection',None)
@@ -185,11 +494,11 @@ def _bound_box_page(session, opening, claim):
         raise AutomationError('投资赠箱开启缺少原确认及对应动作来源。')
     node, slot, signature = target
     effect = claim['investment_effect']
-    slots = effect['reward_slots']
+    slots = _gift_slots(claim, session['actions'])
     completed = data.get('completed_slots')
     tier = effect['parameters'].get('box_tier')
     if (node != effect['node'] or node != data.get('expected_node') or type(slot) is not int
-            or slots != data.get('reward_slots') or str(slot) not in slots or slots[str(slot)] != signature
+            or effect['reward_slots'] != data.get('reward_slots') or str(slot) not in slots or slots[str(slot)] != signature
             or not isinstance(completed, list) or slot in completed or type(tier) is not int or tier not in BOX_PAGES):
         raise AutomationError('投资赠箱开启与原确认的节点、待交付槽或箱种不符。')
     basis = opening.get('reward_basis', {})
@@ -251,10 +560,16 @@ def _reward_action(scene, session, confidence):
     if probe is not None:
         cell,target=probe
         return StandardAction('inspect_standard_unit','character',target,payload=(cell.zone,cell.slot,cell.node,cell.signature))
-    opening=open_bench_action(scene,session,confidence)
-    if opening is None or str(opening.payload[1]) not in data['reward_slots'] or opening.payload[1] in data['completed_slots']:
+    slots = _gift_slots(claim, session['actions'])
+    close = _shop_return_after(claim['id'], session['actions'])
+    outstanding = sorted(int(slot) for slot in slots if int(slot) not in data['completed_slots'])
+    if not outstanding:
+        raise AutomationError('投资策略没有尚未领取的原武装箱。')
+    opening = (open_bench_action(scene, session, confidence, slot=outstanding[0])
+               if close is not None else open_bench_action(scene, session, confidence))
+    if opening is None or opening.payload[1] not in outstanding:
         raise AutomationError('投资策略指定的未领取武装箱未出现，未重复开启。')
-    if opening.payload[2]!=data['reward_slots'][str(opening.payload[1])]:
+    if opening.payload[2]!=slots[str(opening.payload[1])]:
         raise AutomationError('投资策略武装箱来源格已改变。')
     return opening
 
@@ -277,8 +592,10 @@ def reward_scope(session, intent):
 def bind_reward(session, choice):
     data=session.get('investment',{})
     if data.get('status')=='reward_verifying' and choice.intent=='open_standard_bench_reward':
-        _claim(session)
-        if str(choice.payload[1]) not in data['reward_slots'] or choice.payload[1] in data['completed_slots']:
+        claim = _claim(session)
+        slots = _gift_slots(claim, session['actions'])
+        if (slots.get(str(choice.payload[1])) != choice.payload[2]
+                or choice.payload[1] in data['completed_slots']):
             raise AutomationError('开启位置不是当前投资策略待交付的赠品。')
         session['actions'][-1]['investment_parent_action_id']=data['claim_action_id']
 
@@ -341,6 +658,8 @@ def _valid_effect(action, actions):
     if (not isinstance(slots,dict) or len(slots)!=target[7] or not isinstance(rewards,list) or len(rewards)>target[7]
             or any(not re.fullmatch('[1-9]',s) or not isinstance(sig,str) or not re.fullmatch('[0-9a-f]{64}',sig) for s,sig in slots.items())):return False
     if action.get('investment_verified') is True and len(rewards)!=target[7]:return False
+    if rewards:
+        slots = _gift_slots(action, actions)
     seen=set()
     from .currency_wars_standard_rewards import valid_effect as valid_reward
     expected='advanced_equipment_selection' if params.get('box_tier')==2 else 'equipment_selection'

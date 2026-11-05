@@ -80,6 +80,10 @@ def begin(session,choice,scene,confidence):
 
 def board_ready(scene,session,confidence=.65):
     data=session['investment'];claim=session['actions'][data['claim_action_id']]
+    return matches_claim_board(scene, claim, confidence)
+
+
+def matches_claim_board(scene, claim, confidence=.65):
     effect=claim['investment_effect'];state=read_match(scene,confidence)
     if not state or state.page!='preparation':return False
     board=[state.node,state.gold,state.hp,state.level,list(state.experience) if state.experience else None,
@@ -184,9 +188,15 @@ def valid(claim,actions,*,require_complete=False):
         if not gains or gains!=delivery['base_copy_gains']:return False
         end=delivery['verification_action_id'];start=claim['id'];proofs=delivery['profiles']
         allowed={'inspect_standard_unit','close_standard_unit','close_standard_stale_unit','open_standard_equipment_recommendations'}
+        from .currency_wars_standard_investment import CLOSE_SHOP, valid_shop_return
+        first = start + 1
+        if first < len(actions) and actions[first].get('action') == CLOSE_SHOP:
+            if not valid_shop_return(actions[first], actions):
+                return False
+            first += 1
         if (type(end) is not int or not start<end<len(actions)
                 or any(a.get('action') not in allowed or a.get('status')!='verified' or not a.get('before') or not a.get('after')
-                       for a in actions[start+1:end+1])
+                       for a in actions[first:end+1])
                 or len(proofs)!=len(new) or {(p['zone'],p['slot']) for p in proofs}!={(u['zone'],u['slot']) for u in new}):return False
         if len({(p['run_dir'],p['input_epoch']) for p in proofs})!=1:return False
         for proof in proofs:

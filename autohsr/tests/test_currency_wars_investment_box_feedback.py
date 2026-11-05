@@ -163,7 +163,7 @@ class InvestmentBoxFlowFeedbackTests(unittest.TestCase):
                     'replayed_after_wrong': [(right, 1), (wrong, 3), (right, 2), (right, 4)],
                     'epoch_change': [(right, 1), (right, 2)],
                 }
-                source = iter([(board, 0), *feedback[interruption]])
+                source = iter([(board, -1), (board, 0), *feedback[interruption]])
 
                 def snapshot():
                     frame, stamp = next(source, (None, 0))

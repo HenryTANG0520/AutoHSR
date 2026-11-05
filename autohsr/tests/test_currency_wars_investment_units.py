@@ -51,7 +51,7 @@ def delivered(board,session,*,names=('赠送甲','赠送乙'),stars=(1,1),tiers=
 
 def states(scene,after,units):
     marked=investments.page([('赠送策略',investments.options(scene)[0].effect)],selected=0)
-    output=[scene,marked,marked,after,after]
+    output=[scene,marked,marked,after,after,after,after]
     for cell in sorted((c for c in roster_cells(after) if c.state=='occupied'),key=lambda c:(c.zone!='bench',c.zone,c.slot)):
         unit=units[cell.zone+':'+str(cell.slot)]['unit'];detail=equipment.panel(unit,unit['equipment']);rewards.node(detail,'2-1')
         output.append(detail)
@@ -60,9 +60,14 @@ def states(scene,after,units):
     return output
 
 
-def run_case(folder,effect=RANDOM,*,names=('赠送甲','赠送乙'),stars=(1,1),tiers=(2,2),expect=Stopped):
+def run_case(folder,effect=RANDOM,*,names=('赠送甲','赠送乙'),stars=(1,1),tiers=(2,2),expect=Stopped,shop=False):
     board,scene,session=fixture(effect);after,units=delivered(board,session,names=names,stars=stars,tiers=tiers)
-    c=exchange.StandardExchangeTests().context(folder,board,session,states(scene,after,units))
+    frames = states(scene, after, units)
+    if shop:
+        opened = investments.automatic_shop(after)
+        frames[5:7] = [opened, opened, after, after]
+    c=exchange.StandardExchangeTests().context(folder,board,session,frames)
+    investments.fresh_captures(c)
     def done():
         store=getattr(c,'currency_standard_session',None)
         if store and store.data.get('investment',{}).get('status') in ('verified','unit_mismatch'):raise Stopped('role grant checked')
@@ -72,6 +77,20 @@ def run_case(folder,effect=RANDOM,*,names=('赠送甲','赠送乙'),stars=(1,1),
 
 
 class UnitGrantTests(unittest.TestCase):
+    def test_auto_shop_return_preserves_native_role_collection_and_grant_verification(self):
+        from autohsr.currency_wars_standard_investment import CLOSE_SHOP, CONFIRM
+
+        with tempfile.TemporaryDirectory() as folder:
+            c, saved = run_case(folder, shop=True)
+            original, close = saved['actions'][4:6]
+            self.assertEqual([original['action'], close['action']], [CONFIRM, CLOSE_SHOP])
+            self.assertEqual(original['investment_effect']['unit_delivery']['base_copy_gains'],
+                             {'赠送乙': 1, '赠送甲': 1})
+            self.assertEqual(saved['investment']['status'], 'verified')
+            self.assertEqual(ledger_status(saved['actions']), 'clear')
+            close['feedback']['board'][1] += 1
+            self.assertEqual(ledger_status(saved['actions']), 'unknown')
+
     def test_explicit_count_star_tier_and_named_unknown_star_are_separate(self):
         for count in (1,2,3,9):
             for star,tier in ((1,2),(2,5),(4,1)):

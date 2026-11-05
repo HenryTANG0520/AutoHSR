@@ -356,9 +356,11 @@ class Context:
                     raise AutomationError('初始环境确认前画面与落盘来源不一致。')
         elif choice.intent.startswith('confirm_standard_environment_') and (not choice.payload or choice.payload == ('1-1',)):
             raise AutomationError('初始环境确认尚未保存专用来源，未发送输入。')
+        from .currency_wars_standard_investment import shop_input_scope
         from .currency_wars_standard_progress import progress_input_scope
         use_durable_source = (loot_sale_input_scope(choice, store.data, data)
-                              or progress_input_scope(choice.intent, store.data, data))
+                              or progress_input_scope(choice.intent, store.data, data)
+                              or shop_input_scope(choice.intent, store.data, data))
         session = data if use_durable_source else store.data
         if choice.intent in ('open_standard_bench_reward', 'choose_standard_reward'):
             investment = store.data.get('investment', {})
@@ -391,8 +393,12 @@ class Context:
             self._focus_interrupted()
         self.sleep(self.settings.action_delay)
 
-    def click(self, scene: Scene, target: Token | tuple[float, float], *, du_intent="navigation"):
+    def click(self, scene: Scene, target: Token | tuple[float, float], *, du_intent="navigation",
+              du_feedback_deadline: float | None = None):
         self._require_gameplay_input()
+        if du_feedback_deadline is not None and (self.report.operation != 'differential_universe'
+                or du_intent not in ('curio_discard_confirm','du_tutorial_close')):
+            raise AutomationError('差分舍弃专用反馈时限仅用于本次确认和弹层关闭。')
         if du_intent.startswith('du_save_'):
             raise AutomationError('差分存档输入须使用本次持久保存意图，未通过通用点击发送。')
         self.checkpoint()
@@ -445,8 +451,18 @@ class Context:
         label = target.text if isinstance(target, Token) else f"{coordinates[0]:.3f},{coordinates[1]:.3f}"
         self.log(f"点击：{label}")
         du_record = None
+        discard_feedback = du_intent == 'curio_discard_confirm' or du_feedback_deadline is not None
         if self.report.operation == "differential_universe":
             before = self.evidence(scene, "du_before_" + re.sub(r"[^\w\u3400-\u9fff-]", "_", label)[:32])
+            if discard_feedback:
+                self.checkpoint()
+                if self.scene_epoch != self.runner.input_epoch or scene is not self.last_scene:
+                    raise InputInterrupted('奇物舍弃或关闭弹层前画面已改变，未发送旧目标。')
+                now = time.monotonic()
+                if du_feedback_deadline is not None and now - self.runner.inactive_duration >= du_feedback_deadline:
+                    raise AutomationError('强制舍弃奇物反馈待核对，已超过观察时限，未发送输入。')
+                if not 0 <= now - scene.captured_at <= 8:
+                    raise AutomationError('奇物舍弃证据保存后画面已过期，反馈待核对，未发送输入。')
             du_record = {"action": label, "status": "sent", "before": str(before), "page_text": scene.text}
             self.report.differential_universe.setdefault("actions", []).append(du_record)
         if weekly_start_guard is not None:
@@ -474,7 +490,8 @@ class Context:
             self._focus_interrupted()
         self.last_scene = None
         self.sleep(self.settings.action_delay)
-        if du_record is not None:
+        # Forced curio discard and its one overlay close share the workflow's deadline.
+        if du_record is not None and not discard_feedback:
             after = self._snapshot_after_du_input()
             after_path = self.evidence(after, "du_after_action")
             du_record["after"] = str(after_path)

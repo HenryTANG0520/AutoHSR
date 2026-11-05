@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 import time
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -1059,6 +1060,9 @@ def transition_ready(choice, scene, confidence=.65, *, before=None, session=None
     if choice.expected in ('standard_investment_selected','standard_investment_applied'):
         from .currency_wars_standard_investment import feedback
         return session is not None and feedback(choice,scene,session,confidence)
+    if choice.expected == 'standard_investment_shop_closed':
+        from .currency_wars_standard_investment import shop_return_feedback
+        return session is not None and shop_return_feedback(choice, scene, session, confidence) is not None
     if choice.expected=='standard_reward_opened':
         from .currency_wars_standard_investment import box_opening_page
         from .currency_wars_standard_rewards import PAGES
@@ -1166,6 +1170,10 @@ def transition_ready(choice, scene, confidence=.65, *, before=None, session=None
 
 def run_standard(c):
     from .currency_wars_defeat import INTENTS as DEFEAT_INTENTS
+    from .currency_wars_standard_investment import (
+        CLOSE_SHOP as INVESTMENT_SHOP_CLOSE, CONFIRM as INVESTMENT_CONFIRM,
+        confirmation_board, observe_automatic_shop, shop_return_feedback,
+    )
     from .currency_wars_standard_ledger import FINANCIAL_ACTIONS
     from .currency_wars_standard_progress import BOSS_INTRO_ACTION, boss_destination, node_progress_feedback
     if c.report.operation != 'currency_wars_standard':
@@ -1210,6 +1218,7 @@ def run_standard(c):
     from .currency_wars_standard_budget import StandardBudget
     from .currency_wars_session import MAX_ACTIONS
     budget=StandardBudget(store.data)
+    refresh_investment = False
     for _ in range(MAX_ACTIONS+1):
         c.checkpoint()
         if store.data['completion_verified'] or store.data.get('defeat_settlement_verified'):
@@ -1256,6 +1265,11 @@ def run_standard(c):
             collection = dict(run_dir=c.report.run_dir,input_epoch=c.runner.input_epoch,units={},complete=False)
             store.data['collection'] = collection
             store.persist()
+        # A resumed confirmation can briefly show the board before the shop opens.
+        if store.data['actions'] and store.data['actions'][-1]['action'] == INVESTMENT_CONFIRM:
+            scene = observe_automatic_shop(c, store, scene, refresh=refresh_investment)
+            refresh_investment = False
+            kind = observe(scene, c.settings.ocr_confidence).page_kind
         if kind=='shop':
             from .currency_wars_initial_shop_observation import ensure as observe_initial_shop
             scene=observe_initial_shop(c,store,scene)
@@ -1373,8 +1387,11 @@ def run_standard(c):
                                                        'before_standard_shop',c.settings.ocr_confidence))
             store.data['pre_shop_bench'] = bench_signatures(scene)
             store.persist()
-        action = store.pending(choice.intent, c.runner.input_epoch,
-                               evidence(c, scene, 'currency_standard_'+choice.intent), choice.expected)
+        investment_shop = (store.data['investment']['shop_observations'][-1]
+                           if choice.intent == INVESTMENT_SHOP_CLOSE else None)
+        before_path = (investment_shop['frames'][-1]['evidence'] if investment_shop is not None
+                       else evidence(c, scene, 'currency_standard_'+choice.intent))
+        action = store.pending(choice.intent, c.runner.input_epoch, before_path, choice.expected)
         if choice.intent == 'deploy_standard_owned':
             action['decision'] = dict(name=choice.details[0],star=choice.details[1],tier=choice.details[2],
                                       zone=choice.details[3],score=choice.details[4],policy=choice.details[5])
@@ -1415,6 +1432,9 @@ def run_standard(c):
             store.persist()
         if choice.payload:
             action['target'] = list(choice.payload)
+            store.persist()
+        if investment_shop is not None:
+            action['investment_shop_observation'] = deepcopy(investment_shop)
             store.persist()
         if choice.intent.startswith('confirm_standard_environment_') and (not choice.payload or choice.payload == ('1-1',)):
             from .currency_wars_initial import begin as begin_initial
@@ -1505,7 +1525,11 @@ def run_standard(c):
         closing_intro = choice.intent == BOSS_INTRO_ACTION
         node_progress = closing_intro or choice.intent == 'continue_standard_node'
         boss_progress = node_progress and boss_destination(choice.payload[0]) is not None
-        strict_feedback = defeat_step or investment_box or loot_click or loot_box is not None or loot_claim is not None or boss_progress
+        investment_confirmation = choice.intent == INVESTMENT_CONFIRM
+        closing_investment_shop = choice.intent == INVESTMENT_SHOP_CLOSE
+        investment_progress = investment_confirmation or closing_investment_shop
+        strict_feedback = (defeat_step or investment_box or loot_click or loot_box is not None
+                           or loot_claim is not None or boss_progress or investment_progress)
         observed_at = scene.captured_at
         c.currency_standard_input(scene, choice)
         elapsed, after, stable, previous_popup = 0., None, 0, None
@@ -1544,6 +1568,10 @@ def run_standard(c):
                     if node_progress:
                         progress = node_progress_feedback(choice, after, c.settings.ocr_confidence)
                         ready = progress is not None
+                    elif investment_progress:
+                        investment_feedback = confirmation_board if investment_confirmation else shop_return_feedback
+                        progress = investment_feedback(choice, after, store.data, c.settings.ocr_confidence)
+                        ready = progress is not None
                     else:
                         ready = bool(popup_stamp) or transition_ready(choice, after, c.settings.ocr_confidence, before=scene,session=store.data)
                     if popup_stamp!=previous_popup:stable=0
@@ -1574,7 +1602,8 @@ def run_standard(c):
                     else:
                         ready = False
                 paired_progress = (progress if ready and progress is not None
-                                   and (closing_intro or progress['page_kind'] == 'boss_intro') else None)
+                                   and (investment_progress or closing_intro or progress['page_kind'] == 'boss_intro')
+                                   else None)
                 if paired_progress != previous_progress:
                     stable = 0
                     progress_frames.clear()
@@ -1754,7 +1783,12 @@ def run_standard(c):
                     progress_verified(store.data, choice, after, c.settings.ocr_confidence)
                     from .currency_wars_standard_investment import enter as investment_enter, confirmed, reward_completed
                     investment_enter(store.data,after,c.settings.ocr_confidence)
-                    if choice.intent=='confirm_standard_investment':confirmed(store.data,choice,after,c.settings.ocr_confidence)
+                    if investment_confirmation:
+                        confirmed(store.data, choice, after, c.settings.ocr_confidence)
+                        refresh_investment = True
+                    elif closing_investment_shop:
+                        from .currency_wars_standard_investment import record_shop_return
+                        record_shop_return(action, store.data['actions'], paired_progress)
                     from .currency_wars_standard_rewards import enter, returned
                     enter(store.data,choice,after,c.settings.ocr_confidence)
                     if choice.intent in ('choose_standard_reward','confirm_standard_supply'):

@@ -16,13 +16,13 @@ from autohsr.currency_wars_deployment import _BENCH_CENTERS, _crop, bench_face
 from autohsr.currency_wars_investment_policy import (choose, options, parse_effect, selected_slot)
 from autohsr.currency_wars_session import StandardSession
 from autohsr.currency_wars_standard_flow import next_action,run_standard,transition_ready
-from autohsr.currency_wars_standard_investment import (SELECT,CONFIRM,active_action,bind_reward,confirmed,
+from autohsr.currency_wars_standard_investment import (SELECT,CONFIRM,CLOSE_SHOP,active_action,bind_reward,confirmed,
     enter,feedback,refresh_bonus,reward_completed,reward_scope,valid_effect,verified_names)
 from autohsr.currency_wars_standard_ledger import ledger_status,valid_receipt
 from autohsr.currency_wars_standard_refresh import experience_gain,refresh_action
 from autohsr.currency_wars_standard_trading import financial_feedback,record_financial_feedback,shop_return_values
 from autohsr.currency_wars_standard_rewards import bind_source,enter as reward_enter,returned
-from autohsr.models import AutomationError,InputInterrupted,Scene,Stopped,Token,normalize
+from autohsr.models import AutomationError,EmptyCapture,InputInterrupted,Scene,Stopped,Token,normalize
 from autohsr.tests import test_currency_wars_choices as old_choices
 from autohsr.tests import test_currency_wars_standard_trading as trading
 from autohsr.tests import test_currency_wars_standard_rewards as rewards
@@ -92,6 +92,31 @@ def gift_board(board,number=1):
         x=_BENCH_CENTERS[slot-1]
         result.tokens.append(Token('开启',.99,(x-.015,.82,x+.015,.87)))
     return result
+
+
+def automatic_shop(board):
+    from autohsr.currency_wars_match import read_match
+    from autohsr.tests.test_currency_wars_standard_market import ShopFieldsTests
+
+    state = read_match(board)
+    shop = ShopFieldsTests().scene()
+    shop.image = board.image.copy()
+    rewards.node(shop, state.node)
+    return trading.hud(shop, gold=state.gold, level=state.level, xp=state.experience)
+
+
+def fresh_captures(context):
+    snapshot = context.snapshot
+    previous = time.monotonic() - 1
+
+    def capture():
+        nonlocal previous
+        frame = snapshot()
+        previous = max(previous + .001, time.monotonic() - .25)
+        frame.captured_at = previous
+        return frame
+
+    context.snapshot = capture
 
 
 def deliver_box(before,opening,choice,index=0):
@@ -181,6 +206,7 @@ class InvestmentTests(unittest.TestCase):
         marked=page([('爆仓',EXECUTE)],selected=0)
         with tempfile.TemporaryDirectory() as folder:
             c=trading.StandardTradingTests().context(folder,board,session,[scene,marked,marked,board,board])
+            fresh_captures(c)
             c.checkpoint=lambda:(_ for _ in ()).throw(Stopped('investment complete')) if getattr(c,'currency_standard_session',None) and c.currency_standard_session.data.get('investment',{}).get('status')=='verified' else None
             with patch('autohsr.currency_wars_replay.save_sample'),self.assertRaises(Stopped):run_standard(c)
             saved=StandardSession(c.currency_standard_session.path).data
@@ -253,22 +279,364 @@ class InvestmentTests(unittest.TestCase):
         claim=next_action(modal,session=preview);after=deliver_box(board,opening,claim)
         wrong=rewards.modal('equipment_selection',board,gold=30,destination='2-1')
         with tempfile.TemporaryDirectory() as folder:
-            frames=[scene,marked,marked,board,board,wrong,modal,deepcopy(modal),after,after]
+            gap = deepcopy(board)
+            frames=[scene,marked,marked,board,board,board,gap,board,board,wrong,modal,deepcopy(modal),after,after]
             c=exchange.StandardExchangeTests().context(folder,board,session,frames)
             snapshot=c.snapshot
             started=time.monotonic()-1
             timestamps=iter(started+index/20 for index in range(len(frames)))
+            captured = 0
             def fresh_snapshot():
+                nonlocal captured
                 frame=snapshot()
                 frame.captured_at=next(timestamps)
+                captured += 1
+                if frame is gap:
+                    raise EmptyCapture('one loading frame')
                 return frame
             c.snapshot=fresh_snapshot
+            submit = c.currency_standard_input.side_effect
+            def dispatch(current, choice):
+                if choice.intent == 'open_standard_bench_reward':
+                    self.assertEqual(captured, 9)
+                return submit(current, choice)
+            c.currency_standard_input.side_effect = dispatch
             c.checkpoint=lambda:(_ for _ in ()).throw(Stopped('gift complete')) if getattr(c,'currency_standard_session',None) and c.currency_standard_session.data.get('investment',{}).get('status')=='verified' else None
             with patch('autohsr.currency_wars_replay.save_sample'),self.assertRaises(Stopped):run_standard(c)
             saved=StandardSession(c.currency_standard_session.path).data
             self.assertEqual(ledger_status(saved['actions']),'clear');c.window.click_held.assert_called_once()
             self.assertEqual(c.window.click.call_count,3)
             self.assertTrue(saved['actions'][4]['investment_verified']);self.assertTrue(saved['actions'][-1]['reward_verified'])
+
+    def test_formal_investment_gift_survives_auto_shop_and_verifies_original_box(self):
+        board, scene, session = fixture([('保守派', DEFENSE)])
+        board = gift_board(board)
+        returned = deepcopy(board)
+        patch_box = _crop(returned.image, bench_face(6))
+        patch_box[:] = np.random.default_rng(1206).integers(0, 256, patch_box.shape, dtype=np.uint8)
+        preview = deepcopy(session)
+        select_and_confirm(returned, scene, preview)
+        opening = next_action(returned, session=preview)
+        append(preview, opening, 'pending')
+        bind_source(preview, opening, returned)
+        bind_reward(preview, opening)
+        preview['actions'][-1]['status'] = 'verified'
+        modal = rewards.modal('advanced_equipment_selection', returned, gold=30, destination='2-1')
+        wrong = rewards.modal('equipment_selection', returned, gold=30, destination='2-1')
+        reward_enter(preview, opening, modal)
+        after = deliver_box(returned, opening, next_action(modal, session=preview))
+        marked = page([('保守派', DEFENSE)], selected=0)
+        shop = automatic_shop(board)
+        with tempfile.TemporaryDirectory() as folder:
+            frames = [scene, marked, marked, board, board, shop, shop, returned, returned, wrong, modal, modal, after, after]
+            c = exchange.StandardExchangeTests().context(folder, board, session, frames)
+            fresh_captures(c)
+            def stop():
+                store = getattr(c, 'currency_standard_session', None)
+                if store and store.data.get('investment', {}).get('status') == 'verified':
+                    raise Stopped('investment gift verified')
+            c.checkpoint = stop
+            with patch('autohsr.currency_wars_replay.save_sample'), self.assertRaises(Stopped):
+                run_standard(c)
+            saved = StandardSession(c.currency_standard_session.path).data
+            selected, confirm, close, opened, received = saved['actions'][3:]
+            self.assertEqual([a['action'] for a in (selected, confirm, close, opened, received)],
+                             [SELECT, CONFIRM, CLOSE_SHOP, 'open_standard_bench_reward',
+                              'choose_standard_reward'])
+            self.assertTrue(confirm['investment_verified'])
+            self.assertEqual(opened['investment_parent_action_id'], confirm['id'])
+            original_slots = confirm['investment_effect']['reward_slots']
+            current_slots = close['feedback']['reward_slots']
+            self.assertEqual(original_slots.keys(), current_slots.keys())
+            self.assertNotEqual(original_slots, current_slots)
+            self.assertEqual(opened['target'][2], current_slots['6'])
+            self.assertEqual([frame['reward_slots'] for frame in close['progress_frames']], [current_slots, current_slots])
+            self.assertEqual(received['target'][2], 'advanced_equipment_selection')
+            self.assertTrue(received['reward_verified'])
+            self.assertEqual(ledger_status(saved['actions']), 'clear')
+            self.assertEqual(close['before'], close['investment_shop_observation']['frames'][-1]['evidence'])
+            self.assertGreater(close['progress_frames'][0]['captured_at'],
+                               close['investment_shop_observation']['frames'][-1]['captured_at'])
+            close['feedback']['reward_slots'] = {}
+            self.assertEqual(ledger_status(saved['actions']), 'unknown')
+            self.assertEqual(c.window.click.call_count, 4)
+            c.window.click_held.assert_called_once()
+
+    def test_automatic_shop_without_two_current_matching_frames_cannot_send(self):
+        for case in ('wrong_node', 'different_balance', 'different_experience', 'duplicate_capture', 'wrong_account'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as folder:
+                board, selection, session = fixture([('保守派', DEFENSE)])
+                board = gift_board(board)
+                marked = page([('保守派', DEFENSE)], selected=0)
+                shop = automatic_shop(board)
+                if case == 'wrong_node':
+                    rewards.node(shop, '2-2')
+                elif case == 'different_balance':
+                    trading.hud(shop, gold=31)
+                elif case == 'different_experience':
+                    trading.hud(shop, xp=(1, 6))
+                frames = [selection, marked, marked, board, board] + [shop]*8
+                c = exchange.StandardExchangeTests().context(folder, board, session, frames)
+                fresh_captures(c)
+                snapshot = c.snapshot
+                stamp = None
+                def capture():
+                    nonlocal stamp
+                    current = snapshot()
+                    if current is shop and case == 'duplicate_capture':
+                        stamp = stamp or current.captured_at
+                        current.captured_at = stamp
+                    if current is shop and case == 'wrong_account':
+                        current.tokens = [
+                            Token('UID:200000000', t.score, t.box) if normalize(t.text).startswith('uid') else t
+                            for t in current.tokens
+                        ]
+                    return current
+                c.snapshot = capture
+                with patch('autohsr.currency_wars_replay.save_sample'), self.assertRaises(AutomationError):
+                    run_standard(c)
+                saved = StandardSession(c.currency_standard_session.path).data
+                self.assertEqual([a['action'] for a in saved['actions'][-2:]], [SELECT, CONFIRM])
+                self.assertEqual(saved['investment']['status'], 'reward_verifying')
+                self.assertNotIn('shop_observations', saved['investment'])
+                self.assertEqual(c.window.click.call_count, 2)
+                c.window.click_held.assert_not_called()
+
+    def test_auto_shop_close_rechecks_original_disk_source_before_physical_input(self):
+        board, selection, session = fixture([('保守派', DEFENSE)])
+        board = gift_board(board)
+        marked = page([('保守派', DEFENSE)], selected=0)
+        shop = automatic_shop(board)
+        with tempfile.TemporaryDirectory() as folder:
+            c = exchange.StandardExchangeTests().context(folder, board, session,
+                [selection, marked, marked, board, board, shop, shop])
+            fresh_captures(c)
+            original = c.currency_standard_input.side_effect
+            def submit(current, choice):
+                if choice.intent == CLOSE_SHOP:
+                    saved = StandardSession(c.currency_standard_session.path)
+                    saved.data['actions'][-2]['investment_effect']['board'][1] += 1
+                    saved.persist()
+                return original(current, choice)
+            c.currency_standard_input.side_effect = submit
+            with patch('autohsr.currency_wars_replay.save_sample'), self.assertRaisesRegex(AutomationError, '收起意图与落盘'):
+                run_standard(c)
+            saved = StandardSession(c.currency_standard_session.path).data
+            self.assertEqual(saved['actions'][-1]['action'], CLOSE_SHOP)
+            self.assertEqual(saved['actions'][-1]['status'], 'pending')
+            self.assertEqual(c.window.click.call_count, 2)
+            c.window.click_held.assert_not_called()
+            with self.assertRaises(AutomationError):
+                run_standard(c)
+
+    def test_rebound_box_open_rechecks_the_saved_shop_return(self):
+        board, selection, session = fixture([('保守派', DEFENSE)])
+        board = gift_board(board)
+        marked = page([('保守派', DEFENSE)], selected=0)
+        shop = automatic_shop(board)
+        returned = deepcopy(board)
+        crop = _crop(returned.image, bench_face(6))
+        crop[:] = np.random.default_rng(703).integers(0, 256, crop.shape, dtype=np.uint8)
+        with tempfile.TemporaryDirectory() as folder:
+            c = exchange.StandardExchangeTests().context(folder, board, session,
+                [selection, marked, marked, board, board, shop, shop, returned, returned])
+            fresh_captures(c)
+            original = c.currency_standard_input.side_effect
+            def submit(current, choice):
+                if choice.intent == 'open_standard_bench_reward':
+                    saved = StandardSession(c.currency_standard_session.path)
+                    saved.data['actions'][-2]['progress_frames'][0]['reward_slots']['6'] = '0'*64
+                    saved.persist()
+                return original(current, choice)
+            c.currency_standard_input.side_effect = submit
+            with patch('autohsr.currency_wars_replay.save_sample'), self.assertRaisesRegex(AutomationError, '收起意图与落盘'):
+                run_standard(c)
+            saved = StandardSession(c.currency_standard_session.path).data
+            self.assertEqual(saved['actions'][-2]['action'], CLOSE_SHOP)
+            self.assertEqual(saved['actions'][-1]['status'], 'pending')
+            self.assertFalse(saved['actions'][4]['investment_verified'])
+            self.assertEqual(c.window.click.call_count, 3)
+            c.window.click_held.assert_not_called()
+
+    def test_shop_close_waits_for_fresh_return_to_original_board_and_never_repeats(self):
+        for case in ('wrong_node', 'missing_original_box', 'box_moved', 'ambiguous_marker',
+                     'marker_without_box', 'changed_signature_between_frames', 'duplicate_capture'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as folder:
+                bare, selection, session = fixture([('保守派', DEFENSE)])
+                board = gift_board(bare)
+                marked = page([('保守派', DEFENSE)], selected=0)
+                shop = automatic_shop(board)
+                returned = deepcopy(bare if case == 'missing_original_box' else board)
+                other_frame = returned
+                if case == 'wrong_node':
+                    rewards.node(returned, '2-2')
+                elif case == 'box_moved':
+                    crop = _crop(returned.image, bench_face(7))
+                    crop[:] = np.random.default_rng(701).integers(0, 256, crop.shape, dtype=np.uint8)
+                    _crop(returned.image, bench_face(6))[:] = 0
+                    returned.tokens = [t for t in returned.tokens if normalize(t.text) != '开启']
+                    x = _BENCH_CENTERS[6]
+                    returned.tokens.append(Token('开启', .99, (x-.015, .82, x+.015, .87)))
+                elif case == 'ambiguous_marker':
+                    returned.tokens.append(next(t for t in returned.tokens if normalize(t.text) == '开启'))
+                elif case == 'marker_without_box':
+                    _crop(returned.image, bench_face(6))[:] = 0
+                elif case == 'changed_signature_between_frames':
+                    other_frame = deepcopy(returned)
+                    crop = _crop(other_frame.image, bench_face(6))
+                    crop[:] = np.random.default_rng(702).integers(0, 256, crop.shape, dtype=np.uint8)
+                c = exchange.StandardExchangeTests().context(folder, board, session,
+                    [selection, marked, marked, board, board, shop, shop, returned, other_frame])
+                fresh_captures(c)
+                snapshot = c.snapshot
+                stamp = None
+                def capture():
+                    nonlocal stamp
+                    current = snapshot()
+                    if current is returned and case == 'duplicate_capture':
+                        stamp = stamp or current.captured_at
+                        current.captured_at = stamp
+                    return current
+                c.snapshot = capture
+                clock = SimpleNamespace(monotonic=Mock(side_effect=count(0, 31)))
+                with patch('autohsr.currency_wars_replay.save_sample'), patch('autohsr.currency_wars_standard_flow.time', clock):
+                    self.assertEqual(run_standard(c).status, 'partial')
+                saved = StandardSession(c.currency_standard_session.path).data
+                self.assertEqual(saved['actions'][-1]['action'], CLOSE_SHOP)
+                self.assertEqual(saved['actions'][-1]['status'], 'unknown')
+                self.assertEqual(saved['investment']['status'], 'reward_verifying')
+                self.assertEqual(c.window.click.call_count, 3)
+                c.window.click_held.assert_not_called()
+                with self.assertRaises(AutomationError):
+                    run_standard(c)
+                self.assertEqual(c.window.click.call_count, 3)
+
+    def test_explicit_resume_observes_current_page_after_a_saved_confirmation(self):
+        bare, selection, session = fixture([('保守派', DEFENSE)])
+        session['client']['executable'] = 'fake-game-executable'
+        board = gift_board(bare)
+        marked = page([('保守派', DEFENSE)], selected=0)
+        shop = automatic_shop(board)
+        wrong_shop = deepcopy(shop)
+        rewards.node(wrong_shop, '2-2')
+        unit = next(iter(session['collection']['units'].values()))['unit']
+        wrong_panel = exchange.panel(unit, node='2-2')
+        persist = StandardSession.persist
+
+        def pause_after_confirmation(store):
+            persist(store)
+            last = store.data['actions'][-1]
+            if last['action'] == CONFIRM and last['status'] == 'verified':
+                raise Stopped('confirmation saved')
+
+        with tempfile.TemporaryDirectory() as first:
+            original = exchange.StandardExchangeTests().context(first, board, session,
+                [selection, marked, marked, board, board])
+            fresh_captures(original)
+            with (patch('autohsr.currency_wars_replay.save_sample'),
+                  patch.object(StandardSession, 'persist', pause_after_confirmation),
+                  self.assertRaisesRegex(Stopped, 'confirmation saved')):
+                run_standard(original)
+            self.assertEqual(original.window.click.call_count, 2)
+            original.window.click_held.assert_not_called()
+            saved = StandardSession(original.currency_standard_session.path).data
+            journal = original.currency_standard_session.path.read_bytes()
+            self.assertNotIn('shop_observations', saved['investment'])
+
+        cases = (
+            ('shop', [board, shop, deepcopy(shop), board, deepcopy(board)], 5, [CLOSE_SHOP]),
+            ('preparation', [board, deepcopy(board)], 2, ['open_standard_bench_reward']),
+            ('wrong_shop', [board] + [wrong_shop] * 7, 8, []),
+            ('wrong_panel', [wrong_panel] * 8, 8, []),
+            ('unknown_confirmation', [board], 0, []),
+        )
+        errors = {'shop': (Stopped, 'shop closed'), 'preparation': (Stopped, 'box submitted'),
+                  'wrong_shop': (AutomationError, '当前备战或自动商店尚未核实'),
+                  'wrong_panel': (AutomationError, '当前备战或自动商店尚未核实'),
+                  'unknown_confirmation': (AutomationError, '上次标准动作尚未核实')}
+        for case, frames, captures, intents in cases:
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as second:
+                resumed = exchange.StandardExchangeTests().context(second, board, session, frames)
+                path = Path(second)/'currency-standard-session.json'
+                path.write_bytes(journal)
+                if case == 'unknown_confirmation':
+                    prior = StandardSession(path)
+                    prior.data['actions'][-1]['status'] = 'unknown'
+                    prior.persist()
+                before = path.read_bytes()
+                fresh_captures(resumed)
+                resumed.snapshot = Mock(wraps=resumed.snapshot)
+                submit = resumed.currency_standard_input.side_effect
+
+                def stop_after_box(current, choice):
+                    submit(current, choice)
+                    if choice.intent == 'open_standard_bench_reward':
+                        raise Stopped('box submitted')
+
+                def stop_after_close():
+                    last = resumed.currency_standard_session.data['actions'][-1]
+                    if last['action'] == CLOSE_SHOP and last['status'] == 'verified':
+                        raise Stopped('shop closed')
+
+                resumed.currency_standard_input.side_effect = stop_after_box
+                resumed.checkpoint = stop_after_close
+                with (patch('autohsr.currency_wars_replay.save_sample'),
+                      patch('autohsr.currency_wars_identity.installed_client', return_value=dict(saved['client'])),
+                      self.assertRaisesRegex(*errors[case])):
+                    run_standard(resumed)
+                self.assertEqual(resumed.snapshot.call_count, captures)
+                self.assertEqual([call.args[1].intent for call in resumed.currency_standard_input.call_args_list], intents)
+                self.assertEqual(resumed.window.click.call_count, int(case == 'shop'))
+                self.assertEqual(resumed.window.click_held.call_count, int(case == 'preparation'))
+                current = StandardSession(path).data
+                if case == 'unknown_confirmation':
+                    self.assertEqual(path.read_bytes(), before)
+                else:
+                    self.assertEqual(current['actions'][:len(saved['actions'])], saved['actions'])
+                if case == 'shop':
+                    self.assertEqual(current['actions'][-1]['status'], 'verified')
+                    self.assertEqual(current['actions'][-1]['investment_shop_observation']['run_dir'], resumed.report.run_dir)
+
+    def test_explicit_resume_reobserves_an_unsubmitted_shop_and_keeps_prior_proof(self):
+        board, selection, session = fixture([('保守派', DEFENSE)])
+        board = gift_board(board)
+        marked = page([('保守派', DEFENSE)], selected=0)
+        shop = automatic_shop(board)
+        persist = StandardSession.persist
+        def pause_before_close(store):
+            persist(store)
+            if (store.data.get('investment', {}).get('shop_observations')
+                    and store.data['actions'][-1]['action'] == CONFIRM):
+                raise Stopped('shop not submitted')
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            c = exchange.StandardExchangeTests().context(first, board, session,
+                [selection, marked, marked, board, board, shop, shop])
+            fresh_captures(c)
+            with (patch('autohsr.currency_wars_replay.save_sample'),
+                  patch.object(StandardSession, 'persist', pause_before_close),
+                  self.assertRaises(Stopped)):
+                run_standard(c)
+            saved = StandardSession(c.currency_standard_session.path).data
+            previous = saved['investment']['shop_observations'][0]
+            self.assertEqual(saved['actions'][-1]['action'], CONFIRM)
+            self.assertEqual(c.window.click.call_count, 2)
+            resumed = exchange.StandardExchangeTests().context(second, board, saved, [shop, shop, board, board])
+            fresh_captures(resumed)
+            def stop_after_close():
+                store = getattr(resumed, 'currency_standard_session', None)
+                if store and store.data['actions'][-1]['action'] == CLOSE_SHOP and store.data['actions'][-1]['status'] == 'verified':
+                    raise Stopped('shop closed')
+            resumed.checkpoint = stop_after_close
+            with patch('autohsr.currency_wars_replay.save_sample'), self.assertRaises(Stopped):
+                run_standard(resumed)
+            current = StandardSession(resumed.currency_standard_session.path).data
+            old, new = current['investment']['shop_observations']
+            self.assertEqual(old, previous)
+            self.assertNotEqual(old['run_dir'], new['run_dir'])
+            self.assertEqual(new, current['actions'][-1]['investment_shop_observation'])
+            resumed.window.click.assert_called_once()
+            with self.assertRaises(AutomationError):
+                next_action(shop, session=current)
 
     def test_paid_refresh_records_observed_bonus_and_closes_before_replanning(self):
         for gain,xp in ((2,(0,6)),(3,(0,6)),(2,(5,6))):
@@ -375,6 +743,7 @@ class InvestmentTests(unittest.TestCase):
             board,scene,session=fixture([('爆仓',EXECUTE)]);marked=page([('爆仓',EXECUTE)],selected=0)
             with self.subTest(case=case),tempfile.TemporaryDirectory() as folder:
                 c=trading.StandardTradingTests().context(folder,board,session,[scene,marked,marked,board,board])
+                fresh_captures(c)
                 original_input=c.currency_standard_input.side_effect
                 def dispatch(current,choice):
                     if case=='pause' and choice.intent==CONFIRM:raise InputInterrupted('paused')

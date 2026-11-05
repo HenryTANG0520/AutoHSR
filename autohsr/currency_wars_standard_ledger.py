@@ -138,6 +138,11 @@ def ledger_status(actions, *, investment_projection=None, popup_projection=None)
             if not valid_effect(action,actions):return 'unknown'
             if action.get('investment_verified') is not True and index!=investment_projection:return 'pending'
             continue
+        if name=='close_standard_investment_shop':
+            from .currency_wars_standard_investment import valid_shop_return
+            if not valid_shop_return(action, actions):
+                return 'unknown'
+            continue
         if name=='stage_standard_consumable':
             from .currency_wars_standard_consumables import valid_effect
             if not valid_effect(action,actions):return 'unknown'

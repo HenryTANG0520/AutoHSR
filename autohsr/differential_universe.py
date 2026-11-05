@@ -38,6 +38,32 @@ FINAL_LABELS = ("模拟宇宙通关", "通关结算", "演算成功", "最终结
 ROOM_TIMEOUT = 90
 COMBAT_APPROACH_MS = 3000
 RUN_TIMEOUT = 3600
+CURIO_DISCARD_FEEDBACK_TIMEOUT = 15
+DU_TUTORIAL_HEADINGS = ('获得物品','祝福强化','站点卡升级','信标已部署','失去站点卡','获得站点卡',
+                        '获得祝福','获得奇物','方程展开')
+# Exact in-run screens that already have a complete classifier. Other known
+# modal or navigation kinds cannot confirm this receipt.
+CURIO_DISCARD_STABLE_PAGES = frozenset((
+    'adventure_challenge','adventure_result','blessing_discard','miracle_target',
+    'node_victory','shop','synthesis',
+))
+
+# These page classes also have permissive OCR fallbacks for ordinary
+# navigation. A card description cannot supply their departure heading.
+CURIO_DISCARD_DEPARTURE_HEADINGS = {
+    "blessing_choice": ("选择祝福", "请选择祝福"),
+    "equation_choice": ("选择方程", "请选择方程", "方程选择"),
+    "curio_choice": ("选择奇物", "请选择奇物", "奇物选择"),
+    "miracle_choice": ("选择你的奇迹", "选择惊世奇迹", "选择奇迹"),
+    "mask_choice": ("选择一张面具", "选择你的面具", "选择面具"),
+    "station_choice": ("选择下一站",),
+    "area_choice": ("选择区域", "区域选择", "抽取区域", "选择一个区域", "区域待选择"),
+    "route": ("位面地图", "探索进度", "当前区域"),
+    "rest": ("休整区", "休息区", "休整区域"),
+    "victory": ("分析报告", *FINAL_LABELS),
+    "defeat": ("分析报告", "战斗失败", "模拟失败"),
+    "event": ("事件", "遭遇", "随机事件"),
+}
 
 
 def is_battle_scene(scene: Scene, context=None) -> bool:
@@ -381,8 +407,7 @@ class DifferentialUniverseWorkflow:
 
     def _close_tutorial(self,scene):
         def heading(page):
-            name=next((name for name in ('获得物品','祝福强化','站点卡升级','信标已部署','失去站点卡','获得站点卡',
-                                         '获得祝福','获得奇物','方程展开') if page.has(name,exact=True)),None)
+            name=next((name for name in DU_TUTORIAL_HEADINGS if page.has(name,exact=True)),None)
             detail=None
             if name=='方程展开':
                 names=[token for token in page.tokens if token.within((.38,.43,.62,.51))
@@ -487,7 +512,7 @@ class DifferentialUniverseWorkflow:
         raise AutomationError('删卡已达到指令数量仍未离开目标页，停止重复确认。' if deleting else
             "双卡转换已确认两张仍未离开目标页，停止重复确认。")
 
-    def _click(self, scene: Scene, target: Token, *, intent="navigation", label="action") -> tuple[Scene, str]:
+    def _send_click(self, scene: Scene, target: Token, intent: str, *, feedback_deadline=None):
         if intent=='periodic_start':
             self.ctx.checkpoint()
             self._weekly_boundary()
@@ -502,7 +527,14 @@ class DifferentialUniverseWorkflow:
         if intent=='periodic_start':
             self.ctx.checkpoint()
             self._weekly_boundary()
-        self.ctx.click(scene, target, du_intent=intent)
+        if feedback_deadline is None:
+            self.ctx.click(scene, target, du_intent=intent)
+        else:
+            self.ctx.click(scene, target, du_intent=intent, du_feedback_deadline=feedback_deadline)
+        return record
+
+    def _click(self, scene: Scene, target: Token, *, intent="navigation", label="action") -> tuple[Scene, str]:
+        record = self._send_click(scene, target, intent)
         current = self.ctx.last_scene
         if current is None:
             raise AutomationError("差分宇宙操作后未获得新截图。")
@@ -1101,6 +1133,179 @@ class DifferentialUniverseWorkflow:
                 request['feedback_status']='unverified'
                 self._persist_ledger()
             raise AutomationError('最后一次区域选择确认中断，反馈待核对，未重复点击。') from error
+
+    def _confirm_curio_discard(self, before, target):
+        epoch = self.ctx.scene_epoch
+        deadline = time.monotonic() - self._inactive() + CURIO_DISCARD_FEEDBACK_TIMEOUT
+        record = self._send_curio_discard_action(before, target, 'curio_discard_confirm', deadline)
+        receipts = [record]
+        try:
+            scene, kind = self._wait_curio_discard_feedback(before, epoch, deadline)
+            if kind == 'tutorial_overlay':
+                record['overlay_evidence'] = [page['evidence'] for page in self.report['page_history'][-2:]]
+                record['overlay_close_action'] = self._action_no + 1
+                receipts.append(self._send_curio_discard_action(
+                    scene, du_tutorial_close_prompt(scene), 'du_tutorial_close', deadline))
+                self._reward_overlay_budget = max(0, self._reward_overlay_budget - 1)
+                scene, kind = self._wait_curio_discard_feedback(before, epoch, deadline, closed_overlay=scene)
+            evidence = [page['evidence'] for page in self.report['page_history'][-2:]]
+            for receipt in receipts:
+                receipt.update(feedback_status='verified', after_ocr=scene.text, after_page=kind,
+                               after_evidence=evidence[-1], departure_evidence=evidence)
+            self._persist_ledger()
+            return scene, kind
+        except InputInterrupted as error:
+            raise AutomationError('强制舍弃奇物确认中断，反馈待核对，未重复点击。') from error
+
+    def _send_curio_discard_action(self, scene, target, intent, deadline):
+        action_index = len(self.report['actions'])
+        try:
+            record = self._send_click(scene, target, intent, feedback_deadline=deadline)
+        except AutomationError as error:
+            actions = self.report['actions'][action_index:]
+            request = actions[0] if actions and actions[0].get('intent') == intent else None
+            not_sent = False
+            if request is not None:
+                # The formal Context records entry to the send boundary
+                # before invoking the window, just as for the final area.
+                not_sent = self.ctx.report.operation == TASK and len(actions) == 1 and request['status'] == 'requested'
+                if not_sent:
+                    request['status'] = 'not_sent'
+                else:
+                    request['feedback_status'] = 'unverified'
+                self._persist_ledger()
+            if isinstance(error,InputInterrupted) and not not_sent:
+                raise AutomationError('强制舍弃奇物确认中断，反馈待核对，未重复点击。') from error
+            raise
+        record.update(status='sent', feedback_status='unverified')
+        self._persist_ledger()
+        return record
+
+    @staticmethod
+    def _curio_discard_anchor_remains(before, scene, anchors):
+        """Compare the old page or overlay's own anchors independently of OCR."""
+        if before.image is None or scene.image is None or before.image.shape != scene.image.shape:
+            return False
+        import cv2
+
+        height, width = before.image.shape[:2]
+        dx, dy = max(2, round(.004 * width)), max(2, round(.004 * height))
+        for anchor in anchors:
+            if anchor is None:
+                continue
+            x1, y1, x2, y2 = [round(value * size) for value, size in zip(anchor.box, (width,height,width,height))]
+            if not (0 <= x1 < x2 <= width and 0 <= y1 < y2 <= height):
+                continue
+            reference = before.image[y1:y2, x1:x2]
+            if reference.std() < 8:
+                continue
+            current = scene.image[max(0,y1-dy):y2+dy, max(0,x1-dx):x2+dx]
+            match = cv2.matchTemplate(current, reference, cv2.TM_CCOEFF_NORMED)
+            if cv2.minMaxLoc(match)[1] >= .92:
+                return True
+        return False
+
+    def _curio_discard_heading_remains(self, before, scene):
+        return self._curio_discard_anchor_remains(before, scene, (
+            before.find('丢弃奇物',(0,0,.32,.13),exact=True),
+            before.find('请舍弃奇物',(.30,.10,.70,.20),exact=True),
+        ))
+
+    @staticmethod
+    def _curio_discard_overlay_anchors(scene):
+        prompt = du_tutorial_close_prompt(scene)
+        if prompt is None:
+            # A damaged close line can veto departure. Only the existing
+            # tutorial guard can authorize its actual click.
+            prompt = next((token for token in scene.tokens if token.within((.30,.80,.70,.99))
+                           and re.fullmatch(r'点击.{0,5}关闭', normalize(token.text))), None)
+        title = scene.find(DU_TUTORIAL_HEADINGS,(.30,.05,.70,.25),exact=True)
+        return prompt, title
+
+    def _curio_discard_departure(self, before, scene, kind):
+        if (scene.has('丢弃奇物',(0,0,.32,.13),exact=True)
+                or scene.has('请舍弃奇物',(.30,.10,.70,.20),exact=True)
+                or re.search(r'(?:需|须)舍弃1次奇物',_text(scene))):
+            return None
+        headings = CURIO_DISCARD_DEPARTURE_HEADINGS.get(kind)
+        if headings:
+            title = scene.find(headings, (0,0,.75,.24), exact=True)
+            if title is None or title.score < .85:
+                return None
+        elif kind.startswith('field_'):
+            header = normalize(''.join(t.text for t in scene.tokens
+                                       if t.score >= .85 and t.within((0,0,.40,.13))))
+            if not has_du_field_plane_marker(header):
+                return None
+        elif kind not in CURIO_DISCARD_STABLE_PAGES:
+            return None
+        if self._curio_discard_heading_remains(before, scene):
+            return None
+        return kind
+
+    def _wait_curio_discard_feedback(self, before, epoch, deadline, *, closed_overlay=None):
+        latest = (closed_overlay or before).captured_at
+        closed = (closed_overlay, self._curio_discard_overlay_anchors(closed_overlay)) if closed_overlay else None
+        overlay = None
+        previous = last_observed = None
+        for _ in range(24):
+            self.ctx.checkpoint()
+            if self.ctx.scene_epoch != epoch or self.ctx.runner.input_epoch != epoch:
+                raise InputInterrupted('强制舍弃奇物确认期间输入代次改变。')
+            if time.monotonic() - self._inactive() >= deadline:
+                break
+            try:
+                scene = self.ctx.snapshot()
+            except EmptyCapture:
+                scene = None
+            if self.ctx.scene_epoch != epoch or self.ctx.runner.input_epoch != epoch:
+                raise InputInterrupted('强制舍弃奇物确认期间输入代次改变。')
+            now = time.monotonic()
+            kind = None
+            if scene is not None and scene is self.ctx.last_scene and scene.captured_at > latest:
+                latest = scene.captured_at
+                last_observed = scene
+                if (0 <= now - latest <= 8 and now - self._inactive() < deadline
+                        and scene.geometry == before.geometry):
+                    page_kind = classify_page(scene, self.ctx)
+                    anchors = self._curio_discard_overlay_anchors(scene)
+                    if any(anchors):
+                        overlay = scene, anchors
+                        prompt = anchors[0]
+                        if (closed_overlay is None and page_kind == 'tutorial_overlay'
+                                and prompt is not None and prompt.score >= .85
+                                and prompt.within((.30,.80,.70,.99))):
+                            kind = 'tutorial_overlay'
+                    elif not any(self._curio_discard_anchor_remains(page, scene, anchors)
+                                 for page, anchors in filter(None, (closed, overlay))):
+                        if closed_overlay is not None and page_kind == 'curio_discard':
+                            kind = 'curio_discard'
+                        else:
+                            kind = self._curio_discard_departure(before, scene, page_kind)
+            if kind is not None and previous is not None and kind == previous[0]:
+                if time.monotonic() - self._inactive() >= deadline:
+                    break
+                if kind == 'curio_discard':
+                    self._observe(scene, 'curio_discard_original_returned')
+                    raise AutomationError('关闭弹层后仍在舍弃奇物页，反馈待核对，未重复点击。')
+                if kind == 'tutorial_overlay':
+                    self._observe(previous[1], 'curio_discard_overlay')
+                    self._observe(scene, 'curio_discard_overlay_close_ready')
+                else:
+                    self._observe(previous[1], 'curio_discard_departure')
+                    self._observe(scene, 'curio_discard_confirmed')
+                self.ctx.checkpoint()
+                if self.ctx.scene_epoch != epoch or self.ctx.runner.input_epoch != epoch:
+                    raise InputInterrupted('强制舍弃奇物确认期间输入代次改变。')
+                return scene, kind
+            previous = (kind, scene) if kind is not None else None
+            remaining = deadline - (time.monotonic() - self._inactive())
+            if remaining <= 0:
+                break
+            self.ctx.sleep(min(.7, remaining))
+        if last_observed is not None:
+            self._observe(last_observed, 'curio_discard_feedback_unverified')
+        raise AutomationError('强制舍弃奇物反馈待核对，未在限时内核实离页，未重复点击。')
 
     def _finish_adventure(self,scene,kind):
         from .du_adventure import hanu_result_exit
@@ -2357,11 +2562,7 @@ class DifferentialUniverseWorkflow:
                     confirm=self._find(scene,("丢弃","丢弃·"),(.78,.85,.99,.96))
                     if confirm is None:
                         raise AutomationError("强制舍弃奇物选中后未识别到丢弃按钮。")
-                    scene,kind=self._click(scene,confirm,intent="curio_discard_confirm",label="curio_discard_confirmed")
-                    if kind == "curio_discard":
-                        scene=self.ctx.wait(lambda s:classify_page(s,self.ctx)!="curio_discard",
-                                            timeout=15,description="强制舍弃奇物完成")
-                        kind=self._observe(scene,"curio_discard_applied")
+                    scene,kind=self._confirm_curio_discard(scene,confirm)
                     continue
                 if kind=='blessing_discard':
                     scene,kind=self._select_blessing(scene,discard=True)
