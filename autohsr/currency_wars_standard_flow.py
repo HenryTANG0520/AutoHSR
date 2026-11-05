@@ -1162,6 +1162,7 @@ def transition_ready(choice, scene, confidence=.65, *, before=None, session=None
 
 
 def run_standard(c):
+    from .currency_wars_defeat import INTENTS as DEFEAT_INTENTS
     from .currency_wars_standard_ledger import FINANCIAL_ACTIONS
     if c.report.operation != 'currency_wars_standard':
         raise AutomationError('标准对局开发须使用独立入口。')
@@ -1490,7 +1491,8 @@ def run_standard(c):
         c.log('标准A8-40开发：' + choice.intent)
         loot_pickup = 'loot_sale_action_id' in action
         loot_claim = _loot_reward_origin(store.data) if choice.intent == 'choose_standard_reward' else None
-        strict_feedback = investment_box or loot_click or loot_box is not None or loot_claim is not None
+        defeat_step = choice.intent in DEFEAT_INTENTS
+        strict_feedback = defeat_step or investment_box or loot_click or loot_box is not None or loot_claim is not None
         observed_at = scene.captured_at
         c.currency_standard_input(scene, choice)
         elapsed, after, stable, previous_popup = 0., None, 0, None
@@ -1507,7 +1509,7 @@ def run_standard(c):
                 if strict_feedback:
                     stable = 0
             if strict_feedback and c.runner.input_epoch != action['input_epoch']:
-                raise InputInterrupted('奖励动作的输入代次已变化，原意图保留待核对。')
+                raise InputInterrupted('标准动作反馈的输入代次已变化，原意图保留待核对。')
             if after is not None:
                 guard._require_current_scene(after)
                 from .currency_wars_identity import account_key
@@ -1575,8 +1577,7 @@ def run_standard(c):
                 previous_pickup = pickup
                 stable = (len(initial_return_frames) if choice.expected == 'standard_initial_shop_closed'
                           else stable+1) if ready else 0
-                from .currency_wars_defeat import INTENTS as DEFEAT_INTENTS
-                required = 2 if investment_box or loot_box is not None or choice.intent in DEFEAT_INTENTS or choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable','standard_relocate_inspectable',
+                required = 2 if investment_box or loot_box is not None or defeat_step or choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable','standard_relocate_inspectable',
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
                                                     'standard_sale_panel','standard_owned_sold','standard_field_sale_panel','standard_field_owned_sold','standard_equipment_inspectable',
                                                     'standard_reward_returned','standard_supply_selected','standard_supply_refreshed',

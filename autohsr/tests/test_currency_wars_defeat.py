@@ -153,6 +153,29 @@ class DefeatTests(unittest.TestCase):
             self.assertTrue(settled(report.currency_wars));self.assertEqual(report.status,'partial')
             self.assertFalse(report.currency_wars['completion_verified']);self.assertEqual(c._fixture_raw_window.click.call_count,4)
 
+    def test_repeated_rating_capture_cannot_authorize_the_next_defeat_click(self):
+        first_stamp, dispatches = [], []
+        capture = loops.identity_snapshot
+
+        def repeated_rating(c, read):
+            page = capture(c, read)
+            if observe(page, .65).page_kind == 'defeat_rating':
+                dispatches.append(c._fixture_raw_window.click.call_count)
+                if len(dispatches) == 1:
+                    first_stamp.append(page.captured_at)
+                elif len(dispatches) == 2:
+                    page.captured_at = first_stamp[0]
+            return page
+
+        def extra_ratings(states):
+            states[4:4] = [frame('defeat_rating'), frame('defeat_rating')]
+
+        with (tempfile.TemporaryDirectory() as folder,
+              patch.object(loops, 'identity_snapshot', side_effect=repeated_rating)):
+            report, _ = finish(Path(folder), scene_mutation=extra_ratings)
+        self.assertTrue(settled(report.currency_wars))
+        self.assertEqual(dispatches, [1, 1, 1, 1])
+
     def test_isolated_lobby_or_failure_text_cannot_supply_original_attempt(self):
         for kind in ('match_defeat','defeat_rating','defeat_summary'):
             with self.subTest(kind=kind),self.assertRaises(AutomationError):next_action(frame(kind),session={})

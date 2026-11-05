@@ -3,7 +3,7 @@ import time
 
 from .currency_wars import CurrencyWarsWorkflow, observe
 from .currency_wars_identity import account_key
-from .currency_wars_node import battle_node, result_node
+from .currency_wars_node import battle_node, result_node, result_nodes
 from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, Stopped
 
 
@@ -15,9 +15,12 @@ def _discard_current_auto(store, tracker):
         store.persist()
 
 
-def _unreadable_reason(identity_unreadable):
-    return ('出战后持续未核实当前账号标识，未采用缺读帧的战斗或结算。'
-            if identity_unreadable else '出战后持续未识别到对应战斗或结算。')
+def _unreadable_reason(identity_unreadable, result_unreadable):
+    if identity_unreadable:
+        return '出战后持续未核实当前账号标识，未采用缺读帧的战斗或结算。'
+    if result_unreadable:
+        return '结算画面已出现，原观察期限内未核实本次节点号。'
+    return '出战后持续未识别到对应战斗或结算。'
 
 
 def _observe_auto(c, store, scene, guard, tracker):
@@ -89,6 +92,8 @@ def observe_started_node(c, store, scene):
     elapsed, unseen = 0., 0.
     defeat_frames=[]
     auto_tracker = {}
+    latest_stamp = None
+    observation_epoch = c.runner.input_epoch
     identity_gap = False
     limit = min(180,c.settings.battle_timeout)
     while elapsed < limit:
@@ -97,11 +102,19 @@ def observe_started_node(c, store, scene):
         kind = 'unknown'
         unreadable = True
         identity_unreadable = False
+        result_unreadable = False
         if scene is None:
             defeat_frames=[]
             _discard_current_auto(store, auto_tracker)
         else:
             guard._require_current_scene(scene)
+            if observation_epoch != c.runner.input_epoch:
+                observation_epoch = c.runner.input_epoch
+                defeat_frames.clear()
+                _discard_current_auto(store, auto_tracker)
+            fresh = latest_stamp is None or scene.captured_at > latest_stamp
+            if fresh:
+                latest_stamp = scene.captured_at
             try:
                 observed_account = account_key(scene,max(.85,c.settings.ocr_confidence))
             except (Stopped, InputInterrupted, FocusLost):
@@ -111,7 +124,6 @@ def observe_started_node(c, store, scene):
                 # Keep the existing bounded observation deadline; never carry
                 # an incomplete auto-on proof across an identity gap.
                 identity_unreadable = True
-                _discard_current_auto(store, auto_tracker)
                 if not identity_gap:
                     c.log('标准节点'+attempt['node']+'当前账号标识暂不可读，仅在原观察期限内重新采集。')
                 identity_gap = True
@@ -119,13 +131,17 @@ def observe_started_node(c, store, scene):
                 if observed_account != store.data.get('account_key'):
                     raise AutomationError('节点观察账号来源不一致。')
                 identity_gap = False
-                kind = observe(scene,c.settings.ocr_confidence).page_kind
+                if fresh:
+                    kind = observe(scene,c.settings.ocr_confidence).page_kind
             if kind!='match_defeat':defeat_frames=[]
             unreadable = kind in ('unknown','preparation')
             if kind=='battle':
                 actual = battle_node(scene,c.settings.ocr_confidence)
                 unreadable = actual is None
+                if unreadable:
+                    _discard_current_auto(store, auto_tracker)
                 if actual is not None and actual != attempt['node']:
+                    _discard_current_auto(store, auto_tracker)
                     attempt.update(status='unknown',reason='战斗节点与本次出战来源不符。')
                     break
                 if actual == attempt['node']:
@@ -136,29 +152,41 @@ def observe_started_node(c, store, scene):
                     c.log('标准节点'+attempt['node']+'战斗已观察，继续核对控件与本次结算。')
                 if actual == attempt['node']:
                     _observe_auto(c, store, scene, guard, auto_tracker)
-            elif kind=='match_defeat':
-                if result_node(scene,c.settings.ocr_confidence)!=attempt['node'] or store.data.get('match_victory_observed') is True:
-                    attempt.update(status='unknown',reason='整局结束与本次出战或原胜利状态不符。');break
-                defeat_frames.append(evidence(c,scene,'currency_standard_defeat_frame_'+str(len(defeat_frames)+1)))
-                if len(defeat_frames)==2:
-                    attempt.update(status='defeated',node_verified=False,defeat_observed=True,result_kind='match_defeat',
-                        result=defeat_frames[-1],defeat_frames=defeat_frames,verification='matching_terminal_defeat_after_start')
-                    store.data.update(match_defeat_observed=True,defeat_start_action_id=action_id)
-                    store.persist();c.log('标准节点'+attempt['node']+'整局结束已观察；等待零生命与独立失败结算核验。')
-                    return scene,True
-            elif kind in ('node_result','final_victory'):
-                same = (result_node(scene,c.settings.ocr_confidence)==attempt['node']
-                        and (kind != 'final_victory' or attempt['node'].startswith('3-')))
-                attempt.update(status='verified' if same else 'unknown',node_verified=same,
-                               result_kind=kind,
-                               result=evidence(c,scene,'currency_standard_node_result'),
-                               verification='matching_result_after_start' if same else 'wrong_result_node')
-                if same and kind == 'final_victory':
-                    store.data.update(match_victory_observed=True, victory_start_action_id=action_id)
-                store.persist()
-                c.log('标准节点'+attempt['node']+('胜利已核实；整局尚未完成。' if same else '结算编号不符，停止推进。'))
-                return scene, same
-            elif kind not in ('unknown','preparation'):
+            elif kind in ('node_result','final_victory','match_defeat'):
+                nodes = result_nodes(scene, c.settings.ocr_confidence)
+                if not nodes:
+                    unreadable = result_unreadable = True
+                    defeat_frames.clear()
+                    _discard_current_auto(store, auto_tracker)
+                elif kind == 'match_defeat':
+                    if nodes != {attempt['node']} or store.data.get('match_victory_observed') is True:
+                        attempt.update(status='unknown',reason='整局结束与本次出战或原胜利状态不符。')
+                        break
+                    defeat_frames.append(evidence(c,scene,'currency_standard_defeat_frame_'+str(len(defeat_frames)+1)))
+                    if len(defeat_frames)==2:
+                        attempt.update(status='defeated',node_verified=False,defeat_observed=True,result_kind='match_defeat',
+                            result=defeat_frames[-1],defeat_frames=defeat_frames,verification='matching_terminal_defeat_after_start')
+                        store.data.update(match_defeat_observed=True,defeat_start_action_id=action_id)
+                        store.persist();c.log('标准节点'+attempt['node']+'整局结束已观察；等待零生命与独立失败结算核验。')
+                        return scene,True
+                else:
+                    same = nodes == {attempt['node']} and (kind != 'final_victory' or attempt['node'].startswith('3-'))
+                    attempt.update(status='verified' if same else 'unknown',node_verified=same,
+                                   result_kind=kind,
+                                   result=evidence(c,scene,'currency_standard_node_result'),
+                                   verification='matching_result_after_start' if same else 'wrong_result_node')
+                    if same and kind == 'final_victory':
+                        store.data.update(match_victory_observed=True, victory_start_action_id=action_id)
+                    if not same:
+                        reason = '结算节点号有冲突，已停止推进。' if len(nodes) > 1 else '结算与本次出战节点不符，已停止推进。'
+                        attempt['reason'] = reason
+                        store.data.update(action_status='node_unverified', reason=reason)
+                    store.persist()
+                    c.log('标准节点'+attempt['node']+('胜利已核实；整局尚未完成。' if same else '结算编号不符，停止推进。'))
+                    return scene, same
+            elif unreadable:
+                _discard_current_auto(store, auto_tracker)
+            else:
                 attempt.update(status='unknown',reason='出战后出现未校准页面：'+kind)
                 break
         c.sleep(2)
@@ -167,7 +195,7 @@ def observe_started_node(c, store, scene):
         if unreadable:
             unseen += duration
             if unseen >= 30:
-                attempt.update(status='unknown',reason=_unreadable_reason(identity_unreadable))
+                attempt.update(status='unknown',reason=_unreadable_reason(identity_unreadable, result_unreadable))
                 break
         capture_started, capture_inactive = time.monotonic(), c.runner.inactive_duration
         try:
@@ -179,7 +207,7 @@ def observe_started_node(c, store, scene):
         if unreadable:
             unseen += capture_duration
             if unseen >= 30:
-                attempt.update(status='unknown',reason=_unreadable_reason(identity_unreadable))
+                attempt.update(status='unknown',reason=_unreadable_reason(identity_unreadable, result_unreadable))
                 break
     else:
         attempt.update(status='timeout',reason='标准节点战斗观察超时，未重复出战。')

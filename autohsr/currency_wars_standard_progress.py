@@ -13,6 +13,33 @@ from .currency_wars_prepare import trusted
 from .models import AutomationError
 
 
+_PROGRESS_INPUTS = frozenset(('continue_standard_node', 'advance_standard_next_plane',
+                              'close_standard_arrival_shop')) | {f'settle_standard_{page}' for page in ENDING_STEPS}
+
+
+def progress_input_scope(intent, current, saved):
+    """Require the same durable node and settlement evidence before dispatch."""
+    from .currency_wars_defeat import INTENTS as DEFEAT_INPUTS
+    from .currency_wars_standard_sale import same_target
+
+    if intent not in _PROGRESS_INPUTS and intent not in DEFEAT_INPUTS:
+        return False
+    fields = ('node_attempt', 'status', 'start_verified', 'match_victory_observed',
+              'victory_start_action_id', 'match_defeat_observed', 'defeat_start_action_id')
+    reason = '节点推进的出战或结算来源与落盘记录不一致，未发送输入。'
+    try:
+        live, durable = current['actions'], saved['actions']
+        start = current['node_attempt']['start_action_id']
+        if (type(start) is not int or not 0 <= start < len(live)-1 or len(live) != len(durable)
+                or not same_target([current.get(key) for key in fields], [saved.get(key) for key in fields])
+                or not same_target(live[start], durable[start])
+                or not same_target(live[-5:], durable[-5:])):
+            raise AutomationError(reason)
+    except (IndexError, KeyError, TypeError, ValueError) as error:
+        raise AutomationError(reason) from error
+    return True
+
+
 def verified_attempt(session):
     attempt = session.get('node_attempt', {})
     node, index = attempt.get('node'), attempt.get('start_action_id')

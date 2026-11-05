@@ -2851,6 +2851,40 @@ class DuRuntimeTests(unittest.TestCase):
             self.assertEqual(flow._confirm_choice(before,'blessing_choice'),(station,'station_choice'))
             window.click.assert_called_once()
 
+    def test_blessing_confirmation_does_not_treat_shifted_title_ink_as_a_bonus(self):
+        import cv2
+        import numpy as np
+        from pathlib import Path
+        from autohsr.du_strategy import blessing_columns, blessing_title_glyphs, compare_blessing_title_glyphs
+
+        root = Path(__file__).parent/'fixtures/du_runtime'
+        original, shifted = [cv2.imread(str(root/f'blessing_title_variant_{i}.png')) for i in range(2)]
+        height, width = shifted.shape[:2]
+        row = shifted[round(.45*height):round(.495*height), round(.405*width):round(.595*width)]
+        # Move the existing middle title one pixel on the 960x540 source image.
+        row[:] = cv2.warpAffine(row, np.float32([[1, 0, 1], [0, 1, 0]]), (row.shape[1], row.shape[0]))
+        tokens = [t('选择祝福'), t('新星爆发', .25, .47), t('无存在者', .5, .47),
+                  t('死神骑车来', .75, .47), t('确认', .88, .89)]
+        altered = [Token('无存任者', token.score, token.box) if token.text == '无存在者' else token for token in tokens]
+        before = Scene(tokens, original)
+        first, second = Scene(altered, shifted), Scene(altered, shifted.copy())
+        station = Scene([t('选择下一站'), t('战斗', .25, .47)])
+        with self.captured_du_flow([before, first, second, station]) as (flow, window):
+            flow.ctx.snapshot()
+            after, kind = flow._confirm_choice(before, 'blessing_choice')
+            self.assertIs(after, station)
+            self.assertEqual(kind, 'station_choice')
+            window.click.assert_called_once()
+
+        columns = blessing_columns(before)
+        old_ink = blessing_title_glyphs(before, columns)[1]
+        shifted_ink = blessing_title_glyphs(first, columns)[1]
+        hidden = shifted_ink.copy()
+        hidden[:, hidden.shape[1]//2:] = False
+        self.assertIs(compare_blessing_title_glyphs(old_ink, shifted_ink), True)
+        self.assertIsNone(compare_blessing_title_glyphs(old_ink, hidden))
+        self.assertIsNone(compare_blessing_title_glyphs(old_ink, np.zeros_like(shifted_ink)))
+
     def test_bonus_blessing_is_a_new_choice_and_body_text_is_not_the_anchor(self):
         from autohsr.tests.test_du_strategy import page
         context=Mock(settings=Settings(),report=Mock(differential_universe={}))

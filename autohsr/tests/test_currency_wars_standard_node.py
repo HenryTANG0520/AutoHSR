@@ -1,4 +1,5 @@
 """Standard node results are tied to a durable start; battle remains game-owned."""
+import json
 import tempfile
 import time
 import unittest
@@ -18,6 +19,13 @@ def current(kind,node='1-1'):
     state=screen(kind,node)
     state.tokens.append(Token('UID:100000000',.99,(.01,.96,.1,.99)))
     return state
+
+
+def defeat_result():
+    page = current('final_victory')
+    page.tokens = [Token('挑战结束' if t.text == '挑战成功' else '1-1首领'
+                         if t.text == '3-5首领' else t.text, t.score, t.box) for t in page.tokens]
+    return page
 
 
 class StandardNodeTests(unittest.TestCase):
@@ -69,6 +77,43 @@ class StandardNodeTests(unittest.TestCase):
                 self.assertFalse(store.data['completion_verified'])
                 self.assertEqual(len(store.data['actions']),1)
 
+    def test_known_result_with_unreadable_node_recovers_on_the_same_attempt(self):
+        from autohsr.currency_wars import observe
+        from autohsr.currency_wars_node import result_node
+
+        recorded = json.loads((Path(__file__).parent/'fixtures/currency_wars_pages.json').read_text('utf8'))
+        for variant in ('missing', 'historical_ocr'):
+            with self.subTest(variant=variant), tempfile.TemporaryDirectory() as folder:
+                store = self.store(folder)
+                hidden, result = current('node_result'), current('node_result')
+                if variant == 'missing':
+                    hidden.tokens = [t for t in hidden.tokens if not t.within((.4, .24, .53, .30))]
+                else:
+                    hidden.tokens = [Token(**t) for t in recorded['pages']['node_result']['tokens']] + hidden.tokens[-1:]
+                self.assertEqual(observe(hidden, .65).page_kind, 'node_result')
+                self.assertIsNone(result_node(hidden))
+                c = self.context([current('battle'), hidden, result])
+                with patch('autohsr.currency_wars_replay.save_sample'):
+                    after, verified = observe_started_node(c, store, c.snapshot())
+                self.assertTrue(verified)
+                self.assertIs(after, result)
+                self.assertTrue(store.data['node_attempt']['node_verified'])
+                self.assertFalse(any(call.args[0] is hidden for call in c.evidence.call_args_list))
+                self.assertEqual(len(store.data['actions']), 1)
+
+    def test_conflicting_readable_result_nodes_stop_instead_of_picking_the_expected_one(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = self.store(folder)
+            conflicting = current('node_result')
+            conflicting.tokens.append(Token('1-2战斗', .99, (.455, .253, .501, .281)))
+            c = self.context([conflicting])
+            with patch('autohsr.currency_wars_replay.save_sample'):
+                after, verified = observe_started_node(c, store, c.snapshot())
+            self.assertIs(after, conflicting)
+            self.assertFalse(verified)
+            self.assertFalse(store.data['node_attempt']['node_verified'])
+            self.assertIn('节点号有冲突', store.data['reason'])
+
     def test_auto_on_requires_two_distinct_fresh_observations_without_adding_input(self):
         from autohsr.currency_wars_auto import AutoObservation
         with tempfile.TemporaryDirectory() as folder:
@@ -99,10 +144,11 @@ class StandardNodeTests(unittest.TestCase):
         from autohsr.currency_wars_auto import AutoObservation
         with tempfile.TemporaryDirectory() as folder:
             store=self.store(folder)
-            c=self.context([current('battle'),current('battle'),current('node_result')])
+            result=current('node_result')
+            c=self.context([current('battle'),current('battle'),result])
             snapshot=c.snapshot;captured=time.monotonic()-1
             def same_capture_time():
-                page=snapshot();page.captured_at=captured
+                page=snapshot();page.captured_at=captured+(.01 if page is result else 0)
                 return page
             c.snapshot=same_capture_time
             with patch('autohsr.currency_wars_replay.save_sample'),patch('autohsr.currency_wars_auto.read_auto',return_value=AutoObservation('on',.99,())):
@@ -228,16 +274,11 @@ class StandardNodeTests(unittest.TestCase):
                 self.assertNotIn('auto_observation',saved)
 
     def test_identity_or_capture_gap_requires_two_new_defeat_frames(self):
-        def defeated():
-            page=current('final_victory')
-            page.tokens=[Token('挑战结束' if t.text=='挑战成功' else '1-1首领'
-                               if t.text=='3-5首领' else t.text,t.score,t.box) for t in page.tokens]
-            return page
         for gap in ('identity','capture'):
             with self.subTest(gap=gap),tempfile.TemporaryDirectory() as folder:
                 store=self.store(folder)
-                first,second,third=defeated(),defeated(),defeated()
-                hidden=defeated();hidden.tokens=hidden.tokens[:-1]
+                first,second,third=defeat_result(),defeat_result(),defeat_result()
+                hidden=defeat_result();hidden.tokens=hidden.tokens[:-1]
                 missing=hidden if gap=='identity' else EmptyCapture('transition')
                 c=self.context([first,missing,second,third])
                 c.evidence.side_effect=lambda scene,label:label+str(id(scene))+'.png'
@@ -252,6 +293,48 @@ class StandardNodeTests(unittest.TestCase):
                     'currency_standard_defeat_frame_2'+str(id(third))+'.png'])
                 self.assertFalse(store.data['completion_verified'])
                 self.assertEqual(len(store.data['actions']),1)
+
+    def test_repeated_capture_or_epoch_change_breaks_terminal_defeat_confirmation(self):
+        for gap, count in (('duplicate', 4), ('epoch', 3)):
+            with self.subTest(gap=gap), tempfile.TemporaryDirectory() as folder:
+                store = self.store(folder)
+                frames = [defeat_result() for _ in range(count)]
+                c = self.context(frames)
+                snapshot = c.snapshot
+
+                def observe_frame():
+                    frame = snapshot()
+                    if frame is frames[1]:
+                        if gap == 'duplicate':
+                            frame.captured_at = frames[0].captured_at
+                        else:
+                            c.runner.input_epoch = c.scene_epoch = 1
+                    return frame
+
+                c.snapshot = observe_frame
+                c.evidence.side_effect = lambda scene, label: label + str(id(scene)) + '.png'
+                with patch('autohsr.currency_wars_replay.save_sample'):
+                    after, verified = observe_started_node(c, store, c.snapshot())
+                self.assertTrue(verified)
+                self.assertIs(after, frames[-1])
+                self.assertEqual(store.data['node_attempt']['defeat_frames'], [
+                    'currency_standard_defeat_frame_1' + str(id(frames[-2])) + '.png',
+                    'currency_standard_defeat_frame_2' + str(id(frames[-1])) + '.png',
+                ])
+
+    def test_loading_screen_cannot_bridge_auto_on_observations(self):
+        from autohsr.currency_wars_auto import AutoObservation
+
+        with tempfile.TemporaryDirectory() as folder:
+            store = self.store(folder)
+            loading = Scene([current('battle').tokens[-1]])
+            c = self.context([current('battle'), loading, current('battle'), current('node_result')])
+            with (patch('autohsr.currency_wars_replay.save_sample'),
+                  patch('autohsr.currency_wars_auto.read_auto', return_value=AutoObservation('on', .99, ())) as read_auto):
+                _, verified = observe_started_node(c, store, c.snapshot())
+            self.assertTrue(verified)
+            self.assertEqual(read_auto.call_count, 2)
+            self.assertFalse(store.data['node_attempt']['auto_on_observed'])
 
     def test_missing_identity_uses_one_existing_deadline_across_frames_and_never_verifies_result(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -275,19 +358,25 @@ class StandardNodeTests(unittest.TestCase):
             self.assertEqual(len(store.data['actions']),1)
 
     def test_capture_crossing_the_unreadable_deadline_cannot_deliver_a_late_result(self):
-        with tempfile.TemporaryDirectory() as folder:
-            store=self.store(folder)
-            hidden=current('battle');hidden.tokens=hidden.tokens[:-1]
-            result=current('node_result');c=self.context([hidden,result]);first=c.snapshot()
-            clock=SimpleNamespace(monotonic=Mock(side_effect=[0,1,1,32]))
-            with patch('autohsr.currency_wars_standard_node.time',clock),patch('autohsr.currency_wars_replay.save_sample'):
-                after,verified=observe_started_node(c,store,first)
-            self.assertFalse(verified)
-            self.assertIs(after,result)
-            self.assertEqual(store.data['node_attempt']['status'],'unknown')
-            self.assertFalse(store.data['node_attempt']['node_verified'])
-            self.assertNotIn('result',store.data['node_attempt'])
-            self.assertEqual(len(store.data['actions']),1)
+        for missing in ('identity', 'result_node'):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as folder:
+                store=self.store(folder)
+                hidden=current('battle' if missing == 'identity' else 'node_result')
+                if missing == 'identity':
+                    hidden.tokens=hidden.tokens[:-1]
+                else:
+                    hidden.tokens=[t for t in hidden.tokens if not t.within((.4, .24, .53, .30))]
+                result=current('node_result');c=self.context([hidden,result]);first=c.snapshot()
+                clock=SimpleNamespace(monotonic=Mock(side_effect=[0,1,1,32]))
+                with patch('autohsr.currency_wars_standard_node.time',clock),patch('autohsr.currency_wars_replay.save_sample'):
+                    after,verified=observe_started_node(c,store,first)
+                self.assertFalse(verified)
+                self.assertIs(after,result)
+                self.assertEqual(store.data['node_attempt']['status'],'unknown')
+                self.assertFalse(store.data['node_attempt']['node_verified'])
+                self.assertNotIn('result',store.data['node_attempt'])
+                self.assertIn('账号标识' if missing == 'identity' else '节点号', store.data['reason'])
+                self.assertEqual(len(store.data['actions']),1)
 
     def test_identity_recovery_still_rejects_a_different_account_or_node(self):
         for variant in ('account','node'):

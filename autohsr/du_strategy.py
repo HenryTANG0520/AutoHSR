@@ -80,11 +80,39 @@ def compare_blessing_title_glyphs(before,after):
     """Return same, distinct, or None if one mask may be partially hidden."""
     import cv2
     import numpy as np
-    matches=[]
-    for source,target in ((before,after),(after,before)):
-        near=cv2.dilate(target.astype(np.uint8),np.ones((3,3),np.uint8))>0
-        matches.append(bool(np.count_nonzero(source&near)/np.count_nonzero(source)>=.93))
-    return matches[0] if matches[0]==matches[1] else None
+    before_count, after_count = np.count_nonzero(before), np.count_nonzero(after)
+    if before.shape != after.shape or not before_count or not after_count:
+        return None
+    kernel = np.ones((3,3), np.uint8)
+
+    def covered(source, target, count):
+        near = cv2.dilate(target.astype(np.uint8), kernel)>0
+        return bool(np.count_nonzero(source & near) >= .93*count)
+
+    def agreement(current):
+        forward = covered(before, current, before_count)
+        backward = covered(current, before, after_count)
+        return forward if forward == backward else None
+
+    initial = agreement(after)
+    if initial is True:
+        return True
+
+    # A small translation of the entire title is not a changed set of glyphs.
+    # Search at most three pixels in the standard 320x64 title mask, keeping
+    # the same two-way coverage threshold and the full foreground in view.
+    radius = 3
+    padded = cv2.copyMakeBorder(after.astype(np.uint8), radius, radius, radius, radius, cv2.BORDER_CONSTANT)
+    overlap = cv2.matchTemplate(padded, before.astype(np.uint8), cv2.TM_CCORR)
+    _, _, _, (x, y) = cv2.minMaxLoc(overlap)
+    height, width = after.shape
+    aligned = padded[y:y+height, x:x+width]>0
+    if np.count_nonzero(aligned) != after_count:
+        return None
+    matched = agreement(aligned)
+    if matched is True and min(before_count, after_count) < .93*max(before_count, after_count):
+        return None
+    return initial if matched is False else matched
 
 
 def same_blessing_titles(before,after):

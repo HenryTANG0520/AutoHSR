@@ -85,6 +85,32 @@ class StandardProgressTests(unittest.TestCase):
                 with self.subTest(mutation=mutation), self.assertRaises(AutomationError):
                     next_action(current('node_result'), session=data)
 
+    def test_continue_and_settlement_reject_changed_durable_result_or_start_evidence(self):
+        for kind, changed in (('node_result', 'result'), ('final_victory', 'start')):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as folder:
+                terminal = kind == 'final_victory'
+                store = self.store(folder, '3-5' if terminal else '1-1')
+                if terminal:
+                    store.data['node_attempt']['result_kind'] = kind
+                    store.data.update(match_victory_observed=True, victory_start_action_id=0)
+                scene = current(kind)
+                choice = next_action(scene, session=store.data)
+                self.persist_choice(store, choice)
+                durable = StandardSession(store.path)
+                if changed == 'result':
+                    durable.data['node_attempt']['result'] = 'different-result.png'
+                else:
+                    durable.data['actions'][0]['before'] = 'different-start.png'
+                durable.persist()
+                saved = store.path.read_bytes()
+                c = Context(Runner(Settings(), operation='currency_wars_standard'), Mock(), Mock())
+                c.last_scene, c.currency_standard_session = scene, store
+                c.checkpoint, c.sleep = Mock(), Mock()
+                with self.assertRaisesRegex(AutomationError, '落盘'):
+                    c.currency_standard_input(scene, choice)
+                c.window.click.assert_not_called()
+                self.assertEqual(store.path.read_bytes(), saved)
+
     def test_successor_must_be_exact_or_the_next_uniquely_highlighted_plane(self):
         with tempfile.TemporaryDirectory() as folder:
             store = self.store(folder, '1-6')
