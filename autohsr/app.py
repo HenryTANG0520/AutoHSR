@@ -462,8 +462,11 @@ class Context:
         if choice.intent=='open_standard_bench_reward':
             self._currency_open_reward_held(scene,choice.payload[1])
             return
-        if choice.intent == 'start_standard_a8_40':
-            self._currency_start_standard(scene, choice, guard, store, data, loop_guard, start_sources)
+        loss_progress = (choice.intent in ('continue_standard_node', 'advance_standard_next_plane',
+                                           'advance_standard_boss_intro', 'close_standard_arrival_shop')
+                         and data.get('node_attempt', {}).get('node_loss_verified') is True)
+        if choice.intent == 'start_standard_a8_40' or loss_progress:
+            self._currency_standard_evidenced_click(scene, choice, guard, store, data, loop_guard, start_sources)
             self.sleep(self.settings.action_delay)
             return
         self.last_scene, self._scroll_anchor = None, None
@@ -473,16 +476,21 @@ class Context:
             self._focus_interrupted()
         self.sleep(self.settings.action_delay)
 
-    def _currency_start_standard(self, scene, choice, guard, store, data, loop_guard, start_sources):
+    def _currency_standard_evidenced_click(self, scene, choice, guard, store, data, loop_guard, start_sources):
         from .currency_wars_identity import account_key
-        from .currency_wars_initial import _pixels, evidence_ref
+        from .currency_wars_initial import _pixels, evidence_ref, source_file_ref
         from .currency_wars_points_goal import require_start_window
         from .currency_wars_standard_flow import next_action
+        from .currency_wars_standard_node import original_loss_files
 
-        before = data['actions'][0].get('before')
+        starting = choice.intent == 'start_standard_a8_40'
+        operation = '标准开局' if starting else '节点失利推进'
+        before = data['actions'][-1].get('before')
         if not isinstance(before, str) or not before:
-            raise AutomationError('标准开局缺少原始画面，未发送输入。')
-        files = [store.path, Path(before), *(Path(source) for source in start_sources)]
+            raise AutomationError(operation + '缺少原始画面，未发送输入。')
+        losses = () if starting else original_loss_files(data, store.path.parent)
+        files = [store.path, Path(before), *(Path(source) for source in start_sources),
+                 *(path for path, _ in losses)]
         if loop_guard is not None:
             files.append(loop_guard.store.path)
         geometry, captured_at, image = scene.geometry, scene.captured_at, scene.image
@@ -491,7 +499,7 @@ class Context:
             try:
                 return tuple(file_revision(path) for path in files)
             except OSError as error:
-                raise AutomationError('标准开局的记录或原始画面已不可读。') from error
+                raise AutomationError(operation + '的记录或原始画面已不可读。') from error
 
         def before_send(held):
             self.checkpoint()
@@ -500,19 +508,21 @@ class Context:
             saved_revisions = revisions()
             saved = store.require_pending(choice.intent, self.runner.input_epoch)
             if saved != data or saved != store.data:
-                raise AutomationError('标准开局的原落盘意图已改变，未发送输入。')
+                raise AutomationError(operation + '的原落盘意图已改变，未发送输入。')
             try:
                 reference = evidence_ref(scene, before, self.report.run_dir)
             except AutomationError as error:
-                raise AutomationError('标准开局的原始画面与当前采集不符或不可读。') from error
+                raise AutomationError(operation + '的原始画面与当前采集不符或不可读。') from error
+            if any(source_file_ref(path, path.parent)['sha256'] != digest for path, digest in losses):
+                raise AutomationError('原节点失利证据已改变，未继续挑战。')
             self._currency_weekly_checkpoint()
             if (loop_guard is not None
                     and loop_guard.authorize(scene, saved, max(.85, self.settings.ocr_confidence)) != start_sources):
-                raise AutomationError('标准开局的循环积分来源已改变，未发送输入。')
+                raise AutomationError(operation + '的循环来源已改变，未发送输入。')
             if revisions() != saved_revisions:
-                raise AutomationError('标准开局的记录或原始画面在发送前已改变。')
+                raise AutomationError(operation + '的记录或原始画面在发送前已改变。')
             if scene.image is not image:
-                raise AutomationError('标准开局的当前采集已更换。')
+                raise AutomationError(operation + '的当前采集已更换。')
             if image.flags.writeable:
                 image.setflags(write=False)
                 held.callback(image.setflags, write=True)
@@ -520,18 +530,18 @@ class Context:
             if (_pixels(image) != reference['pixel_sha256']
                     or account_key(scene, self.settings.ocr_confidence) != saved['account_key']
                     or next_action(scene, self.settings.ocr_confidence, session=saved) != choice):
-                raise AutomationError('标准开局的当前账号、页面或目标已改变，未发送输入。')
+                raise AutomationError(operation + '的当前账号、页面或目标已改变，未发送输入。')
             # The read handles remain held through SendInput. Recheck the
             # window and controls after hashing and re-deriving the target.
             self.window.guard(geometry)
             if self.window.emergency_pressed():
                 raise Stopped('F10 紧急停止。')
-            if loop_guard is not None:
+            if starting and loop_guard is not None:
                 require_start_window(loop_guard.store)
             guard._require_current_scene(scene)
             if (scene.geometry != geometry or scene.captured_at != captured_at or scene.image is not image
                     or image.flags.writeable or tuple(scene.tokens) != tokens):
-                raise AutomationError('标准开局的当前采集在发送前已改变。')
+                raise AutomationError(operation + '的当前采集在发送前已改变。')
             if self.runner.stop_requested:
                 raise Stopped('任务已停止。')
 
@@ -541,7 +551,7 @@ class Context:
         except FocusLost:
             self._focus_interrupted()
         except (OSError, ValueError) as error:
-            raise AutomationError('标准开局的记录或原始画面无法稳定读取。') from error
+            raise AutomationError(operation + '的记录或原始画面无法稳定读取。') from error
         finally:
             self.last_scene, self._scroll_anchor = None, None
 

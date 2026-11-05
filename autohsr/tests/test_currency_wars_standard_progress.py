@@ -1,20 +1,26 @@
 """Behavioral contracts for result continuation, settlement and interrupted IO."""
 import tempfile
 import re
+import time
 import unittest
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import numpy as np
+
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
+from autohsr.currency_wars import observe
 from autohsr.currency_wars_node import result_node
 from autohsr.currency_wars_standard_budget import StandardBudget
 from autohsr.currency_wars_session import StandardSession
 from autohsr.currency_wars_standard_flow import StandardAction, next_action, run_standard, transition_ready
-from autohsr.currency_wars_standard_node import observe_started_node
+from autohsr.currency_wars_standard_node import observe_started_node, read_survived_loss
 from autohsr.currency_wars_standard_progress import BOSS_INTRO_ACTION, BOSS_INTRO_RETURN, progress_verified
 from autohsr.models import AutomationError, InputInterrupted, Stopped, Token
+from autohsr.windows import GameWindow, Geometry
 from autohsr.tests import test_currency_wars_flow as flow_helpers
 from autohsr.tests import test_currency_wars_standard_flow as standard_helpers
 from autohsr.tests import test_currency_wars_standard_node as node_helpers
@@ -26,6 +32,17 @@ def board(node):
     scene = prepared()
     scene.tokens = [t for t in scene.tokens if not (t.within((.1,.04,.29,.13)) and re.fullmatch(r'[1-3]-[0-9]+',t.text))]
     scene.tokens.append(Token(node, .99, (.23,.055,.26,.085)))
+    return scene
+
+
+def loss_page(node='1-1', life=60):
+    """Synthetic layout using the result field locations and pinned loss text."""
+    scene = current('node_result', node)
+    scene.tokens = [Token('挑战结束' if t.text == '挑战成功' else f'小队生命值{life}'
+                          if t.text.startswith('小队生命值') else t.text, t.score, t.box)
+                    for t in scene.tokens]
+    scene.image = np.full((108, 192, 3), 64, np.uint8)
+    scene.geometry = Geometry(0, 0, 1920, 1080)
     return scene
 
 
@@ -61,6 +78,108 @@ class StandardProgressTests(unittest.TestCase):
         action['target'] = list(choice.payload)
         store.persist()
         return action
+
+    def loss_context(self, folder, window, frames):
+        seed = self.store(folder, observed=False)
+        seed.data['actions'][0]['after'] = 'entered.png'
+        seed.persist()
+        run_dir = Path(folder) / 'resume'
+        run_dir.mkdir()
+        runner = Runner(Settings(), operation='currency_wars_standard', currency_resume=True)
+        runner.report.run_dir = str(run_dir)
+        context = Context(runner, window, Mock())
+        states = iter(frames)
+        origin = time.monotonic() - 1
+        capture = 0
+
+        def snapshot():
+            nonlocal capture
+            capture += 1
+            scene = next(states, None)
+            if scene is None:
+                raise Stopped('synthetic frames exhausted')
+            if observe(scene, .65).page_kind == 'preparation':
+                identity = next(t for t in scene.tokens if t.text.startswith('UID'))
+                scene = board('1-2')
+                scene.tokens.append(identity)
+            scene.captured_at = origin + capture * .01
+            context.last_scene = scene
+            return scene
+
+        def checkpoint():
+            store = getattr(context, 'currency_standard_session', None)
+            if store is not None and store.data.get('node_history'):
+                raise Stopped('synthetic arrival verified')
+
+        context.snapshot, context.checkpoint, context.sleep = snapshot, checkpoint, Mock()
+        return context, seed
+
+    def test_standard_survives_node_loss_without_recording_a_win(self):
+        with tempfile.TemporaryDirectory() as folder:
+            window = Mock()
+            window.emergency_pressed.return_value = False
+            window.click.side_effect = lambda *_args, before_send: before_send()
+            self.assertEqual(observe(loss_page(), .65).page_kind, 'node_loss')
+            frames = (loss_page(), loss_page(), current('preparation', '1-2'), current('preparation', '1-2'))
+            context, seed = self.loss_context(folder, window, frames)
+            with self.assertRaises(Stopped):
+                run_standard(context)
+            data = StandardSession(seed.path).data
+            window.click.assert_called_once()
+            attempt, = data['node_history']
+            self.assertIs(attempt['node_verified'], False)
+            self.assertIs(attempt['node_loss_verified'], True)
+            self.assertEqual(attempt['remaining_hp'], 60)
+            self.assertEqual(data['actions'][-1]['feedback'], dict(page_kind='preparation', node='1-2'))
+            self.assertFalse(data.get('match_victory_observed', False))
+            self.assertFalse(data['completion_verified'])
+            self.assertEqual(StandardBudget(seed.data).window(data)['phase_node'], '1-2')
+
+    def test_loss_fields_and_pair_reject_zero_conflicts_and_a_single_frame(self):
+        split = loss_page()
+        split.tokens = [t for t in split.tokens if not t.text.startswith('小队生命值')]
+        split.tokens.extend((Token('小队生命值', .99, (.35,.452,.421,.479)),
+                             Token('60/100', .98, (.425,.453,.464,.479))))
+        self.assertEqual(read_survived_loss(split)[:2], ('1-1', 60))
+        self.assertIsNone(read_survived_loss(loss_page(life=0)))
+        split.tokens.append(Token('0', .97, (.425,.453,.444,.479)))
+        self.assertIsNone(read_survived_loss(split))
+        conflicting = loss_page()
+        conflicting.tokens.append(Token('前往结算', .98, (.47,.812,.528,.842)))
+        self.assertIsNone(read_survived_loss(conflicting))
+        for frames in ((loss_page(),), (loss_page(), loss_page(life=59))):
+            with tempfile.TemporaryDirectory() as folder:
+                window = Mock()
+                context, seed = self.loss_context(folder, window, frames)
+                with self.assertRaises(Stopped):
+                    run_standard(context)
+                window.click.assert_not_called()
+                attempt = StandardSession(seed.path).data['node_attempt']
+                self.assertFalse(attempt.get('node_loss_verified', False))
+
+    def test_loss_native_send_blocks_replaced_original_evidence(self):
+        with tempfile.TemporaryDirectory() as folder:
+            window = object.__new__(GameWindow)
+            window.guard = Mock(return_value=Geometry(0, 0, 1920, 1080))
+            context, seed = self.loss_context(folder, window, (loss_page(), loss_page()))
+            replacement = b'changed synthetic loss PNG'
+
+            def key_state(_key):
+                session = StandardSession(seed.path).data
+                before = Path(session['node_attempt']['loss_frames'][0]['evidence'])
+                before.write_bytes(replacement)
+                return 0
+
+            native = Mock()
+            native.GetSystemMetrics.side_effect = {76:0, 77:0, 78:1920, 79:1080}.__getitem__
+            native.GetAsyncKeyState.side_effect = key_state
+            with patch('autohsr.windows.user32', native), self.assertRaises(AutomationError):
+                run_standard(context)
+            native.SendInput.assert_not_called()
+            saved = StandardSession(seed.path).data
+            self.assertEqual(saved['actions'][-1]['status'], 'pending')
+            self.assertEqual(Path(saved['node_attempt']['loss_frames'][0]['evidence']).read_bytes(), replacement)
+            self.assertNotIn('node_history', saved)
 
     def boss_flow(self, folder, states, *, start_node='2-6', stop_at=None, replace_source=False):
         store = self.store(folder, start_node, observed=False)

@@ -1,10 +1,116 @@
 """Observe one dispatched standard node; never click skills or restart a fight."""
+import math
+import re
 import time
+from pathlib import Path
 
 from .currency_wars import CurrencyWarsWorkflow, observe
 from .currency_wars_identity import account_key
 from .currency_wars_node import battle_node, result_node, result_nodes
-from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, Stopped
+from .currency_wars_prepare import trusted
+from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, Stopped, normalize
+
+
+_LIFE_VALUE = r'([0-9]{1,3})(?:/([0-9]{1,3}))?'
+
+
+def read_survived_loss(scene, confidence=.65):
+    """Read a current, non-terminal loss and its exact Continue target."""
+    if observe(scene, confidence).page_kind != 'node_loss':
+        return None
+    node = result_node(scene, confidence)
+    tokens = trusted(scene, confidence).tokens
+    life_row = [t for t in tokens if t.within((.3,.43,.5,.5))]
+    lives = [match for t in life_row if (match := re.fullmatch('小队生命值' + _LIFE_VALUE, normalize(t.text)))]
+    labels = [t for t in life_row if normalize(t.text) == '小队生命值']
+    if labels:
+        if len(labels) != 1 or lives:
+            return None
+        label = labels[0]
+        lives = [match for t in life_row if abs(t.center[1] - label.center[1]) <= .012
+                 and 0 <= t.box[0] - label.box[2] <= .03
+                 and (match := re.fullmatch(_LIFE_VALUE, normalize(t.text)))]
+    buttons = [t for t in tokens if t.within((.4,.79,.6,.86)) and normalize(t.text) == '继续挑战']
+    if node is None or len(lives) != 1 or len(buttons) != 1:
+        return None
+    hp = int(lives[0][1])
+    maximum = int(lives[0][2]) if lives[0][2] is not None else 100
+    if 1 <= hp <= maximum <= 100:
+        return node, hp, buttons[0]
+    return None
+
+
+def survived_loss_receipt(attempt, start):
+    """Verify the structure of the native two-frame loss receipt."""
+    frames = attempt.get('loss_frames')
+    target = start.get('target')
+    hp = attempt.get('remaining_hp')
+    if (attempt.get('result_kind') != 'node_loss' or attempt.get('node_loss_verified') is not True
+            or attempt.get('node_verified') is not False or type(hp) is not int
+            or not isinstance(target, list) or len(target) != 4 or target[0] != attempt.get('node')
+            or type(target[2]) is not int or not 1 <= hp <= target[2] <= 100
+            or not isinstance(attempt.get('loss_run_dir'), str) or not attempt['loss_run_dir']
+            or not isinstance(frames, list) or len(frames) != 2):
+        return False
+    for frame in frames:
+        if (not isinstance(frame, dict) or not isinstance(frame.get('evidence'), str) or not frame['evidence']
+                or not isinstance(frame.get('sha256'), str) or not re.fullmatch('[0-9a-f]{64}', frame['sha256'])
+                or type(frame.get('captured_at')) not in (int, float) or not math.isfinite(frame['captured_at'])
+                or type(frame.get('input_epoch')) is not int or frame['input_epoch'] < 0):
+            return False
+    first, second = frames
+    return (first['input_epoch'] == second['input_epoch'] and first['captured_at'] < second['captured_at']
+            and first['evidence'] != second['evidence'] == attempt.get('result'))
+
+
+def original_loss_files(session, runs_root):
+    attempt = session['node_attempt']
+    try:
+        index = attempt['start_action_id']
+        if type(index) is not int or not 0 <= index < len(session['actions']):
+            raise ValueError('invalid start action')
+        start = session['actions'][index]
+        if not survived_loss_receipt(attempt, start):
+            raise ValueError('invalid loss receipt')
+        directory = Path(attempt['loss_run_dir']).resolve(strict=True)
+        sources = tuple((Path(frame['evidence']).resolve(strict=True), frame['sha256'])
+                        for frame in attempt['loss_frames'])
+        if (directory.parent != Path(runs_root).resolve() or sources[0][0] == sources[1][0]
+                or any(path.parent != directory for path, _ in sources)):
+            raise ValueError('outside original run')
+        return sources
+    except (IndexError, KeyError, OSError, TypeError, ValueError) as error:
+        raise AutomationError('失利推进缺少原运行中的两张有效证据。') from error
+
+
+def _record_survived_loss(c, store, guard, action, pair):
+    from .currency_wars_initial import evidence_ref
+    from .currency_wars_standard_flow import evidence
+
+    attempt = store.data['node_attempt']
+    scene, hp = pair[-1]
+    node, epoch = attempt['node'], c.runner.input_epoch
+    guard._require_current_scene(scene)
+    frames = []
+    for index, (capture, _) in enumerate(pair, 1):
+        path = evidence(c, capture, f'currency_standard_loss_frame_{index}')
+        reference = evidence_ref(capture, path, c.report.run_dir)
+        frames.append(dict(evidence=reference['path'], sha256=reference['sha256'],
+                           captured_at=capture.captured_at, input_epoch=epoch))
+    guard._require_current_scene(scene)
+    confidence = c.settings.ocr_confidence
+    current = read_survived_loss(scene, confidence)
+    if (current is None or current[:2] != (node, hp)
+            or account_key(scene, confidence) != store.data.get('account_key')):
+        raise AutomationError('留证期间节点失利结果或账号改变，未继续。')
+    result = dict(attempt, status='verified', node_verified=False, node_loss_verified=True,
+                  result_kind='node_loss', remaining_hp=hp, loss_run_dir=str(c.report.run_dir),
+                  loss_frames=frames, result=frames[-1]['evidence'])
+    if not survived_loss_receipt(result, action):
+        raise AutomationError('节点失利的两份来源不完整，未继续。')
+    attempt.update(result)
+    store.persist()
+    c.log(f'标准节点{node}失利，剩余小队生命值{hp}，已核实可继续。')
 
 
 def _discard_current_auto(store, tracker):
@@ -71,6 +177,9 @@ def _observe_auto(c, store, scene, guard, tracker):
 
 def entry_feedback(scene, node, confidence=.65):
     kind = observe(scene,confidence).page_kind
+    if kind == 'node_loss':
+        loss = read_survived_loss(scene, confidence)
+        return loss is not None and loss[0] == node
     return ((kind=='battle' and battle_node(scene,confidence)==node)
             or (kind=='match_defeat' and result_node(scene,confidence)==node)
             or (kind in ('node_result','final_victory') and result_node(scene,confidence)==node
@@ -89,8 +198,17 @@ def observe_started_node(c, store, scene):
             or actions[action_id]['target'][0]!=attempt.get('node')):
         raise AutomationError('当前战斗缺少已核实标准出战来源，未执行战斗输入。')
     guard = CurrencyWarsWorkflow(c)
+    if attempt.get('node_loss_verified') is True:
+        guard._require_current_scene(scene)
+        loss = read_survived_loss(scene, c.settings.ocr_confidence)
+        if (not survived_loss_receipt(attempt, actions[action_id]) or attempt['status'] != 'verified'
+                or loss is None or loss[:2] != (attempt['node'], attempt['remaining_hp'])
+                or account_key(scene, c.settings.ocr_confidence) != store.data.get('account_key')):
+            raise AutomationError('当前画面与原节点失利结果不符，保留原记录待核对。')
+        return scene, True
     elapsed, unseen = 0., 0.
     defeat_frames=[]
+    loss_frames = []
     auto_tracker = {}
     latest_stamp = None
     observation_epoch = c.runner.input_epoch
@@ -105,12 +223,14 @@ def observe_started_node(c, store, scene):
         result_unreadable = False
         if scene is None:
             defeat_frames=[]
+            loss_frames.clear()
             _discard_current_auto(store, auto_tracker)
         else:
             guard._require_current_scene(scene)
             if observation_epoch != c.runner.input_epoch:
                 observation_epoch = c.runner.input_epoch
                 defeat_frames.clear()
+                loss_frames.clear()
                 _discard_current_auto(store, auto_tracker)
             fresh = latest_stamp is None or scene.captured_at > latest_stamp
             if fresh:
@@ -134,6 +254,8 @@ def observe_started_node(c, store, scene):
                 if fresh:
                     kind = observe(scene,c.settings.ocr_confidence).page_kind
             if kind!='match_defeat':defeat_frames=[]
+            if kind != 'node_loss':
+                loss_frames.clear()
             unreadable = kind in ('unknown','preparation')
             if kind=='battle':
                 actual = battle_node(scene,c.settings.ocr_confidence)
@@ -152,6 +274,30 @@ def observe_started_node(c, store, scene):
                     c.log('标准节点'+attempt['node']+'战斗已观察，继续核对控件与本次结算。')
                 if actual == attempt['node']:
                     _observe_auto(c, store, scene, guard, auto_tracker)
+            elif kind == 'node_loss':
+                confidence = c.settings.ocr_confidence
+                loss = read_survived_loss(scene, confidence)
+                try:
+                    same_account = account_key(scene, confidence) == observed_account
+                except AutomationError:
+                    same_account = False
+                if loss is None or not same_account:
+                    loss_frames.clear()
+                    unreadable = True
+                else:
+                    node, hp, _ = loss
+                    target = actions[action_id]['target']
+                    starting_hp = target[2] if isinstance(target, list) and len(target) == 4 else None
+                    if (node != attempt['node'] or type(starting_hp) is not int or not hp <= starting_hp <= 100
+                            or store.data.get('match_victory_observed') or store.data.get('match_defeat_observed')):
+                        attempt.update(status='unknown', reason='节点失利与原出战、生命值或终局来源不符。')
+                        break
+                    if loss_frames and loss_frames[-1][1] != hp:
+                        loss_frames.clear()
+                    loss_frames.append((scene, hp))
+                    if len(loss_frames) == 2:
+                        _record_survived_loss(c, store, guard, actions[action_id], loss_frames)
+                        return scene, True
             elif kind in ('node_result','final_victory','match_defeat'):
                 nodes = result_nodes(scene, c.settings.ocr_confidence)
                 if not nodes:

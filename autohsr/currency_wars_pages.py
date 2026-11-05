@@ -33,6 +33,7 @@ PAGE_LABELS = {
     "shop": "备战商店",
     "character": "角色信息面板",
     "node_result": "节点挑战结算（非整局通关）",
+    "node_loss": "节点失利，继续条件待核实",
     "gemi_info": "Gemi 狸信息说明",
     "star_selection": "盛会之星强化角色选择",
     "equipment_info": "简易装备信息与可合成列表",
@@ -246,6 +247,12 @@ _PAGES = {
         _Anchor("基础奖励", (.25, .55, .42, .6)),
         _Anchor("继续挑战", (.4, .79, .6, .86)),
     ),
+    "node_loss": (
+        _Anchor("挑战结束", (.42, .17, .58, .26)),
+        _Anchor(re.compile(r"[1-3]-[1-9][0-9]?(?:战斗|奖励|首领)?"), (.40, .24, .53, .30)),
+        _Anchor(re.compile(r"小队生命值(?:[0-9]{1,3}(?:/[0-9]{1,3})?)?"), (.3, .43, .5, .5)),
+        _Anchor("继续挑战", (.4, .79, .6, .86)),
+    ),
     "preparation": (
         _Anchor("备战阶段", (.2, .01, .3, .07)),
         _Anchor(re.compile(r".?前台区域"), (.45, .25, .56, .32)),
@@ -356,6 +363,10 @@ def classify_page(trusted_tokens: list[Token]) -> str:
                  if all(any(anchor.matches(token) for token in trusted_tokens) for anchor in anchors)
                  and (kind!='investment_selection' or _investment_layout(trusted_tokens))]
         if found:
+            if found == ['node_loss'] and any(_text(t.text) in ('挑战成功', '挑战失败', '对局胜利',
+                                                               '对局失败', '对局未完成', '前往结算')
+                                               for t in trusted_tokens):
+                return 'unknown'
             return found[0] if len(found) == 1 else "unknown"
     return "unknown"
 

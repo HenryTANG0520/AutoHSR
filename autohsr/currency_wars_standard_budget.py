@@ -7,6 +7,7 @@ OCR, elapsed time, UI toggles and same-node gifts cannot reset a phase.
 import re
 
 from .currency_wars_session import MAX_ACTIONS
+from .currency_wars_standard_node import survived_loss_receipt
 from .models import AutomationError
 
 PHASE_ACTIONS = 512
@@ -24,9 +25,13 @@ def _continued(session):
     try:
         entry=history[-1];start=entry['start_action_id'];end=entry['continue_action_id'];actions=session['actions']
         if (type(start) is not int or type(end) is not int or not 0<=start<end<len(actions)
-                or not node(entry['node']) or entry.get('status')!='advanced' or entry.get('node_verified') is not True
+                or not node(entry['node']) or entry.get('status')!='advanced'
                 or not isinstance(entry.get('result'),str) or not entry['result']):raise ValueError()
         a,b=actions[start],actions[end];feedback=b['feedback'];plane,number=map(int,entry['node'].split('-'))
+        if entry.get('node_verified') is not True:
+            from .currency_wars_standard_progress import _paired_progress_evidence
+            if not survived_loss_receipt(entry, a) or not _paired_progress_evidence(b):
+                raise ValueError()
         if (any(type(action.get('id')) is not int or action.get('id')!=index or action.get('status')!='verified'
                     or type(action.get('input_epoch')) is not int or action['input_epoch']<0
                     or not isinstance(action.get('before'),str) or not action['before']
@@ -47,7 +52,7 @@ def _continued(session):
                 or feedback.get('node')!=destination):raise ValueError()
         return end,destination
     except (KeyError,TypeError,IndexError,ValueError,AttributeError) as exc:
-        raise AutomationError('节点继续缺少原出战、胜利或已核实到达来源，未刷新步骤额度。') from exc
+        raise AutomationError('节点继续缺少原出战、节点结果或已核实到达来源，未刷新步骤额度。') from exc
 
 
 class StandardBudget:

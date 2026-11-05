@@ -1278,7 +1278,7 @@ def run_standard(c):
             from .currency_wars_initial_shop_observation import ensure as observe_initial_shop
             scene=observe_initial_shop(c,store,scene)
             kind=observe(scene,c.settings.ocr_confidence).page_kind
-        if kind in ('battle','node_result','final_victory','match_defeat') and store.data.get('exchange',{}).get('status','verified') == 'verified':
+        if kind in ('battle','node_result','node_loss','final_victory','match_defeat') and store.data.get('exchange',{}).get('status','verified') == 'verified':
             from .currency_wars_standard_node import observe_started_node
             scene, verified = observe_started_node(c,store,scene)
             if not verified:
@@ -1533,12 +1533,13 @@ def run_standard(c):
         closing_intro = choice.intent == BOSS_INTRO_ACTION
         node_progress = closing_intro or choice.intent == 'continue_standard_node'
         boss_progress = node_progress and boss_destination(choice.payload[0]) is not None
+        loss_progress = choice.intent == 'continue_standard_node' and store.data['node_attempt'].get('node_loss_verified') is True
         investment_confirmation = choice.intent == INVESTMENT_CONFIRM
         closing_investment_shop = choice.intent == INVESTMENT_SHOP_CLOSE
         refreshing_investment = choice.intent == INVESTMENT_REFRESH
         investment_progress = investment_confirmation or closing_investment_shop or refreshing_investment
         strict_feedback = (defeat_step or investment_box or loot_click or loot_box is not None
-                           or loot_claim is not None or boss_progress or investment_progress
+                           or loot_claim is not None or boss_progress or loss_progress or investment_progress
                            or INVESTMENT_REFRESH_BINDING in action)
         observed_at = scene.captured_at
         c.currency_standard_input(scene, choice)
@@ -1567,6 +1568,8 @@ def run_standard(c):
                 progress = None
                 try:
                     observed_account = account_key(after, max(.85, c.settings.ocr_confidence))
+                    if loss_progress and account_key(after, c.settings.ocr_confidence) != observed_account:
+                        raise AutomationError('失利后的到达画面有账号冲突。')
                 except AutomationError:
                     ready = False  # Animation may hide the UID; observe within this deadline.
                 else:
@@ -1616,7 +1619,7 @@ def run_standard(c):
                     else:
                         ready = False
                 paired_progress = (progress if ready and progress is not None
-                                   and (investment_progress or closing_intro or progress['page_kind'] == 'boss_intro')
+                                   and (investment_progress or closing_intro or loss_progress or progress['page_kind'] == 'boss_intro')
                                    else None)
                 if paired_progress != previous_progress:
                     stable = 0

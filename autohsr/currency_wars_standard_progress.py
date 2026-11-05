@@ -13,6 +13,7 @@ from .currency_wars_match import read_match
 from .currency_wars_navigation import unique
 from .currency_wars_node import result_node
 from .currency_wars_prepare import trusted
+from .currency_wars_standard_node import read_survived_loss, survived_loss_receipt
 from .models import AutomationError, normalize
 
 
@@ -47,18 +48,20 @@ def progress_input_scope(intent, current, saved):
     return True
 
 
-def verified_attempt(session):
+def verified_attempt(session, *, allow_loss=False):
     attempt = session.get('node_attempt', {})
     node, index = attempt.get('node'), attempt.get('start_action_id')
     actions = session.get('actions', [])
     if (session.get('status') != 'active' or not session.get('start_verified')
             or not isinstance(node, str) or not re.fullmatch(r'[1-3]-[1-9][0-9]?', node)
-            or attempt.get('node_verified') is not True or attempt.get('status') not in ('verified', 'intro_pending', 'advanced')
+            or attempt.get('status') not in ('verified', 'intro_pending', 'advanced')
             or not attempt.get('result') or type(index) is not int or not 0 <= index < len(actions)
             or actions[index].get('action') != 'start_standard_node'
             or actions[index].get('status') != 'verified'
-            or not actions[index].get('target') or actions[index]['target'][0] != node):
-        raise AutomationError('节点推进缺少本局已核实出战与对应胜利结算。')
+            or not actions[index].get('target') or actions[index]['target'][0] != node
+            or (attempt.get('node_verified') is not True
+                and not (allow_loss and survived_loss_receipt(attempt, actions[index])))):
+        raise AutomationError('节点推进缺少本局已核实出战与对应结果。')
     return attempt
 
 
@@ -122,7 +125,8 @@ def _intro_source(actions, attempt):
             or source.get('expected') != 'standard_node_entered' or source.get('status') != 'verified'
             or not source.get('before') or not source.get('after')
             or not isinstance(target, list) or len(target) != 4 or target[0] != node
-            or attempt.get('result_kind') != 'node_result' or not attempt.get('result')):
+            or (attempt.get('result_kind') != 'node_result' and not survived_loss_receipt(attempt, source))
+            or not attempt.get('result')):
         raise AutomationError(reason)
     action = actions[index]
     feedback = action.get('feedback', {})
@@ -166,7 +170,7 @@ def progress_action(scene, session, confidence=.65):
     if defeat is not None:return defeat
     kind = observe(scene, confidence).page_kind
     if kind == 'boss_intro' or session.get('node_attempt', {}).get('status') == 'intro_pending':
-        attempt = verified_attempt(session)
+        attempt = verified_attempt(session, allow_loss=True)
         if kind != 'boss_intro' or attempt['status'] != 'intro_pending':
             raise AutomationError('本次强敌介绍仍待关闭核实，先保留原节点。')
         intro = _intro_source(session['actions'], attempt)
@@ -178,16 +182,24 @@ def progress_action(scene, session, confidence=.65):
         if history[-1] is not intro:
             raise AutomationError('强敌介绍已经有后续输入，保留原结果待核对。')
         return StandardAction(BOSS_INTRO_ACTION, BOSS_INTRO_RETURN, boss_target(scene, confidence), payload=payload)
-    if kind == 'node_result':
-        attempt = verified_attempt(session)
+    if kind in ('node_result', 'node_loss'):
+        attempt = verified_attempt(session, allow_loss=kind == 'node_loss')
         node, start_id = attempt['node'], attempt['start_action_id']
         if result_node(scene, confidence) != node or attempt['status'] != 'verified':
             raise AutomationError('当前结算与已核实节点不一致，未继续挑战。')
+        if kind == 'node_loss':
+            loss = read_survived_loss(scene, confidence)
+            if (loss is None or loss[:2] != (node, attempt.get('remaining_hp'))
+                    or not survived_loss_receipt(attempt, session['actions'][start_id])):
+                raise AutomationError('当前失利结算与已核实生命值不符，未继续挑战。')
+            target = loss[2]
+        else:
+            target = continue_target(scene, confidence)
         intent, expected, payload = 'continue_standard_node', 'standard_node_advanced', (node, start_id)
         history = _history(session, intent, expected, payload)
         if history[-1].get('id') != start_id:
             raise AutomationError('当前结算不是最近一次已核实出战的结果。')
-        return StandardAction(intent, expected, continue_target(scene, confidence), payload=payload)
+        return StandardAction(intent, expected, target, payload=payload)
     if kind in ENDING_STEPS:
         attempt = verified_attempt(session)
         node, start_id = attempt['node'], attempt['start_action_id']
@@ -208,7 +220,7 @@ def progress_action(scene, session, confidence=.65):
                 raise AutomationError('结算链缺少已核实前一页面，未跳步完成。')
         return StandardAction(intent, expected, target, payload=payload)
     if kind == 'plane_map' and session.get('node_attempt'):
-        attempt = verified_attempt(session)
+        attempt = verified_attempt(session, allow_loss=True)
         node, start_id = attempt['node'], attempt['start_action_id']
         plane = int(node.split('-')[0])+1
         payload = (node, start_id, f'{plane}-1')
@@ -224,7 +236,7 @@ def progress_action(scene, session, confidence=.65):
     if kind == 'shop' and session.get('node_attempt'):
         # Some nodes open the shop automatically. Close only the observed
         # arrival shop so the new board can be collected before any decisions.
-        attempt = verified_attempt(session)
+        attempt = verified_attempt(session, allow_loss=True)
         node, start_id = attempt['node'], attempt['start_action_id']
         state = read_match(scene, confidence)
         payload = (state.node, state.gold, state.level, node, start_id)
@@ -300,6 +312,9 @@ def progress_verified(session, choice, scene, confidence=.65):
             raise AutomationError('节点推进反馈未核实。')
         action['feedback'] = feedback
         attempt = session['node_attempt']
+        if (choice.intent == 'continue_standard_node' and attempt.get('node_loss_verified') is True
+                and not _paired_progress_evidence(action)):
+            raise AutomationError('失利后的实际节点到达尚缺两份新鲜证据。')
         if feedback['page_kind'] == 'boss_intro':
             pending = dict(attempt, status='intro_pending', continue_action_id=action['id'])
             _intro_source(session['actions'], pending)
