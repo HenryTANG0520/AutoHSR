@@ -9,11 +9,12 @@ from unittest.mock import Mock, patch
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.currency_wars_node import result_node
+from autohsr.currency_wars_standard_budget import StandardBudget
 from autohsr.currency_wars_session import StandardSession
-from autohsr.currency_wars_standard_flow import next_action, run_standard, transition_ready
+from autohsr.currency_wars_standard_flow import StandardAction, next_action, run_standard, transition_ready
 from autohsr.currency_wars_standard_node import observe_started_node
-from autohsr.currency_wars_standard_progress import progress_verified
-from autohsr.models import AutomationError, InputInterrupted, Token
+from autohsr.currency_wars_standard_progress import BOSS_INTRO_ACTION, BOSS_INTRO_RETURN, progress_verified
+from autohsr.models import AutomationError, InputInterrupted, Stopped, Token
 from autohsr.tests import test_currency_wars_flow as flow_helpers
 from autohsr.tests import test_currency_wars_standard_flow as standard_helpers
 from autohsr.tests import test_currency_wars_standard_node as node_helpers
@@ -25,6 +26,22 @@ def board(node):
     scene = prepared()
     scene.tokens = [t for t in scene.tokens if not (t.within((.1,.04,.29,.13)) and re.fullmatch(r'[1-3]-[0-9]+',t.text))]
     scene.tokens.append(Token(node, .99, (.23,.055,.26,.085)))
+    return scene
+
+
+def boss_arrival(node='2-7', *, shop=False, gold=17):
+    from autohsr.tests.test_currency_wars_standard_trading import hud
+    if shop:
+        scene = screen('shop')
+        scene.tokens = [t for t in scene.tokens if not t.within((.1, .04, .29, .13))
+                        or not re.fullmatch(r'[1-3]-[0-9]+', t.text)]
+        scene.tokens.append(Token(node, .99, (.23, .055, .26, .085)))
+    else:
+        scene = board(node)
+        scene.tokens = [t for t in scene.tokens if not t.within((.28, .07, .73, .105))
+                        or t.text not in ('战斗', '奖励', '首领')]
+        scene.tokens.append(Token('首领', .99, (.53, .075, .56, .10)))
+    hud(scene, gold=gold, level=8)
     return scene
 
 
@@ -44,6 +61,159 @@ class StandardProgressTests(unittest.TestCase):
         action['target'] = list(choice.payload)
         store.persist()
         return action
+
+    def boss_flow(self, folder, states, *, start_node='2-6', stop_at=None, replace_source=False):
+        store = self.store(folder, start_node, observed=False)
+        store.data['actions'][0]['after'] = 'entered.png'
+        store.persist()
+        c = standard_helpers.StandardFlowTests().context(folder, states, resume=True)
+        c.window = Mock()
+        c.currency_standard_input = Mock()
+        c.intermediate = []
+        now = 100.
+        stamp_before = None
+        take_snapshot = c.snapshot
+        budget = StandardBudget(store.data)
+
+        def snapshot():
+            nonlocal now, stamp_before
+            now += .05
+            scene = take_snapshot()
+            scene.captured_at = now
+            if scene is states[1]:
+                stamp_before = now
+            elif scene is states[2]:
+                scene.captured_at = stamp_before
+            return scene
+
+        def sleep(seconds):
+            nonlocal now
+            session = getattr(c, 'currency_standard_session', None)
+            waiting_for_wrong_arrival = (stop_at is None and session
+                                         and session.data['actions'][-1]['action'] == BOSS_INTRO_ACTION)
+            now += 31. if seconds == .5 and waiting_for_wrong_arrival else seconds
+
+        def checkpoint():
+            session = getattr(c, 'currency_standard_session', None)
+            if session and session.data['actions']:
+                if session.data['node_attempt']['status'] == 'intro_pending':
+                    c.intermediate.append(budget.window(session.data))
+                last = session.data['actions'][-1]
+                if last.get('action') == stop_at and last['status'] == 'verified':
+                    raise Stopped('fixture reached the boss arrival')
+
+        def dispatch(scene, choice):
+            if replace_source and choice.intent == BOSS_INTRO_ACTION:
+                durable = StandardSession(c.currency_standard_session.path)
+                durable.data['actions'][1]['feedback']['enemy'] = '等级99另一名敌人'
+                durable.persist()
+                c.replaced_bytes = durable.path.read_bytes()
+            return Context.currency_standard_input(c, scene, choice)
+
+        c.snapshot, c.sleep, c.checkpoint = snapshot, sleep, checkpoint
+        c.currency_standard_input.side_effect = dispatch
+        clock = SimpleNamespace(monotonic=lambda: now)
+        return c, clock, budget
+
+    def test_standard_boss_intro_continues_through_board_or_arrival_shop(self):
+        for start, node, shop in (('1-8', '1-9', False), ('2-6', '2-7', False),
+                                  ('2-6', '2-7', True), ('3-6', '3-7', False)):
+            with self.subTest(node=node, shop=shop), tempfile.TemporaryDirectory() as folder:
+                frames = [current('node_result', start)] + [screen('boss_intro') for _ in range(4)]
+                frames += [boss_arrival(node, shop=shop), boss_arrival(node, shop=shop)]
+                if shop:
+                    frames.append(boss_arrival(node))
+                last_intent = 'close_standard_arrival_shop' if shop else BOSS_INTRO_ACTION
+                c, clock, budget = self.boss_flow(folder, frames, start_node=start, stop_at=last_intent)
+                with (patch('autohsr.currency_wars_replay.save_sample'),
+                      patch('autohsr.currency_wars.time', clock),
+                      patch('autohsr.currency_wars_standard_node.time', clock),
+                      patch('autohsr.currency_wars_standard_flow.time', clock), self.assertRaises(Stopped)):
+                    run_standard(c)
+                data = StandardSession(c.currency_standard_session.path).data
+                introduction, arrival = data['actions'][1:3]
+                self.assertEqual(introduction['feedback']['expected_node'], node)
+                self.assertNotIn('node', introduction['feedback'])
+                self.assertEqual(arrival['target'], [start, 0, 1, node])
+                self.assertEqual(arrival['feedback']['page_kind'], 'shop' if shop else 'preparation')
+                self.assertEqual(arrival['feedback']['node'], node)
+                for action in (introduction, arrival):
+                    first, last = action['progress_frames']
+                    self.assertLess(first['captured_at'], last['captured_at'])
+                self.assertGreater(introduction['progress_frames'][0]['captured_at'], frames[2].captured_at)
+                self.assertEqual(c.window.click.call_count, 3 if shop else 2)
+                self.assertTrue(c.intermediate)
+                self.assertTrue(all(w['phase_node'] is None for w in c.intermediate))
+                self.assertEqual(budget.window(data)['phase_node'], node)
+                self.assertEqual(budget.window(data)['phase_start'], arrival['id']+1)
+                history, = data['node_history']
+                self.assertEqual((history['continue_action_id'], history['arrival_action_id']), (1, 2))
+                self.assertFalse(data['completion_verified'])
+
+    def test_boss_preparation_requires_unambiguous_type_and_current_hud(self):
+        choice = StandardAction(BOSS_INTRO_ACTION, BOSS_INTRO_RETURN, None, payload=('2-6', 0, 1, '2-7'))
+        self.assertTrue(transition_ready(choice, boss_arrival()))
+        conflicting_type = boss_arrival()
+        conflicting_type.tokens.append(Token('战斗', .99, (.60, .075, .63, .10)))
+        self.assertFalse(transition_ready(choice, conflicting_type))
+        invalid_hp = boss_arrival()
+        invalid_hp.tokens = [Token('101', t.score, t.box) if t.within((.735, .05, .78, .095)) else t
+                             for t in invalid_hp.tokens]
+        self.assertFalse(transition_ready(choice, invalid_hp))
+
+    def test_resume_at_old_result_preserves_the_verified_intro(self):
+        with tempfile.TemporaryDirectory() as folder:
+            frames = [current('node_result', '2-6')] + [screen('boss_intro') for _ in range(4)]
+            c, clock, _ = self.boss_flow(folder, frames, stop_at='continue_standard_node')
+            with (patch('autohsr.currency_wars_replay.save_sample'),
+                  patch('autohsr.currency_wars.time', clock),
+                  patch('autohsr.currency_wars_standard_node.time', clock),
+                  patch('autohsr.currency_wars_standard_flow.time', clock), self.assertRaises(Stopped)):
+                run_standard(c)
+            original = StandardSession(c.currency_standard_session.path).data
+            self.assertEqual(original['node_attempt']['status'], 'intro_pending')
+            self.assertEqual(c.window.click.call_count, 1)
+
+            resumed = standard_helpers.StandardFlowTests().context(folder, [current('node_result', '2-6')])
+            resumed.runner.currency_resume = True
+            with patch('autohsr.currency_wars_replay.save_sample'):
+                self.assertEqual(run_standard(resumed).status, 'partial')
+            resumed.currency_standard_input.assert_not_called()
+            saved = StandardSession(c.currency_standard_session.path).data
+            self.assertEqual(saved['node_attempt'], original['node_attempt'])
+            self.assertEqual(saved['actions'], original['actions'])
+            self.assertEqual(next_action(screen('boss_intro'), session=saved).intent, BOSS_INTRO_ACTION)
+
+    def test_intro_without_standard_source_or_wrong_return_cannot_advance(self):
+        with self.assertRaises(AutomationError):
+            next_action(screen('boss_intro'), session={})
+        with tempfile.TemporaryDirectory() as folder:
+            store = self.store(folder, '2-4')  # The real historical A0 transition is not standard.
+            choice = next_action(current('node_result', '2-4'), session=store.data)
+            self.assertFalse(transition_ready(choice, screen('boss_intro')))
+        for tampered in (False, True):
+            with self.subTest(tampered=tampered), tempfile.TemporaryDirectory() as folder:
+                frames = [current('node_result', '2-6')] + [screen('boss_intro') for _ in range(4)]
+                frames += [boss_arrival('2-5'), boss_arrival('2-5')]
+                c, clock, budget = self.boss_flow(folder, frames, replace_source=tampered)
+                with (patch('autohsr.currency_wars_replay.save_sample'),
+                      patch('autohsr.currency_wars.time', clock),
+                      patch('autohsr.currency_wars_standard_node.time', clock),
+                      patch('autohsr.currency_wars_standard_flow.time', clock)):
+                    if tampered:
+                        with self.assertRaisesRegex(AutomationError, '落盘'):
+                            run_standard(c)
+                        self.assertEqual(c.currency_standard_session.path.read_bytes(), c.replaced_bytes)
+                    else:
+                        self.assertEqual(run_standard(c).status, 'partial')
+                    data = StandardSession(c.currency_standard_session.path).data
+                    self.assertEqual(data['actions'][-1]['action'], BOSS_INTRO_ACTION)
+                    self.assertEqual(data['actions'][-1]['status'], 'pending' if tampered else 'unknown')
+                    self.assertEqual(data['node_attempt']['status'], 'intro_pending')
+                    self.assertIsNone(budget.window(data)['phase_node'])
+                    self.assertEqual(c.window.click.call_count, 1 if tampered else 2)
+                    with self.assertRaises(AutomationError):
+                        run_standard(c)
 
     def test_result_continues_once_from_verified_start_and_rederives_exact_pending(self):
         with tempfile.TemporaryDirectory() as folder:

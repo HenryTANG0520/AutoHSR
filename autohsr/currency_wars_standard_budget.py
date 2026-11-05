@@ -27,11 +27,7 @@ def _continued(session):
                 or not node(entry['node']) or entry.get('status')!='advanced' or entry.get('node_verified') is not True
                 or not isinstance(entry.get('result'),str) or not entry['result']):raise ValueError()
         a,b=actions[start],actions[end];feedback=b['feedback'];plane,number=map(int,entry['node'].split('-'))
-        if feedback.get('page_kind')=='plane_map' and plane>=3:raise ValueError()
-        destination=f'{plane+1}-1' if feedback.get('page_kind')=='plane_map' and plane<3 else f'{plane}-{number+1}'
-        if (not node(destination) or feedback.get('page_kind') not in ('plane_map','preparation','shop','supply_selection')
-                or feedback.get('node')!=destination
-                or any(type(action.get('id')) is not int or action.get('id')!=index or action.get('status')!='verified'
+        if (any(type(action.get('id')) is not int or action.get('id')!=index or action.get('status')!='verified'
                     or type(action.get('input_epoch')) is not int or action['input_epoch']<0
                     or not isinstance(action.get('before'),str) or not action['before']
                     or not isinstance(action.get('after'),str) or not action['after'] for index,action in ((start,a),(end,b)))
@@ -41,6 +37,14 @@ def _continued(session):
                 or b.get('action')!='continue_standard_node' or b.get('expected')!='standard_node_advanced'
                 or not isinstance(b.get('target'),list) or len(b['target'])!=2 or type(b['target'][1]) is not int
                 or b.get('target')!=[entry['node'],start]):raise ValueError()
+        if feedback.get('page_kind') == 'boss_intro' or 'arrival_action_id' in entry:
+            from .currency_wars_standard_progress import boss_arrival_receipt
+            arrival = boss_arrival_receipt(actions, entry)
+            return arrival['id'], arrival['feedback']['node']
+        if feedback.get('page_kind')=='plane_map' and plane>=3:raise ValueError()
+        destination=f'{plane+1}-1' if feedback.get('page_kind')=='plane_map' else f'{plane}-{number+1}'
+        if (not node(destination) or feedback.get('page_kind') not in ('plane_map','preparation','shop','supply_selection')
+                or feedback.get('node')!=destination):raise ValueError()
         return end,destination
     except (KeyError,TypeError,IndexError,ValueError,AttributeError) as exc:
         raise AutomationError('节点继续缺少原出战、胜利或已核实到达来源，未刷新步骤额度。') from exc
@@ -52,7 +56,7 @@ class StandardBudget:
 
     def window(self,session):
         actions=session['actions'];end,destination=_continued(session)
-        anchor=max(self.start,end+1);kind='continue_standard_node' if end>=self.start else 'invocation_start'
+        anchor=max(self.start,end+1);kind=actions[end]['action'] if end>=self.start else 'invocation_start'
         if kind=='invocation_start':destination=None
         # Supply delivery can advance another node after continue opened the
         # selection page. Only its completed native effect may advance the bound.

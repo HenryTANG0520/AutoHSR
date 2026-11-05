@@ -811,6 +811,9 @@ def next_action(scene, confidence=.65, *, session=None):
 
 
 def _next_action(scene, confidence=.65, *, session=None, loot_box=None):
+    if session and session.get('node_attempt', {}).get('status') == 'intro_pending':
+        from .currency_wars_standard_progress import progress_action
+        return progress_action(scene, session, confidence)
     from .currency_wars_standard_popup import active_action as popup_action
     popup=popup_action(scene,session or {},confidence)
     if popup is not None:return popup
@@ -1108,9 +1111,9 @@ def transition_ready(choice, scene, confidence=.65, *, before=None, session=None
     if choice.intent in FINANCIAL_ACTIONS:
         from .currency_wars_standard_trading import financial_feedback
         return before is not None and financial_feedback(choice, before, scene, confidence,session=session) is not None
-    if choice.expected == 'standard_node_advanced':
-        from .currency_wars_standard_progress import advancement_feedback
-        return advancement_feedback(scene, choice.payload[0], confidence) is not None
+    if choice.expected in ('standard_node_advanced', 'standard_boss_intro_closed'):
+        from .currency_wars_standard_progress import node_progress_feedback
+        return node_progress_feedback(choice, scene, confidence) is not None
     if choice.expected == 'standard_plane_entered':
         return observe(scene, confidence).page_kind in ('environment', 'investment_selection')
     if choice.expected == 'standard_arrival_shop_closed':
@@ -1164,6 +1167,7 @@ def transition_ready(choice, scene, confidence=.65, *, before=None, session=None
 def run_standard(c):
     from .currency_wars_defeat import INTENTS as DEFEAT_INTENTS
     from .currency_wars_standard_ledger import FINANCIAL_ACTIONS
+    from .currency_wars_standard_progress import BOSS_INTRO_ACTION, boss_destination, node_progress_feedback
     if c.report.operation != 'currency_wars_standard':
         raise AutomationError('标准对局开发须使用独立入口。')
     # This initial path is intentionally not an acceptance counter. Any repair
@@ -1240,12 +1244,18 @@ def run_standard(c):
         if limited:
             store.data.update(action_status='step_limit',reason=limited)
             store.persist();break
+        kind = observe(scene,c.settings.ocr_confidence).page_kind
+        if store.data.get('node_attempt', {}).get('status') == 'intro_pending' and kind != 'boss_intro':
+            store.data.update(action_status='needs_observation', page_kind=kind,
+                              reason='强敌介绍待关闭，当前画面未核实，已保留原节点。',
+                              screenshot=evidence(c, scene, 'currency_standard_boss_intro_wait'))
+            store.persist()
+            break
         collection = store.data.get('collection',{})
         if collection.get('run_dir') != c.report.run_dir or collection.get('input_epoch') != c.runner.input_epoch:
             collection = dict(run_dir=c.report.run_dir,input_epoch=c.runner.input_epoch,units={},complete=False)
             store.data['collection'] = collection
             store.persist()
-        kind = observe(scene,c.settings.ocr_confidence).page_kind
         if kind=='shop':
             from .currency_wars_initial_shop_observation import ensure as observe_initial_shop
             scene=observe_initial_shop(c,store,scene)
@@ -1492,12 +1502,16 @@ def run_standard(c):
         loot_pickup = 'loot_sale_action_id' in action
         loot_claim = _loot_reward_origin(store.data) if choice.intent == 'choose_standard_reward' else None
         defeat_step = choice.intent in DEFEAT_INTENTS
-        strict_feedback = defeat_step or investment_box or loot_click or loot_box is not None or loot_claim is not None
+        closing_intro = choice.intent == BOSS_INTRO_ACTION
+        node_progress = closing_intro or choice.intent == 'continue_standard_node'
+        boss_progress = node_progress and boss_destination(choice.payload[0]) is not None
+        strict_feedback = defeat_step or investment_box or loot_click or loot_box is not None or loot_claim is not None or boss_progress
         observed_at = scene.captured_at
         c.currency_standard_input(scene, choice)
         elapsed, after, stable, previous_popup = 0., None, 0, None
         previous_pickup = None
         overflow_frame = None
+        previous_progress, progress_frames = None, []
         initial_return_frames, initial_return_paths = [], []
         while elapsed < 60:
             started, inactive = time.monotonic(), c.runner.inactive_duration
@@ -1506,6 +1520,8 @@ def run_standard(c):
             except EmptyCapture:
                 after = None
                 overflow_frame = None
+                previous_progress = None
+                progress_frames.clear()
                 if strict_feedback:
                     stable = 0
             if strict_feedback and c.runner.input_epoch != action['input_epoch']:
@@ -1514,6 +1530,7 @@ def run_standard(c):
                 guard._require_current_scene(after)
                 from .currency_wars_identity import account_key
                 same_account = False
+                progress = None
                 try:
                     observed_account = account_key(after, max(.85, c.settings.ocr_confidence))
                 except AutomationError:
@@ -1524,7 +1541,11 @@ def run_standard(c):
                     same_account = True
                     from .currency_wars_standard_popup import arrival as popup_arrival
                     popup_stamp=popup_arrival(choice,after,store.data,c.settings.ocr_confidence)
-                    ready = bool(popup_stamp) or transition_ready(choice, after, c.settings.ocr_confidence, before=scene,session=store.data)
+                    if node_progress:
+                        progress = node_progress_feedback(choice, after, c.settings.ocr_confidence)
+                        ready = progress is not None
+                    else:
+                        ready = bool(popup_stamp) or transition_ready(choice, after, c.settings.ocr_confidence, before=scene,session=store.data)
                     if popup_stamp!=previous_popup:stable=0
                     previous_popup=popup_stamp
                     initial = store.data.get('initial_environment', {})
@@ -1552,6 +1573,14 @@ def run_standard(c):
                         observed_at = after.captured_at
                     else:
                         ready = False
+                paired_progress = (progress if ready and progress is not None
+                                   and (closing_intro or progress['page_kind'] == 'boss_intro') else None)
+                if paired_progress != previous_progress:
+                    stable = 0
+                    progress_frames.clear()
+                if paired_progress is not None:
+                    progress_frames.append((after.captured_at, after))
+                previous_progress = paired_progress
                 if loot_click:
                     overflow = (_loot_overflow_feedback(scene, after, choice.payload, loot_crystals,
                                                         loot_remaining, c.settings.ocr_confidence)
@@ -1577,7 +1606,7 @@ def run_standard(c):
                 previous_pickup = pickup
                 stable = (len(initial_return_frames) if choice.expected == 'standard_initial_shop_closed'
                           else stable+1) if ready else 0
-                required = 2 if investment_box or loot_box is not None or defeat_step or choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable','standard_relocate_inspectable',
+                required = 2 if paired_progress is not None or investment_box or loot_box is not None or defeat_step or choice.expected in ('loot_collected','standard_owned_deployed','standard_exchange_inspectable','standard_relocate_inspectable',
                                                     'standard_offer_bought','standard_experience_bought','standard_shop_refreshed',
                                                     'standard_sale_panel','standard_owned_sold','standard_field_sale_panel','standard_field_owned_sold','standard_equipment_inspectable',
                                                     'standard_reward_returned','standard_supply_selected','standard_supply_refreshed',
@@ -1588,6 +1617,13 @@ def run_standard(c):
                                                     'standard_initial_shop_closed') else 1
                 if stable >= required:
                     after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
+                    if paired_progress is not None:
+                        captured_at, first = progress_frames[0]
+                        first_path = evidence(c, first, 'currency_standard_first_'+choice.intent)
+                        action['progress_frames'] = [
+                            dict(captured_at=captured_at, input_epoch=action['input_epoch'], evidence=first_path),
+                            dict(captured_at=after.captured_at, input_epoch=action['input_epoch'], evidence=after_path),
+                        ]
                     if previous_popup:
                         action.update(status='verified',after=after_path)
                         from .currency_wars_standard_popup import opened

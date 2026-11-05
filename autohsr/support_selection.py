@@ -1,10 +1,14 @@
 """Bounded preferred-support selection with the native feedback gates."""
 from dataclasses import asdict
 import hashlib
+from time import monotonic
 
 from .models import AutomationError,normalize
 from .support_profiles import validate
 from .support_portraits import identify
+
+
+PLANAR_SLOT_CENTERS = (.337, .3865, .437, .4855)
 
 
 class Selector:
@@ -49,9 +53,9 @@ class Selector:
             if patch.size:portrait=hashlib.sha256(patch.tobytes()).hexdigest()
         return row[2],normalize(row[1].text),portrait or round(row[0].center[1],3)
 
-    def candidates(self,scene,rows,*,fallback=False):
+    def candidates(self,scene,rows,preferences):
         result=[];matches={}
-        for index,pref in enumerate(self.preferences if not fallback else (None,)):
+        for index,pref in enumerate(preferences):
             for row in rows:
                 if pref is not None and pref.friend and pref.friend!=row[2]:continue
                 portrait=None
@@ -79,9 +83,44 @@ class Selector:
                 support=scene.find('支援',(0,.68,1,1),exact=True)
         if support is None:raise AutomationError('未核实偏好支援入口，未更换自身编队。')
         flow._click(scene,support);scene=flow._wait(self.picker,description='等待偏好支援列表')
-        if self.marker(scene) or flow._support_full(scene):
+        if flow._support_full(scene) or not self.planar and self.marker(scene):
             raise AutomationError('支援列表已有未归属本次选择的反馈，未确认或替换自身角色。')
         self.evidence(scene,'support_preferences_open');return scene
+
+    def reuse_planar(self, scene):
+        def marked_slot(page, slot):
+            x = PLANAR_SLOT_CENTERS[slot-1]
+            # Stay inside the region where the native marker verifies color.
+            return page.has('支援', (x-.012,.78,x+.012,.80), exact=True)
+
+        self.record['pages_seen'] += 1
+        read_slot = getattr(self.ctx, 'planar_friend_slot', None)
+        matched = []
+        if callable(read_slot):
+            for row in self.rows(scene):
+                slot = read_slot(scene, row[0])
+                if type(slot) is int and 1 <= slot <= len(PLANAR_SLOT_CENTERS) and marked_slot(scene, slot):
+                    matched.append((row, slot))
+        if len(matched) != 1:
+            raise AutomationError('未核实已有饰品支援标记对应的唯一好友槽位。')
+        row, slot = matched[0]
+        candidates = self.candidates(scene, [row], self.preferences[:1])
+        if not candidates:
+            raise AutomationError('已有饰品支援未核实为首个偏好，未替换或继续挑战。')
+        index, _, portrait, _, _ = candidates[0]
+        self.evidence(scene, 'support_preference_existing_slot')
+        if not 0 <= monotonic()-scene.captured_at <= 8:
+            raise AutomationError('已有饰品支援画面已过期，未返回准备页。')
+        self.flow._press('esc')
+        scene = self.flow._wait(lambda page: self.flow._team_page(page) and not self.picker(page)
+                                and not self.flow._support_full(page) and self.marker(page) and marked_slot(page, slot),
+                                description='核实返回后仍是原槽位的好友支援')
+        self.evidence(scene, 'support_preference_existing_team')
+        self.record.update(state='borrowed', reused=True, fallback_used=False, selected=dict(preference=index,
+            character=None if portrait is None else portrait.character, friend=row[2], slot=slot,
+            portrait=None if portrait is None else asdict(portrait)))
+        self.ctx.log('已核实原槽位中的首选好友支援。')
+        return scene
 
     def scroll(self,scene,amount):
         if not self.picker(scene) or self.marker(scene) or self.flow._support_full(scene):
@@ -145,7 +184,7 @@ class Selector:
             if not rows:
                 if scene.has(('暂无好友','暂无支援角色','暂无可用支援')):return None
                 raise AutomationError('未核实完整好友卡片，未把未知页面当作偏好不存在。')
-            candidates=self.candidates(scene,rows,fallback=fallback)
+            candidates=self.candidates(scene,rows,(None,) if fallback else self.preferences)
             for candidate in candidates:
                 selected=self.choose(candidate)
                 if selected is not None:return selected
@@ -158,7 +197,10 @@ class Selector:
 
     def run(self,scene):
         try:
-            scene=self.open(scene);selected=self.search(scene)
+            scene=self.open(scene)
+            if self.planar and self.marker(scene):
+                return self.reuse_planar(scene)
+            selected=self.search(scene)
             if selected is not None:return selected
             if self.settings.support_fallback=='friend':
                 self.ctx.log('本次未核实可用偏好，按设置查找其他好友支援。')

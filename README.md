@@ -250,7 +250,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 
 普通副本按`use_support`借好友，核实列表、角色卡、满员反馈、绿色支援标记后开战。满员时只检查当前卡绑定的提示，有限尝试下一张，不假定点过就借到。
 
-饰品提取按配置预设名走“预设编队”，核实同一行“已启用”和四人完整，见 [planar_team.py](autohsr/planar_team.py)。开启支援时另走已校准的内嵌支援列表。
+饰品提取按配置预设名走“预设编队”，核实同一行“已启用”和四人完整。开启支援时使用内嵌列表，已有借用若能核实为首选偏好且退出列表后仍在原槽位，可直接复用。[编队实现](autohsr/planar_team.py) · [支援偏好](docs/support-preferences.md)
 
 进入回合战斗后识别自动战斗开关，必要时开启**游戏内自动战斗**；程序不决定每回合技能。饰品首领房核实场景、首领及普攻图标后有限接近、普攻接战；失败则停止，不重新开始挑战。
 
@@ -349,7 +349,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 
 ## 货币战争实验如何实现
 
-开发已按用户要求恢复，目标为标准博弈A8财富造物主40无人接管通关10场。保留独立页面与显式实验入口，不因打开助手自动继续对局；报告与每日预算独立。
+货币战争继续开发标准博弈 A8 财富造物主 40。此前的十场独立验收目标已于 2026-10-26 终止。对局通过独立页面或显式命令启动，报告与每日预算独立。
 
 | 能力 | 机制与验证 |
 | --- | --- |
@@ -363,9 +363,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 | 节点/连续流程 | 串联支持的出战、胜利、结算、地图、投资、终局；新开超频A0为单独显式入口 |
 | 样本回放 | PNG、OCR、哈希和`.sample.json`，离线回放或独立重OCR，不访问游戏 |
 
+标准节点继续挑战后若出现「强敌来袭」，只有核实实际到达相邻首领的备战页或商店，才记为节点推进。介绍和到达分开留档，已通过离线回放。[货币开发记录](docs/currency-wars-development.md)
+
 `currency_wars_*.py`按页面、阵容、位置、经济、商店、装备、奖励、节点、流程拆分。商店评分/购买有离线原型，连续流程主要收起商店，不代表完整运营实机通过。开发对局有SSS，但含人工和修复接续，**无完整独立自动整局证据**。见 [开发记录](CURRENCY_WARS.md)、[攻略整理](CURRENCY_WARS_GUIDE.md)。
 
-后续方向为标准博弈优先、默认离线策略、可选大模型API辅助，详见 [策略调研与双路线方案](docs/currency-wars-strategy-research.md)。独立离线/API命令仍是只读原型；标准流程的阵容采集、购买、经验、满员交换、逐笔刷新、节点推进与开发结算已接入并有离线回归，完整独立整局尚未实机验收，旧十场目标未恢复，进展见 [验收与问题记录](docs/currency-wars-validation.md)。
+标准博弈优先使用离线策略，可选大模型 API 辅助。独立离线与 API 命令提供只读原型。标准流程的阵容采集、购买、经验、满员交换、逐笔刷新、节点推进与开发结算已接入并有离线回归，完整独立整局仍待实机验收。[策略调研与双路线方案](docs/currency-wars-strategy-research.md) · [验收与问题记录](docs/currency-wars-validation.md)
 
 `--currency-wars-check`会将`strategy_snapshot`、`strategy_candidates`和`strategy_decision`写入报告，模式、余额或阵容不明时要求补充观察，不因此开启输入或调用API。
 

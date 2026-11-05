@@ -6,8 +6,9 @@ import io
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import cv2
 import numpy as np
@@ -235,6 +236,95 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(ctx.clicks,['支援','好友'])
         self.assertEqual(ctx.keys,['esc'])
         self.assertEqual(ctx.report.support_selections[-1]['state'],'borrowed')
+
+    def test_planar_existing_preference_requires_the_same_native_slot_before_and_after_return(self):
+        from autohsr.app import Context
+        from autohsr.models import RunReport
+        from autohsr.vision import Vision
+
+        root = Path(__file__).parent/'fixtures/dungeons'
+        fixture = json.loads((root/'planar_support.json').read_text(encoding='utf-8'))
+        width, height = fixture['size']
+
+        def add_slot_pixels(scene, slot, *, picker=False):
+            scene.image = cv2.resize(scene.image, (width, height))
+            for crop in fixture['crops']:
+                x1, y1, x2, y2 = crop['box']
+                if crop['file'] == 'planar_friend_slot4.png' and not picker:
+                    continue
+                if crop['file'] == 'planar_support_badge.png' and slot == 3:
+                    x1, x2 = x1-.0485, x2-.0485
+                pixels = cv2.imdecode(np.frombuffer((root/crop['file']).read_bytes(), np.uint8), cv2.IMREAD_COLOR)
+                left, top = round(x1*width), round(y1*height)
+                scene.image[top:top+pixels.shape[0], left:left+pixels.shape[1]] = pixels
+            return scene
+
+        vision = Vision()
+        rows = [('甲', .203, 'FuXuan', True), ('乙', .331, 'Qingque', True)]
+        for case in ('matching', 'wrong_slot', 'fake_same_slot', 'lower_priority', 'changed_after_return', 'still_picker'):
+            with self.subTest(case=case):
+                requested = [pref('FuXuan','甲')]
+                if case == 'lower_priority':
+                    requested.insert(0, pref('Qingque','乙'))
+                settings = config(requested, dungeon_category='planar', daily_synthesis=False)
+                report = RunReport(operation='daily')
+                runner = SimpleNamespace(settings=settings, report=report, input_epoch=0,
+                                         checkpoint=Mock(), log=Mock())
+                window = Mock()
+                context = Context(runner, window, vision)
+                context.sleep = Mock()
+                context.evidence = Mock(return_value='fixture.png')
+                pages = {
+                    'team': planar_team(),
+                    'picker': add_slot_pixels(planar_picker(rows), 3 if case in ('wrong_slot','fake_same_slot') else 4, picker=True),
+                    'returned': add_slot_pixels(planar_team(), 3 if case=='changed_after_return' else 4),
+                }
+                if case == 'fake_same_slot':
+                    pages['picker'].tokens.append(Token('支援', .99, (.477,.800,.494,.808)))
+                if case == 'still_picker':
+                    pages['returned'] = add_slot_pixels(planar_picker(rows), 4, picker=True)
+                    pages['returned'].tokens.append(core.token('位面饰品提取', .1,.05))
+                mode = 'team'
+
+                def click(*args):
+                    nonlocal mode
+                    self.assertEqual(mode, 'team')
+                    mode = 'picker'
+
+                def key(name):
+                    nonlocal mode
+                    self.assertEqual((name, mode), ('esc', 'picker'))
+                    mode = 'returned'
+
+                def wait(predicate, **kwargs):
+                    scene = context.snapshot()
+                    if not predicate(scene):
+                        raise AutomationError('假窗口未达到要求的反馈')
+                    return scene
+
+                window.click.side_effect = click
+                window.key.side_effect = key
+                window.capture.side_effect = lambda: (pages[mode].image, None)
+                context.wait = wait
+                with patch.object(vision, 'read', side_effect=lambda image, geometry: Scene(list(pages[mode].tokens), image, geometry)):
+                    flow = DailyWorkflow(context)
+                    if case == 'matching':
+                        flow._support(context.snapshot())
+                        self.assertEqual(mode, 'returned')
+                    else:
+                        with self.assertRaises(AutomationError):
+                            flow._support(context.snapshot())
+                window.click.assert_called_once()
+                self.assertEqual(window.key.call_count, int(case in ('matching','changed_after_return','still_picker')))
+                record = report.support_selections[-1]
+                self.assertEqual(record['attempts'], 0)
+                if case == 'matching':
+                    self.assertEqual(record['state'], 'borrowed')
+                    self.assertIs(record['reused'], True)
+                    self.assertEqual(record['selected']['slot'], 4)
+                    self.assertEqual(record['selected']['character'], 'FuXuan')
+                else:
+                    self.assertEqual(record['state'], 'unverified')
 
     def test_legacy_planar_also_waits_for_full_toast_to_clear(self):
         rows=[('甲',.203,'Cyrene',True),('乙',.331,'Qingque',True)]
