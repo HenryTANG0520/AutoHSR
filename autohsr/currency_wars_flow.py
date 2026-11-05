@@ -81,6 +81,9 @@ def run_flow(c):
     data = dict(mode='flow_test', actions=[], completion_verified=False, gameplay_enabled=False,
                 action_status='observing', screenshot='',target_level=getattr(c.runner,'currency_target_level',0),
                 start_from_lobby_requested=getattr(c.runner,'currency_start_from_lobby',False))
+    session = getattr(c, 'overclock_session', None)
+    if session is not None:
+        data['overclock_session_id'] = session.match_id
     journal = Path(c.report.run_dir)/'currency-flow.json'
     def persist():
         c.report.currency_wars = data
@@ -93,6 +96,23 @@ def run_flow(c):
     for index in range(180 if data['start_from_lobby_requested'] else 36):
         c.checkpoint()
         scene,kind = flow_snapshot(c,guard)
+        if session is not None:
+            opening = session.data is None
+            if opening and kind not in ('lobby', 'mode_select', 'difficulty_select'):
+                data.update(action_status='needs_decision', page_kind=kind, reason='当前未核实本次开局入口。')
+                persist()
+                break
+            if session.advancing and index == 0:
+                from .currency_wars_overclock import preview_factions, read_overclock_start
+                from .currency_wars_overclock_session import START_FEEDBACK
+                original = session.require_active().get('preview_factions')
+                confidence = c.settings.ocr_confidence
+                if (original is None or read_overclock_start(scene, confidence).state != START_FEEDBACK
+                        or preview_factions(scene, confidence) != original):
+                    data.update(action_status='needs_decision', page_kind=kind,
+                                reason='当前未核实原开局首领预览，保留本局。')
+                    persist()
+                    break
         if kind=='environment':
             from .currency_wars_environment import environment_choice,choose_environment
             try:
@@ -105,7 +125,9 @@ def run_flow(c):
             if not choose_environment(c,scene,data,persist):
                 break
             continue
-        if kind in ('lobby','mode_select','difficulty_select','boss_preview') and data['start_from_lobby_requested']:
+        if (kind in ('lobby','mode_select','difficulty_select') and data['start_from_lobby_requested']
+                and (session is None or session.data is None)
+                or kind == 'boss_preview' and (data['start_from_lobby_requested'] or session is not None)):
             from .currency_wars_entry import entry_target,advance_entry
             try:
                 entry_target(scene,c.settings.ocr_confidence)
@@ -339,9 +361,18 @@ def run_flow(c):
                 if ('start',node) in seen:
                     raise AutomationError('当前节点已有出战记录，未重复出战。')
                 seen.add(('start',node))
+            if session is not None:
+                action = dict(action='run_current_node', status='pending',
+                              before=str(c.evidence(scene, 'currency_flow_node_before')))
+                data['actions'].append(action)
+                data['action_status'] = 'pending'
+                persist()
             run_node(c,journal_name=f'currency-node-{index}.json',initial_scene=scene)
             node_data = dict(c.report.currency_wars)
-            data['actions'].append(node_data)
+            if session is not None:
+                action.update(node_data, status='verified' if node_data['node_verified'] else 'unknown')
+            else:
+                data['actions'].append(node_data)
             data.update(action_status='node_verified' if node_data['node_verified'] else 'unknown',
                         screenshot=node_data['screenshot'])
             persist()

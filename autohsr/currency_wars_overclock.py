@@ -12,10 +12,13 @@ import time
 
 from .currency_wars import CurrencyWarsWorkflow, TASK, observe
 from .currency_wars_identity import AccountNotObserved, account_key, installed_client
+from .currency_wars_overclock_session import (
+    FLOW_OPERATION, START_ACTION, START_FEEDBACK, START_OPERATION, OverclockSession, client_key,
+)
 from .currency_wars_prepare import trusted
 from .currency_wars_standard import NAVIGATION_BLOCKERS
 from .currency_wars_state import strict_json
-from .models import AutomationError, EmptyCapture, InputInterrupted, Scene, Stopped, TaskResult, Token, normalize
+from .models import FULL, AutomationError, EmptyCapture, InputInterrupted, Scene, Stopped, TaskResult, Token, normalize
 from .storage import file_revision, hold_read_sources, replace_file
 
 OPERATION = 'currency_wars_overclock_configure'
@@ -60,6 +63,7 @@ class _Step:
 
 _SELECT = _Step('select_overclock', 'standard_selected', 'overclock_selected', '超频博弈', MODE_ROW)
 _OPEN_A0 = _Step('open_overclock_difficulty', 'overclock_selected', 'a0_observed', '进入超频博弈', MODE_ENTRY)
+_START_A0 = _Step(START_ACTION, 'a0_observed', START_FEEDBACK, '开始对局', (.80, .85, .97, .94))
 _STEPS = {step.action: step for step in (_SELECT, _OPEN_A0)}
 
 
@@ -138,13 +142,69 @@ def read_overclock(scene, confidence=.65, *, require_a0_details=False) -> Overcl
 
 
 def _target(scene, confidence, step) -> Token:
-    if read_overclock(scene, confidence, require_a0_details=step is _OPEN_A0).state != step.before:
+    if read_overclock(scene, confidence, require_a0_details=step is not _SELECT).state != step.before:
         raise AutomationError('当前超频配置的模式页或入口未核实。')
-    minimum = max(.85, confidence) if step is _OPEN_A0 else confidence
+    if step is _START_A0 and len(_matches(trusted(scene, confidence), (step.label,), FULL)) != 1:
+        raise AutomationError('当前 A0 开始对局按钮不唯一。')
+    minimum = max(.85, confidence) if step is not _SELECT else confidence
     targets = _matches(trusted(scene, minimum), (step.label,), step.roi)
     if len(targets) != 1:
         raise AutomationError('当前超频配置入口没有唯一可核实的目标。')
     return targets[0]
+
+
+def read_overclock_start(scene, confidence=.65):
+    observation = read_overclock(scene, confidence, require_a0_details=True)
+    if observation.state == 'blocked' or observe(scene, confidence).page_kind != 'boss_preview':
+        return observation
+    clean = trusted(scene, confidence)
+    if _matches(clean, ('开始对局', '进入标准博弈', '进入超频博弈'), FULL):
+        return OverclockObservation('controls_conflicting')
+    levels = [_text(t.text) for t in clean.tokens if t.within((.02, .87, .15, .95))
+              and re.fullmatch(r'敌人难度[0-9]+', _text(t.text))]
+    if levels != ['敌人难度1']:
+        return OverclockObservation('boss_difficulty_conflicting')
+    if (len(_matches(clean, ('本场对局首领',), (.72, .66, .85, .74))) != 1
+            or len(_matches(clean, ('下一步',), (.74, .87, .84, .95))) != 1):
+        return OverclockObservation('boss_preview_unverified')
+    return OverclockObservation(START_FEEDBACK, enemy_difficulty=1)
+
+
+def preview_factions(scene, confidence):
+    clean = trusted(scene, confidence)
+    names = []
+    for left, right in ((.07, .20), (.22, .36), (.38, .52)):
+        fields = [_text(t.text) for t in clean.tokens if t.within((left, .64, right, .70))]
+        if len(fields) != 1 or not fields[0]:
+            return None
+        names.append(fields[0])
+    return names
+
+
+def require_legacy_frame(context, scene):
+    """Keep the desktop flow on the account and installation it explicitly opened."""
+    if getattr(context, '_currency_overclock_configuration', None) is not None:
+        return
+    confidence = context.settings.ocr_confidence
+    if observe(scene, confidence).page_kind == 'unknown':
+        return
+    account = account_key(scene, confidence)
+    if account_key(scene, max(.85, confidence)) != account:
+        raise AutomationError('当前超频流程账号未核实。')
+    window = context.window
+    client = installed_client(window.current_executable())
+    if client['full_version'] != CALIBRATED_CLIENT:
+        raise AutomationError('当前超频流程的客户端版本证据不一致。')
+    binding = (account, client_key(client), window, window.hwnd)
+    prior = getattr(context, '_overclock_legacy_binding', None)
+    if prior is not None and prior != binding:
+        raise AutomationError('超频流程账号、安装来源或窗口已改变。')
+    session = context.overclock_session
+    if session.data is not None:
+        if (session.data.get('match_started') is not True
+                or (session.data['account_key'], session.data['client_key']) != binding[:2]):
+            raise AutomationError('当前画面与原已核实的超频开局账号或安装来源不符。')
+    context._overclock_legacy_binding = binding
 
 
 @dataclass(frozen=True, repr=False)
@@ -311,34 +371,45 @@ def _resolved_configuration(data, directory, *, check_source=None):
 
 
 class _Configuration:
-    def __init__(self, context):
+    def __init__(self, context, *, start=False):
         self.c = context
-        if context.report.operation != OPERATION or not context.report.run_dir:
-            raise AutomationError('超频模式配置需要独立入口与本次运行目录。')
+        self.operation = context.report.operation
+        self.session = getattr(context, 'overclock_session', None) if start else None
+        if not context.report.run_dir or not start and self.operation != OPERATION:
+            raise AutomationError('超频操作需要明确入口和本次未使用的运行记录。')
+        if start:
+            start_allowed = self.operation == START_OPERATION or (
+                self.operation == FLOW_OPERATION and context.runner.currency_start_from_lobby)
+            if not start_allowed or not isinstance(self.session, OverclockSession) or self.session.data is not None:
+                raise AutomationError('超频开局需要明确入口和本次未使用的开局意图。')
         self.directory = Path(context.report.run_dir).resolve(strict=True)
-        self.path = self.directory / JOURNAL
+        if start and self.session.run_dir != self.directory:
+            raise AutomationError('超频开局意图与本次运行目录不一致。')
+        self.path = self.session.path if start else self.directory / JOURNAL
         if not self.directory.is_dir() or self.path.exists():
             raise AutomationError('超频模式配置的运行目录无效或已有记录。')
         self.epoch = context.runner.input_epoch
         self.confidence = context.settings.ocr_confidence
-        self.step = _OPEN_A0 if context.runner.currency_overclock_open_a0 else _SELECT
-        self.ready_states = ('a0_observed',) if self.step is _OPEN_A0 else READY_STATES
+        self.step = _START_A0 if start else _OPEN_A0 if context.runner.currency_overclock_open_a0 else _SELECT
+        self.ready_states = () if start else ('a0_observed',) if self.step is _OPEN_A0 else READY_STATES
         self.start_states = (self.step.before, *self.ready_states)
         self.client = None
         self.client_window = None
-        self.account = None
+        legacy = getattr(context, '_overclock_legacy_binding', None)
+        self.account = legacy[0] if start and legacy is not None else None
         self.geometry = None
         self.pending = None
         self.saved_journal = None
         self.guard = CurrencyWarsWorkflow(context)
-        self.data = dict(mode='overclock_configuration', status='observing', mode_verified=False,
+        self.data = dict(mode='overclock_a0_start' if start else 'overclock_configuration',
+                         status='observing', mode_verified=False,
                          difficulty_verified=False, match_started=False, completion_verified=False,
                          actions=[], observation=None, feedback=[])
         if self.step is _OPEN_A0:
             self.data['objective'] = A0_OBJECTIVE
 
     def _require_client(self):
-        if self.step is not _OPEN_A0:
+        if self.step is _SELECT:
             return
         window = self.c.window
         source_window = (window, window.hwnd)
@@ -348,6 +419,9 @@ class _Configuration:
         if self.client_window is None:
             self.client_window = source_window
         self._require_client_window()
+        legacy = getattr(self.c, '_overclock_legacy_binding', None)
+        if self.session is not None and legacy is not None and legacy[1:] != (client_key(client), *source_window):
+            raise AutomationError('超频开局的安装来源或窗口与本次入口不符。')
         self.client = client
 
     def _require_client_window(self):
@@ -355,11 +429,17 @@ class _Configuration:
             raise AutomationError('超频 A0 难度页的原窗口已改变。')
 
     def _persist(self, data, *, check_sources=None, check_frames=None, read_sources=()):
-        payload = json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
+        record = data
+        if self.session is not None:
+            if not data['actions']:
+                self.data = self.c.report.currency_wars = data
+                return None
+            record = self.session.envelope(data, self.account, self.client)
+        payload = json.dumps(record, ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
         if len(payload) > MAX_JOURNAL_BYTES:
             raise AutomationError('超频配置记录超过 1 MiB，原记录保留。')
         temporary = self.path.with_suffix('.tmp')
-        with temporary.open('wb') as stream:
+        with temporary.open('xb' if self.session is not None else 'wb') as stream:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
@@ -368,9 +448,9 @@ class _Configuration:
         def recheck():
             if check_sources is not None:
                 check_sources()
-            self._check_journal(previous)
             if _read_bytes(temporary, MAX_JOURNAL_BYTES) != payload:
                 raise AutomationError('超频配置待发布记录已改变。')
+            self._check_journal(previous)
             if check_frames is not None:
                 check_frames()
 
@@ -383,13 +463,21 @@ class _Configuration:
                 with hold_read_sources(read_sources):
                     for path in read_sources:
                         _require_stable_source(path, revisions)
+                    if self.session is not None and len({revision[:2] for revision in revisions.values()}) != len(revisions):
+                        raise AutomationError('超频开局需要各自独立的原始证据。')
                     recheck()
                     yield
 
             replace_file(temporary, self.path, attempt_scope=verified_attempt)
+        elif self.session is not None and previous is None:
+            # On Windows rename without replacement fails if another receipt has appeared.
+            recheck()
+            temporary.rename(self.path)
         else:
             replace_file(temporary, self.path, before_replace=recheck)
         self.saved_journal = payload
+        if self.session is not None:
+            self.session.raw, self.session.data = payload, record
         self.data = self.c.report.currency_wars = data
         return payload
 
@@ -455,6 +543,8 @@ class _Configuration:
         return True
 
     def _observe(self, scene):
+        if self.step is _START_A0:
+            return read_overclock_start(scene, self.confidence)
         return read_overclock(scene, self.confidence, require_a0_details=self.step is _OPEN_A0)
 
     def _capture(self):
@@ -524,8 +614,10 @@ class _Configuration:
                 raise AutomationError('超频配置原生发送缺少共享读保护。')
             for path in (self.path, Path(pending.proof.screenshot)):
                 hold_source(path)
-            if self.step is _OPEN_A0:
+            if self.step is not _SELECT:
                 hold_source(Path(self.client['source']))
+        if self.session is not None:
+            self.session.require_history(check_source=hold_source if consume else None)
         if not self._history_allows_input(pending.history, check_source=hold_source if consume else None):
             raise AutomationError('旧超频配置未核实，禁止再次发送。')
         self._check_saved(pending.proof)
@@ -549,6 +641,12 @@ class _Configuration:
             self._require_history(pending.history)
             self.c.window.guard(self.geometry)
             self._require_client_window()
+            if self.session is not None:
+                live_executable = Path(self.c.window.current_executable()).resolve(strict=True)
+                if live_executable != Path(self.client['executable']):
+                    raise AutomationError('超频开局的当前窗口安装来源已改变。')
+                self.c.window.guard(self.geometry)
+                self._require_client_window()
             if self.c.window.emergency_pressed():
                 raise Stopped('F10 紧急停止。')
             require_unchanged_history()
@@ -564,8 +662,10 @@ class _Configuration:
 
     def _initial(self, deadline):
         last = None
-        stop_states = (A0_VETO_STATES if self.step is _OPEN_A0
+        stop_states = (A0_VETO_STATES if self.step is not _SELECT
                        else ('blocked', 'other_page', 'rank_unsupported'))
+        if self.step is _START_A0:
+            stop_states = (*stop_states, START_FEEDBACK, 'boss_difficulty_conflicting')
         for attempt in range(3):
             if time.monotonic() >= deadline:
                 break
@@ -594,7 +694,9 @@ class _Configuration:
             last_observation = frame.observation
             increasing = frame.captured_at > latest
             latest = max(latest, frame.captured_at)
-            if increasing and self.step is _OPEN_A0 and last_observation.state in A0_VETO_STATES:
+            if increasing and self.step is not _SELECT and (
+                    last_observation.state in A0_VETO_STATES
+                    or last_observation.state == 'boss_difficulty_conflicting'):
                 return self._partial(last_observation.state, last_observation)
             if not increasing or not frame.account_observed or frame.observation.state != state:
                 first = None
@@ -610,8 +712,13 @@ class _Configuration:
             if len({proof.screenshot for proof in proofs}) != len(proofs):
                 raise AutomationError('超频配置需要各自独立的截图证据。')
             data = dict(self.data, status='verified', mode_verified=True,
-                        difficulty_verified=state == 'a0_observed',
+                        difficulty_verified=state in ('a0_observed', START_FEEDBACK),
                         observation=asdict(frame.observation), feedback=[asdict(before), asdict(after)])
+            if self.session is not None:
+                data['match_started'] = True
+                factions = preview_factions(frame.scene, self.confidence)
+                if factions is not None and factions == preview_factions(original.scene, self.confidence):
+                    data['preview_factions'] = factions
             if data['actions']:
                 data['actions'] = [dict(data['actions'][0], status='verified')]
 
@@ -626,13 +733,19 @@ class _Configuration:
             def check_frames():
                 self._check_frame(original, current=False)
                 self._check_frame(frame)
+                factions = data.get('preview_factions')
+                if factions is not None and any(
+                        preview_factions(item.scene, self.confidence) != factions for item in (original, frame)):
+                    raise AutomationError('超频开局的首领预览阵营已改变。')
                 if time.monotonic() >= deadline or time.monotonic() - original.captured_at > MAX_FRAME_AGE:
                     raise AutomationError('超频配置双帧回执已过期或原证据改变。')
 
             sources = ()
-            if self.step is _OPEN_A0:
+            if self.step is not _SELECT:
                 sources = (Path(self.client['source']), *(Path(proof.screenshot) for proof in proofs))
             self._persist(data, check_sources=check_sources, check_frames=check_frames, read_sources=sources)
+            if self.session is not None:
+                return TaskResult(TASK, 'ok', '已核实超频 A0 开局与两张首领预览，当前停在预览页。')
             return TaskResult(TASK, 'ok', '已核实超频 A0 黑铁与敌人难度 1。' if data['difficulty_verified']
                               else '已核实超频模式选中。档位可在已打开的难度页核对。')
         return self._partial('feedback_unverified', last_observation)
@@ -671,7 +784,9 @@ class _Configuration:
             return self._partial('previous_selection_unresolved', first.observation)
 
         target = _target(first.scene, self.confidence, self.step)
-        before = self._evidence(first, 'before_open_difficulty' if self.step is _OPEN_A0 else 'before_select')
+        before_label = ('before_start' if self.step is _START_A0 else
+                        'before_open_difficulty' if self.step is _OPEN_A0 else 'before_select')
+        before = self._evidence(first, before_label)
         action = dict(action=self.step.action, status='pending', input_epoch=self.epoch,
                       target=list(target.box), before=asdict(before))
         payload = self._persist(dict(self.data, status='pending', actions=[action],
@@ -686,9 +801,19 @@ class _Configuration:
 
 def configure_overclock(context):
     flow = _Configuration(context)
-    context._currency_overclock_configuration = flow
     context.report.safe_next = ('请核对当前超频难度页与原页面切换记录。'
                                 if flow.step is _OPEN_A0 else '只核对超频模式与可见 A0 档位。对局操作使用原有独立入口。')
+    return _run_configuration(context, flow)
+
+
+def start_overclock(context):
+    flow = _Configuration(context, start=True)
+    context.report.safe_next = '请核对首领预览与原开局记录。待核对的开局保留在本地。'
+    return _run_configuration(context, flow)
+
+
+def _run_configuration(context, flow):
+    context._currency_overclock_configuration = flow
     try:
         result = flow.run()
         context.runner.emit(dict(type=TASK, data=context.report.currency_wars))

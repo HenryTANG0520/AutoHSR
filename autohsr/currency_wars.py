@@ -68,6 +68,10 @@ class CurrencyWarsWorkflow:
             raise InputInterrupted("暂停后重新采集货币战争画面，不沿用旧证据。")
         if not math.isfinite(scene.captured_at) or not 0 <= time.monotonic() - scene.captured_at <= 8:
             raise AutomationError("货币战争画面已过期，请重新只读识别。")
+        if (getattr(self.c, 'overclock_session', None) is not None
+                and self.c.report.operation == 'currency_wars_flow_test'):
+            from .currency_wars_overclock import require_legacy_frame
+            require_legacy_frame(self.c, scene)
 
     def inspect(self) -> TaskResult:
         self.c.checkpoint()

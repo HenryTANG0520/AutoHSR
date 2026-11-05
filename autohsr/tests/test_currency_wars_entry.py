@@ -10,9 +10,10 @@ from autohsr.app import Context,Runner
 from autohsr.config import Settings
 from autohsr.currency_wars_entry import entry_target,overclock_selected,advance_entry
 from autohsr.currency_wars_flow import run_flow
-from autohsr.models import AutomationError,InputInterrupted,Scene,Token
+from autohsr.models import AutomationError,InputInterrupted,Scene,TaskResult,Token
 from autohsr.tests import test_currency_wars_node as helpers
 from autohsr.tests.test_currency_wars_node import screen
+from autohsr.tests.test_currency_wars_overclock import frame
 
 
 def selected():
@@ -24,7 +25,9 @@ class EntryTests(TestCase):
     def test_overclock_requires_header_warning_and_enter_button_not_sidebar_name(self):
         self.assertTrue(overclock_selected(selected()))
         self.assertFalse(overclock_selected(screen('mode_select')))
-        self.assertEqual(entry_target(screen('mode_select'))[0],'select_overclock')
+        with self.assertRaises(AutomationError):
+            entry_target(screen('mode_select'))
+        self.assertEqual(entry_target(frame('standard'))[0],'select_overclock')
         self.assertEqual(entry_target(selected())[0],'enter_overclock')
         missing=selected()
         missing.tokens=[t for t in missing.tokens if not t.text.startswith('*无法')]
@@ -46,15 +49,28 @@ class EntryTests(TestCase):
             c.currency_advance_entry.assert_not_called()
             self.assertFalse(c.report.currency_wars['start_from_lobby_requested'])
 
-    def test_calibrated_start_chain_journals_every_step_before_input(self):
+    def test_calibrated_start_chain_routes_start_through_the_shared_gate(self):
         with tempfile.TemporaryDirectory() as directory:
             c=helpers.NodeWorkflowTests().context(directory,[selected(),screen('difficulty_select'),screen('boss_preview'),screen('plane_map')])
             c.runner.currency_start_from_lobby=True
             c.last_scene=screen('lobby')
             data=dict(actions=[],completion_verified=False)
             c.currency_advance_entry=Mock(side_effect=lambda *a:self.assertEqual(data['actions'][-1]['status'],'pending'))
-            for _ in range(4):
-                self.assertTrue(advance_entry(c,c.last_scene,data,lambda:None))
+
+            def shared_start(context):
+                self.assertIs(context, c)
+                self.assertEqual(c.currency_advance_entry.call_count, 2)
+                c.snapshot()
+                c.report.currency_wars=dict(actions=[dict(action='start_overclock_a0',status='verified')],
+                                            feedback=[dict(screenshot='fake-boss-preview.png')])
+                return TaskResult('currency_wars', 'ok', 'synthetic shared start')
+
+            with patch('autohsr.currency_wars_entry.start_overclock', side_effect=shared_start) as gate:
+                for _ in range(4):
+                    self.assertTrue(advance_entry(c,c.last_scene,data,lambda:None))
+            gate.assert_called_once_with(c)
+            self.assertEqual([call.args[1] for call in c.currency_advance_entry.call_args_list],
+                             ['open_mode', 'enter_overclock', 'advance_boss_preview'])
             self.assertTrue(data['started_from_lobby'])
             self.assertTrue(data['overclock_a0_started'])
             self.assertFalse(data['completion_verified'])
@@ -97,4 +113,6 @@ class EntryTests(TestCase):
         c.last_scene.captured_at=time.monotonic()-9
         with self.assertRaises(AutomationError):
             c.currency_advance_entry(c.last_scene,'open_mode')
+        with self.assertRaisesRegex(AutomationError, '共享原生开局门禁'):
+            c.currency_advance_entry(c.last_scene,'start_overclock_a0')
         w.click.assert_not_called()
