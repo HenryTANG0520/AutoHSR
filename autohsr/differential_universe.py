@@ -384,8 +384,13 @@ class DifferentialUniverseWorkflow:
         self._pages += 1
         kind = classify_page(scene, self.ctx)
         evidence = self.ctx.evidence(scene, f"du_{self.report['current_run']:02d}_{self._pages:03d}_{label}")
-        self.report["page_history"].append({"index": self._pages, "run": self.report["current_run"],
-            "page_kind": kind, "evidence": str(evidence), "ocr_text": scene.text})
+        observation = {"index": self._pages, "run": self.report["current_run"],
+                       "page_kind": kind, "evidence": str(evidence), "ocr_text": scene.text}
+        if kind == "station_choice":
+            from .du_station_preview import station_reroll_observation
+
+            observation["station_reroll"] = station_reroll_observation(scene, max(.85, self.settings.ocr_confidence))
+        self.report["page_history"].append(observation)
         self._persist_ledger()
         return kind
 

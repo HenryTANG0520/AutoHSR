@@ -7,6 +7,78 @@ from .du_station_policy import CARD_LABELS, LABELS
 from .models import normalize
 
 EFFECT_REGION=(.08,.14,.92,.33)
+_STATION_HEADER = (0, 0, .32, .13)
+_STATION_CONFIRM = (.51, .86, .71, .94)
+_REROLL_SEARCH = (263, 458, 492, 513)  # 960 × 540 view of the next-station control row.
+_REROLL_FIELD = re.compile(r'重[ 　]*抽[ 　]*([0-9０-９]+)?')
+_REROLL_NUMBER = re.compile(r'[0-9０-９]+')
+
+
+def _reroll_button(image):
+    import cv2
+    import numpy as np
+
+    if not isinstance(image, np.ndarray) or image.dtype != np.uint8 or image.ndim != 3 or image.shape[2] != 3:
+        return None
+    height, width = image.shape[:2]
+    left, top, right, bottom = _REROLL_SEARCH
+    patch = image[round(top*height/540):round(bottom*height/540), round(left*width/960):round(right*width/960)]
+    if not patch.size:
+        return None
+    crop_width, crop_height = right-left, bottom-top
+    crop = cv2.resize(patch, (crop_width, crop_height), interpolation=cv2.INTER_AREA)
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    white = cv2.inRange(hsv, (0, 0, 205), (179, 65, 255))
+    white = cv2.morphologyEx(white, cv2.MORPH_CLOSE, np.ones((3, 5), np.uint8))
+    _, _, components, _ = cv2.connectedComponentsWithStats(white)
+    buttons = [(x, y, w, h) for x, y, w, h, area in components[1:]
+               if 172 <= w <= 205 and 24 <= h <= 34 and area >= .85*w*h
+               and 0 < x < x+w < crop_width and 0 < y < y+h < crop_height]
+    if len(buttons) != 1:
+        return None
+    x, y, w, h = buttons[0]
+    return ((left+x)/960, (top+y)/540, (left+x+w)/960, (top+y+h)/540)
+
+
+def station_reroll_observation(scene, confidence=.85):
+    """Read a displayed count from the current next-station control."""
+    unread = dict(status='unverified', displayed_count=None)
+    trusted = [token for token in scene.tokens if confidence <= token.score <= 1]
+    headings = {token.text.strip() for token in trusted if token.within(_STATION_HEADER)}
+    confirms = [token for token in trusted if token.text.strip() == '确定' and token.within(_STATION_CONFIRM)]
+    if not {'差分宇宙', '选择下一站'} <= headings or len(confirms) != 1:
+        return dict(unread, reason='layout_unverified')
+    button = _reroll_button(scene.image)
+    if button is None or abs(confirms[0].center[1] - (button[1]+button[3])/2) > .016:
+        return dict(unread, reason='control_unverified')
+
+    left, top, right, bottom = button
+    margin_x, margin_y = .20*(right-left), .12*(bottom-top)
+    fields = [token for token in trusted if left+margin_x <= token.box[0] < token.box[2] <= right-margin_x
+              and top+margin_y <= token.box[1] < token.box[3] <= bottom-margin_y]
+    labels = [(token, match.group(1)) for token in fields
+              if (match := _REROLL_FIELD.fullmatch(token.text.strip()))]
+    if not labels:
+        return dict(unread, reason='count_unverified')
+    if len(labels) > 1 or len(fields) > 2:
+        return dict(unread, reason='conflicting_fields')
+    (label, count), = labels
+    if count is not None and len(fields) != 1:
+        return dict(unread, reason='conflicting_fields')
+    if count is None:
+        if len(fields) != 2:
+            return dict(unread, reason='count_unverified')
+        value, = (token for token in fields if token is not label)
+        count = value.text.strip()
+        gap = value.box[0] - label.box[2]
+        overlap = min(label.box[3], value.box[3]) - max(label.box[1], value.box[1])
+        height = min(label.box[3]-label.box[1], value.box[3]-value.box[1])
+        if not _REROLL_NUMBER.fullmatch(count) or not -.004 <= gap <= .035 or overlap < .60*height:
+            return dict(unread, reason='count_unverified')
+    try:
+        return dict(status='observed', displayed_count=int(count))
+    except ValueError:
+        return dict(unread, reason='count_unverified')
 
 
 @dataclass(frozen=True)
