@@ -125,6 +125,85 @@ class ChallengePreparationTests(unittest.TestCase):
                     self.assertEqual(c.window.click.call_count, int(select))
                     c.window.key.assert_not_called()
 
+    def test_final_preparation_publication_rechecks_epoch_on_sharing_retry(self):
+        for select in (False, True):
+            for interrupted in (False, True):
+                with self.subTest(select=select, interrupted=interrupted), tempfile.TemporaryDirectory() as folder:
+                    scenes = [lobby(), lobby()] if select else []
+                    c = context(folder, scenes + [setup(), setup()])
+                    real_replace = Path.replace
+                    attempts = []
+
+                    def publish(source, destination):
+                        candidate = json.loads(source.read_text(encoding='utf-8'))
+                        if candidate['status'] == 'prepared':
+                            self.assertFalse(c.report.challenge['preparation_page_verified'])
+                            if select:
+                                self.assertEqual(c.report.challenge['actions'][0]['status'], 'submitted')
+                            attempts.append(candidate['status'])
+                            if len(attempts) == 1:
+                                raise PermissionError('synthetic sharing violation')
+                        return real_replace(source, destination)
+
+                    def between_attempts(_seconds):
+                        if interrupted:
+                            c.runner.input_epoch += 1
+
+                    with patch.object(Path, 'replace', publish), \
+                            patch('autohsr.storage.time', SimpleNamespace(sleep=between_attempts)):
+                        if interrupted:
+                            with self.assertRaises(InputInterrupted):
+                                self.execute(c)
+                        else:
+                            self.assertEqual(self.execute(c).status, 'ok')
+
+                    journal = Path(c.report.run_dir) / 'challenge-preparation.json'
+                    saved = json.loads(journal.read_text(encoding='utf-8'))
+                    self.assertEqual(len(attempts), 1 if interrupted else 2)
+                    self.assertEqual(saved['preparation_page_verified'], not interrupted)
+                    self.assertEqual(saved['selected_level'], None if interrupted else 7)
+                    self.assertEqual('preparation_frames' in saved, not interrupted)
+                    self.assertEqual([frame['kind'] for frame in saved['observations'][-2:]],
+                                     ['team_setup', 'team_setup'])
+                    self.assertTrue(all(Path(frame['path']).is_file() for frame in saved['observations'][-2:]))
+                    self.assertEqual([action['status'] for action in saved['actions']],
+                                     [('unknown' if interrupted else 'verified')] if select else [])
+                    self.assertEqual(c.window.click.call_count, int(select))
+                    c.window.key.assert_not_called()
+
+    def test_final_preparation_publication_keeps_the_original_feedback_deadline(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c = context(folder, [lobby(), lobby(), setup(), setup(), setup()])
+            real_replace = Path.replace
+            attempts = []
+
+            def slow_blank(_scene):
+                c.clock.value += 28.9
+                raise EmptyCapture('synthetic slow blank frame')
+
+            def publish(source, destination):
+                candidate = json.loads(source.read_text(encoding='utf-8'))
+                if candidate['status'] == 'prepared':
+                    attempts.append(candidate['status'])
+                    if len(attempts) == 1:
+                        raise PermissionError('synthetic sharing violation')
+                return real_replace(source, destination)
+
+            track_captures(c, {2: slow_blank})
+            with patch.object(Path, 'replace', publish), \
+                    patch('autohsr.storage.time', SimpleNamespace(sleep=lambda _: c.sleep(.4))), \
+                    self.assertRaisesRegex(AutomationError, '超过有限观察时间'):
+                self.execute(c)
+
+            journal = Path(c.report.run_dir) / 'challenge-preparation.json'
+            saved = json.loads(journal.read_text(encoding='utf-8'))
+            self.assertEqual(len(attempts), 1)
+            self.assertLess(c.clock.value - c.last_scene.captured_at, 8)
+            self.assertFalse(saved['preparation_page_verified'])
+            self.assertEqual(saved['actions'][0]['status'], 'unknown')
+            c.window.click.assert_called_once()
+            c.window.key.assert_not_called()
+
     def assert_feedback_pair_after_gap(self, gap):
         with tempfile.TemporaryDirectory() as folder:
             c = context(folder, [lobby(), lobby(), setup(), setup(), setup(), setup()])

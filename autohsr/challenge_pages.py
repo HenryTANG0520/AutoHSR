@@ -206,12 +206,15 @@ def _proof(name, token):
     return dict(asset=_FILES[name], sha256=_references()[name][1], box=list(token.box), score=token.score)
 
 
+def _same_line(first, second):
+    overlap = min(first.box[3], second.box[3]) - max(first.box[1], second.box[1])
+    return overlap >= .25 * min(first.box[3] - first.box[1], second.box[3] - second.box[1])
+
+
 def _line_words(tokens, gap=None):
     lines = []
     for token in sorted(tokens, key=lambda t: (t.center[1], t.box[0])):
-        row = next((row for row in lines if min(row[0].box[3], token.box[3]) -
-                    max(row[0].box[1], token.box[1]) >= .25 *
-                    min(row[0].box[3] - row[0].box[1], token.box[3] - token.box[1])), None)
+        row = next((row for row in lines if _same_line(row[0], token)), None)
         if row is None:
             lines.append([token])
         else:
@@ -250,11 +253,37 @@ def _mode(scene, name, roi):
     return hit
 
 
-def _current_level(scene, region=(0, 0, 1, .38), pattern=r'第(0?[1-9]|1[0-2])层'):
+def _split_level_headers(tokens, pattern):
+    prefix = re.compile(r'第[0-9]{0,2}')
+    for first in tokens:
+        text = normalize(first.text)
+        if not prefix.fullmatch(text):
+            continue
+        right = sorted((t for t in tokens if t is not first and t.box[0] >= first.box[2] - .003
+                        and _same_line(first, t)), key=lambda t: t.box[0])
+        parts = [first]
+        for part in right[:3]:
+            if not -.003 <= part.box[0] - parts[-1].box[2] <= .02:
+                break
+            parts.append(part)
+            text += normalize(part.text)
+            if re.fullmatch(pattern, text):
+                box = (first.box[0], min(t.box[1] for t in parts),
+                       part.box[2], max(t.box[3] for t in parts))
+                yield Token(text, min(t.score for t in parts), box)
+                break
+            if not prefix.fullmatch(text):
+                break
+
+
+def _current_level(scene, region=(0, 0, 1, .38), pattern=r'第(0?[1-9]|1[0-2])层', *, split=False):
+    tokens = tuple(token for token in scene.tokens if _inside(token.box, region))
+    if split:
+        tokens += tuple(_split_level_headers(tokens, pattern))
     values = []
-    for token in scene.tokens:
+    for token in tokens:
         match = re.fullmatch(pattern, normalize(token.text))
-        if match and _inside(token.box, region):
+        if match:
             values.append((int(match[1]), token))
     return values[0] if len(values) == 1 else _AMBIGUOUS_LEVEL if values else None
 
@@ -397,7 +426,7 @@ def _overlaps(first, second):
 def _observe_fiction(scene, minimum, title, caption):
     if (title or caption) and _hits(scene, 'fiction_modal', (0, 0, 1, 1)):
         return _unknown('fiction_story_dialog')
-    current = _current_level(scene, _FICTION_LEVEL_HEADER, r'第([0-9]{1,2})层')
+    current = _current_level(scene, _FICTION_LEVEL_HEADER, r'第([0-9]{1,2})层', split=True)
     if current is _AMBIGUOUS_LEVEL or (current and not 1 <= current[0] <= 4):
         return _unknown('ambiguous_or_out_of_range_fiction_level')
     if current and current[1].score < minimum:
@@ -472,6 +501,9 @@ def _observe_apocalyptic(scene, minimum, title, words):
         return _unknown('unverified_apocalyptic_title_or_detail')
     basis = dict(schema=1, matches=[_proof('apocalyptic_title', title)], execution_supported=False)
     if detail:
+        captions = _line_words((t for t in scene.tokens if _inside(t.box, _APOCALYPTIC_DETAIL)), gap=.02)
+        if any('前往挑战' in word for word in captions):
+            return _unknown('ambiguous_apocalyptic_challenge_caption')
         if detail[0].score < minimum:
             return _unknown('unverified_apocalyptic_detail')
         basis.update(page='level_detail', change_team_caption_box=list(detail[0].box))

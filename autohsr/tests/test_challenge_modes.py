@@ -51,6 +51,15 @@ def fiction_setup(level=2):
     return scene
 
 
+def layer_parts(words, *, x=810, y=150, score=.99):
+    parts = []
+    for word in words:
+        right = x + 18 * len(word)
+        parts.append(token(word, (x, y, right, y + 30), score=score))
+        x = right + 4
+    return parts
+
+
 def apocalypse_lobby():
     scene = blank_page()
     paste(scene.image, 'apocalyptic_title', 67, 42)
@@ -141,6 +150,42 @@ class ChallengeModePageTests(unittest.TestCase):
         list_caption.tokens.append(token('第02层', (35, 150, 155, 180)))
         self.assertIsNone(pages.observe(list_caption).level)
 
+    def test_fiction_setup_reads_a_single_contiguous_split_header(self):
+        for words in (('第', '02', '层'), ('第0', '2层'), ('第', '0', '2', '层')):
+            with self.subTest(words=words):
+                scene = fiction_setup(None)
+                fragments = layer_parts(words)
+                scene.tokens.extend(reversed(fragments))
+                result = pages.observe(scene)
+                self.assertEqual((result.kind, result.level), ('team_setup', 2))
+                self.assertEqual(result.basis['level_box'],
+                                 [fragments[0].box[0], fragments[0].box[1],
+                                  fragments[-1].box[2], fragments[-1].box[3]])
+
+    def test_fiction_setup_does_not_pair_partial_or_weak_headers(self):
+        variants = [
+            layer_parts(('第', '02', '层'), x=1835),
+            layer_parts(('第', '02')) + layer_parts(('层',), x=876, y=189),
+            layer_parts(('第', '02')) + layer_parts(('层',), x=1000),
+            layer_parts(('第', '02')) + layer_parts(('层',), x=872, score=.81),
+        ]
+        for fragments in variants:
+            with self.subTest(fragments=fragments):
+                scene = fiction_setup(None)
+                scene.tokens.extend(fragments)
+                result = pages.observe(scene)
+                self.assertEqual((result.kind, result.level), ('team_setup', None))
+                self.assertNotIn('level_box', result.basis)
+
+    def test_fiction_setup_requires_a_unique_header_even_with_matching_digits(self):
+        for digits, x, score in (('03', 948, .81), ('05', 948, .99), ('02', 948, .99), ('02', 810, .99)):
+            with self.subTest(digits=digits, x=x, score=score):
+                scene = fiction_setup()
+                scene.tokens.extend(layer_parts(('第', digits, '层'), x=x, score=score))
+                result = pages.observe(scene)
+                self.assertEqual(result.kind, 'unknown')
+                self.assertEqual(result.targets, ())
+
     def test_fiction_caption_without_two_headers_is_not_team_setup(self):
         scene = fiction_setup()
         scene.image[790:842, 650:678] = 12
@@ -166,6 +211,24 @@ class ChallengeModePageTests(unittest.TestCase):
         self.assertEqual(pages.observe(scene).kind, 'unknown')
         scene.tokens[-1] = token('前往挑战', (1690, 815, 1820, 843), score=.80)
         self.assertEqual(pages.observe(scene).kind, 'unknown')
+
+    def test_apocalyptic_detail_rejects_local_conflicting_action_captions(self):
+        variants = [
+            [token('前往挑战', (1775, 815, 1879, 843), score=.81)],
+            [token('前往', (1775, 815, 1824, 843), score=.82),
+             token('挑战', (1827, 815, 1879, 843), score=.78)],
+        ]
+        for captions in variants:
+            with self.subTest(captions=captions):
+                scene = apocalypse_lobby()
+                scene.tokens.append(token('更换编队', (1650, 814, 1750, 841)))
+                scene.tokens.extend(captions)
+                result = pages.observe(scene)
+                self.assertEqual((result.kind, result.targets), ('unknown', ()))
+        scene = apocalypse_lobby()
+        scene.tokens.extend([token('更换编队', (1650, 814, 1750, 841)),
+                             token('前往挑战', (1200, 815, 1310, 842), score=.81)])
+        self.assertEqual(pages.observe(scene).kind, 'level_detail')
 
     def test_apocalyptic_two_nodes_are_not_a_selected_node_or_current_level(self):
         scene = apocalypse_setup()
