@@ -118,7 +118,11 @@ class SettingsShell(ttk.Frame):
             return "break"
 
     def _focus(self, event):
-        self.see(event.widget)
+        widget = event.widget
+        # Tk also sends FocusIn to ancestors when a native dropdown opens.
+        # Revealing an entire section would scroll away from its active field.
+        if isinstance(widget, tk.Widget) and str(widget) == str(self.tk.call("focus")):
+            self.see(widget)
 
     def see(self, widget):
         if not str(widget).startswith(str(self.content) + ".") or not widget.winfo_ismapped():

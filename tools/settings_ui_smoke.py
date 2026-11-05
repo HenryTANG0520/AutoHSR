@@ -310,6 +310,13 @@ def main():
                     canvas.yview_moveto(0)
                     root.update()
                     initial = canvas.yview()
+                    click(ui.power_mode_combo)
+                    root.update()
+                    pop = str(root.tk.call("ttk::combobox::PopdownWindow", ui.power_mode_combo))
+                    check(f'{scale}_{size}_dropdown_keeps_form_position',
+                          root.tk.call("winfo", "ismapped", pop) and canvas.yview() == initial)
+                    root.tk.call("ttk::combobox::Unpost", ui.power_mode_combo)
+                    root.update()
                     canvas.event_generate('<MouseWheel>', delta=-120)
                     root.update()
                     check(f'{scale}_{size}_long_form_scrolls_under_fixed_navigation',
