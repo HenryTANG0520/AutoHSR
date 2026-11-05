@@ -208,11 +208,10 @@ class ChallengePreparation:
                         self.data['account_key'] = self.account
                         self._persist()
                     if len(frames) == 2:
-                        if feedback:
-                            self._fresh(scene)
-                            current = max(0., time.monotonic() - started - (self.c.runner.inactive_duration - inactive))
-                            if elapsed + current >= 30:
-                                break
+                        self._fresh(scene)
+                        current = max(0., time.monotonic() - started - (self.c.runner.inactive_duration - inactive))
+                        if elapsed + current >= 30:
+                            break
                         return scene, observation, frames
                 else:
                     frames, previous = [], None

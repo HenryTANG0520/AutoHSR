@@ -89,6 +89,42 @@ class ChallengePreparationTests(unittest.TestCase):
             c.window.click.assert_not_called()
             c.window.key.assert_not_called()
 
+    def test_setup_is_rechecked_after_second_observation_is_saved(self):
+        for select in (False, True):
+            for change, error in (('epoch', InputInterrupted), ('age', AutomationError), ('stop', Stopped)):
+                with self.subTest(select=select, change=change), tempfile.TemporaryDirectory() as folder:
+                    scenes = [lobby(), lobby()] if select else []
+                    c = context(folder, scenes + [setup(), setup()])
+
+                    def publish(source, destination):
+                        data = json.loads(source.read_text(encoding='utf-8'))
+                        replace_file(source, destination)
+                        last_kinds = [frame['kind'] for frame in data['observations'][-2:]]
+                        if data['status'] == 'running' and last_kinds == ['team_setup', 'team_setup']:
+                            if change == 'epoch':
+                                c.runner.input_epoch += 1
+                            elif change == 'age':
+                                c.clock.value += 8.1
+                            else:
+                                c.checkpoint.side_effect = Stopped('synthetic stop during observation save')
+
+                    with patch('autohsr.challenge_prepare.replace_file', side_effect=publish), self.assertRaises(error):
+                        self.execute(c)
+
+                    journal = Path(c.report.run_dir) / 'challenge-preparation.json'
+                    saved = json.loads(journal.read_text(encoding='utf-8'))
+                    failure_status = 'partial' if select else 'failed'
+                    self.assertEqual(saved['status'], 'stopped' if change == 'stop' else failure_status)
+                    self.assertFalse(saved['preparation_page_verified'])
+                    self.assertIsNone(saved['selected_level'])
+                    self.assertNotIn('preparation_frames', saved)
+                    self.assertEqual([action['status'] for action in saved['actions']], ['unknown'] if select else [])
+                    frames = saved['observations'][-2:]
+                    self.assertEqual([frame['kind'] for frame in frames], ['team_setup', 'team_setup'])
+                    self.assertTrue(all(Path(frame['path']).is_file() for frame in frames))
+                    self.assertEqual(c.window.click.call_count, int(select))
+                    c.window.key.assert_not_called()
+
     def assert_feedback_pair_after_gap(self, gap):
         with tempfile.TemporaryDirectory() as folder:
             c = context(folder, [lobby(), lobby(), setup(), setup(), setup(), setup()])
