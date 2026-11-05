@@ -280,15 +280,29 @@ class ChallengePreparationTests(unittest.TestCase):
             self.assertEqual(c.report.challenge['actions'], [])
             c.window.click.assert_not_called()
 
+    def test_low_score_uid_does_not_supply_positive_account_proof(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c = context(folder, [setup(), setup(), setup()])
+
+            def lower_confidence(scene):
+                token = scene.tokens[-1]
+                scene.tokens[-1] = Token(token.text, .80, token.box)
+
+            seen = track_captures(c, {0: lower_confidence})
+            self.assertEqual(self.execute(c).status, 'ok')
+            frames = c.report.challenge['preparation_frames']
+            self.assertEqual([frame['captured_at'] for frame in frames], [scene.captured_at for scene in seen[1:]])
+            c.window.click.assert_not_called()
+
     def test_post_selection_rejects_changed_or_conflicting_account_immediately(self):
-        for conflict in (False, True):
-            with self.subTest(conflict=conflict), tempfile.TemporaryDirectory() as folder:
+        for score, conflict in ((.99, False), (.99, True), (.80, False)):
+            with self.subTest(score=score, conflict=conflict), tempfile.TemporaryDirectory() as folder:
                 c = context(folder, [lobby(), lobby(), setup(), setup(), setup()])
 
                 def change_account(scene):
                     if not conflict:
                         scene.tokens.pop()
-                    scene.tokens.append(Token('UID:200000000', .99, (.01, .96, .10, .99)))
+                    scene.tokens.append(Token('UID:200000000', score, (.115, .96, .215, .99)))
 
                 seen = track_captures(c, {2: change_account})
                 with self.assertRaisesRegex(AutomationError, '账号标识未完整' if conflict else '账号改变'):
@@ -296,6 +310,51 @@ class ChallengePreparationTests(unittest.TestCase):
                 self.assertEqual(len(seen), 3)
                 self.assertEqual(c.report.challenge['actions'][0]['status'], 'unknown')
                 c.window.click.assert_called_once()
+
+    def test_complete_uid_conflict_at_pre_send_guard_keeps_the_original_intent(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c = context(folder, [lobby(), lobby(), setup(), setup()])
+            pending = []
+
+            def guard(_geometry):
+                pending.extend(deepcopy(c.report.challenge['actions']))
+                c.last_scene.tokens.append(Token('UID:200000000', .80, (.115, .96, .215, .99)))
+
+            c.window.guard.side_effect = guard
+            with self.assertRaisesRegex(AutomationError, '多个完整'):
+                self.execute(c)
+            c.window.click.assert_not_called()
+            journal = Path(c.report.run_dir) / 'challenge-preparation.json'
+            saved = json.loads(journal.read_text(encoding='utf-8'))
+            self.assertEqual(len(pending), 1)
+            self.assertEqual(pending[0]['status'], 'pending')
+            self.assertEqual(saved['actions'], [dict(pending[0], status='unknown')])
+            self.assertTrue(Path(pending[0]['before']['path']).is_file())
+            self.assertFalse(saved['preparation_page_verified'])
+
+    def test_complete_uid_conflict_at_final_receipt_guard_keeps_both_setup_sources(self):
+        for select in (False, True):
+            with self.subTest(select=select), tempfile.TemporaryDirectory() as folder:
+                scenes = [lobby(), lobby()] if select else []
+                c = context(folder, scenes + [setup(), setup()])
+
+                def guard(_geometry):
+                    actions = c.report.challenge['actions']
+                    if not actions or actions[-1]['status'] == 'submitted':
+                        c.last_scene.tokens.append(Token('UID:200000000', .80, (.115, .96, .215, .99)))
+
+                c.window.guard.side_effect = guard
+                with self.assertRaisesRegex(AutomationError, '多个完整'):
+                    self.execute(c)
+                journal = Path(c.report.run_dir) / 'challenge-preparation.json'
+                saved = json.loads(journal.read_text(encoding='utf-8'))
+                self.assertFalse(saved['preparation_page_verified'])
+                self.assertNotIn('preparation_frames', saved)
+                frames = saved['observations'][-2:]
+                self.assertEqual([frame['kind'] for frame in frames], ['team_setup', 'team_setup'])
+                self.assertTrue(all(Path(frame['path']).is_file() for frame in frames))
+                self.assertEqual([action['status'] for action in saved['actions']], ['unknown'] if select else [])
+                self.assertEqual(c.window.click.call_count, int(select))
 
     def test_blank_does_not_hide_epoch_change_plan_change_or_stop(self):
         for select in (False, True):

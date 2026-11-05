@@ -8,9 +8,9 @@ import cv2
 import numpy as np
 
 from . import challenge_pages, challenge_roster
+from .challenge_account import verified_account
 from .challenge_identities import unit_key
 from .challenge_plan import ChallengePlan, MODE_LIMITS
-from .currency_wars_identity import account_key
 from .models import AutomationError, ROI, Scene
 
 
@@ -187,9 +187,7 @@ def _consecutive(plan, first, second):
 
 def _shared_account(scenes, confidence):
     try:
-        # A second complete UID at collection confidence is a conflict even
-        # when only one of the two candidates clears the positive threshold.
-        keys = {account_key(scene, threshold) for scene in scenes for threshold in (confidence, max(.85, confidence))}
+        keys = {verified_account(scene, confidence) for scene in scenes}
     except (AutomationError, AttributeError, TypeError, ValueError):
         return None
     return keys.pop() if len(keys) == 1 else None

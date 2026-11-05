@@ -64,6 +64,8 @@ python -m autohsr --challenge-prepare --challenge-plan .\my-challenge.json
 
 页面探测与选层反馈各自在 30 秒活动时限和 100 次采集上限内观察。两阶段遇到空帧都会核对运行状态和输入代次，随后从晚于该空帧的画面重新组成配对。选层反馈须晚于点击发送完成时刻，暂缺完整账号、重复或倒序时间戳会打断其连续计数。核实成功需要同一账号、同一输入代次的连续两张当前层备战画面。已有备战和刚选层两路均在第二张证据写盘后复核当前状态，最终记录在每次实际替换前再次核对窗口、页面、账号、画面时效、输入代次和原活动时限。共享锁重试期间失效会保留观察，已提交的选层保持待核对。明确换号、多个完整账号候选、模式冲突、暂停或计划变化会中止原选择的核验。[实现](../autohsr/challenge_prepare.py)
 
+备战与槽位对照共用高难账号门禁。绑定账号仍须达到 `max(0.85, OCR 采集阈值)`。在原 UID 区域，达到采集阈值的完整字段会参与冲突判定，多条完整字段或与已绑定账号不同的完整字段均停止。初始观察、选层发送前和最终回执写入前都使用这条规则。异区文字、不完整字段及低于采集阈值的读数不参与。[账号门禁](../autohsr/challenge_account.py)
+
 未知、动画、重复capture、失焦、账号／计划／代次变化、写盘失败或超时不重发选择。私人`run_dir/challenge-preparation.json`及`RunReport.challenge`保存原意图、页面来源和反馈；旧文件不覆盖，未核实选择保留`unknown`。最外层运行结束通知只沿用明确启用的通知配置，将任务标为“高难备战”，不公开名单、账号摘要或截图；本轮没有实际发送。
 
 ## 页面与证据
@@ -117,6 +119,12 @@ python -m autohsr --challenge-prepare --challenge-plan .\my-challenge.json
 19 幅局部原件均固定到上游`7cf6c6bed474539485d3b1504077ac352866829f`，保留作者 moesnow 及其贡献者、GPL v3 与游戏美术权利说明。来源清单记录原路径、尺寸和哈希。[素材说明](../assets/upstream/March7thAssistant/challenge-ui/README.md) · [来源清单](../assets/upstream/March7thAssistant/challenge-ui/sources.json) · [GPL v3](../assets/upstream/March7thAssistant/LICENSE)
 
 ## 验证与未完成项
+
+### 2026-11-06 备战账号冲突
+
+在 `dc8b2cc` 用正式 CLI、Runner、Context 和假窗口复现四个反例。0.80 的第二个完整 UID 出现在已有备战首帧、次帧、选层前或选层后，四例均错误核实了备战，其中选层前一例还发出一次假点击。修复后初始冲突停止在选层前，发送前冲突保留已写入的选择意图和原图，反馈或最终回执冲突将已提交动作保留为 `unknown`。原基线日志留在本工作树的 `runs/high-roster-account-qa/`。[正式入口用例](../autohsr/tests/test_challenge_integration.py) [回执与发送前用例](../autohsr/tests/test_challenge_prepare.py)
+
+**63 项定向回归通过**，其中正式备战与 CLI 39 项，槽位、虚构备战、候选证据和共享 UID 解析 24 项。账号专项 7 项为其中的子集，覆盖干净同号、单条 0.80 字段不足以绑定、明确换号、异区、截断及低于采集阈值的噪声。本批使用虚构标识、固定公开素材和假窗口。当前客户端的 UID 可读性、同层连续转场及真实双队槽位仍待实机核实。
 
 ### 2026-11-05 双队槽位对照
 

@@ -1,7 +1,8 @@
 """High-difficulty configuration/CLI/native routing, with fake IO only."""
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from dataclasses import replace
 import io
+from itertools import count
 import json
 from pathlib import Path
 import tempfile
@@ -12,8 +13,10 @@ from unittest.mock import Mock, patch
 from autohsr.app import Context, Runner
 from autohsr.challenge_cli import read_plan
 from autohsr.config import Settings, SettingsError
-from autohsr.models import AutomationError, RunReport, TaskResult
+from autohsr.models import AutomationError, RunReport, Scene, TaskResult
+from autohsr.tests import test_challenge_pages as pages
 from autohsr.tests import test_runner_recovery as native
+from autohsr.windows import Geometry
 
 
 PLAN = dict(mode='memory_of_chaos', levels=[7, 12],
@@ -21,7 +24,88 @@ PLAN = dict(mode='memory_of_chaos', levels=[7, 12],
     team2=['Acheron', 'Jiaoqiu', 'Pela', 'Aventurine'])
 
 
+def prepare_with_fake_window(root, scenes):
+    from autohsr.__main__ import main
+
+    config = root / 'config.json'
+    Settings(challenge_plan=PLAN, overlay_logs=False).save(config)
+    pending = iter(scenes)
+    current = None
+    geometry = Geometry(0, 0, 1920, 1080)
+
+    def capture():
+        nonlocal current
+        current = next(pending)
+        return current.image, geometry
+
+    def read(image, geometry):
+        return Scene(list(current.tokens), image, geometry)
+
+    window = Mock(hwnd=1, capture=Mock(side_effect=capture))
+    kernel = SimpleNamespace(CreateMutexW=Mock(return_value=1), CloseHandle=Mock())
+    ticks = count(1000., .01)
+    clock = SimpleNamespace(monotonic=lambda: next(ticks))
+    output = io.StringIO()
+    with ExitStack() as stack:
+        stack.enter_context(patch('autohsr.app.ROOT', root))
+        stack.enter_context(patch('autohsr.app.C.get_last_error', return_value=0))
+        stack.enter_context(patch('autohsr.app.threading.Thread'))
+        stack.enter_context(patch('autohsr.app.is_elevated', return_value=False))
+        stack.enter_context(patch('autohsr.app.find_game', return_value=window))
+        stack.enter_context(patch('autohsr.app.Vision', return_value=SimpleNamespace(read=read)))
+        stack.enter_context(patch('autohsr.windows.kernel32', kernel))
+        stack.enter_context(patch.object(Runner, '_arm_hotkeys'))
+        stack.enter_context(patch.object(Context, 'sleep', lambda ctx, seconds: ctx.checkpoint()))
+        for module in ('app', 'challenge_prepare', 'challenge_pages'):
+            stack.enter_context(patch(f'autohsr.{module}.time', clock))
+        stack.enter_context(redirect_stdout(output))
+        stack.enter_context(redirect_stderr(io.StringIO()))
+        code = main(['--challenge-prepare', '--config', str(config)])
+    return code, json.loads(output.getvalue()), window
+
+
 class ChallengeIntegrationTests(unittest.TestCase):
+    def test_cli_rejects_a_second_complete_uid_below_the_positive_threshold(self):
+        original = pages.token('UID:100000000', (15, 1035, 200, 1060))
+        conflict = pages.token('UID:200000000', (220, 1035, 420, 1060), score=.80)
+        for phase, index, sent, saved_frames in (
+            ('first existing', 0, 0, 0), ('second existing', 1, 0, 1),
+            ('before selection', 1, 0, 1), ('after selection', 3, 1, 3),
+        ):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as folder:
+                scenes = [pages.setup_scene(level=7), pages.setup_scene(level=7)]
+                if phase in ('before selection', 'after selection'):
+                    scenes[:0] = [pages.lobby_scene(levels=(7, 8)), pages.lobby_scene(levels=(7, 8))]
+                for scene in scenes:
+                    scene.tokens.append(original)
+                scenes[index].tokens.append(conflict)
+
+                code, report, window = prepare_with_fake_window(Path(folder), scenes)
+                data = report['challenge']
+                self.assertEqual((code, window.click.call_count, data['preparation_page_verified']), (1, sent, False))
+                self.assertIn('多个完整', report['error'])
+                self.assertEqual([action['status'] for action in data['actions']], ['unknown'] if sent else [])
+                self.assertEqual(len(data['observations']), saved_frames)
+                self.assertTrue(all(Path(frame['path']).is_file() for frame in data['observations']))
+                journal = Path(report['run_dir']) / 'challenge-preparation.json'
+                self.assertEqual(json.loads(journal.read_text(encoding='utf-8')), data)
+                self.assertTrue(any(journal.parent.glob('*_failure.png')))
+                window.key.assert_not_called()
+
+    def test_cli_ignores_uid_noise_and_complete_text_outside_the_uid_region(self):
+        original = pages.token('UID:100000000', (15, 1035, 200, 1060))
+        noise = [pages.token('UID:200000000', (490, 1035, 690, 1060)),
+                 pages.token('UID:2000', (220, 1035, 420, 1060)),
+                 pages.token('UID:200000000', (220, 1035, 420, 1060), score=.64)]
+        with tempfile.TemporaryDirectory() as folder:
+            scenes = [pages.setup_scene(level=7), pages.setup_scene(level=7)]
+            scenes[0].tokens.append(original)
+            scenes[1].tokens.extend([original, *noise])
+            code, report, window = prepare_with_fake_window(Path(folder), scenes)
+        self.assertEqual((code, report['status']), (0, 'success'))
+        self.assertTrue(report['challenge']['preparation_page_verified'])
+        window.click.assert_not_called()
+
     def test_dormant_default_and_explicit_save_do_not_access_game(self):
         with tempfile.TemporaryDirectory() as folder, \
              patch('autohsr.app.find_game', side_effect=AssertionError('no game')):

@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 import time
 
+from .challenge_account import verified_account
+from .currency_wars_identity import AccountNotObserved
 from .models import AutomationError, EmptyCapture, InputInterrupted, Stopped, TaskResult
 from .storage import replace_file
 
@@ -92,16 +94,12 @@ class ChallengePreparation:
                 or not 0 <= time.monotonic() - scene.captured_at <= 8
                 or scene.image is None or scene.geometry is None):
             raise AutomationError('高难备战需要当前新鲜画面及窗口来源。')
-        if self.account is not None:
-            from .currency_wars_identity import AccountNotObserved, account_key
-            try:
-                key = account_key(scene, max(.85, self.c.settings.ocr_confidence))
-            except AccountNotObserved:
-                if allow_missing_account:
-                    return False
-                raise
-            if key != self.account:
-                raise AutomationError('高难备战账号改变，未继续选择。')
+        try:
+            self.account = verified_account(scene, self.c.settings.ocr_confidence, expected=self.account)
+        except AccountNotObserved:
+            if allow_missing_account:
+                return False
+            raise
         return True
 
     def _source(self, scene, observation, label):
@@ -169,7 +167,6 @@ class ChallengePreparation:
 
     def _wait(self, acceptable, description, *, after_input=None):
         from .challenge_pages import observe, target
-        from .currency_wars_identity import account_key
         frames, previous = [], None
         feedback = after_input is not None
         latest_capture = after_input
@@ -184,19 +181,14 @@ class ChallengePreparation:
                 frames, previous = [], None
                 scene = None
             if scene is not None:
-                account_observed = self._fresh(scene, allow_missing_account=feedback)
-                if self.account is None:
-                    try:
-                        self.account = account_key(scene, max(.85, self.c.settings.ocr_confidence))
-                    except AutomationError:
-                        self.account = None
+                account_observed = self._fresh(scene, allow_missing_account=feedback or self.account is None)
                 observation = observe(scene, self.c.settings.ocr_confidence)
                 if observation.mode is not None and observation.mode != self.plan.mode:
                     raise AutomationError('当前高难模式与明确计划不符。')
                 increasing = latest_capture is None or scene.captured_at > latest_capture
                 if feedback and increasing:
                     latest_capture = scene.captured_at
-                if account_observed and self.account is not None and increasing and acceptable(scene, observation):
+                if account_observed and increasing and acceptable(scene, observation):
                     token = target(scene, 'select_level', self.c.settings.ocr_confidence, level=self.plan.level_start)
                     signature = (observation.kind, observation.mode, observation.level, observation.stars,
                                  token.box if token is not None else None)
