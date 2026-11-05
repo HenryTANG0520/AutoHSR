@@ -167,6 +167,18 @@ def _next_action(scene, confidence=.65, *, session=None):
             if opening is not None:return opening
         from .currency_wars_loot import loot_target
         if loot_centers(scene):
+            from .currency_wars_collector import roster_cells
+            bench = [cell for cell in roster_cells(scene,confidence) if cell.zone=='bench']
+            # An unread/blocked pickup is not proof of a full bench. Only nine
+            # observed owned cells may use the existing free vacancy deployment;
+            # its normal roster, ledger, capacity and destination gates still run.
+            if len(bench)==9 and {cell.slot for cell in bench}==set(range(1,10)) and all(cell.state=='occupied' for cell in bench):
+                from .currency_wars_standard_deployment import standard_deployment, POLICY
+                deployment = standard_deployment(scene,session or {},confidence)
+                if deployment is not None:
+                    plan,unit,score,payload = deployment
+                    return StandardAction('deploy_standard_owned','standard_owned_deployed',plan,
+                                          details=(unit.name,unit.star,unit.tier,plan.zone,score,POLICY),payload=payload)
             x, y, radius = loot_target(scene, confidence)
             return StandardAction('collect_standard_loot', 'loot_collected',
                                   Token('已核实奖励晶矿', 1., (x-radius,y-radius*16/9,x+radius,y+radius*16/9)),
