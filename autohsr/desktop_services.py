@@ -8,16 +8,23 @@ from tkinter import filedialog, ttk
 from uuid import uuid4
 
 from . import theme
+from .config import ROOT
 from .notify_profiles import MAX_BYTES as PROFILE_MAX_BYTES
 from .notify_profiles import PROVIDERS, NotifyCancelled, NotifyError, ProfileStore, alias, loads
 from .notify_runtime import STATUSES, STATUS_LABELS, NotificationService
-from .redemption_codes import MAX_ROWS
+from .redemption_codes import MAX_ROWS, CatalogCancelled, fetch_catalog, from_file, from_values
 from .redemption_report import report_summary
 from .redemption_settings import validate_settings as validate_redemption
 
 
 _SOURCES = {'online': '在线码表', 'manual': '手动输入', 'file': '本地码表'}
 _SERVERS = {'cn': '国服', 'global': '国际服', 'auto': '由当前客户端识别'}
+_PREVIEWS = {
+    'online': ('联网预览码表', '联网码表', 'download'),
+    'manual': ('预览手动批次', '手动批次', 'values'),
+    'file': ('预览本地码表', '本地码表', 'file'),
+}
+_PREVIEW_UNSET = '尚无码表预览。'
 _TEST_STATUS = {
     'accepted': '渠道已接收测试通知。',
     'partial': '测试通知部分完成，请核对所选渠道。',
@@ -34,6 +41,25 @@ def _split(value):
 
 def _choice(values, label):
     return next((key for key, value in values.items() if value == label), label)
+
+
+def _preview_summary(batch, source, server):
+    _, label, kind = _PREVIEWS[source]
+    summary = batch.public_summary()
+    if summary['server'] != server or summary['source_kind'] != kind:
+        raise ValueError('码表来源或服务器与预览请求不符。')
+    reasons = summary['reasons']
+    duplicate = reasons.get('duplicate', 0)
+    prefix = f'{label} · {_SERVERS[server]}'
+    if source == 'manual':
+        invalid = reasons.get('invalid_code', 0)
+        return (f'{prefix} · 格式适用 {summary["count"]} · 重复 {duplicate} · 格式无效 {invalid}。'
+                '手动码的时效和服别待游戏核实。')
+    expired = reasons.get('expired', 0)
+    other_server = reasons.get('other_server', 0)
+    invalid = summary['skipped'] - expired - other_server - duplicate
+    return (f'{prefix} · 适用 {summary["count"]} · 已过期 {expired} · 其他服 {other_server}'
+            f' · 重复 {duplicate} · 无效行 {invalid}')
 
 
 def _draft(ui, name, values, *, view):
@@ -212,15 +238,16 @@ class _RedemptionPanel(_PaperPanel):
             codes='，'.join(saved.redemption_codes),
             catalog=saved.redemption_catalog,
             mail=saved.redemption_claim_mail,
-        ), view=dict(result='尚无兑换结果。'))
+        ), view=dict(result='尚无兑换结果。', preview_result=_PREVIEW_UNSET, preview_request=''))
         fields = self.draft
         row = self._row(1, '兑换来源')
         self.source = self._control(ttk.Combobox(row, textvariable=fields['source'], values=tuple(_SOURCES.values()),
                                                 width=14, state='readonly'), state='readonly')
         self.source.pack(side='left')
         ttk.Label(row, text='服务器', style='Card.TLabel').pack(side='left', padx=(2 * self.pad, self.pad))
-        self._control(ttk.Combobox(row, textvariable=fields['server'], values=tuple(_SERVERS.values()),
-                                   width=17, state='readonly'), state='readonly').pack(side='left')
+        self.server = self._control(ttk.Combobox(row, textvariable=fields['server'], values=tuple(_SERVERS.values()),
+                                                width=17, state='readonly'), state='readonly')
+        self.server.pack(side='left')
         row = self._row(2, '兑换内容')
         self.online_hint = theme.wrapped_label(row, text='运行时获取对应服务器码表。', style='CardHint.TLabel')
         self.manual = self._control(ttk.Entry(row, textvariable=fields['codes'], width=18))
@@ -234,13 +261,20 @@ class _RedemptionPanel(_PaperPanel):
             field.grid(row=0, column=0, sticky='ew')
         self.source_note = tk.StringVar(master=ui.root)
         self._note(3, variable=self.source_note)
-        row = self._row(4, '执行选项')
+        row = self._row(4, '码表预览')
+        self.preview_button = self._control(ttk.Button(row, style='Compact.TButton', command=self.preview))
+        self.preview_button.pack(side='left')
+        self._note(5, variable=fields['preview_result'])
+        row = self._row(6, '执行选项')
         self._control(ttk.Checkbutton(row, text='加入日常计划', variable=fields['enabled'])).pack(side='left')
         self._control(ttk.Checkbutton(row, text='成功后核对邮件附件', variable=fields['mail'])).pack(
             side='left', padx=(self.pad, 0))
-        self._note(5, text='独立兑换使用当前游戏账号。保存偏好请用底栏「保存设置」。')
-        self._note(6, variable=fields['result'])
+        self._note(7, text='独立兑换使用当前游戏账号。保存偏好请用底栏「保存设置」。')
+        self._note(8, variable=fields['result'])
         self._watch(fields['source'])
+        for key in ('source', 'server', 'codes', 'catalog'):
+            variable = fields[key]
+            self.traces.append((variable, variable.trace_add('write', self._invalidate_preview)))
         self.refresh_controls()
 
     def refresh_controls(self):
@@ -249,7 +283,8 @@ class _RedemptionPanel(_PaperPanel):
         self.source_note.set({
             'manual': '多个兑换码可用空白或逗号分隔，保留原大小写。',
             'file': '选择本地 UTF-8 JSON 码表。',
-        }.get(source, '在线来源失败时使用随包固定码表。'))
+        }.get(source, '实际兑换可在下载失败时使用随包码表。联网预览只报告下载结果。'))
+        self.preview_button.configure(text=_PREVIEWS.get(source, ('预览码表',))[0])
         for field, kind in ((self.online_hint, 'online'), (self.manual, 'manual'), (self.file, 'file')):
             if kind == source:
                 field.grid()
@@ -263,6 +298,72 @@ class _RedemptionPanel(_PaperPanel):
                                           filetypes=(('JSON 码表', '*.json'), ('所有文件', '*.*')))
         if path:
             self.draft['catalog'].set(path)
+
+    def _invalidate_preview(self, *_):
+        fields = self.draft
+        if fields['preview_result'].get() != _PREVIEW_UNSET:
+            fields['preview_request'].set('')
+            fields['preview_result'].set('草稿已变化，请重新预览。')
+
+    def preview(self):
+        if self.ui.busy or self.ui.closing:
+            return False
+        fields = self.draft
+        source = _choice(_SOURCES, fields['source'].get())
+        server = _choice(_SERVERS, fields['server'].get())
+        result = fields['preview_result']
+        if server not in ('cn', 'global'):
+            result.set('预览请选择国服或国际服。')
+            self.server.focus_set()
+            return False
+        if source not in _PREVIEWS:
+            result.set('请选择一个码表来源。')
+            self.source.focus_set()
+            return False
+        manual = fields['codes'].get() if source == 'manual' else ''
+        path = fields['catalog'].get() if source == 'file' else ''
+        if source == 'file' and not path.strip():
+            result.set('请选择本地 JSON 码表。')
+            return False
+
+        request = fields['preview_request']
+        previous = request.get(), result.get()
+        ticket = uuid4().hex
+        request.set(ticket)
+        title, label, _ = _PREVIEWS[source]
+        result.set(f'正在核对{label}。')
+
+        def work(cancel):
+            if cancel.is_set():
+                raise CatalogCancelled()
+            if source == 'manual':
+                batch = from_values(_split(manual), server)
+            elif source == 'file':
+                batch = from_file(ROOT / Path(path), server)
+            else:
+                batch = fetch_catalog(server, cancel=cancel.is_set)
+            if cancel.is_set():
+                raise CatalogCancelled()
+            return _preview_summary(batch, source, server)
+
+        def finish(text):
+            if not self.ui.closing and request.get() == ticket:
+                if self.ui.stop_requested.is_set():
+                    text = '码表预览已停止。'
+                result.set(text)
+
+        def failed(error):
+            if isinstance(error, CatalogCancelled):
+                finish('码表预览已停止。')
+            else:
+                finish(f'{label}预览失败，请核对来源后重试。')
+
+        if self.ui._submit_tool_job(title, work, finish, failed):
+            return True
+        if request.get() == ticket:
+            request.set(previous[0])
+            result.set(previous[1])
+        return False
 
     def settings_values(self):
         fields = self.draft

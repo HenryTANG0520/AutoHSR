@@ -8,7 +8,7 @@ import tkinter as tk
 from unittest.mock import Mock, patch
 
 from ux_smoke import Settings, Window, module
-from autohsr.desktop_daily import ASSIGNMENT_FLOW, ASSIGNMENTS, DRAFT, PREVIEW, DailyPanel, assignment_runner
+from autohsr.desktop_daily import ASSIGNMENT_FLOW, ASSIGNMENTS, DRAFT, OPEN_TARGET, PREVIEW, DailyPanel, assignment_runner
 from autohsr.dungeon_ui import show_advanced
 from autohsr.power_plan_ui import result_text, rows, show as show_power_plan
 
@@ -86,10 +86,28 @@ def main():
                 panel.show(PREVIEW)
                 root.geometry('%dx%d' % root.minsize())
                 root.update()
-                assert panel.winfo_viewable() and panel.generate.winfo_viewable()
+                assert panel.winfo_viewable() and panel.generate.winfo_viewable() and panel.open_target.winfo_viewable()
                 assert panel.generate.winfo_rootx() + panel.generate.winfo_width() <= panel.winfo_rootx() + panel.winfo_width()
+                assert panel.primary_label == '预览材料'
+                initial_entry = panel.entry_status.get()
+                start.return_value = False
+                panel.open_target.invoke()
+                start.assert_called_with(OPEN_TARGET)
+                assert panel.entry_status.get() == initial_entry
+                start.return_value = True
+                panel.open_target.invoke()
+                start.assert_called_with(OPEN_TARGET)
+                assert '正在核对' in panel.entry_status.get()
+                panel.present(OPEN_TARGET, dict(status='success', report_saved=False,
+                    build_target=dict(entry_input='sent', page_verified=True)))
+                assert '反馈待核对' in panel.entry_status.get()
+                panel.present(OPEN_TARGET, dict(status='success', report_saved=True,
+                    build_target=dict(entry_input='sent', page_verified=True)))
+                panel = replace_panel(panel)
+                assert '已核实培养目标页' in panel.entry_status.get() and panel.build_title.get() == '等待预览'
                 panel.invoke_primary()
                 start.assert_called_with(PREVIEW)
+                calls_before_draft = start.call_count
                 assert panel.generate.instate(('disabled',))
                 item = dict(category='calyx_golden', target='回忆之蕾', location='城郊雪原', count=2)
                 report = dict(report_saved=True, status='partial', build_target=dict(preview=dict(
@@ -104,13 +122,15 @@ def main():
                 root.update()
                 panel.count.set('0')
                 panel.generate.invoke()
-                assert '1～6' in panel.draft_detail.get() and start.call_count == 2
+                assert '1～6' in panel.draft_detail.get() and start.call_count == calls_before_draft
                 panel.count.set('02')
                 panel = replace_panel(panel)
                 assert panel.section == PREVIEW and panel.source.current() == 1 and panel.count.get() == '02'
                 panel.set_busy(True)
                 panel.invoke_primary()
-                assert panel.generate.instate(('disabled',)) and start.call_count == 2
+                panel._open_target()
+                assert panel.open_target.instate(('disabled',)) and panel.generate.instate(('disabled',))
+                assert start.call_count == calls_before_draft
                 panel.set_busy(False)
                 panel.generate.invoke()
                 operation, = start.call_args.args

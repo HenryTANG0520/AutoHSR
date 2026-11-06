@@ -18,6 +18,8 @@ from .task_workflow_draft import WorkflowDraft, WorkflowSaveConflict
 
 
 _JSON_FILES = (("JSON 文件", "*.json"),)
+_WORKFLOW_SCOPE = "整棵流程"
+_STEP_SCOPE = "指定步骤"
 _RUN_STATES = {"success": "已完成", "ok": "已完成", "partial": "部分完成", "stopped": "已停止",
                "failed": "失败", "unknown": "待核对", "skipped": "已跳过"}
 _SAVE_ERRORS = {"target_exists": "目标已存在", "source_path": "请选择新文件名",
@@ -117,6 +119,9 @@ class _WorkflowPanel(_Panel):
         self.editor_text = ""
         self.saved_target = None
         self.loading = False
+        self.reviewed_step = None
+        self.scope = tk.StringVar(self, value=_WORKFLOW_SCOPE)
+        self.step_path = tk.StringVar(self)
         self.source = tk.StringVar(self, value="请选择新建草稿或打开任务流")
         self.destination = tk.StringVar(self, value="保存时选择新文件")
         self.status = tk.StringVar(self, value="新建或打开任务流后可编辑和校验。")
@@ -143,13 +148,26 @@ class _WorkflowPanel(_Panel):
             if row == 2:
                 self.target_button = self._button(line, "选择位置", self.select_destination, 2)
 
+        scope_line = ttk.Frame(self)
+        scope_line.columnconfigure(3, weight=1)
+        scope_line.grid(row=3, column=0, sticky="ew", pady=(0, self._size(5)))
+        ttk.Label(scope_line, text="执行范围", style="Settings.Note.TLabel", width=9).grid(row=0, column=0, sticky="w")
+        self.scope_field = ttk.Combobox(scope_line, textvariable=self.scope, values=(_WORKFLOW_SCOPE, _STEP_SCOPE),
+                                        state="readonly", style="Settings.TCombobox", width=11)
+        self.scope_field.grid(row=0, column=1, sticky="w", padx=(0, self._size(8)))
+        ttk.Label(scope_line, text="步骤路径（从 0 开始）", style="Settings.Note.TLabel").grid(row=0, column=2, sticky="w")
+        self.step_field = ttk.Entry(scope_line, textvariable=self.step_path, style="Settings.TEntry", width=10)
+        self.step_field.grid(row=0, column=3, sticky="ew", padx=(self._size(5), 0))
+
         holder, self.editor = self._editor(self, height=11)
-        holder.grid(row=3, column=0, sticky="nsew")
-        self.rowconfigure(3, weight=1)
+        holder.grid(row=4, column=0, sticky="nsew")
+        self.rowconfigure(4, weight=1)
         self.editor.bind("<<Modified>>", self._edit)
-        self._hint(self.status, 4)
-        self._hint(self.budget, 5)
-        self._hint(self.source_status, 6)
+        self._hint(self.status, 5)
+        self._hint(self.budget, 6)
+        self._hint(self.source_status, 7)
+        self.scope.trace_add("write", self._scope_changed)
+        self.step_path.trace_add("write", self._scope_changed)
         self.refresh()
 
     def _text(self):
@@ -181,8 +199,35 @@ class _WorkflowPanel(_Panel):
         for button in (self.validate_button, self.target_button):
             _set_enabled(button, idle and has_draft)
         _set_enabled(self.reload_button, idle and saved)
-        _set_enabled(self.run_button, idle and saved and not self.dirty)
+        _set_enabled(self.scope_field, idle and has_draft)
+        _set_enabled(self.step_field, idle and has_draft and self.scope.get() == _STEP_SCOPE)
+        self.run_button.configure(text="运行已保存流程" if self.scope.get() == _WORKFLOW_SCOPE else "运行已保存单步")
+        _set_enabled(self.run_button, self._can_run_saved())
         self.editor.configure(state="normal" if idle and has_draft else "disabled")
+
+    def _selected_path(self):
+        return None if self.scope.get() == _WORKFLOW_SCOPE else self.step_path.get().strip()
+
+    def _can_run_saved(self):
+        source = self._source_file
+        if self._busy or source is None or self.dirty:
+            return False
+        path = self._selected_path()
+        return path is None or self.reviewed_step == (path, source.parent)
+
+    def _clear_profile(self):
+        self.reviewed_step = None
+        self.budget.set("")
+
+    def _scope_changed(self, *_):
+        if self.loading or self.draft is None:
+            return
+        self._clear_profile()
+        if self.scope.get() == _STEP_SCOPE:
+            self.status.set("填写从 0 开始的路径，例如 1/0，然后校验草稿。")
+        else:
+            self.status.set("执行范围已切回整棵流程 · 可重新校验预算")
+        self._changed()
 
     def _edit(self, _=None):
         if not self.editor.edit_modified():
@@ -193,10 +238,10 @@ class _WorkflowPanel(_Panel):
             return
         self.editor_text = text
         self.status.set("草稿有编辑 · 请重新校验" if text != self.clean_text else "内容已恢复 · 可重新校验")
-        self.budget.set("")
+        self._clear_profile()
         self._changed()
 
-    def _install(self, draft, *, text=None):
+    def _install(self, draft, *, text=None, keep_scope=False):
         self.loading = True
         self.draft = draft
         self.clean_text = _json(draft.document) if text is None else text
@@ -204,12 +249,15 @@ class _WorkflowPanel(_Panel):
             self.clean_text = json.dumps(draft.document, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
         self.editor_text = self.clean_text
         self._replace_editor(self.editor, self.clean_text)
+        if not keep_scope:
+            self.scope.set(_WORKFLOW_SCOPE)
+            self.step_path.set("")
         self.loading = False
         self.source.set(str(draft.source) if draft.source is not None else "新草稿 · 尚未保存")
         self.saved_target = None
         self.destination.set("保存时选择新文件")
         self.source_status.set("")
-        self.budget.set("")
+        self._clear_profile()
 
     def new(self):
         if not self._can_replace_form("新建草稿", "当前编辑尚未另存。放弃这些编辑？"):
@@ -264,18 +312,25 @@ class _WorkflowPanel(_Panel):
         self.source_status.set("" if current else "来源已变化 · 可保留草稿另存，或重新加载。")
         return current
 
-    def _draft_recipe(self, *, destination=None):
+    def _draft_recipe(self, *, destination=None, selected_path=None):
         self.draft.document = load_workflow_json(self._text())
-        return self.draft.validate(destination=destination)
+        return self.draft.validate(destination=destination, selected_path=selected_path)
 
     def _show_profile(self, recipe):
         fields = recipe.profile
-        self.budget.set(f"最多 {fields['executions']} 步 · 日常预算 {fields['daily_calls']} 份 · "
+        scope = _WORKFLOW_SCOPE
+        if recipe.path:
+            node = recipe.steps[0]
+            path = "/".join(map(str, recipe.path))
+            scope = f"步骤 {path} · {node.get('name', node['id'])}"
+            if not node.get("enabled", True):
+                scope += "（已禁用）"
+        self.budget.set(f"{scope}\n最多 {fields['executions']} 步 · 日常预算 {fields['daily_calls']} 份 · "
                         f"差分预留 {fields['du_runs']} 局 · 货币预留 {fields['currency_games']} 局\n"
                         f"相对路径按 {recipe.base_dir} 解析")
 
     def _error(self, label, error):
-        self.budget.set("")
+        self._clear_profile()
         cause = error.__cause__
         if isinstance(cause, json.JSONDecodeError):
             index = f"{cause.lineno}.{cause.colno - 1}"
@@ -289,13 +344,20 @@ class _WorkflowPanel(_Panel):
     def validate(self):
         if self._busy or self.draft is None:
             return
-        self._check_source()
+        current = self._check_source()
+        path = self._selected_path()
         try:
-            recipe = self._draft_recipe(destination=self.saved_target)
-        except (WorkflowError, OSError) as error:
+            recipe = self._draft_recipe(destination=self.saved_target, selected_path=path)
+        except (ValueError, OSError) as error:
             self._error("校验失败", error)
         else:
-            self.status.set("校验通过" + (" · 草稿有编辑" if self.dirty else ""))
+            status = "校验通过" + (" · 草稿有编辑" if self.dirty else "")
+            source = self._source_file
+            if (path is not None and self.saved_target is not None
+                    and (source is None or recipe.base_dir != source.parent)):
+                status += " · 另存目录预览 · 另存后请重新校验单步"
+            self.status.set(status)
+            self.reviewed_step = (path, recipe.base_dir) if current and path is not None else None
             self._show_profile(recipe)
         self._changed()
 
@@ -317,9 +379,11 @@ class _WorkflowPanel(_Panel):
         except (WorkflowError, OSError) as error:
             self._error("另存失败", error)
         else:
-            self._install(fresh, text=self._text())
-            self.status.set(f"已另存 · {saved.path}")
-            self._show_profile(saved.recipe)
+            self._install(fresh, text=self._text(), keep_scope=True)
+            single = self._selected_path() is not None
+            self.status.set(f"已另存 · {saved.path}" + (" · 请重新校验单步" if single else ""))
+            if not single:
+                self._show_profile(saved.recipe)
         self._changed()
 
     @staticmethod
@@ -336,16 +400,21 @@ class _WorkflowPanel(_Panel):
         return fresh
 
     def run_saved(self):
-        source = self._source_file
-        if self._busy or source is None or self.dirty:
+        if not self._can_run_saved():
             return
+        source = self._source_file
+        path = self._selected_path()
         try:
             with hold_read_sources((source,)):
                 if not self._check_source():
+                    self._clear_profile()
                     self.status.set("运行前核验失败 · 请重新加载保存版本")
                 else:
-                    recipe = WorkflowDraft.load(source).validate()
-                    self.status.set("已提交已保存的任务流")
+                    recipe = WorkflowDraft.load(source).validate(selected_path=path)
+                    if path is not None and self.reviewed_step != (path, recipe.base_dir):
+                        raise WorkflowError("保存来源目录已变化，请重新打开并校验单步。")
+                    self._show_profile(recipe)
+                    self.status.set("已提交已保存的单步" if recipe.path else "已提交已保存的任务流")
                     if not self.ui._start_task_workflow(recipe, on_report=self._deliver_report):
                         self.status.set("任务流未启动 · 当前执行权不可用")
         except (ValueError, OSError) as error:
@@ -363,14 +432,18 @@ class _WorkflowPanel(_Panel):
         self._changed()
 
     def snapshot_draft(self):
-        return (self.draft, self.clean_text, self.saved_target, self._text(),
+        scope = self.scope.get(), self.step_path.get(), self.reviewed_step
+        return (self.draft, self.clean_text, self.saved_target, self._text(), scope,
                 tuple(variable.get() for variable in self._draft_variables()))
 
     def restore_draft(self, snapshot):
-        self.draft, self.clean_text, self.saved_target, text, labels = snapshot
+        self.draft, self.clean_text, self.saved_target, text, scope, labels = snapshot
         self.loading = True
         self.editor_text = text
         self._replace_editor(self.editor, text)
+        mode, path, self.reviewed_step = scope
+        self.scope.set(mode)
+        self.step_path.set(path)
         for variable, value in zip(self._draft_variables(), labels):
             variable.set(value)
         self.loading = False

@@ -13,8 +13,17 @@ from autohsr.schedule_dispatch import NativeScheduleExecutor
 from autohsr.schedule_plan import CHINA, ScheduleError
 from autohsr.schedule_runtime import Scheduler
 from autohsr.schedule_store import ScheduleStore
-from autohsr.task_workflow import read
+from autohsr.task_workflow import read, task_spec
 from autohsr.task_workflow_draft import WorkflowDraft
+
+
+def branch_workflow():
+    return dict(version=1, name="分支样本", steps=[
+        dict(id="ready", type="wait", seconds=0),
+        dict(id="branch", type="if", condition=dict(step="ready", field="status", op="eq", value="success"),
+             steps=[dict(id="main_wait", type="wait", seconds=1)],
+             else_steps=[dict(id="alternate", type="wait", name="备用等待", seconds=2)]),
+    ])
 
 
 class Variable:
@@ -219,6 +228,132 @@ class DesktopToolTests(unittest.TestCase):
         current.run_saved()
         self.ui._start_task_workflow.assert_called_once()
         self.assertEqual(self.ui._start_task_workflow.call_args.args[0].document, edited)
+
+    def test_workflow_step_preview_selects_the_explicit_branch_and_survives_rebuild(self):
+        self.source.write_text(json.dumps(branch_workflow(), ensure_ascii=False), encoding="utf8")
+        panel = self.open_workflow()
+        panel.validate()
+        self.assertIn("整棵流程\n最多 3 步", panel.budget.get())
+        panel.scope.set("指定步骤")
+        self.assertEqual(panel.budget.get(), "")
+        self.assertEqual(panel.run_button.options["text"], "运行已保存单步")
+        for bad in ("", "脚本", "1/2"):
+            with self.subTest(path=bad):
+                panel.step_path.set(bad)
+                panel.validate()
+                self.assertIn("校验失败", panel.status.get())
+                self.assertTrue(panel.run_button.instate(("disabled",)))
+                panel.run_saved()
+        self.ui._start_task_workflow.assert_not_called()
+
+        panel.step_path.set(r"1\1")
+        panel.validate()
+        self.assertIn("步骤 1/1 · 备用等待\n最多 1 步", panel.budget.get())
+        self.assertIn(str(self.root), panel.budget.get())
+        self.ui.workflow_panel = current = tools.build_workflow_panel(None, self.ui)
+        current.restore_draft(panel.snapshot_draft())
+        self.assertFalse(current.run_button.instate(("disabled",)))
+        current.run_saved()
+        recipe = self.ui._start_task_workflow.call_args.args[0]
+        self.assertEqual(recipe.path, (1, 1))
+        self.assertEqual([node["id"] for node in recipe.steps], ["alternate"])
+        current.step_path.set("1/0")
+        self.assertEqual(current.budget.get(), "")
+        current.run_saved()
+        self.ui._start_task_workflow.assert_called_once()
+        current.scope.set("整棵流程")
+        self.assertEqual(current.run_button.options["text"], "运行已保存流程")
+        self.assertFalse(current.run_button.instate(("disabled",)))
+        current.run_saved()
+        self.assertEqual(self.ui._start_task_workflow.call_args.args[0].path, ())
+
+    def test_workflow_step_requires_a_clean_saved_revision_and_recheck_after_save(self):
+        self.ui.workflow_panel = panel = tools.build_workflow_panel(None, self.ui)
+        panel.new()
+        panel.scope.set("指定步骤")
+        panel.step_path.set("0")
+        panel.validate()
+        self.assertIn("步骤 0 · 持续委托（已禁用）", panel.budget.get())
+        panel.run_saved()
+        target = self.root / "step-source.json"
+        self.save_dialog.return_value = str(target)
+        panel.save_as()
+        self.assertEqual(panel.scope.get(), "指定步骤")
+        self.assertEqual(panel.step_path.get(), "0")
+        self.assertTrue(panel.run_button.instate(("disabled",)))
+        panel.run_saved()
+        self.ui._start_task_workflow.assert_not_called()
+        panel.validate()
+        self.assertFalse(panel.run_button.instate(("disabled",)))
+        original = target.read_bytes()
+        target.write_bytes(original + b'\n')
+        panel.run_saved()
+        self.assertIn("来源已变化", panel.source_status.get())
+        self.assertTrue(panel.run_button.instate(("disabled",)))
+        self.ui._start_task_workflow.assert_not_called()
+
+    def test_workflow_step_in_another_destination_is_preview_only_until_saved_and_rechecked(self):
+        document = dict(version=1, name="相对路径样本", steps=[
+            dict(id="export", type="task", task="warp_export",
+                 params=dict(imports=["records.json"], output="output.json")),
+        ])
+        self.source.write_text(json.dumps(document, ensure_ascii=False), encoding="utf8")
+        panel = self.open_workflow()
+        panel.scope.set("指定步骤")
+        panel.step_path.set("0")
+        self.save_dialog.return_value = str(self.root / "same-directory.json")
+        panel.select_destination()
+        self.assertFalse(panel.run_button.instate(("disabled",)))
+
+        sibling = self.root / "另存目录"
+        sibling.mkdir()
+        target = sibling / "workflow.json"
+        self.save_dialog.return_value = str(target)
+        panel.select_destination()
+        self.assertIn(str(sibling), panel.budget.get())
+        self.assertTrue(panel.run_button.instate(("disabled",)))
+        self.assertIn("另存目录预览", panel.status.get())
+        panel.run_saved()
+        self.ui._start_task_workflow.assert_not_called()
+        self.assertFalse(target.exists())
+
+        panel.scope.set("整棵流程")
+        panel.validate()
+        panel.run_saved()
+        self.assertEqual(self.ui._start_task_workflow.call_args.args[0].base_dir, self.root)
+        panel.scope.set("指定步骤")
+        panel.save_as()
+        self.assertEqual(panel.draft.source, target)
+        self.assertTrue(panel.run_button.instate(("disabled",)))
+        panel.validate()
+        self.assertFalse(panel.run_button.instate(("disabled",)))
+        panel.run_saved()
+        recipe = self.ui._start_task_workflow.call_args.args[0]
+        self.assertEqual(recipe.path, (0,))
+        self.assertEqual(recipe.base_dir, sibling)
+        _, options = task_spec(Settings(), recipe.steps[0], recipe.base_dir)
+        self.assertEqual(options['output'], str(sibling / "output.json"))
+        self.assertEqual(self.ui._start_task_workflow.call_count, 2)
+
+    def test_selected_step_budget_does_not_replace_full_tree_validation_for_save(self):
+        self.ui.workflow_panel = panel = tools.build_workflow_panel(None, self.ui)
+        panel.new()
+        invalid = dict(version=1, name="重复日常预算", steps=[
+            dict(id=identifier, type="task", task="daily", params=dict(tasks=["assignments"]))
+            for identifier in ("first", "second")])
+        panel.editor.user_text(json.dumps(invalid, ensure_ascii=False))
+        panel.scope.set("指定步骤")
+        panel.step_path.set("0")
+        panel.validate()
+        self.assertIn("校验通过", panel.status.get())
+        self.assertIn("日常预算 1 份", panel.budget.get())
+        target = self.root / "whole-invalid.json"
+        self.save_dialog.return_value = str(target)
+        panel.save_as()
+        self.assertIn("一份日常预算", panel.status.get())
+        self.assertFalse(target.exists())
+        self.assertTrue(panel.dirty)
+        self.ui._start_task_workflow.assert_not_called()
 
     def test_workflow_validate_and_exclusive_save_rebase_without_touching_original(self):
         panel = self.open_workflow()

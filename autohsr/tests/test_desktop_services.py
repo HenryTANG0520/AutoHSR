@@ -1,5 +1,6 @@
 """Exercise both desktop tool panels without a real window or a real sender."""
 
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Event
@@ -9,6 +10,7 @@ from unittest.mock import Mock, patch
 
 from autohsr import desktop_services as services
 from autohsr.config import Settings
+from autohsr.redemption_codes import CodeBatch, fetch_catalog
 
 
 class FakeVariable:
@@ -92,7 +94,10 @@ class DesktopServiceTests(TestCase):
         ]
         self.notification_service = self.enterContext(patch.object(services, 'NotificationService'))
         self.save_settings = self.enterContext(patch.object(Settings, 'save', side_effect=AssertionError('explicit shared save only')))
+        self.online_fetch = self.enterContext(patch.object(services, 'fetch_catalog',
+            side_effect=AssertionError('preview must use a fake transport')))
         self.ui = SimpleNamespace(root=object(), ui_scale=1, settings=Settings(), form_variables=[], busy=False,
+                                  closing=False, stop_requested=Event(),
                                   _start_service_redemption=Mock(return_value=True),
                                   _submit_tool_job=Mock(return_value=True), _tool_action_changed=Mock())
 
@@ -121,6 +126,160 @@ class DesktopServiceTests(TestCase):
         self.assertTrue(rebuilt.source.focused and rebuilt_notes.profiles.focused)
         self.notification_service.assert_not_called()
         self.profile_store.save.assert_not_called()
+
+    def test_manual_preview_checks_format_and_keeps_redemption_receipts_separate(self):
+        panel = services.build_redemption_panel(None, self.ui)
+        panel.render_report(report_fixture())
+        receipt = panel.draft['result'].get()
+        panel.draft['source'].set('手动输入')
+        panel.draft['server'].set('国际服')
+        panel.draft['codes'].set('ManualSecret, ManualSecret，manualSecret\n不-合法')
+        self.assertEqual(panel.preview_button.options['text'], '预览手动批次')
+        self.ui._submit_tool_job.assert_not_called()
+        self.assertTrue(panel.preview_button.options['command']())
+        title, work, done, _ = self.ui._submit_tool_job.call_args.args
+        self.assertEqual(title, '预览手动批次')
+        done(work(self.ui.stop_requested))
+        summary = panel.draft['preview_result'].get()
+        for text in ('手动批次 · 国际服', '格式适用 2', '重复 1', '格式无效 1', '时效和服别待游戏核实'):
+            self.assertIn(text, summary)
+        for private in ('ManualSecret', 'manualSecret', '不-合法'):
+            self.assertNotIn(private, summary)
+        self.assertEqual(panel.draft['result'].get(), receipt)
+        self.assertNotIn(panel.draft['preview_result'], self.ui.form_variables)
+        self.online_fetch.assert_not_called()
+        self.ui._start_service_redemption.assert_not_called()
+        self.save_settings.assert_not_called()
+
+    def test_local_preview_checks_catalog_rows_and_does_not_display_path_or_codes(self):
+        panel = services.build_redemption_panel(None, self.ui)
+        panel.draft['source'].set('本地码表')
+        panel.draft['server'].set('国服')
+        self.assertFalse(panel.preview())
+        self.assertIn('本地 JSON', panel.draft['preview_result'].get())
+        self.ui._submit_tool_job.assert_not_called()
+        with TemporaryDirectory() as temporary:
+            catalog = Path(temporary) / 'private-preview-source.json'
+            row = dict(server='cn', code='PrivateCatalogCode', expires_at=None)
+            catalog.write_text(json.dumps([row, row, dict(row, server='global'),
+                dict(row, expires_at='2000-01-01T00:00:00Z'), {'invalid': True}]), encoding='utf-8')
+            panel.draft['catalog'].set(catalog.name)
+            self.assertEqual(panel.preview_button.options['text'], '预览本地码表')
+            self.assertTrue(panel.preview())
+            title, work, done, _ = self.ui._submit_tool_job.call_args.args
+            self.assertEqual(title, '预览本地码表')
+            with patch.object(services, 'ROOT', catalog.parent):
+                done(work(self.ui.stop_requested))
+        summary = panel.draft['preview_result'].get()
+        for text in ('本地码表 · 国服', '适用 1', '已过期 1', '其他服 1', '重复 1', '无效行 1'):
+            self.assertIn(text, summary)
+        self.assertNotIn('PrivateCatalogCode', summary)
+        self.assertNotIn(catalog.name, summary)
+        self.online_fetch.assert_not_called()
+        self.ui._start_service_redemption.assert_not_called()
+
+    def test_online_preview_requires_explicit_server_and_never_uses_local_fallback(self):
+        panel = services.build_redemption_panel(None, self.ui)
+        panel.draft['server'].set('由当前客户端识别')
+        self.assertEqual(panel.preview_button.options['text'], '联网预览码表')
+        self.assertFalse(panel.preview())
+        self.assertEqual(panel.draft['preview_result'].get(), '预览请选择国服或国际服。')
+        self.assertTrue(panel.server.focused)
+        self.ui._submit_tool_job.assert_not_called()
+        panel.draft['server'].set('国际服')
+        self.assertIn('重新预览', panel.draft['preview_result'].get())
+        self.online_fetch.assert_not_called()
+
+        rows = [dict(server='global', code='PrivateOnlineCode', expires_at=None)]
+        transport = Mock(return_value=json.dumps(rows).encode('utf-8'))
+        self.online_fetch.side_effect = lambda server, *, cancel: fetch_catalog(server, cancel=cancel, fetcher=transport)
+        self.assertTrue(panel.preview())
+        title, work, done, failed = self.ui._submit_tool_job.call_args.args
+        self.assertEqual(title, '联网预览码表')
+        done(work(self.ui.stop_requested))
+        transport.assert_called_once()
+        self.assertIn('联网码表 · 国际服 · 适用 1', panel.draft['preview_result'].get())
+        self.assertNotIn('PrivateOnlineCode', panel.draft['preview_result'].get())
+
+        for fetcher in (Mock(side_effect=OSError('private transport error')),
+                        Mock(return_value=CodeBatch(('PrivateFallbackCode',), 'global', dict(kind='file'), ())),
+                        Mock(return_value=CodeBatch(('PrivateWrongServer',), 'cn', dict(kind='download'), ()))):
+            with self.subTest(fetcher=fetcher):
+                self.online_fetch.side_effect = fetcher
+                self.assertTrue(panel.preview())
+                _, work, _, failed = self.ui._submit_tool_job.call_args.args
+                with self.assertRaises((OSError, ValueError)) as caught:
+                    work(self.ui.stop_requested)
+                failed(caught.exception)
+                self.assertEqual(panel.draft['preview_result'].get(), '联网码表预览失败，请核对来源后重试。')
+        self.ui._start_service_redemption.assert_not_called()
+        self.save_settings.assert_not_called()
+
+    def test_preview_callbacks_follow_the_draft_across_rebuild_and_reject_old_requests(self):
+        panel = services.build_redemption_panel(None, self.ui)
+        panel.draft['source'].set('手动输入')
+        panel.draft['codes'].set('Manual01')
+        self.assertTrue(panel.preview())
+        _, work, done, failed = self.ui._submit_tool_job.call_args.args
+        old = work(self.ui.stop_requested)
+        rebuilt = services.build_redemption_panel(None, self.ui)
+        done(old)
+        self.assertIn('格式适用 1', rebuilt.draft['preview_result'].get())
+        rebuilt.draft['codes'].set('Manual02')
+        rebuilt.draft['codes'].set('Manual01')
+        done(old)
+        failed(ValueError('private failed'))
+        self.assertEqual(rebuilt.draft['preview_result'].get(), '草稿已变化，请重新预览。')
+        self.ui._submit_tool_job.assert_called_once()
+        self.ui._submit_tool_job.return_value = False
+        self.assertFalse(rebuilt.preview())
+        self.assertEqual(rebuilt.draft['preview_result'].get(), '草稿已变化，请重新预览。')
+        self.online_fetch.assert_not_called()
+
+    def test_preview_cancels_before_or_during_transport_and_suppresses_late_success(self):
+        panel = services.build_redemption_panel(None, self.ui)
+        self.assertTrue(panel.preview())
+        _, work, done, failed = self.ui._submit_tool_job.call_args.args
+        cancel = self.ui.stop_requested
+        cancel.set()
+        with self.assertRaises(services.CatalogCancelled) as stopped:
+            work(cancel)
+        failed(stopped.exception)
+        self.assertEqual(panel.draft['preview_result'].get(), '码表预览已停止。')
+        self.online_fetch.assert_not_called()
+
+        cancel.clear()
+        def abort_transport(_url, *, timeout, max_bytes, cancel):
+            self.ui.stop_requested.set()
+            cancel()
+
+        transport = Mock(side_effect=abort_transport)
+        self.online_fetch.side_effect = lambda server, *, cancel: fetch_catalog(server, cancel=cancel, fetcher=transport)
+        self.assertTrue(panel.preview())
+        _, work, done, failed = self.ui._submit_tool_job.call_args.args
+        with self.assertRaises(services.CatalogCancelled) as stopped:
+            work(cancel)
+        failed(stopped.exception)
+        transport.assert_called_once()
+        self.assertEqual(panel.draft['preview_result'].get(), '码表预览已停止。')
+
+        cancel.clear()
+        panel.draft['source'].set('手动输入')
+        panel.draft['codes'].set('LATE01')
+        self.assertTrue(panel.preview())
+        _, work, done, _ = self.ui._submit_tool_job.call_args.args
+        ready = work(cancel)
+        cancel.set()
+        done(ready)
+        self.assertEqual(panel.draft['preview_result'].get(), '码表预览已停止。')
+        self.ui.closing = True
+        cancel.clear()
+        done(ready)
+        self.assertFalse(panel.preview())
+        self.assertEqual(panel.draft['preview_result'].get(), '码表预览已停止。')
+        self.assertEqual(self.ui._submit_tool_job.call_count, 3)
+        self.ui._start_service_redemption.assert_not_called()
+        self.save_settings.assert_not_called()
 
     def test_redemption_executes_current_overrides_and_updates_rebuilt_panel(self):
         panel = services.build_redemption_panel(None, self.ui)

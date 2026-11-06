@@ -12,6 +12,7 @@ from .dungeons import BY_KEY
 
 
 ASSIGNMENTS = 'assignments_only'
+OPEN_TARGET = 'build_target_read'
 PREVIEW = 'build_target_preview'
 DRAFT = 'build_target_plan'
 ASSIGNMENT_STEP = 'assignments'
@@ -183,6 +184,7 @@ class DailyPanel(ttk.Frame):
         self.assignment_detail = tk.StringVar(self, '领取已有奖励，原委托继续累计。')
         self.build_title = tk.StringVar(self, '等待预览')
         self.build_detail = tk.StringVar(self, '在游戏中打开培养目标或材料获得途径。')
+        self.entry_status = tk.StringVar(self, '从游戏的生存索引打开并核对培养目标页。')
         self.draft_detail = tk.StringVar(self)
         self.count = tk.StringVar(self)
         self.columnconfigure(0, weight=1)
@@ -199,8 +201,14 @@ class DailyPanel(ttk.Frame):
         self.build = ttk.Frame(self, style='Card.TFrame', padding=d(20))
         self.build.columnconfigure(0, weight=1)
         self._heading(self.build, '培养目标', self.build_title, self.build_detail)
+        entry = ttk.Frame(self.build, style='Panel.TFrame')
+        entry.grid(row=3, column=0, sticky='ew', pady=(d(8), 0))
+        entry.columnconfigure(1, weight=1)
+        self.open_target = ttk.Button(entry, text='打开培养目标', style='Panel.TButton', command=self._open_target)
+        self.open_target.grid(row=0, column=0, sticky='w', padx=(0, d(10)))
+        theme.wrapped_label(entry, textvariable=self.entry_status, style='Muted.TLabel').grid(row=0, column=1, sticky='ew')
         sources = ttk.Frame(self.build, style='Panel.TFrame')
-        sources.grid(row=3, column=0, sticky='ew', pady=(d(12), d(8)))
+        sources.grid(row=4, column=0, sticky='ew', pady=(d(12), d(8)))
         sources.columnconfigure(1, weight=1)
         ttk.Label(sources, text='副本来源', style='Muted.TLabel').grid(row=0, column=0, padx=(0, d(10)))
         self.source = ttk.Combobox(sources, state='disabled', width=24)
@@ -211,9 +219,9 @@ class DailyPanel(ttk.Frame):
         self.times.grid(row=0, column=3)
         self.generate = ttk.Button(sources, text='生成体力草稿', style='Panel.TButton', command=self._generate)
         self.generate.grid(row=0, column=4, padx=(d(12), 0))
-        theme.wrapped_label(self.build, textvariable=self.draft_detail, style='Muted.TLabel').grid(row=4, column=0, sticky='ew')
+        theme.wrapped_label(self.build, textvariable=self.draft_detail, style='Muted.TLabel').grid(row=5, column=0, sticky='ew')
         self.add_draft = ttk.Button(self.build, text='加入体力计划', style='Panel.TButton', command=self._add_draft)
-        self.add_draft.grid(row=5, column=0, sticky='w', pady=(d(6), 0))
+        self.add_draft.grid(row=6, column=0, sticky='w', pady=(d(6), 0))
         self.show(ASSIGNMENTS)
 
     def _heading(self, panel, title, status, detail):
@@ -248,6 +256,7 @@ class DailyPanel(ttk.Frame):
         return deepcopy(dict(
             section=self.section, assignment_report=self._assignment_report,
             build_title=self.build_title.get(), build_detail=self.build_detail.get(),
+            entry_status=self.entry_status.get(),
             draft_detail=self.draft_detail.get(), draft_report=self.draft_report,
             applied_drafts=self._applied_drafts, material=self.material, candidates=self.candidates,
             selected=self.source.current(), source_text=self.source.get(), count=self.count.get(),
@@ -260,6 +269,7 @@ class DailyPanel(ttk.Frame):
         self._refresh_assignment()
         self.build_title.set(state['build_title'])
         self.build_detail.set(state['build_detail'])
+        self.entry_status.set(state['entry_status'])
         self.material = state['material']
         self.candidates = state['candidates']
         self._show_sources(state['source_text'], selected=state['selected'])
@@ -275,12 +285,21 @@ class DailyPanel(ttk.Frame):
 
     def _controls(self):
         locked = self.busy or self.ui.busy
+        self.open_target.configure(state='disabled' if locked else 'normal')
         self.source.configure(state='disabled' if locked or not self.candidates else 'readonly')
         selected = self.source.current() >= 0 and not locked
         self.times.configure(state='normal' if selected else 'disabled')
         self.generate.configure(state='normal' if selected else 'disabled')
         can_add = self.draft_report is not None and not locked and self.ui.settings.allow_stamina_spend
         self.add_draft.configure(state='normal' if can_add else 'disabled')
+
+    def _open_target(self):
+        if self.section != PREVIEW or self.busy or self.ui.busy:
+            return
+        previous = self.entry_status.get()
+        self.entry_status.set('正在核对培养目标入口。')
+        if not self.start(OPEN_TARGET):
+            self.entry_status.set(previous)
 
     def _generate(self):
         from .build_target_preview import BuildTargetSelection
@@ -348,11 +367,26 @@ class DailyPanel(ttk.Frame):
         if operation == ASSIGNMENTS:
             self._assignment_report = deepcopy(report)
             self._refresh_assignment()
+        elif operation == OPEN_TARGET:
+            self._present_open_target(report)
         elif operation == PREVIEW:
             self._present_preview(report)
         elif operation == DRAFT:
             self._present_draft(report)
         self._controls()
+
+    def _present_open_target(self, report):
+        entry = report.get('build_target') or {}
+        if report.get('status') == 'stopped':
+            message = '已停止。请核对当前游戏画面。'
+        elif (report.get('status') == 'success' and report.get('report_saved') is True
+              and entry.get('page_verified') is True):
+            message = '已核实培养目标页。可在游戏中选择材料，再预览。'
+        elif entry.get('entry_input') in ('sent', 'unconfirmed'):
+            message = '培养目标入口反馈待核对。请查看当前游戏和本次报告。'
+        else:
+            message = '培养目标页待核对。请在游戏中打开生存索引后重试。'
+        self.entry_status.set(message)
 
     def _present_preview(self, report):
         preview = report.get('build_target', {}).get('preview') or {}
