@@ -18,7 +18,7 @@
 .\.venv\Scripts\python.exe -m autohsr --differential-universe --du-until-points --du-runs 3
 ```
 
-积分目标报告为 `periodic_points_goal`。最终报告写入遇到共享锁时，每次重试都会核对游戏周。保存前跨周则将目标标为待核对，保留带原游戏周的观察和已核实胜利。`--plan --du-until-points` 可让已启用的差分周常采用同一积分核验，并沿用原周常上限与回执。红点领取、周期积分领奖和演算胜利各自记录，周期积分领奖仍待接入。历史两张脱敏主页核对了积分栏与倒计时，当前客户端和连续演算仍待实机。[周常积分目标](weekly-plan.md#差分周常周期积分目标)
+积分目标报告为 `periodic_points_goal`。最终报告写入遇到共享锁时，每次重试都会核对游戏周。保存前跨周则将目标标为待核对，保留带原游戏周的观察和已核实胜利。`--plan --du-until-points` 可让已启用的差分周常采用同一积分核验，并沿用原周常上限与回执。红点领取、周期积分领奖和演算胜利各自记录。满额周期积分可从已打开的差分主页单独运行 `--du-rewards-only --du-periodic-rewards`，领取回执写入独立领奖报告。当前客户端的领取与连续演算仍待实机。[周常积分目标](weekly-plan.md#差分周常周期积分目标) · [满额周期积分领取](du-rewards-only.md#满额周期积分)
 
 稳定周期分析报告在 `page_history[].periodic_settlement` 单列观察。报告的「获得积分」保存为 `weekly_points_gained`，解锁材料保存为 `unlock_materials_gained`。拟合值保存各项和合计，分别为 `fitting_value_terms` 和 `fitting_value_gained`。字段缺读时保留 `null`，读到「奖励已到达上限」时另记文案。周累计、开局判断和领取结果分别使用各自来源。[结算与领奖原片](du-validation.md#2026-11-06-周期积分实增与差分领奖原片)
 

@@ -448,6 +448,7 @@ def main(argv: list[str] | None = None) -> int:
                             operation='du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "dungeon_catalogue" if args.scan_dungeons else "currency_wars_rewards" if args.currency_wars_rewards else "currency_wars_points" if args.currency_wars_points else "currency_wars_standard" if args.currency_wars_standard else "currency_wars_overclock_configure" if overclock_config else "currency_wars_prepare" if args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure else "currency_wars" if args.currency_wars_check else "differential_universe" if args.differential_universe else "reward_only" if args.reward_only else "daily",
                             **(dict(currency_overclock_open_a0=True) if args.currency_wars_open_overclock_a0 else {}),
                             **(dict(du_use_cassettes=args.du_use_cassettes) if args.du_rewards_only else {}),
+                            **(dict(du_periodic_rewards=True) if args.du_periodic_rewards else {}),
                             **(dict(currency_rewards_resume=args.resume_currency_rewards) if args.currency_wars_rewards else {}),
                             **(dict(currency_locate=True) if args.currency_wars_locate or args.currency_wars_configure else {}),
                             **(dict(currency_configure=True) if args.currency_wars_configure else {}),

@@ -347,6 +347,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 
 画廊按分类红点进入，再点“奖励进度”；边缘红点指向画面外时向相反方向拖动，核对位置变化。只领已达成档，未来奖励详情不算成功，黄色“新”不算红点。实际领取须有物品展示。月下奇谭可花**已有月下卡带**，先核对单次100与余额，不兑换卡带。中断在已识别奖励页可有限接续，未知红点停止。实现：[du_rewards.py](autohsr/du_rewards.py)。
 
+已打开差分主页时，可通过 CLI 单独领取满额 `18000/18000` 的周期积分奖励。入口核对左下待领红点及同账号、同游戏周。领取后记录物品展示、同面板十档勾选及返回主页。当前为离线复放验证。[独立领奖说明](docs/du-rewards-only.md#满额周期积分)
+
 ### 可选：每日首次通关后日常
 
 `differential_universe_daily`默认关。胜利和返回证据保存后，按账号、中国服务器04:00游戏日去重，回外部处理委托、实训、真珠所需浴火钢心饰品、邮件和免费勋礼，再返差分。
@@ -503,6 +505,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 .\.venv\Scripts\python.exe -m autohsr --launch
 # 已打开差分主页：只领拟合／稳态／画廊已有奖励，不开始演算
 .\.venv\Scripts\python.exe -m autohsr --du-rewards-only
+# 已打开差分主页且周期积分满额：单独处理周期积分奖励
+.\.venv\Scripts\python.exe -m autohsr --du-rewards-only --du-periodic-rewards
 # 按配置执行每日
 .\.venv\Scripts\python.exe -m autohsr --run
 # 日常刷本按当前实训需求借用支援

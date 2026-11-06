@@ -175,6 +175,11 @@ def read_home_points(scene, captured_at, week, confidence=.85):
     if (not home(clean) or not clean.has('更新内容',(.84,.03,.96,.09),exact=True)
             or scene.has(('账号验证','账号登录','验证码','用户协议','资源下载','继续进度','结束并结算'))):
         raise GuidePointsUnverified('home_points_page_unverified')
+    return read_home_points_panel(scene, captured_at, week, confidence)
+
+
+def read_home_points_panel(scene, captured_at, week, confidence):
+    """Read the panel rows after the caller has independently verified the DU home."""
     score = _horizontal_row(scene,HOME_SCORE,confidence,'home_score_row_unverified')
     current,cap = _score(score)
     timer = _horizontal_row(scene,HOME_TIME,confidence,'home_countdown_unverified')

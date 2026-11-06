@@ -16,8 +16,8 @@ from autohsr.tests import test_runner_recovery as native
 class DuRewardsIntegrationTests(unittest.TestCase):
     def test_cli_freezes_explicit_scope_without_saving_or_starting_daily(self):
         from autohsr.__main__ import main
-        for cassettes in (False, True):
-            with self.subTest(cassettes=cassettes), tempfile.TemporaryDirectory() as folder:
+        for cassettes, periodic in ((False, False), (True, False), (False, True)):
+            with self.subTest(cassettes=cassettes, periodic=periodic), tempfile.TemporaryDirectory() as folder:
                 config = Path(folder) / 'settings.json'
                 Settings(differential_universe_rewards=False, target_location='').save(config)
                 original = config.read_bytes()
@@ -26,12 +26,15 @@ class DuRewardsIntegrationTests(unittest.TestCase):
                 args = ['--du-rewards-only', '--config', str(config)]
                 if cassettes:
                     args.append('--du-use-cassettes')
+                if periodic:
+                    args.append('--du-periodic-rewards')
                 with patch('autohsr.app.Runner', return_value=fake) as factory, \
                      patch('autohsr.app.launch_game', side_effect=AssertionError('no launch')), \
                      redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                     self.assertEqual(main(args), 0)
                 self.assertEqual(factory.call_args.kwargs['operation'], 'du_rewards')
                 self.assertIs(factory.call_args.kwargs['du_use_cassettes'], cassettes)
+                self.assertIs(factory.call_args.kwargs.get('du_periodic_rewards', False), periodic)
                 self.assertFalse(factory.call_args.args[0].differential_universe_rewards)
                 self.assertEqual(config.read_bytes(), original)
 
@@ -44,6 +47,8 @@ class DuRewardsIntegrationTests(unittest.TestCase):
             ['--du-rewards-only', '--resume-active-du'], ['--du-rewards-only', '--stamina', '10'],
             ['--du-rewards-only', '--new-battle-run'], ['--du-rewards-only', '--reward-only'],
             ['--du-rewards-only', '--redemption-code', 'synthetic'],
+            ['--du-periodic-rewards'], ['--plan', '--du-periodic-rewards'],
+            ['--du-rewards-only', '--du-periodic-rewards', '--du-use-cassettes'],
         ]
         for args in cases:
             with self.subTest(args=args), \

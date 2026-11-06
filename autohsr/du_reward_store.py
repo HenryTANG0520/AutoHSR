@@ -1,5 +1,6 @@
 """Independent red-dot reward custody; unresolved inputs are never replayed."""
 from copy import deepcopy
+from datetime import date
 import hashlib
 import json
 import math
@@ -43,6 +44,7 @@ def _write(path, data):
 
 def _checked(root, data, *, sources=False):
     from .currency_wars_initial import source_file_ref
+    from . import du_periodic_rewards as periodic
     if (type(data) is not dict or data.get('schema') != 1 or data.get('operation') != 'du_rewards'
             or data.get('digest') != digest({key: value for key, value in data.items() if key != 'digest'})):
         raise AutomationError('差分领奖原记录不完整，未补写或重放。')
@@ -56,11 +58,26 @@ def _checked(root, data, *, sources=False):
             or len(data['actions'])>240 or type(data.get('claims')) is not list
             or type(data.get('input_epoch')) is not int or type(data.get('window')) is not int):
         raise AutomationError('差分领奖记录结构不完整。')
+    periodic_only = (data.get('requested_categories') == [periodic.CATEGORY]
+                     or 'periodic_rewards_verified' in data or 'game_week' in data
+                     or any(action['request']['intent'] in (periodic.OPEN, periodic.CLAIM)
+                            for action in data['actions']))
+    if periodic_only:
+        week = date.fromisoformat(data['game_week'])
+        if (week.weekday() != 0 or week.isoformat() != data['game_week']
+                or data.get('requested_categories') != [periodic.CATEGORY]
+                or type(data.get('periodic_rewards_verified')) is not bool or data.get('use_cassettes') is not False
+                or data.get('battle_started') is not False
+                or data.get('cassettes') != dict(initial_balance=None, limit=0, spent_verified=0)):
+            raise AutomationError('差分周期领奖范围、游戏周或资源义务改变。')
     for index,item in enumerate(observations):
         stamp=item['captured_at']
         if (item.get('id')!=index or item.get('input_epoch')!=data['input_epoch'] or item.get('window')!=data['window']
                 or type(stamp) not in (int,float) or not math.isfinite(stamp) or stamp<=0):
             raise AutomationError('差分领奖观察代次或捕获来源不完整。')
+        if periodic_only and (item.get('game_week') != data['game_week']
+                or type(item.get('capture_sequence')) is not int or item['capture_sequence'] <= 0):
+            raise AutomationError('差分周期领奖反馈缺少游戏周或捕获序号。')
     def pair(indexes,before=0,kind=None):
         if type(indexes) is not list or len(indexes)!=2 or any(type(index) is not int or not 0<=index<len(observations) for index in indexes):
             raise AutomationError('差分领奖缺少独立反馈对。')
@@ -70,6 +87,9 @@ def _checked(root, data, *, sources=False):
                 or first.get('readback')!=last.get('readback')
                 or kind is not None and any(item['kind']!=kind for item in (first,last))):
             raise AutomationError('差分领奖反馈对不连续或语义不同。')
+        if periodic_only and (last['capture_sequence'] != first['capture_sequence'] + 1
+                or first['evidence']['pixel_sha256'] == last['evidence']['pixel_sha256']):
+            raise AutomationError('差分周期领奖反馈缺少两次连续的独立画面。')
         return last
     for index,action in enumerate(data['actions']):
         request=action['request'];before=action['before']
@@ -85,7 +105,8 @@ def _checked(root, data, *, sources=False):
         if action['status']=='verified':pair(action['after'],observations[before]['captured_at'])
     aborted=(data.get('status')=='abort_before_input' and data.get('safe_to_restart') is True
              and data['actions']==[] and data['claims']==[] and data.get('obligation') is None
-             and data.get('rewards_verified') is False)
+             and data.get('rewards_verified') is False
+             and (not periodic_only or data['periodic_rewards_verified'] is False))
     if data.get('safe_to_restart') is True and not aborted:
         if not re.fullmatch('[0-9a-f]{64}',str(data.get('account_key',''))):
             raise AutomationError('差分领奖没有当前账号来源。')
@@ -101,6 +122,9 @@ def _checked(root, data, *, sources=False):
         budget=data['cassettes'];spent=0
         sources_by_intent={'du_reward_dot':'拟合等级','du_reward_claim':'稳态数组',
             'du_reward_gallery_claim':'可能性画廊','du_reward_unlock':'月下奇谭'}
+        if periodic_only:
+            _checked_periodic(data, pair, final)
+            sources_by_intent[periodic.CLAIM] = periodic.CATEGORY
         expected={action['id']:sources_by_intent[action['request']['intent']] for action in data['actions']
                   if action['request']['intent'] in sources_by_intent}
         actual={}
@@ -115,7 +139,8 @@ def _checked(root, data, *, sources=False):
             if claim['id']!=index or claim['status']!='verified' or not 0<=claim['action_id']<len(data['actions']):
                 raise AutomationError('差分领奖原领取义务未核实。')
             action=data['actions'][claim['action_id']]
-            expected={'拟合等级':'fit_rewards','稳态数组':'steady_rewards','可能性画廊':'gallery_milestones','月下奇谭':'moon_rewards'}[claim['source']]
+            expected={'拟合等级':'fit_rewards','稳态数组':'steady_rewards','可能性画廊':'gallery_milestones',
+                      '月下奇谭':'moon_rewards',periodic.CATEGORY:periodic.PANEL}[claim['source']]
             return_id=claim['return_action_id']
             expected_id=claim['action_id']+(2 if claim['source']=='月下奇谭' else 1)
             if type(return_id) is not int or return_id!=expected_id or not return_id<len(data['actions']):
@@ -138,12 +163,20 @@ def _checked(root, data, *, sources=False):
                     raise AutomationError('月下卡带到账或返回余额不属于本次解锁。')
             else:
                 if claim['overlay']!=action['after']:raise AutomationError('差分到账展示不是本次领取反馈。')
-                pair(claim['overlay'],kind='reward_overlay')
+                overlay = pair(claim['overlay'],kind='reward_overlay')
                 identity=claim['identity']
                 if claim['source']=='拟合等级':
                     valid=readback.get('tier')==identity['tier'] and readback.get('state')==[identity['state']['level'],identity['state']['xp']]
                 elif claim['source']=='可能性画廊':
                     valid=readback==dict(category=identity['category'],threshold=identity['threshold'],status='claimed')
+                elif claim['source'] == periodic.CATEGORY:
+                    scope = dict(account=data['account_key'], current=periodic.LIMIT, cap=periodic.LIMIT,
+                                 game_week=data['game_week'])
+                    items = overlay['readback']
+                    valid = (identity == dict(**scope, tiers=list(periodic.TIERS))
+                             and readback == dict(**scope, claimed_tiers=list(periodic.TIERS))
+                             and type(items) is list and bool(items)
+                             and all(type(quantity) is int and 0 < quantity <= 1000000000 for quantity in items))
                 else:
                     valid=(readback.get('condition')==identity['condition'] and readback.get('claimed') is True
                         and all(readback.get('scope',{}).get(key)==identity['scope'][key] for key in ('tab','group','total')))
@@ -157,6 +190,44 @@ def _checked(root, data, *, sources=False):
             if source_file_ref(reference['path'], directory) != reference:
                 raise AutomationError('差分领奖原PNG来源改变，未继续。')
     return data
+
+
+def _checked_periodic(data, pair, final):
+    from . import du_periodic_rewards as periodic
+
+    success = data['periodic_rewards_verified']
+    scope = dict(account=data['account_key'], current=periodic.LIMIT, cap=periodic.LIMIT,
+                 game_week=data['game_week'])
+    actions = data['actions']
+    expected = [periodic.OPEN, periodic.CLAIM, periodic.DISMISS, periodic.BACK] if success else [
+        periodic.OPEN, periodic.BACK]
+    if ([action['request']['intent'] for action in actions] != expected
+            or any(action['status'] != 'verified' for action in actions)
+            or data['status'] != ('complete' if success else 'partial')
+            or data.get('rewards_verified') is not success
+            or data.get('remaining_categories') != ([] if success else [periodic.CATEGORY])):
+        raise AutomationError('差分周期领奖动作、回执或最终状态不符。')
+    home = pair(data['home_frames'], kind='home')
+    opened = pair(actions[0]['after'], kind=periodic.PANEL)
+    if (home['readback'] != dict(**scope, marked=True)
+            or opened['readback'] != dict(**scope, available=success)
+            or type(final['readback'].get('marked')) is not bool
+            or final['readback'] != dict(**scope, marked=final['readback']['marked'])
+            or success and final['readback']['marked']):
+        raise AutomationError('差分周期领奖原主页、同周面板或返回范围不符。')
+    observations = data['observations']
+    previous = home
+    for action in actions:
+        before = observations[action['before']]
+        first, last = (observations[index] for index in action['after'])
+        request = action['request']
+        if (any(before[field] != previous[field] for field in (
+                    'capture_sequence', 'captured_at', 'kind', 'tokens_digest', 'game_week'))
+                or before['evidence']['pixel_sha256'] != previous['evidence']['pixel_sha256']
+                or first['capture_sequence'] <= before['capture_sequence']
+                or (request['key'] != 'esc' if request['intent'] == periodic.BACK else request['target'] is None)):
+            raise AutomationError('差分周期领奖动作缺少对应阶段的连续画面。')
+        previous = last
 
 
 def preflight(root):

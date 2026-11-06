@@ -255,6 +255,9 @@ class Context:
             raise AutomationError('缺少本次差分领奖流程与落盘意图。')
         if sum(value is not None for value in (action.target, action.key, action.drag)) != 1:
             raise AutomationError('差分领奖动作形态不唯一，未发送输入。')
+        if getattr(workflow, 'periodic_only', False) is True:
+            self._du_periodic_reward_input(workflow, scene, action)
+            return
         self.checkpoint()
         workflow.authorize(scene, action)
         self.window.guard(scene.geometry)
@@ -273,6 +276,39 @@ class Context:
                 raise AutomationError('差分独立领奖只允许已核实的返回键。')
         except FocusLost:
             self._focus_interrupted()
+        self.sleep(self.settings.action_delay)
+
+    def _du_periodic_reward_input(self, workflow, scene, action):
+        window, geometry = self.window, scene.geometry
+        submitted = False
+
+        def before_submit():
+            nonlocal submitted
+            if submitted or self.window is not window or scene.geometry != geometry:
+                raise InputInterrupted('周期领奖发送前的窗口来源已改变。')
+            workflow.authorize(scene, action)
+            if window.emergency_pressed() is True or getattr(self.runner, 'stop_requested', False) is True:
+                raise Stopped('周期领奖已停止，未发送当前动作。')
+            window.guard(geometry)
+            workflow._fresh(scene)
+            submitted = True
+            self.last_scene, self._scroll_anchor = None, None
+
+        if geometry is None:
+            raise AutomationError('周期领奖缺少当前窗口几何。')
+        workflow.authorize(scene, action)
+        try:
+            with hold_read_sources(workflow.input_sources(action)):
+                if action.target is not None:
+                    window.click(*action.target.center, geometry, before_submit=before_submit)
+                elif action.key == 'esc':
+                    window.key('esc', expected=geometry, before_submit=before_submit)
+                else:
+                    raise AutomationError('周期领奖仅支持已核实的点击和返回。')
+        except FocusLost:
+            self._focus_interrupted()
+        if not submitted:
+            raise AutomationError('周期领奖缺少原生发送边界回执，原动作待核对。')
         self.sleep(self.settings.action_delay)
 
     def redemption_input(self, scene, action):
@@ -2102,6 +2138,7 @@ class Context:
 class Runner:
     def __init__(self, settings: Settings, emit=None, *, new_battle_run=False, operation="daily",
                  du_runs=None, du_resume_active=False, du_periodic_rank=None, du_use_cassettes=False, du_until_points=False,
+                 du_periodic_rewards=False,
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
                  currency_configure=False, currency_wealth=None, currency_resume=False, weekly_plan=None, currency_strategy=None,
@@ -2125,7 +2162,10 @@ class Runner:
         self.build_target_selection = build_target_selection
         if type(du_use_cassettes) is not bool or du_use_cassettes and operation != 'du_rewards':
             raise ValueError('已有月下卡带选项仅用于独立差分领奖。')
+        if type(du_periodic_rewards) is not bool or du_periodic_rewards and (operation != 'du_rewards' or du_use_cassettes):
+            raise ValueError('周期积分领奖需要独立差分领奖，且与月下卡带互斥。')
         self.du_use_cassettes = du_use_cassettes
+        self.du_periodic_rewards = du_periodic_rewards
         if (type(use_power_plan) is not bool or type(new_power_plan) is not bool or new_power_plan and not use_power_plan
                 or use_power_plan and (operation!='daily' or not settings.battle)):
             raise ValueError('体力计划仅用于已选择刷本的日常入口，新目标须明确启用体力计划。')
@@ -2780,8 +2820,11 @@ class Runner:
             elif du_rewards:
                 from .du_rewards_only import run_rewards
                 self.report.failure_task = 'du_rewards'
-                self.emit(dict(type='task', task='du_rewards', status='running', detail='核对并领取已有差分红点奖励；不开始演算'))
-                result = run_rewards(context, use_cassettes=self.du_use_cassettes)
+                detail = ('核对差分周期积分和已有奖励' if self.du_periodic_rewards
+                          else '核对并领取已有差分红点奖励；不开始演算')
+                self.emit(dict(type='task', task='du_rewards', status='running', detail=detail))
+                result = run_rewards(context, use_cassettes=self.du_use_cassettes,
+                                     **(dict(periodic_only=True) if self.du_periodic_rewards else {}))
                 self.report.results.append(result)
                 self.report.status = 'success' if result.status == 'ok' else 'partial'
                 self.report.failure_task = '' if result.status == 'ok' else 'du_rewards'
