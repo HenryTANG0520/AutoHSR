@@ -4,12 +4,12 @@ import numpy as np
 from .currency_wars import observe
 from .currency_wars_deployment import _crop
 from .currency_wars_reward_items import ITEM_IDS
-from .currency_wars_standard_supply_refresh import remaining
 from .currency_wars_supply import supply_count
 from .currency_wars_supply_fields import CENTERS, _name, equipment_names
-from .models import AutomationError, normalize
+from .models import AutomationError, Token, normalize
 
 
+DOUBLE_SUPPLY_LAYOUT = 'five_cards_two_equipment_rows'
 _CENTERS = CENTERS[5]
 _ROLE_ROW = (.448, .51)
 _UPPER_ROW = (.565, .632)
@@ -23,8 +23,8 @@ def _row(tokens, bounds, confidence, *, roles=False):
     entries = [token for token in tokens if token.within((.02, top, .98, bottom))]
     if len(entries) != len(_CENTERS):
         raise AutomationError('双件补给的五列字段不完整。')
-    result = []
-    for center, token in zip(_CENTERS, sorted(entries, key=lambda item: item.center[0])):
+    ordered = sorted(entries, key=lambda item: item.center[0])
+    for center, token in zip(_CENTERS, ordered):
         x1, y1, x2, y2 = token.box
         left, right = (center - .104, center + .069) if roles else (center - .075, center + .075)
         if (not confidence <= token.score <= 1 or not left <= x1 < x2 <= right
@@ -33,14 +33,9 @@ def _row(tokens, bounds, confidence, *, roles=False):
         if roles:
             if not _name(token):
                 raise AutomationError('双件补给角色名称待核对。')
-            result.append(token.text.strip())
-        else:
-            names = equipment_names(token)
-            if len(names) != 1:
-                raise AutomationError('双件补给的每个装备位置须独立可读。')
-            name, = names
-            result.append(dict(text=name, catalog_id=ITEM_IDS.get(name)))
-    return result
+        elif len(equipment_names(token)) != 1:
+            raise AutomationError('双件补给的每个装备位置须独立可读。')
+    return ordered
 
 
 def _white(image, roi):
@@ -55,8 +50,17 @@ def _highlighted(image, center):
             and np.max(right.mean(axis=0)) >= .75)
 
 
-def read_double_supply(scene, confidence=.65):
-    """Report visible names and selection without providing a target or receipt."""
+def double_supply_layout_hint(scene, confidence):
+    """A complete raised name row blocks fallback to single-item parsing."""
+    try:
+        roles = _row(scene.tokens, _ROLE_ROW, confidence, roles=True)
+    except AutomationError:
+        return False
+    return any(token.box[3] < .50 for token in roles)
+
+
+def double_supply_rows(scene, confidence=.65):
+    """Return complete visible roles and both equipment labels in each calibrated column."""
     image = scene.image
     if (not isinstance(image, np.ndarray) or image.ndim != 3 or image.shape[2] != 3
             or image.shape[0] < 360 or abs(image.shape[1] / image.shape[0] - 16 / 9) > .04
@@ -69,15 +73,25 @@ def read_double_supply(scene, confidence=.65):
         roles = _row(scene.tokens, _ROLE_ROW, confidence, roles=True)
         upper = _row(gear, _UPPER_ROW, confidence)
         lower = _row(gear, _LOWER_ROW, confidence)
-        count = supply_count(scene, confidence)
     except AutomationError:
         return None
+    rows = []
+    for slot, (role, first, second) in enumerate(zip(roles, upper, lower)):
+        box = (min(first.box[0], second.box[0]), first.box[1],
+               max(first.box[2], second.box[2]), second.box[3])
+        names = '、'.join(equipment_names(first) + equipment_names(second))
+        rows.append((slot, role, Token(names, min(first.score, second.score), box)))
+    return tuple(rows)
 
+
+def double_supply_controls(scene, confidence=.65):
+    count = supply_count(scene, confidence)
     confirm = [token for token in scene.tokens if confidence <= token.score <= 1
                and normalize(token.text) == '确认' and token.within(_CONFIRM)]
     selected_slot = None
     confirm_state = 'unknown'
     if len(confirm) == 1:
+        image = scene.image
         highlights = [slot for slot, center in enumerate(_CENTERS, 1) if _highlighted(image, center)]
         button = np.mean(_white(image, (.833, .899, .97, .923)))
         if count == 0 and not highlights and button <= .25:
@@ -85,11 +99,25 @@ def read_double_supply(scene, confidence=.65):
         elif count == 1 and len(highlights) == 1 and button >= .55:
             selected_slot, = highlights
             confirm_state = 'enabled'
+    return count, selected_slot, confirm_state
+
+
+def read_double_supply(scene, confidence=.65):
+    """Report visible names and selection without providing a target or receipt."""
+    rows = double_supply_rows(scene, confidence)
+    if rows is None:
+        return None
+    try:
+        count, selected_slot, confirm_state = double_supply_controls(scene, confidence)
+    except AutomationError:
+        return None
+    from .currency_wars_standard_supply_refresh import remaining
     try:
         refresh, _ = remaining(scene, confidence)
     except AutomationError:
         refresh = None
-    cards = [dict(slot=slot, character=role, equipment=[first, second])
-             for slot, (role, first, second) in enumerate(zip(roles, upper, lower), 1)]
-    return dict(layout='five_cards_two_equipment_rows', cards=cards, selected_count=count,
+    cards = [dict(slot=slot + 1, character=role.text.strip(),
+                  equipment=[dict(text=name, catalog_id=ITEM_IDS.get(name)) for name in equipment_names(gear)])
+             for slot, role, gear in rows]
+    return dict(layout=DOUBLE_SUPPLY_LAYOUT, cards=cards, selected_count=count,
                 selected_slot=selected_slot, confirm_state=confirm_state, refresh_remaining=refresh)

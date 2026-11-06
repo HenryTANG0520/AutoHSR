@@ -1,8 +1,4 @@
-"""Pair complete supply columns without dropping a second visible equipment.
-
-Only the existing equipment text band is read. Multi-item grammar is an offline
-contract, not calibration for an unseen second row or an inferred hidden item.
-"""
+"""Pair complete supply columns in the calibrated one- and two-row layouts."""
 import re
 import hashlib
 import math
@@ -111,8 +107,16 @@ def _role(scene,slot,x,confidence):
     return tokens[0]
 
 
-def rows(scene,confidence=.65):
+def candidate_rows(scene,confidence=.65):
     if observe(scene,confidence).page_kind!='supply_selection':raise AutomationError('当前不是补给选择页。')
+    from .currency_wars_supply_observation import DOUBLE_SUPPLY_LAYOUT, double_supply_layout_hint, double_supply_rows
+    double = double_supply_rows(scene, confidence)
+    if double is not None:
+        if len({unit_name(name.text) for _, name, _ in double}) != len(double):
+            raise AutomationError('双件补给角色名称重复。')
+        return DOUBLE_SUPPLY_LAYOUT, double
+    if double_supply_layout_hint(scene, confidence):
+        raise AutomationError('当前双件补给没有完整两行装备，未退回单件布局。')
     items=_items(scene,confidence);result=[]
     for slot,(x,item) in enumerate(zip(CENTERS[len(items)],items)):
         try:name=_role(scene,slot,x,confidence)
@@ -127,7 +131,11 @@ def rows(scene,confidence=.65):
         result.append((slot,name,item))
     if len({name.text if name.text.startswith('unknown:') else unit_name(name.text) for _,name,item in result})!=len(result):
         raise AutomationError('补给角色名称重复。')
-    return tuple(result)
+    return None, tuple(result)
+
+
+def rows(scene,confidence=.65):
+    return candidate_rows(scene, confidence)[1]
 
 
 def supplement_supply_fields(scene,reader):

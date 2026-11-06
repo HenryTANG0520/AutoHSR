@@ -6,7 +6,7 @@ import numpy as np
 
 from autohsr.currency_wars_supply_fields import rows
 from autohsr.currency_wars_supply_observation import read_double_supply
-from autohsr.models import AutomationError, Scene, Token
+from autohsr.models import Scene, Token
 from autohsr.tests import test_currency_wars_encounter as read_only_tests
 
 
@@ -84,16 +84,20 @@ class DoubleSupplyObservationTests(unittest.TestCase):
         self.assertIsNone(read_double_supply(regular))
         double = supply()
         self.assertIsNone(read_double_supply(replace(double, image=double.image[:, 100:-100])))
-        with self.assertRaisesRegex(AutomationError, '未校准行'):
-            rows(double)
+        self.assertEqual(len(rows(double)), 5)
 
     def test_formal_read_only_report_has_no_input_and_leaves_overflow_separate(self):
-        case = read_only_tests.EncounterTests()
-        self.addCleanup(case.doCleanups)
+        def cli(scene):
+            case = read_only_tests.EncounterTests()
+            try:
+                return case.cli_report(scene)
+            finally:
+                case.doCleanups()
+
         scene = supply(selected=4)
-        report = case.cli_report(scene)
+        report = cli(scene)
         self.assertEqual(report['page_kind'], 'supply_selection')
         self.assertEqual(report['double_supply']['selected_slot'], 4)
         self.assertNotIn('reward_effect', report)
         scene.tokens.append(token('备战席已满，请出售角色或提升等级', .54, .492, width=.098))
-        self.assertNotIn('double_supply', case.cli_report(scene))
+        self.assertNotIn('double_supply', cli(scene))

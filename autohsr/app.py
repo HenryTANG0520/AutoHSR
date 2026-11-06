@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import ExitStack, contextmanager, nullcontext
+from copy import deepcopy
 import ctypes as C
 import hashlib
 import json
@@ -474,14 +475,21 @@ class Context:
         from .currency_wars_standard_investment_refresh import input_scope as investment_refresh_input_scope
         from .currency_wars_standard_progress import progress_input_scope
         from .currency_wars_standard_encounter import dispatch_sources as encounter_dispatch_sources
+        from .currency_wars_standard_double_supply import (
+            dispatch_sources as supply_dispatch_sources, same_journal as same_supply_journal,
+        )
         encounter_sources = encounter_dispatch_sources(data, choice, self.report.run_dir, input_epoch, store.path.parent)
+        supply_sources = supply_dispatch_sources(data, choice, scene, self.report.run_dir, input_epoch,
+                                                  self.settings.ocr_confidence)
         if encounter_sources and data != store.data:
             raise AutomationError('遭遇原节点或本次意图与落盘记录不一致，未发送输入。')
+        if supply_sources and not same_supply_journal(data, store.data):
+            raise AutomationError('双件补给原节点或本次意图与落盘记录不一致，未发送输入。')
         use_durable_source = (loot_sale_input_scope(choice, store.data, data)
                               or progress_input_scope(choice.intent, store.data, data)
                               or shop_input_scope(choice.intent, store.data, data)
                               or investment_refresh_input_scope(choice.intent, store.data, data)
-                              or encounter_sources)
+                              or encounter_sources or supply_sources)
         session = data if use_durable_source or environment_step else store.data
         if choice.intent in ('open_standard_bench_reward', 'choose_standard_reward'):
             investment = store.data.get('investment', {})
@@ -511,9 +519,9 @@ class Context:
         loss_progress = (choice.intent in ('continue_standard_node', 'advance_standard_next_plane',
                                            'advance_standard_boss_intro', 'close_standard_arrival_shop')
                          and data.get('node_attempt', {}).get('node_loss_verified') is True)
-        if choice.intent == 'start_standard_a8_40' or loss_progress or encounter_sources:
+        if choice.intent == 'start_standard_a8_40' or loss_progress or encounter_sources or supply_sources:
             self._currency_standard_evidenced_click(scene, choice, guard, store, data, loop_guard, start_sources,
-                                                    encounter_sources=encounter_sources)
+                                                    encounter_sources=encounter_sources, supply_sources=supply_sources)
             self.sleep(self.settings.action_delay)
             return
         if environment_step:
@@ -595,17 +603,22 @@ class Context:
         self.sleep(self.settings.action_delay)
 
     def _currency_standard_evidenced_click(self, scene, choice, guard, store, data, loop_guard, start_sources,
-                                          *, encounter_sources=()):
+                                          *, encounter_sources=(), supply_sources=()):
         from .currency_wars_identity import account_key, installed_client
         from .currency_wars_initial import _pixels, evidence_ref, source_file_ref
         from .currency_wars_points_goal import require_start_window
         from .currency_wars_standard_encounter import dispatch_sources, require_files, same_account
+        from .currency_wars_standard_double_supply import (
+            INPUT as DOUBLE_SUPPLY_INPUT, dispatch_sources as supply_dispatch_sources,
+            input_state as supply_input_state, same_journal as same_supply_journal,
+        )
         from .currency_wars_standard_flow import next_action
         from .currency_wars_standard_node import original_loss_files
 
         starting = choice.intent == 'start_standard_a8_40'
         encounter_followup = choice.encounter_arrival is not None
-        operation = '标准开局' if starting else '遭遇推进' if encounter_sources else '节点失利推进'
+        operation = ('标准开局' if starting else '遭遇推进' if encounter_sources
+                     else '双件补给' if supply_sources else '节点失利推进')
         before = data['actions'][-1].get('before')
         if not isinstance(before, str) or not before:
             raise AutomationError(operation + '缺少原始画面，未发送输入。')
@@ -613,17 +626,18 @@ class Context:
         run_dir, epoch, confidence = self.report.run_dir, self.runner.input_epoch, self.settings.ocr_confidence
         origin = data['node_history'][-1] if encounter_followup else data.get('node_attempt', {})
         losses = (original_loss_files(dict(data, node_attempt=origin), journal.parent)
-                  if not starting and origin.get('node_loss_verified') is True else ())
+                  if not starting and not supply_sources and origin.get('node_loss_verified') is True else ())
         files = [store.path, Path(before), *(Path(source) for source in start_sources),
                  *(path for path, _ in losses), *(path for path, _ in encounter_sources)]
+        files.extend(Path(source['path']) for source in supply_sources if source['path'] != before)
         if loop_guard is not None:
             files.append(loop_guard.store.path)
         executable = getattr(window, 'path', None)
         hwnd = getattr(window, 'hwnd', None)
-        if encounter_followup:
+        if encounter_followup or supply_sources:
             version_file = data.get('client', {}).get('source')
             if not isinstance(version_file, str) or not version_file:
-                raise AutomationError('遭遇出战缺少当前客户端版本来源。')
+                raise AutomationError(operation + '缺少当前客户端版本来源。')
             files.append(Path(version_file))
         geometry, captured_at, image = scene.geometry, scene.captured_at, scene.image
 
@@ -659,8 +673,12 @@ class Context:
             held.enter_context(hold_read_sources(files))
             saved_revisions = revisions()
             saved = store.require_pending(choice.intent, self.runner.input_epoch)
-            if saved != data or saved != store.data:
+            if saved != data or not (same_supply_journal(saved, store.data) if supply_sources else saved == store.data):
                 raise AutomationError(operation + '的原落盘意图已改变，未发送输入。')
+            if supply_sources:
+                arrival = saved['actions'][-1][DOUBLE_SUPPLY_INPUT]['origin_action_id']
+                start = saved['actions'][arrival]['target'][1]
+                supply_state = deepcopy(supply_input_state(store.data, start))
             try:
                 reference = evidence_ref(scene, before, self.report.run_dir)
             except AutomationError as error:
@@ -670,10 +688,12 @@ class Context:
                         or reference != encounter_sources[-1][1]):
                     raise AutomationError('遭遇当前输入来源与原落盘意图不一致。')
                 require_files(encounter_sources, run_dir)
-            if encounter_followup:
-                client = installed_client(executable)
+            if supply_sources and supply_dispatch_sources(saved, choice, scene, run_dir, epoch, confidence) != supply_sources:
+                raise AutomationError('双件补给当前候选或原反馈证据已改变，未发送输入。')
+            if encounter_followup or supply_sources:
+                client = installed_client(window.current_executable() if supply_sources else executable)
                 if any(saved['client'].get(key) != value for key, value in client.items()):
-                    raise AutomationError('遭遇出战的安装版本来源已改变，未发送输入。')
+                    raise AutomationError(operation + '的安装版本来源已改变，未发送输入。')
             if any(source_file_ref(path, path.parent)['sha256'] != digest for path, digest in losses):
                 raise AutomationError('原节点失利证据已改变，未继续挑战。')
             self._currency_weekly_checkpoint()
@@ -688,7 +708,7 @@ class Context:
                 image.setflags(write=False)
                 held.callback(image.setflags, write=True)
             tokens, field_reads = tuple(scene.tokens), scene.field_reads.copy()
-            observed_account = (same_account(scene, saved, confidence) if encounter_sources
+            observed_account = (same_account(scene, saved, confidence) if encounter_sources or supply_sources
                                 else account_key(scene, confidence) == saved['account_key'])
             if (_pixels(image) != reference['pixel_sha256']
                     or not observed_account
@@ -711,6 +731,14 @@ class Context:
                     raise AutomationError('遭遇输入意图或当前画面在发送前已改变。')
                 if self.runner.input_epoch != epoch:
                     raise InputInterrupted('遭遇输入代次已改变，未沿用旧意图。')
+            if supply_sources:
+                if (self.window is not window or self.currency_standard_session is not store or store.path != journal
+                        or self.report.run_dir != run_dir or getattr(window, 'hwnd', None) != hwnd
+                        or getattr(window, 'path', None) != executable or self.settings.ocr_confidence != confidence
+                        or scene.field_reads != field_reads or supply_input_state(store.data, start) != supply_state):
+                    raise AutomationError('双件补给输入意图或当前画面在发送前已改变。')
+                if self.runner.input_epoch != epoch:
+                    raise InputInterrupted('双件补给输入代次已改变，未沿用旧意图。')
             if self.runner.stop_requested:
                 raise Stopped('任务已停止。')
 

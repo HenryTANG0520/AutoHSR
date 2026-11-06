@@ -139,6 +139,9 @@ def enter(session, choice, scene, confidence=.65):
                              if choice.intent=='open_standard_bench_reward' else None)
     action['reward_allow_same_node'] = session['reward']['same_node_supply_allowed']
     action['reward_verified'] = False
+    if choice.intent == 'continue_standard_node' and kind == 'supply_selection':
+        from .currency_wars_standard_double_supply import record_arrival
+        record_arrival(session, action, scene, confidence)
 
 
 def _options(scene, kind, confidence):
@@ -238,8 +241,12 @@ def _descriptors(options, scene=None, kind=None, confidence=.65):
 
 def _selected_supply(scene, option, options, confidence):
     from .currency_wars_supply import supply_count
+    from .currency_wars_supply_observation import double_supply_controls, double_supply_rows
     if supply_count(scene,confidence)!=1 or scene.image is None:
         return False
+    if double_supply_rows(scene, confidence) is not None:
+        _, selected, confirm = double_supply_controls(scene, confidence)
+        return selected == option[0] + 1 and confirm == 'enabled'
     highlighted = []
     for entry in options:
         x = entry[5].center[0]

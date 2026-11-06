@@ -1233,6 +1233,10 @@ def run_standard(c):
     )
     from .currency_wars_standard_encounter_battle import bind_input as bind_encounter_followup, feedback as encounter_followup_feedback
     from .currency_wars_standard_encounter_notice import begin as watch_encounter_reward
+    from .currency_wars_standard_double_supply import (
+        INPUT as DOUBLE_SUPPLY_INPUT, commit_feedback as commit_double_supply, feedback_key as double_supply_key,
+        hold_delivery_sources, same_journal as same_supply_journal,
+    )
     if c.report.operation != 'currency_wars_standard':
         raise AutomationError('标准对局开发须使用独立入口。')
     # This initial path is intentionally not an acceptance counter. Any repair
@@ -1356,8 +1360,9 @@ def run_standard(c):
                           '，环境声明交付仍未归因。')
             from .currency_wars_standard_rewards import verify_unit
             verifying_reward = store.data.get('reward',{}).get('status')=='unit_verifying'
-            problem = verify_unit(store.data,scene,c.runner.input_epoch,c.settings.ocr_confidence)
-            store.persist()
+            with hold_delivery_sources(store.data):
+                problem = verify_unit(store.data,scene,c.runner.input_epoch,c.settings.ocr_confidence)
+                store.persist()
             if problem:raise AutomationError(problem)
             if verifying_reward and store.data.get('reward',{}).get('status')=='verified':c.checkpoint()
             from .currency_wars_investment_units import verify as verify_investment_units
@@ -1469,7 +1474,8 @@ def run_standard(c):
             action['decision']=dict(item=choice.details[0],effect=choice.details[1],name=choice.details[2],policy=choice.details[3])
             store.persist()
         elif choice.intent=='refresh_standard_supply':
-            action['decision']=dict(strategy=choice.details[0],remaining=choice.details[1],need=list(choice.details[2]),policy=choice.details[3])
+            need_kind, names = choice.details[2]
+            action['decision']=dict(strategy=choice.details[0],remaining=choice.details[1],need=[need_kind,list(names)],policy=choice.details[3])
             store.persist()
         elif choice.intent in ('choose_standard_reward','select_standard_supply','confirm_standard_supply'):
             action['decision'] = dict(name=choice.details[0],item=choice.details[1],unit=choice.details[2],
@@ -1598,9 +1604,10 @@ def run_standard(c):
         closing_investment_shop = choice.intent == INVESTMENT_SHOP_CLOSE
         refreshing_investment = choice.intent == INVESTMENT_REFRESH
         investment_progress = investment_confirmation or closing_investment_shop or refreshing_investment
+        double_supply_step = DOUBLE_SUPPLY_INPUT in action
         later_environment_board = choice.expected == 'initial_board' and choice.payload not in ((), ('1-1',))
         strict_feedback = (defeat_step or investment_box or loot_click or loot_box is not None
-                           or loot_claim is not None or boss_progress or loss_progress or investment_progress or encounter_input
+                           or loot_claim is not None or boss_progress or loss_progress or investment_progress or encounter_input or double_supply_step
                            or INVESTMENT_REFRESH_BINDING in action
                            or choice.intent.startswith((ENVIRONMENT_SELECT, ENVIRONMENT_CONFIRM)))
         observed_at = scene.captured_at
@@ -1633,8 +1640,8 @@ def run_standard(c):
                 progress = None
                 try:
                     observed_account = account_key(after, max(.85, c.settings.ocr_confidence))
-                    if encounter_input and account_key(after, min(.65, c.settings.ocr_confidence)) != observed_account:
-                        raise AutomationError('遭遇动作反馈的账号字段有冲突。')
+                    if (encounter_input or double_supply_step) and account_key(after, min(.65, c.settings.ocr_confidence)) != observed_account:
+                        raise AutomationError('标准动作反馈的账号字段有冲突。')
                     if loss_progress and account_key(after, c.settings.ocr_confidence) != observed_account:
                         raise AutomationError('失利后的到达画面有账号冲突。')
                 except AutomationError:
@@ -1667,6 +1674,12 @@ def run_standard(c):
                         ready = progress is not None
                     else:
                         ready = bool(popup_stamp) or transition_ready(choice, after, c.settings.ocr_confidence, before=scene,session=store.data)
+                    if double_supply_step and ready:
+                        try:
+                            key = double_supply_key(choice, after, c.settings.ocr_confidence)
+                            progress = dict(page_kind=key[0], supply_feedback=key)
+                        except AutomationError:
+                            ready = False
                     if popup_stamp!=previous_popup:stable=0
                     previous_popup=popup_stamp
                     initial = store.data.get('initial_environment', {})
@@ -1700,11 +1713,11 @@ def run_standard(c):
                     else:
                         ready = False
                 paired_progress = (progress if ready and progress is not None
-                                   and (investment_progress or closing_intro or loss_progress or encounter_step or encounter_followup
+                                   and (investment_progress or closing_intro or loss_progress or encounter_step or encounter_followup or double_supply_step
                                         or notice_watch is not None and notice_watch.notice is not None
                                         or progress.get('page_kind') in ('boss_intro', ENCOUNTER_OFFER))
                                    else None)
-                if ((encounter_followup or encounter_step or paired_progress and paired_progress.get('page_kind') == ENCOUNTER_OFFER)
+                if ((encounter_followup or encounter_step or double_supply_step or paired_progress and paired_progress.get('page_kind') == ENCOUNTER_OFFER)
                         and progress_frames and progress_frames[-1][1] is after):
                     ready, paired_progress = False, None
                 if paired_progress != previous_progress:
@@ -1749,6 +1762,11 @@ def run_standard(c):
                                                     'standard_consumable_applied','standard_consumable_returned','standard_consumable_board',
                                                     'standard_initial_shop_closed')) else 1
                 if stable >= required:
+                    if double_supply_step:
+                        commit_double_supply(c, store, guard, choice, scene, progress_frames,
+                                             lambda frame, label: evidence(c, frame, label))
+                        scene = after
+                        break
                     if encounter_followup or encounter_step or paired_progress and paired_progress.get('page_kind') == ENCOUNTER_OFFER:
                         commit_encounter(c, store, guard, choice, progress_frames, paired_progress,
                                          lambda frame, label: evidence(c, frame, label))
@@ -1924,11 +1942,15 @@ def run_standard(c):
             c.sleep(.5)
             elapsed += max(0., time.monotonic()-started-(c.runner.inactive_duration-inactive))
         else:
-            if encounter_input and store.require_pending(choice.intent, action['input_epoch']) != store.data:
-                raise AutomationError('遭遇落盘意图已改变，保留原画面待核对。')
+            if encounter_input or double_supply_step:
+                pending = store.require_pending(choice.intent, action['input_epoch'])
+                if not (same_supply_journal(pending, store.data) if double_supply_step else pending == store.data):
+                    raise AutomationError('标准动作落盘意图已改变，保留原画面待核对。')
             action['status'] = 'unknown'
             if encounter_followup:
                 reason = '遭遇收店或出战后的双帧反馈未核实，原意图保留待核对。'
+            elif double_supply_step:
+                reason = '双件补给的双帧反馈未核实，原意图保留待核对。'
             else:
                 reason = ('遭遇选择或确认后的双帧反馈未核实，原意图保留待核对。'
                           if encounter_step else _loot_timeout_reason(action))
