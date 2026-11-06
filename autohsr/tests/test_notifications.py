@@ -273,6 +273,89 @@ class NotificationTests(unittest.TestCase):
         with self.assertRaises(NotifyError):
             report_message(replace(settings, notification_body='{error}'), report)
 
+    def test_redemption_cli_notifies_counts_without_mislabeling_rejections_or_leaking_private_data(self):
+        from autohsr.__main__ import main
+
+        request_fake = Mock(return_value=Reply(200, b'{}'))
+        service, frozen = self.service(requester=request_fake)
+        config = self.root / 'config.json'
+        Settings().save(config)
+        config_before = config.read_bytes()
+        private_code, private_account = 'PrivateCodeOnly26', 'PrivateAccountFingerprint'
+        batch = dict(schema=1, status='completed', codes=[private_code, 'two', 'three', 'four'],
+                     account_key=private_account, submitted=3, redeemed=0, reused=1,
+                     results=[dict(code=private_code, status='expired', reused=False, entry_id='1'*32),
+                              dict(code='two', status='already_used', reused=False, entry_id='2'*32),
+                              dict(code='three', status='invalid', reused=False, entry_id='3'*32),
+                              dict(code='four', status='redeemed', reused=True)])
+        directory = self.root / 'private-run-path'
+        directory.mkdir()
+        game = RunReport(operation='redemption', status='success', report_saved=True,
+                         run_dir=str(directory), error='PrivateRuntimeError', redemption=batch)
+        path = directory / 'report.json'
+        path.write_text(json.dumps(game.to_dict()), 'utf8')
+        before = path.read_bytes()
+        child = Mock()
+        child.run.return_value = game
+        with patch('autohsr.notify_runtime.NotificationService', return_value=service), \
+             patch('autohsr.app.Runner', return_value=child), \
+             redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as diagnostics:
+            self.assertEqual(main(['--redeem-codes', '--config', str(config), '--redemption-server', 'cn',
+                                   '--redemption-code', private_code, '--no-redemption-mail',
+                                   '--notify-profile', frozen[0]['id']]), 0)
+        self.assertEqual(json.loads(output.getvalue()), game.to_dict())
+        self.assertEqual(config.read_bytes(), config_before)
+        self.assertEqual(path.read_bytes(), before)
+        request_fake.assert_called_once()
+        call = request_fake.call_args.args[0]
+        payload = json.loads(call.data)
+        wire = json.dumps(payload, ensure_ascii=False)
+        self.assertIn('兑换码', wire)
+        self.assertIn('兑换新成功：0', wire)
+        self.assertIn('过期：1', wire)
+        self.assertIn('已使用：1', wire)
+        self.assertIn('无效：1', wire)
+        self.assertIn('旧回执复用：1', wire)
+        public = wire + diagnostics.getvalue()
+        for value in (SECRET, private_code, private_account, 'PrivateRuntimeError', 'private-run-path'):
+            self.assertNotIn(value, public)
+        receipt, = (self.root / 'attempts').glob('*.json')
+        self.assertNotIn(SECRET.encode(), receipt.read_bytes())
+        self.assertNotIn(SECRET.encode(), service.store.path(frozen[0]['id']).read_bytes())
+
+    def test_redemption_notice_separates_pending_empty_and_missing_feedback(self):
+        report = dict(operation='redemption', status='success', report_saved=True)
+        batch = dict(schema=1, status='completed', codes=[], results=[], submitted=0, redeemed=0, reused=0)
+        unsupported_success = dict(batch, codes=['ExampleOnly'], submitted=1, redeemed=1,
+                                   results=[dict(status='redeemed', reused=False)])
+        settings = Settings()
+        for value, expected in (
+                (None, '兑换反馈：未核实'),
+                (batch, '兑换反馈：无可处理兑换码'),
+                (dict(batch, codes=['ExampleOnly']), '兑换反馈：未核实'),
+                (unsupported_success, '兑换反馈：未核实'),
+                (dict(batch, status='partial', codes=['ExampleOnly'], pending_entry_id='0'*32), '兑换反馈：待核对')):
+            with self.subTest(expected=expected, provided=value is not None):
+                _, body = report_message(settings, dict(report, redemption=value))
+                self.assertIn(expected, body)
+                self.assertNotIn('兑换新成功：1', body)
+        prior = dict(status='redeemed', reused=False, entry_id='1'*32)
+        mixed = dict(batch, status='partial', codes=['ExampleOne', 'ExampleTwo'], submitted=1, redeemed=1,
+                     results=[prior], pending_entry_id='2'*32)
+        _, body = report_message(settings, dict(report, status='partial', redemption=mixed))
+        self.assertIn('兑换反馈：待核对', body)
+        self.assertIn('兑换新成功：1', body)
+
+    def test_resumed_plan_reports_original_daily_redemption_as_history(self):
+        report = dict(operation='plan', status='success', report_saved=True, budget_scope='original_daily_run',
+                      weekly_plan=dict(daily_reused=True),
+                      redemption=dict(schema=1, status='completed', codes=['ExampleOnly'], submitted=1, redeemed=1,
+                                      reused=0, results=[dict(status='redeemed', reused=False, entry_id='1'*32)]))
+        _, body = report_message(Settings(), report)
+        self.assertIn('沿用日常兑换反馈：已处理', body)
+        self.assertIn('原日常兑换成功：1', body)
+        self.assertNotIn('兑换新成功', body)
+
     def test_disabled_hook_is_exact_noop_and_reads_no_profiles(self):
         emit = Mock()
         with patch('autohsr.notify_runtime.ProfileStore.load_version', side_effect=AssertionError('must not read')):

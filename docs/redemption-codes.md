@@ -141,6 +141,8 @@ python -m autohsr --run --with-redemption --redemption-source file --redemption-
 
 后端复用点为`resolve_batch(settings, cancel=..., server_resolution=...)`、`run_redemption(context, batch=..., store=...)`及`RunReport.redemption`；界面保存时只保存设置，开始时冻结本次Settings，线程内通过原生Runner执行。`auto`解析证明由本次原生窗口提供，不由界面或保存操作伪造。原始逐码／账号／证据数据留在私人报告，不直接放入公共事件或通知正文。独立本地预览只需`from_file`，显式在线预览才使用`fetch_catalog`；不要为编辑表单或刷新控件隐式联网、读账号或创建Runner。
 
+显示结果可调用 [redemption_report.report_summary](../autohsr/redemption_report.py)，输入为原生、计划或任务树的报告字典。它返回兑换反馈状态、五项匿名计数及是否沿用原日常结果。缺失或不一致的兑换反馈为 `unverified`，其计数缺省。任务树在核实子任务的原报告和账号后保存 `workflow.redemption_summary`。通知发送受理状态与游戏运行、兑换反馈各自展示。
+
 ## 验证记录与限制
 
 ### 2026-11-06 原生确认末端校验

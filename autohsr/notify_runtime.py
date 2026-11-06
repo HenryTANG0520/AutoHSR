@@ -15,6 +15,7 @@ import uuid
 
 from .notify_profiles import DEFAULT_ROOT, MAX_BYTES, NotifyCancelled, NotifyError, ProfileStore, alias, text
 from .notify_providers import execute
+from .redemption_report import report_summary as redemption_summary
 from .storage import replace_file
 
 STATUSES = ('success', 'partial', 'failed', 'stopped')
@@ -23,7 +24,7 @@ OPERATIONS = {'daily': '日常', 'reward_only': '补领奖', 'plan': '日常与�
               'differential_universe': '差分宇宙', 'currency_wars_loop': '货币战争循环',
               'currency_wars_standard': '货币战争', 'currency_wars_points': '货币战争积分',
               'currency_wars_rewards': '货币战争领奖', 'task_workflow': '任务流程',
-              'challenge_prepare': '高难备战', 'du_rewards': '差分奖励'}
+              'challenge_prepare': '高难备战', 'du_rewards': '差分奖励', 'redemption': '兑换码'}
 STATUS_LABELS = dict(success='完成', partial='部分完成', failed='失败', stopped='停止')
 
 
@@ -83,6 +84,18 @@ def report_message(settings, report):
     du_rewards = report.get('du_rewards')
     if isinstance(du_rewards, dict) and du_rewards:
         lines.append('差分所选红点奖励：' + ('已核实' if du_rewards.get('rewards_verified') is True else '未完整核实'))
+    redemption = redemption_summary(report)
+    if redemption is not None:
+        state = redemption['state']
+        historical = redemption.get('reused_report') is True
+        scope = '沿用日常兑换' if historical else '兑换'
+        lines.append(scope + '反馈：' + {'completed': '已处理', 'empty': '无可处理兑换码',
+                                      'needs_review': '待核对', 'unverified': '未核实'}[state])
+        if state in ('completed', 'needs_review'):
+            successes = '原日常兑换成功' if historical else '兑换新成功'
+            lines.append(f"{successes}：{redemption['redeemed']}，过期：{redemption['expired']}，"
+                         f"已使用：{redemption['already_used']}，无效：{redemption['invalid']}，"
+                         f"旧回执复用：{redemption['reused']}")
     currency = report.get('currency_wars')
     if isinstance(currency, dict) and currency:
         if 'completed' in currency:

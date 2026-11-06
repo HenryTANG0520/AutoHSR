@@ -285,6 +285,9 @@ class TaskWorkflowRunner:
                         'game_day', 'power_plan', 'team_selections', 'support_selections', 'weekly_plan'):
                 if key in result:
                     setattr(self.report, key, deepcopy(result[key]))
+            from .redemption_report import report_summary
+            if (summary := report_summary(result)) is not None:
+                self.report.workflow['redemption_summary'] = summary
         if result.get('operation') != 'differential_universe' and result.get('currency_wars'):
             # Keep each task separately; a subsequent points query cannot erase victories.
             self.report.workflow.setdefault('currency_results', []).append(deepcopy(result['currency_wars']))

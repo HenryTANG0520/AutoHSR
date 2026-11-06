@@ -124,6 +124,30 @@ class WorkflowTests(unittest.TestCase):
                                         plan_factory=self.factory, currency_factory=self.factory, **options)
         return self.owner
 
+    def test_parent_reports_anonymous_redemption_feedback_from_verified_child(self):
+        from autohsr.notify_runtime import report_message
+
+        private_code = 'PrivateWorkflowCode26'
+        batch = dict(schema=1, status='completed', codes=[private_code],
+                     account_key='PrivateWorkflowAccount', submitted=1, redeemed=0, reused=0,
+                     results=[dict(code=private_code, status='expired', reused=False, entry_id='1'*32)])
+        self.responses.append(dict(stamina_spent=0, daily_verified=False, battle_completed=0, redemption=batch))
+        report = self.runner(recipe(task('redeem', tasks=['redemption'], redemption_source='manual',
+                                         redemption_codes=[private_code], redemption_claim_mail=False))).run()
+        self.assertEqual(report.status, 'success')
+        saved = json.loads((Path(report.run_dir) / 'report.json').read_text('utf8'))
+        summary = saved['workflow']['redemption_summary']
+        self.assertEqual((summary['redeemed'], summary['expired']), (0, 1))
+        self.assertNotIn(private_code, json.dumps(summary))
+        self.assertNotIn('PrivateWorkflowAccount', json.dumps(summary))
+        entry, = saved['workflow']['steps']
+        source = Path(entry['source']['path'])
+        self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), entry['source']['sha256'])
+        self.assertEqual(json.loads(source.read_text('utf8'))['redemption'], batch)
+        _, body = report_message(self.settings, saved)
+        self.assertIn('兑换新成功：0', body)
+        self.assertIn('过期：1', body)
+
     def test_daily_then_du_has_one_budget_and_one_parent_finished(self):
         document = recipe(task('daily', tasks=['battle', 'daily'], stamina_limit=120),
                           task('du', 'differential_universe', runs=2))
