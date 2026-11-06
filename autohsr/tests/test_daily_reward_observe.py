@@ -1,5 +1,6 @@
 """Formal achievements observation CLI with a synthetic foreground and Win32 sender."""
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
+import ctypes as C
 from hashlib import sha256
 import io
 from itertools import count
@@ -26,7 +27,7 @@ from autohsr.tests.test_daily_visa_pages import replay as replay_visa
 from autohsr.tests.test_du_team import fixture
 from autohsr.tests.test_redemption_pages import (form_scene, four_row_more_scene, more_scene, phone_scene,
                                                stamp, token, variant_phone_scene)
-from autohsr.windows import GameWindow, Geometry
+from autohsr.windows import GameWindow, Geometry, INPUT
 
 
 ACCOUNT = Token('UID:135792468', .99, (.018, .957, .106, .985))
@@ -129,7 +130,9 @@ class DailyRewardObserveTests(unittest.TestCase):
             return publication_hook(runner, directory, lambda: original_publish(runner, directory, *args, **kwargs))
 
         def submit(length, items, _size):
-            self.events.append(tuple((item.mi.dwFlags, item.mi.dx, item.mi.dy) for item in items))
+            events = C.cast(items, C.POINTER(INPUT))
+            self.events.append(tuple((events[i].mi.dwFlags, events[i].mi.dx, events[i].mi.dy)
+                                     for i in range(length)))
             return length - 1 if len(self.events) == short_at else length
 
         user32 = SimpleNamespace(GetAsyncKeyState=Mock(side_effect=key_state),
@@ -339,7 +342,8 @@ class DailyRewardObserveTests(unittest.TestCase):
     def test_short_send_or_account_change_after_click_never_retry(self):
         short = self.run_cli([phone(), phone(), phone()], short_at=1)
         self.assertEqual(short['daily_reward_observe']['entry_input'], 'unconfirmed')
-        self.assertEqual(len(self.events), 1)
+        self.assertEqual([len(batch) for batch in self.events], [3, 1])
+        self.assertEqual(self.events[-1], ((4, 0, 0),))
         changed = self.run_cli([phone(), phone(), phone(), destination(account=OTHER)])
         self.assertEqual(changed['status'], 'partial')
         self.assertEqual(changed['daily_reward_observe']['entry_input'], 'sent')
@@ -474,7 +478,8 @@ class DailyRewardObserveTests(unittest.TestCase):
                 self.assertEqual(report['status'], 'partial')
                 self.assertEqual(result['entry_input'], 'unconfirmed')
                 self.assertEqual(tuple(step['entry_input'] for step in result['steps'].values()), expected)
-                self.assertEqual(len(self.events), send)
+                self.assertEqual([len(batch) for batch in self.events], [3] * send + [1])
+                self.assertEqual(self.events[-1], ((4, 0, 0),))
 
     def test_support_previous_intent_cannot_change_before_second_input(self):
         def replace(context, _scene):

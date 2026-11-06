@@ -249,15 +249,15 @@ class WorkflowNavigationTests(unittest.TestCase):
 
         def partial(count, events, size):
             self.send(count, events, size)
-            return count - 1
+            return count - 1 if count == 3 else count
 
         self.native.SendInput.side_effect = partial
         with self.assertRaises(AutomationError):
             c.workflow_navigation.run()
-        self.assertEqual(self.sent, [_CLICK])
         self.assertEqual(c.report.workflow_navigation['actions'][0]['input_status'], 'unconfirmed')
         with self.assertRaises(AutomationError):
             c.workflow_navigation.dispatch(c.last_scene, 'open_mail')
+        self.assertEqual(self.sent, [_CLICK, ((0, 4),)])
 
     def test_replaced_first_frame_after_target_check_cannot_authorize_native_input(self):
         c = Context('mail', repeat(phone(), 2))

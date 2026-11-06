@@ -1,5 +1,6 @@
 """Formal CLI with a fake window, real shared budget and training decision."""
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+import ctypes as C
 from dataclasses import replace
 from datetime import datetime, timedelta
 import io
@@ -117,6 +118,10 @@ def native_payment_window(root, settings, world, starts, vetoes):
             return 0
 
         def send(count, payload, _):
+            if count == 1:
+                release = C.cast(payload, C.POINTER(windows.INPUT)).contents
+                assert is_later_payment() and world.boundary == 'partial_send' and release.mi.dwFlags == 4
+                return count
             assert count == 3 and [item.mi.dwFlags for item in payload] == [0xC001, 2, 4]
             driver = FakeContext(world, world.settings, window.owner.report, window.owner.battle_budget)
             driver.last_scene = screen.scene

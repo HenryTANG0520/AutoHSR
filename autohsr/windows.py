@@ -79,6 +79,7 @@ class INPUT(C.Structure):
 
 user32.SendInput.argtypes = [W.UINT, C.POINTER(INPUT), C.c_int]
 user32.SendInput.restype = W.UINT
+_CLICK_FLAGS = (0xC001, 0x0002, 0x0004)
 
 
 def is_admin() -> bool:
@@ -294,8 +295,17 @@ class GameWindow:
         require_followup_week()
         if before_submit is not None:
             before_submit()
-        if user32.SendInput(len(items), items, C.sizeof(INPUT)) != len(items):
-            raise AutomationError("模拟输入被 Windows 拒绝；请以管理员身份启动 AutoHSR。")
+        accepted = user32.SendInput(len(items), items, C.sizeof(INPUT))
+        if accepted == len(items):
+            return
+        if (accepted == 2 and len(items) == 3 and all(item.type == 0 for item in items)
+                and tuple(item.mi.dwFlags for item in items) == _CLICK_FLAGS):
+            # The serial batch inserted its move and down. Release that button even after focus loss.
+            try:
+                user32.SendInput(1, C.byref(items[2]), C.sizeof(INPUT))
+            except OSError:
+                pass
+        raise AutomationError("模拟输入被 Windows 拒绝；请以管理员身份启动 AutoHSR。")
 
     def click(self, x: float, y: float, expected: Geometry, *, before_send=None, before_submit=None) -> None:
         g = self.guard(expected)
@@ -304,9 +314,10 @@ class GameWindow:
         vx, vy = user32.GetSystemMetrics(76), user32.GetSystemMetrics(77)
         vw, vh = user32.GetSystemMetrics(78), user32.GetSystemMetrics(79)
         px, py = g.left + round(x * (g.width - 1)), g.top + round(y * (g.height - 1))
-        move = INPUT(type=0, mi=MOUSEINPUT(round((px-vx)*65535/(vw-1)), round((py-vy)*65535/(vh-1)), 0, 0xC001, 0, 0))
-        down = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, 0x0002, 0, 0))
-        up = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, 0x0004, 0, 0))
+        move_flag, down_flag, up_flag = _CLICK_FLAGS
+        move = INPUT(type=0, mi=MOUSEINPUT(round((px-vx)*65535/(vw-1)), round((py-vy)*65535/(vh-1)), 0, move_flag, 0, 0))
+        down = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, down_flag, 0, 0))
+        up = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, up_flag, 0, 0))
         events = [move, down, up]
         checks = {}
         if before_send is not None:

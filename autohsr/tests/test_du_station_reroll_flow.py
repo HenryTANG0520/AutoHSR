@@ -321,12 +321,13 @@ class StationRerollFlowTests(unittest.TestCase):
                 pages=[station(),station(),dialog(),dialog(),station(1,NEW),station(1,NEW)]
                 with harness(directory,pages) as (flow,native,_):
                     if fault=='partial':
-                        native.SendInput.side_effect=[3,2]
+                        native.SendInput.side_effect=[3,2,1]
                     else:
                         native.GetAsyncKeyState.side_effect=[0,0,0,0,0x8000]
                     with self.assertRaises(AutomationError):
                         self.run_flow(flow)
-                self.assertEqual(native.SendInput.call_count,2)
+                self.assertEqual([call.args[0] for call in native.SendInput.call_args_list],
+                                 [3, 3, 1] if fault=='partial' else [3, 3])
                 record=self.records(directory)[-1]
                 self.assertEqual(record['status'],'unknown' if fault=='partial' else 'sent')
                 self.assertEqual(record['feedback_status'],'unverified')
