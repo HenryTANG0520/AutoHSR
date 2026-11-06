@@ -2,6 +2,7 @@
 from dataclasses import asdict, replace
 from hashlib import sha256
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -11,7 +12,7 @@ import numpy as np
 
 from .achievement_bulk_protocol import (
     AchievementBulkReplay, BulkClaimResult, ClaimFrame, ClaimScope, MAX_AGE,
-    _FILES, _SEND_FILES, _read_jade_balance, _write_once,
+    _FILES, _SEND_FILES, _read_jade_balance, _valid_scope, _write_once,
 )
 from .achievement_pages import (
     ACHIEVEMENT_CATEGORIES, _CAROUSEL, achievement_bulk_claim_target, achievement_jade_overlay_amount,
@@ -19,6 +20,7 @@ from .achievement_pages import (
 )
 from .currency_wars_identity import AccountNotObserved, checked_account_key
 from .currency_wars_prepare import trusted
+from .currency_wars_state import strict_json
 from .daily_event_observe import read_event_installation
 from .daily_observe import ACHIEVEMENT_CLAIM_OPERATION as OPERATION
 from .models import AutomationError, EmptyCapture, InputInterrupted, Stopped, TaskResult, normalize
@@ -51,21 +53,83 @@ def _bounded(path, maximum):
     return raw
 
 
-def _verified_file(directory, name, maximum):
+def _verified_bytes(directory, name, maximum):
     path = directory / name
     if path.parent != directory or path.resolve(strict=True) != path:
         raise AutomationError('成就领奖证据路径与原运行不符。')
-    return sha256(_bounded(path, maximum)).hexdigest()
+    return _bounded(path, maximum)
 
 
 def _verify_files(directory, rows):
     for row in rows:
-        if _verified_file(directory, row['file'], _MAX_EVIDENCE) != row['sha256']:
+        raw = _verified_bytes(directory, row['file'], _MAX_EVIDENCE)
+        if sha256(raw).hexdigest() != row['sha256']:
             raise AutomationError('成就领奖的原始截图已改变。')
 
 
-def _journal_hashes(directory):
-    return {name: _verified_file(directory, name, 8192) for name in _JOURNAL_FILES}
+def _read_action(directory, action, outcome):
+    intent_name, send_name = _FILES[action], _SEND_FILES[action]
+    intent_raw = _verified_bytes(directory, intent_name, 8192)
+    send_raw = _verified_bytes(directory, send_name, 8192)
+    digests = {intent_name: sha256(intent_raw).hexdigest(), send_name: sha256(send_raw).hexdigest()}
+    intent, send = strict_json(intent_raw), strict_json(send_raw)
+    if (type(intent) is not dict or type(intent.get('schema')) is not int or intent['schema'] != 1
+            or intent.get('operation') != OPERATION or intent.get('action') != action
+            or not _valid_scope(ClaimScope(**intent['scope']))
+            or type(send) is not dict or set(send) != {'intent', 'outcome', 'sent_at'}
+            or send['intent'] != digests[intent_name] or send['outcome'] != outcome):
+        raise ValueError()
+    frames = intent['frames']
+    if type(frames) is not list or len(frames) != 3 or any(type(frame) is not dict for frame in frames):
+        raise ValueError()
+    sequences = tuple(frame['sequence'] for frame in frames)
+    first_at, second_at, last_at = (frame['captured_at'] for frame in frames)
+    prepared_at, sent_at = intent['prepared_at'], send['sent_at']
+    if (any(type(seq) is not int or seq <= 0 for seq in sequences)
+            or sequences != tuple(range(sequences[0], sequences[0] + 3))
+            or any(type(value) not in (int, float) or not math.isfinite(value)
+                   for value in (first_at, second_at, last_at, prepared_at, sent_at))
+            or not 0 < first_at < second_at < last_at <= prepared_at <= sent_at <= last_at + MAX_AGE
+            or prepared_at - first_at > MAX_AGE):
+        raise ValueError()
+    return intent, send, digests
+
+
+def _terminal_journal(directory, record, *, completed):
+    try:
+        outcome = 'sent' if completed else 'not_sent'
+        if record['bulk_input'] != outcome or record['confirm_input'] != outcome:
+            raise ValueError()
+        if not completed:
+            if (any(record[key] is not None for key in ('receipt_total', 'overlay_quantity', 'jade_attributed'))
+                    or record['overview_return_verified'] is not False
+                    or record['overview_controls_cleared'] is not False):
+                raise ValueError()
+            present = {name for name in _JOURNAL_FILES if os.path.lexists(directory / name)}
+            if not present:
+                return {}
+            if present != {_FILES['claim'], _SEND_FILES['claim']}:
+                raise ValueError()
+        claim, claim_send, digests = _read_action(directory, 'claim', outcome)
+        if (any(claim[key] is not None for key in ('previous_claim', 'previous_send', 'receipt_total'))
+                or record['client_version'] != claim['scope']['client_version']):
+            raise ValueError()
+        if not completed:
+            return digests
+        confirm, _, confirm_digests = _read_action(directory, 'confirm', outcome)
+        total = confirm['receipt_total']
+        if (confirm['scope'] != claim['scope']
+                or confirm['previous_claim'] != digests[_FILES['claim']]
+                or confirm['previous_send'] != digests[_SEND_FILES['claim']]
+                or confirm['frames'][0]['sequence'] <= claim['frames'][-1]['sequence']
+                or confirm['frames'][0]['captured_at'] <= claim_send['sent_at']
+                or type(total) is not int or not 0 < total <= 999999999
+                or any(type(record[key]) is not int or record[key] != total for key in ('receipt_total', 'overlay_quantity'))
+                or record['overview_return_verified'] is not True):
+            raise ValueError()
+        return digests | confirm_digests
+    except (OSError, KeyError, TypeError, ValueError, OverflowError, RecursionError):
+        raise AutomationError('成就领奖的原意图或发送凭据待核对。') from None
 
 
 def preflight(root):
@@ -77,7 +141,7 @@ def preflight(root):
         if marker.resolve(strict=True) != marker:
             raise ValueError()
         raw = _bounded(marker, 4096)
-        pending = json.loads(raw)
+        pending = strict_json(raw)
         run = pending['run']
         if (pending != {'operation': OPERATION, 'run': run}
                 or not re.fullmatch(r'\d{8}_\d{6}_\d{6}', run)):
@@ -88,9 +152,9 @@ def preflight(root):
         paths = (directory / _TERMINAL, directory / 'report.json')
         if any(path.resolve(strict=True) != path for path in paths):
             raise ValueError()
-        terminal = json.loads(_bounded(paths[0], 4096))
+        terminal = strict_json(_bounded(paths[0], 4096))
         report = _bounded(paths[1], _MAX_EVIDENCE)
-        saved = json.loads(report)
+        saved = strict_json(report)
         if saved['operation'] != OPERATION or saved['report_saved'] is not True:
             raise ValueError()
         record = saved[OPERATION]
@@ -98,16 +162,19 @@ def preflight(root):
                      and saved['status'] == 'success' and record['overview_controls_cleared'] is True)
         clear = (record['bulk_input'] == 'not_sent' and record['confirm_input'] == 'not_sent'
                  or completed)
-        journal = _journal_hashes(directory) if completed else {}
+        if not clear:
+            raise ValueError()
+        checked = _terminal_journal(directory, record, completed=completed)
+        journal = checked if completed else {}
         if terminal != dict(marker=sha256(raw).hexdigest(), report=sha256(report).hexdigest(), journal=journal):
             raise ValueError()
         if completed:
             for rows in record['samples'].values():
                 _verify_files(directory, rows)
-        if not clear or _bounded(marker, 4096) != raw:
+        if _bounded(marker, 4096) != raw:
             raise ValueError()
         marker.unlink()
-    except (AutomationError, OSError, ValueError, KeyError, TypeError):
+    except (AutomationError, OSError, ValueError, KeyError, TypeError, RecursionError):
         raise AutomationError('已有未决成就领奖意图，请人工核对原运行；未访问游戏。') from None
 
 
@@ -443,17 +510,21 @@ class AchievementBulkClaim:
             write_report()
             payload = _bounded(temporary, _MAX_EVIDENCE)
             completed = report.status == 'success' and self.record['overview_controls_cleared']
-            journal = _journal_hashes(self.directory) if completed else {}
-            if self.marker_raw is not None and (not self._attempted or completed):
-                _write_once(self.directory / _TERMINAL, _json(
-                    dict(marker=sha256(self.marker_raw).hexdigest(), report=sha256(payload).hexdigest(),
-                         journal=journal)))
+            unsent = not self._attempted and self.record['bulk_input'] == self.record['confirm_input'] == 'not_sent'
+            publish_terminal = self.marker_raw is not None and (unsent or completed)
+            journal = self.replay.journal_digests() if publish_terminal else {}
+
+            def check_journal():
+                if _terminal_journal(self.directory, self.record, completed=completed) != journal:
+                    raise AutomationError('成就领奖的原意图或发送凭据已改变。')
 
             def check_publication():
-                if (_bounded(temporary, _MAX_EVIDENCE) != payload
-                        or completed and _journal_hashes(self.directory) != journal):
-                    raise AutomationError('成就领奖原动作记录或报告临时文件已变化。')
-                check()
+                if _bounded(temporary, _MAX_EVIDENCE) != payload:
+                    raise AutomationError('成就领奖报告临时文件已变化。')
+                if publish_terminal:
+                    check_journal()
+                if report.status == 'success':
+                    check()
 
             held = (*paths, *(self.directory / name for name in journal))
             if self.marker_raw is not None:
@@ -461,14 +532,19 @@ class AchievementBulkClaim:
             if report.status == 'success':
                 held = (*held, self._installation.source)
             with hold_read_sources(held):
+                if publish_terminal:
+                    check_journal()
+                    _write_once(self.directory / _TERMINAL, _json(
+                        dict(marker=sha256(self.marker_raw).hexdigest(), report=sha256(payload).hexdigest(),
+                             journal=journal if completed else {})))
                 replace_file(temporary, self.directory / 'report.json',
-                             before_replace=check_publication if report.status == 'success' else None)
+                             before_replace=check_publication if report.status == 'success' or publish_terminal else None)
         except (AutomationError, ValueError) as error:
             self.record['account_verified'] = False
             if isinstance(error, Stopped):
                 self.c.runner.stop()
                 self.record['stopped'] = True
-            report.status = 'stopped' if isinstance(error, Stopped) else 'partial'
+            report.status = 'stopped' if report.status == 'stopped' or isinstance(error, Stopped) else 'partial'
             report.failure_task, report.error = OPERATION, str(error)
             report.results[-1] = self._partial('已保留发送和反馈，发布前的当前来源待核对。')
             write_report()

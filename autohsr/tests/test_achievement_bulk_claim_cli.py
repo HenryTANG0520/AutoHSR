@@ -2,6 +2,7 @@
 
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 import ctypes
+from hashlib import sha256
 import io
 from itertools import count
 import json
@@ -319,6 +320,15 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
         self.assertEqual((code, report['status'], self.events), (130, 'stopped', []), report['error'])
         self.assertEqual(report[OPERATION]['bulk_input'], 'not_sent')
         self.assertTrue(report[OPERATION]['stopped'])
+        original = Path(report['run_dir'])
+        self.assertEqual(json.loads((original / 'achievement-bulk-send.json').read_bytes())['outcome'], 'not_sent')
+
+        code, repeated = self.run_cli(lose_foreground=True)
+        self.assertEqual(code, 1)
+        self.find_game.assert_called_once()
+        self.assertEqual(self.events, [])
+        self.assertFalse((self.root / 'runs' / 'achievement-bulk-pending.json').exists())
+        self.assertNotIn('已有未决成就领奖意图', repeated['error'])
 
     def test_stop_after_attributed_overlay_preserves_observed_reward_and_the_pending_gate(self):
         save = AchievementBulkClaim._save
@@ -377,6 +387,103 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
         self.assertIn('已有未决成就领奖意图', repeated['error'])
         self.find_game.assert_not_called()
         self.assertFalse(self.events)
+
+    def test_confirmation_send_changed_before_publication_stays_pending(self):
+        changed = {}
+
+        def replace_send(_window, _executable):
+            path = next((self.root / 'runs').glob('*/achievement-bulk-confirm-send.json'))
+            sent = json.loads(path.read_bytes())
+            sent['sent_at'] += .01
+            raw = json.dumps(sent, sort_keys=True).encode()
+            path.write_bytes(raw)
+            changed[path] = raw
+
+        exit_code, report = self.run_cli(marked=True, publish=replace_send)
+        self.assertEqual((exit_code, report['status']), (1, 'partial'), report['error'])
+        self.assertEqual(len(self.events), 2)
+        self.assertEqual(report[OPERATION]['confirm_input'], 'sent')
+        self.assertEqual(report[OPERATION]['overlay_quantity'], 20)
+        self.assertIsNone(report[OPERATION]['jade_attributed'])
+        original = Path(report['run_dir'])
+        self.assertFalse((original / 'achievement-bulk-terminal.json').exists())
+        self.assertEqual({path: path.read_bytes() for path in changed}, changed)
+
+        exit_code, blocked = self.run_cli()
+        self.assertEqual((exit_code, blocked['status']), (1, 'failed'))
+        self.find_game.assert_not_called()
+        self.assertEqual(self.events, [])
+
+    def test_terminal_digest_cannot_vouch_for_a_mismatched_send(self):
+        exit_code, report = self.run_cli(marked=True)
+        self.assertEqual((exit_code, report['status']), (0, 'success'), report['error'])
+        original = Path(report['run_dir'])
+        intent = original / 'achievement-bulk-confirm-intent.json'
+        send = original / 'achievement-bulk-confirm-send.json'
+        terminal = original / 'achievement-bulk-terminal.json'
+        original_intent, original_send = intent.read_bytes(), send.read_bytes()
+        original_terminal = terminal.read_bytes()
+        unbound = json.dumps(dict(json.loads(original_intent), previous_send='0' * 64)).encode()
+
+        for name, intent_raw, send_raw in (
+            ('invalid JSON', original_intent, b'changed'),
+            ('unknown send', original_intent, json.dumps(dict(json.loads(original_send), outcome='unknown')).encode()),
+            ('wrong intent', original_intent, json.dumps(dict(json.loads(original_send), intent='0' * 64)).encode()),
+            ('wrong predecessor', unbound,
+             json.dumps(dict(json.loads(original_send), intent=sha256(unbound).hexdigest())).encode()),
+        ):
+            with self.subTest(name=name):
+                intent.write_bytes(intent_raw)
+                send.write_bytes(send_raw)
+                record = json.loads(original_terminal)
+                record['journal'].update({intent.name: sha256(intent_raw).hexdigest(),
+                                          send.name: sha256(send_raw).hexdigest()})
+                terminal.write_bytes(json.dumps(record).encode())
+                marker = self.root / 'runs' / 'achievement-bulk-pending.json'
+                before = {path: path.read_bytes() for path in (intent, send, terminal, original / 'report.json', marker)}
+
+                exit_code, blocked = self.run_cli()
+                self.assertEqual((exit_code, blocked['status']), (1, 'failed'))
+                self.assertIn('已有未决成就领奖意图', blocked['error'])
+                self.find_game.assert_not_called()
+                self.assertEqual(self.events, [])
+                self.assertEqual({path: path.read_bytes() for path in before}, before)
+
+    def test_zero_send_terminal_cannot_discard_existing_sent_records(self):
+        exit_code, report = self.run_cli(marked=True)
+        self.assertEqual((exit_code, report['status']), (0, 'success'), report['error'])
+        original = Path(report['run_dir'])
+        saved = original / 'report.json'
+        terminal = original / 'achievement-bulk-terminal.json'
+        report[OPERATION].update(bulk_input='not_sent', confirm_input='not_sent', receipt_total=None,
+                                 overlay_quantity=None, overview_return_verified=False, overview_controls_cleared=False)
+        raw = json.dumps(report).encode()
+        saved.write_bytes(raw)
+        record = dict(json.loads(terminal.read_bytes()), report=sha256(raw).hexdigest(), journal={})
+        terminal.write_bytes(json.dumps(record).encode())
+
+        exit_code, blocked = self.run_cli()
+        self.assertEqual((exit_code, blocked['status']), (1, 'failed'))
+        self.assertIn('已有未决成就领奖意图', blocked['error'])
+        self.find_game.assert_not_called()
+        self.assertEqual(self.events, [])
+        self.assertEqual(saved.read_bytes(), raw)
+        self.assertTrue((self.root / 'runs' / 'achievement-bulk-pending.json').exists())
+
+    def test_zero_send_terminal_with_intent_but_no_receipt_stays_pending(self):
+        exit_code, report = self.run_cli(stop_at_final_guard=True)
+        self.assertEqual((exit_code, report['status']), (130, 'stopped'))
+        original = Path(report['run_dir'])
+        terminal = original / 'achievement-bulk-terminal.json'
+        terminal_bytes = terminal.read_bytes()
+        (original / 'achievement-bulk-send.json').unlink()
+
+        exit_code, blocked = self.run_cli()
+        self.assertEqual((exit_code, blocked['status']), (1, 'failed'))
+        self.assertIn('已有未决成就领奖意图', blocked['error'])
+        self.find_game.assert_not_called()
+        self.assertEqual(self.events, [])
+        self.assertEqual(terminal.read_bytes(), terminal_bytes)
 
     def test_complete_weak_uid_is_a_conflict_even_below_the_settings_floor(self):
         receipt = receipt_scene()

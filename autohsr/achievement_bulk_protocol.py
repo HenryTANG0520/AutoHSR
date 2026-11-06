@@ -36,6 +36,12 @@ class ClaimScope:
     client_version: str
 
 
+def _valid_scope(scope):
+    return (type(scope.account_key) is str and re.fullmatch(r'[0-9a-f]{64}', scope.account_key) is not None
+            and type(scope.window) is int and scope.window > 0
+            and type(scope.input_epoch) is int and scope.input_epoch >= 0 and scope.client_version == '4.6.0')
+
+
 @dataclass(frozen=True)
 class ClaimFrame:
     scope: ClaimScope
@@ -111,10 +117,7 @@ class AchievementBulkReplay:
 
     def __init__(self, directory, scope: ClaimScope):
         self.directory = Path(directory).resolve(strict=True)
-        if (not self.directory.is_dir() or not re.fullmatch(r'[0-9a-f]{64}', scope.account_key)
-                or type(scope.window) is not int or scope.window <= 0
-                or type(scope.input_epoch) is not int or scope.input_epoch < 0
-                or scope.client_version != '4.6.0'):
+        if not self.directory.is_dir() or not _valid_scope(scope):
             raise ValueError('成就领奖缺少已核实的 4.6.0 窗口、账号或输入代次。')
         if any(os.path.lexists(self.directory / name) for name in (*_FILES.values(), *_SEND_FILES.values())):
             raise FileExistsError('已有成就领奖意图，原件保留并停止重放。')
@@ -128,6 +131,10 @@ class AchievementBulkReplay:
         self._pending = None
         self._claim_intent = None
         self._claim_send = None
+        self._journal_digests = {}
+
+    def journal_digests(self):
+        return dict(self._journal_digests)
 
     def _check(self, phase):
         if self._phase != phase:
@@ -242,6 +249,7 @@ class AchievementBulkReplay:
             self.stop()
             raise
         digest = sha256(raw).hexdigest()
+        self._journal_digests[_FILES[action]] = digest
         self._pending = _Intent(action, digest, raw, now, current, sources, target.box)
         self._phase = f'{action}_reserved'
         return digest
@@ -277,6 +285,7 @@ class AchievementBulkReplay:
         except (OSError, ValueError):
             self.stop()
             raise
+        self._journal_digests[_SEND_FILES[intent.action]] = sha256(raw).hexdigest()
         self._pending = None
         field = 'bulk_input' if intent.action == 'claim' else 'confirm_input'
         if outcome != 'sent':
