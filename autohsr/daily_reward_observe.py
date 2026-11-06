@@ -11,6 +11,7 @@ import time
 import numpy as np
 
 from .achievement_pages import achievement_overview
+from .daily_visa_pages import visa_overview
 from .build_target_read import _has_split_label
 from .currency_wars_identity import AccountNotObserved, checked_account_key
 from .currency_wars_prepare import trusted
@@ -113,12 +114,16 @@ def _support_visa_target(scene, confidence):
 
 _TARGETS = dict(open_achievements=phone_achievement_target, open_more=_support_more_target,
                 open_support=_support_visa_target)
+_OVERVIEWS = dict(achievements=('achievement_overview', '成就总览'),
+                  support=('support_collection_overview', '漫游签证收集展示'))
 
 
 def _destination_hint(scene, confidence, mode):
     clean = trusted(scene, COLLECTION_FLOOR)
     if mode == 'achievements' and achievement_overview(scene, confidence):
         return 'achievement_overview'
+    if mode == 'support' and visa_overview(scene, confidence):
+        return 'support_collection_overview'
     if mode == 'support' and _support_visa_target(scene, confidence) is not None:
         return 'more_menu_still_visible'
     phone_target = _support_more_target if mode == 'support' else phone_achievement_target
@@ -240,7 +245,7 @@ class DailyRewardObserver:
                     return previous, frame
                 if action is None and previous.hint == frame.hint:
                     pair = previous, frame
-                    if frame.hint in ('achievement_overview', 'achievement_title_only', 'support_title_only'):
+                    if frame.hint in (_OVERVIEWS[self.mode][0], 'achievement_title_only', 'support_title_only'):
                         return pair
                 else:
                     pair = ()
@@ -371,23 +376,24 @@ class DailyRewardObserver:
         report = self.c.report
         destination = self.directory / 'report.json'
         result = report.results[-1]
+        hint, label = _OVERVIEWS[self.mode]
 
         @contextmanager
         def stable_arrival():
-            rows = self.record['after_frames']
+            rows = self.step['after_frames']
             paths = [self._path(self.directory / row['screenshot']) for row in rows]
             with hold_read_sources(paths):
                 if (len(self.arrival) != 2 or len(paths) != 2 or not self._adjacent(*self.arrival)
-                        or any(frame.hint != 'achievement_overview' for frame in self.arrival)):
-                    raise AutomationError('成就总览缺少本次连续到页证据。')
+                        or any(frame.hint != hint for frame in self.arrival)):
+                    raise AutomationError(f'{label}缺少本次连续到页证据。')
                 last = self.arrival[-1]
                 self._current(last.scene, last.sequence)
                 for frame, path, row in zip(self.arrival, paths, rows):
                     self._verify_frame(frame)
                     if self._digest(path) != row['sha256'] or frame.sequence != row['capture_sequence']:
-                        raise AutomationError('成就总览到页证据在报告提交前已变化。')
+                        raise AutomationError(f'{label}到页证据在报告提交前已变化。')
                 if temporary.read_text(encoding='utf8') != payload:
-                    raise AutomationError('成就总览报告临时文件在提交前已变化。')
+                    raise AutomationError(f'{label}报告临时文件在提交前已变化。')
                 if self.window.emergency_pressed():
                     raise Stopped('F10 紧急停止。')
                 self.guard_window()
@@ -398,13 +404,14 @@ class DailyRewardObserver:
             replace_file(temporary, destination, attempt_scope=stable_arrival)
         except (OSError, AutomationError) as error:
             self.record.update(page_verified=False, destination_status='unknown')
+            self.step['destination_status'] = 'unknown'
             stopped = isinstance(error, Stopped)
             if stopped:
                 self.c.runner.stop()
             report.status = 'stopped' if stopped else 'partial'
             report.failure_task, report.error = OPERATION, str(error)
             result.status = report.status
-            result.detail = '成就入口已发送，报告提交时的到页证据待核实。'
+            result.detail = f'{label}入口已发送，报告提交时的到页证据待核实。'
             write_report()
             replace_file(temporary, destination)
 
@@ -435,10 +442,11 @@ class DailyRewardObserver:
         if after:
             self.step['after_frames'] = self._save_pair(after, 'after')
             self.step['destination_status'] = self.record['destination_status'] = after[-1].hint
-            if after[-1].hint == 'achievement_overview':
+            overview_hint, overview_label = _OVERVIEWS[self.mode]
+            if after[-1].hint == overview_hint:
                 self.arrival = after
                 self.record['page_verified'] = True
-                return TaskResult(OPERATION, 'ok', '已双帧核实当前账号的成就总览。')
+                return TaskResult(OPERATION, 'ok', f'已双帧核实当前账号的{overview_label}。')
             detail = f'{label}入口已发送，已保留随后双帧，{label}页待核实。'
         else:
             self._diagnostic()

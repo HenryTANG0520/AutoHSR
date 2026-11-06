@@ -1,0 +1,176 @@
+{
+  "schema": 1,
+  "author": "绘希推_书记",
+  "source": "https://www.bilibili.com/video/BV1Pj421X7r1/",
+  "version": "4.6 release period",
+  "representation": "480x270 reduced evidence. Only static title and badge pixel crops remain. Panel and control geometry uses medians; header ink is anonymized by replacing all glyphs with a block of the same count. No original chat, names, account identifiers, or portraits are retained.",
+  "cases": [
+    {
+      "file": "list_badge.png",
+      "sha256": "b91998c7fdea9272dd17d54ea9c0cbed4bc55accb359812c3fbae616e788c11e",
+      "part": 178,
+      "cid": "42575333958",
+      "time_seconds": 4.801,
+      "source_sha256": "ac981e1154d6978da2b4cff632040605097ee4777fc052c3c4711d8e94f79c72",
+      "expected": {
+        "conversation_status": "unknown",
+        "unread_status": "badge_visible",
+        "reply_status": "unknown",
+        "reply_options": null
+      }
+    },
+    {
+      "file": "list_badge_second_clip.png",
+      "sha256": "9b61ab70b8ce1a508d4de0b3639c93080de8ff3320bce9d9797b301804772d30",
+      "part": 179,
+      "cid": "42575333640",
+      "time_seconds": 1.6,
+      "source_sha256": "483809df318172e23e78bc8526e09d55ba1afc3884b6accf4d7140eddf913af9",
+      "expected": {
+        "conversation_status": "unknown",
+        "unread_status": "badge_visible",
+        "reply_status": "unknown",
+        "reply_options": null
+      }
+    },
+    {
+      "file": "before_panel.png",
+      "sha256": "f338667c877332fe23969e1319296db7ce6d3236fbca37e30c0f36d8832dc207",
+      "part": 178,
+      "cid": "42575333958",
+      "time_seconds": 4.334,
+      "source_sha256": "ac981e1154d6978da2b4cff632040605097ee4777fc052c3c4711d8e94f79c72",
+      "expected": null
+    },
+    {
+      "file": "selected_fade.png",
+      "sha256": "0f0d8fda05692ab7f06e2b4c5d4a8137cc482428b7efa42ff9591d3d630adbc8",
+      "part": 178,
+      "cid": "42575333958",
+      "time_seconds": 5.201,
+      "source_sha256": "ac981e1154d6978da2b4cff632040605097ee4777fc052c3c4711d8e94f79c72",
+      "expected": {
+        "conversation_status": "unknown",
+        "unread_status": "unknown",
+        "reply_status": "unknown",
+        "reply_options": null
+      }
+    },
+    {
+      "file": "options_three.png",
+      "sha256": "d36a6f1f8f5fd88f60a000ac566b5c1710d365faa7336058916703d53bc42141",
+      "part": 178,
+      "cid": "42575333958",
+      "time_seconds": 6.002,
+      "source_sha256": "ac981e1154d6978da2b4cff632040605097ee4777fc052c3c4711d8e94f79c72",
+      "expected": {
+        "conversation_status": "selected",
+        "unread_status": "unknown",
+        "reply_status": "options_visible",
+        "reply_options": 3
+      }
+    },
+    {
+      "file": "first_option_leaving.png",
+      "sha256": "10763968573db89192a72c43a1624035b2890ae526ea8e92ec8e8861298439d1",
+      "part": 178,
+      "cid": "42575333958",
+      "time_seconds": 18.505,
+      "source_sha256": "ac981e1154d6978da2b4cff632040605097ee4777fc052c3c4711d8e94f79c72",
+      "expected": {
+        "conversation_status": "selected",
+        "unread_status": "unknown",
+        "reply_status": "unknown",
+        "reply_options": null
+      }
+    },
+    {
+      "file": "reward_overlay.png",
+      "sha256": "21c50127e920bfb2aaed1a8a40b40b08b921c48c0f5c5c5616f5180891a3e26f",
+      "part": 178,
+      "cid": "42575333958",
+      "time_seconds": 62.984,
+      "source_sha256": "ac981e1154d6978da2b4cff632040605097ee4777fc052c3c4711d8e94f79c72",
+      "expected": null
+    },
+    {
+      "file": "image_overlay.png",
+      "sha256": "5bcddfad7e777d24d9436f205d4d539158aaba8e1a33d228283f0eb936e8d324",
+      "part": 178,
+      "cid": "42575333958",
+      "time_seconds": 10.503,
+      "source_sha256": "ac981e1154d6978da2b4cff632040605097ee4777fc052c3c4711d8e94f79c72",
+      "expected": null
+    },
+    {
+      "file": "after_reward.png",
+      "sha256": "0f7660d83e9940f31d35752f79361543ec44c929dfffb4de4630e4d7951fe75e",
+      "part": 178,
+      "cid": "42575333958",
+      "time_seconds": 65.385,
+      "source_sha256": "ac981e1154d6978da2b4cff632040605097ee4777fc052c3c4711d8e94f79c72",
+      "expected": {
+        "conversation_status": "selected",
+        "unread_status": "unknown",
+        "reply_status": "not_visible",
+        "reply_options": null
+      }
+    },
+    {
+      "file": "options_two.png",
+      "sha256": "669f05ab76aa3404fd738e24f9fa87404f928bb2611c02a9081d7553cebcb3de",
+      "part": 179,
+      "cid": "42575333640",
+      "time_seconds": 2.5,
+      "source_sha256": "483809df318172e23e78bc8526e09d55ba1afc3884b6accf4d7140eddf913af9",
+      "expected": {
+        "conversation_status": "selected",
+        "unread_status": "unknown",
+        "reply_status": "options_visible",
+        "reply_options": 2
+      }
+    },
+    {
+      "file": "waiting_after_send.png",
+      "sha256": "42e68c4af8c9bb1929d950e5b70d371befdb7c44f413c2b59ae0ea1d1d318c53",
+      "part": 179,
+      "cid": "42575333640",
+      "time_seconds": 15.5,
+      "source_sha256": "483809df318172e23e78bc8526e09d55ba1afc3884b6accf4d7140eddf913af9",
+      "expected": {
+        "conversation_status": "selected",
+        "unread_status": "unknown",
+        "reply_status": "not_visible",
+        "reply_options": null
+      }
+    },
+    {
+      "file": "third_option_fading.png",
+      "sha256": "880e72141866d015ab8c2451628ae13834bfb728a296087897291b0a42a5c516",
+      "part": 179,
+      "cid": "42575333640",
+      "time_seconds": 50.901,
+      "source_sha256": "483809df318172e23e78bc8526e09d55ba1afc3884b6accf4d7140eddf913af9",
+      "expected": {
+        "conversation_status": "selected",
+        "unread_status": "unknown",
+        "reply_status": "unknown",
+        "reply_options": null
+      }
+    },
+    {
+      "file": "no_options_before_more.png",
+      "sha256": "1c89b9c1800e680e9d9e0f832f21345ee4113607c3f7bacef8c4ff322188571e",
+      "part": 179,
+      "cid": "42575333640",
+      "time_seconds": 51.001,
+      "source_sha256": "483809df318172e23e78bc8526e09d55ba1afc3884b6accf4d7140eddf913af9",
+      "expected": {
+        "conversation_status": "selected",
+        "unread_status": "unknown",
+        "reply_status": "not_visible",
+        "reply_options": null
+      }
+    }
+  ]
+}

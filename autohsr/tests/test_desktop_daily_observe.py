@@ -42,7 +42,7 @@ def event(*, status='success', **overrides):
 
 class DailyObservationReceiptTests(unittest.TestCase):
     def test_scope_and_saved_receipt_binding(self):
-        verified = reward(page_verified=True, destination_status='achievement_overview')
+        verified = reward(page_verified=True, entry_input='sent', destination_status='achievement_overview')
         self.assertEqual(observation_result('achievements', verified), ('成就总览已核实', '奖励状态待核对。'))
         for mode, value in (('support', verified), ('achievements', dict(verified, report_saved=1)),
                             ('messages', dict(messages(), operation='daily_reward_observe')),
@@ -80,6 +80,29 @@ class DailyObservationReceiptTests(unittest.TestCase):
         for value in (messages(captures=1), messages(account_verified=False), messages(input_sent=True),
                       messages(message_page='observed'), messages(reward_status='available')):
             self.assertEqual(observation_result('messages', value)[0], '结果待核对')
+
+    def test_support_collection_requires_both_navigation_receipts(self):
+        destination = 'support_collection_overview'
+        sources = [dict(capture_sequence=4), dict(capture_sequence=5)]
+        more = dict(entry_input='sent', destination_status='more_menu_verified', after_frames=sources)
+        visa = dict(entry_input='sent', destination_status=destination, before_frames=sources)
+        verified = reward('support', page_verified=True, entry_input='sent', destination_status=destination,
+                          steps=dict(open_more=more, open_support=visa))
+        self.assertEqual(observation_result('support', verified), ('漫游签证收集展示已核实', '支援奖励状态待核对。'))
+        visa['before_frames'] = list(reversed(sources))
+        self.assertEqual(observation_result('support', verified)[0], '结果待核对')
+        visa['before_frames'] = sources
+        visa['entry_input'] = 'unconfirmed'
+        self.assertEqual(observation_result('support', verified)[0], '结果待核对')
+
+    def test_message_receipt_shows_only_consistent_anonymous_panel_fields(self):
+        state = dict(phone_entry='unknown', message_page='observed', unread_status='badge_visible',
+                     conversation_status='selected', reply_status='options_visible', reply_options=3)
+        self.assertEqual(observation_result('messages', messages(**state)),
+                         ('新消息通知面板已核实', '看到未读标记，当前会话可见 3 个回复选项，奖励状态待核对。'))
+        for bad in (dict(reply_options=True), dict(conversation_status='unknown'), dict(input_sent=True),
+                    dict(phone_entry='observed', message_page='unknown'), dict(reply_status='not_visible')):
+            self.assertEqual(observation_result('messages', messages(**(state | bad)))[0], '结果待核对')
 
     def test_odyssey_distinguishes_available_none_and_only_explicit_days(self):
         title, detail = observation_result('odyssey', event())

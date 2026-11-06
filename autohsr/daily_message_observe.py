@@ -11,6 +11,7 @@ from .challenge_pages import _clean
 from .config import RESOURCE_ROOT
 from .currency_wars_identity import AccountNotObserved, checked_account_key
 from .daily_reward_observe import COLLECTION_FLOOR, MAX_AGE, MAX_CAPTURES, _blocked
+from .daily_message_state import read_panel_state, unknown_panel_state
 from .models import AutomationError, EmptyCapture, InputInterrupted, Scene, Stopped, TaskResult, Token, normalize
 from .storage import replace_file
 from .team_calibration_pages import _grid_label, calibration_overlay
@@ -65,10 +66,14 @@ def phone_message_entry(scene: Scene, confidence: float = .85) -> Token | None:
 
 def message_panel(scene: Scene) -> bool:
     """Identify the two-column notification panel without reading its contents."""
+    return _message_panel_frame(scene) is not None
+
+
+def _message_panel_frame(scene: Scene) -> np.ndarray | None:
     clean = _clean(scene, COLLECTION_FLOOR, blockers=())
     if (clean is None or helper_overlay(clean) or calibration_overlay(clean)
             or clean.has(('获得物品', '确认', '取消', '重新连接'), (.22, .04, .80, .88), exact=True)):
-        return False
+        return None
     # Match the same coarse layout visible in the independent PC preview
     # frames. The title by itself survives some transitions and overlays.
     frame = cv2.resize(clean.image, (480, 270), interpolation=cv2.INTER_AREA)
@@ -76,17 +81,19 @@ def message_panel(scene: Scene) -> bool:
               for x1, y1, x2, y2 in _PANEL_PATCHES]
     left, top, bottom, outside = levels
     if max(left, outside) > 85 or min(top, bottom) < 155 or not _MESSAGE_HEADER.is_file():
-        return False
+        return None
     try:
-        return Vision.__new__(Vision).template(Scene([], frame), _MESSAGE_HEADER, _HEADER_ROI, .86) is not None
+        if Vision.__new__(Vision).template(Scene([], frame), _MESSAGE_HEADER, _HEADER_ROI, .86) is not None:
+            return frame
     except (AutomationError, OSError):
-        return False
+        return None
+    return None
 
 
 def initial_record():
     return dict(schema=1, phone_entry='unknown', message_page='unknown',
-                unread_status='unknown', reward_status='unknown', input_sent=False,
-                account_verified=False, captures=0)
+                reward_status='unknown', input_sent=False, account_verified=False, captures=0,
+                **unknown_panel_state())
 
 
 def observe_daily_messages(context) -> dict:
@@ -112,7 +119,8 @@ class DailyMessageObserver:
         return self.result
 
     def invalidate(self, status, detail):
-        self.record.update(phone_entry='unknown', message_page='unknown', account_verified=False)
+        self.record.update(phone_entry='unknown', message_page='unknown', account_verified=False,
+                           **unknown_panel_state())
         if self.result is not None:
             self.result.status, self.result.detail = status, detail
 
@@ -203,15 +211,18 @@ class DailyMessageObserver:
                 raise AutomationError('短信观察期间当前账号已改变。')
             account = current_account
             entry = phone_message_entry(scene, confidence)
+            panel_state = None
             if entry is not None:
                 view = 'phone_entry'
-            elif message_panel(scene):
-                view = 'message_page'
             else:
-                previous = None
-                continue
+                panel_frame = _message_panel_frame(scene)
+                if panel_frame is None:
+                    previous = None
+                    continue
+                view = 'message_page'
+                panel_state = read_panel_state(panel_frame)
             if previous is not None:
-                first, first_view, first_entry = previous
+                first, first_view, first_entry, first_panel_state = previous
                 if (first_view == view and first.captured_at < captured_at
                         and 0 <= time.monotonic() - first.captured_at <= MAX_AGE
                         and not np.may_share_memory(first.image, scene.image)
@@ -233,6 +244,8 @@ class DailyMessageObserver:
                     self._publication_guard = verify_publication
                     result[view] = 'observed'
                     result['account_verified'] = True
+                    if panel_state is not None and panel_state == first_panel_state:
+                        result.update(panel_state)
                     return result
-            previous = scene, view, entry
+            previous = scene, view, entry, panel_state
         return result

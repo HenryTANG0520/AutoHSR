@@ -1,5 +1,6 @@
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from dataclasses import replace
+from hashlib import sha256
 import io
 from itertools import count
 import json
@@ -17,8 +18,9 @@ from autohsr.__main__ import main
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.currency_wars_identity import UID_COUNTEREVIDENCE
-from autohsr.daily_message_observe import (MAX_CAPTURES, OPERATION, _MESSAGE_HEADER, message_panel,
+from autohsr.daily_message_observe import (MAX_CAPTURES, OPERATION, _MESSAGE_HEADER, _message_panel_frame, message_panel,
                                            observe_daily_messages, phone_message_entry)
+from autohsr.daily_message_state import read_panel_state, unknown_panel_state
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, RunReport, Scene, Token
 from autohsr.tests.test_daily_reward_observe import _Window
 from autohsr.tests.test_du_team import fixture
@@ -26,6 +28,7 @@ from autohsr.tests.test_du_team import fixture
 
 ACCOUNT = Token('UID:135792468', .99, (.018, .957, .106, .985))
 OTHER = replace(ACCOUNT, text='UID:246813579')
+STATE_FIXTURES = Path(__file__).parent / 'fixtures/daily_message_state'
 
 
 def phone(*extras):
@@ -49,6 +52,13 @@ def panel(*tokens, header=True, content=True):
         patch_image = cv2.imdecode(np.fromfile(_MESSAGE_HEADER, np.uint8), cv2.IMREAD_COLOR)
         height, width = patch_image.shape[:2]
         image[216:216 + height, 308:308 + width] = patch_image
+    return Scene(list(tokens), image, captured_at=time.monotonic())
+
+
+def state_frame(name, *tokens):
+    data = (STATE_FIXTURES / name).read_bytes()
+    reduced = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    image = cv2.resize(reduced, (1920, 1080), interpolation=cv2.INTER_NEAREST)
     return Scene(list(tokens), image, captured_at=time.monotonic())
 
 
@@ -86,6 +96,16 @@ class MessagePageTests(unittest.TestCase):
         self.assertFalse(message_panel(panel(header=False)))
         self.assertFalse(message_panel(panel(label('获得物品', (.44, .11, .52, .16)))))
 
+    def test_anonymous_pc_source_frames_distinguish_badge_choices_fades_and_reward(self):
+        manifest = json.loads((STATE_FIXTURES / 'manifest.json').read_text(encoding='utf8'))
+        for case in manifest['cases']:
+            name = case['file']
+            with self.subTest(part=case['part'], time=case['time_seconds']):
+                self.assertEqual(sha256((STATE_FIXTURES / name).read_bytes()).hexdigest(), case['sha256'])
+                frame = _message_panel_frame(state_frame(name))
+                state = None if frame is None else read_panel_state(frame)
+                self.assertEqual(state, case['expected'])
+
 
 class MessageObserverTests(unittest.TestCase):
     def setUp(self):
@@ -122,8 +142,8 @@ class MessageObserverTests(unittest.TestCase):
         context = self.context([phone(ACCOUNT), phone(ACCOUNT)])
         result = observe_daily_messages(context)
         self.assertEqual(result, dict(schema=1, phone_entry='observed', message_page='unknown',
-                                     unread_status='unknown', reward_status='unknown', input_sent=False,
-                                     account_verified=True, captures=2))
+                                     reward_status='unknown', input_sent=False,
+                                     account_verified=True, captures=2, **unknown_panel_state()))
 
     def test_duplicate_buffers_and_missing_account_cannot_form_a_pair(self):
         first = phone(ACCOUNT)
@@ -148,6 +168,24 @@ class MessageObserverTests(unittest.TestCase):
         self.assertEqual(result['reward_status'], 'unknown')
         self.assertFalse(result['input_sent'])
         self.assertEqual(result['captures'], 3)
+
+    def test_panel_substates_need_agreement_in_the_same_pair(self):
+        two, three = 'options_two.png', 'options_three.png'
+        for names, expected in (((two, two), ('options_visible', 2)), ((two, three), ('unknown', None))):
+            with self.subTest(names=names):
+                context = self.context([state_frame(name, ACCOUNT) for name in names])
+                result = observe_daily_messages(context)
+                self.assertEqual(result['message_page'], 'observed')
+                self.assertEqual((result['reply_status'], result['reply_options']), expected)
+
+    def test_badge_is_a_visible_state_and_disagreement_is_unknown(self):
+        before, after = 'list_badge.png', 'options_three.png'
+        for names, expected in (((before, before), 'badge_visible'), ((before, after), 'unknown')):
+            with self.subTest(names=names):
+                context = self.context([state_frame(name, ACCOUNT) for name in names])
+                result = observe_daily_messages(context)
+                self.assertEqual(result['unread_status'], expected)
+                self.assertEqual(result['reward_status'], 'unknown')
 
     def test_conflicting_account_veto_and_focus_loss_stop_without_recovery(self):
         conflicting = phone(ACCOUNT)
@@ -288,6 +326,19 @@ class MessageCliTests(unittest.TestCase):
                 self.assertEqual(report[OPERATION]['captures'], 2)
                 self.assertTrue(report[OPERATION]['account_verified'])
                 self.assertEqual(report[OPERATION]['reward_status'], 'unknown')
+
+    def test_cli_publishes_agreed_reply_fields_and_revokes_them_on_late_stop(self):
+        def frames():
+            return [state_frame('options_two.png', ACCOUNT) for _ in range(2)]
+
+        def press_f10(_runner, _window, _clock, user32):
+            user32.GetAsyncKeyState.return_value = 1
+
+        observed = self.run_cli(frames())
+        self.assertEqual(observed[OPERATION]['reply_options'], 2)
+        stopped = self.run_cli(frames(), code=1, publication=press_f10)
+        self.assertEqual(stopped['status'], 'stopped')
+        self.assertEqual({key: stopped[OPERATION][key] for key in unknown_panel_state()}, unknown_panel_state())
 
     def test_cli_background_and_mixed_pages_keep_unknown(self):
         failed = self.run_cli([], foreground=False, code=1)

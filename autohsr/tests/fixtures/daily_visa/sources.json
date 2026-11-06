@@ -1,0 +1,258 @@
+{
+  "schema": 1,
+  "post": "https://www.miyoushe.com/sr/article/79174169",
+  "attachment_index": "https://bbs-api.miyoushe.com/post/wapi/getPostFull?post_id=79174169&gids=6",
+  "published_at": "2026-10-28T10:47:26+08:00",
+  "version_window": "4.6",
+  "client_build": null,
+  "image_size_px": [
+    1368,
+    807
+  ],
+  "provenance": "Three different static screenshots. The index retains only exact, whitelisted UI text and a crop of the three top tabs. No navigation, account, reward or claim evidence.",
+  "rights": "Game UI artwork belongs to its respective rightsholders.",
+  "frames": [
+    {
+      "id": "collection",
+      "source_sha256": "d49b19b28273bc04b18844bf0a4a42a3a7457c33a6bc8f778c1f7eadbedc16b1",
+      "crop_file": "collection-tabs.png",
+      "crop_xyxy_px": [
+        480,
+        83,
+        890,
+        124
+      ],
+      "crop_png_sha256": "67ceabddc17a782e1128709f36732567a96d32d0bfe65c9dbf1f827db26577dc",
+      "tokens": [
+        {
+          "text": "漫游签证",
+          "score": 0.9946,
+          "xyxy_px": [
+            74,
+            66,
+            130,
+            84
+          ]
+        },
+        {
+          "text": "收集展示",
+          "score": 0.9995,
+          "xyxy_px": [
+            71,
+            81,
+            147,
+            108
+          ]
+        },
+        {
+          "text": "规则说明",
+          "score": 0.9998,
+          "xyxy_px": [
+            1184,
+            75,
+            1256,
+            96
+          ]
+        },
+        {
+          "text": "战绩展示",
+          "score": 0.9985,
+          "xyxy_px": [
+            516,
+            91,
+            582,
+            117
+          ]
+        },
+        {
+          "text": "角色展示",
+          "score": 0.9995,
+          "xyxy_px": [
+            652,
+            94,
+            717,
+            115
+          ]
+        },
+        {
+          "text": "收集展示",
+          "score": 0.9995,
+          "xyxy_px": [
+            787,
+            91,
+            855,
+            117
+          ]
+        }
+      ]
+    },
+    {
+      "id": "characters",
+      "source_sha256": "2e185f4a43bb2cbc5aa03163c93476fc3a29fee89727da7727f81b59f418a008",
+      "crop_file": "characters-tabs.png",
+      "crop_xyxy_px": [
+        480,
+        83,
+        890,
+        124
+      ],
+      "crop_png_sha256": "f8cbe4cb220018ed1c5fb58684a2d829a055f458ab936006bdd4f13b5ad9e888",
+      "tokens": [
+        {
+          "text": "漫游签证",
+          "score": 0.9863,
+          "xyxy_px": [
+            74,
+            66,
+            130,
+            84
+          ]
+        },
+        {
+          "text": "规则说明",
+          "score": 0.999,
+          "xyxy_px": [
+            1183,
+            70,
+            1256,
+            98
+          ]
+        },
+        {
+          "text": "角色展示",
+          "score": 0.9992,
+          "xyxy_px": [
+            72,
+            83,
+            146,
+            107
+          ]
+        },
+        {
+          "text": "战绩展示",
+          "score": 0.9986,
+          "xyxy_px": [
+            514,
+            91,
+            582,
+            117
+          ]
+        },
+        {
+          "text": "角色展示",
+          "score": 0.9986,
+          "xyxy_px": [
+            651,
+            92,
+            717,
+            116
+          ]
+        },
+        {
+          "text": "收集展示",
+          "score": 0.9999,
+          "xyxy_px": [
+            788,
+            92,
+            853,
+            116
+          ]
+        },
+        {
+          "text": "支援角色",
+          "score": 0.9972,
+          "xyxy_px": [
+            805,
+            201,
+            905,
+            224
+          ]
+        },
+        {
+          "text": "星海同行",
+          "score": 0.9989,
+          "xyxy_px": [
+            830,
+            465,
+            905,
+            486
+          ]
+        }
+      ]
+    },
+    {
+      "id": "battle-record",
+      "source_sha256": "5930315ac976617ece3dfb2d263b1a52dbfc69a9586d595f7e25cacc074b44e0",
+      "crop_file": "battle-record-tabs.png",
+      "crop_xyxy_px": [
+        480,
+        83,
+        890,
+        124
+      ],
+      "crop_png_sha256": "231c2c2ce2972162bd0e31a14d5a79835e3e1ce510310f0955accabaeb60350e",
+      "tokens": [
+        {
+          "text": "漫游签证",
+          "score": 0.9837,
+          "xyxy_px": [
+            74,
+            66,
+            130,
+            84
+          ]
+        },
+        {
+          "text": "战绩展示",
+          "score": 0.998,
+          "xyxy_px": [
+            71,
+            81,
+            147,
+            108
+          ]
+        },
+        {
+          "text": "规则说明",
+          "score": 0.9999,
+          "xyxy_px": [
+            1184,
+            73,
+            1258,
+            98
+          ]
+        },
+        {
+          "text": "战绩展示",
+          "score": 0.9993,
+          "xyxy_px": [
+            515,
+            93,
+            582,
+            117
+          ]
+        },
+        {
+          "text": "角色展示",
+          "score": 0.9987,
+          "xyxy_px": [
+            651,
+            91,
+            717,
+            117
+          ]
+        },
+        {
+          "text": "收集展示",
+          "score": 0.9997,
+          "xyxy_px": [
+            788,
+            93,
+            855,
+            117
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -35,22 +35,30 @@ def _navigation_result(mode, value, status):
     title = _SCOPES[mode].label
     destination = value.get('destination_status')
     if (mode == 'achievements' and status == 'success' and value.get('page_verified') is True
-            and destination == 'achievement_overview'):
+            and value.get('entry_input') == 'sent' and destination == 'achievement_overview'):
         return title + '已核实', '奖励状态待核对。'
-    if value.get('page_verified') is not False:
-        return _UNKNOWN
-    if mode == 'achievements' and destination == 'achievement_title_only' and value.get('entry_input') == 'sent':
-        return '成就总览待核对', '已记录成就标题，页面与奖励状态待核对。'
     if mode == 'support':
         steps = value.get('steps')
         more = steps.get('open_more') if isinstance(steps, dict) else None
         support = steps.get('open_support') if isinstance(steps, dict) else None
         if (isinstance(more, dict) and more.get('entry_input') == 'sent'
                 and more.get('destination_status') == 'more_menu_verified'):
-            if (destination == 'support_title_only' and isinstance(support, dict)
-                    and support.get('entry_input') == 'sent' and support.get('destination_status') == destination):
+            sent = (isinstance(support, dict) and support.get('entry_input') == 'sent'
+                    and support.get('destination_status') == destination)
+            if (sent and status == 'success' and value.get('page_verified') is True
+                    and value.get('entry_input') == 'sent' and destination == 'support_collection_overview'):
+                sources = more.get('after_frames')
+                if isinstance(sources, list) and len(sources) == 2 and sources == support.get('before_frames'):
+                    return '漫游签证收集展示已核实', '支援奖励状态待核对。'
+            if value.get('page_verified') is not False:
+                return _UNKNOWN
+            if sent and destination == 'support_title_only':
                 return '漫游签证待核对', '已核实更多菜单，并记录漫游签证标题。页面与奖励状态待核对。'
             return '漫游签证待核对', '更多菜单已核实，签证页面与奖励状态待核对。'
+    if value.get('page_verified') is not False:
+        return _UNKNOWN
+    if mode == 'achievements' and destination == 'achievement_title_only' and value.get('entry_input') == 'sent':
+        return '成就总览待核对', '已记录成就标题，页面与奖励状态待核对。'
     if value.get('entry_input') in ('sent', 'unconfirmed'):
         return title + '待核对', '入口提交已有记录，页面与奖励状态待核对。'
     return _UNKNOWN
@@ -59,14 +67,32 @@ def _navigation_result(mode, value, status):
 def _message_result(value, status):
     captures = value.get('captures')
     if (status != 'success' or value.get('account_verified') is not True or value.get('input_sent') is not False
-            or type(captures) is not int or captures < 2
-            or value.get('unread_status') != 'unknown' or value.get('reward_status') != 'unknown'):
+            or type(captures) is not int or captures < 2 or value.get('reward_status') != 'unknown'):
         return _UNKNOWN
     observed = value.get('phone_entry'), value.get('message_page')
-    if observed == ('observed', 'unknown'):
+    unread = value.get('unread_status')
+    conversation = value.get('conversation_status', 'unknown')
+    reply = value.get('reply_status', 'unknown')
+    options = value.get('reply_options')
+    if (unread not in ('unknown', 'badge_visible') or conversation not in ('unknown', 'selected')
+            or reply not in ('unknown', 'options_visible', 'not_visible')):
+        return _UNKNOWN
+    if reply == 'options_visible':
+        if conversation != 'selected' or type(options) is not int or options not in (2, 3):
+            return _UNKNOWN
+    elif options is not None or (reply == 'not_visible' and conversation != 'selected'):
+        return _UNKNOWN
+    if observed == ('observed', 'unknown') and (unread, conversation, reply) == ('unknown',) * 3:
         return '手机短信入口已核实', '未读状态和奖励状态待核对。'
     if observed == ('unknown', 'observed'):
-        return '新消息通知面板已核实', '未读状态和奖励状态待核对。'
+        if (unread, conversation, reply) == ('unknown',) * 3:
+            return '新消息通知面板已核实', '未读状态和奖励状态待核对。'
+        details = ['看到未读标记' if unread == 'badge_visible' else '未读状态待核对']
+        if reply == 'options_visible':
+            details.append(f'当前会话可见 {options} 个回复选项')
+        elif reply == 'not_visible':
+            details.append('当前会话未显示回复选项')
+        return '新消息通知面板已核实', '，'.join(details + ['奖励状态待核对']) + '。'
     return _UNKNOWN
 
 

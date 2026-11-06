@@ -12,6 +12,8 @@ import unittest
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
+import cv2
+
 from autohsr.__main__ import main
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
@@ -20,6 +22,7 @@ from autohsr.models import AutomationError, EmptyCapture, FocusLost, RunReport, 
 from autohsr.policy import guard_click
 from autohsr.storage import hold_read_sources
 from autohsr.tests.test_achievement_pages import overview
+from autohsr.tests.test_daily_visa_pages import replay as replay_visa
 from autohsr.tests.test_du_team import fixture
 from autohsr.tests.test_redemption_pages import (form_scene, four_row_more_scene, more_scene, phone_scene,
                                                stamp, token, variant_phone_scene)
@@ -56,6 +59,11 @@ def support_phone(*, menu=False, account=ACCOUNT):
 
 def visa_page(*extra, account=ACCOUNT):
     return Scene([account, token('漫游签证', (50, 40, 155, 74)), *extra], phone_scene().image)
+
+
+def visa_collection(name='collection', *, account=ACCOUNT):
+    scene = replay_visa(name)
+    return Scene([account, *scene.tokens], cv2.resize(scene.image, (1920, 1080)))
 
 
 class _Window:
@@ -376,6 +384,34 @@ class DailyRewardObserveTests(unittest.TestCase):
         self.assertEqual(result['steps']['open_support']['entry_input'], 'sent')
         visa = next(token for token in menu.tokens if token.text == '漫游签证')
         self.assertEqual(result['steps']['open_support']['entry_point'], list(visa.center))
+        self.assertEqual(len(self.events), 2)
+
+    def test_support_collection_verifies_only_two_current_account_overview_frames(self):
+        before = [support_phone() for _ in range(3)] + [support_phone(menu=True) for _ in range(3)]
+        collection = visa_collection()
+        report = self.run_cli([*before, collection, collection], mode='support', exit_code=0)
+        result = report['daily_reward_observe']
+        final_step = result['steps']['open_support']
+        self.assertEqual(result['destination_status'], 'support_collection_overview')
+        self.assertEqual(final_step['destination_status'], result['destination_status'])
+        self.assertEqual([row['capture_sequence'] for row in final_step['after_frames']], [7, 8])
+        self.assertEqual(len(self.events), 2)
+
+        for ending in ([collection, visa_collection(account=OTHER)], [visa_collection('characters')] * 2):
+            with self.subTest(ending=ending[1].tokens):
+                report = self.run_cli([*before, *ending], mode='support')
+                self.assertEqual(report['status'], 'partial')
+                self.assertEqual(len(self.events), 2)
+
+    def test_stop_at_visa_collection_publication_preserves_both_inputs(self):
+        before = [support_phone() for _ in range(3)] + [support_phone(menu=True) for _ in range(3)]
+        report = self.run_cli([*before, visa_collection(), visa_collection()], mode='support',
+                              before_native=lambda count: count == 5)
+        result = report['daily_reward_observe']
+        self.assertEqual(report['status'], 'stopped')
+        self.assertEqual(result['destination_status'], 'unknown')
+        self.assertEqual(result['steps']['open_support']['destination_status'], 'unknown')
+        self.assertEqual([step['entry_input'] for step in result['steps'].values()], ['sent', 'sent'])
         self.assertEqual(len(self.events), 2)
 
     def test_support_accepts_closed_more_variant_then_current_four_row_menu(self):

@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-11-07 漫游签证选中页签
+
+三张国服 4.6 时期玩家公开静态截图用于核对收集展示、角色展示和战绩展示。夹具保留最小页签裁片与白名单界面文字、坐标及分数。原图、UID 和账号信息未入库。游戏界面权利归 HoYoverse 及相应权利人，原截图归上传者及相应权利人。[公开原帖](https://www.miyoushe.com/sr/article/79174169) · [来源、裁剪与哈希](../autohsr/tests/fixtures/daily_visa/sources.json)
+
 ## 2026-11-07 培养材料槽取证
 
 银河沙盘两个正向槽及星系框架反例取自公开国服 4.6 视频，仅保留物品图案及槽位数字。游戏美术权利归相关权利人。使用既有海原电视塔目录小图作识别参考，样本来源、裁剪与 SHA-256 见[素材清单](../autohsr/tests/fixtures/dungeons/build_target_slots/sources.json)。
@@ -810,6 +814,23 @@ It supports read-only message panel recognition. The upstream GPL v3 and
 HoYoverse game artwork attribution apply.
 [Pinned original](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/images/screen/incoming_message.png)
 · [Upstream license](upstream/March7thAssistant/LICENSE)
+
+`upstream/March7thAssistant/daily-message/unread_badge.png` preserves the
+original 17×17, 1002-byte `assets/images/share/base/RedExclamationMark.png`
+from the same upstream commit and contributors. Git blob is
+`d7d6e225847c7a1471203b763f71d05aa1ecbc1a` and SHA-256 is
+`0321342e46d3b048872733c632a6971aede10da29aea8416ef678749cb4f45f4`.
+The same GPL v3 and HoYoverse attribution apply.
+[Pinned original](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/images/share/base/RedExclamationMark.png)
+
+`autohsr/tests/fixtures/daily_message_state` contains reduced evidence from
+the public PC gameplay video by 绘希推_书记. The source MP4 and fixture
+hashes, frame times and reductions are in the manifest. The title and badge
+are the only retained original patches. Other observations are reduced to
+luminance summaries and anonymous header ink counts. Game artwork remains
+with HoYoverse and the footage with its respective rights holders.
+[Source video](https://www.bilibili.com/video/BV1Pj421X7r1/)
+· [Fixture manifest](../autohsr/tests/fixtures/daily_message_state/manifest.json)
 
 `upstream/March7thAssistant/team-calibration/configure_team.png` preserves a
 single original crop from moesnow and contributors at
