@@ -28,6 +28,8 @@ MODE_CARDS = (.14, .50, .32, .83)
 MODE_DETAIL = (.46, .30, .59, .36)
 TELEPORT = (.72, .57, .88, .67)
 HIGH_TAB = (.349, .154, .405, .235)
+CHAOS_LEVELS = {f'{level:02}' for level in range(1, 13)}
+NOTICE_CLOSE = ('点击空白处关闭', '点击任意位置关闭', '点击空白处继续')
 BLOCKERS = ('获得物品', '确认购买', '使用燃料', '验证码', '开始挑战', '挑战结束', '确认', '取消',
             '选择最高解锁关卡', '退出挑战', '是否消耗', '账号登录', '扫码登录', '用户协议', '更新游戏')
 
@@ -69,10 +71,80 @@ def _apocalyptic_stellar_home(scene, view):
             and all(_exact(scene, view, label, box) is not None for label, box in fields))
 
 
+def _chaos_notice_close(scene, view):
+    anchors = (
+        ('物竞天择', (.35, .34, .45, .41)),
+        ('已更新', (.45, .34, .52, .41)),
+        ('记忆紊流', (.35, .40, .45, .44)),
+    )
+    if (scene.has((GUIDE_TITLE, *(label for _, label in MODES.values())), TITLE, exact=True)
+            or not all(_exact(scene, view, label, box) for label, box in anchors)
+            or not view.has('我方目标施放终结技', (.35, .44, .68, .48))):
+        return None
+    return _exact(scene, view, NOTICE_CLOSE[0], (.43, .77, .57, .83))
+
+
+def _fiction_overview_open(scene, view):
+    anchors = (
+        ('取象为文', (.69, .25, .84, .33)),
+        ('已更新', (.73, .33, .82, .38)),
+        ('战意机制', (.71, .39, .83, .43)),
+        ('施加负面效果', (.70, .43, .84, .47)),
+        ('战意效果', (.71, .59, .83, .65)),
+    )
+    if not all(_exact(scene, view, label, box) for label, box in anchors):
+        return None
+    return _exact(scene, view, '开启故事', (.73, .80, .84, .86))
+
+
+def _chaos_level_map(scene, view):
+    anchors = (
+        ('忘却之庭', (.04, .02, .13, .068)),
+        ('混沌回忆', (.04, .054, .13, .10)),
+        ('物竞天择', (.055, .102, .165, .174)),
+        ('奇珍琳琅', (.08, .85, .18, .92)),
+    )
+    if not all(_exact(scene, view, label, box) for label, box in anchors):
+        return False
+    area = (.06, .34, .93, .67)
+    levels = sorted((token for token in scene.tokens
+                     if token.within(area) and normalize(token.text) in CHAOS_LEVELS),
+                    key=lambda token: token.center[0])
+    if any(_exact(scene, view, normalize(token.text), area) != token for token in levels):
+        return False
+    numbers = [int(normalize(token.text)) for token in levels]
+    return (numbers == sorted(numbers)
+            and all(b.center[0]-a.center[0] > .06 for a, b in zip(levels, levels[1:]))
+            and any(b == a+1 and c == b+1 for a, b, c in zip(numbers, numbers[1:], numbers[2:])))
+
+
+def _fiction_level_map(scene, view):
+    anchors = (
+        ('虚构叙事', (.07, .049, .15, .095)),
+        ('取象为文', (.06, .09, .17, .15)),
+        ('奇珍琳琅', (.08, .85, .18, .92)),
+        ('02', (.56, .29, .66, .36)),
+        ('03', (.65, .63, .74, .71)),
+        ('04', (.78, .42, .88, .50)),
+    )
+    return (all(_exact(scene, view, label, box) for label, box in anchors)
+            and (_exact(scene, view, '尚未挑战', (.58, .365, .68, .42))
+                 or _exact(scene, view, '尚未挑战', (.66, .71, .76, .77))
+                 or _exact(scene, view, '未解锁', (.79, .48, .88, .54))))
+
+
 def observe(scene, confidence=.85):
     view = trusted(scene, max(.85, confidence))
     if scene.has(BLOCKERS, exact=True):
         return None
+    close_notice = scene.has(NOTICE_CLOSE, exact=True)
+    open_overview = scene.has('开启故事', exact=True)
+    if close_notice and open_overview:
+        return None
+    if close_notice:
+        return LobbyState('period_notice', pages.MODE) if _chaos_notice_close(scene, view) else None
+    if open_overview:
+        return LobbyState('period_notice', pages.FICTION) if _fiction_overview_open(scene, view) else None
     if scene.has(GUIDE_TITLE, TITLE, exact=True):
         if not _exact(scene, view, GUIDE_TITLE, TITLE):
             return None
@@ -87,8 +159,14 @@ def observe(scene, confidence=.85):
         if len(selected) > 1 or (selected and not _exact(scene, view, selected[0][1], MODE_DETAIL)):
             return None
         return LobbyState('difficulty_guide', selected[0][0] if selected else None)
+    if sum(scene.has(label, TITLE, exact=True) for _, label in MODES.values()) > 1:
+        return None
     if _apocalyptic_stellar_home(scene, view):
         return LobbyState('lobby', pages.APOCALYPTIC, 'stellar')
+    if _chaos_level_map(scene, view):
+        return LobbyState('lobby', pages.MODE, 'level_map')
+    if _fiction_level_map(scene, view):
+        return LobbyState('lobby', pages.FICTION, 'level_map')
     previous = pages.observe(scene, confidence)
     if previous.kind == 'lobby' and previous.mode in MODES:
         return LobbyState('lobby', previous.mode)
@@ -101,6 +179,12 @@ def next_action(context, scene, mode):
     if state is None or state.page == 'lobby':
         return None
     view = trusted(scene, confidence)
+    if state.page == 'period_notice':
+        if state.mode != mode:
+            return None
+        if mode == pages.MODE:
+            return LobbyAction('dismiss_period_notice', _chaos_notice_close(scene, view))
+        return LobbyAction('open_fiction_overview', _fiction_overview_open(scene, view))
     if state.page == 'survival_guide':
         match = context.template(scene, 'high_guide_tab', HIGH_TAB, threshold=.94)
         if match is None:
@@ -249,7 +333,7 @@ class ChallengeLobbyNavigation:
     def run(self):
         self._save()
         scene, state, sources = self._pair(lambda current: True, 'challenge_lobby_initial')
-        for _ in range(4):
+        for _ in range(5):
             if state.page == 'lobby':
                 if state.mode != self.mode:
                     raise AutomationError('当前高难主页与请求模式不同。')
@@ -274,6 +358,8 @@ class ChallengeLobbyNavigation:
                     expected = lambda current: current.page == 'difficulty_guide'
                 elif action.intent == 'open_mode_card':
                     expected = lambda current: current.page == 'difficulty_guide' and current.mode == self.mode
+                elif action.intent == 'enter_lobby':
+                    expected = lambda current: current.page in ('lobby', 'period_notice') and current.mode == self.mode
                 else:
                     expected = lambda current: current.page == 'lobby' and current.mode == self.mode
                 scene, state, sources = self._pair(expected, 'challenge_lobby_'+action.intent)
@@ -282,7 +368,7 @@ class ChallengeLobbyNavigation:
                     self._check_journal(payload)
                     self._check_sources(scene, sources)
 
-                verified = dict(row, status='verified', after=sources)
+                verified = dict(row, status='verified', observed_page=state.page, after=sources)
                 with hold_read_sources(self._source_path(source) for source in sources):
                     self._save(dict(self.data, actions=[*self.data['actions'][:-1], verified]), before_replace=before_verify)
                 row.update(verified)

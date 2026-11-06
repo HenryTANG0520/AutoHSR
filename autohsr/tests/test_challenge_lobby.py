@@ -67,6 +67,32 @@ def stellar():
                  field('节点三', .666,.749,.036), field('重新挑战', .345,.813,.044))
 
 
+def chaos_notice():
+    return frame(field('物竞天择', .374,.361), field('已更新', .458,.364,.040),
+                 field('记忆紊流', .374,.407,.048), field('我方目标施放终结技时获得5个笑点。', .374,.450,.203),
+                 field('点击空白处关闭', .456,.787,.089,.025))
+
+
+def chaos_map():
+    return frame(field('忘却之庭', .052,.036,.044,.025), field('混沌回忆', .053,.060,.054,.028),
+                 field('物竞天择', .064,.117,.082,.041), field('奇珍琳琅', .097,.870,.056,.034),
+                 field('08', .097,.437,.040,.054), field('09', .295,.513,.038,.051),
+                 field('10', .476,.585,.036,.050), field('12', .835,.368,.034,.049))
+
+
+def fiction_notice():
+    return frame(field('取象为文', .730,.284,.085,.037), field('已更新', .754,.344,.039,.026),
+                 field('战意机制', .751,.400,.050,.026), field('施加负面效果', .739,.434,.075,.027),
+                 field('战意效果', .748,.609,.052,.026), field('开启故事', .756,.815,.053,.029))
+
+
+def fiction_map():
+    return frame(field('虚构叙事', .085,.062,.048,.025), field('取象为文', .073,.102,.074,.031),
+                 field('奇珍琳琅', .104,.872,.054,.031), field('02', .604,.314,.024,.033),
+                 field('03', .683,.665,.024,.033), field('04', .810,.456,.024,.033),
+                 field('未解锁', .81,.489,.052,.035))
+
+
 def native_cli(root, scenes, *, mode=AP, stop_at_submit=False):
     config = root/'config.json'
     Settings(overlay_logs=True).save(config)
@@ -173,6 +199,45 @@ class ChallengeLobbyTests(unittest.TestCase):
                 self.assertEqual(len(positions),expected)
                 if report['challenge']['actions']:
                     self.assertEqual(report['challenge']['actions'][0]['status'],'unknown')
+
+    def test_native_cli_closes_only_the_matched_update_notice_and_confirms_lobby(self):
+        notice = chaos_notice()
+        lobby = chaos_map()
+        with tempfile.TemporaryDirectory() as directory:
+            code, report, positions = native_cli(Path(directory),
+                [high(MOC),high(MOC),notice,notice,lobby,lobby], mode=MOC)
+            self.assertEqual((code,len(positions)),(0,2))
+            self.assertEqual(report['challenge']['variant'],'level_map')
+            self.assertEqual([(row['intent'],row['observed_page']) for row in report['challenge']['actions']],
+                             [('enter_lobby','period_notice'),('dismiss_period_notice','lobby')])
+        ctx = SimpleNamespace(settings=Settings())
+        self.assertIsNone(next_action(ctx,notice,FICTION))
+        notice.tokens.append(field('获得物品', .45,.21))
+        self.assertIsNone(next_action(ctx,notice,MOC))
+        notice.tokens = [token for token in notice.tokens if token.text not in ('获得物品','记忆紊流')]
+        self.assertIsNone(next_action(ctx,notice,MOC))
+        for removed in ('奇珍琳琅','09'):
+            with self.subTest(removed=removed):
+                lobby = chaos_map()
+                lobby.tokens = [token for token in lobby.tokens if token.text != removed]
+                self.assertIsNone(observe(lobby))
+
+    def test_native_cli_fiction_story_then_unknown_unlock_never_selects_a_stage(self):
+        notice = fiction_notice()
+        lobby = fiction_map()
+        unlock = frame(field('选择最高解锁关卡', .40,.27,.19), field('03', .67,.67,.03),
+                       field('确认', .55,.80,.03))
+        for arrival, expected in ((lobby,True),(unlock,False)):
+            with self.subTest(expected=expected), tempfile.TemporaryDirectory() as directory:
+                code, report, positions = native_cli(Path(directory),
+                    [high(FICTION),high(FICTION),notice,notice,arrival,arrival], mode=FICTION)
+                self.assertEqual(code == 0,expected)
+                self.assertEqual(len(positions),2)
+                enter, story = report['challenge']['actions']
+                self.assertEqual(enter['observed_page'],'period_notice')
+                self.assertEqual(story['intent'],'open_fiction_overview')
+                self.assertEqual(story['status'],'verified' if expected else 'unknown')
+                self.assertEqual(report['challenge']['lobby_verified'],expected)
 
     def test_report_rejects_changed_arrival_image_and_preserves_original_receipt(self):
         save_report = Runner._save_run_report
