@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--check", action="store_true", help="检测窗口、客户端版本和 OCR，输出 JSON；不操作游戏")
     mode.add_argument("--scan-dungeons", action="store_true", help="采集生存索引全部副本入口；不开始挑战或消耗资源")
     mode.add_argument("--read-build-target", action="store_true", help="从已打开的生存索引核对培养目标页入口并留证")
-    mode.add_argument("--preview-build-target", action="store_true", help="只读观察培养目标、材料详情或花萼奖励预览，核对体力计划候选")
+    mode.add_argument("--preview-build-target", action="store_true", help="只读核对培养目标、材料详情、花萼预览及结算的培养提示")
     mode.add_argument('--build-target', action='store_true', help='核实用户指定的培养材料来源并生成单项体力草稿；只读')
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
     mode.add_argument("--run", action="store_true", help="按配置执行每日任务；F10 紧急停止")

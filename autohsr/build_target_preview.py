@@ -7,6 +7,7 @@ from .build_target_read import (
     FRAGMENT_CONFIDENCE, MODAL, MODAL_AREA, SECTIONS, SHORTFALL,
     BuildTargetRead, _has_split_label, guide_blocked, guide_entry,
 )
+from .build_target_shortfall import ROLE, ResultShortfall, TargetPanel, result_shortfall, target_panel
 from .currency_wars_prepare import trusted
 from .dungeon_workflow import guide_row_fields
 from .dungeons import BY_KEY, CATEGORIES, Dungeon, count_limit
@@ -23,7 +24,6 @@ HELD_AREA = (.25, .65, .39, .735)
 SOURCE_BODY = (790 / 1920, 377 / 1080, 1484 / 1920, 731 / 1080)
 OBSERVATION_SOURCE = (.40, SOURCE_BODY[1], SOURCE_BODY[2], .71)
 SOURCE_LABEL = '获得途径'
-LEVEL_TRACE_SUFFICIENT = '已获得足够的等级和行迹材料'
 DETAIL_BLOCKERS = tuple(label for label in MODAL if label != SOURCE_LABEL)
 CALYX_SOURCE = re.compile(r'拟造花萼〖([^〖〗\r\n]{2,64})〗')
 LOCK_MARKERS = ('未解锁', '尚未解锁')
@@ -203,22 +203,6 @@ def _title_candidate(token):
             or token.score >= FRAGMENT_CONFIDENCE and re.search(r'[\u3400-\u9fff]', token.text))
 
 
-def _target_materials_sufficient(scene, page):
-    fields = trusted(scene, 0.)
-    if fields.has(SHORTFALL, SECTIONS, exact=True) or _has_split_label(fields, (SHORTFALL,), SECTIONS):
-        return False
-    positions = []
-    for label, area in (
-        ('角色培养', SECTIONS), (LEVEL_TRACE_SUFFICIENT, SECTIONS),
-        ('遗器推荐', MODAL_AREA), ('培养设置', (.14, .26, .95, .96)),
-    ):
-        matches = [token for token in fields.tokens if token.within(area) and normalize(token.text) == label]
-        if len(matches) != 1 or matches[0] not in page.tokens:
-            return False
-        positions.append(matches[0].center[1])
-    return all(upper < lower for upper, lower in zip(positions, positions[1:]))
-
-
 def _classify(reader, scene, *, read_quantities=False):
     if guide_blocked(scene, modal=DETAIL_BLOCKERS):
         return None, None
@@ -226,7 +210,15 @@ def _classify(reader, scene, *, read_quantities=False):
     page = trusted(captured, reader.confidence)
     entry = guide_entry(scene, page)
     if entry is None:
-        return _calyx_preview(reader, scene, page) if read_quantities else (None, None)
+        if not read_quantities:
+            return None, None
+        if page.has('角色培养', ROLE, exact=True):
+            if any(_catalogue_row_areas(captured, reader.catalogue)):
+                return None, None
+            target, anchor, _ = target_panel(scene, page, entry)
+            return target, anchor
+        result, anchor = result_shortfall(scene, page)
+        return (result, anchor) if result is not None else _calyx_preview(reader, scene, page)
     catalogue_rows = tuple(_catalogue_row_areas(captured, reader.catalogue))
     headings = [token for token in captured.tokens if token.within(MODAL_AREA)
                 and normalize(token.text) == SOURCE_LABEL]
@@ -234,11 +226,13 @@ def _classify(reader, scene, *, read_quantities=False):
     if not headings and not any(token.text.strip() in CALYX_BY_MATERIAL for token in title_region):
         if catalogue_rows:
             return None, None
+        if read_quantities and page.has('角色培养', ROLE, exact=True):
+            target, anchor, conflict = target_panel(scene, page, entry)
+            if target is not None or conflict:
+                return target, anchor
         kind, panel_entry = reader._classify(scene)
         if kind == 'panel':
             return kind, panel_entry
-        if read_quantities and _target_materials_sufficient(scene, page):
-            return 'target_materials_sufficient', entry
         return None, None
     titles = [token for token in title_region if _title_candidate(token)]
     if len(titles) != 1 or len(headings) != 1:
@@ -328,14 +322,26 @@ def run_preview(ctx, *, selection=None):
             selected_stamina_within_config=observation.shown_total_stamina <= limit,
             max_draft_challenges_by_config=min(rule.batch, count_limit(rule, limit))))
         detail = f'已核对{observation.target}难度 {observation.difficulty} 的奖励预览与挑战费用。'
-    elif observation in ('panel', 'target_materials_sufficient'):
+    elif isinstance(observation, ResultShortfall):
+        preview.update(state='calyx_result_shortfall', post_battle_shortfall=dict(
+            observed_needed=list(observation.observed_needed), completed_rounds=observation.completed_rounds,
+            repeat_stamina=observation.repeat_stamina))
+        detail = '已核对结算中的培养剩余提示和实际完成波次。'
+    elif isinstance(observation, TargetPanel):
         ctx.report.build_target['page_verified'] = True
-        if observation == 'target_materials_sufficient':
-            preview.update(state=observation, target_section_visible=True)
-            detail = '培养目标页显示已获得足够的等级和行迹材料。'
-        else:
-            preview.update(state='panel_observed', target_section_visible=True)
-            detail = '已保存培养目标页。打开一项材料详情并显示获得途径可核对目录候选。'
+        preview.update(state=observation.state, target_section_visible=True, shortfall_rows=[
+            dict(observed_needed=list(row.observed_needed), shown_stamina=row.shown_stamina)
+            for row in observation.shortfall_rows
+        ])
+        detail = {
+            'target_level_trace_complete': '培养目标页显示已完成等级、行迹的提升。',
+            'target_materials_sufficient': '培养目标页显示已获得足够的等级和行迹材料。',
+            'target_resources_needed': '已观察培养目标的缺口区，材料与单轮产量需分别核实。',
+        }[observation.state]
+    elif observation == 'panel':
+        ctx.report.build_target['page_verified'] = True
+        preview.update(state='panel_observed', target_section_visible=True)
+        detail = '已保存培养目标页。打开一项材料详情并显示获得途径可核对目录候选。'
     else:
         preview.update(state='catalogue_candidates' if candidates else 'material_observed',
                        material=observation.material, held=observation.held, candidates=candidates,
