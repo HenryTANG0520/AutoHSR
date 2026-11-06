@@ -1,6 +1,10 @@
 """Confirmed outfit identities, without game, account or selection inference."""
+from contextlib import redirect_stderr, redirect_stdout
 import hashlib
+from io import StringIO
 import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
 from autohsr.challenge_plan import ChallengePlan, ChallengePlanError, MODE_LIMITS
@@ -9,7 +13,7 @@ from autohsr.tests.test_challenge_plan import TEAM1, TEAM2, raw_plan
 
 PAIRS=(('March7th','March7thNascentSpring'),('Firefly','FireflySpringMissive'),
        ('Castorice','CastoriceGossamerFlutter'),('Hyacine','HyacineWarmCottonSkies'),
-       ('Evanescia','EvanesciaLunarBlossoming'))
+       ('Evanescia','EvanesciaLunarBlossoming'),('Sparxie','SparxieCandyCoatedWaves'))
 
 
 class ChallengeIdentityTests(unittest.TestCase):
@@ -43,6 +47,34 @@ class ChallengeIdentityTests(unittest.TestCase):
                 with self.assertRaises(ChallengePlanError) as error:
                     ChallengePlan.from_dict(raw_plan(team1=[first,*TEAM1[1:]],team2=[second,*TEAM2[1:]]))
                 self.assertEqual(error.exception.field,'teams')
+
+    def test_preview_deduplicates_sparxie_ids_and_full_names(self):
+        from autohsr.__main__ import main
+
+        with TemporaryDirectory() as folder:
+            path = Path(folder) / 'plan.json'
+            for base, outfit in (('Sparxie', 'SparxieCandyCoatedWaves'), ('火花', '火花·甜梦电波')):
+                for first, second, asset in (
+                    ([base, *TEAM1[1:]], TEAM2, 'Sparxie'),
+                    ([outfit, *TEAM1[1:]], TEAM2, 'SparxieCandyCoatedWaves'),
+                    ([base, outfit, *TEAM1[2:]], TEAM2, None),
+                    ([base, *TEAM1[1:]], [outfit, *TEAM2[1:]], None),
+                ):
+                    with self.subTest(first=first, second=second):
+                        raw = raw_plan(team1=first, team2=list(second))
+                        path.write_text(json.dumps(raw, ensure_ascii=False), encoding='utf-8')
+                        output, errors = StringIO(), StringIO()
+                        with redirect_stdout(output), redirect_stderr(errors):
+                            code = main(['--challenge-check', str(path)])
+                        self.assertEqual(code, 0 if asset else 2)
+                        if asset:
+                            receipt = json.loads(output.getvalue())
+                            self.assertEqual(receipt['plan']['team1'][0], asset)
+                        else:
+                            receipt = json.loads(errors.getvalue())
+                            self.assertIn('同一单位', receipt['error'])
+                            self.assertFalse(output.getvalue())
+                        self.assertFalse(receipt['game_accessed'])
 
     def test_one_explicit_outfit_keeps_its_exact_id_serialization_and_digest(self):
         for base,outfit in PAIRS:

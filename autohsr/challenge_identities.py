@@ -4,10 +4,10 @@ Asset IDs remain exact in plans. Unknown relations are deliberately absent:
 neither narrative identity, shared name prefixes nor path labels prove that
 two independently catalogued playable characters are mutually exclusive.
 
-The pinned M7 support manifest maps these exact IDs to outfit names. The
-following publisher articles explicitly identify each outfit's owner. Their
-full sContent was read from the official site CMS on 2026-11-05, not inferred
-from the artwork or a search excerpt. Hashes bind the UTF-8 sContent field.
+The pinned M7 support manifest maps these exact IDs to outfit names.
+The publisher's CMS sources below were read in full on 2026-11-05. Hashes
+bind their UTF-8 sContent fields. The separate official 4.4 announcement
+for Sparxie is linked in the high-difficulty documentation.
 """
 from types import MappingProxyType
 
@@ -35,6 +35,8 @@ CONFIRMED_GROUPS=(
     ('Castorice','CastoriceGossamerFlutter'),
     ('Hyacine','HyacineWarmCottonSkies'),
     ('Evanescia','EvanesciaLunarBlossoming'),
+    # The publisher's version 4.4 announcement (165197) confirms Candy-Coated Waves.
+    ('Sparxie','SparxieCandyCoatedWaves'),
 )
 _UNIT_KEYS=MappingProxyType({asset:group[0] for group in CONFIRMED_GROUPS for asset in group})
 
