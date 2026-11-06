@@ -3432,6 +3432,7 @@ class Runner:
                 self.stop()
                 self.report.status = 'stopped'
                 self.report.error = '成就领奖已停止。'
+                self.report.achievement_bulk_claim['stopped'] = True
             elif daily_reply:
                 self.stop()
                 self.report.status = 'stopped'
@@ -3459,6 +3460,8 @@ class Runner:
             raise
         except Stopped as error:
             self.stop()
+            if achievement_claim:
+                self.report.achievement_bulk_claim['stopped'] = True
             if daily_reply_flow is not None:
                 daily_reply_flow.invalidate_feedback()
             if daily_claim_flow is not None:

@@ -13,6 +13,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from autohsr.__main__ import main
+from autohsr.achievement_bulk_claim import AchievementBulkClaim
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.models import FocusLost, Scene, Token
@@ -70,7 +71,8 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
         self.original_config = self.config.read_bytes()
 
     def run_cli(self, *, after_claim=None, short_at=None, lose_foreground=False, stop_confirm=False,
-                wallet=False, marked=False, change_receipt=False, publish=None, wait_for_foreground=False):
+                wallet=False, marked=False, change_receipt=False, publish=None, wait_for_foreground=False,
+                keep_overlay=False, stop_at_final_guard=False):
         self.events = []
         self.actions = []
         clicks = 0
@@ -90,6 +92,8 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
                 yield receipt
             yield overlay
             yield overlay
+            while keep_overlay:
+                yield overlay
             yield returned
             yield returned
             while True:
@@ -130,6 +134,7 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
         clock = SimpleNamespace(monotonic=count(100., .04).__next__)
         output, logs = io.StringIO(), io.StringIO()
         original_input = Context.achievement_bulk_input
+        original_guard = AchievementBulkClaim._guard
 
         def achievement_input(context, scene, action):
             self.actions.append(action)
@@ -138,6 +143,20 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
                 source = next(run.glob('*_achievement_receipt.png'))
                 source.write_bytes(b'replaced')
             return original_input(context, scene, action)
+
+        def guard_claim(claim, *, installation=False):
+            if installation or self.actions != ['claim'] or emergency:
+                return original_guard(claim, installation=installation)
+
+            def lose_at_return(expected=None):
+                nonlocal emergency
+                if expected is not None:
+                    self.assertEqual(expected, window.geometry)
+                    emergency = True
+                return window.geometry
+
+            with patch.object(window, 'guard', side_effect=lose_at_return):
+                return original_guard(claim, installation=installation)
 
         if stop_confirm:
             original_send = window.send
@@ -172,6 +191,8 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
             self.find_game = stack.enter_context(patch('autohsr.app.find_game', return_value=window))
             stack.enter_context(patch.object(Context, 'sleep', lambda ctx, _seconds: ctx.checkpoint()))
             stack.enter_context(patch.object(Context, 'achievement_bulk_input', achievement_input))
+            if stop_at_final_guard:
+                stack.enter_context(patch.object(AchievementBulkClaim, '_guard', guard_claim))
             stack.enter_context(patch.object(Runner, '_save_run_report', save_report))
             stack.enter_context(redirect_stdout(output))
             stack.enter_context(redirect_stderr(logs))
@@ -268,6 +289,57 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
         self.assertIsNone(result['receipt_total'])
         self.assertIsNone(result['overlay_quantity'])
         self.assertFalse(result['overview_return_verified'])
+
+    def test_attributed_overlay_timeout_preserves_feedback_and_blocks_a_new_attempt(self):
+        exit_code, report = self.run_cli(keep_overlay=True)
+        result = report[OPERATION]
+        self.assertEqual((exit_code, report['status']), (1, 'partial'))
+        self.assertEqual(self.actions, ['claim', 'confirm'])
+        self.assertEqual(len(self.events), 2)
+        self.assertEqual((result['bulk_input'], result['confirm_input']), ('sent', 'sent'))
+        self.assertEqual((result['receipt_total'], result['overlay_quantity']), (20, 20))
+        self.assertIn('overlay', result['samples'])
+        self.assertNotIn('return', result['samples'])
+        self.assertFalse(result['overview_return_verified'])
+        self.assertFalse(result['overview_controls_cleared'])
+        self.assertIsNone(result['jade_attributed'])
+        original = Path(report['run_dir'])
+        self.assertFalse((original / 'achievement-bulk-terminal.json').exists())
+        saved = (original / 'report.json').read_bytes()
+
+        exit_code, blocked = self.run_cli()
+        self.assertEqual((exit_code, blocked['status']), (1, 'failed'))
+        self.assertIn('已有未决成就领奖意图', blocked['error'])
+        self.find_game.assert_not_called()
+        self.assertEqual(self.events, [])
+        self.assertEqual((original / 'report.json').read_bytes(), saved)
+
+    def test_stop_during_last_geometry_check_prevents_the_first_click(self):
+        code, report = self.run_cli(stop_at_final_guard=True)
+        self.assertEqual((code, report['status'], self.events), (130, 'stopped', []), report['error'])
+        self.assertEqual(report[OPERATION]['bulk_input'], 'not_sent')
+        self.assertTrue(report[OPERATION]['stopped'])
+
+    def test_stop_after_attributed_overlay_preserves_observed_reward_and_the_pending_gate(self):
+        save = AchievementBulkClaim._save
+
+        def stop_after_overlay(claim, name, frames):
+            rows = save(claim, name, frames)
+            if name == 'overlay':
+                claim.reader.window.emergency_pressed = lambda: True
+            return rows
+
+        with patch.object(AchievementBulkClaim, '_save', stop_after_overlay):
+            exit_code, report = self.run_cli()
+        result = report[OPERATION]
+        self.assertEqual((exit_code, report['status']), (130, 'stopped'))
+        self.assertTrue(result['stopped'])
+        self.assertEqual(len(self.events), 2)
+        self.assertEqual((result['bulk_input'], result['confirm_input']), ('sent', 'sent'))
+        self.assertEqual((result['receipt_total'], result['overlay_quantity']), (20, 20))
+        self.assertFalse(result['overview_return_verified'])
+        self.assertTrue((self.root / 'runs' / 'achievement-bulk-pending.json').exists())
+        self.assertFalse((Path(report['run_dir']) / 'achievement-bulk-terminal.json').exists())
 
     def test_same_wallet_page_records_delta_without_claiming_exclusive_attribution(self):
         exit_code, report = self.run_cli(wallet=True, marked=True)

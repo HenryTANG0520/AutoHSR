@@ -21,7 +21,7 @@ from .currency_wars_identity import AccountNotObserved, checked_account_key
 from .currency_wars_prepare import trusted
 from .daily_event_observe import read_event_installation
 from .daily_observe import ACHIEVEMENT_CLAIM_OPERATION as OPERATION
-from .models import AutomationError, EmptyCapture, Stopped, TaskResult, normalize
+from .models import AutomationError, EmptyCapture, InputInterrupted, Stopped, TaskResult, normalize
 from .storage import hold_read_sources, replace_file
 from .workflow_screen import _CurrentFrames
 from .workflows import DailyWorkflow
@@ -201,6 +201,11 @@ class AchievementBulkClaim:
             if read_event_installation(self.reader.window) != self._installation:
                 raise AutomationError('当前游戏客户端安装来源或版本已变化。')
             self.reader.guard()
+        runner = self.c.runner
+        if runner.stop_requested or self.reader.window.emergency_pressed():
+            raise Stopped('成就领奖已停止。')
+        if runner.input_epoch != self.reader.epoch:
+            raise InputInterrupted('成就领奖的输入代次已变化。')
 
     def _account(self, scene):
         visible = trusted(scene, .65)
@@ -284,6 +289,8 @@ class AchievementBulkClaim:
             for action, field in (('claim', 'bulk_input'), ('confirm', 'confirm_input')):
                 if action in self._attempted and self.record[field] == 'not_sent':
                     self.record[field] = 'unknown'
+        if self.c.runner.stop_requested:
+            self.record['stopped'] = True
 
     def dispatch(self, scene, action):
         if self._submission is None or self._submission[0] != action:
@@ -460,6 +467,7 @@ class AchievementBulkClaim:
             self.record['account_verified'] = False
             if isinstance(error, Stopped):
                 self.c.runner.stop()
+                self.record['stopped'] = True
             report.status = 'stopped' if isinstance(error, Stopped) else 'partial'
             report.failure_task, report.error = OPERATION, str(error)
             report.results[-1] = self._partial('已保留发送和反馈，发布前的当前来源待核对。')
