@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 from autohsr import daily_synthesis as synthesis
 from autohsr.app import Context
 from autohsr.config import Settings
-from autohsr.models import AutomationError, InputInterrupted, RunReport, Scene
+from autohsr.models import AutomationError, InputInterrupted, RunReport, Scene, Token
 from autohsr.recovery import reward_only_settings
 from autohsr.workflows import DailyWorkflow
 from autohsr.vision import Vision
@@ -20,9 +20,13 @@ from autohsr.tests.test_core import FakeContext, token
 
 
 def card(progress='0/1'):
+    # Card-only OCR geometry from 20261025_224808_077674/225211_030039_daily_partial.png.
     return Scene([token('星际和平指南', .09, .04), token('每日实训', .09, .08),
-        token('进度'+progress, .53, .40), token('使用1次「万能合成', .566, .46),
-        token('机」', .518, .49), token('+100', .577, .65), token('前往', .576, .767),
+        Token('进度'+progress, .9968, (.50469, .38889, .55885, .41389)),
+        Token('使用1次「万能合成', .9918, (.50781, .44537, .62604, .47315)),
+        Token('机」', .8950, (.50625, .47500, .53021, .50463)),
+        Token('+100', .9988, (.55729, .63704, .59948, .67037)),
+        Token('前往', .9999, (.56250, .75185, .59062, .77963)),
         token('UID:101688852', .1, .97)], captured_at=time.monotonic())
 
 
@@ -58,6 +62,59 @@ class DailySynthesisTests(TestCase):
         scene = card()
         scene.tokens = [t for t in scene.tokens if '万能' not in t.text]+[token('使用1次「助燃券」', .566, .46)]
         self.assertIsNone(synthesis.task_target(scene))
+
+    def test_task_progress_is_an_exact_field_and_wrap_order_comes_from_geometry(self):
+        scene = card('：0 ／ 1')
+        scene.tokens.reverse()
+        self.assertEqual(synthesis.task_target(scene).text, '前往')
+        for progress in ('0/10', '0/1/2', '0/1?'):
+            with self.subTest(progress=progress):
+                self.assertIsNone(synthesis.task_target(card(progress)))
+
+    def test_split_progress_keeps_one_contiguous_card_row(self):
+        label = Token('进度', .99, (.505, .389, .527, .413))
+        fraction = Token('0/1', .99, (.530, .390, .559, .413))
+        split_fraction = [
+            Token('0', .99, (.530, .390, .541, .413)),
+            Token('／', .99, (.543, .391, .550, .412)),
+            Token('1', .99, (.552, .390, .561, .413)),
+        ]
+        for parts in ([label, fraction], [label, *split_fraction],
+                      [label, Token('0/', .99, (.530, .390, .550, .413)), split_fraction[-1]]):
+            with self.subTest(parts=[t.text for t in parts]):
+                scene = card()
+                scene.tokens[2:3] = reversed(parts)
+                self.assertEqual(synthesis.task_target(scene), scene.find('前往', exact=True))
+        for parts in (
+            [label, fraction, Token('0', .99, (.565, .39, .577, .413))],
+            [label, label, fraction],
+            [label, Token('0/1', .99, (.530, .419, .559, .427))],
+            [label, Token('0/1', .99, (.555, .389, .583, .413))],
+            [label, Token('0/1', .99, (.489, .389, .506, .413))],
+            [label, fraction, token('已领取', .58, .766, score=.66)],
+        ):
+            with self.subTest(parts=[t.text for t in parts]):
+                scene = card()
+                scene.tokens[2:3] = parts
+                self.assertIsNone(synthesis.task_target(scene))
+
+    def test_split_task_title_keeps_the_separate_required_quantity(self):
+        scene = card()
+        scene.tokens[3:4] = [Token('次「万能合成', .99, (.551, .445, .626, .473)),
+                             Token('使用', .99, (.508, .445, .533, .473)),
+                             Token('1', .99, (.536, .445, .548, .473))]
+        self.assertEqual(synthesis.task_target(scene), scene.find('前往', exact=True))
+        scene.tokens[5] = Token('2', .99, (.536, .445, .548, .473))
+        self.assertIsNone(synthesis.task_target(scene))
+
+    def test_competing_same_card_fields_or_boundary_ocr_cannot_authorize_synthesis(self):
+        for candidate in (token('进度1/1', .57, .406), token('+200', .56, .657),
+                          token('已领取', .58, .766, score=.66), token('前往', .56, .772),
+                          Token('进度0/1', .99, (.482, .389, .54, .416))):
+            with self.subTest(candidate=candidate.text):
+                scene = card()
+                scene.tokens.append(candidate)
+                self.assertIsNone(synthesis.task_target(scene))
 
     def test_only_one_whitelisted_snack_with_two_single_materials_is_ready(self):
         self.assertTrue(synthesis.ready(snack()))

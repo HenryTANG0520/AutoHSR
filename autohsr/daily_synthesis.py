@@ -21,6 +21,16 @@ def compact(text):
     return re.sub(r'[^\w\u3400-\u9fff/]', '', normalize(text))
 
 
+def _unfinished_progress(tokens):
+    ordered = sorted(tokens, key=lambda t: t.box[0])
+    if (not ordered or max(t.box[1] for t in ordered) >= min(t.box[3] for t in ordered)
+            or any(not -.002 <= following.box[0] - previous.box[2] <= .018
+                   for previous, following in zip(ordered, ordered[1:]))):
+        return False
+    text = ' '.join(t.text.strip() for t in ordered)
+    return re.fullmatch(r'进度\s*[:：]?\s*0\s*[/／]\s*1', text) is not None
+
+
 def task_target(scene):
     if not (scene.has('星际和平指南', TITLE) and scene.has('每日实训', TITLE)):
         return None
@@ -29,10 +39,21 @@ def task_target(scene):
         if normalize(go.text) != '前往' or not go.within((.14, .68, .95, .88)):
             continue
         x = go.center[0]
-        region = (x-.08, .38, x+.08, .70)
-        content = compact(''.join(t.text for t in scene.tokens if t.within(region)))
-        if ('使用1次万能合成机' in content and '进度0/1' in content
-                and scene.has('+100', (x-.08, .60, x+.08, .71), exact=True)):
+        left, right = x - .08, x + .08
+        progress = [t for t in scene.tokens if t.within((left, .375, right, .428))]
+        title = [t for t in scene.tokens if t.within((left, .435, right, .535))]
+        points = [t for t in scene.tokens if t.within((left, .60, right, .71))
+                  and t.text.strip().startswith(('+', '＋'))]
+        actions = [t for t in scene.tokens if t.within((left, .68, right, .88))
+                   and normalize(t.text) in ('前往', '领取', '已领取', '已完成', '进行中', '本日活跃度已满')]
+        if (len(points) != 1 or actions != [go]
+                or any(not (.85 <= t.score <= 1 and left <= t.box[0] < t.box[2] <= right)
+                       for t in [*progress, *title, *points, go])):
+            continue
+        title.sort(key=lambda t: (round(t.center[1], 2), t.center[0]))
+        if (compact(''.join(t.text for t in title)) == '使用1次万能合成机'
+                and _unfinished_progress(progress)
+                and re.fullmatch(r'[+＋]\s*100', points[0].text.strip())):
             found.append(go)
     return found[0] if len(found) == 1 else None
 
