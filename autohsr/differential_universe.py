@@ -1606,24 +1606,34 @@ class DifferentialUniverseWorkflow:
         from .du_station_preview import EFFECT_REGION
         return normalize(''.join(t.text for t in scene.tokens if t.within(EFFECT_REGION)))
 
+    def _station_confirmation_target(self, scene):
+        return self._find(scene, ("确认", "确定", "进入区域", "进入下一站"), (.48, .78, .98, .99))
+
     def _select_station_alternative(self,source,target):
-        from .du_station_preview import card_for_label, station_cards, station_effect_covered, station_effect_ink
-        original_card=card_for_label(source,station_cards(source),target)
+        from .du_station_preview import (card_for_label, station_cards, station_effect_covered,
+                                         station_effect_ink, station_empty_beacon_effect_ink,
+                                         three_card_station_row)
+        original_cards=station_cards(source)
+        original_card=card_for_label(source,original_cards,target)
         original=station_effect_ink(source)
         if original_card is None or original is None or not original.danger_rows:
             raise AutomationError('未核实替代站点卡框及原预览，未切换。')
         original_text=self._station_effect_text(source)
         expected=normalize(target.text)
         epoch=self.ctx.scene_epoch
+        empty_beacon_source=(self.settings.differential_universe_mode=='periodic'
+                             and three_card_station_row(original_cards) and not original_card.selected
+                             and sum(card.selected for card in original_cards)==1)
         try:
             scene,kind=self._click(source,target,intent='station_select',label='station_hazard_alternative')
             if kind!='station_choice':
                 raise AutomationError('切换站点预览后页面改变，未确认进入。')
             latest=max(source.captured_at,scene.captured_at)
-            previous_text,previous_ink=None,None
+            previous_proof,previous_ink=None,None
             for _ in range(6):
                 self.ctx.sleep(.35)
                 text,ink=None,None
+                empty_beacon=False
                 try:
                     scene=self.ctx.snapshot()
                 except EmptyCapture:
@@ -1645,18 +1655,26 @@ class DifferentialUniverseWorkflow:
                             text=self._station_effect_text(scene)
                             if text and text!=original_text and '选择一张站点卡' not in text:
                                 effect=station_effect_ink(scene)
+                                if (effect is None and empty_beacon_source and three_card_station_row(cards)
+                                        and cards.index(selected[0])==original_cards.index(original_card)
+                                        and self._station_hazard(scene) is None):
+                                    effect=station_empty_beacon_effect_ink(
+                                        scene, self._station_confirmation_target(scene),
+                                        max(.85, self.settings.ocr_confidence))
+                                    empty_beacon=effect is not None
                                 if (effect is not None and not any(
                                         station_effect_covered(original.screen[row],effect.screen[row])
                                         for row in original.danger_rows)):
                                     ink=effect.ink
                 if ink is not None and not station_effect_covered(ink,original.screen):
-                    if (text==previous_text and previous_ink is not None
+                    proof=(text,empty_beacon,self.ctx.capture_occlusion_count)
+                    if (proof==previous_proof and previous_ink is not None
                             and station_effect_covered(ink,previous_ink) and station_effect_covered(previous_ink,ink)
                             and 0<=time.monotonic()-scene.captured_at<=8):
                         return scene
-                    previous_text,previous_ink=text,ink
+                    previous_proof,previous_ink=proof,ink
                 else:
-                    previous_text,previous_ink=None,None
+                    previous_proof,previous_ink=None,None
         except InputInterrupted as error:
             raise AutomationError('替代站点预览中断，未确认进入。') from error
         raise AutomationError('未核实替代站点选中及新效果，未确认进入。')
@@ -2911,8 +2929,7 @@ class DifferentialUniverseWorkflow:
                     if kind != "station_choice":
                         continue
                     scene,kind,alternative=self._safer_station_preview(scene,target)
-                    confirm = self._find(scene, ("确认", "确定", "进入区域", "进入下一站"),
-                                         (0.48, 0.78, 0.98, 0.99))
+                    confirm = self._station_confirmation_target(scene)
                     if confirm is None:
                         raise AutomationError("异常区域卡选中后未识别到确认按钮。")
                     try:

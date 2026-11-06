@@ -3,6 +3,7 @@
 from dataclasses import dataclass, replace
 import re
 
+from .config import RESOURCE_ROOT
 from .du_station_policy import CARD_LABELS, LABELS
 from .models import normalize
 
@@ -11,6 +12,10 @@ _STATION_HEADER = (0, 0, .32, .13)
 _STATION_CONFIRM = (.51, .86, .71, .94)
 _STATION_BODY = (.10, .14, .38, .33)
 _STATION_BEACON_CAPTION = (.58, .21, .69, .28)
+# Coordinates in the 960 × 540 view, inside the coloured panel edges.
+_BEACON_PANEL = (390, 83, 856, 168)
+_EMPTY_BEACON_GLYPHS = (574, 117, 645, 144)
+_CONFIRM_SEARCH = (465, 458, 695, 514)
 _REROLL_SEARCH = (263, 458, 492, 513)  # 960 × 540 view of the next-station control row.
 _REROLL_FIELD = re.compile(r'重[ 　]*抽[ 　]*([0-9０-９]+)?')
 _REROLL_NUMBER = re.compile(r'[0-9０-９]+')
@@ -224,6 +229,78 @@ def station_effect_covered(source,target):
     return np.count_nonzero(source&near)>=.93*np.count_nonzero(source)
 
 
+def three_card_station_row(cards):
+    """Distinguish the observed centered row from an incomplete four-card row."""
+    return len(cards) == 3 and all(abs(card.center_x-center) <= .03
+                                   for card, center in zip(cards, (.36, .50, .64)))
+
+
+def _inside(token, region):
+    left, top, right, bottom = region
+    x1, y1, x2, y2 = token.box
+    return left <= x1 < x2 <= right and top <= y1 < y2 <= bottom
+
+
+def _highlighted_confirm(hsv, target):
+    import cv2
+
+    left, top, right, bottom = _CONFIRM_SEARCH
+    yellow = cv2.inRange(hsv[top:bottom, left:right], (23, 92, 184), (47, 255, 255))
+    _, _, stats, _ = cv2.connectedComponentsWithStats(yellow)
+    controls = [(x, y, w, h) for x, y, w, h, area in stats[1:]
+                if 185 <= w <= 208 and 26 <= h <= 32 and area >= .83*w*h
+                and 0 < x < x+w < right-left and 0 < y < y+h < bottom-top]
+    if len(controls) != 1:
+        return False
+    (x, y, width, height), = controls
+    return _inside(target, ((left+x+.18*width)/960, (top+y+.08*height)/540,
+                            (left+x+.82*width)/960, (top+y+.92*height)/540))
+
+
+def station_empty_beacon_effect_ink(scene, confirm, confidence=.85):
+    """Verify the three-card layout's dim no-beacon panel and enabled control."""
+    if (scene.image is None or confirm is None or confirm.text.strip() != '确定'
+            or not confidence <= confirm.score <= 1):
+        return None
+    trusted = [token for token in scene.tokens if confidence <= token.score <= 1]
+    headings = {token.text.strip() for token in trusted if _inside(token, _STATION_HEADER)}
+    if not {'差分宇宙', '选择下一站'} <= headings:
+        return None
+    lines = [token for token in scene.tokens if token.within(EFFECT_REGION)]
+    body = [token for token in lines if _inside(token, _STATION_BODY)]
+    caption = [token for token in lines if _inside(token, _STATION_BEACON_CAPTION)
+               and token.text.strip() == '暂无信标']
+    if (len(caption) != 1 or len(lines) != len(body)+1
+            or any(token not in trusted for token in lines)):
+        return None
+
+    import cv2
+    import numpy as np
+
+    hsv = cv2.cvtColor(cv2.resize(scene.image, (960, 540)), cv2.COLOR_BGR2HSV)
+    if not _highlighted_confirm(hsv, confirm):
+        return None
+    left, top, right, bottom = _EMPTY_BEACON_GLYPHS
+    if not _inside(caption[0], (left/960, top/540, right/960, bottom/540)):
+        return None
+    glyphs = cv2.inRange(hsv[top:bottom, left:right], (0, 0, 55), (179, 70, 154)) > 0
+    left, top, right, bottom = _BEACON_PANEL
+    if np.count_nonzero(hsv[top:bottom, left:right, 2] >= 55) != np.count_nonzero(glyphs):
+        return None
+    try:
+        raw = (RESOURCE_ROOT/'assets/templates/du_station_empty_beacon_ink.png').read_bytes()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    reference = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_GRAYSCALE)
+    if (reference is None or reference.shape != glyphs.shape or not np.any(reference)
+            or not station_effect_covered(glyphs, reference > 0)
+            or not station_effect_covered(reference > 0, glyphs)):
+        return None
+    return station_effect_ink(replace(scene, tokens=body))
+
+
 def station_preview_observation(scene, confidence=.85):
     """Describe the observed card and description for page history."""
     import numpy as np
@@ -252,20 +329,15 @@ def station_preview_observation(scene, confidence=.85):
     if len(titles) != 1:
         return None
 
-    def panel_tokens(region):
-        left, top, right, bottom = region
-        return [token for token in trusted if left <= token.box[0] < token.box[2] <= right
-                and top <= token.box[1] < token.box[3] <= bottom]
-
     # The left description has white glyphs. The right panel can show a
     # dim “暂无信标” caption which is a separate OCR observation.
-    body = panel_tokens(_STATION_BODY)
+    body = [token for token in trusted if _inside(token, _STATION_BODY)]
     observation = dict(status='selected', visible_card_count=len(cards),
                        selected_column=column, selected_label=titles[0].text.strip(),
                        body_text=None, beacon_caption=None)
     if station_effect_ink(replace(scene, tokens=body)) is not None:
         observation['body_text'] = [token.text.strip() for token in body]
-    captions = panel_tokens(_STATION_BEACON_CAPTION)
+    captions = [token for token in trusted if _inside(token, _STATION_BEACON_CAPTION)]
     if len(captions) == 1 and captions[0].text.strip() == '暂无信标':
         observation['beacon_caption'] = captions[0].text.strip()
     return observation

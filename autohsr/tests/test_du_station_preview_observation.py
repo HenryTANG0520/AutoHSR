@@ -46,7 +46,7 @@ class StationPreviewObservationTests(unittest.TestCase):
         with self.assertRaisesRegex(AutomationError, '未点击'):
             guard_differential_universe_click(page, page.find('确定', exact=True), intent='station_confirm')
 
-    def test_historical_description_observation_does_not_satisfy_the_input_gate(self):
+    def test_historical_description_with_clipped_confirmation_still_stops(self):
         before = fixture('station_preview_three_450')
         after = fixture('station_preview_three_451')
         self.assertIsNone(station_effect_ink(after))

@@ -590,8 +590,13 @@ class DuRuntimeTests(unittest.TestCase):
                             scene.captured_at=first.captured_at
                         return scene
 
+                    def click(*_, before_send=None):
+                        if before_send is not None:
+                            before_send()
+                        clicked_scenes.append(flow.ctx.last_scene)
+
                     flow.ctx.snapshot=read
-                    window.click.side_effect=lambda *_:clicked_scenes.append(flow.ctx.last_scene)
+                    window.click.side_effect=click
                     before=flow.ctx.snapshot()
                     with self.assertRaisesRegex(AutomationError,'差分宇宙已失败'):
                         flow._progress_run(before,'station_choice')

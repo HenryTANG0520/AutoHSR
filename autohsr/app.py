@@ -877,6 +877,11 @@ class Context:
         self.log(f"点击：{label}")
         du_record = None
         discard_feedback = du_intent == 'curio_discard_confirm' or du_feedback_deadline is not None
+        station_confirmation = self.report.operation == 'differential_universe' and du_intent == 'station_confirm'
+        if station_confirmation:
+            station_window, station_geometry = self.window, scene.geometry
+            station_epoch, station_occlusions = self.scene_epoch, self.capture_occlusion_count
+            station_time, station_image, station_tokens = scene.captured_at, scene.image, tuple(scene.tokens)
         if self.report.operation == "differential_universe":
             before = self.evidence(scene, "du_before_" + re.sub(r"[^\w\u3400-\u9fff-]", "_", label)[:32])
             if discard_feedback:
@@ -888,7 +893,7 @@ class Context:
                     raise AutomationError('强制舍弃奇物反馈待核对，已超过观察时限，未发送输入。')
                 if not 0 <= now - scene.captured_at <= 8:
                     raise AutomationError('奇物舍弃证据保存后画面已过期，反馈待核对，未发送输入。')
-            du_record = {"action": label, "status": "requested" if points_goal is not None else "sent",
+            du_record = {"action": label, "status": "requested" if points_goal is not None or station_confirmation else "sent",
                          "before": str(before), "page_text": scene.text}
             self.report.differential_universe.setdefault("actions", []).append(du_record)
         if weekly_start_guard is not None:
@@ -911,7 +916,31 @@ class Context:
                 raise AutomationError('合成输入前画面已过期，未发送输入。')
             synthesis_resource_guard(scene, target, du_intent, self.report.daily_synthesis)
         try:
-            if points_goal is None:
+            if station_confirmation:
+                def check_station_before_send():
+                    if self.window is not station_window:
+                        raise InputInterrupted('差分选站确认前窗口已改变，未发送旧目标。')
+                    guard_differential_universe_click(scene, target, intent='station_confirm')
+                    station_window.guard(station_geometry)
+                    if (station_window.emergency_pressed() is True
+                            or getattr(self.runner, 'stop_requested', False) is True):
+                        raise Stopped('差分选站确认已停止，未发送输入。')
+                    if (self.scene_epoch != station_epoch or self.runner.input_epoch != station_epoch
+                            or scene is not self.last_scene or scene.geometry != station_geometry
+                            or scene.image is not station_image or tuple(scene.tokens) != station_tokens
+                            or self.capture_occlusion_count != station_occlusions or scene.captured_at != station_time
+                            or not 0 <= time.monotonic() - station_time <= 8):
+                        raise InputInterrupted('差分选站确认画面已改变或过期，未发送旧目标。')
+                    du_record['status'] = 'unknown'
+
+                try:
+                    station_window.click(*coordinates, station_geometry, before_send=check_station_before_send)
+                except (AutomationError, OSError) as error:
+                    if du_record['status'] == 'requested':
+                        du_record.update(status='not_sent', reason='station_confirmation_revalidation_failed', detail=str(error))
+                    raise
+                du_record['status'] = 'sent'
+            elif points_goal is None:
                 self.window.click(*coordinates,scene.geometry)
             else:
                 try:
