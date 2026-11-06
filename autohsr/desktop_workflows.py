@@ -495,12 +495,21 @@ class _WorkflowPanel(_Panel):
     def _choose_yaml_notify_profile(self):
         """Return an alias, an empty binding, or None when the import is cancelled."""
         from .desktop_dialogs import place_dialog
+        from .desktop_services import _profile_catalog
+        from .notify_profiles import NotifyError
+
+        def readable_aliases():
+            try:
+                catalog = _profile_catalog()
+            except (NotifyError, OSError):
+                return ()
+            return tuple(sorted(identity for identity, provider in catalog.items() if provider is not None))
 
         owner = self.winfo_toplevel()
         if owner.tk.call("grab", "current", str(owner)):
             return None
-        catalog = getattr(self.ui, "_desktop_notify_catalog", {})
-        aliases = tuple(sorted(identity for identity, provider in catalog.items() if provider is not None))
+        aliases = readable_aliases()
+        unbound = "不绑定通知方案"
         focused = t.focus_widget(owner)
         dialog = tk.Toplevel(owner)
         dialog.withdraw()
@@ -513,25 +522,38 @@ class _WorkflowPanel(_Panel):
         body.grid(row=0, column=0, sticky="nsew")
         body.columnconfigure(0, weight=1)
         ttk.Label(body, text="通知方案（可选）", style="CardTitle.TLabel").grid(row=0, sticky="w")
-        choice = ttk.Combobox(body, values=("不绑定通知方案", *aliases), state="readonly", width=1)
+        choice = ttk.Combobox(body, values=(unbound, *aliases), state="readonly", width=1)
         choice.grid(row=1, sticky="ew", pady=(pad, 0))
         choice.current(0)
         choice.bind("<MouseWheel>", lambda _: "break")
         hint = "含通知的流程需选方案。导入只生成草稿，发送须另行授权。"
         if not aliases:
             choice.state(("disabled",))
-            hint = "暂无可选方案。可继续导入不含通知的流程，或在通知工具刷新列表。"
-        t.wrapped_label(body, text=hint, style="CardHint.TLabel").grid(row=2, sticky="ew", pady=(pad, 0))
+            hint = "暂无可读的已保存方案。可继续导入不含通知的流程。"
+        guidance = t.wrapped_label(body, text=hint, style="CardHint.TLabel")
+        guidance.grid(row=2, sticky="ew", pady=(pad, 0))
 
         result = None
 
         def finish(importing=False):
-            nonlocal result
+            nonlocal aliases, result
             if importing:
                 index = choice.current()
                 if not 0 <= index <= len(aliases):
                     return "break"
-                result = aliases[index - 1] if index else ""
+                selected = aliases[index - 1] if index else ""
+                if selected:
+                    latest = readable_aliases()
+                    if selected not in latest:
+                        aliases = latest
+                        choice.configure(values=(unbound, *aliases))
+                        choice.current(0)
+                        if not aliases:
+                            choice.state(("disabled",))
+                        guidance.configure(text="所选方案已不可用。请重新选择，或确认不绑定。")
+                        (choice if aliases else submit).focus_set()
+                        return "break"
+                result = selected
             dialog.destroy()
             return "break"
 

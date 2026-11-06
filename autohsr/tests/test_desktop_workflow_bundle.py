@@ -1,6 +1,7 @@
 """Hidden Tk workflow bundle checks with explicit dialogs and a fake backend."""
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
+from itertools import product
 import json
 from pathlib import Path
 import sys
@@ -12,6 +13,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from autohsr import desktop_workflows as tools
+from autohsr.notify_profiles import NotifyError
 
 
 def workflow(name):
@@ -163,15 +165,30 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
         self.assertIsNone(self.panel.draft.source)
         self.assertTrue(self.panel.run_button.instate(("disabled",)))
 
-    def test_yaml_notification_choice_starts_unbound_and_lists_only_readable_aliases(self):
-        catalog = dict(second="smtp", first="telegram", unreadable=None)
-        for action, result in (("default", ""), ("select", "second"), ("escape", None), ("empty catalog", "")):
-            with self.subTest(action=action), ExitStack() as stack:
-                self.ui._desktop_notify_catalog = {} if action == "empty catalog" else catalog
+    def test_yaml_notification_choice_rechecks_local_aliases_at_all_scales(self):
+        first = dict(id="first", provider="telegram", readable=True)
+        second = dict(id="second", provider="smtp", readable=True)
+        rows = [second, first, dict(id="unreadable", readable=False), dict(id="INVALID", readable=True)]
+        cases = (("default", ""), ("first open", "second"), ("escape", None), ("empty catalog", ""), ("read error", ""),
+                 ("deleted during choice", ""), ("unreadable during choice", ""), ("non-notification", ""))
+        source = self.directory / "plain.yml"
+        source.write_text("name: 仅等待\nsteps: [{type: wait, seconds: 2}]\n", encoding="utf8")
+        self.open_dialog.return_value = str(source)
+        for scale, (action, result) in product((1, 1.5, 2), cases):
+            with self.subTest(scale=scale, action=action), ExitStack() as stack:
+                self.ui.ui_scale = scale
+                cached = {"deleted": "smtp", "never-saved": "telegram"}
+                self.ui._desktop_notify_catalog = dict(cached)
+                if action == "first open":
+                    del self.ui._desktop_notify_catalog
                 owner, dialog, choice, focused = Mock(), Mock(), Mock(), Mock()
                 owner.tk.call.return_value = ""
                 chosen = None
                 commands = {}
+                readable = [] if action in ("empty catalog", "read error", "non-notification") else rows
+                latest = {"deleted during choice": [first],
+                          "unreadable during choice": [first, dict(id="second", readable=False)]}.get(action, readable)
+                changed = latest is not readable
 
                 def current(index=None):
                     nonlocal chosen
@@ -192,9 +209,14 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
                         self.assertEqual(event, "<Escape>")
                         self.assertEqual(escape(None), "break")
                     else:
-                        if action == "select":
+                        if action == "first open" or changed:
                             choice.current(2)
                         commands["导入草稿"]()
+                        if changed:
+                            dialog.destroy.assert_not_called()
+                            choice.configure.assert_called_once_with(values=("不绑定通知方案", "first"))
+                            self.assertEqual(choice.current(), 0)
+                            commands["导入草稿"]()
 
                 owner.wait_window.side_effect = interact
                 choice.current.side_effect = current
@@ -207,17 +229,28 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
                 stack.enter_context(patch.object(tools.ttk, "Label", return_value=Mock()))
                 stack.enter_context(patch.object(tools.ttk, "Button", side_effect=button))
                 field = stack.enter_context(patch.object(tools.ttk, "Combobox", return_value=choice))
-                stack.enter_context(patch("autohsr.desktop_dialogs.place_dialog"))
+                place = stack.enter_context(patch("autohsr.desktop_dialogs.place_dialog"))
+                results = NotifyError("local profiles unavailable") if action == "read error" else [readable, latest]
                 listing = stack.enter_context(patch("autohsr.notify_profiles.ProfileStore.list_public",
-                                                    side_effect=AssertionError("use the cached alias catalog")))
+                                                    side_effect=results))
 
-                self.assertEqual(self.panel._choose_yaml_notify_profile(), result)
-                expected_aliases = () if action == "empty catalog" else ("first", "second")
+                if action == "non-notification":
+                    self.panel.import_native_yaml_button.invoke()
+                    self.deliver(self.execute(threaded=True))
+                    self.assertIsNone(self.panel.draft.source)
+                    self.assertEqual(self.panel.draft.document["steps"][0]["seconds"], 2)
+                else:
+                    self.assertEqual(self.panel._choose_yaml_notify_profile(), result)
+                expected_aliases = ("first", "second") if readable else ()
                 self.assertEqual(field.call_args.kwargs["values"], ("不绑定通知方案", *expected_aliases))
                 self.assertEqual(field.call_args.kwargs["state"], "readonly")
-                listing.assert_not_called()
-                if action == "empty catalog":
+                self.assertEqual(listing.call_count, 2 if action == "first open" or changed else 1)
+                self.assertEqual(getattr(self.ui, "_desktop_notify_catalog", None),
+                                 None if action == "first open" else cached)
+                if not readable:
                     choice.state.assert_called_once_with(("disabled",))
+                place.assert_called_once_with(dialog, owner, (round(520 * scale), round(200 * scale)),
+                                              (round(400 * scale), round(180 * scale)))
                 dialog.destroy.assert_called_once_with()
                 focused.focus_set.assert_called_once_with()
 
