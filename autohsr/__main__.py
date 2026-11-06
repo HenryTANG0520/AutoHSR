@@ -36,7 +36,8 @@ def main(argv: list[str] | None = None) -> int:
     add_workflow_arguments(mode, parser)
     from .notify_cli import add_arguments as add_notify_arguments
     add_notify_arguments(mode, parser)
-    from .reward_guide_cli import add_notification_arguments, run_notification
+    from .reward_guide_cli import add_capture_argument, add_notification_arguments, run_capture, run_notification
+    add_capture_argument(mode)
     add_notification_arguments(mode, parser)
     from .schedule_cli import add_arguments as add_schedule_arguments
     add_schedule_arguments(mode, parser)
@@ -152,6 +153,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    if args.reward_guide_capture is not None:
+        return run_capture(args, raw_args, parser)
     if args.reward_guide_notify is not None or args.reward_guide_notify_profile is not None:
         return run_notification(args, raw_args, parser)
     validate_workflow_arguments(args, parser)

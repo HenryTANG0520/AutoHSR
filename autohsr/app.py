@@ -2301,7 +2301,8 @@ class Runner:
                  use_power_plan=False,new_power_plan=False,currency_overclock_open_a0=False,build_target_selection=None,
                  challenge_lobby_mode=None, assignments_only=False, daily_reward_mode=None,
                  daily_attachment_only=None, workflow_screen_query=None, workflow_page=None,
-                 observation_wait_for_foreground=False, daily_event_claim_day=None, daily_message_reply=None):
+                 observation_wait_for_foreground=False, daily_event_claim_day=None, daily_message_reply=None,
+                 reward_guide_capture=None):
         from dataclasses import replace
         if (type(observation_wait_for_foreground) is not bool
                 or observation_wait_for_foreground
@@ -2309,6 +2310,13 @@ class Runner:
                     ACHIEVEMENT_CLAIM_OPERATION, MESSAGE_REPLY_OPERATION}):
             raise ValueError('前台等待只适用于明确启动的游戏页面核对。')
         self.observation_wait_for_foreground = observation_wait_for_foreground
+        if reward_guide_capture is not None:
+            from .reward_guide_capture import RewardGuideCapture
+
+            if (type(reward_guide_capture) is not RewardGuideCapture or operation != SCREEN_OPERATION
+                    or observation_wait_for_foreground):
+                raise ValueError('奖励指南单屏导出需要独立的当前前台核对入口。')
+        self.reward_guide_capture = reward_guide_capture
         if operation in WORKFLOW_FOREGROUND_TASKS and (new_battle_run or use_power_plan or new_power_plan or weekly_plan is not None):
             raise ValueError('任务流的页面观察或切换不能建立刷本或周常预算。')
         if operation in GAME_VISION_TASKS:
@@ -3590,6 +3598,9 @@ class Runner:
                 elif guarded_observation:
                     self.report.report_saved = True
                     self._save_run_report(directory, daily_observation_reader=daily_observation_reader)
+                    if (self.reward_guide_capture is not None and self.report.status == 'success'
+                            and self.report.report_saved is True):
+                        self.reward_guide_capture.publish(daily_observation_reader)
                     self.emit(dict(type='task', **self.report.results[-1].__dict__))
                 elif challenge_reader is None:
                     self.report.report_saved = True

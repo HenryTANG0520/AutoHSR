@@ -7,7 +7,7 @@ from .achievement_pages import (ACHIEVEMENT_CATEGORIES, achievement_reward_panel
 from .daily_event_observe import read_event_installation
 from .daily_event_pages import _VERSION
 from .daily_reward_guide_pages import reward_guide_page
-from .models import AutomationError, Stopped, TaskResult
+from .models import AutomationError, InputInterrupted, Stopped, TaskResult
 from .reward_guide_viewport import _content_box, reward_guide_viewport
 from .storage import hold_read_sources, replace_file
 from .workflow_navigation import COLLECTION_FLOOR, classify_page
@@ -196,6 +196,33 @@ class ScreenTestObserver:
         if self._read_pair(self._pair) != self._observation:
             raise AutomationError(_PUBLICATION_FAILED)
         self._check_record()
+
+    @contextmanager
+    def reward_guide_crop(self):
+        """Keep the verified viewport and its installation bound during export."""
+        self._check_record()
+        viewport = self.record.get('reward_guide')
+        if (self.context.report.report_saved is not True or self._guide_installation is None
+                or not _verified_guide_viewport(viewport)):
+            raise AutomationError(_UNVERIFIED)
+
+        def check():
+            self.guard_publication()
+            self._reader.guard()
+            runner = self.context.runner
+            if runner.stop_requested or self._reader.window.emergency_pressed():
+                raise Stopped(_STOPPED)
+            if runner.input_epoch != self._reader.epoch:
+                raise InputInterrupted(_PUBLICATION_FAILED)
+
+        with ExitStack() as locks:
+            try:
+                locks.enter_context(hold_read_sources((self._guide_installation.source,)))
+            except OSError:
+                raise AutomationError(_PUBLICATION_FAILED) from None
+            check()
+            left, top, right, bottom = viewport['content_box']
+            yield self._pair[1].image[top:bottom, left:right].copy(), check
 
     def save_verified_report(self, temporary, write_report):
         report = self.context.report
