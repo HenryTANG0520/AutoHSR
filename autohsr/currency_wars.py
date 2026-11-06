@@ -63,13 +63,15 @@ class CurrencyWarsWorkflow:
     def __init__(self, context):
         self.c = context
 
-    def _require_current_scene(self, scene):
+    def _require_current_scene(self, scene, *, handoff_observation=False):
         if self.c.scene_epoch != self.c.runner.input_epoch or self.c.last_scene is not scene:
             raise InputInterrupted("暂停后重新采集货币战争画面，不沿用旧证据。")
         if not math.isfinite(scene.captured_at) or not 0 <= time.monotonic() - scene.captured_at <= 8:
             raise AutomationError("货币战争画面已过期，请重新只读识别。")
-        if (getattr(self.c, 'overclock_session', None) is not None
-                and self.c.report.operation == 'currency_wars_flow_test'):
+        session = getattr(self.c, 'overclock_session', None)
+        if session is not None and self.c.report.operation == 'currency_wars_flow_test':
+            if getattr(session, 'legacy_handoff', False) and not handoff_observation:
+                raise AutomationError('超频 A0 首备战接续仅可观察当前节点。')
             from .currency_wars_overclock import require_legacy_frame
             require_legacy_frame(self.c, scene)
 

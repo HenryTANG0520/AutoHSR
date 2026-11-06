@@ -387,7 +387,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 
 客户端 `4.6.0` 可用独立 CLI `python -m autohsr --currency-wars-open-overclock-a0` 从已选超频的模式页点击一次「进入超频博弈」。成功条件为同账号连续两张 A0 黑铁难度页，已在 A0 时零点击核实。输入仅限打开难度页，非 A0 或冲突反馈停在当前页并保留待核对记录。本步骤已按历史脱敏 OCR 做离线验证，连续实机回执待采集。[入口与回执](docs/currency-wars-development.md#2026-11-06-超频-a0-难度页单步)
 
-已打开的超频 A0 难度页可用独立 CLI `python -m autohsr --currency-wars-start-overclock-a0` 提交一次开局。客户端限 `4.6.0`，两张同账号首领预览须均读到敌人难度 1。CLI 停在预览页，开局与整局分开记录。旧桌面「整局验证」共用开局与旧记录门禁。「推进当前对局」从可复核的原首领预览接续。当前为离线原生假窗口验证。[开局与旧记录门禁](docs/currency-wars-development.md#2026-11-06-超频-a0-单次开局)
+已打开的超频 A0 难度页可用独立 CLI `python -m autohsr --currency-wars-start-overclock-a0` 提交一次开局。客户端限 `4.6.0`，两张同账号首领预览须均读到敌人难度 1。CLI 停在预览页，开局与整局分开记录。旧「整局验证」共用开局门禁并可在同次运行继续。独立开局后，在分步备战尚未写入意图时，「推进当前对局」可凭原回执和当前窗口核对预览，单次推进。当前为离线原生假窗口验证。[开局与旧记录门禁](docs/currency-wars-development.md#2026-11-06-超频-a0-单次开局)
+
+`python -m autohsr --currency-wars-prepare-overclock-a0` 沿同一原开局推进一步。首领预览点「下一步」，第一位面点「点击空白处继续」，随后选择并确认人身意外险，止于商店收起的 `1-1` 初始备战。每次运行在同账号、客户端和游戏窗口核对前一步回执，点击前落盘，双帧反馈后可再次调用。到达后再次调用仅双帧观察。旧开局缺窗口身份、旧局提示、奖励弹窗、商店展开或前一步待核对时停下留证。当前跨运行路径已通过离线假窗口验证，连续实机待验收。[备战步骤与证据](docs/currency-wars-development.md#2026-11-06-超频-a0-首次备战接续)
+
+已有完整四步首备战回执时，桌面「推进当前对局」会核对原账与当前 `1-1` 双帧，单独记录 `handoff_verified`，停在同节点。未核实的旧流程、部署或出战记录会挡住接续。队伍、掉落及出战另待核对，整局报告保留 `partial`。[旧入口接续范围](docs/currency-wars-development.md#2026-11-06-超频-a0-旧入口同节点接续)
 
 “标准开发：新开A8-40”与CLI `python -m autohsr --currency-wars-standard`在核实配置后提交一次新对局，记录首领预览、位面转换与当前局面。`--resume-active-currency`或“接续已记录A8-40开发局”只接续已核实开始且上步无待核对动作的记录。`runs/currency-standard-session.json`原子保存对局标识和逐步pending/verified/unknown；Context输入前回读核对已落盘意图、动作、输入代次和新鲜画面。旧只读、准备及超频入口不能发送标准开局；已有对局记录阻止再次开局。已实机验证开局、环境选择确认及开场掉落领取，停在1-1备战；此后新增的标准采集、购买、经验、合法满员交换和节点推进通过离线回归，未作为完整实机整局验收；开发接续不计独立验收。
 

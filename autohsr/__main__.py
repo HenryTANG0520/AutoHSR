@@ -47,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
                       help="从已选超频模式打开难度页，核对A0黑铁，不调整档位或开始对局")
     mode.add_argument("--currency-wars-start-overclock-a0", action="store_true",
                       help="从已核实的超频A0难度页提交一次开局，核对首领预览后停止")
+    mode.add_argument("--currency-wars-prepare-overclock-a0", action="store_true",
+                      help="从原超频A0开局回执推进一个已校准的备战步骤")
     mode.add_argument("--currency-wars-standard", action="store_true", help="标准A8-40开发：核实配置后新开局；未知页面停下留证")
     mode.add_argument('--currency-wars-loop', action='store_true', help='标准A8-40连续开发：逐局核实结算与保存，失败或未知即停止')
     mode.add_argument('--currency-wars-points',action='store_true',help='导航到货币战争主页，核对当前积分、账号与游戏周；不开始对局或领取积分奖励')
@@ -128,8 +130,9 @@ def main(argv: list[str] | None = None) -> int:
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
     overclock_config = args.currency_wars_configure_overclock or args.currency_wars_open_overclock_a0
-    overclock_entry = overclock_config or args.currency_wars_start_overclock_a0
-    overclock_flag = ("--currency-wars-start-overclock-a0" if args.currency_wars_start_overclock_a0
+    overclock_entry = overclock_config or args.currency_wars_start_overclock_a0 or args.currency_wars_prepare_overclock_a0
+    overclock_flag = ("--currency-wars-prepare-overclock-a0" if args.currency_wars_prepare_overclock_a0
+                      else "--currency-wars-start-overclock-a0" if args.currency_wars_start_overclock_a0
                       else "--currency-wars-open-overclock-a0" if args.currency_wars_open_overclock_a0
                       else "--currency-wars-configure-overclock")
     if overclock_entry and any(
@@ -409,9 +412,10 @@ def main(argv: list[str] | None = None) -> int:
         elif build_target:
             operation = 'build_target_preview' if args.preview_build_target else 'build_target_read'
             runner = Runner(settings, emit, operation=operation)
-        elif args.currency_wars_start_overclock_a0:
-            from .currency_wars_overclock_session import START_OPERATION
-            runner = Runner(settings, emit, operation=START_OPERATION)
+        elif args.currency_wars_start_overclock_a0 or args.currency_wars_prepare_overclock_a0:
+            from .currency_wars_overclock_session import PREP_OPERATION, START_OPERATION
+            runner = Runner(settings, emit, operation=(
+                PREP_OPERATION if args.currency_wars_prepare_overclock_a0 else START_OPERATION))
         elif args.currency_wars_loop:
             from .currency_wars_loop import CurrencyLoopRunner
             runner = CurrencyLoopRunner(settings, emit, runs=args.currency_runs, resume=args.resume_currency_loop,

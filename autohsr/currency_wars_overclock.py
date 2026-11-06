@@ -1,7 +1,7 @@
 """Explicit mode selection and access to the calibrated overclock A0 page."""
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass
 import hashlib
 import json
@@ -13,7 +13,12 @@ import time
 from .currency_wars import CurrencyWarsWorkflow, TASK, observe
 from .currency_wars_identity import AccountNotObserved, account_key, installed_client
 from .currency_wars_overclock_session import (
-    FLOW_OPERATION, START_ACTION, START_FEEDBACK, START_OPERATION, OverclockSession, client_key,
+    FLOW_OPERATION, PREP_OPERATION, START_ACTION, START_FEEDBACK, START_OPERATION, OverclockSession, client_key,
+)
+from .currency_wars_overclock_preparation import MODE as PREPARATION_MODE
+from .currency_wars_overclock_preparation_pages import (
+    ACTIONS as PREPARATION_ACTIONS, PHASES as PREPARATION_PHASES, PreparationPage,
+    preparation_target, read_preparation,
 )
 from .currency_wars_prepare import trusted
 from .currency_wars_standard import NAVIGATION_BLOCKERS
@@ -22,6 +27,7 @@ from .models import FULL, AutomationError, EmptyCapture, InputInterrupted, Scene
 from .storage import file_revision, hold_read_sources, replace_file
 
 OPERATION = 'currency_wars_overclock_configure'
+LEGACY_HANDOFF_MODE = 'overclock_a0_legacy_handoff'
 MODE_ROW = (0, .33, .2, .43)
 MODE_TITLE = (.30, .11, .40, .18)
 MODE_ENTRY = (.75, .85, .96, .94)
@@ -204,14 +210,91 @@ def require_legacy_frame(context, scene):
         if (session.data.get('match_started') is not True
                 or (session.data['account_key'], session.data['client_key']) != binding[:2]):
             raise AutomationError('当前画面与原已核实的超频开局账号或安装来源不符。')
+        window_key = session.data.get('window_key')
+        if window_key is not None and window.current_window_key() != window_key:
+            raise AutomationError('当前游戏窗口与原超频 A0 开局不一致。')
     context._overclock_legacy_binding = binding
+
+
+def click_legacy_preview(context, scene, target):
+    """Send the old preview step against its own pending intent and original opening."""
+    from .currency_wars_entry import entry_target
+
+    session = context.overclock_session
+    guard = CurrencyWarsWorkflow(context)
+    expected = context.report.currency_wars
+    window, geometry = context.window, scene.geometry
+    epoch = context.runner.input_epoch
+    captured_at, occlusions = scene.captured_at, context.capture_occlusion_count
+    frozen_image = _freeze_scene_pixels(scene, geometry)
+    pixels = _pixels(frozen_image, geometry)
+    checked_tokens = tuple(scene.tokens)
+    revisions = {}
+    try:
+        with ExitStack() as sources:
+            def hold_source(path):
+                if path not in revisions:
+                    _require_stable_source(path, revisions)
+                    sources.enter_context(hold_read_sources((path,)))
+                _require_stable_source(path, revisions)
+
+            def before_send():
+                unchanged = _hold_history_names(session.path.parent, sources)
+                session.require_history(hold_source)
+                original = session.require_active(hold_source)
+                action = session.require_pending_preview(expected, hold_source)
+                proof = _recorded_evidence(dict(screenshot=action.get('before'), sha256=action.get('before_sha256'),
+                                                captured_at=action.get('captured_at'), state=START_FEEDBACK),
+                                           START_FEEDBACK)
+                _check_evidence(proof, session.run_dir, check_source=hold_source,
+                                expected_pixels=(geometry, pixels))
+                client = installed_client(window.current_executable())
+                hold_source(Path(client['source']))
+                context.checkpoint()
+                guard._require_current_scene(scene)
+                if (action.get('target') != list(target.box) or action.get('input_epoch') != epoch
+                        or proof.captured_at != captured_at
+                        or original.get('window_key') is not None
+                        and proof.captured_at <= original['feedback'][-1]['captured_at']
+                        or entry_target(scene, context.settings.ocr_confidence) != (
+                            'advance_boss_preview', 'plane_map', target)):
+                    raise AutomationError('首领预览的当前页面、目标或原截图已改变。')
+                if session.advancing and (not original.get('preview_factions') or
+                        preview_factions(scene, context.settings.ocr_confidence) != original['preview_factions']):
+                    raise AutomationError('当前首领预览与原开局的阵营回执不一致。')
+                window.guard(geometry)
+                session.require_no_preparation()
+                unchanged()
+                if context.window is not window:
+                    raise AutomationError('当前游戏窗口与原超频 A0 开局不一致。')
+                window_key = original.get('window_key')
+                if window_key is not None and window.current_window_key() != window_key:
+                    raise AutomationError('当前游戏窗口与原超频 A0 开局不一致。')
+                window.guard(geometry)
+                if window.emergency_pressed():
+                    raise Stopped('F10 紧急停止。')
+                if context.runner.stop_requested:
+                    raise Stopped('首领预览已停止，原记录保留。')
+                if (context.runner.input_epoch != epoch or context.scene_epoch != epoch
+                        or context.last_scene is not scene):
+                    raise InputInterrupted('首领预览的输入代次已经改变。')
+                if (scene.captured_at != captured_at or context.capture_occlusion_count != occlusions
+                        or not 0 <= time.monotonic() - captured_at <= MAX_FRAME_AGE):
+                    raise AutomationError('首领预览证据的时间或遮挡状态已改变。')
+                _require_frozen_scene(scene, frozen_image, checked_tokens, geometry)
+                session.preview_consumed = True
+                context.last_scene, context._scroll_anchor = None, None
+
+            window.click(*target.center, geometry, before_send=before_send)
+    except OSError as error:
+        raise AutomationError('首领预览原证据读取或共享读保护失败，保留原件。') from error
 
 
 @dataclass(frozen=True, repr=False)
 class _Frame:
     scene: Scene
     captured_at: float
-    observation: OverclockObservation
+    observation: OverclockObservation | PreparationPage
     account_observed: bool
     pixels: str
     occlusions: int
@@ -300,6 +383,35 @@ def _pixels(image, geometry):
     return hashlib.sha256(_pixel_bytes(image, geometry)).hexdigest()
 
 
+def _freeze_scene_pixels(scene, geometry):
+    import numpy as np
+
+    shape = (geometry.height, geometry.width, 3)
+    # A bytes-backed view keeps the captured pixels immutable through native send.
+    image = np.frombuffer(_pixel_bytes(scene.image, geometry), dtype=np.uint8).reshape(shape)
+    scene.image = image
+    return image
+
+
+def _require_frozen_scene(scene, image, tokens, geometry):
+    if (scene.geometry != geometry or scene.image is not image
+            or image.shape != (geometry.height, geometry.width, 3) or image.dtype.name != 'uint8'
+            or not image.flags.c_contiguous or image.flags.writeable or tuple(scene.tokens) != tokens):
+        raise AutomationError('超频配置核实后的像素来源或文字已改变。')
+
+
+def _png_pixels(raw, geometry):
+    import cv2
+    import numpy as np
+
+    if (len(raw) < 24 or not raw.startswith(PNG_SIGNATURE) or raw[12:16] != b'IHDR'
+            or int.from_bytes(raw[16:20], 'big') != geometry.width
+            or int.from_bytes(raw[20:24], 'big') != geometry.height):
+        raise AutomationError('超频配置落盘 PNG 与原窗口尺寸不符。')
+    image = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_UNCHANGED)
+    return _pixels(image, geometry)
+
+
 def _evidence_bytes(path, directory, *, check_source=None):
     source = Path(path)
     if not source.is_absolute() and not source.anchor:
@@ -310,11 +422,15 @@ def _evidence_bytes(path, directory, *, check_source=None):
     return path, _read_bytes(path, MAX_EVIDENCE_BYTES, check_source=check_source)
 
 
-def _check_evidence(proof, directory, *, check_source=None):
+def _check_evidence(proof, directory, *, check_source=None, expected_pixels=None):
     path, raw = _evidence_bytes(proof.screenshot, directory, check_source=check_source)
     if (len(raw) < 24 or not raw.startswith(PNG_SIGNATURE) or raw[12:16] != b'IHDR'
             or hashlib.sha256(raw).hexdigest() != proof.sha256):
         raise AutomationError('超频配置落盘证据已改变。')
+    if expected_pixels is not None:
+        geometry, digest = expected_pixels
+        if _png_pixels(raw, geometry) != digest:
+            raise AutomationError('超频配置落盘 PNG 与原画面像素不同。')
     return path
 
 
@@ -371,12 +487,22 @@ def _resolved_configuration(data, directory, *, check_source=None):
 
 
 class _Configuration:
-    def __init__(self, context, *, start=False):
+    def __init__(self, context, *, start=False, prepare=False):
         self.c = context
         self.operation = context.report.operation
         self.session = getattr(context, 'overclock_session', None) if start else None
-        if not context.report.run_dir or not start and self.operation != OPERATION:
+        self.preparation = getattr(context, 'overclock_preparation', None) if prepare else None
+        self.handoff = prepare and self.operation == FLOW_OPERATION
+        if not context.report.run_dir or not (start or prepare) and self.operation != OPERATION:
             raise AutomationError('超频操作需要明确入口和本次未使用的运行记录。')
+        if prepare and (self.operation not in (PREP_OPERATION, FLOW_OPERATION) or self.preparation is None):
+            raise AutomationError('超频备战需要明确入口和原开局回执。')
+        if self.handoff:
+            session = self.preparation.session
+            if (not session.legacy_handoff or context.runner.currency_start_from_lobby
+                    or session is not getattr(context, 'overclock_session', None)):
+                raise AutomationError('推进当前对局需要本次预检过的超频 A0 首备战回执。')
+            self.preparation.require_complete()
         if start:
             start_allowed = self.operation == START_OPERATION or (
                 self.operation == FLOW_OPERATION and context.runner.currency_start_from_lobby)
@@ -386,20 +512,33 @@ class _Configuration:
         if start and self.session.run_dir != self.directory:
             raise AutomationError('超频开局意图与本次运行目录不一致。')
         self.path = self.session.path if start else self.directory / JOURNAL
-        if not self.directory.is_dir() or self.path.exists():
+        if prepare:
+            if self.preparation.session.run_dir != self.directory:
+                raise AutomationError('超频备战回执与本次运行目录不一致。')
+            self.path = self.preparation.path
+        if not self.directory.is_dir() or not prepare and self.path.exists():
             raise AutomationError('超频模式配置的运行目录无效或已有记录。')
         self.epoch = context.runner.input_epoch
         self.confidence = context.settings.ocr_confidence
         self.step = _START_A0 if start else _OPEN_A0 if context.runner.currency_overclock_open_a0 else _SELECT
         self.ready_states = () if start else ('a0_observed',) if self.step is _OPEN_A0 else READY_STATES
         self.start_states = (self.step.before, *self.ready_states)
+        if prepare:
+            index = len(self.preparation.steps)
+            self.step = (_Step(PREPARATION_ACTIONS[index], PREPARATION_PHASES[index],
+                               PREPARATION_PHASES[index + 1], '', FULL)
+                         if index < len(PREPARATION_ACTIONS) else None)
+            self.start_states = (self.preparation.phase,)
+            self.ready_states = self.start_states if self.step is None else ()
         self.client = None
         self.client_window = None
+        self.window_key = self.preparation.window_key if prepare else None
         legacy = getattr(context, '_overclock_legacy_binding', None)
         self.account = legacy[0] if start and legacy is not None else None
         self.geometry = None
         self.pending = None
         self.saved_journal = None
+        self.journal_revision = None
         self.guard = CurrencyWarsWorkflow(context)
         self.data = dict(mode='overclock_a0_start' if start else 'overclock_configuration',
                          status='observing', mode_verified=False,
@@ -407,6 +546,15 @@ class _Configuration:
                          actions=[], observation=None, feedback=[])
         if self.step is _OPEN_A0:
             self.data['objective'] = A0_OBJECTIVE
+        if prepare:
+            self.saved_journal = self.preparation.raw
+            self.journal_revision = self.preparation.revision
+            self.account = self.preparation.session.data['account_key']
+            self.data.update(mode=PREPARATION_MODE, match_started=True, mode_verified=True,
+                             difficulty_verified=True, phase=self.preparation.phase, first_preparation_verified=False)
+        if self.handoff:
+            self.data.update(mode=LEGACY_HANDOFF_MODE, status='partial', handoff_verified=False,
+                             gameplay_enabled=False, roster_verified=False, loot_verified=False)
 
     def _require_client(self):
         if self.step is _SELECT:
@@ -422,24 +570,60 @@ class _Configuration:
         legacy = getattr(self.c, '_overclock_legacy_binding', None)
         if self.session is not None and legacy is not None and legacy[1:] != (client_key(client), *source_window):
             raise AutomationError('超频开局的安装来源或窗口与本次入口不符。')
+        if self.preparation is not None and client_key(client) != self.preparation.session.data['client_key']:
+            raise AutomationError('当前客户端的安装来源与原超频 A0 开局不一致。')
+        if self.session is not None and self.client is None:
+            self.window_key = window.current_window_key()
+        self._require_window_key()
         self.client = client
 
     def _require_client_window(self):
         if self.client_window is not None and self.client_window != (self.c.window, self.c.window.hwnd):
             raise AutomationError('超频 A0 难度页的原窗口已改变。')
 
-    def _persist(self, data, *, check_sources=None, check_frames=None, read_sources=()):
+    def _require_window_key(self):
+        if self.window_key is not None and self.c.window.current_window_key() != self.window_key:
+            raise AutomationError('当前游戏窗口与原超频 A0 开局不一致。')
+
+    @contextmanager
+    def _publication_scope(self, read_sources, recheck, proofs):
+        revisions = {}
+        with ExitStack() as stack:
+            def hold_source(path):
+                if path not in revisions:
+                    _require_stable_source(path, revisions)
+                    stack.enter_context(hold_read_sources((path,)))
+                _require_stable_source(path, revisions)
+
+            for path in read_sources:
+                hold_source(path)
+            if self.session is not None and len({revision[:2] for revision in revisions.values()}) != len(revisions):
+                raise AutomationError('超频开局需要各自独立的原始证据。')
+            if self.preparation is not None:
+                unchanged = _hold_history_names(self.directory.parent, stack)
+                self.preparation.require_sources(hold_source)
+                if proofs:
+                    self.preparation.require_new_proofs(proofs, revisions)
+            recheck()
+            if self.preparation is not None:
+                unchanged()
+            yield
+
+    def _persist(self, data, *, check_sources=None, check_frames=None, read_sources=(), proofs=()):
         record = data
+        private = self.session is not None or self.preparation is not None
+        if private and not data['actions']:
+            self.data = self.c.report.currency_wars = data
+            return None
         if self.session is not None:
-            if not data['actions']:
-                self.data = self.c.report.currency_wars = data
-                return None
-            record = self.session.envelope(data, self.account, self.client)
+            record = self.session.envelope(data, self.account, self.client, window_key=self.window_key)
+        if self.preparation is not None:
+            record = self.preparation.envelope(data)
         payload = json.dumps(record, ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
         if len(payload) > MAX_JOURNAL_BYTES:
             raise AutomationError('超频配置记录超过 1 MiB，原记录保留。')
         temporary = self.path.with_suffix('.tmp')
-        with temporary.open('xb' if self.session is not None else 'wb') as stream:
+        with temporary.open('xb' if private else 'wb') as stream:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
@@ -454,30 +638,22 @@ class _Configuration:
             if check_frames is not None:
                 check_frames()
 
-        if read_sources:
-            @contextmanager
-            def verified_attempt():
-                revisions = {}
-                for path in read_sources:
-                    _require_stable_source(path, revisions)
-                with hold_read_sources(read_sources):
-                    for path in read_sources:
-                        _require_stable_source(path, revisions)
-                    if self.session is not None and len({revision[:2] for revision in revisions.values()}) != len(revisions):
-                        raise AutomationError('超频开局需要各自独立的原始证据。')
-                    recheck()
-                    yield
+        def attempt():
+            return self._publication_scope(read_sources, recheck, proofs)
 
-            replace_file(temporary, self.path, attempt_scope=verified_attempt)
-        elif self.session is not None and previous is None:
+        if private and previous is None:
             # On Windows rename without replacement fails if another receipt has appeared.
-            recheck()
-            temporary.rename(self.path)
+            with attempt():
+                temporary.rename(self.path)
+        elif read_sources or self.preparation is not None:
+            replace_file(temporary, self.path, attempt_scope=attempt)
         else:
             replace_file(temporary, self.path, before_replace=recheck)
         self.saved_journal = payload
         if self.session is not None:
             self.session.raw, self.session.data = payload, record
+        if self.preparation is not None:
+            self.journal_revision = file_revision(self.path)
         self.data = self.c.report.currency_wars = data
         return payload
 
@@ -485,6 +661,8 @@ class _Configuration:
         try:
             if self.path.resolve(strict=True) != self.path:
                 raise AutomationError('超频配置记录的来源路径已改变。')
+            if self.preparation is not None and file_revision(self.path) != self.journal_revision:
+                raise AutomationError('首次备战原记录的文件修订已改变。')
             actual = _read_bytes(self.path, MAX_JOURNAL_BYTES)
         except FileNotFoundError:
             actual = None
@@ -525,7 +703,7 @@ class _Configuration:
         if self.c.runner.input_epoch != self.epoch:
             raise InputInterrupted('超频配置输入代次改变，原记录保留。')
         if scene is not None:
-            self.guard._require_current_scene(scene)
+            self.guard._require_current_scene(scene, handoff_observation=self.handoff)
             if scene.geometry is None or scene.geometry != self.geometry:
                 raise AutomationError('超频配置的窗口来源或位置已变化。')
 
@@ -543,9 +721,18 @@ class _Configuration:
         return True
 
     def _observe(self, scene):
+        if self.preparation is not None:
+            return read_preparation(scene, self.confidence)
         if self.step is _START_A0:
             return read_overclock_start(scene, self.confidence)
         return read_overclock(scene, self.confidence, require_a0_details=self.step is _OPEN_A0)
+
+    def _target(self, scene):
+        if self.preparation is not None:
+            if not self.preparation.matches(self._observe(scene)):
+                raise AutomationError('当前备战页面与上一阶段的双帧回执不一致。')
+            return preparation_target(scene, self.step.action, self.confidence)
+        return _target(scene, self.confidence, self.step)
 
     def _capture(self):
         try:
@@ -576,18 +763,10 @@ class _Configuration:
         self._require_frame(frame, current=current)
 
     def _evidence(self, frame, label):
-        import cv2
-        import numpy as np
         self._check_frame(frame)
         path = self.c.evidence(frame.scene, 'currency_overclock_' + label)
         path, raw = _evidence_bytes(path, self.directory)
-        # Check the PNG header before decoding an externally replaced file.
-        if (not raw.startswith(PNG_SIGNATURE) or raw[12:16] != b'IHDR'
-                or int.from_bytes(raw[16:20], 'big') != self.geometry.width
-                or int.from_bytes(raw[20:24], 'big') != self.geometry.height):
-            raise AutomationError('超频配置落盘 PNG 与原窗口尺寸不符。')
-        decoded = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_UNCHANGED)
-        if _pixels(decoded, self.geometry) != frame.pixels:
+        if _png_pixels(raw, self.geometry) != frame.pixels:
             raise AutomationError('超频配置落盘 PNG 与原画面像素不同。')
         self._check_frame(frame)
         return _Evidence(str(path), hashlib.sha256(raw).hexdigest(), frame.captured_at, frame.observation.state)
@@ -616,22 +795,23 @@ class _Configuration:
                 hold_source(path)
             if self.step is not _SELECT:
                 hold_source(Path(self.client['source']))
-        if self.session is not None:
-            self.session.require_history(check_source=hold_source if consume else None)
-        if not self._history_allows_input(pending.history, check_source=hold_source if consume else None):
+        check_source = hold_source if consume else None
+        if self.preparation is not None:
+            self.preparation.require_no_temporary()
+            self.preparation.require_sources(check_source)
+            if consume:
+                self.preparation.require_new_proofs((pending.proof,), revisions)
+        elif self.session is not None:
+            self.session.require_history(check_source)
+        if self.preparation is None and not self._history_allows_input(pending.history, check_source=check_source):
             raise AutomationError('旧超频配置未核实，禁止再次发送。')
         self._check_saved(pending.proof)
         self._check_journal(pending.journal)
         if consume:
-            import numpy as np
-
-            shape = (self.geometry.height, self.geometry.width, 3)
-            # A bytes-backed view keeps the verified pixels immutable through the last guard.
-            frozen_image = np.frombuffer(_pixel_bytes(scene.image, self.geometry), dtype=np.uint8).reshape(shape)
-            scene.image = frozen_image
+            frozen_image = _freeze_scene_pixels(scene, self.geometry)
             checked_tokens = tuple(scene.tokens)
         self._check_frame(pending.frame)
-        if _target(scene, self.confidence, self.step) != target:
+        if self._target(scene) != target:
             raise AutomationError('超频配置的当前页面目标已改变。')
         if consume:
             self._require_client()
@@ -639,21 +819,20 @@ class _Configuration:
             for path in revisions:
                 _require_stable_source(path, revisions)
             self._require_history(pending.history)
-            self.c.window.guard(self.geometry)
-            self._require_client_window()
-            if self.session is not None:
+            if self.session is not None or self.preparation is not None:
                 live_executable = Path(self.c.window.current_executable()).resolve(strict=True)
                 if live_executable != Path(self.client['executable']):
                     raise AutomationError('超频开局的当前窗口安装来源已改变。')
-                self.c.window.guard(self.geometry)
-                self._require_client_window()
+            self.c.window.guard(self.geometry)
+            if self.preparation is not None:
+                self.preparation.require_no_temporary()
+            require_unchanged_history()
+            self._require_client_window()
+            self._require_window_key()
+            self.c.window.guard(self.geometry)
             if self.c.window.emergency_pressed():
                 raise Stopped('F10 紧急停止。')
-            require_unchanged_history()
-            if (scene.image is not frozen_image or frozen_image.shape != shape or frozen_image.dtype != np.uint8
-                    or not frozen_image.flags.c_contiguous or frozen_image.flags.writeable
-                    or tuple(scene.tokens) != checked_tokens):
-                raise AutomationError('超频配置核实后的像素来源或文字已改变。')
+            _require_frozen_scene(scene, frozen_image, checked_tokens, self.geometry)
         self._require_frame(pending.frame)
         if time.monotonic() >= pending.deadline:
             raise AutomationError('超频配置的输入前观察已超时。')
@@ -666,6 +845,10 @@ class _Configuration:
                        else ('blocked', 'other_page', 'rank_unsupported'))
         if self.step is _START_A0:
             stop_states = (*stop_states, START_FEEDBACK, 'boss_difficulty_conflicting')
+        if self.preparation is not None:
+            stop_states = ('blocked', 'conflicting', 'other_page')
+        if self.handoff:
+            stop_states = (*stop_states, *PREPARATION_PHASES[:-1])
         for attempt in range(3):
             if time.monotonic() >= deadline:
                 break
@@ -694,6 +877,11 @@ class _Configuration:
             last_observation = frame.observation
             increasing = frame.captured_at > latest
             latest = max(latest, frame.captured_at)
+            if increasing and self.preparation is not None and last_observation.state in (
+                    'blocked', 'conflicting', 'other_page'):
+                return self._partial(last_observation.state, last_observation)
+            if increasing and self.handoff and last_observation.state in PREPARATION_PHASES[:-1]:
+                return self._partial('source_receipt_mismatch', last_observation)
             if increasing and self.step is not _SELECT and (
                     last_observation.state in A0_VETO_STATES
                     or last_observation.state == 'boss_difficulty_conflicting'):
@@ -701,8 +889,18 @@ class _Configuration:
             if not increasing or not frame.account_observed or frame.observation.state != state:
                 first = None
                 continue
+            if self.preparation is not None:
+                try:
+                    if self.step is None:
+                        if not self.preparation.matches(frame.observation):
+                            raise AutomationError('当前备战与原回执不一致。')
+                    else:
+                        self.preparation.require_feedback(asdict(frame.observation))
+                except AutomationError:
+                    return self._partial('feedback_conflicting', frame.observation)
             if (first is None or frame.occlusions != first[0].occlusions
-                    or time.monotonic() - first[0].captured_at > MAX_FRAME_AGE):
+                    or time.monotonic() - first[0].captured_at > MAX_FRAME_AGE
+                    or self.preparation is not None and frame.observation != first[0].observation):
                 first = frame, self._evidence(frame, 'feedback_first')
                 continue
 
@@ -719,6 +917,9 @@ class _Configuration:
                 factions = preview_factions(frame.scene, self.confidence)
                 if factions is not None and factions == preview_factions(original.scene, self.confidence):
                     data['preview_factions'] = factions
+            if self.preparation is not None:
+                data.update(difficulty_verified=True, phase=state,
+                            first_preparation_verified=state == PREPARATION_PHASES[-1])
             if data['actions']:
                 data['actions'] = [dict(data['actions'][0], status='verified')]
 
@@ -743,7 +944,36 @@ class _Configuration:
             sources = ()
             if self.step is not _SELECT:
                 sources = (Path(self.client['source']), *(Path(proof.screenshot) for proof in proofs))
-            self._persist(data, check_sources=check_sources, check_frames=check_frames, read_sources=sources)
+            if self.preparation is not None and self.step is None:
+                def verify_terminal():
+                    self.preparation.require_no_temporary()
+                    self._check_journal(self.saved_journal)
+                    check_frames()
+                    check_sources()
+
+                with self._publication_scope((self.path, *sources), verify_terminal, proofs):
+                    self._require_client_window()
+                    self._require_window_key()
+                    self.c.window.guard(self.geometry)
+                    if self.c.window.emergency_pressed():
+                        raise Stopped('F10 紧急停止。')
+                    self._require_frame(original, current=False)
+                    self._require_frame(frame)
+                    if time.monotonic() >= deadline:
+                        raise AutomationError('超频配置双帧回执已过期。')
+                    if self.handoff:
+                        data.update(handoff_verified=True, start_sha256=self.preparation.start_sha256,
+                                    preparation_sha256=hashlib.sha256(self.saved_journal).hexdigest())
+                    self._persist(data)
+            else:
+                self._persist(data, check_sources=check_sources, check_frames=check_frames,
+                              read_sources=sources, proofs=proofs)
+            if self.handoff:
+                return TaskResult(TASK, 'partial', '已复核原局 1-1 首备战。阵容和掉落待核对，停在当前节点。')
+            if self.preparation is not None:
+                detail = ('已核实首个清洁备战 1-1。' if data['first_preparation_verified']
+                          else '已核实本次超频 A0 备战步骤。')
+                return TaskResult(TASK, 'ok', detail)
             if self.session is not None:
                 return TaskResult(TASK, 'ok', '已核实超频 A0 开局与两张首领预览，当前停在预览页。')
             return TaskResult(TASK, 'ok', '已核实超频 A0 黑铁与敌人难度 1。' if data['difficulty_verified']
@@ -758,7 +988,9 @@ class _Configuration:
         self._persist(dict(self.data, status='partial', reason=reason, diagnostic_screenshot=screenshot,
                            actions=[dict(actions[0], status='unknown')] if actions else [],
                            observation=asdict(observation) if observation is not None else self.data['observation']))
-        return TaskResult(TASK, 'partial', '超频配置未取得可用的双帧核验，原因见本次报告。')
+        detail = ('超频 A0 备战待核对，原因见本次报告。' if self.preparation is not None
+                  else '超频配置未取得可用的双帧核验，原因见本次报告。')
+        return TaskResult(TASK, 'partial', detail)
 
     def run(self):
         self._require_client()
@@ -772,6 +1004,10 @@ class _Configuration:
         state = first.observation.state
         if state not in self.start_states or not first.account_observed:
             return self._partial(state if state not in self.start_states else 'account_unverified', first.observation)
+        if self.preparation is not None and not self.preparation.matches(first.observation):
+            return self._partial('source_receipt_mismatch', first.observation)
+        if self.preparation is not None and first.captured_at <= self.preparation.last_capture:
+            return self._partial('source_not_new', first.observation)
         if time.monotonic() >= deadline:
             return self._partial('feedback_unverified', first.observation)
         if state in self.ready_states:
@@ -780,17 +1016,29 @@ class _Configuration:
             history = self._history_paths()
         except OSError:
             return self._partial('previous_selection_unresolved', first.observation)
-        if not self._history_allows_input(history):
+        if self.preparation is None and not self._history_allows_input(history):
             return self._partial('previous_selection_unresolved', first.observation)
 
-        target = _target(first.scene, self.confidence, self.step)
-        before_label = ('before_start' if self.step is _START_A0 else
+        try:
+            target = self._target(first.scene)
+        except AutomationError:
+            if self.preparation is None:
+                raise
+            return self._partial('target_unverified', first.observation)
+        before_label = ('before_preparation_step' if self.preparation is not None else
+                        'before_start' if self.step is _START_A0 else
                         'before_open_difficulty' if self.step is _OPEN_A0 else 'before_select')
         before = self._evidence(first, before_label)
         action = dict(action=self.step.action, status='pending', input_epoch=self.epoch,
                       target=list(target.box), before=asdict(before))
-        payload = self._persist(dict(self.data, status='pending', actions=[action],
-                                     observation=asdict(first.observation)))
+        observation = asdict(first.observation)
+        options = {}
+        if self.preparation is not None:
+            action['before_observation'] = observation
+            options = dict(read_sources=(Path(before.screenshot),), proofs=(before,),
+                           check_sources=lambda: self._check_saved(before))
+        payload = self._persist(dict(self.data, status='pending', actions=[action], observation=observation),
+                                **options)
         self.pending = _Pending(first, target, before, payload, deadline, history)
         self.c.currency_overclock_input(first.scene, target)
         if self.pending is not None:
@@ -809,6 +1057,19 @@ def configure_overclock(context):
 def start_overclock(context):
     flow = _Configuration(context, start=True)
     context.report.safe_next = '请核对首领预览与原开局记录。待核对的开局保留在本地。'
+    return _run_configuration(context, flow)
+
+
+def prepare_overclock(context):
+    flow = _Configuration(context, prepare=True)
+    context.report.safe_next = '核对本次阶段回执。只有原局已核实的步骤可以接续，待核对输入保留原件。'
+    return _run_configuration(context, flow)
+
+
+def observe_legacy_handoff(context):
+    flow = _Configuration(context, prepare=True)
+    context.report.currency_wars = flow.data
+    context.report.safe_next = '保留本次同节点证据，阵容、掉落及首节点出战继续待核对。'
     return _run_configuration(context, flow)
 
 

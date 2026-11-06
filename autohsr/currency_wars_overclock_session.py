@@ -14,14 +14,19 @@ from .models import AutomationError, Token
 
 
 START_OPERATION = 'currency_wars_overclock_start'
+PREP_OPERATION = 'currency_wars_overclock_prepare'
 FLOW_OPERATION = 'currency_wars_flow_test'
 START_ACTION = 'start_overclock_a0'
 START_FEEDBACK = 'a0_boss_preview'
 SESSION = 'currency-overclock-session.json'
+PREP_JOURNAL = 'currency-overclock-preparation.json'
 _FLOW_JOURNAL = 'currency-flow.json'
+_DRAG_JOURNAL = 'currency-drag.json'
+_NODE_JOURNAL = re.compile(r'currency-node(?:-[0-9]+)?\.json')
 _STANDARD_SESSION = 'currency-standard-session.json'
 _HEX_DIGEST = re.compile('[0-9a-f]{64}')
 _MATCH_ID = re.compile('[0-9a-f]{32}')
+_OPENING_ACTIONS = ('open_mode', 'select_overclock', 'enter_overclock')
 
 
 def _matches(pattern, value):
@@ -104,11 +109,28 @@ def _known_flow(data, match_id):
     return starts <= 1 and (not data.get('overclock_a0_started') or starts == 1)
 
 
+def _resolved_standalone_action(data, name):
+    if (type(data) is not dict or data.get('completion_verified') is not False
+            or data.get('gameplay_enabled') is not False
+            or not all(type(data.get(key)) is str and data[key] for key in ('before', 'after', 'action'))):
+        return False
+    if name == _DRAG_JOURNAL:
+        feedback = data.get('feedback')
+        return (data.get('mode') in ('single_drag_test', 'single_deployment_test')
+                and data.get('action_status') in ('verified', 'unchanged')
+                and type(feedback) is dict and feedback.get('status') == data['action_status'])
+    action = data['action']
+    return (data.get('mode') == 'single_node_test'
+            and action in ('start_node', 'observe_existing_battle')
+            and data.get('start_dispatched', False) is (action == 'start_node')
+            and data.get('action_status') == 'verified' and data.get('node_verified') is True)
+
+
 class OverclockSession:
-    def __init__(self, run_dir, *, advancing=False):
+    def __init__(self, run_dir, *, advancing=False, preparing=False):
         from .currency_wars_overclock import MAX_JOURNAL_BYTES
 
-        if type(advancing) is not bool:
+        if type(advancing) is not bool or type(preparing) is not bool or preparing and not advancing:
             raise AutomationError('超频推进需要明确指定已核实开局。')
         try:
             self.run_dir = _directory(Path(run_dir).absolute())
@@ -119,6 +141,8 @@ class OverclockSession:
             self.match_id = None
             self.data = None
             self.raw = None
+            self.preview_consumed = False
+            self.legacy_handoff = False
             self._history = None
             self._active_sources = None
             self._current_flow = self.run_dir / _FLOW_JOURNAL
@@ -127,25 +151,57 @@ class OverclockSession:
                 raise AutomationError('本次运行目录已有流程记录，未覆盖。')
             if _exists(self.path.with_suffix('.tmp')):
                 raise AutomationError('已有超频开局待发布记录，保留原件并停止。')
+            self.preparing = preparing
             if advancing:
                 if not _exists(self.path):
                     raise AutomationError('没有已核实的超频 A0 开局可推进。')
                 self.raw = _read(self.path, MAX_JOURNAL_BYTES, None)
                 self.data = self.require_active()
                 self.match_id = self.data['match_id']
+                self.legacy_handoff = (not preparing and 'window_key' in self.data
+                                       and _exists(self.path.parent / PREP_JOURNAL))
             else:
                 if _exists(self.path):
                     raise AutomationError('已有超频开局记录，须核对原局，未重新开始。')
                 self.match_id = uuid.uuid4().hex
+            if not (preparing or self.legacy_handoff):
+                self.require_no_preparation()
             self.require_history()
         except (OSError, ValueError, TypeError, RecursionError):
             raise AutomationError('超频开局的运行目录或原记录不可核实。') from None
 
-    def envelope(self, data, account, client):
+    def envelope(self, data, account, client, *, window_key=None):
         if not _matches(_HEX_DIGEST, account):
             raise AutomationError('超频开局缺少可核实的账号。')
-        return dict(data, schema=1, match_id=self.match_id, run_dir=str(self.run_dir),
-                    account_key=account, client_key=client_key(client))
+        record = dict(data, schema=1, match_id=self.match_id, run_dir=str(self.run_dir),
+                      account_key=account, client_key=client_key(client))
+        if window_key is not None:
+            if not _matches(_HEX_DIGEST, window_key):
+                raise AutomationError('超频开局的窗口身份不可核实。')
+            record['window_key'] = window_key
+        return record
+
+    def require_no_preparation(self):
+        path = self.path.parent / PREP_JOURNAL
+        if _exists(path) or _exists(path.with_suffix('.tmp')):
+            raise AutomationError('已有首个备战的推进记录，请沿原开局核对。')
+
+    def require_pending_preview(self, expected, check_source):
+        from .currency_wars_overclock import MAX_JOURNAL_BYTES
+
+        try:
+            data = strict_json(_read(self._current_flow, MAX_JOURNAL_BYTES, check_source).decode('utf-8'))
+            actions = data['actions']
+            if (self.preview_consumed or type(data) is not dict or data != expected or data.get('mode') != 'flow_test'
+                    or data.get('overclock_session_id') != self.match_id or data.get('action_status') != 'pending'
+                    or type(actions) is not list or not actions or type(actions[-1]) is not dict
+                    or actions[-1].get('action') != 'advance_boss_preview' or actions[-1].get('status') != 'pending'
+                    or any(type(row) is not dict or row.get('status') != 'verified' or row.get('action') == 'advance_boss_preview'
+                           for row in actions[:-1])):
+                raise AutomationError('首领预览缺少本次唯一未使用的落盘意图。')
+            return actions[-1]
+        except (OSError, ValueError, TypeError, KeyError, IndexError, RecursionError):
+            raise AutomationError('首领预览待核对意图不可读取，保留原件。') from None
 
     def _history_paths(self):
         root = self.path.parent
@@ -161,7 +217,20 @@ class OverclockSession:
                         continue
                     if _exists(path):
                         paths.add(path)
+                if self.legacy_handoff:
+                    drag = directory / _DRAG_JOURNAL
+                    if _exists(drag):
+                        paths.add(drag)
+                    paths.update(path for path in directory.glob('currency-node*.json')
+                                 if _NODE_JOURNAL.fullmatch(path.name))
         return paths
+
+    def _original_opening_flow(self, path, data):
+        actions = data['actions']
+        entry = tuple(action['action'] for action in actions[:-1])
+        return (path.parent == Path(self.data['run_dir']) and data['start_from_lobby_requested']
+                and data.get('overclock_a0_started') is True and actions[-1] == self.data['actions'][0]
+                and entry == tuple(action for action in _OPENING_ACTIONS if action in entry))
 
     def require_history(self, check_source=None):
         """Reject changed or unresolved prior records without modifying them."""
@@ -170,6 +239,8 @@ class OverclockSession:
         from .currency_wars_session import MAX_SESSION_BYTES, StandardSession
 
         try:
+            if not (self.preparing or self.legacy_handoff):
+                self.require_no_preparation()
             paths = self._history_paths()
             revisions = {}
             track = _track_source(revisions, check_source)
@@ -183,14 +254,21 @@ class OverclockSession:
                 elif path.name == JOURNAL:
                     if not _resolved_configuration(data, path.parent, check_source=track):
                         raise AutomationError('原超频配置尚未核实，保留记录并停止。')
+                elif path.name == _DRAG_JOURNAL or _NODE_JOURNAL.fullmatch(path.name):
+                    if not _resolved_standalone_action(data, path.name):
+                        raise AutomationError('原独立部署、拖动或出战记录待核对，保留原件并停止。')
                 elif not _known_flow(data, self.match_id if self.advancing else None):
                     raise AutomationError('原超频流程尚未核实或未绑定本局，保留记录并停止。')
                 elif self.advancing and any(action['action'] == 'advance_boss_preview' for action in data['actions']):
                     raise AutomationError('原超频首领预览已经推进，未重复发送。')
+                elif self.legacy_handoff and data['actions'] and not self._original_opening_flow(path, data):
+                    raise AutomationError('已有原开局之外的旧流程动作，首次备战接续待核对。')
                 if _read(path, limit, track) != raw:
                     raise AutomationError('原货币战争记录已经改变，未继续。')
             for path in revisions:
                 track(path)
+            if not (self.preparing or self.legacy_handoff):
+                self.require_no_preparation()
             if self._history_paths() != paths or self._history is not None and self._history != revisions:
                 raise AutomationError('原货币战争记录或证据集合已经改变，未继续。')
             self._history = revisions
@@ -215,6 +293,7 @@ class OverclockSession:
                     or self.match_id is not None and data['match_id'] != self.match_id
                     or not _matches(_HEX_DIGEST, data.get('account_key'))
                     or not _matches(_HEX_DIGEST, data.get('client_key'))
+                    or 'window_key' in data and not _matches(_HEX_DIGEST, data['window_key'])
                     or data.get('mode') != 'overclock_a0_start' or data.get('status') != 'verified'
                     or data.get('match_started') is not True or data.get('completion_verified') is not False
                     or data.get('mode_verified') is not True or data.get('difficulty_verified') is not True

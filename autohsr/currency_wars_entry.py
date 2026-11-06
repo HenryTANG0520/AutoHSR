@@ -46,7 +46,7 @@ def entry_target(scene,confidence=.65):
 def advance_entry(c,scene,data,persist):
     guard=CurrencyWarsWorkflow(c)
     guard._require_current_scene(scene)
-    name,expected,_=entry_target(scene,c.settings.ocr_confidence)
+    name,expected,target=entry_target(scene,c.settings.ocr_confidence)
     if not getattr(c.runner,'currency_start_from_lobby',False) and name != 'advance_boss_preview':
         raise AutomationError('本次没有请求从主页开始整局验证。')
     if any(a.get('action')==name for a in data['actions']):
@@ -63,8 +63,14 @@ def advance_entry(c,scene,data,persist):
             data.update(action_status='unknown' if opening['actions'] else 'needs_decision', reason=result.detail)
         persist()
         return result.status == 'ok'
-    action=dict(action=name,status='pending',next_page=expected,
-                before=str(c.evidence(scene,'currency_entry_'+name)))
+    label = 'currency_entry_' + name
+    action = dict(action=name, status='pending', next_page=expected)
+    if name == 'advance_boss_preview' and getattr(c, 'overclock_session', None) is not None:
+        before, digest = c.evidence(scene, label, with_sha256=True)
+        action.update(before=str(before), before_sha256=digest, captured_at=scene.captured_at,
+                      input_epoch=c.runner.input_epoch, target=list(target.box))
+    else:
+        action['before'] = str(c.evidence(scene, label))
     data['actions'].append(action)
     data.update(action_status='pending',screenshot=action['before'])
     persist()

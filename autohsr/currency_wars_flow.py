@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -77,17 +78,26 @@ def flow_snapshot(c,guard):
 
 def run_flow(c):
     """Never resume pending inputs. A new run reobserves the current game UI."""
+    session = getattr(c, 'overclock_session', None)
+    if getattr(session, 'legacy_handoff', False):
+        from .currency_wars_overclock import observe_legacy_handoff
+        return observe_legacy_handoff(c)
+
     guard = CurrencyWarsWorkflow(c)
     data = dict(mode='flow_test', actions=[], completion_verified=False, gameplay_enabled=False,
                 action_status='observing', screenshot='',target_level=getattr(c.runner,'currency_target_level',0),
                 start_from_lobby_requested=getattr(c.runner,'currency_start_from_lobby',False))
-    session = getattr(c, 'overclock_session', None)
     if session is not None:
         data['overclock_session_id'] = session.match_id
     journal = Path(c.report.run_dir)/'currency-flow.json'
     def persist():
         c.report.currency_wars = data
-        journal.write_text(json.dumps(data, ensure_ascii=False, indent=2),encoding='utf-8')
+        with journal.open('w', encoding='utf-8') as stream:
+            stream.write(json.dumps(data, ensure_ascii=False, indent=2))
+            if (data['action_status'] == 'pending' and data['actions']
+                    and data['actions'][-1].get('action') == 'advance_boss_preview'):
+                stream.flush()
+                os.fsync(stream.fileno())
     persist()
     seen = set()
     excluded_candidates={}

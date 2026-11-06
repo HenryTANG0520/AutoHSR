@@ -4,6 +4,7 @@ from __future__ import annotations
 import ctypes as C
 from ctypes import wintypes as W
 from dataclasses import dataclass
+import hashlib
 from pathlib import Path
 import subprocess
 import time
@@ -31,6 +32,7 @@ user32.ClientToScreen.argtypes = [W.HWND, C.POINTER(W.POINT)]
 user32.GetWindowTextLengthW.argtypes = [W.HWND]
 user32.GetWindowTextW.argtypes = [W.HWND, W.LPWSTR, C.c_int]
 user32.GetWindowThreadProcessId.argtypes = [W.HWND, C.POINTER(W.DWORD)]
+user32.GetWindowThreadProcessId.restype = W.DWORD
 user32.SetForegroundWindow.argtypes = [W.HWND]
 user32.BringWindowToTop.argtypes = [W.HWND]
 user32.AttachThreadInput.argtypes = [W.DWORD, W.DWORD, W.BOOL]
@@ -42,6 +44,8 @@ kernel32.OpenProcess.argtypes = [W.DWORD, W.BOOL, W.DWORD]
 kernel32.OpenProcess.restype = W.HANDLE
 kernel32.CloseHandle.argtypes = [W.HANDLE]
 kernel32.QueryFullProcessImageNameW.argtypes = [W.HANDLE, W.DWORD, W.LPWSTR, C.POINTER(W.DWORD)]
+kernel32.GetProcessTimes.argtypes = [W.HANDLE, *([C.POINTER(W.FILETIME)] * 4)]
+kernel32.GetProcessTimes.restype = W.BOOL
 
 
 @dataclass(frozen=True)
@@ -177,6 +181,33 @@ class GameWindow:
         if not value:
             raise AutomationError('当前游戏窗口的可执行文件来源无法核实。')
         return value
+
+    def current_window_key(self) -> str | None:
+        """Identify the same live window across runs, including process reuse."""
+        geometry = self.guard()
+        hwnd = self.hwnd
+        pid = W.DWORD()
+        thread = user32.GetWindowThreadProcessId(hwnd, C.byref(pid))
+        if not thread or not pid.value:
+            return None
+        process = kernel32.OpenProcess(0x1000, False, pid.value)
+        if not process:
+            return None
+        created, exited, kernel, user = (W.FILETIME() for _ in range(4))
+        try:
+            if not kernel32.GetProcessTimes(process, C.byref(created), C.byref(exited),
+                                            C.byref(kernel), C.byref(user)):
+                return None
+            stamp = (created.dwHighDateTime << 32) | created.dwLowDateTime
+            current_pid = W.DWORD()
+            self.guard(geometry)
+            current_thread = user32.GetWindowThreadProcessId(hwnd, C.byref(current_pid))
+            if not stamp or self.hwnd != hwnd or (current_pid.value, current_thread) != (pid.value, thread):
+                return None
+            identity = f'{hwnd}:{pid.value}:{thread}:{stamp}'.encode('ascii')
+            return hashlib.sha256(b'autohsr-overclock-window-v1\0' + identity).hexdigest()
+        finally:
+            kernel32.CloseHandle(process)
 
     @property
     def title(self) -> str:
