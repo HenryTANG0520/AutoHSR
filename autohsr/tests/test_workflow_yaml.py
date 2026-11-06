@@ -145,15 +145,16 @@ class WorkflowYamlTests(unittest.TestCase):
                 self.assertFalse(self.target.exists())
 
     def test_known_switch_screen_targets_preserve_daily_page_identity(self):
-        names = ('menu', 'guide2', 'guide3', 'dispatch', 'mail', 'reward_guide')
+        names = ('menu', 'guide2', 'guide3', 'dispatch', 'mail', 'reward_guide', 'pass1', 'pass2')
         steps = ''.join(f'  - type: switch_screen\n    target_screen: {name}\n' for name in names)
         original = self.write('name: 日常页面\nsteps:\n' + steps)
         saved = convert_march7th_yaml(self.source, self.target)
         self.assertEqual([node['task'] for node in saved.recipe.steps], ['workflow_open_page'] * len(names))
         self.assertEqual([node['params']['target'] for node in saved.recipe.steps],
-                         ['phone', 'daily_training', 'survival_index', 'assignments', 'mail', 'reward_guide'])
+                         ['phone', 'daily_training', 'survival_index', 'assignments', 'mail', 'reward_guide',
+                          'battlepass_rewards', 'battlepass_tasks'])
         self.assertEqual(self.source.read_bytes(), original)
-        for name in ('pass1', 'pass2', 'guide4', 'main', 'unknown'):
+        for name in ('battlepass', 'pass3', 'start_srpass', 'guide4', 'main', 'unknown'):
             with self.subTest(name=name):
                 self.write(f'name: 精确页面\nsteps: [{{type: switch_screen, target_screen: {name}}}]\n')
                 with self.assertRaisesRegex(WorkflowError, r'步骤 0.*switch_screen'):

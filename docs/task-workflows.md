@@ -39,6 +39,12 @@
 
 页面切换与实时图文共享前台及账号门禁。目标为 `phone` 手机、`guide` 指南、`daily_training` 每日实训、`survival_index` 生存索引、`assignments` 委托、`mail` 邮件、`battlepass` 无名勋礼、`odyssey` 巡星之礼、`reward_guide` 奖励指南和 `messages` 短信通知。泛指南目标保留当前指南子页。已经在目标页时零输入。每次点击或返回都要求当前页面和可用入口有证据，再双帧核对新页面。遇到登录、弹窗、战斗、失焦或不认识的页面时保留已有动作回执。只有已核实到达的结果才提供 `page_verified=true`。导航不领取奖励、不开战，也不建立资源预算。活动与短信通知目标目前支持已校准的 4.6.0 版式。短信从带可见未读角标的大世界或已打开的通知双栏开始，最多提交一次气泡点击。[活动页面导航](daily-event-observation.md#独立导航) · [短信导航](../DAILY_FLOW.md#短信只读校准)
 
+### 无名勋礼页签
+
+任务流的「切换到游戏页面」可选「无名勋礼 · 奖励」`battlepass_rewards` 或「无名勋礼 · 任务」`battlepass_tasks`。泛目标 `battlepass` 仍接受已打开的任一页。两个明确目标支持简中 4.6.0，须从已核实的手机或勋礼页开始。从手机打开勋礼后先核对实际落在哪一页。只有需要切换时，才点两帧一致的目标页签一次。已在所选页时零输入。报告中的 `target`、`source_page`、`destination_page` 区分两页。
+
+离线验证复用了 10 月 24–25 日的脱敏历史帧，覆盖本周、本期、可领和已领取版式，并以历史奖励弹窗做反例。正式 CLI 的两向切换及从手机进入使用假 Win32 和合成账号。四个 1920×1080 页签样本均通过模板复读，缩到 960×540 时均未匹配，1280×720 仅本期任务样本匹配。页签未匹配时停在当前页，原生小窗口和当前客户端到页仍待实机验证。[任务页样本](../autohsr/tests/fixtures/du_runtime/bp_tasks_claimable.json) · [本期任务样本](../autohsr/tests/fixtures/du_runtime/bp_period_settled.json) · [奖励页样本](../autohsr/tests/fixtures/du_runtime/bp_rewards_claimable.json) · [模板来源](../assets/ATTRIBUTION.md)
+
 ### 漫游签证角色展示
 
 在任务流编辑器选择「切换到游戏页面 → 漫游签证角色展示」，或在 JSON 使用 `workflow_open_page` 的 `target: "visa_characters"`。先在 4.6.0 客户端打开漫游签证的「收集展示」，保持游戏窗口前台。该步骤从同账号的连续两帧定位中间页签，最多提交一次点击。角色页签选中且两帧均核实「支援角色」「星海同行」后才记录到达，已在角色展示时零输入核对。反馈待核对时保留已发生的输入状态。

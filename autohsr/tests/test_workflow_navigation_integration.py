@@ -20,13 +20,15 @@ from autohsr.models import FocusLost, Scene, Token
 from autohsr.tests.test_daily_event_navigation import activity_frame
 from autohsr.tests.test_daily_event_pages import _odyssey
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, _Window, phone, visa_collection
+from autohsr.tests.test_du_team import fixture
 from autohsr.tests.test_task_workflow import condition, recipe, task
+from autohsr.tests.test_workflow_navigation import identified
 
 
 class WorkflowNavigationIntegrationTests(unittest.TestCase):
     def run_navigation(self, *, already_open=False, late_loss=False, target='mail', version='4.6.0',
                        start_in_list=False, late_version=False, from_odyssey=False, check_publication_lock=False,
-                       lose_focus_on_installation_read=False):
+                       lose_focus_on_installation_read=False, from_phone=False):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -37,6 +39,12 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                           for frame in (world_pair()[-1], bright_sequence()[-1]))
         elif target == 'visa_characters':
             pages = (visa_collection(), visa_collection('characters'))
+        elif target in ('battlepass_rewards', 'battlepass_tasks'):
+            rewards = identified(fixture('bp_rewards_claimable'))
+            tasks = identified(fixture('bp_tasks_claimable'))
+            pages = (tasks, rewards) if target == 'battlepass_rewards' else (rewards, tasks)
+            if from_phone:
+                pages = (identified(fixture('phone_mail_icon')), *pages)
         elif target in ('odyssey', 'reward_guide'):
             banner = activity_frame()
             banner.tokens.append(ACCOUNT)
@@ -165,6 +173,46 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertEqual(sent, [])
         self.assertEqual(native['workflow_navigation']['actions'], [])
         self.assertTrue(steps[0]['facts']['page_verified'])
+
+    def test_battlepass_exact_targets_click_only_opposite_tab_and_verify_current_page(self):
+        for source, target, center_x in (('battlepass_tasks', 'battlepass_rewards', .45),
+                                         ('battlepass_rewards', 'battlepass_tasks', .50)):
+            for already_open in (False, True):
+                with self.subTest(target=target, already_open=already_open):
+                    sent, steps, native = self.run_navigation(target=target, already_open=already_open)
+                    self.assertTrue(steps[0]['facts']['page_verified'])
+                    record = native['workflow_navigation']
+                    self.assertEqual(record['target'], target)
+                    self.assertEqual(record['client_version'], '4.6.0')
+                    if already_open:
+                        self.assertEqual((sent, record['actions']), ([], []))
+                    else:
+                        self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)])
+                        x, y = self.clicks[0]
+                        self.assertAlmostEqual(x, center_x, delta=.004)
+                        self.assertAlmostEqual(y, .059, delta=.004)
+                        self.assertEqual(record['actions'], [dict(action='open_' + target, source_page=source,
+                            expected_pages=[target], input_status='sent', destination_status='verified',
+                            destination_page=target)])
+
+    def test_battlepass_from_phone_waits_for_the_actual_first_tab_before_switching(self):
+        sent, steps, native = self.run_navigation(target='battlepass_tasks', from_phone=True,
+                                                  check_publication_lock=True)
+        self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * 2)
+        actions = native['workflow_navigation']['actions']
+        self.assertEqual([(row['action'], row['destination_page']) for row in actions],
+                         [('open_battlepass', 'battlepass_rewards'), ('open_battlepass_tasks', 'battlepass_tasks')])
+        self.assertTrue(steps[0]['facts']['page_verified'])
+        for (x, y), (want_x, want_y) in zip(self.clicks, ((.766, .618), (.50, .059))):
+            self.assertAlmostEqual(x, want_x, delta=.004)
+            self.assertAlmostEqual(y, want_y, delta=.004)
+
+    def test_battlepass_wrong_client_sends_nothing(self):
+        sent, steps, native = self.run_navigation(target='battlepass_rewards', version='4.7.0')
+        self.assertEqual(sent, [])
+        self.assertEqual(native['workflow_navigation']['actions'], [])
+        self.assertFalse(native['workflow_navigation']['page_verified'])
+        self.assertNotIn('page_verified', steps[0]['facts'])
 
     def test_messages_uses_one_world_input_and_no_input_when_already_open(self):
         for already_open, actions in ((False, 1), (True, 0)):

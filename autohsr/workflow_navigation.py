@@ -21,12 +21,12 @@ from .daily_reward_observe import phone_achievement_target
 from .daily_visa_pages import (VISA_LAYOUT_VERSION, refine_small_visa_title, visa_character_tab, visa_overview,
                               visa_support_section)
 from .dungeons import CATEGORIES
-from .free_rewards import battlepass_modal, battlepass_page, mail_entry, mailbox
+from .free_rewards import battlepass_modal, battlepass_page, battlepass_tab, mail_entry, mailbox
 from .models import FULL, AutomationError, EmptyCapture, InputInterrupted, Stopped, TaskResult, Token, normalize
 from .screenshot_tool import MAX_PIXELS
 from .storage import hold_read_sources
-from .task_workflow import (ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, VISA_CHARACTERS_PAGE,
-                            WORKFLOW_NAVIGATION_TARGETS)
+from .task_workflow import (ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE,
+                            VISA_CHARACTERS_PAGE, WORKFLOW_NAVIGATION_TARGETS)
 from .team_calibration_pages import calibration_overlay
 from .vision import helper_overlay
 from .workflows import DailyWorkflow, TITLE
@@ -43,6 +43,7 @@ _GUIDE_TITLES = {'行动摘要': 'guide', '每日实训': 'daily_training', '生
                  '旷宇纷争': 'guide', '逐光捡金': 'guide'}
 _GUIDE_PAGES = ('guide', 'daily_training', 'survival_index')
 _VISA_COLLECTION = 'visa_collection'
+_BATTLEPASS_LAYOUT_VERSION = '4.6.0'
 _PHONE_CAPTIONS = {
     'guide': (('指南', '星际和平指南'), (.655, .713, .742, .763)),
     'assignments': (('委托',), (.884, .357, .921, .398)),
@@ -102,7 +103,7 @@ def _unique(matches, region, confidence):
     return None
 
 
-def classify_page(scene, confidence, daily):
+def classify_page(scene, confidence, daily, *, battlepass_subpages=False):
     """Classify an existing scene using the calibrated daily navigation landmarks."""
     low = trusted(scene, COLLECTION_FLOOR)
     if (calibration_overlay(low) or helper_overlay(low) or daily._login(low) or daily._in_battle(low)
@@ -126,8 +127,10 @@ def classify_page(scene, confidence, daily):
         pages.append('assignments')
     if _unique(_matches(low, ('邮箱', '邮件'), TITLE), TITLE, confidence) and mailbox(view):
         pages.append('mail')
-    if _unique(_matches(low, ('无名勋礼',), TITLE), TITLE, confidence) and battlepass_page(view):
-        pages.append('battlepass')
+    if _unique(_matches(low, ('无名勋礼',), TITLE), TITLE, confidence) and (kind := battlepass_page(view)):
+        if battlepass_subpages and _unique(_matches(low, ('奖励', '任务'), TITLE), TITLE, confidence) is None:
+            return None
+        pages.append('battlepass_' + kind if battlepass_subpages else 'battlepass')
     if pages:
         return pages[0] if len(pages) == 1 else None
     if not low.has('开拓等级', (.55, .05, .99, .35)) and daily._world(low):
@@ -190,7 +193,8 @@ class WorkflowNavigation:
         self._control()
 
     def _page(self, scene):
-        return classify_page(scene, self.confidence, self.daily)
+        return classify_page(scene, self.confidence, self.daily,
+                             battlepass_subpages=self.target in BATTLEPASS_WORKFLOW_PAGES)
 
     def _phone_control(self, scene, page):
         low = trusted(scene, COLLECTION_FLOOR)
@@ -237,7 +241,7 @@ class WorkflowNavigation:
             if panel:
                 return MESSAGE_WORKFLOW_PAGE
             return 'world' if world_message_target(scene) is not None else None
-        if page is not None or self._installation is None:
+        if page is not None or self._installation is None or self.target in BATTLEPASS_WORKFLOW_PAGES:
             return page
         if self.target == VISA_CHARACTERS_PAGE:
             if visa_overview(scene, self.confidence):
@@ -266,6 +270,14 @@ class WorkflowNavigation:
                 return None
             tab = visa_character_tab(frame.scene, client_version=self._installation.version, confidence=self.confidence)
             return _Action('open_' + VISA_CHARACTERS_PAGE, (VISA_CHARACTERS_PAGE,), tab) if tab is not None else None
+        if self.target in BATTLEPASS_WORKFLOW_PAGES:
+            if page == 'phone':
+                token = self._phone_control(frame.scene, 'battlepass')
+                return _Action('open_battlepass', BATTLEPASS_WORKFLOW_PAGES, token) if token else None
+            if page in BATTLEPASS_WORKFLOW_PAGES:
+                tab = battlepass_tab(trusted(frame.scene, self.confidence), self.target.removeprefix('battlepass_'))
+                return _Action('open_' + self.target, (self.target,), tab) if tab else None
+            return None
         if page == 'world':
             return None if message_panel(frame.scene) else _Action('open_phone', ('phone',))
         if self._installation is not None and page in ('phone', 'activity_list', 'odyssey'):
@@ -454,14 +466,19 @@ class WorkflowNavigation:
         if self.geometry is None or not 0 < self.geometry.width * self.geometry.height <= MAX_PIXELS:
             raise AutomationError('日常页面导航缺少可核实的游戏客户区。')
         self._guard()
-        visa_navigation = self.target == VISA_CHARACTERS_PAGE
-        if visa_navigation or self.target in (*ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE):
+        expected, version = (), None
+        if self.target == VISA_CHARACTERS_PAGE:
+            expected, version = (_VISA_COLLECTION, VISA_CHARACTERS_PAGE), VISA_LAYOUT_VERSION
+        elif self.target in BATTLEPASS_WORKFLOW_PAGES:
+            expected, version = ('phone', *BATTLEPASS_WORKFLOW_PAGES), _BATTLEPASS_LAYOUT_VERSION
+        elif self.target in (*ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE):
+            version = _VERSION
+        if version is not None:
             self._installation = read_event_installation(self.window)
-            version = VISA_LAYOUT_VERSION if visa_navigation else _VERSION
             if self._installation.version != version:
                 raise AutomationError('当前客户端尚未校准所选页面导航。')
             self.record['client_version'] = self._installation.version
-        pair = self._pair(expected=(_VISA_COLLECTION, VISA_CHARACTERS_PAGE) if visa_navigation else ())
+        pair = self._pair(expected=expected)
         while not self._satisfies(pair[-1].page):
             if len(self.record['actions']) >= _MAX_ACTIONS:
                 raise AutomationError('日常页面导航达到本次输入上限。')

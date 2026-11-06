@@ -137,21 +137,21 @@ class WorkflowNavigationTests(unittest.TestCase):
                                for event in (data[index] for index in range(count))))
         return count
 
-    def _visa_context(self, frames, *, geometry=_GEOMETRY):
+    def _installed_context(self, frames, *, target='visa_characters', geometry=_GEOMETRY):
         install = TemporaryDirectory()
         self.addCleanup(install.cleanup)
         root = Path(install.name).resolve()
         executable = root / 'StarRail.exe'
         executable.touch()
         (root / 'config.ini').write_text('[General]\ngame_version=4.6.0\n', encoding='utf8')
-        context = Context('visa_characters', frames, geometry=geometry)
+        context = Context(target, frames, geometry=geometry)
         context.window.current_executable = Mock(return_value=str(executable))
         return context
 
     def test_visa_switch_retries_only_the_small_heading_in_each_current_frame(self):
         collection = identified(small_visa('collection'))
         role = identified(small_visa('characters'))
-        context = self._visa_context([collection, collection, role, role], geometry=windows.Geometry(0, 0, 960, 540))
+        context = self._installed_context([collection, collection, role, role], geometry=windows.Geometry(0, 0, 960, 540))
         context.vision._read_field = Mock(return_value=Token('漫游签证', .88, (0, 0, 1, 1)))
         result = context.workflow_navigation.run()
         self.assertEqual(result.status, 'ok')
@@ -170,7 +170,7 @@ class WorkflowNavigationTests(unittest.TestCase):
                             ('nonadjacent', [source, EmptyCapture('fade'), source]),
                             ('wrong tab', [visa_collection('battle-record')] * 2)):
             with self.subTest(tag=tag):
-                context = self._visa_context(frames)
+                context = self._installed_context(frames)
                 with self.assertRaises(AutomationError):
                     context.workflow_navigation.run()
                 self.assertEqual(self.sent, [])
@@ -186,7 +186,7 @@ class WorkflowNavigationTests(unittest.TestCase):
         for tag, after in cases:
             with self.subTest(tag=tag):
                 self.sent.clear()
-                context = self._visa_context([source, source, *after])
+                context = self._installed_context([source, source, *after])
                 with self.assertRaises(AutomationError):
                     context.workflow_navigation.run()
                 self.assertEqual(self.sent, [_CLICK])
@@ -195,7 +195,7 @@ class WorkflowNavigationTests(unittest.TestCase):
                 self.assertFalse(context.workflow_navigation.record['page_verified'])
 
     def test_visa_switch_stops_at_native_boundary_or_records_short_send_without_retry(self):
-        context = self._visa_context([visa_collection()] * 2)
+        context = self._installed_context([visa_collection()] * 2)
         native_click = context.window.click
 
         def stop_before_click(*args, **kwargs):
@@ -215,7 +215,7 @@ class WorkflowNavigationTests(unittest.TestCase):
             return 2 if count == 3 else count
 
         self.native.SendInput.side_effect = short
-        context = self._visa_context([visa_collection()] * 2 + [visa_collection('characters')] * 2)
+        context = self._installed_context([visa_collection()] * 2 + [visa_collection('characters')] * 2)
         with self.assertRaises(AutomationError):
             context.workflow_navigation.run()
         self.assertEqual(self.sent, [_CLICK, ((0, 0x0004),)])
@@ -234,6 +234,43 @@ class WorkflowNavigationTests(unittest.TestCase):
                 self.assertEqual(c.report.workflow_navigation, dict(target=target, page_verified=True, actions=[]))
                 c.workflow_navigation.guard_publication()
         self.assertEqual(self.sent, [])
+
+    def test_battlepass_subpages_reject_ambiguous_heading_covered_tab_modal_and_unrelated_page(self):
+        tasks = identified(fixture('bp_tasks_claimable'))
+        rewards = identified(fixture('bp_rewards_claimable'))
+        covered = Scene(tasks.tokens, tasks.image.copy())
+        height, width = covered.image.shape[:2]
+        covered.image[:round(.09 * height), round(.42 * width):round(.48 * width)] = 40
+        for label, frames in (
+                ('conflicting heading', [Scene([*tasks.tokens, badge('奖励', .29, .05, score=.72)], tasks.image)] * 2),
+                ('missing tab', [tasks, covered]),
+                ('different initial tabs', [tasks, rewards]),
+                ('reward popup', [Scene([*tasks.tokens, badge('获得物品', .5, .25)], tasks.image)] * 2),
+                ('unrelated page', [self.mail] * 2),
+        ):
+            with self.subTest(label=label):
+                context = self._installed_context(frames, target='battlepass_rewards')
+                with self.assertRaises(AutomationError):
+                    context.workflow_navigation.run()
+                self.assertEqual(context.report.workflow_navigation['actions'], [])
+                self.assertFalse(context.report.workflow_navigation['page_verified'])
+        self.assertEqual(self.sent, [])
+
+    def test_battlepass_subpage_switch_does_not_replay_or_verify_wrong_return(self):
+        tasks = identified(fixture('bp_tasks_settled'))
+        rewards = identified(fixture('bp_rewards_claimable'))
+        conflict = Scene([OTHER, *[token for token in rewards.tokens if token != ACCOUNT]], rewards.image)
+        for label, after in (('same tab', [tasks] * 6), ('different account', [conflict] * 2),
+                             ('one fresh frame', [rewards, EmptyCapture('fade')])):
+            with self.subTest(label=label):
+                self.sent.clear()
+                context = self._installed_context([tasks, tasks, *after], target='battlepass_rewards')
+                with self.assertRaises(AutomationError):
+                    context.workflow_navigation.run()
+                self.assertEqual(self.sent, [_CLICK])
+                [action] = context.report.workflow_navigation['actions']
+                self.assertEqual((action['input_status'], action['destination_status']), ('sent', 'unknown'))
+                self.assertFalse(context.report.workflow_navigation['page_verified'])
 
     def test_phone_mail_real_envelope_then_real_page(self):
         source = phone()

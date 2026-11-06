@@ -76,6 +76,12 @@ class WorkflowNodeFormTests(unittest.TestCase):
         self.form.page_target.set("漫游签证角色展示")
         self.form._select_page(None)
         self.assertEqual(self.submitted()["params"], {"target": "visa_characters"})
+        for label, target in (("无名勋礼", "battlepass"), ("无名勋礼 · 奖励", "battlepass_rewards"),
+                              ("无名勋礼 · 任务", "battlepass_tasks")):
+            self.assertIn(label, self.form.page_picker.cget("values"))
+            self.form.page_target.set(label)
+            self.form._select_page(None)
+            self.assertEqual(self.submitted()["params"], {"target": target})
 
     def test_edit_locks_node_type_and_can_clear_optional_values(self):
         node = dict(id="original", type="task", name="旧名称", enabled=True, task="daily",
