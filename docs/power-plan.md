@@ -151,7 +151,7 @@
 
 账号和详情字段的正向核验取 `0.85` 与配置 OCR 阈值中的较高值。排查第二个完整账号标识、第二个精确材料名及完整普通目录行时，用采集阈值和相应字段位置核对。计划候选要求独立可见的培养缺口区标题。若有普通目录行或缺少培养区锚点，只保留已核实的材料和来源。若「获得途径」标题落入普通目录行的字段范围，详情标为 `unverified`。
 
-`report.json` 的 `build_target.preview` 分开记录培养区、材料、可见来源和候选。候选单次费用取原副本分类规则，`max_challenges_by_config` 按同一份配置上限计算每项可比的理论上限。观察结果为 `partial`，CLI 返回 `1`。正式体力计划继续使用既有 `PowerItem`、资源冻结和逐批支付账本。
+`report.json` 的 `build_target.preview` 分开记录培养区、材料、可见来源和候选。候选单次费用取原副本分类规则，`max_challenges_by_config` 按同一份配置上限计算每项可比的理论上限。观察结果为 `partial`，CLI 返回 `1`。预览记录原 PNG 的 `evidence_sha256`。报告替换期间持有截图读锁，每次尝试都复核文件身份、哈希及当前画面。原件变化或同字节换入时，仅保留 `unverified` 审计，清除已观察数量和候选。正式体力计划继续使用既有 `PowerItem`、资源冻结和逐批支付账本。
 
 旧实机记录展示了省略金赤分类的花萼来源行。漫游指南的三个来源中，城郊雪原同时有金花回忆之蕾和赤花巡猎之蕾。赤花材料的名称、地点与关卡关系另由游戏官方新增关卡说明和固定掉落索引支持。现有材料名与来源行出自分段采样，预览测试中的同屏布局为合成。[旧实机 OCR 记录](https://github.com/moesnow/March7thAssistant/issues/886) [固定掉落索引](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/instance_drops.json) [4.0 官方关卡](https://www.miyoushe.com/sr/article/73078555) [4.2 官方关卡](https://www.miyoushe.com/sr/article/74594359)
 
@@ -195,7 +195,7 @@
 
 ### 明确选择并生成体力草稿
 
-打开所选培养材料的详情，保持「获得途径」及完整地点可见。使用 `--build-target` 指定一项材料、一处来源及 1～6 次挑战。程序重新核实同一账号连续两帧、独立培养区标题和随包目录。所选地点必须有唯一可用来源行，出现截断来源或预算超出当前配置上限时停止准备。以下用漫游指南的城郊雪原作为示例。
+打开所选培养材料的详情，保持「获得途径」及完整地点可见。使用 `--build-target` 指定一项材料、一处来源及 1～6 次挑战。程序重新核实同一账号的两次相邻捕获、独立培养区标题和随包目录。助手遮挡导致的丢帧会重新开始配对。所选地点必须有唯一可用来源行，出现截断来源或预算超出当前配置上限时停止准备。以下用漫游指南的城郊雪原作为示例。
 
 ```powershell
 $draft = .\.venv\Scripts\python.exe -m autohsr --build-target --material '漫游指南' --location '城郊雪原' --count 1 | ConvertFrom-Json

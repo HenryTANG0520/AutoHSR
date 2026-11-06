@@ -303,7 +303,7 @@ def run_preview(ctx, *, selection=None):
         preview['suggestion_reason'] = 'no_current_evidence'
     scene, observation = reader._observe(
         classify=lambda current: _classify(reader, current, read_quantities=observe_quantities),
-        merge=_merge_preview if observe_quantities else None, require_adjacent=observe_quantities,
+        merge=_merge_preview if observe_quantities else None, require_adjacent=True,
     )
     sources = _catalogue_sources(observation, reader.catalogue) if isinstance(observation, MaterialDetail) else []
     candidates = []
@@ -312,15 +312,13 @@ def run_preview(ctx, *, selection=None):
             rule = BY_KEY[source.category]
             candidates.append(dict(category=source.category, target=source.name, location=source.location,
                                    stamina_cost=rule.cost, max_challenges_by_config=count_limit(rule, limit)))
-    if selection is None:
-        preview['evidence'] = reader._save(scene, 'build_target_preview')
-    else:
-        from .build_target_draft import BuildTargetDraft, DraftSource
-        source = DraftSource(reader, scene)
-        preview['evidence'] = source.path.name
-        preview['evidence_sha256'] = source.digest
-        if _classify(reader, scene)[0] != observation:
-            raise AutomationError('保存画面后培养材料或来源发生变化，未生成体力草稿。')
+    from .build_target_draft import DraftSource
+    source = DraftSource(reader, scene)
+    preview['evidence'] = source.path.name
+    preview['evidence_sha256'] = source.digest
+    unverified_preview = preview.copy()
+    if selection is not None and _classify(reader, scene)[0] != observation:
+        raise AutomationError('保存画面后培养材料或来源发生变化，未生成体力草稿。')
     reader._verify_observation(scene)
     if observe_quantities:
         preview['suggestion_reason'] = 'material_shortfall_unbound'
@@ -367,6 +365,7 @@ def run_preview(ctx, *, selection=None):
                        unmatched_calyx_rows=observation.unreadable_calyx_rows + len(observation.locations) - len(sources))
         detail = f'已观察材料「{observation.material}」及 {len(candidates)} 项目录候选，缺口和单轮产量待核实。'
     if selection is None:
+        ctx.build_target_preview_source = source, unverified_preview
         return TaskResult(operation, 'partial', detail)
 
     if (not isinstance(observation, MaterialDetail) or observation.material != selection.material
@@ -380,6 +379,7 @@ def run_preview(ctx, *, selection=None):
         raise AutomationError('指定次数的预计消耗超过当前配置的开拓力上限。')
     row = {key: candidate[key] for key in ('category', 'target', 'location')}
     item, = items([dict(row, count=selection.count)])
+    from .build_target_draft import BuildTargetDraft
     draft = BuildTargetDraft(source, [item.to_dict()], selection.material, cost)
     ctx.build_target_draft = draft
     ctx.report.build_target['draft'] = draft.metadata

@@ -2597,7 +2597,7 @@ class Runner:
             self.stop()
             self._control_checkpoint()
 
-    def _save_run_report(self, directory, points_workflow=None, *, challenge_reader=None):
+    def _save_run_report(self, directory, points_workflow=None, *, challenge_reader=None, preview_source=None):
         temporary = directory / 'report.tmp'
 
         def write_report():
@@ -2609,6 +2609,14 @@ class Runner:
             challenge_reader.save_report(temporary, write_report)
             return
         write_report()
+        if preview_source is not None:
+            def verify_preview():
+                preview_source.check_evidence()
+                preview_source.guard()
+
+            with hold_read_sources((preview_source.path,)):
+                replace_file(temporary, directory / 'report.json', before_replace=verify_preview)
+            return
         if points_workflow is None:
             replace_file(temporary, directory / 'report.json')
             return
@@ -2663,7 +2671,7 @@ class Runner:
         challenge_lobby = self.report.operation == 'challenge_lobby'
         team_calibration = self.report.operation == 'team_preset_calibration'
         challenge_navigation = challenge_lobby or team_calibration
-        guard_publication = self._foreground_only or build_target_plan
+        guard_publication = self._foreground_only or build_target_preview
         build_target_safe_next = ('请核对当前培养目标或打开同一材料的获得途径。'
                                   if build_target_preview else '请在当前账号的生存索引核对培养目标页。材料详情与副本来源待校准。')
         if build_target or challenge_result or challenge_navigation:
@@ -3006,6 +3014,9 @@ class Runner:
                 if build_target_plan:
                     from .build_target_draft import publish_report
                     publish_report(self, directory, context)
+                elif build_target_preview:
+                    from .build_target_draft import publish_preview_report
+                    publish_preview_report(self, directory, context)
                 elif challenge_reader is None:
                     self.report.report_saved = True
                     self._save_run_report(directory, points_workflow)

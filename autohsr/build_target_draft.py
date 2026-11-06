@@ -56,6 +56,8 @@ def _link(source, destination):
 
 
 class DraftSource:
+    """Bind one saved observation to its live capture for either read-only output."""
+
     def __init__(self, reader, scene):
         self.reader = reader
         self.scene = scene
@@ -72,25 +74,25 @@ class DraftSource:
         path, self.digest = saved
         self.path = self.directory / Path(path).name
         if Path(path).resolve(strict=True) != self.path:
-            raise AutomationError('培养草稿证据不在本次运行目录。')
+            raise AutomationError('培养目标证据不在本次运行目录。')
         self.revision = file_revision(self.path)
         self.check_evidence()
 
     def check_evidence(self):
         if (self.path.resolve(strict=True) != self.path or file_revision(self.path) != self.revision
                 or hashlib.sha256(self.path.read_bytes()).hexdigest() != self.digest):
-            raise AutomationError('培养草稿的原始截图已改变。')
+            raise AutomationError('培养目标的原始截图已改变。')
 
     def guard(self):
         ctx, scene = self.reader.ctx, self.scene
         if (not self.reader._current_account(scene) or self.reader.account != self.account
                 or scene.captured_at != self.captured_at or tuple(scene.tokens) != self.tokens
                 or scene.image is not self.image or self.image.shape != self.shape or self.image.dtype != self.dtype):
-            raise AutomationError('培养草稿的原始画面或账号已改变。')
+            raise AutomationError('培养目标的原始画面或账号已改变。')
         # Account and evidence reads precede the final window and control checks.
         ctx.window.guard(self.reader.geometry)
         if ctx.window.emergency_pressed():
-            raise Stopped('F10 紧急停止，未发布培养草稿。')
+            raise Stopped('F10 紧急停止，培养目标证据保留待核对。')
         self.reader._require_current_capture(scene)
 
 
@@ -165,3 +167,23 @@ def publish_report(runner, directory, context):
     report.status = 'success'
     report.failure_task = ''
     report.safe_next = '可审阅草稿，并通过普通体力计划入口明确启动该副本。'
+
+
+def publish_preview_report(runner, directory, context):
+    report = runner.report
+    observed = getattr(context, 'build_target_preview_source', None)
+    report.report_saved = True
+    if observed is None or report.status != 'partial' or report.error:
+        runner._save_run_report(directory)
+        return
+    source, unverified = observed
+    try:
+        runner._save_run_report(directory, preview_source=source)
+    except (OSError, AutomationError) as error:
+        report.status = 'stopped' if isinstance(error, Stopped) else 'failed'
+        report.failure_task = 'build_target_preview'
+        report.error = '培养预览原件或发布未核实：' + str(error)
+        report.build_target.update(preview=unverified, page_verified=False)
+        result = report.results[-1]
+        result.status, result.detail = report.status, report.error
+        runner._save_run_report(directory)

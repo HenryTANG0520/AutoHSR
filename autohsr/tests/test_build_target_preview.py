@@ -278,6 +278,16 @@ class BuildTargetPreviewTests(unittest.TestCase):
                 report = self.draft_cli(frames, code=1)
                 self.assertNotIn('draft', report['build_target'])
 
+    def test_draft_cannot_pair_across_a_capture_discarded_by_context(self):
+        frame = [*self.material(), self.route('城郊雪原', .50)]
+        other = [*self.material('提纯以太'), self.route('城郊雪原', .50)]
+        overlay = [token('助手遮挡', .50, .50)]
+        frames = [frame, overlay, frame, other, frame, other, frame, other, frame]
+        with patch('autohsr.app.helper_overlay', side_effect=lambda scene: scene.has('助手遮挡', exact=True)):
+            report = self.draft_cli(frames, code=1)
+        self.assertEqual(report['build_target']['preview']['state'], 'unverified')
+        self.assertFalse((Path(report['run_dir']) / 'power-plan.json').exists())
+
     def test_draft_needs_saved_current_evidence_and_preserves_existing_file(self):
         frame = [*self.material(), self.route('城郊雪原', .50)]
         with patch.object(Context, 'evidence', return_value=None):
@@ -761,8 +771,8 @@ class BuildTargetPreviewTests(unittest.TestCase):
         frame = [*self.material(), self.route('城郊雪原', .48)]
         original = Context.evidence
 
-        def save(ctx, scene, label):
-            path = original(ctx, scene, label)
+        def save(ctx, scene, label, **kwargs):
+            path = original(ctx, scene, label, **kwargs)
             if label == 'build_target_preview':
                 ctx.runner.input_epoch += 1
             return path
@@ -772,6 +782,34 @@ class BuildTargetPreviewTests(unittest.TestCase):
         preview = report.build_target['preview']
         self.assertEqual(preview['state'], 'unverified')
         self.assertTrue((Path(report.run_dir) / preview['evidence']).is_file())
+
+    def test_preview_publication_rejects_changed_or_replaced_original_even_if_bytes_match(self):
+        from autohsr.build_target_preview import run_preview
+
+        frame = [*self.material(), self.route('城郊雪原', .48), token('当前持有：2', .31, .684, width=.07)]
+        for same_bytes in (False, True):
+            with self.subTest(same_bytes=same_bytes):
+                def replace_original(ctx, **kwargs):
+                    result = run_preview(ctx, **kwargs)
+                    preview = ctx.report.build_target['preview']
+                    self.assertEqual(preview['held'], 2)
+                    original = Path(ctx.report.run_dir) / preview['evidence']
+                    temporary = original.with_suffix('.replacement')
+                    temporary.write_bytes(original.read_bytes() + (b'' if same_bytes else b' changed'))
+                    temporary.replace(original)
+                    return result
+
+                with patch('autohsr.build_target_preview.run_preview', side_effect=replace_original):
+                    report = self.cli([frame, frame])
+                self.assertEqual(report['status'], 'failed')
+                self.assertTrue(report['report_saved'])
+                preview = report['build_target']['preview']
+                self.assertEqual(preview['state'], 'unverified')
+                self.assertEqual(preview['candidates'], [])
+                self.assertIsNone(preview['held'])
+                self.assertTrue((Path(report['run_dir']) / preview['evidence']).is_file())
+                audit = json.loads((Path(report['run_dir']) / 'report.json').read_text(encoding='utf-8'))
+                self.assertEqual(audit['build_target']['preview'], preview)
 
     def test_preview_cannot_send_input_or_open_a_new_budget(self):
         with self.assertRaises(ValueError):
