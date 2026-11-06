@@ -58,6 +58,7 @@ class ReplayContext:
         self.scenes = iter(scenes)
         self.geometry = Geometry(0, 0, *CLIENT_SIZE)
         self.window = SimpleNamespace(guard=Mock(return_value=self.geometry),
+                                      require_foreground=Mock(),
                                       current_window_key=Mock(return_value='test-window'),
                                       emergency_pressed=Mock(return_value=False),
                                       current_executable=Mock(return_value=executable),

@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import cv2
 
+from autohsr import windows
 from autohsr.__main__ import main
 from autohsr.app import Runner
 from autohsr.config import Settings
@@ -26,12 +27,14 @@ from autohsr.tests.test_task_workflow import condition, recipe, task
 from autohsr.tests.test_workflow_navigation import identified
 from autohsr.vision import Vision
 from autohsr.windows import Geometry
+from autohsr.workflow_navigation import WorkflowNavigation
 
 
 class WorkflowNavigationIntegrationTests(unittest.TestCase):
     def run_navigation(self, *, already_open=False, late_loss=False, target='mail', version='4.6.0',
                        start_in_list=False, late_version=False, from_odyssey=False, check_publication_lock=False,
-                       lose_focus_on_installation_read=False, from_phone=False, battlepass_size=None):
+                       lose_focus_on_installation_read=False, from_phone=False, battlepass_size=None,
+                       lose_focus_after_geometry=False):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -80,6 +83,27 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         if battlepass_size is not None:
             window.geometry = Geometry(0, 0, *battlepass_size)
             window.guard.return_value = window.geometry
+        window.require_foreground = windows.GameWindow.require_foreground.__get__(window)
+        foreground = window.hwnd
+        plan_count = 0
+        focus_changed = False
+        original_plan = WorkflowNavigation._planned
+        if lose_focus_after_geometry:
+            window.guard = windows.GameWindow.guard.__get__(window)
+
+        def plan(navigation, pair):
+            nonlocal plan_count
+            action = original_plan(navigation, pair)
+            plan_count += 1
+            return action
+
+        def geometry(_hwnd):
+            nonlocal foreground, focus_changed
+            if plan_count == 2:
+                foreground = window.hwnd + 1
+                focus_changed = True
+            return window.geometry
+
         previous = Runner._save_run_report
         native_replace = Path.replace
         installation_held = []
@@ -131,7 +155,9 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                               dict(id='opened', type='if', condition=condition('page', 'page_verified', True),
                                    steps=[dict(id='verified', type='wait', seconds=0)]))
             workflow.write_text(json.dumps(document, ensure_ascii=False), encoding='utf-8')
-            user32 = SimpleNamespace(GetAsyncKeyState=Mock(return_value=0), SendInput=Mock(side_effect=native_send),
+            user32 = SimpleNamespace(IsWindow=Mock(return_value=True), IsIconic=Mock(return_value=False),
+                                     GetForegroundWindow=Mock(side_effect=lambda: foreground),
+                                     GetAsyncKeyState=Mock(return_value=0), SendInput=Mock(side_effect=native_send),
                                      GetSystemMetrics=Mock(side_effect={76: 0, 77: 0, 78: window.geometry.width,
                                                                         79: window.geometry.height}.__getitem__))
             for name, value in (
@@ -156,11 +182,17 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 ('autohsr.overlay.OverlayService', dict(side_effect=AssertionError('no overlay'))),
             ):
                 stack.enter_context(patch(name, **kwargs))
+            if lose_focus_after_geometry:
+                stack.enter_context(patch.object(WorkflowNavigation, '_planned', new=plan))
+                stack.enter_context(patch.object(windows, 'geometry', side_effect=geometry))
             stack.enter_context(redirect_stdout(out))
             stack.enter_context(redirect_stderr(err))
             code = main(['--task-workflow', str(workflow), '--config', str(config)])
-            interrupted = late_loss or late_version or lose_focus_on_installation_read or version != '4.6.0'
+            interrupted = (late_loss or late_version or lose_focus_on_installation_read
+                           or lose_focus_after_geometry or version != '4.6.0')
             self.assertEqual(code, 1 if interrupted else 0, err.getvalue())
+            if lose_focus_after_geometry:
+                self.assertTrue(focus_changed)
             if check_publication_lock:
                 self.assertEqual(installation_held, [True])
             self.assertEqual(config.read_bytes(), original)
@@ -243,6 +275,13 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 self.assertTrue(steps[0]['facts']['page_verified'])
                 [action] = native['workflow_navigation']['actions']
                 self.assertEqual((action['input_status'], action['destination_page']), ('sent', target))
+
+    def test_battlepass_losing_foreground_during_final_geometry_sends_nothing(self):
+        sent, steps, native = self.run_navigation(target='battlepass_rewards', lose_focus_after_geometry=True)
+        self.assertEqual(sent, [])
+        self.assertEqual(native['workflow_navigation']['actions'], [])
+        self.assertFalse(native['workflow_navigation']['page_verified'])
+        self.assertNotIn('page_verified', steps[0]['facts'])
 
     def test_messages_uses_one_world_input_and_no_input_when_already_open(self):
         for already_open, actions in ((False, 1), (True, 0)):

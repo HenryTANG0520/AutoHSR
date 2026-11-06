@@ -405,6 +405,8 @@ class WorkflowNavigation:
         self._latest(pair[-1])
         if not self._retained(pair[0]) or any(frame.image.flags.writeable for frame in pair):
             raise AutomationError('日常页面导航的封存双帧已变化。')
+        self.window.require_foreground()
+        self._control()
 
     def _planned(self, pair):
         first, second = map(self._action, pair)

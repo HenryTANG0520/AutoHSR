@@ -62,6 +62,7 @@ class Window:
 
     def __init__(self):
         self.guard = Mock(return_value=_GEOMETRY)
+        self.require_foreground = Mock()
         self.current_window_key = Mock(return_value='synthetic-game-window')
         self.focus = Mock(side_effect=AssertionError('navigation must not focus a window'))
 

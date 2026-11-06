@@ -247,13 +247,16 @@ class GameWindow:
         check()
         self.guard()
 
+    def require_foreground(self) -> None:
+        if user32.GetForegroundWindow() != self.hwnd:
+            raise FocusLost("游戏窗口失去焦点，等待恢复前台。")
+
     def guard(self, expected: Geometry | None = None) -> Geometry:
         if not user32.IsWindow(self.hwnd):
             raise AutomationError("游戏窗口已关闭，当前运行已停止。")
         if user32.IsIconic(self.hwnd):
             raise FocusLost("游戏窗口已最小化，等待恢复前台。")
-        if user32.GetForegroundWindow() != self.hwnd:
-            raise FocusLost("游戏窗口失去焦点，等待恢复前台。")
+        self.require_foreground()
         g = geometry(self.hwnd)
         if expected and g != expected:
             raise AutomationError("游戏窗口位置或大小已变化，请重新开始以刷新识别坐标。")
