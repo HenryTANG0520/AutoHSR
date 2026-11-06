@@ -9,6 +9,10 @@ MANDATORY = frozenset(('首领','休整','转化'))
 CARD_LABELS = (.20,.54,.73,.82)
 
 
+class AllStationCandidatesDisabled(AutomationError):
+    """The current preference has no allowed candidate among the labels read so far."""
+
+
 def default_priorities():
     # March7thAssistant's optional custom profile, not AutoHSR's legacy order.
     return dict(zip(('战斗','精英','事件','奖励','异常','铸造','空白','商店','财富'),(1,1,2,2,2,2,3,3,3)))
@@ -85,5 +89,5 @@ class StationPreferences:
                     return icon,'station_icon_select'
         if target is not None:return target,'station_select'
         if self.enabled and self.candidates(scene):
-            raise AutomationError('当前可识别站点均已禁用；未重抽、未选择禁用项。')
+            raise AllStationCandidatesDisabled('当前可识别站点均已禁用；未重抽、未选择禁用项。')
         return None

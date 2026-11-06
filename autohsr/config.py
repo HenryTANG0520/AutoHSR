@@ -51,6 +51,7 @@ class Settings:
     differential_universe_team: str = "哈哈哈哈"
     differential_universe_mode: str = "periodic"
     differential_universe_station_custom: bool = False
+    differential_universe_station_reroll: bool = False
     differential_universe_station_priority: dict[str,int] = field(default_factory=default_priorities)
     differential_universe_station_disabled: list[str] = field(default_factory=list)
     weekly_enabled: bool = False
@@ -118,6 +119,8 @@ class Settings:
             if type(getattr(self,name)) is not bool:raise SettingsError(name,f'{name}必须为布尔值。')
         from .du_station_policy import StationPreferences
         StationPreferences.from_settings(self)
+        if type(self.differential_universe_station_reroll) is not bool:
+            raise SettingsError('differential_universe_station_reroll', '选站重抽开关必须为布尔值。')
         from .weekly_plan import validate_schedule
         validate_schedule(self)
         from .currency_wars_loop_store import runs_value

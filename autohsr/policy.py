@@ -308,6 +308,9 @@ def guard_differential_universe_click(scene: Scene, target: Token | tuple[float,
         raise AutomationError("差分宇宙只允许点击 OCR 明确识别的按钮；坐标点击未授权。")
     if replenishment_dialog(scene):
         raise AutomationError("检测到开拓力补充界面，差分宇宙流程已停止。")
+    from .du_station_reroll import retention_prompt_visible
+    if retention_prompt_visible(scene, .65):
+        raise AutomationError('选站重抽提示仅允许本次专用确认，未使用通用点击。')
     if intent=='last_area_confirm':
         if target != du_last_area_confirm(scene):
             raise AutomationError('未核实最后一次区域选择提示及确认按钮，未点击。')

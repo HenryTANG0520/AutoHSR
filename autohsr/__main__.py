@@ -89,7 +89,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--du-station-priority',action='append',metavar='名称=整数',
                         help='本次站点优先级0～100，小值优先；可重复指定不同名称，并启用自定义站点')
     parser.add_argument('--du-station-disabled',metavar='名称,名称',
-                        help='本次禁用站点列表，空字符串清空；不能禁用必经站点，不自动重抽')
+                        help='本次禁用站点列表，空字符串清空；不能禁用必经站点')
+    parser.add_argument('--du-station-reroll',action=argparse.BooleanOptionalAction,default=None,
+                        help='周期新开局的自定义站点全部禁用时，允许每局一次重抽，不保存配置')
     parser.add_argument("--du-save", action="store_true", help="通关后保存为 AutoHSR 编号存档；默认不保存")
     parser.add_argument("--du-rewards", action="store_true", help="运行前后检查并领取差分宇宙红点奖励；默认关闭")
     parser.add_argument("--du-daily", action="store_true", help="每天首次通关后领奖并刷浴火钢心位面饰品；不补充资源，默认关闭")
@@ -197,7 +199,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error('体力计划覆盖仅用于 --run/--plan --power-plan，不能用于仅补领奖或只接续周常。')
     if not args.power_plan and (args.echo_of_war is not None or args.echo_start_day is not None or args.echo_target is not None or args.echo_location is not None):
         parser.error('历战周计划参数仅用于 --run/--plan --power-plan。')
-    station_options=(args.du_custom_stations is not None or args.du_station_priority is not None or args.du_station_disabled is not None)
+    station_preferences=(args.du_custom_stations is not None or args.du_station_priority is not None or args.du_station_disabled is not None)
+    station_options=station_preferences or args.du_station_reroll is not None
     if station_options and not (args.differential_universe or args.plan):
         parser.error('站点偏好仅用于 --differential-universe 或差分 --plan。')
     if args.resume_weekly_currency and (not args.plan or args.new_battle_run):
@@ -358,9 +361,9 @@ def main(argv: list[str] | None = None) -> int:
             settings.differential_universe_mode = args.du_mode
         if args.plan and args.du_until_points and (not settings.weekly_enabled or settings.weekly_mode != 'differential_universe'):
             raise ValueError('周期积分目标需要已启用的差分周常。')
-        if station_options:
-            if args.plan and (not settings.weekly_enabled or settings.weekly_mode!='differential_universe'):
-                raise ValueError('计划中的站点偏好仅用于已启用的差分周常。')
+        if station_options and args.plan and (not settings.weekly_enabled or settings.weekly_mode!='differential_universe'):
+            raise ValueError('计划中的站点偏好仅用于已启用的差分周常。')
+        if station_preferences:
             specified=args.du_station_priority is not None or args.du_station_disabled is not None
             if specified and args.du_custom_stations is False:
                 raise ValueError('站点覆盖不能与 --no-du-custom-stations 同时使用。')
@@ -374,6 +377,12 @@ def main(argv: list[str] | None = None) -> int:
             if args.du_station_disabled is not None:
                 value=args.du_station_disabled.strip().replace('，',',')
                 settings.differential_universe_station_disabled=[name.strip() for name in value.split(',')] if value else []
+        if args.du_station_reroll is not None:
+            if args.du_station_reroll and (args.resume_active_du or not settings.differential_universe_station_custom
+                    or not settings.differential_universe_station_disabled
+                    or args.differential_universe and settings.differential_universe_mode != 'periodic'):
+                raise ValueError('选站重抽需要新开周期演算，并开启带禁用项的自定义站点。')
+            settings.differential_universe_station_reroll=args.du_station_reroll
         if args.du_save:
             settings.differential_universe_save = True
         if args.du_rewards:

@@ -21,7 +21,7 @@ _REROLL_FIELD = re.compile(r'重[ 　]*抽[ 　]*([0-9０-９]+)?')
 _REROLL_NUMBER = re.compile(r'[0-9０-９]+')
 
 
-def _reroll_button(image):
+def _reroll_button(image, *, exhausted=False):
     import cv2
     import numpy as np
 
@@ -35,9 +35,12 @@ def _reroll_button(image):
     crop_width, crop_height = right-left, bottom-top
     crop = cv2.resize(patch, (crop_width, crop_height), interpolation=cv2.INTER_AREA)
     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-    white = cv2.inRange(hsv, (0, 0, 205), (179, 65, 255))
-    white = cv2.morphologyEx(white, cv2.MORPH_CLOSE, np.ones((3, 5), np.uint8))
-    _, _, components, _ = cv2.connectedComponentsWithStats(white)
+    # The exhausted 4.6 control has a dark cyan silhouette. This appearance
+    # can corroborate a zero reading, never a positive usable count.
+    limits = ((85, 70, 42), (111, 255, 155)) if exhausted else ((0, 0, 205), (179, 65, 255))
+    mask = cv2.inRange(hsv, *limits)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 5), np.uint8))
+    _, _, components, _ = cv2.connectedComponentsWithStats(mask)
     buttons = [(x, y, w, h) for x, y, w, h, area in components[1:]
                if 172 <= w <= 205 and 24 <= h <= 34 and area >= .85*w*h
                and 0 < x < x+w < crop_width and 0 < y < y+h < crop_height]
@@ -56,6 +59,13 @@ def station_reroll_observation(scene, confidence=.85):
     if not {'差分宇宙', '选择下一站'} <= headings or len(confirms) != 1:
         return dict(unread, reason='layout_unverified')
     button = _reroll_button(scene.image)
+    exhausted = button is None
+    if exhausted:
+        control_region = (.30, .87, .48, .93)
+        if not any(t.within(control_region) and re.fullmatch(r'(?:重[ 　]*抽[ 　]*)?[0０]', t.text.strip())
+                   for t in trusted):
+            return dict(unread, reason='control_unverified')
+        button = _reroll_button(scene.image, exhausted=True)
     if button is None or abs(confirms[0].center[1] - (button[1]+button[3])/2) > .016:
         return dict(unread, reason='control_unverified')
 
@@ -83,7 +93,10 @@ def station_reroll_observation(scene, confidence=.85):
         if not _REROLL_NUMBER.fullmatch(count) or not -.004 <= gap <= .035 or overlap < .60*height:
             return dict(unread, reason='count_unverified')
     try:
-        return dict(status='observed', displayed_count=int(count))
+        count = int(count)
+        if exhausted and count != 0:
+            return dict(unread, reason='control_unverified')
+        return dict(status='observed', displayed_count=count)
     except ValueError:
         return dict(unread, reason='count_unverified')
 

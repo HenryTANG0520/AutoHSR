@@ -105,6 +105,9 @@ def classify_page(scene: Scene, context=None) -> str:
     from .policy import du_last_area_confirm
     if du_last_area_confirm(scene) is not None:
         return 'last_area_confirm'
+    from .du_station_reroll import retention_prompt_visible
+    if retention_prompt_visible(scene):
+        return 'station_reroll_prompt'
     from .du_adventure import hanu_challenge,hanu_result_exit
     if hanu_result_exit(scene) is not None:
         return 'adventure_result'
@@ -283,6 +286,10 @@ class DifferentialUniverseWorkflow:
         self.ctx, self.settings, self.runs = context, context.settings, runs
         from .du_station_policy import StationPreferences
         self.station_preferences=StationPreferences.from_settings(self.settings)
+        self.station_reroll_enabled = (self.settings.differential_universe_station_reroll
+                                       and self.settings.differential_universe_mode == 'periodic'
+                                       and self.station_preferences.enabled and bool(self.station_preferences.disabled)
+                                       and not resume_active)
         self.resume_active = resume_active
         self.periodic_rank = periodic_rank
         self.report = context.report.differential_universe
@@ -303,6 +310,7 @@ class DifferentialUniverseWorkflow:
         self.session_id = str(uuid.uuid4())
         self.report["session_id"] = self.session_id
         self.report['station_preferences']=self.station_preferences.to_dict()
+        self.report['station_preferences']['reroll_enabled'] = self.station_reroll_enabled
         self._daily = DailyWorkflow(context)
         self._pages = 0
         self._action_no = 0
@@ -563,10 +571,10 @@ class DifferentialUniverseWorkflow:
         raise AutomationError('删卡已达到指令数量仍未离开目标页，停止重复确认。' if deleting else
             "双卡转换已确认两张仍未离开目标页，停止重复确认。")
 
-    def _record_click(self, scene: Scene, target: Token, intent: str):
+    def _record_click(self, scene: Scene, target: Token, intent: str, **details):
         self._action_no += 1
-        record={"index": self._action_no, "run": self.report["current_run"],
-            "action": target.text, "intent": intent, "status": "requested", "before_ocr": scene.text}
+        record=dict(index=self._action_no, run=self.report['current_run'], action=target.text, intent=intent,
+                    status='requested', before_ocr=scene.text, **details)
         if intent in ('miracle_target','miracle_target_confirm'):
             effect=station_card_effect(scene)
             record['card_effect']=asdict(effect) if effect is not None else None
@@ -2919,11 +2927,20 @@ class DifferentialUniverseWorkflow:
                         scene, kind = self._click(scene, confirm, intent=intent, label="area_confirmed")
                     continue
                 if kind == "station_choice":
-                    action=self._station_target(scene)
-                    if action is None:
-                        scene=self.ctx.wait(lambda page:classify_page(page,self.ctx)=="station_choice"
-                            and self._station_target(page) is not None,timeout=15,description="站点卡动画与候选加载")
+                    from .du_station_policy import AllStationCandidatesDisabled
+                    try:
                         action=self._station_target(scene)
+                        if action is None:
+                            scene=self.ctx.wait(lambda page:classify_page(page,self.ctx)=="station_choice"
+                                and self._station_target(page) is not None,timeout=15,description="站点卡动画与候选加载")
+                            action=self._station_target(scene)
+                    except AllStationCandidatesDisabled:
+                        if not self.station_reroll_enabled:
+                            raise
+                        from .du_station_reroll import StationReroll
+                        current = self.ctx.last_scene
+                        scene,kind=StationReroll(self, current).run(current)
+                        continue
                     target,intent=action
                     station_name = normalize(target.text)
                     if self.station_preferences.enabled:
@@ -2957,6 +2974,8 @@ class DifferentialUniverseWorkflow:
                             raise
                         raise AutomationError('替代站点确认中断，反馈待核对，未重复点击。') from error
                     continue
+                if kind == 'station_reroll_prompt':
+                    raise AutomationError('当前重抽确认缺少本次请求，保留画面，未确认或重复重抽。')
                 if kind == 'last_area_confirm':
                     scene,kind=self._confirm_last_area(scene)
                     continue

@@ -1056,6 +1056,17 @@ class Context:
             du_record["after"] = str(after_path)
             du_record["after_text"] = after.text
 
+    def differential_universe_station_reroll_click(self, scene, target, attempt):
+        from .du_station_reroll import StationReroll
+
+        self._require_gameplay_input()
+        if (self.report.operation != 'differential_universe'
+                or not isinstance(attempt, StationReroll) or attempt.context is not self
+                or self.settings.differential_universe_station_reroll is not True):
+            raise AutomationError('选站重抽仅允许本次已开启的新周期局输入。')
+        attempt.dispatch(scene, target)
+        self.last_scene = None
+
     def _snapshot_after_du_input(self, timeout=60):
         """Observe after a Differential Universe input, retrying blank transition frames."""
         deadline = time.monotonic() + timeout
