@@ -389,6 +389,55 @@ class DailyPlanContinuityTests(unittest.TestCase):
                 self.assertEqual((unsent['row'], unsent['requested'], unsent['completed']), (1, 1, 0))
                 self.assertTrue(read_ref(folder / 'runs', unsent['evidence']).is_file())
 
+    def test_single_round_conflicting_result_keeps_intent_and_stops_before_fill(self):
+        class WaveWorld(BalanceWorld):
+            def __init__(self, observed):
+                super().__init__(CALYX, None)
+                self.observed = observed
+
+            def scene(self, settings):
+                page = super().scene(settings)
+                if self.mode == 'success' and settings.target_name in (ECHO, CALYX):
+                    page.tokens = [t for t in page.tokens if not t.text.startswith('本次挑战波次')]
+                    page.tokens.append(Token('退出关卡', .99, (.32, .88, .42, .93)))
+                    if settings.target_name == CALYX and self.observed is not None:
+                        page.tokens.append(Token(f'上轮挑战波次：{self.observed}', .99, (.575, .793, .67, .826)))
+                return page
+
+        later = row(count=1, target=CALYX)
+        for mode in ('--run', '--plan'):
+            for observed in (None, 1, 2, 18, 24):
+                with self.subTest(mode=mode, observed=observed):
+                    folder = self.root / f'{mode}-{observed}'
+                    world = WaveWorld(observed)
+                    starts = []
+                    with patch(__name__ + '.runtime', side_effect=lambda root, settings, value:
+                               native_payment_window(root, settings, value, starts, [])):
+                        code, report, _ = self.cli(folder, world, later, mode=mode)
+                    expected_starts = [(ECHO, 30), (FIRST, 10), (CALYX, 10)]
+                    if observed in (None, 1):
+                        self.assertEqual((code, report['status']), (0, 'success'))
+                        self.assertEqual(starts, [*expected_starts, (FILL, 10)])
+                        self.assertEqual((report['stamina_spent'], report['stamina_pending']), (60, 0))
+                        continue
+                    self.assertEqual((code, report['status']), (1, 'partial'))
+                    self.assertIn('波次', report['error'])
+                    self.assertEqual(starts, expected_starts)
+                    self.assertEqual(world.mode, 'success')
+                    self.assertNotIn(FILL, world.opened)
+                    path = folder / 'runs' / 'battle-session.json'
+                    saved = read(path)
+                    self.assertEqual((saved['spent'], saved['pending'], saved['completed']), (40, 10, 2))
+                    plan = saved['power_plan']
+                    self.assertEqual(plan['done'], [1, 0])
+                    self.assertEqual([charge['row'] for charge in plan['charges']], [-2, 0])
+                    self.assertEqual((plan['intent']['row'], plan['intent']['count']), (1, 1))
+                    original = path.read_bytes()
+                    code, blocked, finds = self.cli(folder, world, later, mode=mode, extra=('--new-battle-run',))
+                    self.assertEqual((code, finds), (1, 0))
+                    self.assertIn('待核对', blocked['error'])
+                    self.assertEqual(path.read_bytes(), original)
+
     def test_explicit_next_budget_uses_original_confirmed_counts(self):
         folder = self.root / 'resume'
         world = BalanceWorld(CAVERN, 'missing_uid')

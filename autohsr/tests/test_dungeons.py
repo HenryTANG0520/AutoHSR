@@ -125,6 +125,31 @@ class DungeonTests(unittest.TestCase):
         self.assertEqual((ctx.report.battle_completed,ctx.report.stamina_spent),(2,20))
         self.assertEqual(ctx.clicks.count("开始挑战"),1)
 
+    def test_single_round_does_not_confirm_before_late_wave_conflict(self):
+        from autohsr.recovery import BattleBudget
+
+        settings = Settings(dungeon_category="calyx_golden", rounds=1, challenge_count=1,
+                            stamina_limit=10, use_support=False)
+        team = Scene([token("队伍", .1, .05), token("开始挑战", .8, .9)])
+        early = Scene([token("挑战成功", .5, .3)])
+        ready = [token("挑战成功", .5, .3), token("退出关卡", .4, .9)]
+        conflict = token("上轮挑战波次：2", .62, .81)
+        variants = (
+            ([Scene([*ready, conflict])], "结算波次为 2"),
+            ([Scene([*ready, token("上轮挑战波次：", .62, .81)]), Scene(ready)], "核实结算波次"),
+            ([Scene([*ready, conflict, token("本次挑战波次：1", .42, .79)]), Scene(ready)], "核实结算波次"),
+        )
+        for frames, message in variants:
+            with self.subTest(message=message, fields=frames[0].text), tempfile.TemporaryDirectory() as folder:
+                ctx = FakeContext([calyx_scene(cost=10, rounds=1), team, early, *frames], settings)
+                ctx.battle_budget = BattleBudget(Path(folder), settings, ctx.report)
+                ctx.battle_budget.begin()
+                with self.assertRaisesRegex(AutomationError, message):
+                    DailyWorkflow(ctx).battle()
+                self.assertEqual((ctx.report.stamina_spent, ctx.report.stamina_pending, ctx.report.battle_completed),
+                                 (0, 10, 0))
+                self.assertEqual(ctx.clicks, ["挑战", "开始挑战"])
+
     def test_echo_uses_its_taller_row_and_planar_binds_the_visible_category(self):
         echo = Scene([token("毁灭的开端", .5, .40), token("支援舱段", .5, .43), token("进入", .82, .49)])
         rows = guide_rows(echo, "echo_of_war")

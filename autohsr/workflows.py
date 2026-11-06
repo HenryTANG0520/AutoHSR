@@ -1096,14 +1096,37 @@ class DailyWorkflow:
         return scene.has(("挑战成功", "战斗失败"), (0.25, 0.10, 0.75, 0.50), exact=True)
 
     @staticmethod
-    def _settlement_count(scene: Scene) -> int | None:
+    def _settlement_waves(scene: Scene) -> tuple[int | None, ...]:
         values = []
         for token in scene.tokens:
-            if token.within((.20,.40,.80,.90)):
-                match = re.fullmatch(r"(?:上轮挑战波次|本次挑战波次|挑战波次)([1-6])", normalize(token.text))
-                if match:
-                    values.append(int(match.group(1)))
-        return values[0] if len(values) == 1 else None
+            if not token.within((.20, .40, .80, .90)):
+                continue
+            text = normalize(token.text)
+            if text.startswith(("上轮挑战波次", "本次挑战波次", "挑战波次")):
+                match = re.fullmatch(r"(?:上轮|本次)?挑战波次(\d{1,2})", text)
+                values.append(int(match[1]) if match and 1 <= int(match[1]) <= 24 else None)
+        return tuple(values)
+
+    def _verify_settlement(self, scene: Scene, expected: int, *, require_waves: bool) -> Scene:
+        def ready(current: Scene) -> bool:
+            nonlocal require_waves
+            if (not self._settlement(current)
+                    or current.has("战斗失败", (0.25, 0.10, 0.75, 0.50))):
+                raise AutomationError("结算画面已无法核实为本次成功，保留待核对消耗。")
+            values = self._settlement_waves(current)
+            require_waves = require_waves or bool(values)
+            if len(values) == 1 and values[0] is not None:
+                if values[0] != expected:
+                    self.ctx.evidence(current, "battle_settlement_waves_conflict")
+                    raise AutomationError(f"结算波次为 {values[0]}，本批请求为 {expected}，保留待核对消耗。")
+                return True
+            # A legacy single-round result can omit the wave label once its exit is ready.
+            return not require_waves and current.has("退出关卡", BOTTOM, exact=True)
+
+        if ready(scene):
+            return scene
+        self.ctx.log("已看到挑战成功，等待可核实的结算字段。")
+        return self._wait(ready, timeout=30, description="核实结算波次和退出控件")
 
     def _exit_result(self, scene: Scene) -> None:
         if not self._settlement(scene):
@@ -1246,15 +1269,11 @@ class DailyWorkflow:
             if scene.has("战斗失败", (0.25, 0.10, 0.75, 0.50)):
                 self._exit_result(scene)
                 return self._result("battle", "partial", "战斗失败，停止后续刷本；仅计入此前已确认成功的开拓力。", scene)
-            if self.settings.dungeon_category != "auto" and cost > category.cost:
-                if self._settlement_count(scene) is None:
-                    self.ctx.log("已看到挑战成功，等待结算动画显示本批完成波次。")
-                    scene = self._wait(lambda s: self._settlement(s) and self._settlement_count(s) is not None,
-                                       timeout=30, description="结算波次显示")
-                if self._settlement_count(scene) != cost // category.cost:
-                    raise AutomationError("成功结算未独立核实本批完成波次，保留待核对消耗，不重复挑战。")
+            expected = cost // category.cost
+            scene = self._verify_settlement(scene, expected,
+                                            require_waves=self.settings.dungeon_category != "auto" and expected > 1)
             # Accounting happens once, only after a visible success screen.
-            completed += cost // category.cost
+            completed += expected
             # A multi-item plan also verifies current account and preserves its
             # evidence before publishing a new completed counter.
             if budget is not None:
