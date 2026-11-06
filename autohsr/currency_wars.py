@@ -121,6 +121,11 @@ class CurrencyWarsWorkflow:
         from .currency_wars_match import read_match
         match = read_match(scene, self.c.settings.ocr_confidence)
         data["match"] = asdict(match) if match is not None else None
+        if match is not None and match.page in ('preparation', 'shop'):
+            from .currency_wars_investment_badges import read_grail_gold_receipt
+            badge_gold = read_grail_gold_receipt(scene, self.c.settings.ocr_confidence)
+            if badge_gold is not None:
+                data['investment_badge_gold_receipt'] = badge_gold
         # Same state model used by offline/API advisers. Read-only inspection
         # deliberately remains offline even if an API was configured elsewhere.
         from .currency_wars_state import snapshot_from_scene

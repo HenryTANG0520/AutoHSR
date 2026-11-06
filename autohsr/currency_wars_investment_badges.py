@@ -1,10 +1,17 @@
-"""Read complete badge declarations from the redacted 4.6 investment fixture."""
+"""Read 4.6 badge declarations and the separate named gold receipt."""
 from dataclasses import dataclass
 import re
 
 from .models import normalize
 
 
+GRAIL_CARD = '都是这家伙的错'
+_GRAIL_BADGE = '命运圣杯星徽'
+_GRAIL_GRANT = f'获得【{_GRAIL_BADGE}】和10金币'
+_GRAIL_CONDITION = '若未完美通关战斗'
+_GOLD_CHIP = (.794, .742, .889, .820)
+_GOLD_TITLE = (.789, .736, .897, .788)
+_GOLD_AMOUNT = (.819, .774, .875, .825)
 _BUNDLES = {
     '昼之半神星徽套组': ('昼之半神星徽', ('风堇',), '生命之环'),
     # The fixture reads 飞雪. Retain the observed label if either form is read.
@@ -19,12 +26,19 @@ _CN_COUNTS = {'一': 1, '二': 2, '两': 2, '三': 3}
 @dataclass(frozen=True)
 class BadgeDeclaration:
     badge: str
-    badge_count: int
-    other_rewards: tuple[tuple[str, int], tuple[str, int]]
+    badge_count: int | None
+    other_rewards: tuple[tuple[str, int], ...]
 
 
 def parse_badge_declaration(title, effect):
-    known = _BUNDLES.get(normalize(title))
+    title = normalize(title)
+    if title == GRAIL_CARD:
+        first, separator, remainder = effect.partition('。')
+        if separator and normalize(first) == _GRAIL_GRANT and normalize(remainder).startswith(_GRAIL_CONDITION):
+            # The card names the badge without a printed quantity.
+            return BadgeDeclaration(_GRAIL_BADGE, None, (('金币', 10),))
+        return None
+    known = _BUNDLES.get(title)
     match = _DECLARATION.fullmatch(normalize(effect))
     if known is None or match is None:
         return None
@@ -37,11 +51,16 @@ def parse_badge_declaration(title, effect):
 
 def read_badge_declaration(name, parts, confidence):
     """Read the complete declaration from consecutive rows of the same card."""
+    title = normalize(name.text)
+    if title == GRAIL_CARD:
+        # The grant ends in the second row. Later rows describe a separate conditional effect.
+        parts = [t for t in parts if t.center[1] <= .55]
+    elif title not in _BUNDLES:
+        return None
     x = name.center[0]
     threshold = max(.85, confidence)
-    if (normalize(name.text) not in _BUNDLES or not parts
-            or any(t.score < threshold or not x-.125 <= t.box[0] < t.box[2] <= x+.125
-                   for t in (name, *parts))):
+    if not parts or any(t.score < threshold or not x-.125 <= t.box[0] < t.box[2] <= x+.125
+                        for t in (name, *parts)):
         return None
 
     # Use the same line and wrap distances as the investment refresh check.
@@ -78,3 +97,48 @@ def read_badge_declaration(name, parts, confidence):
         previous_line = start, y, top, bottom
 
     return parse_badge_declaration(name.text, ''.join(t.text for row in rows for t in row))
+
+
+def _inside(token, region):
+    left, top, right, bottom = region
+    x1, y1, x2, y2 = token.box
+    return left <= x1 < x2 <= right and top <= y1 < y2 <= bottom
+
+
+def read_grail_gold_receipt(scene, confidence=.65):
+    """Read the current named +10 gold chip independently from badge custody."""
+    import cv2
+    import numpy as np
+
+    from .currency_wars_match import read_match
+    from .currency_wars_prepare import trusted
+
+    current = trusted(scene, confidence)
+    titles = [t for t in current.tokens if t.within(_GOLD_TITLE) and re.fullmatch(r'[一-鿿]{4,16}', normalize(t.text))]
+    amounts = [t for t in current.tokens if t.within(_GOLD_AMOUNT) and re.fullmatch(r'[0-9]{1,3}', normalize(t.text))]
+    if len(titles) != 1 or len(amounts) != 1:
+        return None
+    title, amount = titles[0], amounts[0]
+    if (normalize(title.text) != GRAIL_CARD or normalize(amount.text) != '10'
+            or not _inside(title, _GOLD_TITLE) or not _inside(amount, _GOLD_AMOUNT)
+            or min(title.score, amount.score) < .85 or abs(title.center[0] - amount.center[0]) > .027
+            or not .022 <= amount.center[1] - title.center[1] <= .055):
+        return None
+    match = read_match(scene, confidence)
+    if match is None or match.page not in ('preparation', 'shop') or match.node is None or match.gold is None:
+        return None
+    image = current.image
+    if (not isinstance(image, np.ndarray) or image.dtype != np.uint8 or image.ndim != 3
+            or image.shape[2] != 3 or image.shape[0] < 360 or image.shape[1] < 640):
+        return None
+    height, width = image.shape[:2]
+    left, top, right, bottom = [round(v*s) for v, s in zip(_GOLD_CHIP, (width, height, width, height))]
+    hue, saturation, value = cv2.cvtColor(image[top:bottom, left:right], cv2.COLOR_BGR2HSV).transpose(2, 0, 1)
+    green = (hue >= 40) & (hue <= 95) & (saturation >= 25) & (value >= 125)
+    warm = (hue >= 8) & (hue <= 42) & (saturation >= 75) & (value >= 95)
+    half = green.shape[0] // 2
+    _, _, components, _ = cv2.connectedComponentsWithStats(green.astype(np.uint8))
+    if (min(green[:half].mean(), green[half:].mean()) < .40 or not .035 <= warm[half:].mean() <= .22
+            or not any(y < half < y + h and area >= .38 * green.size for _, y, _, h, area in components[1:])):
+        return None
+    return dict(title=GRAIL_CARD, node=match.node, gold_received=10, wallet=match.gold, badge_delivery_verified=False)
