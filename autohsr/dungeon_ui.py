@@ -137,8 +137,12 @@ def build_fields(ui, parent):
     budget.pack(side="left", padx=(d(10), d(20)))
     support = ui.dungeon_support_control = ttk.Checkbutton(safety, text="借用好友支援", variable=ui.use_support)
     support.pack(side="left")
-    ui.setting_controls.extend((budget, support))
-    ui.stamina_controls.extend((budget, support))
+    from .support_ui import show as show_support
+    ui.dungeon_support_button = ttk.Button(safety, text="支援偏好", style="Compact.TButton",
+                                           command=lambda: show_support(ui))
+    ui.dungeon_support_button.pack(side="left", padx=(d(8), 0))
+    ui.setting_controls.extend((budget, support, ui.dungeon_support_button))
+    ui.stamina_controls.extend((budget, support, ui.dungeon_support_button))
     presets = ttk.Frame(advanced, style="Panel.TFrame")
     presets.grid(row=1, column=1, sticky="e", padx=(d(10), 0))
     for label, command in (("设为 1 次", lambda: ui._preset(selected_category(ui).cost, 1)),
