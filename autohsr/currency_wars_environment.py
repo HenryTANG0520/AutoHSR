@@ -18,6 +18,9 @@ ENVIRONMENT_SELECT = 'select_standard_environment_'
 ENVIRONMENT_SELECTED = 'environment_selected_'
 ENVIRONMENT_CONFIRM = 'confirm_standard_environment_'
 ENVIRONMENT_CONFLICTS = 'currency.initial_environment.conflicts'
+_CONFIRM_ROI = (.50, .87, .65, .95)
+_RED_NOBLE_NAME = '红钻贵族'
+_RED_NOBLE_BODY = '开局时拥有【红钻】和一个【简易武装箱】'
 
 
 @dataclass(frozen=True)
@@ -186,20 +189,72 @@ def standard_environment_choice(scene, confidence=.65, *, slot=None):
     return min(choices, key=lambda choice:(-choice.score, choice.kind, normalize(choice.name.text)))
 
 
+def _selection_pixels(image):
+    chosen = []
+    for slot, center in enumerate(CENTERS):
+        border = _crop(image, (center-.123,.20,center-.121,.79))
+        if border.size and np.mean(np.min(border,axis=2)>200) >= .5:
+            chosen.append(slot)
+    button = _crop(image, (.50,.895,.62,.925))
+    return chosen, float(np.mean(np.min(button, axis=2) > 180)) if button.size else None
+
+
 def standard_environment_confirm(scene, choice, confidence=.65):
     if scene.image is None or standard_environment_choice(scene, confidence, slot=choice.slot) != choice:
         raise AutomationError('当前环境选择与本次候选不一致。')
-    chosen = []
-    for slot, center in enumerate(CENTERS):
-        border = _crop(scene.image, (center-.123,.20,center-.121,.79))
-        if border.size and np.mean(np.min(border,axis=2)>200) >= .5:
-            chosen.append(slot)
-    button = _crop(scene.image, (.50,.895,.62,.925))
-    if chosen != [choice.slot] or not button.size or np.mean(np.min(button,axis=2)>180) < .5:
+    chosen, button = _selection_pixels(scene.image)
+    if chosen != [choice.slot] or button is None or button < .5:
         raise AutomationError('环境选中边框或确认按钮未核实。')
     from .currency_wars_navigation import unique
     from .currency_wars_prepare import trusted
-    return unique(trusted(scene, confidence), '确认', (.50,.87,.65,.95))
+    return unique(trusted(scene, confidence), '确认', _CONFIRM_ROI)
+
+
+def read_red_noble_declaration(scene, confidence=.65):
+    """Read this card's opening declaration without proposing an environment action."""
+    from .currency_wars_prepare import trusted
+
+    image = scene.image
+    if (not isinstance(image, np.ndarray) or image.ndim != 3 or image.shape[2] != 3
+            or image.shape[0] < 360 or abs(image.shape[1] / image.shape[0] - 16 / 9) > .04
+            or observe(scene, confidence).page_kind != 'environment'):
+        return None
+    tokens = trusted(scene, 0).tokens
+    titles = [t for t in tokens if normalize(t.text) == _RED_NOBLE_NAME and .34 <= t.center[1] <= .38]
+    if len(titles) != 1:
+        return None
+    title, = titles
+    for slot, center in enumerate(CENTERS):
+        left, right = center - .115, center + .115
+        column = _standard_card_text(tokens, left, right)
+        if _standard_card_name(column, left, right, confidence) is title:
+            break
+    else:
+        return None
+    if _standard_card_text(scene.field_reads.get(ENVIRONMENT_CONFLICTS, ()), left, right):
+        return None
+    # Only this separate lower label may be removed from the body check. Any
+    # other text in the card still takes part in the original geometry checks.
+    labels = [t for t in column if normalize(t.text) == '装备'
+              and center - .018 <= t.box[0] < t.box[2] <= center + .018
+              and .682 <= t.box[1] < t.box[3] <= .717]
+    if len(labels) != 1 or not confidence <= labels[0].score <= 1:
+        return None
+    body = _standard_card_body([t for t in column if t is not labels[0]], title, left, right, confidence)
+    if body is None or normalize(body) != _RED_NOBLE_BODY:
+        return None
+
+    chosen, button = _selection_pixels(image)
+    confirmation = [t for t in tokens if t.within(_CONFIRM_ROI)]
+    selection = 'unknown'
+    if (len(confirmation) == 1 and confidence <= confirmation[0].score <= 1
+            and normalize(confirmation[0].text) == '确认' and button is not None):
+        if chosen == [slot] and button >= .5:
+            selection = 'selected'
+        elif not chosen and button <= .25:
+            selection = 'unselected'
+    return dict(slot=slot + 1, name=title.text, body=body, red_diamond_declared=True,
+                simple_armament_box_count=1, selection_state=selection, delivery_status='unknown')
 
 
 def environment_choice(scene,confidence=.65):

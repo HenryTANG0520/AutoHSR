@@ -126,6 +126,11 @@ class CurrencyWarsWorkflow:
         mode = read_overclock(scene, self.c.settings.ocr_confidence)
         if mode.state != 'other_page':
             data['overclock_configuration'] = asdict(mode)
+        if observation.page_kind == 'environment':
+            from .currency_wars_environment import read_red_noble_declaration
+            declaration = read_red_noble_declaration(scene, confidence)
+            if declaration is not None:
+                data['red_noble_declaration'] = declaration
         if observation.page_kind == 'investment_selection':
             from .currency_wars_investment_policy import badge_declarations
             data['investment_badge_declarations'] = badge_declarations(scene, self.c.settings.ocr_confidence)
