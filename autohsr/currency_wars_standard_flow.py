@@ -1605,11 +1605,12 @@ def run_standard(c):
         refreshing_investment = choice.intent == INVESTMENT_REFRESH
         investment_progress = investment_confirmation or closing_investment_shop or refreshing_investment
         double_supply_step = DOUBLE_SUPPLY_INPUT in action
+        environment_step = choice.intent.startswith((ENVIRONMENT_SELECT, ENVIRONMENT_CONFIRM))
         later_environment_board = choice.expected == 'initial_board' and choice.payload not in ((), ('1-1',))
         strict_feedback = (defeat_step or investment_box or loot_click or loot_box is not None
                            or loot_claim is not None or boss_progress or loss_progress or investment_progress or encounter_input or double_supply_step
                            or INVESTMENT_REFRESH_BINDING in action
-                           or choice.intent.startswith((ENVIRONMENT_SELECT, ENVIRONMENT_CONFIRM)))
+                           or environment_step)
         observed_at = scene.captured_at
         notice_watch = watch_encounter_reward(store.data, choice, scene, c.report.run_dir, c.runner.input_epoch)
         c.currency_standard_input(scene, choice)
@@ -1635,17 +1636,23 @@ def run_standard(c):
                 raise InputInterrupted('标准动作反馈的输入代次已变化，原意图保留待核对。')
             if after is not None:
                 guard._require_current_scene(after)
-                from .currency_wars_identity import account_key
+                from .currency_wars_identity import AccountNotObserved, account_key, checked_account_key
                 same_account = False
                 progress = None
                 try:
-                    observed_account = account_key(after, max(.85, c.settings.ocr_confidence))
+                    confidence = c.settings.ocr_confidence
+                    observed_account = (checked_account_key(after, confidence) if environment_step else
+                                        account_key(after, max(.85, confidence)))
                     if (encounter_input or double_supply_step) and account_key(after, min(.65, c.settings.ocr_confidence)) != observed_account:
                         raise AutomationError('标准动作反馈的账号字段有冲突。')
                     if loss_progress and account_key(after, c.settings.ocr_confidence) != observed_account:
                         raise AutomationError('失利后的到达画面有账号冲突。')
-                except AutomationError:
+                except AccountNotObserved:
                     ready = False  # Animation may hide the UID; observe within this deadline.
+                except AutomationError:
+                    if environment_step:
+                        raise
+                    ready = False
                 else:
                     if observed_account != store.data.get('account_key'):
                         raise AutomationError('标准动作反馈账号来源不一致，原意图保留待核对。')
@@ -1684,7 +1691,7 @@ def run_standard(c):
                     previous_popup=popup_stamp
                     initial = store.data.get('initial_environment', {})
                     if ready and choice.expected == 'initial_board' and initial.get('action_id') == action['id']:
-                        from .currency_wars_initial import record_arrival
+                        from .currency_wars_initial import publish_acceptance, record_arrival
                         frames = initial['arrival_frames']
                         if after.captured_at <= observed_at or (frames and after.captured_at <= frames[-1]['captured_at']):
                             ready = False
@@ -1693,6 +1700,10 @@ def run_standard(c):
                                 evidence=evidence(c, after, 'currency_standard_initial_arrival_'+str(len(frames)+1)),
                                 run_dir=c.report.run_dir, epoch=c.runner.input_epoch, confidence=c.settings.ocr_confidence)
                             store.persist()
+                            if ready:
+                                publish_acceptance(c, store, guard, choice, after)
+                                scene = after
+                                break
                     if choice.expected == 'standard_initial_shop_closed':
                         if not ready:
                             initial_return_frames, initial_return_paths = [], []
@@ -1816,15 +1827,6 @@ def run_standard(c):
                     if choice.intent.startswith(ENVIRONMENT_CONFIRM):
                         store.data['environment'] = action['decision']
                         store.data.pop('expected_board', None)
-                        if store.data.get('initial_environment', {}).get('action_id') == action['id']:
-                            from .currency_wars_initial import accepted as accept_initial
-                            try:
-                                accept_initial(store.data, action['id'])
-                            except AutomationError as error:
-                                action['status'] = 'unknown'
-                                store.data.update(action_status='unknown', reason=str(error))
-                                store.persist()
-                                raise
                     if choice.intent == 'close_standard_initial_shop':
                         from .currency_wars_initial_shop import closed as initial_shop_closed
                         try:

@@ -433,17 +433,20 @@ class Context:
         input_epoch = self.runner.input_epoch
         captured_at, geometry = scene.captured_at, scene.geometry
         data = store.require_pending(choice.intent, input_epoch)
-        from .currency_wars_identity import account_key
-        if data.get('account_key') != account_key(scene,max(.85,self.settings.ocr_confidence)):
+        from .currency_wars_identity import account_key, checked_account_key
+        from .currency_wars_environment import ENVIRONMENT_CONFIRM, ENVIRONMENT_SELECT
+        environment_confirm = choice.intent.startswith(ENVIRONMENT_CONFIRM)
+        environment_step = environment_confirm or choice.intent.startswith(ENVIRONMENT_SELECT)
+        confidence = self.settings.ocr_confidence
+        current_account = (checked_account_key(scene, confidence) if environment_step else
+                           account_key(scene, max(.85, confidence)))
+        if data.get('account_key') != current_account:
             raise AutomationError('当前账号与已记录对局不一致，未发送标准动作。')
         if choice.intent == 'start_standard_a8_40':
             if data['status'] != 'start_pending' or len(data['actions']) != 1:
                 raise AutomationError('标准开局已有提交记录，未重复开始。')
         elif data['status'] != 'active':
             raise AutomationError('尚未核实标准对局已开始。')
-        from .currency_wars_environment import ENVIRONMENT_CONFIRM, ENVIRONMENT_SELECT
-        environment_confirm = choice.intent.startswith(ENVIRONMENT_CONFIRM)
-        environment_step = environment_confirm or choice.intent.startswith(ENVIRONMENT_SELECT)
         initial_confirm = environment_confirm and choice.payload in ((), ('1-1',))
         environment_scope = ('actions', 'expected_board')
         if environment_step and any(data.get(key) != store.data.get(key) for key in environment_scope):
@@ -565,7 +568,7 @@ class Context:
                 live = store.data
                 if any(current.get(key) != live.get(key) for key in (*environment_scope, *initial_keys)):
                     raise AutomationError('投资环境位面或落盘意图在发送前已改变，未发送输入。')
-                if account_key(scene, max(.85, confidence)) != current.get('account_key'):
+                if checked_account_key(scene, confidence) != current.get('account_key'):
                     raise AutomationError('初始环境当前账号与原提交不一致，未发送输入。')
 
                 # Keep the files and pixels protected while the last window check runs.

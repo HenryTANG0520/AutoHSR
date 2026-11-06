@@ -59,7 +59,7 @@ def environment_selection_slot(intent, expected):
                  if intent == ENVIRONMENT_SELECT+str(slot) and expected == ENVIRONMENT_SELECTED+str(slot)), None)
 
 
-def parse_environment_effect(effect):
+def parse_environment_effect(effect, *, name=None):
     """Exact effect grammar; title, tier, star, count and gold stay separate."""
     value = normalize(effect)
     if match := re.fullmatch(r'获得([1-9])个随机([1-4])星([1-5])费角色进入新节点时这位角色永久获得随机属性加成', value):
@@ -73,6 +73,9 @@ def parse_environment_effect(effect):
         return 'random_environment_gold', (('gold', gold),), gold//2-4, '额外金币已读，但随机环境结果未知，保守排序'
     if value == '所有首领节点前都加入一个额外补给阶段':
         return 'boss_supply', (('extra_stages_per_boss', 1),), 18, '增加首领前补给；不把未来随机物品视作已持有'
+    if (isinstance(name, str) and normalize(name) == '过剩经费'
+            and re.fullmatch(r'补给阶段中角色会携带[两2２]件装备', value)):
+        return 'double_supply_equipment', (('equipment_per_role', 2),), -5, '已读后续双件补给效果，优先保留现有可选策略'
     return None, (), None, '效果未完整匹配已核验语法，不生成可执行候选'
 
 
@@ -167,7 +170,7 @@ def standard_environment_options(scene, confidence=.65):
         if effect is None:
             options.append(EnvironmentOption(slot, name, '', None, reason='环境正文的同列、相邻行或清晰度未核实'))
             continue
-        kind, parameters, score, reason = parse_environment_effect(effect)
+        kind, parameters, score, reason = parse_environment_effect(effect, name=name.text)
         options.append(EnvironmentOption(slot, name, effect, kind, parameters, score, reason))
     if not options:
         raise AutomationError('未完整定位投资环境卡片。')

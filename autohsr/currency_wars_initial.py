@@ -1,8 +1,5 @@
-"""Initial choice custody and post-choice observations, never invented gifts.
-
-The caller persists these in-memory records before further input. No function
-issues input, writes evidence, repairs an old action, or clears a transaction.
-"""
+"""Initial choice custody, guarded acceptance and post-choice observations."""
+from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import asdict
 import hashlib
@@ -20,9 +17,10 @@ from .currency_wars import observe
 from .currency_wars_collector import collected_snapshot, roster_cells
 from .currency_wars_consumables import stock, GEAR, TOOLS
 from .currency_wars_environment import ENVIRONMENT_POLICY, parse_environment_effect
-from .currency_wars_identity import account_key
+from .currency_wars_identity import checked_account_key
 from .currency_wars_match import read_match
-from .models import AutomationError
+from .models import AutomationError, InputInterrupted, Stopped
+from .storage import file_revision, hold_read_sources
 
 
 KEY = 'initial_environment'
@@ -116,7 +114,7 @@ def _phase(session, run_dir, epoch):
 def _declarations(decision):
     if type(decision) is not dict or not isinstance(decision.get('effect'), str):
         _fail()
-    kind, parameters, score, _ = parse_environment_effect(decision['effect'])
+    kind, parameters, score, _ = parse_environment_effect(decision['effect'], name=decision.get('name'))
     if (kind is None or decision.get('kind') != kind or decision.get('parameters') != dict(parameters)
             or decision.get('policy') != ENVIRONMENT_POLICY or type(decision.get('score')) not in (int, float)
             or decision['score'] != score or not isinstance(decision.get('name'), str)
@@ -260,7 +258,7 @@ def _current(session, scene, run_dir, epoch, confidence):
     if (type(captured) not in (int, float) or not math.isfinite(captured)
             or captured <= 0 or not 0 <= time.monotonic()-captured <= 8):
         _fail('初始环境当前画面已过期。')
-    if account_key(scene, max(.85, confidence)) != session['account_key']:
+    if checked_account_key(scene, confidence) != session['account_key']:
         _fail('初始环境账号来源改变，未继续观察或输入。')
     return root
 
@@ -313,6 +311,62 @@ def accepted(session, action_id):
     record.update(selection_accepted=True, accepted_after=after, status='selection_accepted')
     session[KEY] = record
     return deepcopy(record)
+
+
+def publish_acceptance(c, store, guard, choice, scene):
+    previous = store.data
+    origin = previous[KEY]
+    root, epoch = origin['run_dir'], origin['epoch']
+    first, last = origin['arrival_frames']
+    path = last['evidence']['path']
+    candidate = deepcopy(previous)
+    action = candidate['actions'][-1]
+    action.update(status='verified', after=path)
+    candidate.update(environment=action['decision'], action_status='transition_verified', screenshot=path)
+    candidate.pop('expected_board', None)
+    candidate.pop('collection', None)
+    window, image, geometry = c.window, scene.image, scene.geometry
+    tokens, fields = tuple(scene.tokens), scene.field_reads.copy()
+    confidence = c.settings.ocr_confidence
+
+    def before_replace():
+        revision = file_revision(store.path)
+        if (_digest(store.require_pending(choice.intent, epoch)) != _digest(previous)
+                or checked_account_key(scene, confidence) != origin['account_key']):
+            _fail('初始环境确认的原意图或账号已改变。')
+        window.guard(geometry)
+        emergency = window.emergency_pressed() is True
+        if file_revision(store.path) != revision:
+            _fail('初始环境确认的落盘意图在发布前已改变。')
+        window.guard(geometry)
+        if emergency or window.emergency_pressed() is True or getattr(c.runner, 'stop_requested', False):
+            raise Stopped('初始环境确认反馈发布前任务已停止。')
+        if c.runner.input_epoch != epoch:
+            raise InputInterrupted('初始环境确认反馈的输入代次已改变。')
+        guard._require_current_scene(scene)
+        if (c.window is not window or c.currency_standard_session is not store or store.data is not candidate
+                or c.report.run_dir != root or c.settings.ocr_confidence != confidence or scene.image is not image
+                or scene.geometry != geometry or scene.captured_at != last['captured_at'] or image.flags.writeable
+                or tuple(scene.tokens) != tokens or scene.field_reads != fields
+                or not 0 <= time.monotonic() - first['captured_at'] <= 8):
+            _fail('初始环境确认的两帧反馈已过期或改变。')
+
+    c.checkpoint()
+    with ExitStack() as held:
+        held.enter_context(hold_read_sources((origin['origin']['before']['path'], first['evidence']['path'], path)))
+        if not record_arrival(deepcopy(previous), scene, evidence=path, run_dir=root, epoch=epoch, confidence=confidence):
+            _fail('初始环境确认的当前返回画面与原回执不同。')
+        accepted(candidate, action['id'])
+        if image.flags.writeable:
+            image.setflags(write=False)
+            held.callback(image.setflags, write=True)
+        store.data = candidate
+        try:
+            store.persist(before_replace=before_replace)
+        except Exception:
+            store.data = previous
+            raise
+    c.report.currency_wars = candidate
 
 
 def capture_current(session, scene, *, evidence, run_dir, epoch, confidence=.65):

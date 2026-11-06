@@ -7,10 +7,11 @@ import re
 from pathlib import Path
 
 from .currency_wars_prepare import trusted
-from .models import AutomationError, normalize
+from .models import AutomationError, Scene, normalize
 
 
 UID_COUNTEREVIDENCE = 'uid_counterevidence'
+UID_VETO_FLOOR = .65
 
 
 class AccountNotObserved(AutomationError):
@@ -29,6 +30,14 @@ def account_key(scene, confidence=.85):
         failure = AccountNotObserved if not values else AutomationError
         raise failure('当前账号标识未完整核实，未沿用旧对局事实。')
     return hashlib.sha256(('autohsr-currency-account-v1:'+values[0]).encode('ascii')).hexdigest()
+
+
+def checked_account_key(scene, confidence):
+    """Require a strong account read, with complete weaker UIDs used only to veto."""
+    low = [token for token in scene.field_reads.get(UID_COUNTEREVIDENCE, ()) if token is not None]
+    candidates = Scene([*scene.tokens, *low]) if low else scene
+    account_key(candidates, min(UID_VETO_FLOOR, confidence))
+    return account_key(scene, max(.85, confidence))
 
 
 def installed_client(executable):

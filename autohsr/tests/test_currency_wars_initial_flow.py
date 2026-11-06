@@ -476,6 +476,63 @@ class InitialFlowTests(unittest.TestCase):
             self.assertLess(returns[0]['captured_at'], returns[1]['captured_at'])
             self.assertEqual(c.window.click.call_count, 2)
 
+    def test_conflicting_account_cannot_authorize_confirmation_or_return(self):
+        from autohsr.currency_wars_identity import UID_COUNTEREVIDENCE
+        from autohsr.models import Token
+
+        for frame_index in (0, 2):
+            with self.subTest(frame=frame_index), tempfile.TemporaryDirectory() as folder:
+                c, board, store = self.context(folder)
+                scenes = [environment((1,), True), initial.clone(board), initial.clone(board)]
+                scenes[frame_index].field_reads[UID_COUNTEREVIDENCE] = (Token('UID:100000001', .74, (.02, .95, .13, .98)),)
+                self.states(c, scenes)
+                with patch('autohsr.currency_wars_replay.save_sample'), self.assertRaises(AutomationError):
+                    run_standard(c)
+                saved = StandardSession(store.path).data
+                self.assertEqual(saved['actions'][-1]['status'], 'pending')
+                self.assertFalse(saved['initial_environment']['selection_accepted'])
+                self.assertEqual(c.window.click.call_count, int(frame_index == 2))
+
+    def test_events_at_final_publication_keep_the_confirm_intent_pending(self):
+        original = StandardSession.require_pending
+        cases = (('epoch', InputInterrupted), ('stop', Stopped), ('stop_during_f10', Stopped),
+                 ('external_write', AutomationError))
+        for event, error in cases:
+            with self.subTest(event=event), tempfile.TemporaryDirectory() as folder:
+                c, board, store = self.context(folder)
+                self.states(c, [environment((1,), True), initial.clone(board), initial.clone(board)])
+
+                def read(session, intent, epoch):
+                    pending = original(session, intent, epoch)
+                    if session.data.get('initial_environment', {}).get('selection_accepted'):
+                        if event == 'epoch':
+                            c.runner.input_epoch += 1
+                        elif event == 'stop':
+                            c.runner.stop_requested = True
+                        elif event == 'external_write':
+                            session.path.write_text(json.dumps(dict(pending, external_revision=True)), encoding='utf-8')
+                    return pending
+
+                def emergency_pressed():
+                    active = getattr(c, 'currency_standard_session', None)
+                    if (event == 'stop_during_f10' and active is not None
+                            and active.data.get('initial_environment', {}).get('selection_accepted')):
+                        c.runner.stop_requested = True
+                    return False
+
+                c.window.emergency_pressed.side_effect = emergency_pressed
+
+                with patch.object(StandardSession, 'require_pending', read), \
+                     patch('autohsr.currency_wars_replay.save_sample'), self.assertRaises(error):
+                    run_standard(c)
+                saved = StandardSession(store.path).data
+                self.assertEqual(saved['actions'][-1]['status'], 'pending')
+                self.assertEqual(len(saved['initial_environment']['arrival_frames']), 2)
+                self.assertFalse(saved['initial_environment']['selection_accepted'])
+                self.assertFalse(c.report.currency_wars['initial_environment']['selection_accepted'])
+                c.window.click.assert_called_once()
+                self.assertEqual(saved.get('external_revision', False), event == 'external_write')
+
     def test_direct_preparation_current_zero_roster_is_after_choice_and_before_loot(self):
         with tempfile.TemporaryDirectory() as folder:
             c, board, _ = self.context(folder, empty=True)

@@ -33,7 +33,7 @@ def change_text(scene, original, replacement):
     return scene
 
 
-def read_ocr(scene, isolated):
+def read_ocr(scene, isolated, confidence=.65):
     height, width = scene.image.shape[:2]
     results = []
     for token in scene.tokens:
@@ -47,18 +47,29 @@ def read_ocr(scene, isolated):
 
     if not isolated:
         reader = Vision.__new__(Vision)
-        configure(reader, .65)
+        configure(reader, confidence)
         return reader.read(scene.image, scene.geometry)
     with tempfile.TemporaryDirectory() as folder:
         source, output = Path(folder) / 'frame.npy', Path(folder) / 'ocr.json'
         np.save(source, scene.image, allow_pickle=False)
         with patch.object(Vision, '__init__', configure):
-            _ocr_job(str(source), str(output), .65)
+            _ocr_job(str(source), str(output), confidence)
         result = json.loads(output.read_text(encoding='utf-8'))
         return Scene(_tokens(result), scene.image, scene.geometry, field_reads=_field_reads(result))
 
 
 class StandardEnvironmentTests(unittest.TestCase):
+    def test_isolated_ocr_keeps_account_counterevidence_below_the_collection_threshold(self):
+        from autohsr.currency_wars_identity import account_key, checked_account_key
+
+        source = environment()
+        source.tokens.extend((Token('UID:100000000', .99, (.02, .95, .13, .98)),
+                              Token('UID:100000001', .74, (.12, .96, .22, .99))))
+        scene = read_ocr(source, isolated=True, confidence=.90)
+        self.assertEqual(account_key(scene, .90), account_key(source, .90))
+        with self.assertRaises(AutomationError):
+            checked_account_key(scene, .90)
+
     def test_real_three_effects_separate_price_star_count_and_refreshes(self):
         choices = standard_environment_options(environment())
         self.assertEqual(len(choices),3)
@@ -77,6 +88,24 @@ class StandardEnvironmentTests(unittest.TestCase):
                 self.assertEqual(dict(params),dict(count=count,star=star,tier=4))
         kind, params, score, reason = parse_environment_effect('本局在固定节点进行投资策略选择时左、中、右的选项分别为银金彩品质，并且投资策略刷新次数+3。')
         self.assertEqual(dict(params),dict(extra_refreshes=3))
+
+    def test_double_supply_requires_whole_effect_and_preserves_existing_preference(self):
+        body = '补给阶段中，角色会携带两件装备。'
+        for count in ('两', '2', '２'):
+            kind, parameters, _, _ = parse_environment_effect(body.replace('两', count), name='过剩经费')
+            self.assertEqual((kind, dict(parameters)), ('double_supply_equipment', {'equipment_per_role': 2}))
+        for title, effect in (('过剩经费', body + '每次消耗金币'), ('过剩经费', body.replace('两', '三')),
+                              ('人身意外险', body), (None, body)):
+            self.assertIsNone(parse_environment_effect(effect, name=title)[0])
+
+        state = environment()
+        state.tokens = [t for t in state.tokens if not t.within((.11, .34, .345, .79))]
+        state.tokens.extend((Token('过剩经费', .99, (.17, .345, .28, .372)),
+                             Token(body, .99, (.123, .389, .335, .414))))
+        self.assertEqual(standard_environment_options(state)[0].kind, 'double_supply_equipment')
+        self.assertEqual(standard_environment_choice(state).name.text, '战力飙升')
+        state.tokens = [t for t in state.tokens if not .37 < t.center[1] < .79 or t.center[0] < .34]
+        self.assertEqual(next_action(state).intent, 'select_standard_environment_0')
 
     def test_missing_or_conflicting_effect_text_never_becomes_known(self):
         for effect in ('获得1个随机2星2费角色', '获得1个随机5星2费角色，进入新节点时这位角色永久获得随机属性加成',

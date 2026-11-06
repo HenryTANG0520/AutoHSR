@@ -19,9 +19,11 @@ from .models import AutomationError, Scene, Token
 def _ocr_job(input_path: str, output_path: str, confidence: float, configured_name=""):
     try:
         import numpy as np
+        from .currency_wars_identity import UID_VETO_FLOOR
         from .vision import Vision
         image = np.load(input_path, allow_pickle=False)
         reader = Vision(confidence)
+        reader.uid_counterevidence_floor = UID_VETO_FLOOR
         scene = reader.read(image)
         from .currency_wars_match import supplement_numbers
         scene = supplement_numbers(scene, reader)
