@@ -1,6 +1,6 @@
 """Daily page transitions for a task-tree step and its native input gate."""
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from hashlib import sha256
 import math
@@ -12,18 +12,23 @@ from .build_target_read import _has_split_label
 from .config import RESOURCE_ROOT
 from .currency_wars_identity import AccountNotObserved, UID_COUNTEREVIDENCE, checked_account_key
 from .currency_wars_prepare import trusted
+from .daily_event_navigation import odyssey_list_entry
+from .daily_event_observe import read_event_installation
+from .daily_event_pages import _VERSION, phone_journey_event_entry, read_gift_of_odyssey
 from .daily_reward_observe import phone_achievement_target
 from .dungeons import CATEGORIES
 from .free_rewards import battlepass_modal, battlepass_page, mail_entry, mailbox
 from .models import FULL, AutomationError, EmptyCapture, InputInterrupted, Stopped, TaskResult, Token, normalize
 from .screenshot_tool import MAX_PIXELS
+from .storage import hold_read_sources
+from .task_workflow import WORKFLOW_PAGES
 from .team_calibration_pages import calibration_overlay
 from .vision import helper_overlay
 from .workflows import DailyWorkflow, TITLE
 
 
 OPERATION = 'workflow_open_page'
-TARGETS = ('phone', 'guide', 'daily_training', 'survival_index', 'assignments', 'mail', 'battlepass')
+TARGETS = WORKFLOW_PAGES
 SAFE_NEXT = '请核对当前页面和本次导航回执，反馈待核对时保留当前画面。'
 COLLECTION_FLOOR = .65
 _MAX_AGE = 8.
@@ -118,6 +123,7 @@ class WorkflowNavigation:
         self.occlusions = context.capture_occlusion_count
         self.key = self.geometry = self.account = None
         self.intent = self.arrival = None
+        self._event_installation = None
         self.started = False
 
     def _control(self):
@@ -136,6 +142,8 @@ class WorkflowNavigation:
         if (not self.key or self.window.current_window_key() != self.key
                 or self.window.guard(self.geometry) != self.geometry):
             raise AutomationError('日常页面导航的前台窗口来源已变化。')
+        if self._event_installation is not None and read_event_installation(self.window) != self._event_installation:
+            raise AutomationError('巡星之礼导航的游戏安装来源或版本已变化。')
         self._control()
 
     def _page(self, scene):
@@ -203,10 +211,28 @@ class WorkflowNavigation:
             return None
         return Token(label, score, (x-.005, y-.006, x+.005, y+.006))
 
+    def _read_page(self, scene):
+        page = self._page(scene)
+        if page is not None or self._event_installation is None:
+            return page
+        options = dict(client_version=self._event_installation.version, confidence=self.confidence)
+        if read_gift_of_odyssey(scene, **options) is not None:
+            return 'odyssey'
+        if odyssey_list_entry(scene, **options) is not None:
+            return 'activity_list'
+        return None
+
     def _action(self, frame):
         page = frame.page
         if page == 'world':
             return _Action('open_phone', ('phone',))
+        if self._event_installation is not None and page in ('phone', 'activity_list'):
+            options = dict(client_version=self._event_installation.version, confidence=self.confidence)
+            if page == 'phone':
+                token = phone_journey_event_entry(frame.scene, **options)
+                return _Action('open_journey_events', ('activity_list', 'odyssey'), token) if token else None
+            token = odyssey_list_entry(frame.scene, **options)
+            return _Action('open_odyssey', ('odyssey',), token) if token else None
         if page == 'phone':
             target = 'guide' if self.target in _GUIDE_PAGES else self.target
             token = self._phone_control(frame.scene, target)
@@ -241,7 +267,7 @@ class WorkflowNavigation:
         sample = image[::max(1, image.shape[0] // 160), ::max(1, image.shape[1] // 240)]
         if float(np.std(sample, axis=(0, 1)).max()) < 2:
             raise EmptyCapture('日常页面导航的过场画面为空。')
-        page = self._page(scene)
+        page = self._read_page(scene)
         account = self._account(scene)
         self.account = account
         return _Frame(scene, image, c.capture_sequence, scene.captured_at, account, page, tuple(scene.tokens),
@@ -301,7 +327,7 @@ class WorkflowNavigation:
         for frame in pair:
             scene = frame.scene
             if (not self._retained(frame) or _digest(frame.image) != frame.digest or self._account(scene) != frame.account
-                    or self._page(scene) != frame.page):
+                    or self._read_page(scene) != frame.page):
                 raise AutomationError('日常页面导航的原始双帧、账号或页面已改变。')
 
     def _final_guard(self, pair):
@@ -343,7 +369,9 @@ class WorkflowNavigation:
             self.record['actions'].append(row)
             self.c.last_scene, self.c._scroll_anchor = None, None
 
-        with _seal(pair):
+        installation = self._event_installation
+        source = hold_read_sources((installation.source,)) if installation is not None else nullcontext()
+        with _seal(pair), source:
             self._verify(pair)
             if planned.token is None:
                 if planned.name not in ('open_phone', 'return_to_hub'):
@@ -374,6 +402,11 @@ class WorkflowNavigation:
         if self.geometry is None or not 0 < self.geometry.width * self.geometry.height <= MAX_PIXELS:
             raise AutomationError('日常页面导航缺少可核实的游戏客户区。')
         self._guard()
+        if self.target == 'odyssey':
+            self._event_installation = read_event_installation(self.window)
+            if self._event_installation.version != _VERSION:
+                raise AutomationError('当前客户端尚未校准巡星之礼导航。')
+            self.record['client_version'] = self._event_installation.version
         pair = self._pair()
         while not self._satisfies(pair[-1].page):
             if len(self.record['actions']) >= _MAX_ACTIONS:

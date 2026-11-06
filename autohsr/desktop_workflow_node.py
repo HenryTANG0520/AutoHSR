@@ -34,7 +34,7 @@ _SCREEN_PARAMS = {"workflow_game_image": "条件 JSON · template", "workflow_ga
 _FAILURE = {"stop": "停止流程", "continue": "继续后续步骤"}
 _PAGES = {
     "phone": "手机", "guide": "星际和平指南", "daily_training": "每日实训", "survival_index": "生存索引",
-    "assignments": "委托", "mail": "邮件", "battlepass": "无名勋礼",
+    "assignments": "委托", "mail": "邮件", "battlepass": "无名勋礼", "odyssey": "巡星之礼",
 }
 _NUMBERS = {
     "wait": ("seconds", "等待秒数（0～3600）", 0, 3600),

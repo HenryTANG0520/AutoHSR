@@ -1,5 +1,18 @@
 # AutoHSR resource attribution
 
+## 2026-11-07 巡星之礼活动导航
+
+三个模板来自星阳希公开 4.6 活动实录 P5 的 108.0 秒，640×360 原解码 BGR SHA-256 为 `868522d5495e8531dc7b84c40545efa12d5fca141afa1547bd039da2de5f8f55`。PNG 直接编码裁片，无缩放。三份回放分别取 122.5、90.0、127.9 秒，仅保留 `[104,8,177,36]` 和 `[15,62,82,329]` 两块，其余像素清零。模板和回放均不含 UID。游戏美术权利归 HoYoverse 及相应权利人，原视频归上传者及相应权利人。[P5 原片](https://www.bilibili.com/video/BV1JZaV6XEH3/?p=5) · [回放文件](../autohsr/tests/fixtures/daily_event_navigation)
+
+| 文件 | 源裁剪 `x1,y1,x2,y2` | 文件 SHA-256 |
+| --- | --- | --- |
+| `event_rewards_badge.png` | `112,14,128,29` | `4c41740310a2e63fc68fc2402e855edc7b84ea6d1171632f61223d0ad61d5055` |
+| `event_rewards_caption.png` | `131,19,170,25` | `e3dfe277a3dba477a2c7026ea55a3bc0fc3d40bda80996612d243c667d5e597c` |
+| `event_odyssey_row.png` | `24,98,76,113` | `25e3299b542a3f89157bec390fe3519a1267538ec3c826c377c79d7611d48a9d` |
+| `activity-list.png` | 两块保留区域 | `9c6713edc1cce5f35320dd358d667a30cfb074e89ea42376a62c60c5e3dbc65f` |
+| `activity-list-scrolled.png` | 两块保留区域 | `b3ae44449fab612b2a77d4416f597b246c2f003f100bed47ee319d4d772c194c` |
+| `claim-popup.png` | 两块保留区域 | `a0ada14aeaefc54e866172d87993ae8f84d27eece99f0edff12461c7d3c11970` |
+
 ## 2026-11-07 漫游签证选中页签
 
 三张国服 4.6 时期玩家公开静态截图用于核对收集展示、角色展示和战绩展示。夹具保留最小页签裁片与白名单界面文字、坐标及分数。原图、UID 和账号信息未入库。游戏界面权利归 HoYoverse 及相应权利人，原截图归上传者及相应权利人。[公开原帖](https://www.miyoushe.com/sr/article/79174169) · [来源、裁剪与哈希](../autohsr/tests/fixtures/daily_visa/sources.json)

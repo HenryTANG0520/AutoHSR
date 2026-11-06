@@ -9,24 +9,38 @@ import unittest
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
+import cv2
+
 from autohsr.__main__ import main
 from autohsr.app import Runner
 from autohsr.config import Settings
 from autohsr.models import FocusLost, Scene, Token
+from autohsr.tests.test_daily_event_navigation import activity_frame
+from autohsr.tests.test_daily_event_pages import _odyssey
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, _Window, phone
 from autohsr.tests.test_task_workflow import condition, recipe, task
 
 
 class WorkflowNavigationIntegrationTests(unittest.TestCase):
-    def run_navigation(self, *, already_open=False, late_loss=False):
+    def run_navigation(self, *, already_open=False, late_loss=False, target='mail', version='4.6.0',
+                       start_in_list=False, late_version=False):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
+        if target == 'odyssey':
+            banner = activity_frame()
+            banner.tokens.append(ACCOUNT)
+            event = _odyssey()
+            destination = Scene([ACCOUNT, *event.tokens], cv2.resize(event.image, (1920, 1080)))
+            pages = (source, banner, destination)
+        else:
+            pages = (source, mailbox)
         sent = []
+        self.clicks = []
 
         def frames():
             while True:
-                yield mailbox if already_open or sent else source
+                yield pages[-1] if already_open else pages[min(len(sent) + start_in_list, len(pages) - 1)]
 
         window = _Window(frames())
         previous = Runner._save_run_report
@@ -34,20 +48,29 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         def save(runner, *args, **kwargs):
             if late_loss:
                 window.guard.side_effect = FocusLost('fake late focus loss')
+            if late_version:
+                (game / 'config.ini').write_text('[General]\ngame_version=4.7.0\n', encoding='utf8')
             return previous(runner, *args, **kwargs)
 
         def native_send(length, events, _size):
             sent.append(tuple(events[index].mi.dwFlags for index in range(length)))
+            self.clicks.append((events[0].mi.dx / 65535, events[0].mi.dy / 65535))
             return length
 
         out, err = io.StringIO(), io.StringIO()
         with TemporaryDirectory() as tmp, ExitStack() as stack:
             root = Path(tmp).resolve()
+            game = root / 'game'
+            game.mkdir()
+            executable = game / 'StarRail.exe'
+            executable.touch()
+            (game / 'config.ini').write_text(f'[General]\ngame_version={version}\n', encoding='utf8')
+            window.current_executable = Mock(return_value=str(executable))
             config = root / 'config.json'
             Settings(overlay_logs=True, auto_launch=True, ocr_confidence=.91).save(config)
             original = config.read_bytes()
             workflow = root / 'recipe.json'
-            document = recipe(task('page', 'workflow_open_page', target='mail'),
+            document = recipe(task('page', 'workflow_open_page', target=target),
                               dict(id='opened', type='if', condition=condition('page', 'page_verified', True),
                                    steps=[dict(id='verified', type='wait', seconds=0)]))
             workflow.write_text(json.dumps(document, ensure_ascii=False), encoding='utf-8')
@@ -78,7 +101,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             stack.enter_context(redirect_stdout(out))
             stack.enter_context(redirect_stderr(err))
             code = main(['--task-workflow', str(workflow), '--config', str(config)])
-            self.assertEqual(code, 1 if late_loss else 0, err.getvalue())
+            self.assertEqual(code, 1 if late_loss or late_version or version != '4.6.0' else 0, err.getvalue())
             self.assertEqual(config.read_bytes(), original)
             parent = json.loads(out.getvalue())
             entry = parent['workflow']['steps'][0]
@@ -108,3 +131,31 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertNotIn('page_verified', steps[0]['facts'])
         self.assertFalse(native['workflow_navigation']['page_verified'])
         self.assertEqual(len(native['workflow_navigation']['actions']), 1)
+
+    def test_opens_odyssey_from_phone_using_only_the_left_activity_banner(self):
+        sent, steps, native = self.run_navigation(target='odyssey')
+        self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * 2)
+        phone, banner = self.clicks
+        self.assertTrue(.670 <= phone[0] <= .729 and .476 <= phone[1] <= .520)
+        self.assertTrue(.035 <= banner[0] <= .118 and .27 <= banner[1] <= .32)
+        result = native['workflow_navigation']
+        self.assertEqual(result['client_version'], '4.6.0')
+        self.assertEqual([row['action'] for row in result['actions']], ['open_journey_events', 'open_odyssey'])
+        self.assertEqual([row['destination_page'] for row in result['actions']], ['activity_list', 'odyssey'])
+        self.assertTrue(steps[0]['facts']['page_verified'])
+
+    def test_odyssey_already_open_or_unsupported_version_never_sends_input(self):
+        for version in ('4.6.0', '4.7.0'):
+            with self.subTest(version=version):
+                sent, _, native = self.run_navigation(already_open=True, target='odyssey', version=version)
+                self.assertEqual(sent, [])
+                self.assertEqual(native['workflow_navigation']['page_verified'], version == '4.6.0')
+
+    def test_from_current_activity_list_late_installation_change_keeps_only_the_sent_action(self):
+        sent, steps, native = self.run_navigation(target='odyssey', start_in_list=True, late_version=True)
+        self.assertEqual(len(sent), 1)
+        self.assertNotIn('page_verified', steps[0]['facts'])
+        result = native['workflow_navigation']
+        self.assertFalse(result['page_verified'])
+        self.assertEqual(result['actions'][0]['action'], 'open_odyssey')
+        self.assertEqual(result['actions'][0]['input_status'], 'sent')

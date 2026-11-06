@@ -33,6 +33,22 @@ class _Installation:
     revision: tuple[int, int, int, int, int]
 
 
+def read_event_installation(window):
+    try:
+        executable = Path(window.current_executable()).resolve(strict=True)
+        source = executable.with_name('config.ini')
+        with hold_read_sources((source,)):
+            client = installed_client(executable)
+            revision = file_revision(source)
+        if Path(client['executable']) != executable or Path(client['source']) != source:
+            raise ValueError()
+        return _Installation(client['full_version'], executable, source, client['sha256'], revision)
+    except Stopped:
+        raise
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError):
+        raise AutomationError('当前游戏进程的安装版本待核实。') from None
+
+
 def _read_page(scene, version, confidence):
     entry = phone_journey_event_entry(scene, client_version=version, confidence=confidence)
     odyssey = read_gift_of_odyssey(scene, client_version=version, confidence=confidence)
@@ -74,19 +90,7 @@ class DailyEventObserver:
     def _read_installation(self):
         reader = self._reader
         reader.guard()
-        try:
-            executable = Path(reader.window.current_executable()).resolve(strict=True)
-            source = executable.with_name('config.ini')
-            with hold_read_sources((source,)):
-                client = installed_client(executable)
-                revision = file_revision(source)
-            if Path(client['executable']) != executable or Path(client['source']) != source:
-                raise ValueError()
-            install = _Installation(client['full_version'], executable, source, client['sha256'], revision)
-        except Stopped:
-            raise
-        except (OSError, RuntimeError, ValueError, TypeError, KeyError):
-            raise AutomationError('当前游戏进程的安装版本待核实。') from None
+        install = read_event_installation(reader.window)
         reader.guard()
         return install
 

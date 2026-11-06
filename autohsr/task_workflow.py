@@ -20,7 +20,7 @@ MAX_EXECUTIONS = 10000
 MAX_STEP_NOTIFICATIONS = 20
 GAME_VISION_TASKS = {'workflow_game_image', 'workflow_game_text'}
 PAGE_TASK = 'workflow_open_page'
-WORKFLOW_PAGES = ('phone', 'guide', 'daily_training', 'survival_index', 'assignments', 'mail', 'battlepass')
+WORKFLOW_PAGES = ('phone', 'guide', 'daily_training', 'survival_index', 'assignments', 'mail', 'battlepass', 'odyssey')
 WORKFLOW_FOREGROUND_TASKS = GAME_VISION_TASKS | {PAGE_TASK}
 GAME_TASKS = {'daily', 'plan', 'differential_universe', 'currency_wars_loop',
               'currency_wars_points', 'currency_wars_rewards', 'du_rewards'} | WORKFLOW_FOREGROUND_TASKS
