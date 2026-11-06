@@ -154,7 +154,10 @@ def _unique(tokens, labels, roi=(0, 0, 1, 1)):
 
 def phone(scene, confidence=.65):
     clean = _scene(scene, confidence)
-    return bool(clean and clean.has('开拓等级', (.55, .05, .99, .35), exact=True) and
+    # The live phone can OCR the label and its adjacent level as one token.
+    return bool(clean and any(token.within((.55, .05, .99, .35))
+                              and re.fullmatch(r'开拓等级(?:[0-9]{1,3})?', normalize(token.text))
+                              for token in clean.tokens) and
                 clean.has(('委托', '星际和平指南', '指南', '无名勋礼'), (.55, .25, 1, 1), exact=True) and
                 not clean.has(('兑换码', '兑换成功', '请输入兑换码'), (.15, .15, .85, .85), exact=True))
 

@@ -104,6 +104,16 @@ class RedemptionPagesTests(unittest.TestCase):
         no_phone = deepcopy(scene); no_phone.tokens = []
         self.assertIsNone(phone_more_target(no_phone))
 
+    def test_phone_accepts_current_level_in_the_same_ocr_token(self):
+        region = (1286, 250, 1413, 277)
+        for label, expected in (('开拓等级 70', True), ('开拓等级：7', True),
+                                ('建议开拓等级 70', False), ('开拓等级 70 经验', False)):
+            with self.subTest(label=label):
+                scene = phone_scene()
+                scene.tokens[0] = token(label, region)
+                self.assertEqual(phone(scene), expected)
+                self.assertEqual(phone_more_target(scene) is not None, expected)
+
     def test_more_menu_entry_requires_neighbor_and_current_phone_menu(self):
         self.assertEqual(redemption_entry(more_scene()).text, '兑换码')
         for label in ('漫游签证', '指南', '委托'):

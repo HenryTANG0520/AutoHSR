@@ -164,11 +164,15 @@ class _WorkflowPanel(_Panel):
 
         assignment_line = ttk.Frame(self)
         assignment_line.grid(row=4, column=0, sticky="ew", pady=(0, self._size(5)))
+        assignment_line.columnconfigure(1, weight=1)
         self.assignment_toggle = ttk.Checkbutton(assignment_line, text="启用持续委托",
                                                   variable=self.assignment_enabled, command=self._toggle_assignment)
         self.assignment_toggle.grid(row=0, column=0, sticky="w", padx=(0, self._size(8)))
         ttk.Label(assignment_line, textvariable=self.assignment_status, style="Settings.Note.TLabel").grid(
             row=0, column=1, sticky="w")
+        self.visual_button = ttk.Button(assignment_line, text="可视编辑…", command=self.edit_tree,
+                                        style="Panel.TButton")
+        self.visual_button.grid(row=0, column=2, sticky="e", padx=(self._size(8), 0))
 
         holder, self.editor = self._editor(self, height=11)
         holder.grid(row=5, column=0, sticky="nsew")
@@ -207,7 +211,7 @@ class _WorkflowPanel(_Panel):
         saved = self._source_file is not None
         _set_enabled(self.new_button, idle)
         _set_enabled(self.open_button, idle)
-        for button in (self.validate_button, self.target_button):
+        for button in (self.validate_button, self.target_button, self.visual_button):
             _set_enabled(button, idle and has_draft)
         _set_enabled(self.reload_button, idle and saved)
         _set_enabled(self.scope_field, idle and has_draft)
@@ -275,11 +279,51 @@ class _WorkflowPanel(_Panel):
         step = document["steps"][0]
         if enabled != step.get("enabled", True):
             step["enabled"] = enabled
-            self.editor.edit_separator()
-            self.editor.replace("1.0", "end-1c", _json(document))
-            self.editor.edit_separator()
-            self.editor.edit_modified(True)
-            self._edit()
+            self._replace_draft_document(document)
+
+    def _replace_draft_document(self, document):
+        text = _json(document)
+        if len(text.encode("utf8")) > MAX_BYTES:
+            text = json.dumps(document, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        self.editor.edit_separator()
+        self.editor.replace("1.0", "end-1c", text)
+        self.editor.edit_separator()
+        self.editor.edit_modified(True)
+        self._edit()
+
+    def edit_tree(self):
+        if self._busy or self.ui.closing or self.draft is None:
+            return
+        from .desktop_workflow_tree import ask_workflow_tree
+
+        draft, text = self.draft, self._text()
+        destination = self.saved_target or self._source_file
+        try:
+            original = load_workflow_json(text)
+            result = ask_workflow_tree(self.ui, original, base_dir=destination.parent if destination else None,
+                                       task_names=_TASK_NAMES)
+        except WorkflowError as error:
+            panel = getattr(self.ui, "workflow_panel", self)
+            panel._error("无法打开可视编辑", error)
+            panel._changed()
+            return
+        panel = getattr(self.ui, "workflow_panel", self)
+        if (result is None or self.ui.closing or self._busy or panel.draft is not draft
+                or panel._text() != text):
+            return
+        document, path = result
+        if document != original:
+            panel._replace_draft_document(document)
+            if path is None and panel.scope.get() == _STEP_SCOPE:
+                panel.step_path.set("")
+                panel.status.set("草稿已更新 · 请重选单步")
+        if path is not None:
+            panel.scope.set(_STEP_SCOPE)
+            panel.step_path.set(path)
+            panel._clear_profile()
+            panel.status.set("已选择步骤 · 请重新校验")
+        panel._changed()
+        panel.visual_button.focus_set()
 
     def _scope_changed(self, *_):
         if self.loading or self.draft is None:
