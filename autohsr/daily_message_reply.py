@@ -341,6 +341,6 @@ def reply_once(context, store: ReplyStore, *, item_id: int, submit, record=None)
 
             if record is not None:
                 record.update(ledger_status='confirmed', feedback_status='confirmed')
-            return feedback_scope
+            return feedback_scope, reservation.hold_confirmed
         previous = frame, feedback
     raise AutomationError('缺少同一短信会话的连续发出反馈，保留待核对。')

@@ -44,6 +44,7 @@ def _publish(path, payload, *, exclusive=False, before_replace=None):
         replace_file(temporary, path, exclusive=exclusive, before_replace=prepare)
         with hold_read_sources((path,)):
             verify(path)
+            return file_revision(path)
     finally:
         if created is not None:
             try:
@@ -59,27 +60,31 @@ class _Reservation:
         self._pending = json.dumps(record, separators=(',', ':')).encode('ascii')
         record['status'] = 'confirmed'
         self._confirmed = json.dumps(record, separators=(',', ':')).encode('ascii')
-        self._revision = None
+        self._pending_revision = self._confirmed_revision = None
         self._origin = ref(self)
         self._lock = Lock()
 
-    def _verify_pending(self):
-        if self._path.is_symlink() or file_revision(self._path) != self._revision:
-            raise AutomationError('短信回复待核对记录的来源已变化。')
-        with self._path.open('rb') as stream:
-            if stream.read(len(self._pending) + 1) != self._pending:
-                raise AutomationError('短信回复待核对记录的内容已变化。')
-
     @contextmanager
-    def hold_pending(self):
+    def _hold_record(self, revision, payload, state):
         with hold_read_sources((self._path,)):
-            self._verify_pending()
+            if (revision is None or self._path.resolve(strict=True) != self._path
+                    or file_revision(self._path) != revision):
+                raise AutomationError(f'短信回复{state}记录的来源已变化。')
+            with self._path.open('rb') as stream:
+                if stream.read(len(payload) + 1) != payload:
+                    raise AutomationError(f'短信回复{state}记录的内容已变化。')
             yield
+
+    def hold_pending(self):
+        return self._hold_record(self._pending_revision, self._pending, '待核对')
+
+    def hold_confirmed(self):
+        return self._hold_record(self._confirmed_revision, self._confirmed, '已确认')
 
     def confirm(self, *, before_replace=None):
         """Confirm an observed reply using the original reservation."""
         with self._lock:
-            if self._origin() is not self or self._revision is None:
+            if self._origin() is not self or self._pending_revision is None:
                 raise AutomationError('缺少本次短信回复的待核对记录。')
 
             def verify():
@@ -89,10 +94,10 @@ class _Reservation:
                     pass
 
             try:
-                _publish(self._path, self._confirmed, before_replace=verify)
+                self._confirmed_revision = _publish(self._path, self._confirmed, before_replace=verify)
             except OSError as error:
                 raise AutomationError('短信回复确认未保存，保留待核对状态。') from error
-            self._revision = None
+            self._pending_revision = None
 
 
 class ReplyStore:
@@ -138,8 +143,7 @@ class ReplyStore:
         try:
             self.directory.mkdir(parents=True, exist_ok=True)
             # Every existing record blocks, including unreadable or partial records.
-            _publish(path, reservation._pending, exclusive=True)
-            reservation._revision = file_revision(path)
+            reservation._pending_revision = _publish(path, reservation._pending, exclusive=True)
         except FileExistsError as error:
             raise AutomationError('本账号的短信段落已有回复记录，未重复提交。') from error
         except OSError as error:

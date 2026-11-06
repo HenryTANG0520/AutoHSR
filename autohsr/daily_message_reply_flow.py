@@ -44,7 +44,7 @@ class DailyMessageReply:
         self._root = root
         self._window, self._runner, self._vision = context.window, context.runner, context.vision
         self._started = False
-        self._intent = self._feedback = None
+        self._intent = self._feedback = self._confirmed_ledger = None
 
     def _guard_context(self):
         context = self.context
@@ -92,7 +92,8 @@ class DailyMessageReply:
         self._started = True
         with sequence_lease():
             store = ReplyStore(_ledger_directory(self._root))
-            self._feedback = reply_once(self.context, store, item_id=self._item, submit=self._submit, record=self.record)
+            self._feedback, self._confirmed_ledger = reply_once(
+                self.context, store, item_id=self._item, submit=self._submit, record=self.record)
         return TaskResult(OPERATION, 'ok', '已核实同一会话中的新发出回复。')
 
     def invalidate_feedback(self):
@@ -100,36 +101,53 @@ class DailyMessageReply:
         self.record['feedback_status'] = 'unknown'
 
     def save_verified_report(self, temporary, write_report):
-        """The durable ledger survives loss of current report evidence."""
+        """Hold the original confirmation through each report publication attempt."""
         report = self.context.report
         destination = temporary.with_name('report.json')
-        detail = '报告发布前的短信反馈待核对，保留已保存的回复记录。'
+        feedback_detail = '报告发布前的短信反馈待核对，保留已保存的回复记录。'
+        ledger_detail = '报告发布前的短信确认记录来源或内容已变化，保留待核对。'
         payload = write_report()
+        check_feedback = True
 
         @contextmanager
         def verify_attempt():
+            nonlocal check_feedback, payload
             with ExitStack() as holds:
+                ledger_changed = False
+                if self.record['ledger_status'] == 'confirmed':
+                    try:
+                        if self._confirmed_ledger is None:
+                            raise AutomationError(ledger_detail)
+                        holds.enter_context(self._confirmed_ledger())
+                    except (AutomationError, OSError):
+                        self.record['ledger_status'] = 'pending'
+                        ledger_changed = True
+
                 try:
-                    self._guard_context()
-                    if (self._feedback is None or self.record['feedback_status'] != 'confirmed'
-                            or temporary.read_text(encoding='utf8') != payload):
-                        raise AutomationError(detail)
-                    holds.enter_context(self._feedback())
-                except (OSError, UnicodeError):
-                    raise AutomationError(detail) from None
+                    if check_feedback:
+                        self._guard_context()
+                    if ledger_changed or temporary.read_text(encoding='utf8') != payload:
+                        raise AutomationError(feedback_detail)
+                    if check_feedback:
+                        if (self._feedback is None or self.record['feedback_status'] != 'confirmed'
+                                or self.record['ledger_status'] != 'confirmed'):
+                            raise AutomationError(feedback_detail)
+                        holds.enter_context(self._feedback())
+                except (AutomationError, OSError, UnicodeError) as error:
+                    detail = feedback_detail if check_feedback else report.error
+                    if ledger_changed:
+                        detail = ledger_detail
+                    check_feedback = False
+                    self.invalidate_feedback()
+                    if isinstance(error, Stopped):
+                        self._runner.stop()
+                        report.status = 'stopped'
+                    elif report.status != 'stopped':
+                        report.status = 'partial'
+                    report.error = detail
+                    report.failure_task = OPERATION
+                    report.results[-1] = TaskResult(OPERATION, report.status, detail)
+                    payload = write_report()
                 yield
 
-        try:
-            replace_file(temporary, destination, attempt_scope=verify_attempt)
-        except AutomationError as error:
-            self.invalidate_feedback()
-            if isinstance(error, Stopped):
-                self._runner.stop()
-                report.status = 'stopped'
-            else:
-                report.status = 'partial'
-            report.error = detail
-            report.failure_task = OPERATION
-            report.results[-1] = TaskResult(OPERATION, report.status, detail)
-            write_report()
-            replace_file(temporary, destination)
+        replace_file(temporary, destination, attempt_scope=verify_attempt)

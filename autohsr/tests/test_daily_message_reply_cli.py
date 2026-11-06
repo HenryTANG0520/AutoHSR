@@ -5,6 +5,7 @@ from hashlib import sha256
 import io
 from itertools import count, islice
 import json
+import os
 from pathlib import Path
 import time
 from types import SimpleNamespace
@@ -115,6 +116,12 @@ class DailyMessageReplyCliTests(unittest.TestCase):
 
     def ledger(self):
         return {path.name: path.read_bytes() for path in self.ledger_dir.glob('reply-*.json')}
+
+    def replace_with_identical_record(self, path):
+        replacement = path.with_suffix('.replacement')
+        replacement.write_bytes(path.read_bytes())
+        self.assertNotEqual(path.stat().st_ino, replacement.stat().st_ino)
+        replacement.replace(path)
 
     def assert_ledger_status(self, expected):
         record, = (json.loads(value) for value in self.ledger().values())
@@ -344,6 +351,25 @@ class DailyMessageReplyCliTests(unittest.TestCase):
         self.native.SendInput.assert_not_called()
         self.assert_ledger_status('pending')
 
+    def test_same_bytes_replaced_after_reservation_publish_cannot_authorize_input(self):
+        self.frames = iter(replay.replay_frames())
+        publish = daily_message_reply_store._publish
+        replaced = Mock()
+
+        def publish_and_replace(path, payload, **kwargs):
+            revision = publish(path, payload, **kwargs)
+            if kwargs.get('exclusive'):
+                self.replace_with_identical_record(path)
+                replaced(path.read_bytes(), path.stat().st_ino)
+            return revision
+
+        with patch.object(daily_message_reply_store, '_publish', publish_and_replace):
+            self.assert_result(self.invoke(), (1, 'partial', 'not_sent', 'unknown', 'pending'))
+        replaced.assert_called_once()
+        record, = self.ledger_dir.iterdir()
+        self.assertEqual((record.read_bytes(), record.stat().st_ino), replaced.call_args.args)
+        self.assert_replay_blocked('pending', 0)
+
     def test_pending_file_replaced_during_feedback_is_preserved_and_blocks_replay(self):
         self.frames = iter(replay.replay_frames())
         confirm = daily_message_reply_store._Reservation.confirm
@@ -354,10 +380,7 @@ class DailyMessageReplyCliTests(unittest.TestCase):
                 before_replace()
                 record, = self.ledger_dir.glob('reply-*.json')
                 self.assert_ledger_status('pending')
-                replacement = record.with_suffix('.replacement')
-                replacement.write_bytes(record.read_bytes())
-                self.assertNotEqual(record.stat().st_ino, replacement.stat().st_ino)
-                replacement.replace(record)
+                self.replace_with_identical_record(record)
                 changed(record.read_bytes(), record.stat().st_ino)
 
             confirm(reservation, before_replace=verify_feedback)
@@ -368,6 +391,73 @@ class DailyMessageReplyCliTests(unittest.TestCase):
         record, = self.ledger_dir.iterdir()
         self.assertEqual((record.read_bytes(), record.stat().st_ino), changed.call_args.args)
         self.assert_replay_blocked('pending', 1)
+
+    def assert_publication_rejects_changed_ledger(self, change, next_ledger_status):
+        self.frames = iter(replay.replay_frames())
+        save_report = app.Runner._save_run_report
+        changed = Mock()
+
+        def before_report(runner, directory, *args, **kwargs):
+            if kwargs.get('daily_observation_reader') is not None:
+                record, = self.ledger_dir.glob('reply-*.json')
+                self.assert_ledger_status('confirmed')
+                change(record)
+                changed(record.read_bytes(), record.stat().st_ino)
+            return save_report(runner, directory, *args, **kwargs)
+
+        with patch.object(app.Runner, '_save_run_report', before_report):
+            self.assert_result(self.invoke(), (1, 'partial', 'sent', 'unknown', 'pending'))
+        changed.assert_called_once()
+        record, = self.ledger_dir.iterdir()
+        self.assertEqual((record.read_bytes(), record.stat().st_ino), changed.call_args.args)
+        self.assert_replay_blocked(next_ledger_status, 1)
+
+    def test_confirmed_ledger_with_identical_bytes_but_new_identity_vetoes_success(self):
+        self.assert_publication_rejects_changed_ledger(self.replace_with_identical_record, 'confirmed')
+
+    def test_confirmed_ledger_with_changed_content_vetoes_success(self):
+        def write_pending(path):
+            path.write_bytes(path.read_bytes().replace(b'"status":"confirmed"', b'"status":"pending"'))
+
+        self.assert_publication_rejects_changed_ledger(write_pending, 'pending')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows sharing semantics')
+    def test_report_retry_holds_and_rechecks_the_confirmed_ledger_even_when_stopped(self):
+        self.frames = iter(replay.replay_frames())
+        save_report = app.Runner._save_run_report
+        replace_path = Path.replace
+        attempted = Mock()
+
+        def stop_before_report(runner, directory, *args, **kwargs):
+            if kwargs.get('daily_observation_reader') is not None:
+                self.native.GetAsyncKeyState.side_effect = lambda key: 0x8000 if key == 0x79 else 0
+            return save_report(runner, directory, *args, **kwargs)
+
+        def replace_report(source, destination):
+            if source.name == 'report.tmp':
+                attempted()
+                if attempted.call_count == 1:
+                    draft = json.loads(source.read_text(encoding='utf8'))
+                    self.assertEqual(draft['status'], 'stopped')
+                    self.assertEqual(draft['daily_message_reply']['ledger_status'], 'confirmed')
+                    record, = self.ledger_dir.glob('reply-*.json')
+                    with self.assertRaises(PermissionError):
+                        record.write_bytes(record.read_bytes())
+                    raise PermissionError('offline report sharing violation')
+            return replace_path(source, destination)
+
+        def replace_ledger_between_attempts(_):
+            record, = self.ledger_dir.glob('reply-*.json')
+            self.replace_with_identical_record(record)
+
+        with patch.object(app.Runner, '_save_run_report', stop_before_report), \
+                patch.object(Path, 'replace', replace_report), \
+                patch('autohsr.storage.time.sleep', side_effect=replace_ledger_between_attempts) as wait:
+            self.assert_result(self.invoke(), (130, 'stopped', 'sent', 'unknown', 'pending'))
+        wait.assert_called_once()
+        self.assertEqual(attempted.call_count, 2)
+        self.native.GetAsyncKeyState.side_effect = None
+        self.assert_replay_blocked('confirmed', 1)
 
     def assert_publication_interrupt(self, interrupt, code, status):
         self.frames = iter(replay.replay_frames())
