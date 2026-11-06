@@ -7,14 +7,16 @@ import json
 import os
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from autohsr.__main__ import main
 from autohsr.app import Context, Runner
 from autohsr import build_target_draft
 from autohsr.build_target_preview import BuildTargetSelection
 from autohsr.config import Settings, SettingsError
+from autohsr.desktop_daily import DailyPanel, _preview_text
 from autohsr.models import AutomationError, EmptyCapture, Scene
 from autohsr.power_plan import items
 from autohsr.tests import test_build_target_read as fixtures
@@ -188,6 +190,10 @@ class BuildTargetPreviewTests(unittest.TestCase):
                     category=category, target=target, difficulty=level, selected_rounds=rounds,
                     shown_total_stamina=cost, rewards='possible_items', stamina_per_challenge=10,
                     selected_stamina_within_config=cost <= 20, max_draft_challenges_by_config=2))
+                _, detail = _preview_text(preview)
+                self.assertIn('单份草稿按配置最多 2 次', detail)
+                self.assertIn('单轮保底待核对', detail)
+                self.assertEqual('画面费用超过配置上限' in detail, cost > 20)
                 self.assertEqual(preview['candidates'], [])
                 self.assertTrue(all(preview[field] is None for field in
                                     ('held', 'shortfall', 'craftable', 'units_per_challenge', 'count', 'effective_limit')))
@@ -236,12 +242,57 @@ class BuildTargetPreviewTests(unittest.TestCase):
         draft = report['build_target']['draft']
         self.assertEqual((draft['state'], draft['mode'], draft['material'], draft['stamina_required']),
                          ('prepared', 'dry_run', '漫游指南', 20))
+        self.assertEqual(draft['count_source'], 'manual')
         path = Path(report['run_dir']) / draft['file']
         self.assertEqual(path.name, 'power-plan.json')
         selected, = items(json.loads(path.read_text(encoding='utf-8')))
         self.assertEqual((selected.category, selected.target, selected.location, selected.count),
                          ('calyx_golden', '回忆之蕾', '城郊雪原', 2))
         self.assertEqual(draft['items'], [selected.to_dict()])
+
+    def test_manual_round_cap_is_separate_from_config_capacity_and_source_availability(self):
+        valid = [*self.material(), self.route('城郊雪原', .50)]
+        truncated = token('拟造花萼〖城郊', .56, .56, width=.14)
+        repeated = self.route('城郊雪原', .56)
+        for limit, extra, capacity, cap, blocker in (
+            (20, [], 2, 2, None),
+            (240, [], 24, 6, None),
+            (240, [truncated], 24, 6, 'incomplete_source'),
+            (240, [repeated], 24, 6, 'repeated_location'),
+        ):
+            with self.subTest(limit=limit, blocker=blocker):
+                self.settings.stamina_limit = limit
+                frame = [*valid, *extra]
+                report = self.cli([frame, frame])
+                preview = report['build_target']['preview']
+                source, = preview['candidates']
+                self.assertEqual(source['max_challenges_by_config'], capacity)
+                self.assertEqual(source['max_draft_challenges_by_config'], cap)
+                self.assertEqual(source['manual_draft_blocker'], blocker)
+                self.assertIsNone(preview['count'])
+
+                panel = SimpleNamespace(**{name: Mock() for name in (
+                    'build_title', 'build_detail', 'count', 'draft_detail', '_show_sources',
+                    'source', 'open_target', 'times', 'count_hint', 'generate', 'add_draft', 'start')},
+                    busy=False, ui=SimpleNamespace(busy=False, settings=self.settings))
+                DailyPanel._present_preview(panel, report)
+                self.assertEqual(panel.candidates, [] if blocker else [source])
+                panel.source.current.return_value = -1 if blocker else 0
+                DailyPanel._controls(panel)
+                if blocker:
+                    panel.generate.configure.assert_called_with(state='disabled')
+                    self.assertIn('草稿待核对', panel.draft_detail.set.call_args.args[0])
+                else:
+                    panel.count_hint.configure.assert_called_with(text=f'手填 1～{cap} 次')
+                    panel.times.configure.assert_called_with(to=cap, state='normal')
+                    if cap < 6:
+                        panel.count.get.return_value = str(cap + 1)
+                        DailyPanel._generate(panel)
+                        panel.start.assert_not_called()
+                        self.assertIn(f'最多 {cap} 次', panel.draft_detail.set.call_args.args[0])
+                    panel.count.get.return_value = str(cap)
+                    DailyPanel._generate(panel)
+                    self.assertEqual(panel.start.call_args.kwargs['build_target_selection'].count, cap)
 
     def test_draft_supports_exact_crimson_material_and_location(self):
         material, location = '法吉娜之心', '「辉痕圣林」神悟树庭'
@@ -269,6 +320,8 @@ class BuildTargetPreviewTests(unittest.TestCase):
                 self.assertEqual(report['status'], 'failed')
                 self.assertNotIn('draft', report['build_target'])
                 self.assertFalse((Path(report['run_dir']) / 'power-plan.json').exists())
+                if name == 'above_configured_limit':
+                    self.assertIn('本份草稿最多 2 次', report['error'])
 
     def test_draft_needs_two_consecutive_new_frames(self):
         frame = [*self.material(), self.route('城郊雪原', .50)]

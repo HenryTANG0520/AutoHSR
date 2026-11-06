@@ -151,7 +151,7 @@
 
 账号和详情字段的正向核验取 `0.85` 与配置 OCR 阈值中的较高值。排查第二个完整账号标识、第二个精确材料名及完整普通目录行时，用采集阈值和相应字段位置核对。计划候选要求独立可见的培养缺口区标题。若有普通目录行或缺少培养区锚点，只保留已核实的材料和来源。若「获得途径」标题落入普通目录行的字段范围，详情标为 `unverified`。
 
-`report.json` 的 `build_target.preview` 分开记录培养区、材料、可见来源和候选。候选单次费用取原副本分类规则，`max_challenges_by_config` 按同一份配置上限计算每项可比的理论上限。观察结果为 `partial`，CLI 返回 `1`。预览记录原 PNG 的 `evidence_sha256`。报告替换期间持有截图读锁，每次尝试都复核文件身份、哈希及当前画面。原件变化或同字节换入时，仅保留 `unverified` 审计，清除已观察数量和候选。正式体力计划继续使用既有 `PowerItem`、资源冻结和逐批支付账本。
+`report.json` 的 `build_target.preview` 分开记录培养区、材料、可见来源和候选。候选单次费用取原副本分类规则。`max_challenges_by_config` 是配置体力可覆盖的理论次数，`max_draft_challenges_by_config` 是单份草稿能手填的上限，两者在配置 240 时分别为 24 和 6。来源行不完整或地点重复时，`manual_draft_blocker` 分别记录 `incomplete_source` 或 `repeated_location`，该候选只供观察。实际可用体力留空。观察结果为 `partial`，CLI 返回 `1`。预览记录原 PNG 的 `evidence_sha256`。报告替换期间持有截图读锁，每次尝试都复核文件身份、哈希及当前画面。原件变化或同字节换入时，仅保留 `unverified` 审计，清除已观察数量和候选。正式体力计划继续使用既有 `PowerItem`、资源冻结和逐批支付账本。
 
 旧实机记录展示了省略金赤分类的花萼来源行。漫游指南的三个来源中，城郊雪原同时有金花回忆之蕾和赤花巡猎之蕾。赤花材料的名称、地点与关卡关系另由游戏官方新增关卡说明和固定掉落索引支持。现有材料名与来源行出自分段采样，预览测试中的同屏布局为合成。[旧实机 OCR 记录](https://github.com/moesnow/March7thAssistant/issues/886) [固定掉落索引](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/instance_drops.json) [4.0 官方关卡](https://www.miyoushe.com/sr/article/73078555) [4.2 官方关卡](https://www.miyoushe.com/sr/article/74594359)
 
@@ -173,13 +173,13 @@
 
 国服 4.6.0 的真珠培养页同时显示「角色培养」「已完成等级、行迹的提升」以及隧洞、位面推荐。只读预览记为 `target_level_trace_complete`，范围为当前等级和行迹。推荐副本费用、遗器评级、库存和掉落各有自己的字段。此例的 `shortfall_rows` 为空，逐件库存、缺口和产量留空。
 
-原生「培养还需获取资源」按「进入」所在行核对材料槽下方的可见数字和右侧费用，保存为 `shortfall_rows`。名称暂留在脱敏数据的图标交叉证据，正式报告的逐件 `shortfall` 仍留空。成功结算的 `post_battle_shortfall` 另存已校准的单个「培养尚需」数字槽、已完成波次及「再来一次」所示费用。末项是当前再次挑战控件报价。波次和费用独立核对，结算动画尚未显示提示时保留未核实。
+原生「培养还需获取资源」按「进入」所在行核对材料槽下方的可见数字和右侧费用，保存为 `shortfall_rows`。桌面显示已核实的具名缺口，其他数字按画面顺序保留。只读结果恰好核实一行一个槽，且该槽的名称和数量均有证据时，顶层 `shortfall` 才填值。成功结算的 `post_battle_shortfall` 另存已校准的单个「培养尚需」数字槽、已完成波次及「再来一次」所示费用。末项是当前再次挑战控件报价。波次和费用独立核对，结算动画尚未显示提示时保留未核实。
 
 10 月 27 日国服 4.6 时期的 `BV1ygxg6iEw9` P1（CID `43099161198`，AVC 852×480）提供同一条连续来源。14.602 至 17.602 秒，远坂凛的培养页显示银河沙盘图标下 `90`、右侧费用 `10` 和下方独立遗器费用 `40`。22.603 秒确认赤花智识之蕾 VI，选中 `18` 轮，费用 `180`。242.933 秒的成功结算暂未出现缺口提示。243.133 和 243.333 秒独立读到「培养尚需」 `72`、上轮 `18` 波。成功奖励同屏实得银河沙盘 `1`、星系框架 `18`、天体模型 `24`。材料名来自同图标与具名图鉴的交叉比对，`90 → 72` 留作界面变化证据。[培养页原片](https://www.bilibili.com/video/BV1ygxg6iEw9/?p=1&t=14) · [成功结算原片](https://www.bilibili.com/video/BV1ygxg6iEw9/?p=1&t=243) · [银河沙盘图鉴](https://wiki.hoyolab.com/pc/hsr/entry/5355?lang=zh-cn)
 
 [脱敏数量夹具](../autohsr/tests/fixtures/dungeons/build_target_quantities.json) 保留 9 张画面的限定 OCR 与来源、时间及哈希，另存 7 个独立结算的实得数。金花 V 原件经具名图标交叉核验，变化的是虚数残叶，单轮见 `2` 和 `3`，两轮见 `4` 和 `6`。赤花欢愉 VI 的单轮预览列绒绒号三阶，结算中阶和低阶各 `1`，高阶未见卡。全部实测记录使用 `observed_total`，加成状态保留未知。夹具只存限定文字、数值和来源，原像素和完整 OCR 留在私有证据目录。游戏图像归各权利人。[虚数残叶图鉴](https://wiki.hoyolab.com/pc/hsr/entry/326?lang=zh-cn) · [典藏版合集图鉴](https://wiki.hoyolab.com/pc/hsr/entry/4766?lang=zh-cn)
 
-`suggestion_reason` 说明建议轮数为空的原因。培养材料槽缺少逐件实名时为 `material_shortfall_unbound`，花萼可能奖励为 `possible_rewards_only`，结算累计为 `settled_batch_only`，合成配方为 `recipe_only`。等级行迹需求已满足和当前画面未核实分别记录 `level_trace_requirements_met`、`no_current_evidence`。
+`suggestion_reason` 说明建议轮数为空的原因。培养材料槽缺少逐件实名时为 `material_shortfall_unbound`，单项具名缺口为零时为 `material_shortfall_zero`，正缺口但单轮保底待核实时为 `unverified_per_round_minimum`。花萼可能奖励为 `possible_rewards_only`，结算累计为 `settled_batch_only`，合成配方为 `recipe_only`。等级行迹需求已满足和当前画面未核实分别记录 `level_trace_requirements_met`、`no_current_evidence`。
 
 以下源码工具复放实际批量和合成算例。实际记录的建议次数为空。合成算例校验同材料、关卡地点、难度、版本及基础加成条件齐备时的向上取整、零缺口和超草稿额度。配置限制复用原花萼费用和六轮上限。计算结果属于开发验证，正式草稿仍由明确选择的入口发布。
 
@@ -207,7 +207,7 @@
 $draft = .\.venv\Scripts\python.exe -m autohsr --build-target --material '漫游指南' --location '城郊雪原' --count 1 | ConvertFrom-Json
 ```
 
-命令输出的 `status=success` 与 `build_target.draft.state=prepared` 表示草稿已发布。`build_target.draft.file` 指向 `run_dir` 内的新建 `power-plan.json`，内容只有一条分类、名称、地点和次数。`stamina_required` 是按目录费用算出的预计开拓力。草稿阶段开战、支付及游戏输入均为零，材料缺口、单轮产量和实际预算仍为未知。
+命令输出的 `status=success` 与 `build_target.draft.state=prepared` 表示草稿已发布。`build_target.draft.file` 指向 `run_dir` 内的新建 `power-plan.json`，内容只有一条分类、名称、地点和次数。`count_source=manual` 表示轮次为用户手填，`stamina_required` 是按目录费用算出的预计开拓力。草稿阶段开战、支付及游戏输入均为零。该草稿的材料缺口、单轮产量和实际预算留空。
 
 本次 `report.json` 先保存 `partial/staged` 审计回执，记录所选条目、草稿 SHA-256 和所引用的原始截图。最终草稿随后在同一 NTFS 运行目录独占发布，磁盘回执保留在 `staged` 阶段。同名文件保留原样，截图或回执发生变化、停止或发布失败时，命令返回失败或停止并保留已有记录。旧同名文件即使字节相同，也可能让 `staged` 回执与现有文件哈希一致。应核对本次命令的 `success/prepared` 输出和当前草稿哈希来确认本次发布。
 

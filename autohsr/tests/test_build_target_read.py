@@ -1,5 +1,6 @@
 """Replay released directory fields with synthetic headers, account and window."""
 from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout
+import ctypes
 import io
 from itertools import count
 import json
@@ -16,7 +17,7 @@ from autohsr.app import Context, Runner
 from autohsr.build_target_read import BuildTargetRead
 from autohsr.config import Settings
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, Scene, Token
-from autohsr.windows import GameWindow, Geometry
+from autohsr.windows import GameWindow, Geometry, INPUT
 
 
 def token(text, x, y, score=.99, *, width=.02):
@@ -290,7 +291,7 @@ class BuildTargetReadTests(unittest.TestCase):
         cases = (('normal', 'success', 'sent', 1),
                  ('paused', 'failed', 'not_sent', 0),
                  ('stopped', 'stopped', 'not_sent', 0),
-                 ('short write', 'partial', 'unconfirmed', 1))
+                 ('short write', 'partial', 'unconfirmed', 2))
         for phase, status, entry_input, sent in cases:
             with self.subTest(phase=phase), self.runtime(
                     [self.catalogue, self.catalogue, self.panel, self.panel], window_type=NativeDispatchWindow):
@@ -310,13 +311,22 @@ class BuildTargetReadTests(unittest.TestCase):
                         runner.stop()
                     return 0
 
-                dispatch = Mock(side_effect=lambda count, *_: count - (phase == 'short write'))
+                packets = []
+
+                def send(count, events, _size):
+                    values = ctypes.cast(events, ctypes.POINTER(INPUT))
+                    packets.append(tuple(values[index].mi.dwFlags for index in range(count)))
+                    return count - int(phase == 'short write' and count == 3)
+
+                dispatch = Mock(side_effect=send)
                 fake_user32 = SimpleNamespace(GetSystemMetrics=get_system_metrics,
                                               GetAsyncKeyState=emergency_key, SendInput=dispatch)
                 with patch('autohsr.windows.user32', fake_user32):
                     report = runner.run()
                 self.assertEqual(requested, [76, 77, 78, 79])
                 self.assertEqual(dispatch.call_count, sent)
+                if phase == 'short write':
+                    self.assertEqual(packets, [(0xC001, 0x0002, 0x0004), (0x0004,)])
                 self.assertEqual((report.status, report.build_target['entry_input']), (status, entry_input))
                 self.assertIs(report.build_target['page_verified'], status == 'success')
 

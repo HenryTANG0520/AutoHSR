@@ -12,6 +12,7 @@ import cv2
 import numpy as np
 
 from autohsr.models import Scene, Token
+from autohsr.desktop_daily import _preview_text
 from autohsr.tests import test_build_target_preview as fixtures
 from tools.build_target_plan_probe import FIXTURE, Scope, Yield, estimate, replay_fixture
 
@@ -127,10 +128,26 @@ class QuantityEvidenceCliTests(unittest.TestCase):
                     dict(observed_needed=[90], shown_stamina=10, identified_materials=[
                         dict(material='银河沙盘', amount=90, slot=0)])])
                 self.assertEqual(preview['suggestion_reason'], 'unverified_per_round_minimum')
+                _, detail = _preview_text(preview)
+                self.assertIn('银河沙盘 缺口 90 件', detail)
+                self.assertIn('单轮保底待核对', detail)
                 for key in ('held', 'craftable', 'units_per_challenge', 'count', 'effective_limit'):
                     self.assertIsNone(preview[key], key)
                 self.assertEqual(preview['candidates'], [])
                 self.assertNotIn('draft', data)
+
+    def test_zero_named_shortfall_is_visible_without_a_suggested_count(self):
+        frame = [replace(t, text='0') if t.text == '90' else t for t in self.frame('need-b')]
+        with self.artwork(self.slot_image('sandbox-a.png'), self.slot_image('sandbox-b.png')):
+            data = self.cli([frame, frame])['build_target']
+        preview = data['preview']
+        self.assertEqual((preview['material'], preview['shortfall'], preview['suggestion_reason']),
+                         ('银河沙盘', 0, 'material_shortfall_zero'))
+        self.assertIsNone(preview['count'])
+        self.assertIsNone(preview['units_per_challenge'])
+        self.assertNotIn('draft', data)
+        _, detail = _preview_text(preview)
+        self.assertIn('银河沙盘 缺口 0 件', detail)
 
     def test_artwork_must_agree_in_both_frames_and_belong_to_the_amount_slot(self):
         first, second = self.frame('need-a'), self.frame('need-b')

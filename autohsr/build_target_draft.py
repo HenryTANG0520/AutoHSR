@@ -101,7 +101,7 @@ class BuildTargetDraft:
         self.source = source
         self.payload = _json_bytes(planned)
         self.audit_saved = False
-        self.metadata = dict(state='staged', mode='dry_run', material=material, items=planned,
+        self.metadata = dict(state='staged', mode='dry_run', count_source='manual', material=material, items=planned,
                              stamina_required=cost, sha256=hashlib.sha256(self.payload).hexdigest())
 
     def publish(self, directory, report_path, report_payload):

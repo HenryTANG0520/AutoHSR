@@ -192,7 +192,7 @@ def _preview_text(preview):
     synthesis = preview.get('synthesis_preview') or {}
     material = preview.get('material') or synthesis.get('material')
     detail = []
-    if isinstance(material, str) and material:
+    if isinstance(material, str) and material and state != 'target_resources_needed':
         detail.append(material)
         held = synthesis.get('held') if synthesis else preview.get('held')
         detail.append(f'当前持有 {held}' if type(held) is int else '当前持有待核对')
@@ -200,20 +200,47 @@ def _preview_text(preview):
     settlement = preview.get('post_battle_shortfall') or {}
     if settlement:
         observations = [settlement]
-    needed = ['／'.join(map(str, row['observed_needed'])) for row in observations if row.get('observed_needed')]
+    needed = []
+    for row in observations:
+        identified = row.get('identified_materials') or []
+        detail.extend(f"{item['material']} 缺口 {item['amount']} 件" for item in identified)
+        amounts = row.get('observed_needed') or []
+        if len(identified) < len(amounts):
+            needed.append('／'.join(map(str, amounts)))
     if needed:
         detail.append('培养尚需（按画面顺序） ' + '、'.join(needed))
     calyx = preview.get('calyx_reward_preview') or {}
     if type(calyx.get('shown_total_stamina')) is int:
         detail.append(f"{calyx['target']} · 难度 {calyx['difficulty']} · {calyx['selected_rounds']} 轮")
         detail.append(f"画面费用 {calyx['shown_total_stamina']} 开拓力")
+        if calyx.get('selected_stamina_within_config') is False:
+            detail.append('画面费用超过配置上限')
+        if type(calyx.get('max_draft_challenges_by_config')) is int:
+            detail.append(f"单份草稿按配置最多 {calyx['max_draft_challenges_by_config']} 次")
     if synthesis:
         detail.append(f"配方已选 {synthesis['selected_output']} 件 · 滑杆上限 {synthesis['slider_limit']} 件")
     if type(settlement.get('completed_rounds')) is int:
         detail.append(f"上轮完成 {settlement['completed_rounds']} 波")
+    reason = {
+        'material_shortfall_unbound': '逐件缺口与单轮保底待核对。',
+        'unverified_per_round_minimum': '单轮保底待核对。',
+        'possible_rewards_only': '单轮保底待核对。',
+        'settled_batch_only': '单轮保底待核对。',
+        'recipe_only': '培养可合成量待核对。',
+    }.get(preview.get('suggestion_reason'))
+    if reason:
+        detail.append(reason)
     if state in ('panel_observed', 'target_resources_needed'):
         detail.append('打开同一材料的获得途径可预览副本来源。')
     return labels.get(state, '培养目标待核对'), ' · '.join(detail)
+
+
+def _draft_count_limit(source):
+    capacity = source.get('max_challenges_by_config')
+    maximum = source.get('max_draft_challenges_by_config', capacity)
+    if type(capacity) is not int or type(maximum) is not int:
+        return 0
+    return min(BY_KEY[source['category']].batch, capacity, maximum)
 
 
 def _draft_data(report):
@@ -335,7 +362,8 @@ class DailyPanel(ttk.Frame):
         self.source = ttk.Combobox(sources, state='disabled', width=24)
         self.source.grid(row=0, column=1, sticky='ew')
         self.source.bind('<<ComboboxSelected>>', lambda _: self._controls())
-        ttk.Label(sources, text='次数（1～6）', style='Muted.TLabel').grid(row=0, column=2, padx=(d(12), d(6)))
+        self.count_hint = ttk.Label(sources, text='手填次数', style='Muted.TLabel')
+        self.count_hint.grid(row=0, column=2, padx=(d(12), d(6)))
         self.times = ttk.Spinbox(sources, from_=1, to=6, width=4, textvariable=self.count, state='disabled')
         self.times.grid(row=0, column=3)
         self.generate = ttk.Button(sources, text='生成体力草稿', style='Panel.TButton', command=self._generate)
@@ -415,8 +443,11 @@ class DailyPanel(ttk.Frame):
         locked = self.busy or self.ui.busy
         self.open_target.configure(state='disabled' if locked else 'normal')
         self.source.configure(state='disabled' if locked or not self.candidates else 'readonly')
-        selected = self.source.current() >= 0 and not locked
-        self.times.configure(state='normal' if selected else 'disabled')
+        index = self.source.current()
+        maximum = _draft_count_limit(self.candidates[index]) if index >= 0 else None
+        selected = maximum is not None and not locked
+        self.count_hint.configure(text=f'手填 1～{maximum} 次' if maximum is not None else '手填次数')
+        self.times.configure(to=maximum if maximum is not None else 6, state='normal' if selected else 'disabled')
         self.generate.configure(state='normal' if selected else 'disabled')
         can_add = self.draft_report is not None and not locked and self.ui.settings.allow_stamina_spend
         self.add_draft.configure(state='normal' if can_add else 'disabled')
@@ -444,8 +475,9 @@ class DailyPanel(ttk.Frame):
             return
         try:
             selection = BuildTargetSelection(self.material, source['location'], count)
-            if count > source['max_challenges_by_config']:
-                raise ValueError('所选次数超过预览中的配置上限。')
+            maximum = _draft_count_limit(source)
+            if count > maximum:
+                raise ValueError(f'所选次数超过配置上限，本份草稿最多 {maximum} 次。')
         except ValueError as error:
             self.draft_detail.set(str(error))
             self.times.focus_set()
@@ -547,14 +579,19 @@ class DailyPanel(ttk.Frame):
         self.build_title.set('已停止' if report.get('status') == 'stopped' else title)
         self.build_detail.set(report.get('error') or detail or '打开培养目标或材料获得途径后重试。')
         self.material = preview.get('material')
-        self.candidates = [row for row in preview.get('candidates', [])
+        candidates = preview.get('candidates', [])
+        self.candidates = [row for row in candidates
                            if row.get('category') in BY_KEY and row.get('location')
-                           and type(row.get('max_challenges_by_config')) is int
-                           and row['max_challenges_by_config'] > 0]
+                           and not row.get('manual_draft_blocker') and _draft_count_limit(row) > 0]
         self._show_sources('请选择副本来源' if self.candidates else '来源待核实')
         self.count.set('')
         self.draft_report = None
-        self.draft_detail.set('')
+        if self.candidates:
+            self.draft_detail.set('选定来源后手填次数。实际可用开拓力待执行时核对。')
+        elif any(row.get('manual_draft_blocker') for row in candidates):
+            self.draft_detail.set('来源行不完整或地点重复，草稿待核对。')
+        else:
+            self.draft_detail.set('')
 
     def _show_sources(self, placeholder, *, selected=-1):
         self.source.configure(values=[f"{row['target']} · {row['location']} · {row['stamina_cost']} 开拓力／次"

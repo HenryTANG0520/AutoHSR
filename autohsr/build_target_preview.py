@@ -323,8 +323,16 @@ def run_preview(ctx, *, selection=None):
     if isinstance(observation, MaterialDetail) and observation.target_section_visible:
         for source in sources:
             rule = BY_KEY[source.category]
+            maximum = count_limit(rule, limit)
+            blocker = None
+            if observation.unreadable_calyx_rows:
+                blocker = 'incomplete_source'
+            elif source.location in observation.repeated_locations:
+                blocker = 'repeated_location'
             candidates.append(dict(category=source.category, target=source.name, location=source.location,
-                                   stamina_cost=rule.cost, max_challenges_by_config=count_limit(rule, limit)))
+                                   stamina_cost=rule.cost, max_challenges_by_config=maximum,
+                                   max_draft_challenges_by_config=min(rule.batch, maximum),
+                                   manual_draft_blocker=blocker))
     from .build_target_draft import DraftSource
     source = DraftSource(reader, scene)
     preview['evidence'] = source.path.name
@@ -374,8 +382,12 @@ def run_preview(ctx, *, selection=None):
               and 'identified_materials' in shortfall_rows[0]):
             item, = shortfall_rows[0]['identified_materials']
             preview.update(material=item['material'], shortfall=item['amount'])
-            preview['suggestion_reason'] = 'unverified_per_round_minimum'
-            detail = f'已核对「{item["material"]}」缺口 {item["amount"]}，单轮保底仍待核实。'
+            if item['amount'] == 0:
+                preview['suggestion_reason'] = 'material_shortfall_zero'
+                detail = f'已核对「{item["material"]}」当前缺口为 0。'
+            else:
+                preview['suggestion_reason'] = 'unverified_per_round_minimum'
+                detail = f'已核对「{item["material"]}」缺口 {item["amount"]}，单轮保底仍待核实。'
     elif observation == 'panel':
         ctx.report.build_target['page_verified'] = True
         preview.update(state='panel_observed', target_section_visible=True)
@@ -392,15 +404,17 @@ def run_preview(ctx, *, selection=None):
         ctx.build_target_preview_source = source, unverified_preview
         return TaskResult(operation, 'partial', detail)
 
-    if (not isinstance(observation, MaterialDetail) or observation.material != selection.material
-            or observation.unreadable_calyx_rows or selection.location in observation.repeated_locations):
+    if not isinstance(observation, MaterialDetail) or observation.material != selection.material:
         raise AutomationError('当前材料详情或指定来源未完整核实，未生成体力草稿。')
     candidate = next((row for row in candidates if row['location'] == selection.location), None)
     if candidate is None:
         raise AutomationError('指定地点缺少已核实、可用的培养来源，未生成体力草稿。')
+    if candidate['manual_draft_blocker']:
+        raise AutomationError('当前材料详情或指定来源未完整核实，未生成体力草稿。')
+    maximum = candidate['max_draft_challenges_by_config']
+    if selection.count > maximum:
+        raise AutomationError(f'指定次数超过当前配置的开拓力上限，本份草稿最多 {maximum} 次。')
     cost = candidate['stamina_cost'] * selection.count
-    if cost > limit:
-        raise AutomationError('指定次数的预计消耗超过当前配置的开拓力上限。')
     row = {key: candidate[key] for key in ('category', 'target', 'location')}
     item, = items([dict(row, count=selection.count)])
     from .build_target_draft import BuildTargetDraft
