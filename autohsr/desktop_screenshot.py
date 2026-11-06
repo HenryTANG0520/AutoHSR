@@ -9,12 +9,16 @@ from PIL import Image, ImageTk
 
 from . import screenshot_tool, theme
 from .models import AutomationError, Stopped
+from .reward_guide_stitch import _MAX_PAGES
 
 
 _SCREEN_MODE = '截图与识别'
 _GUIDE_MODE = '奖励指南单屏导出'
 _GUIDE_ACTION = '导出奖励指南单屏'
 _GUIDE_UNKNOWN = '奖励指南单屏导出结果待核对。'
+_STITCH_MODE = '本地奖励指南拼接'
+_STITCH_ACTION = '拼接并导出奖励指南'
+_STITCH_UNKNOWN = '奖励指南拼接结果待核对。'
 _GUIDE_STATUS = {
     'invalid_target': '请选择新的本地 PNG 位置，已有文件保留。',
     'unverified': '当前奖励指南或内容框待核对。',
@@ -24,6 +28,27 @@ _GUIDE_STATUS = {
     'limit': '当前裁片超过导出上限。',
     'stopped': '奖励指南单屏导出已停止。',
 }
+_STITCH_STATUS = {
+    'invalid_target': _GUIDE_STATUS['invalid_target'],
+    'invalid_source': '请核对所选本地 PNG。',
+    'invalid': '所选裁片的尺寸或格式不一致。',
+    'limit': '所选裁片超过拼接上限。',
+    'source_changed': '源图片已变化，请重新选择。',
+    'duplicate': '发现重复裁片，请移除后再导出。',
+    'ambiguous': '裁片接缝待核对，请调整所选图片。',
+    'no_overlap': '未核实相邻裁片的重叠区。',
+    'wrong_direction': '裁片顺序相反，请按列表从上到下排列。',
+    'inconsistent': '多张裁片的共有内容不一致。',
+    'publish_failed': _GUIDE_STATUS['publish_failed'],
+    'stopped': '奖励指南拼接已停止。',
+}
+
+
+def _local_png_selection(value):
+    path = Path(value)
+    if not path.is_absolute() or path.anchor.startswith('\\') or path.suffix.casefold() != '.png':
+        return None
+    return path
 
 
 def _guide_feedback(receipt):
@@ -38,6 +63,23 @@ def _guide_feedback(receipt):
     return _GUIDE_STATUS.get(status, _GUIDE_UNKNOWN) if isinstance(status, str) else _GUIDE_UNKNOWN
 
 
+def _stitch_feedback(receipt, pages):
+    if not isinstance(receipt, dict):
+        return _STITCH_UNKNOWN
+    status = receipt.get('status')
+    if status == 'ok':
+        width, height = receipt.get('width'), receipt.get('height')
+        overlaps = receipt.get('overlap_rows')
+        if (type(width) is int and width > 0 and type(height) is int and height > 0
+                and isinstance(overlaps, list) and len(overlaps) == pages - 1
+                and all(type(rows) is int and rows > 0 for rows in overlaps)):
+            detail = f'已导出拼图 · {pages} 张裁片 · {width} × {height}。'
+            if overlaps:
+                detail += '接缝重叠行数 ' + '／'.join(map(str, overlaps)) + '。'
+            return detail
+    return _STITCH_STATUS.get(status, _STITCH_UNKNOWN) if isinstance(status, str) else _STITCH_UNKNOWN
+
+
 @dataclass
 class _State:
     image: Image.Image | None = field(default=None, repr=False)
@@ -49,6 +91,10 @@ class _State:
     mode: str = _SCREEN_MODE
     guide_destination: Path | None = None
     guide_message: str = '尚无奖励指南导出回执。'
+    stitch_sources: tuple[Path, ...] = ()
+    stitch_index: int | None = None
+    stitch_destination: Path | None = None
+    stitch_message: str = '尚无奖励指南拼接回执。'
 
 
 def _image_box(start, end, preview, image_size):
@@ -131,7 +177,7 @@ class ScreenshotPanel(ttk.Frame):
         mode_row = ttk.Frame(self)
         mode_row.grid(row=0, column=0, sticky='ew', pady=(0, pad))
         ttk.Label(mode_row, text='本次操作', style='Card.TLabel').pack(side='left', padx=(0, pad))
-        self.mode = ttk.Combobox(mode_row, values=(_SCREEN_MODE, _GUIDE_MODE), width=18, state='readonly')
+        self.mode = ttk.Combobox(mode_row, values=(_SCREEN_MODE, _GUIDE_MODE, _STITCH_MODE), width=18, state='readonly')
         self.mode.pack(side='left')
         self.mode.bind('<<ComboboxSelected>>', self._mode_selected)
 
@@ -176,7 +222,40 @@ class ScreenshotPanel(ttk.Frame):
         self.guide_path.grid(row=1, column=1, sticky='ew')
         self.guide_feedback = theme.wrapped_label(self.guide_fields, style='Hint.TLabel')
         self.guide_feedback.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(pad, 0))
+        self._build_stitch_fields(pad)
         self.refresh()
+
+    def _build_stitch_fields(self, pad):
+        self.stitch_fields = ttk.Frame(self)
+        self.stitch_fields.columnconfigure(0, weight=1)
+        self.stitch_fields.grid(row=1, column=0, sticky='ew')
+        hint = theme.wrapped_label(self.stitch_fields, style='Hint.TLabel',
+            text=f'添加 1～{_MAX_PAGES} 张尺寸一致的本地 PNG 裁片。按列表从上到下拼接，请保留相邻内容的重叠区。')
+        hint.grid(row=0, column=0, sticky='ew', pady=(0, pad))
+        actions = ttk.Frame(self.stitch_fields)
+        actions.grid(row=1, column=0, sticky='ew')
+        self.stitch_buttons = []
+        for label, command in (('添加 PNG…', self.add_stitch_sources), ('上移', lambda: self.move_stitch_source(-1)),
+                               ('下移', lambda: self.move_stitch_source(1)), ('移除', self.remove_stitch_source)):
+            button = ttk.Button(actions, text=label, style='Compact.TButton', command=command)
+            button.pack(side='left', padx=(0, pad))
+            self.stitch_buttons.append(button)
+        self.stitch_list = tk.Listbox(self.stitch_fields, width=1, height=_MAX_PAGES, selectmode='browse', exportselection=False,
+                                     background=theme.CARD, foreground=theme.TEXT, font=theme.native_font(self, 10))
+        self.stitch_list.grid(row=2, column=0, sticky='ew', pady=(pad, 0))
+        self.stitch_list.bind('<<ListboxSelect>>', self._stitch_selected)
+        self.stitch_source_path = theme.wrapped_label(self.stitch_fields, style='Hint.TLabel')
+        self.stitch_source_path.grid(row=3, column=0, sticky='ew', pady=(pad, 0))
+        output = ttk.Frame(self.stitch_fields)
+        output.columnconfigure(1, weight=1)
+        output.grid(row=4, column=0, sticky='ew', pady=(pad, 0))
+        self.stitch_picker = ttk.Button(output, text='选择 PNG 位置…', style='Compact.TButton',
+                                        command=self.pick_stitch_destination)
+        self.stitch_picker.grid(row=0, column=0, sticky='nw', padx=(0, pad))
+        self.stitch_path = theme.wrapped_label(output, style='Hint.TLabel')
+        self.stitch_path.grid(row=0, column=1, sticky='ew')
+        self.stitch_feedback = theme.wrapped_label(self.stitch_fields, style='Hint.TLabel')
+        self.stitch_feedback.grid(row=5, column=0, sticky='ew', pady=(pad, 0))
 
     @property
     def _idle(self):
@@ -195,9 +274,16 @@ class ScreenshotPanel(ttk.Frame):
     def _can_guide(self):
         return self.model.mode == _GUIDE_MODE and self._idle and self._active
 
+    @property
+    def _can_stitch(self):
+        return self.model.mode == _STITCH_MODE and self._idle and self._active
+
     def primary_action(self):
         if self.model.mode == _GUIDE_MODE:
             return _GUIDE_ACTION, self.export_guide, self._can_guide and self.model.guide_destination is not None
+        if self.model.mode == _STITCH_MODE:
+            ready = 1 <= len(self.model.stitch_sources) <= _MAX_PAGES and self.model.stitch_destination is not None
+            return _STITCH_ACTION, self.export_stitch, self._can_stitch and ready
         return '截取游戏窗口', self.capture, self._can_screenshot
 
     def focus_entry(self):
@@ -205,7 +291,7 @@ class ScreenshotPanel(ttk.Frame):
 
     def _mode_selected(self, _event=None):
         selected = self.mode.get()
-        if self._idle and self._active and selected in (_SCREEN_MODE, _GUIDE_MODE):
+        if self._idle and self._active and selected in (_SCREEN_MODE, _GUIDE_MODE, _STITCH_MODE):
             self.model.mode = selected
         self.refresh()
         self.ui._tool_action_changed()
@@ -216,12 +302,14 @@ class ScreenshotPanel(ttk.Frame):
         if self.mode.get() != model.mode:
             self.mode.set(model.mode)
         self.mode.configure(state='readonly' if idle else 'disabled')
-        if model.mode == _GUIDE_MODE:
-            self.screenshot_fields.grid_remove()
-            self.guide_fields.grid()
-        else:
-            self.guide_fields.grid_remove()
-            self.screenshot_fields.grid()
+        for mode, fields in ((_SCREEN_MODE, self.screenshot_fields), (_GUIDE_MODE, self.guide_fields),
+                             (_STITCH_MODE, self.stitch_fields)):
+            if model.mode == mode:
+                fields.grid()
+            else:
+                fields.grid_remove()
+        if model.mode == _STITCH_MODE:
+            self._refresh_stitch(idle)
         self.guide_picker.state(('!disabled' if idle else 'disabled',))
         self.guide_path.configure(text=str(model.guide_destination) if model.guide_destination else '尚未选择输出位置。')
         self.guide_feedback.configure(text=model.guide_message)
@@ -246,6 +334,32 @@ class ScreenshotPanel(ttk.Frame):
             self.result.insert('1.0', model.text)
             self.result.configure(state='disabled')
         self.canvas.show(model.image, model.box)
+
+    def _refresh_stitch(self, idle):
+        model = self.model
+        sources, index = model.stitch_sources, model.stitch_index
+        self.stitch_list.configure(state='normal')
+        labels = tuple(f'{number}. {path.name}' for number, path in enumerate(sources, 1))
+        if self.stitch_list.get(0, 'end') != labels:
+            self.stitch_list.delete(0, 'end')
+            if labels:
+                self.stitch_list.insert('end', *labels)
+        selected = () if index is None else (index,)
+        if self.stitch_list.curselection() != selected:
+            self.stitch_list.selection_clear(0, 'end')
+            if index is not None:
+                self.stitch_list.selection_set(index)
+                self.stitch_list.activate(index)
+        if not idle:
+            self.stitch_list.configure(state='disabled')
+        states = (len(sources) < _MAX_PAGES, index is not None and index > 0,
+                  index is not None and index + 1 < len(sources), index is not None)
+        for button, enabled in zip(self.stitch_buttons, states):
+            button.state(('!disabled' if idle and enabled else 'disabled',))
+        self.stitch_picker.state(('!disabled' if idle else 'disabled',))
+        self.stitch_source_path.configure(text=str(sources[index]) if index is not None else '')
+        self.stitch_path.configure(text=str(model.stitch_destination) if model.stitch_destination else '尚未选择输出位置。')
+        self.stitch_feedback.configure(text=model.stitch_message)
 
     def _select(self, box):
         if box != self.model.box:
@@ -314,14 +428,104 @@ class ScreenshotPanel(ttk.Frame):
                                              filetypes=[('PNG', '*.png')], confirmoverwrite=False)
         if not value or not self._can_guide:
             return False
-        path = Path(value)
-        valid = path.is_absolute() and not path.anchor.startswith('\\') and path.suffix.casefold() == '.png'
-        self.model.guide_destination = path if valid else None
-        if not valid:
+        path = _local_png_selection(value)
+        self.model.guide_destination = path
+        if path is None:
             self.model.guide_message = _GUIDE_STATUS['invalid_target']
         self.refresh()
         self.ui._tool_action_changed()
-        return valid
+        return path is not None
+
+    def _stitch_selected(self, _event=None):
+        if self._can_stitch:
+            selected = self.stitch_list.curselection()
+            self.model.stitch_index = selected[0] if selected else None
+        self.refresh()
+
+    def _update_stitch_sources(self, sources, index):
+        self.model.stitch_sources, self.model.stitch_index = sources, index
+        self.model.stitch_message = '拼接顺序已更新。'
+        self.refresh()
+        self.ui._tool_action_changed()
+
+    def add_stitch_sources(self):
+        if not self._can_stitch or len(self.model.stitch_sources) >= _MAX_PAGES:
+            return False
+        values = filedialog.askopenfilenames(parent=self.ui.root, title='选择本地奖励指南 PNG 裁片',
+                                             filetypes=[('PNG', '*.png')])
+        if not values or not self._can_stitch:
+            return False
+        values = values if isinstance(values, (tuple, list)) else self.tk.splitlist(values)
+        existing = self.model.stitch_sources
+        if len(existing) + len(values) > _MAX_PAGES:
+            self.model.stitch_message = f'每次最多选择 {_MAX_PAGES} 张裁片。'
+            self.refresh()
+            return False
+        paths = tuple(_local_png_selection(value) for value in values)
+        sources = (*existing, *paths)
+        if None in paths:
+            self.model.stitch_message = _STITCH_STATUS['invalid_source']
+        elif len(set(sources)) != len(sources):
+            self.model.stitch_message = '同一 PNG 已在列表中。'
+        else:
+            self._update_stitch_sources(sources, len(existing))
+            return True
+        self.refresh()
+        return False
+
+    def move_stitch_source(self, step):
+        index = self.model.stitch_index
+        sources = list(self.model.stitch_sources)
+        if not self._can_stitch or index is None or not 0 <= index + step < len(sources):
+            return False
+        target = index + step
+        sources[index], sources[target] = sources[target], sources[index]
+        self._update_stitch_sources(tuple(sources), target)
+        return True
+
+    def remove_stitch_source(self):
+        index = self.model.stitch_index
+        if not self._can_stitch or index is None:
+            return False
+        sources = self.model.stitch_sources
+        remaining = sources[:index] + sources[index + 1:]
+        self._update_stitch_sources(remaining, min(index, len(remaining) - 1) if remaining else None)
+        return True
+
+    def pick_stitch_destination(self):
+        if not self._can_stitch:
+            return False
+        value = filedialog.asksaveasfilename(parent=self.ui.root, title='保存拼接后的奖励指南', defaultextension='.png',
+                                             filetypes=[('PNG', '*.png')], confirmoverwrite=False)
+        if not value or not self._can_stitch:
+            return False
+        path = _local_png_selection(value)
+        self.model.stitch_destination = path
+        if path is None:
+            self.model.stitch_message = _STITCH_STATUS['invalid_target']
+        self.refresh()
+        self.ui._tool_action_changed()
+        return path is not None
+
+    def export_stitch(self):
+        model = self.model
+        sources, destination = model.stitch_sources, model.stitch_destination
+        if not self._can_stitch or not 1 <= len(sources) <= _MAX_PAGES or destination is None:
+            return False
+
+        def work(cancel):
+            from .reward_guide_export import export_reward_guide
+
+            return export_reward_guide(sources, destination, checkpoint=lambda: screenshot_tool._checkpoint(cancel))
+
+        def present(receipt):
+            model.stitch_message = _stitch_feedback(receipt, len(sources))
+            model.stitch_destination = None
+
+        def failed(error):
+            present({'status': 'stopped'} if isinstance(error, Stopped) else None)
+
+        return self._start(_STITCH_ACTION, work, present, published=True, message='stitch_message', on_error=failed)
 
     def export_guide(self):
         from .daily_observe import SCREEN_OPERATION
@@ -363,13 +567,16 @@ class ScreenshotPanel(ttk.Frame):
             model.guide_message = _guide_feedback(receipt)
             model.guide_destination = None
 
-        return self._start(_GUIDE_ACTION, work, present, published=True, guide_export=True)
+        def failed(error):
+            present(_receipt('stopped') if isinstance(error, Stopped) else None)
 
-    def _start(self, title, work, present, *, published=False, guide_export=False):
+        return self._start(_GUIDE_ACTION, work, present, published=True, message='guide_message',
+                           game=True, on_error=failed)
+
+    def _start(self, title, work, present, *, published=False, message='message', game=False, on_error=None):
         if not self._idle or not self._active:
             return False
         ui, model = self.ui, self.model
-        message = 'guide_message' if guide_export else 'message'
         job, previous = object(), getattr(model, message)
         model.job = job
         setattr(model, message, f'正在{title}…')
@@ -393,9 +600,8 @@ class ScreenshotPanel(ttk.Frame):
         def failed(error):
             if model.job is job:
                 model.job = None
-                if guide_export:
-                    model.guide_destination = None
-                    model.guide_message = _GUIDE_STATUS['stopped'] if isinstance(error, Stopped) else _GUIDE_UNKNOWN
+                if on_error is not None:
+                    on_error(error)
                 else:
                     model.message = (str(error) if isinstance(error, (AutomationError, Stopped, screenshot_tool.ScreenshotError))
                                      else '未能读取或写入图片，请检查本地文件和窗口。')
@@ -403,7 +609,7 @@ class ScreenshotPanel(ttk.Frame):
 
         try:
             args = (title, lambda stop: work(stop.is_set), done, failed)
-            accepted = ui._start_desktop_job(*args, game=True) if guide_export else ui._submit_tool_job(*args)
+            accepted = ui._start_desktop_job(*args, game=True) if game else ui._submit_tool_job(*args)
         except Exception as error:
             failed(error)
             return False

@@ -17,7 +17,7 @@ from autohsr import theme
 from autohsr.config import Settings
 from autohsr.daily_observe import SCREEN_OPERATION
 from autohsr.desktop_jobs import NativeRunSlot
-from autohsr.desktop_screenshot import _guide_feedback, _image_box, build_screenshot_panel
+from autohsr.desktop_screenshot import _guide_feedback, _image_box, _stitch_feedback, build_screenshot_panel
 
 
 class Host:
@@ -196,6 +196,115 @@ class ScreenshotSmoke(unittest.TestCase):
             self.assertEqual(_guide_feedback(receipt), '奖励指南单屏导出结果待核对。')
         self.assertIn('已停止', _guide_feedback(dict(status='stopped', input_sent=False)))
         self.assertIn('报告未发布', _guide_feedback(dict(status='report_unverified', input_sent=False)))
+
+    def test_local_stitch_previews_explicit_order_and_runs_once_without_game_or_send(self):
+        image = Image.new('RGB', (90, 40))
+        self.panel._set_image(image, '本地图片')
+        self.panel.select_all()
+        with (TemporaryDirectory() as temporary, patch('autohsr.app.Runner') as runner,
+              patch('autohsr.reward_guide_notify.send_reward_guide') as send,
+              patch('autohsr.reward_guide_export.export_reward_guide') as export):
+            root = Path(temporary)
+            first, middle, last = (root / name for name in ('first.png', 'middle.PNG', 'last.png'))
+            destination = root / 'private-output.png'
+            self.panel.mode.set('奖励指南单屏导出')
+            self.panel._mode_selected()
+            with patch('autohsr.desktop_screenshot.filedialog.asksaveasfilename',
+                       return_value=str(root / 'single.png')):
+                self.assertTrue(self.panel.pick_guide_destination())
+            self.panel.mode.set('本地奖励指南拼接')
+            self.panel._mode_selected()
+            self.assertFalse(self.panel.primary_action()[2])
+            with patch('autohsr.desktop_screenshot.filedialog.askopenfilenames') as pick:
+                pick.return_value = (str(last), str(first))
+                self.assertTrue(self.panel.add_stitch_sources())
+                self.assertEqual(self.panel.stitch_list.get(0, 'end'), ('1. last.png', '2. first.png'))
+                self.panel.stitch_list.selection_clear(0, 'end')
+                self.panel.stitch_list.selection_set(1)
+                self.panel._stitch_selected()
+                self.assertTrue(self.panel.move_stitch_source(-1))
+                self.assertFalse(self.panel.move_stitch_source(-1))
+                self.assertTrue(self.panel.move_stitch_source(1))
+                self.assertTrue(self.panel.move_stitch_source(-1))
+                for rejected in ((str(middle), str(root / 'extra.png')), (str(last),),
+                                 (r'\\server\share\calendar.png',), (str(middle.with_suffix('.jpg')),)):
+                    pick.return_value = rejected
+                    self.assertFalse(self.panel.add_stitch_sources())
+                    self.assertEqual(self.panel.model.stitch_sources, (first, last))
+                pick.return_value = (str(middle),)
+                self.assertTrue(self.panel.add_stitch_sources())
+                self.assertTrue(self.panel.stitch_buttons[0].instate(('disabled',)))
+                self.assertTrue(self.panel.move_stitch_source(-1))
+                self.assertTrue(self.panel.remove_stitch_source())
+                self.assertTrue(self.panel.add_stitch_sources())
+                self.assertTrue(self.panel.move_stitch_source(-1))
+            self.assertEqual(self.panel.stitch_list.get(0, 'end'), ('1. first.png', '2. middle.PNG', '3. last.png'))
+            self.assertEqual(self.panel.stitch_source_path.cget('text'), str(middle))
+            with patch('autohsr.desktop_screenshot.filedialog.asksaveasfilename') as pick:
+                pick.return_value = ''
+                self.assertFalse(self.panel.pick_stitch_destination())
+                self.assertFalse(self.panel.primary_action()[2])
+                pick.return_value = str(destination)
+                self.assertTrue(self.panel.pick_stitch_destination())
+                self.assertIs(pick.call_args.kwargs['confirmoverwrite'], False)
+            self.assertIsNone(self.host.pending)
+            self.assertFalse(destination.exists())
+            export.assert_not_called()
+            label, action, ready = self.panel.primary_action()
+            self.assertEqual((label, ready), ('拼接并导出奖励指南', True))
+            self.assertTrue(action())
+            self.assertFalse(self.host.pending[3])
+            self.assertTrue(all(button.instate(('disabled',)) for button in self.panel.stitch_buttons))
+            self.assertFalse(self.panel.move_stitch_source(1))
+            self.assertFalse(self.panel.export_stitch())
+            export.return_value = dict(status='ok', overlap_rows=[115, 80], width=192, height=333, private='hidden')
+            current = self.host.screenshot_panel = build_screenshot_panel(self.host.root, self.host)
+            self.host.complete(late_stop=True)
+            export.assert_called_once()
+            self.assertEqual(export.call_args.args, ((first, middle, last), destination))
+            self.assertEqual(current.stitch_feedback.cget('text'), '已导出拼图 · 3 张裁片 · 192 × 333。接缝重叠行数 115／80。')
+            self.assertFalse(current.primary_action()[2])
+            self.assertEqual(current.model.stitch_sources, (first, middle, last))
+            self.assertEqual(current.model.guide_destination, root / 'single.png')
+            self.assertIs(current.model.image, image)
+            self.assertEqual(current.model.box, (0, 0, 90, 40))
+            runner.assert_not_called()
+            send.assert_not_called()
+            self.host._read_settings.assert_not_called()
+
+    def test_local_stitch_passes_shared_stop_and_exclusively_writes_new_local_png(self):
+        self.panel.mode.set('本地奖励指南拼接')
+        self.panel._mode_selected()
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, target, occupied = (root / name for name in ('crop.png', 'new.png', 'occupied.png'))
+            Image.new('RGB', (96, 64), 'navy').save(source)
+            source_bytes = source.read_bytes()
+            occupied.write_bytes(b'original')
+            with patch('autohsr.desktop_screenshot.filedialog.askopenfilenames', return_value=(str(source),)):
+                self.assertTrue(self.panel.add_stitch_sources())
+            for output, stopped, text in ((occupied, False, '已有文件保留'), (target, True, '已停止'),
+                                          (target, False, '已导出拼图 · 1 张裁片 · 96 × 64')):
+                with self.subTest(stopped=stopped, text=text), patch(
+                        'autohsr.desktop_screenshot.filedialog.asksaveasfilename', return_value=str(output)):
+                    self.assertTrue(self.panel.pick_stitch_destination())
+                    self.assertFalse(target.exists())
+                    self.assertTrue(self.panel.primary_action()[1]())
+                    if stopped:
+                        self.host.stop_requested.set()
+                    self.host.complete()
+                    self.assertIn(text, self.panel.stitch_feedback.cget('text'))
+            self.assertEqual(occupied.read_bytes(), b'original')
+            self.assertEqual(source.read_bytes(), source_bytes)
+            with Image.open(target) as output:
+                self.assertEqual((output.format, output.size), ('PNG', (96, 64)))
+
+    def test_stitch_feedback_rejects_unverified_dimensions_or_seams(self):
+        for receipt in (dict(status='ok', width=True, height=200, overlap_rows=[50]),
+                        dict(status='ok', width=96, height=200, overlap_rows=[]),
+                        dict(status='ok', width=96, height=200, overlap_rows=[False])):
+            self.assertEqual(_stitch_feedback(receipt, 2), '奖励指南拼接结果待核对。')
+        self.assertIn('顺序相反', _stitch_feedback(dict(status='wrong_direction'), 2))
 
 
 if __name__ == '__main__':
