@@ -53,6 +53,10 @@ _SETUP_PERIOD = (.104, .216, .207, .267)
 _SETUP_NODES = ((.499, .205, .706, .255), (.499, .466, .706, .518))
 _SETUP_ROLE_DETAIL = (.574, .874, .689, .954)
 _SETUP_BUTTON = (.719, .874, .929, .954)
+_PICKER_LIST_TAB = (.058, .117, .119, .159)
+_PICKER_PRESET_TAB = (.191, .117, .256, .159)
+_PICKER_BADGES = (.021, .156, .294, .867)
+_PICKER_WORDS = ('角色列表', '预设编队')
 
 _NAVIGATION_CAPTIONS = ('前往挑战', '下一步', '前往编队', '更换编队')
 _LOCKED_WORDS = ('当前队伍', '不可更换')
@@ -262,17 +266,73 @@ def _locked_node_detail(scene, words, minimum):
                         period=None, team_editability='locked', selected_level=None)
 
 
-def _node_setup(scene, title, heading, words, minimum):
+def _setup_headers(scene, minimum):
     role_heading = _field(scene, _SETUP_HEADING, '角色编队', minimum)
-    period = _field(scene, _SETUP_PERIOD, _PERIOD, minimum)
     one, two = (_field(scene, region, pattern, minimum) for region, pattern in
                 zip(_SETUP_NODES, (r'节点一\|?' + _BOSSES[0], r'节点二\|?' + _BOSSES[1])))
-    if (not all((role_heading, period, one, two))
-            or abs(one.box[0] - two.box[0]) > .018
-            or _foreign_caption(scene, '前往挑战', _SETUP_BUTTON)):
+    if not all((role_heading, one, two)) or abs(one.box[0] - two.box[0]) > .018:
+        return None
+    return dict(role_heading=role_heading, node_one=one, node_two=two)
+
+
+def _picker_rails(image):
+    # Read the two long rails to the right of the four circular slots.
+    # A single remaining rail can occur while the list is closing.
+    rails, contrast = [], []
+    for y in (150, 185, 269, 305):
+        patch = image[y - 5:y + 6, 563:667]
+        luma = patch.min(axis=2).astype(np.int16)
+        neutral = np.ptp(patch[2:-2], axis=2) <= 40
+        light = (luma[2:-2] >= 145) & neutral
+        rails.append(float(light.mean(axis=1).max()))
+        peaks = luma[2:-2] - np.maximum(luma[:-4], luma[4:])
+        contrast.append(float(((peaks >= 16) & neutral).mean(axis=1).max()))
+    return tuple(rails), tuple(contrast)
+
+
+def _candidate_picker(scene, heading, words, minimum):
+    image = cv2.resize(scene.image, (802, 454), interpolation=cv2.INTER_AREA)
+    rails, contrast = _picker_rails(image)
+    if max(*rails, *contrast) < .80 and not any(word in words for word in _PICKER_WORDS):
+        return None
+    rail_pairs = (rails[:2], rails[2:])
+    active = [node for node, pair in enumerate(rail_pairs, 1) if min(pair) >= .80]
+    visible = sum(max(pair) >= .80 for pair in rail_pairs)
+    listed = _field(scene, _PICKER_LIST_TAB, _PICKER_WORDS[0], minimum)
+    preset = _field(scene, _PICKER_PRESET_TAB, _PICKER_WORDS[1], minimum)
+    headers = _setup_headers(scene, minimum)
+    button = _field(scene, _SETUP_BUTTON, '前往挑战', minimum)
+    details = _field(scene, _SETUP_ROLE_DETAIL, '角色详情', minimum)
+    if (len(active) != 1 or visible != 1
+            or not all((listed, preset, headers, button, details))
+            or abs(details.center[1] - button.center[1]) > .016
+            or _foreign_caption(scene, '前往挑战', _SETUP_BUTTON)
+            or image[59:66, 23:48].min(axis=2).mean() < 185
+            or image[59:66, 134:159].min(axis=2).mean() > 80
+            or _field(scene, _SETUP_PERIOD, _PERIOD, minimum)
+            or _field(scene, _SETUP_LEVEL, r'难度0[1-4]', minimum)):
+        return pages._unknown('unverified_apocalyptic_candidate_picker')
+    badges = []
+    for token in scene.tokens:
+        value = _text(token)
+        if not value.startswith('队伍') or not pages._overlaps(token.box, _PICKER_BADGES):
+            continue
+        if (not pages._inside(token.box, _PICKER_BADGES) or token.score < minimum
+                or not re.fullmatch(r'队伍[12]', value)):
+            return pages._unknown('unverified_apocalyptic_candidate_badge')
+        badges.append(dict(_proof(Token(value, token.score, token.box)), node=int(value[-1])))
+    anchors = dict(heading=heading, list_tab=listed, preset_tab=preset, role_detail=details,
+                   challenge_caption=button, **headers)
+    return _observation('candidate_picker', anchors, '前往挑战', button,
+                        active_node=active[0], rails=list(rails), badges=badges, period=None)
+
+
+def _node_setup(scene, title, heading, words, minimum):
+    headers = _setup_headers(scene, minimum)
+    period = _field(scene, _SETUP_PERIOD, _PERIOD, minimum)
+    if not headers or not period or _foreign_caption(scene, '前往挑战', _SETUP_BUTTON):
         return pages._unknown('incomplete_apocalyptic_node_setup')
-    anchors = dict(title=title, heading=heading, role_heading=role_heading, period=period,
-                   node_one=one, node_two=two)
+    anchors = dict(title=title, heading=heading, period=period, **headers)
     level = _field(scene, _SETUP_LEVEL, r'难度0[1-4]', minimum)
     if level is not None and any(re.fullmatch(r'(?:难度)?0[1-4]|难度', _text(t))
                                  and pages._overlaps(t.box, _SETUP_LEVEL)
@@ -289,7 +349,7 @@ def _node_setup(scene, title, heading, words, minimum):
             return pages._unknown('unverified_apocalyptic_setup_role_detail')
         anchors['role_detail'] = details
     nodes = [dict(node=index, boss=boss, label_box=list(token.box)) for index, boss, token in
-             zip((1, 2), _BOSSES, (one, two))]
+             zip((1, 2), _BOSSES, (headers['node_one'], headers['node_two']))]
     return _observation('node_setup', anchors, '前往挑战', button,
                         level=int(level.text[-2:]) if level else None, period=_PERIOD, nodes=nodes,
                         selected_node=None, team_feedback='unknown', role_availability='unknown',
@@ -329,9 +389,13 @@ def observe(scene, confidence=.65):
         return _played_overview(clean, title, mode, change, words, minimum)
     if locked:
         return _locked_node_detail(clean, words, minimum)
+    subtitle = _field(clean, _SUBTITLE, '首领信息|编队', minimum)
+    if subtitle and subtitle.text == '编队' and not any('未解锁' in word for word in words):
+        picker = _candidate_picker(clean, subtitle, words, minimum)
+        if picker is not None:
+            return picker
     if title is None:
         return pages._unknown('missing_apocalyptic_title')
-    subtitle = _field(clean, _SUBTITLE, '首领信息|编队', minimum)
     if subtitle is not None:
         if any('未解锁' in word for word in words):
             return pages._unknown('apocalyptic_lock_outside_lobby')

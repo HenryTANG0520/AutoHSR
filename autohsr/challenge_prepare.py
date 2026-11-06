@@ -2,6 +2,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
+from itertools import combinations
 import json
 import os
 from pathlib import Path
@@ -244,6 +245,7 @@ class ChallengePreparation:
         import numpy as np
         from .challenge_apocalyptic_prepare import observe, same_page
         previous, geometry = None, None
+        history = []
         last_scene = None
         latest_capture = 0.
         deadline = time.monotonic() - self.c.runner.inactive_duration + 30
@@ -258,6 +260,7 @@ class ChallengePreparation:
                 self._check_attempt()
                 latest_capture = max(latest_capture, time.monotonic())
                 previous = None
+                history.clear()
                 continue
             last_scene = scene
             account = self._fresh(scene, allow_missing_account=True)
@@ -269,11 +272,13 @@ class ChallengePreparation:
             latest_capture = max(latest_capture, scene.captured_at)
             if not account or not increasing:
                 previous = None
+                history.clear()
                 continue
             pixel_sha256 = _pixels(scene)
             page = observe(scene, self.c.settings.ocr_confidence)
             if page.kind == 'unknown':
                 previous = None
+                history.clear()
                 continue
             sequence = self.c.capture_sequence
             source = self._source(scene, page, f'apocalyptic_{sequence}')
@@ -285,25 +290,42 @@ class ChallengePreparation:
             self.data['observations'].append(source)
             self.data['account_key'] = self.account
             self._persist()
+            history = [*history[-5:], frame]
+            if page.kind == 'candidate_picker':
+                previous = None
+                continue
             if (previous is not None and sequence == previous.source['capture_sequence'] + 1
                     and not np.may_share_memory(previous.scene.image, scene.image)
                     and same_page(previous.observation, page)):
-                return self._publish_apocalyptic((previous, frame), deadline)
+                pair = previous, frame
+                kinds = [item.observation.kind for item in history]
+                if (self.plan.level_start == page.level == 4
+                        and kinds == ['node_setup', 'candidate_picker', 'candidate_picker', 'candidate_picker',
+                                      'node_setup', 'node_setup']
+                        and history[0].observation.level == 4
+                        and 0 <= time.monotonic() - history[0].scene.captured_at <= MAX_SCENE_AGE):
+                    return self._publish_apocalyptic(pair, deadline, trace=tuple(history))
+                return self._publish_apocalyptic(pair, deadline)
             previous = frame
         if last_scene is not None and self.c.last_scene is None:
             self.c.evidence(last_scene, 'challenge_unverified')
         raise AutomationError('末日备战缺少同账号连续两张可核实的当前页面。')
 
-    def _recheck_apocalyptic(self, pair, deadline):
+    def _recheck_apocalyptic(self, frames, deadline):
+        import numpy as np
         from .challenge_apocalyptic_prepare import observe
-        current = pair[-1].scene
+        current = frames[-1].scene
         confidence = self.c.settings.ocr_confidence
         self._fresh(current)
-        first, last = (frame.source for frame in pair)
-        if (first['captured_at'] >= last['captured_at'] or first['capture_sequence'] + 1 != last['capture_sequence']
-                or Path(first['path']).samefile(last['path'])):
-            raise AutomationError('末日备战回执需要两次独立采集和独立原图。')
-        for frame in pair:
+        first, last = frames[0].source, frames[-1].source
+        sources = [frame.source for frame in frames]
+        if (any(a['captured_at'] >= b['captured_at'] or a['capture_sequence'] + 1 != b['capture_sequence']
+                for a, b in zip(sources, sources[1:]))
+                or any(Path(a.source['path']).samefile(b.source['path'])
+                       or np.may_share_memory(a.scene.image, b.scene.image)
+                       for a, b in combinations(frames, 2))):
+            raise AutomationError('末日备战回执需要连续独立采集和独立原图。')
+        for frame in frames:
             scene, source = frame.scene, frame.source
             path, raw = self._read_png(source['path'])
             g = scene.geometry
@@ -334,13 +356,12 @@ class ChallengePreparation:
             if stream.read(len(expected) + 1) != expected:
                 raise AutomationError('末日备战待保存记录或原回执发生变化。')
 
-    def _apocalyptic_slot_evidence(self, pair):
+    def _apocalyptic_images(self, frames):
         import cv2
         import numpy as np
-        from .challenge_slots import _compare_apocalyptic_setup
 
         images = []
-        for frame in pair:
+        for frame in frames:
             _, raw = self._read_png(frame.source['path'])
             if hashlib.sha256(raw).hexdigest() != frame.source['sha256']:
                 raise AutomationError('末日槽位原图已改变。')
@@ -348,9 +369,13 @@ class ChallengePreparation:
             if image is None or image.shape != frame.scene.image.shape:
                 raise AutomationError('末日槽位原图尺寸与采集画面不同。')
             images.append(image)
-        return _compare_apocalyptic_setup(self.plan, pair, images)
+        return images
 
-    def _publish_apocalyptic(self, pair, deadline):
+    def _apocalyptic_slot_evidence(self, pair):
+        from .challenge_slots import _compare_apocalyptic_setup
+        return _compare_apocalyptic_setup(self.plan, pair, self._apocalyptic_images(pair))
+
+    def _publish_apocalyptic(self, pair, deadline, *, trace=()):
         page = pair[-1].observation
         sources = [frame.source for frame in pair]
         ready = page.kind == 'node_setup' and page.level == self.plan.level_start
@@ -361,20 +386,29 @@ class ChallengePreparation:
                            visible_selected_level=page.level)
         if page.kind == 'locked_node_detail':
             receipt.update(matches_plan_level=page.level == self.plan.level_start, team_editability='locked')
+        frames = pair
+
         def recheck():
             self._check_payload(self.path.with_suffix('.tmp'), payload)
-            self._recheck_apocalyptic(pair, deadline)
+            self._recheck_apocalyptic(frames, deadline)
 
-        with hold_read_sources(row['path'] for row in sources):
+        with hold_read_sources(frame.source['path'] for frame in (trace or pair)):
             if ready and page.level == 4:
-                receipt['team_slots'] = self._apocalyptic_slot_evidence(pair)
+                slots = self._apocalyptic_slot_evidence(pair)
+                receipt['team_slots'] = slots
+                if trace:
+                    from .challenge_apocalyptic_transition import compare_candidate_transition
+                    transition = compare_candidate_transition(trace, self._apocalyptic_images(trace), slots)
+                    if transition is not None:
+                        receipt['candidate_slot_transition'] = transition
+                        frames = trace
             data = dict(self.data, status='prepared' if ready else 'page_observed',
                         page_observation=receipt, preparation_page_verified=ready)
             if ready:
                 data.update(entry='existing_node_setup', preparation_frames=sources)
             payload = _json(data).encode('utf-8')
             self._persist(data, before_replace=recheck)
-        self._readonly_receipt = pair, deadline, payload
+        self._readonly_receipt = frames, deadline, payload
         self.data.update(data)
         if ready:
             return TaskResult(OPERATION, 'ok', '已核实末日幻影首个目标难度的双节点备战页面。')
@@ -386,10 +420,10 @@ class ChallengePreparation:
 
     def save_report(self, temporary, write_report):
         destination = self.path.parent / 'report.json'
-        pair, deadline, receipt_payload = self._readonly_receipt
+        frames, deadline, receipt_payload = self._readonly_receipt
         result = next(item for item in self.c.report.results if item.task == OPERATION)
         try:
-            with hold_read_sources([self.path, *(frame.source['path'] for frame in pair)]):
+            with hold_read_sources([self.path, *(frame.source['path'] for frame in frames)]):
                 payload = write_report()
 
                 def recheck():
@@ -399,7 +433,7 @@ class ChallengePreparation:
                     with temporary.open(encoding='utf-8') as stream:
                         if stream.read(len(payload) + 1) != payload:
                             raise AutomationError('末日备战待保存报告发生变化。')
-                    self._recheck_apocalyptic(pair, deadline)
+                    self._recheck_apocalyptic(frames, deadline)
 
                 replace_file(temporary, destination, before_replace=recheck)
         except (AutomationError, OSError, ValueError, TypeError) as error:
