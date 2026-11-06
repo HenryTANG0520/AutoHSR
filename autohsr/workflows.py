@@ -88,6 +88,7 @@ class DailyWorkflow:
         self._login_supply_claimed = False
         self._login_supply_closed = False
         self._daily_synthesis_attempted = False
+        self.assignments_only = getattr(getattr(context, 'runner', None), 'assignments_only', False) is True
 
     def _snapshot(self) -> Scene:
         self.ctx.checkpoint()
@@ -171,8 +172,10 @@ class DailyWorkflow:
                 or self._in_battle(scene) or self._world(scene))
 
     def _require_reward_only_clear(self, scene):
-        if (getattr(getattr(self.ctx, 'report', None), 'operation', None) == 'reward_only'
+        if ((self.assignments_only or getattr(getattr(self.ctx, 'report', None), 'operation', None) == 'reward_only')
                 and (self._supply_overlay(scene) or self._login_reward_overlay(scene))):
+            if self.assignments_only:
+                raise AutomationError('独立委托遇到列车补给或登录附加奖励，请手动进入主界面。')
             raise AutomationError('仅补领奖遇到列车补给或登录附加奖励，请手动进入游戏主界面后重试。')
 
     def _in_battle(self, scene: Scene) -> bool:
@@ -287,7 +290,7 @@ class DailyWorkflow:
                 scene = self._settle_login_overlays(scene)
                 if self._phone(scene):
                     return scene
-            if self._settlement(scene) and scene.has("退出关卡", BOTTOM, exact=True):
+            if not self.assignments_only and self._settlement(scene) and scene.has("退出关卡", BOTTOM, exact=True):
                 self.ctx.log("已核实遗留结算与退出按钮，清理结算后继续导航。")
                 self._exit_result(scene)
                 scene = self._snapshot()
@@ -409,6 +412,9 @@ class DailyWorkflow:
         return claim is not None and self._assignment_claim_enabled(scene, claim) is False
 
     def assignments(self) -> TaskResult:
+        if self.assignments_only:
+            from .daily_assignment_scope import run
+            return run(self)
         scene = self._snapshot()
         if not scene.has("委托", TITLE):
             scene = self._open_phone_item("委托", "委托", "phone_assignments")

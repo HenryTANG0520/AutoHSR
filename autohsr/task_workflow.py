@@ -362,6 +362,7 @@ def task_spec(settings: Settings, node, base_dir):
         current.support_daily_only = support_daily_only
     options = {}
     if task == 'daily':
+        only_assignments = params.get('tasks') == ['assignments']
         selected = params.pop('tasks', [name for name in DAILY_TASKS if getattr(current, 'redemption_enabled' if name == 'redemption' else name)])
         if not selected:
             raise WorkflowError('日常需要选择任务；体力计划需要刷本。')
@@ -376,6 +377,8 @@ def task_spec(settings: Settings, node, base_dir):
             current.redemption_catalog = str((base_dir / current.redemption_catalog).resolve())
         current.validate('power_plan' if options['use_power_plan'] else 'daily')
         options['operation'] = 'daily'
+        if only_assignments:
+            options['assignments_only'] = True
     elif task == 'plan':
         options = params
         current.validate('power_plan' if params.get('use_power_plan') else 'plan')

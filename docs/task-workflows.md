@@ -26,6 +26,8 @@
 
 记录任务目前只接显式本地JSON；真实缓存／链接获取继续使用[独立工具入口](warp-records.md)，没有在流程中隐式扫描。XLSX仍使用已固定的可选加载引擎，见[统计与Excel](warp-statistics-xlsx.md)。
 
+`daily` 节点显式填写 `"params": {"tasks": ["assignments"]}` 时，只处理已有的持续委托奖励。列车补给和登录附加奖励会阻止本步继续。核实当前账号和可用按钮后，最多尝试一次领取。领取反馈中断或账号改变时，保留原证据待核对。回到委托页后，在两张新画面上复核同账号的原委托状态。详见[每日流程](../DAILY_FLOW.md#执行顺序)。
+
 `daily` 和 `plan` 的 `params.support_daily_only` 只接受布尔值。省略沿用当前设置，显式 `false` 仅关闭本次按需判断。显式 `true` 要求本次选中刷本、允许使用已有资源，且 `plan` 执行范围包含日常。实际借用仍由 `use_support` 决定。冻结参数不保存设置，借用与支付继续由原生日常核实。[按需支援](support-preferences.md#按实训需求借用)
 
 差分节点设置 `"params": {"until_points": true, "runs": 3}` 后，`runs` 是本次新开局上限。该选项需要显式填写 `runs`，只适用于新开周期演算。积分满额可零局完成。达到上限仍未满时保留已核实胜利，任务返回部分完成并遵守原失败策略。附加红点领取仍由 `rewards` 单独指定，周期积分奖励保持独立。[差分积分目标](differential-universe.md)

@@ -946,7 +946,7 @@ class Context:
         self.sleep(self.settings.action_delay)
 
     def click(self, scene: Scene, target: Token | tuple[float, float], *, du_intent="navigation",
-              du_feedback_deadline: float | None = None):
+              du_feedback_deadline: float | None = None, assignment_intent: str | None = None):
         self._require_gameplay_input()
         if du_feedback_deadline is not None and (self.report.operation != 'differential_universe'
                 or du_intent not in ('curio_discard_confirm','du_tutorial_close')):
@@ -959,6 +959,13 @@ class Context:
         if scene is not self.last_scene or time.monotonic() - scene.captured_at > 8:
             raise AutomationError("识别画面已经过期，请重新识别后操作。")
         from .policy import guard_click, guard_differential_universe_click, replenishment_dialog
+        assignment_commit = None
+        if assignment_intent is not None:
+            from .daily_assignment_scope import before_submit
+            assignment_commit = before_submit(self, scene, target, assignment_intent)
+        elif getattr(self.runner, 'assignments_only', False) is True:
+            from .daily_assignment_scope import require_navigation
+            require_navigation(scene, target)
         weekly_start_guard = None
         synthesis_resource_guard = None
         points_goal = None
@@ -1063,7 +1070,9 @@ class Context:
                 raise AutomationError('合成输入前画面已过期，未发送输入。')
             synthesis_resource_guard(scene, target, du_intent, self.report.daily_synthesis)
         try:
-            if station_confirmation:
+            if assignment_commit is not None:
+                self.window.click(*coordinates, scene.geometry, before_submit=assignment_commit)
+            elif station_confirmation:
                 def check_station_before_send():
                     if self.window is not station_window:
                         raise InputInterrupted('差分选站确认前窗口已改变，未发送旧目标。')
@@ -2167,13 +2176,18 @@ class Runner:
                  currency_configure=False, currency_wealth=None, currency_resume=False, weekly_plan=None, currency_strategy=None,
                  currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None,currency_rewards_resume=False,currency_weekly_guard=None,
                  use_power_plan=False,new_power_plan=False,currency_overclock_open_a0=False,build_target_selection=None,
-                 challenge_lobby_mode=None):
+                 challenge_lobby_mode=None, assignments_only=False):
         from dataclasses import replace
         if operation == 'reward_only':
             from .recovery import reward_only_settings
             settings = reward_only_settings(settings)
         else:
             settings = replace(settings)
+        if (type(assignments_only) is not bool or assignments_only
+                and (operation != 'daily' or settings.assignments is not True or new_battle_run or use_power_plan
+                     or any((settings.battle, settings.daily, settings.redemption_enabled, settings.mail, settings.battlepass)))):
+            raise ValueError('独立委托只允许本次明确选择已有委托奖励。')
+        self.assignments_only = assignments_only
         if operation in ('build_target_read', 'build_target_preview', 'build_target_plan') and new_battle_run:
             raise ValueError('培养目标读取不能建立刷本预算。')
         if operation == 'team_preset_calibration' and new_battle_run:
@@ -2335,7 +2349,9 @@ class Runner:
             except Exception as error:
                 result = TaskResult(name, "partial", f"未核实完成：{error}")
                 self.report.error = str(error)
-                self.report.safe_next = ("已保留每日奖励验证；请人工返回主界面后仅重试未完成的免费领奖。"
+                self.report.safe_next = ("原委托结果待核对。请查看本次截图及当前领取状态。"
+                                         if self.assignments_only else
+                                         "已保留每日奖励验证；请人工返回主界面后仅重试未完成的免费领奖。"
                                          if self.report.daily_verified else
                                          "请人工核对当前界面和消耗，返回主界面后选择仅补领奖；不要直接重跑刷本。")
                 self.report.results.append(result)
@@ -2577,6 +2593,8 @@ class Runner:
                 self.checkpoint()
                 if name == 'redemption':
                     raise AutomationError('兑换操作已中断，原提交与逐码结果保留；未重启整批或重放确认。')
+                if name == 'assignments' and self.assignments_only:
+                    raise AutomationError('独立委托输入或反馈已中断，保留本次待核对记录。')
                 if name == "battle" and (self.report.stamina_pending or self.report.immersifiers_pending):
                     raise AutomationError("挑战输入已中断且消耗待核对；保留本轮预算，不重复开始挑战。")
                 if name == 'daily' and self.report.daily_synthesis.get('status') == 'pending':
@@ -2801,6 +2819,9 @@ class Runner:
                                       configured_name=configured_name,
                                       timeout=.05 if self.currency_timeout_probe else 30.) if currency_wars else
                       Vision(ocr_confidence))
+            if self.assignments_only:
+                from .currency_wars_identity import UID_VETO_FLOOR
+                vision.uid_counterevidence_floor = UID_VETO_FLOOR
             context = Context(self, self._window, vision)
             context.overclock_session = overclock_session
             context.overclock_preparation = overclock_preparation
@@ -2939,7 +2960,7 @@ class Runner:
                 ready_planar = (not self.use_power_plan and self.settings.dungeon_category == "planar" and self.settings.battle
                                 and not self.settings.assignments and workflow._calyx_target(initial)
                                 and workflow._team_page(initial))
-                if not ready_planar:
+                if not ready_planar and not self.assignments_only:
                     with context.daily_startup(workflow, cold_start):
                         workflow.ensure_main()
                 self.report.failure_task = ""
@@ -2959,6 +2980,7 @@ class Runner:
             self.report.safe_next = ("货币战争操作已停止；核对画面和本次动作记录后重新识别。" if self.report.operation.startswith("currency_wars") else
                                      build_target_safe_next if build_target else
                                      self.report.safe_next if challenge_result or challenge_navigation else
+                                     '独立委托已停止。请查看本次截图及当前领取状态。' if self.assignments_only else
                                      '差分领奖已停止；保留原意图及已核实领取，不重放未知动作；本次未开始演算。' if self.report.operation == 'du_rewards' else
                                      '高难备战已停止；保留层数选择记录，重新核对当前页面；本次未开战。' if self.report.operation == 'challenge_prepare' else
                                      '兑换已停止；已核实逐码结果保留，先核对未知提交，不重复确认。' if self.report.operation == 'redemption' else
