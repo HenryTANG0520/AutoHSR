@@ -32,6 +32,14 @@
 
 P5 的 234.6 秒鼠标位于首行「前往」按钮，235.2 秒开始显示活动列表，236.0 秒可见选中的星际幻宠乐园。这段录像只提供页面去向旁证。固定上游的页面映射另将奖励指南的 Esc 去向列为活动列表，仍待本机原生回退核验。[P5 原片](https://www.bilibili.com/video/BV1JZaV6XEH3/?p=5&t=234) · [三月七页面映射](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json)
 
+列表视野回放沿用同一 P5 原始 BGR，保留 `[4,6,105,109]`、`[121,44,452,94]` 和 `[121,97,469,318]`，其余像素清零。内容包括活动名称、缩略图和计时，排除账号信息、右侧奖励数字及操作列。两个时点的可见列表保持静止。分组标题模板直接裁自 233.8 秒的 `[122,98,159,112]`。[P5 原片](https://www.bilibili.com/video/BV1JZaV6XEH3/?p=5&t=233)
+
+| 文件 | 秒数／帧索引 | 原解码 BGR SHA-256 | PNG SHA-256 |
+| --- | --- | --- | --- |
+| `reward_guide_ongoing.png` | 233.8／7014 | `fa2659fd95539d063169da8cc4c7eafa533a7bcdc69aef6df3b4ef8aa317287b` | `f5a19224be6248b4305d2d1e8753b682139c573bc1093a088a1c2fa3486bd225` |
+| `viewport-7014.png` | 233.8／7014 | `fa2659fd95539d063169da8cc4c7eafa533a7bcdc69aef6df3b4ef8aa317287b` | `1bba52447a1a30884021e67bc0e24f5ca968841db399393dff6cbd80397248f9` |
+| `viewport-7026.png` | 234.2／7026 | `eb41f63ee98aa5b48e4bc9c8d956f3066b99d29c7819c7152356c2bd5f224a1b` | `1097742b1529474aea35c547931d6fe90d633594ed5ab3ad583fbfc723b25703` |
+
 ## 2026-11-07 漫游签证选中页签
 
 三张国服 4.6 时期玩家公开静态截图用于核对收集展示、角色展示和战绩展示。夹具保留最小页签裁片与白名单界面文字、坐标及分数。原图、UID 和账号信息未入库。游戏界面权利归 HoYoverse 及相应权利人，原截图归上传者及相应权利人。[公开原帖](https://www.miyoushe.com/sr/article/79174169) · [来源、裁剪与哈希](../autohsr/tests/fixtures/daily_visa/sources.json)

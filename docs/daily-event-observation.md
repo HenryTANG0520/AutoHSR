@@ -56,4 +56,12 @@ AutoHSR 的独立读取覆盖简中 4.6.0 手机里的「旅情事记」和其�
 
 `--reward-guide-stitch PNG [PNG …] --reward-guide-output NEW_PNG` 支持将 1–3 张用户自行裁好的本地内容 PNG 按从上到下的顺序拼接。请裁去固定标题、滚动条和个人信息，并保留相邻裁片的重复内容。程序拒绝反向、重复、无重叠或接缝歧义，成功时只创建新文件并回报尺寸和重叠行数。输出目录须支持硬链接，NTFS 已验证。该命令仅处理用户所给像素，游戏内滚动采集、同账号来源、内容是否完整及图像通知仍待接通。
 
-公开 4.6 活动实录 P5 在 232.8 至 234.6 秒显示独立指南页，前后为活动列表。234.8 秒附近的鼠标停在首行「前往」，后一段显示回到活动页并切到星际幻宠乐园。此转场不用于推断 Esc 或指南离页。固定三月七的活动日历提醒会从奖励指南采集数帧，拼接后发送图片。本批交付是正式导航和到页核验，拼图与发送仍待接入。[公开实录](https://www.bilibili.com/video/BV1JZaV6XEH3/?p=5&t=232) · [三月七活动提醒](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/activity/journey_highlights_notification.py)
+公开 4.6 活动实录 P5 在 232.8 至 234.6 秒显示独立指南页，前后为活动列表。234.6 秒鼠标停在首行「前往」，随后回到活动页并切到星际幻宠乐园。实际 Esc 的反馈仍待单独取证。固定三月七的活动日历提醒会从奖励指南采集数帧，拼接后发送图片。[公开实录](https://www.bilibili.com/video/BV1JZaV6XEH3/?p=5&t=232) · [三月七活动提醒](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/activity/journey_highlights_notification.py)
+
+### 可见列表与内容框
+
+`reward_guide_viewport` 在已核实的 4.6「旅程热点」页上继续核对「进行中」标题和同一橙色分组栏，返回原分辨率的内容框和可见分组。640×360 参考框为 `[126,114,468,315]`，保留活动缩略图、名称和剩余时间，避开固定标题、右侧奖励数及「前往」、底部信息。[识别实现](../autohsr/reward_guide_viewport.py) · [素材来源](../assets/ATTRIBUTION.md#2026-11-07-奖励指南旅程热点)
+
+已打开该页时，运行 `python -m autohsr --screen-test`，或在桌面「设置 → 工具 → 日常页面核对 → 当前页面」核对。只有同一窗口、账号和安装来源的连续双帧都读到相同分组及内容框，匿名回执才附带 `screen_test.reward_guide`。`visible_section` 为 `ongoing`，`content_box` 按左、上、右、下记录原图像素，`frame_size` 给出原图宽、高。可在截图工具中按对应尺寸选择此范围。分组或框待核对时，旧回执仍可报告已确认的奖励指南页名。
+
+每三帧抽查 P5 全片，亮态指南只在 232.6 至 234.7 秒出现。233.8 与 234.2 秒的原分辨率内容框未见位移。右外缘没有可分辨的滑块或到底标识。可滚范围、绝对位置及底部仍待同版本真实滚动、稳定底部和返回对照取证。相同裁片也可能是未触发滚动或画面仍在等待，不能作为到底依据。[正反例](../autohsr/tests/test_reward_guide_viewport.py)

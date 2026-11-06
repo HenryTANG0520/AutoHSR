@@ -13,9 +13,11 @@ from unittest.mock import Mock, patch
 
 import cv2
 import numpy as np
+from PIL import Image
 
 from autohsr import screen_test
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, RunReport, Scene, Stopped
+from autohsr.screenshot_tool import selection
 from autohsr.storage import hold_read_sources, replace_file
 from autohsr.tests.test_achievement_pages import category_view, gold_controls, label, overview, receipt_rows
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, phone
@@ -23,6 +25,9 @@ from autohsr.tests.test_daily_reward_guide_pages import guide_scene
 from autohsr.tests.test_du_team import fixture
 from autohsr.tests.test_workflow_navigation import Context, badge, battlepass, identified, world
 from autohsr.vision import Vision
+
+
+_GUIDE_VIEWPORT = dict(visible_section='ongoing', content_box=[378, 342, 1404, 945], frame_size=[1920, 1080])
 
 
 def achievement_frame(tokens, *buttons):
@@ -145,7 +150,7 @@ class ScreenTestTests(TestCase):
                 self.assertTrue(screen_test.desktop_result(saved, 'success')[0].startswith('当前页面已核实'))
 
     def test_reward_guide_requires_actual_installation_and_rechecks_it_before_publication(self):
-        first, second = guide_scene(), guide_scene('highlights-2346.png')
+        first, second = (guide_scene(name, width=1920) for name in ('viewport-7014.png', 'viewport-7026.png'))
         for frame in (first, second):
             frame.tokens.append(ACCOUNT)
         executable = self.directory / 'StarRail.exe'
@@ -159,6 +164,7 @@ class ScreenTestTests(TestCase):
                 self.assertEqual(self.observe(observer).status, expected)
                 if expected == 'ok':
                     self.assertEqual(observer.record['page'], 'reward_guide')
+                    self.assertEqual(observer.record['reward_guide'], _GUIDE_VIEWPORT)
                     native_replace = Path.replace
                     locks = []
 
@@ -170,13 +176,55 @@ class ScreenTestTests(TestCase):
                         return native_replace(temporary, destination)
 
                     with patch.object(Path, 'replace', new=replace_while_held):
-                        self.assertEqual(self.save(observer)['screen_test'], observer.record)
+                        saved = self.save(observer)['screen_test']
+                    self.assertEqual(saved, observer.record)
                     self.assertEqual(locks, [True])
+                    title, detail = screen_test.desktop_result(saved, 'success')
+                    self.assertEqual(title, '当前页面已核实 · 奖励指南')
+                    self.assertIn('进行中', detail)
+                    self.assertIn('(378, 342)–(1404, 945)', detail)
+                    self.assertEqual(selection(Image.fromarray(first.image[:, :, ::-1]),
+                                               saved['reward_guide']['content_box']).size, (1026, 603))
                     config.write_text('[General]\ngame_version=4.7.0\n', encoding='utf8')
                     self.assertEqual(self.save(observer)['screen_test'], screen_test.initial_record())
 
+    def test_reward_guide_crop_requires_both_frames_and_same_account(self):
+        executable = self.directory / 'StarRail.exe'
+        executable.touch()
+        executable.with_name('config.ini').write_text('[General]\ngame_version=4.6.0\n', encoding='utf8')
+        guide, viewport = guide_scene(), guide_scene('viewport-7014.png')
+        for frame in (guide, viewport):
+            frame.tokens.append(ACCOUNT)
+        legacy = dict(screen_test.initial_record(), page='reward_guide', page_verified=True, account_verified=True)
+        for missing, frames in (('both', (guide, guide)), ('first', (guide, viewport)),
+                                ('second', (viewport, guide))):
+            with self.subTest(missing=missing):
+                observer = self.observer(frames)
+                observer.context.window.current_executable = Mock(return_value=executable)
+                self.assertEqual(self.observe(observer).status, 'ok')
+                self.assertEqual(self.save(observer)['screen_test'], legacy)
+        self.assertEqual(screen_test.desktop_result(legacy, 'success'),
+                         ('当前页面已核实 · 奖励指南', '同一账号的连续两帧一致。'))
+
+        changed = guide_scene('viewport-7026.png')
+        changed.tokens.append(OTHER)
+        observer = self.observer((viewport, changed))
+        observer.context.window.current_executable = Mock(return_value=executable)
+        self.assertEqual(self.observe(observer).status, 'partial')
+        self.assertEqual(observer.record, screen_test.initial_record())
+
+    def test_reward_guide_desktop_projection_rejects_unverified_crop_fields(self):
+        valid = dict(screen_test.initial_record(), page='reward_guide', page_verified=True, account_verified=True,
+                     reward_guide=_GUIDE_VIEWPORT)
+        for changes in (dict(visible_section='private-test-marker'), dict(content_box=[0, 0, 1000, 1000]),
+                        dict(frame_size=[1920, True]), dict(frame_size=[1280, 720]), dict(path='private-test-marker')):
+            with self.subTest(changes=changes):
+                malformed = dict(valid, reward_guide=_GUIDE_VIEWPORT | changes)
+                self.assertEqual(screen_test.desktop_result(malformed, 'success')[0], '当前页面待核对')
+        self.assertEqual(screen_test.desktop_result(dict(valid, page='phone'), 'success')[0], '当前页面待核对')
+
     def test_reward_guide_final_version_read_cannot_outlive_foreground_epoch_or_stop(self):
-        source = guide_scene()
+        source = guide_scene('viewport-7014.png', width=1920)
         source.tokens.append(ACCOUNT)
         executable = self.directory / 'StarRail.exe'
         executable.touch()
@@ -188,6 +236,7 @@ class ScreenTestTests(TestCase):
                 context = observer.context
                 context.window.current_executable = Mock(return_value=str(executable))
                 self.assertEqual(self.observe(observer).status, 'ok')
+                self.assertEqual(observer.record['reward_guide'], _GUIDE_VIEWPORT)
                 reads = count(1)
 
                 def drift(window):

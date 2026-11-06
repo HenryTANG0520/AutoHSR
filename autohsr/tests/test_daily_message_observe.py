@@ -321,7 +321,7 @@ class MessageCliTests(unittest.TestCase):
 
         with TemporaryDirectory() as folder, ExitStack() as stack:
             root = Path(folder)
-            if mode == 'odyssey':
+            if mode in ('odyssey', 'screen'):
                 executable = root / 'StarRail.exe'
                 executable.touch()
                 (root / 'config.ini').write_text(f'[General]\ngame_version={client_version}\n', encoding='utf8')
@@ -538,6 +538,28 @@ class MessageCliTests(unittest.TestCase):
         report = self.run_cli([phone(ACCOUNT), phone(ACCOUNT)], mode='screen', publication=lose_focus, code=1)
         self.assertEqual(report['screen_test'], dict(schema=1, page='unknown', page_verified=False,
                                                     account_verified=False, input_sent=False))
+
+    def test_screen_test_cli_reports_the_native_guide_crop_and_revokes_it_on_version_change(self):
+        from autohsr.tests.test_daily_reward_guide_pages import guide_scene
+
+        def frames():
+            result = [guide_scene(name, width=1920) for name in ('viewport-7014.png', 'viewport-7026.png')]
+            for frame in result:
+                frame.tokens.append(ACCOUNT)
+            return result
+
+        def change_version(_runner, window, _clock, _user32):
+            Path(window.current_executable()).with_name('config.ini').write_text(
+                '[General]\ngame_version=4.7.0\n', encoding='utf8')
+
+        observed = self.run_cli(frames(), mode='screen')['screen_test']
+        self.assertEqual(observed['page'], 'reward_guide')
+        self.assertEqual(observed['reward_guide'], dict(visible_section='ongoing',
+                                                       content_box=[378, 342, 1404, 945],
+                                                       frame_size=[1920, 1080]))
+        changed = self.run_cli(frames(), mode='screen', publication=change_version, code=1)
+        self.assertEqual(changed['screen_test']['page'], 'unknown')
+        self.assertNotIn('reward_guide', changed['screen_test'])
 
     def test_screen_test_cli_rejects_conflicting_arguments_before_reading_settings(self):
         for extra in (['--reward-only'], ['--stamina', '20'], ['--daily-reward-observe', 'messages'],

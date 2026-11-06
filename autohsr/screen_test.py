@@ -8,6 +8,7 @@ from .daily_event_observe import read_event_installation
 from .daily_event_pages import _VERSION
 from .daily_reward_guide_pages import reward_guide_page
 from .models import AutomationError, Stopped, TaskResult
+from .reward_guide_viewport import _content_box, reward_guide_viewport
 from .storage import hold_read_sources, replace_file
 from .workflow_navigation import COLLECTION_FLOOR, classify_page
 from .workflow_screen import _CurrentFrames
@@ -34,6 +35,15 @@ def initial_record():
     return dict(schema=1, page='unknown', page_verified=False, account_verified=False, input_sent=False)
 
 
+def _verified_guide_viewport(value):
+    if (not isinstance(value, dict) or value.keys() != {'visible_section', 'content_box', 'frame_size'}
+            or value['visible_section'] != 'ongoing'):
+        return False
+    box, size = value['content_box'], value['frame_size']
+    return (isinstance(box, list) and len(box) == 4 and all(type(edge) is int for edge in box)
+            and isinstance(size, list) and len(size) == 2 and tuple(box) == _content_box(*size))
+
+
 def _verified_page(value):
     if (not isinstance(value, dict) or type(value.get('schema')) is not int or value['schema'] != 1
             or value.get('page_verified') is not True or value.get('account_verified') is not True
@@ -41,6 +51,8 @@ def _verified_page(value):
         return None
     page = value.get('page')
     if not isinstance(page, str) or page not in _NAMES:
+        return None
+    if 'reward_guide' in value and (page != 'reward_guide' or not _verified_guide_viewport(value['reward_guide'])):
         return None
     if page in _PAGE_NAMES:
         return page if 'achievement' not in value else None
@@ -57,10 +69,14 @@ def _verified_page(value):
 
 
 def _observed_record(observation):
-    page, category, claim = observation
+    page, category, detail = observation
     record = dict(initial_record(), page=page, page_verified=True, account_verified=True)
     if page in _ACHIEVEMENT_NAMES:
-        record['achievement'] = dict(category=category, visible_claim=claim)
+        record['achievement'] = dict(category=category, visible_claim=detail)
+    elif page == 'reward_guide' and detail is not None:
+        viewport, frame_size = detail
+        record['reward_guide'] = dict(visible_section=viewport.visible_section,
+                                      content_box=list(viewport.content_box), frame_size=list(frame_size))
     return record
 
 
@@ -69,6 +85,11 @@ def desktop_result(value, status):
     if page is None:
         return '当前页面待核对', SAFE_NEXT
     title = f'当前页面已核实 · {_NAMES[page]}'
+    if page == 'reward_guide' and 'reward_guide' in value:
+        viewport = value['reward_guide']
+        left, top, right, bottom = viewport['content_box']
+        width, height = viewport['frame_size']
+        return title, f'可见「进行中」。内容框 ({left}, {top})–({right}, {bottom})，对应 {width}×{height} 原图。'
     if page not in _ACHIEVEMENT_NAMES:
         return title, '同一账号的连续两帧一致。'
     if page == 'achievement_receipt':
@@ -102,7 +123,9 @@ class ScreenTestObserver:
             if self._guide_installation is not None and installation != self._guide_installation:
                 raise AutomationError('奖励指南的客户端安装来源已变化。')
             self._guide_installation = installation
-            return 'reward_guide', None, None
+            viewport = reward_guide_viewport(scene, client_version=installation.version, confidence=self._confidence)
+            height, width = scene.image.shape[:2]
+            return 'reward_guide', None, (viewport, (width, height)) if viewport is not None else None
         if page is None:
             return achievement
         if achievement is None and page in _PAGE_NAMES and not achievement_reward_panel_started(scene):
