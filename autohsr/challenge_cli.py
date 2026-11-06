@@ -16,7 +16,7 @@ def read_plan(path):
 
 def add_arguments(mode, parser):
     mode.add_argument('--challenge-check', type=Path, help='离线核对高难双队与层数计划；不访问游戏或保存配置')
-    mode.add_argument('--challenge-prepare', action='store_true', help='从已打开的混沌回忆或虚构叙事主页进入首个目标层备战，仅核实页面')
+    mode.add_argument('--challenge-prepare', action='store_true', help='核实高难首个目标层备战，末日幻影只读观察当前前台页面')
     mode.add_argument('--challenge-result', action='store_true', help='只读核对前台高难结算反馈，保存本次独立证据')
     parser.add_argument('--challenge-plan', type=Path, help='仅用于本次高难备战的明确双队JSON计划；不保存配置')
 
@@ -64,6 +64,4 @@ def validate_settings(settings, *, requested=False):
         plan = ChallengePlan.from_dict(value)
     except ValueError as error:
         raise SettingsError('challenge_plan', str(error)) from error
-    if requested and plan.mode not in ('memory_of_chaos', 'pure_fiction'):
-        raise SettingsError('challenge_plan', '末日幻影当前只支持页面观察，独立备战支持混沌回忆和虚构叙事。')
     return plan

@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 from autohsr.app import Context, Runner
 from autohsr.challenge_cli import read_plan
 from autohsr.config import Settings, SettingsError
-from autohsr.models import AutomationError, RunReport, Scene, TaskResult
+from autohsr.models import AutomationError, EmptyCapture, FocusLost, RunReport, Scene, TaskResult
 from autohsr.tests import test_challenge_pages as pages
 from autohsr.tests import test_runner_recovery as native
 from autohsr.windows import Geometry
@@ -24,24 +24,29 @@ PLAN = dict(mode='memory_of_chaos', levels=[7, 12],
     team2=['Acheron', 'Jiaoqiu', 'Pela', 'Aventurine'])
 
 
-def prepare_with_fake_window(root, scenes):
+def prepare_with_fake_window(root, scenes, *, plan=PLAN, foreground=True, vision=None, confidence=.65):
     from autohsr.__main__ import main
 
     config = root / 'config.json'
-    Settings(challenge_plan=PLAN, overlay_logs=False).save(config)
+    Settings(challenge_plan=plan, overlay_logs=plan['mode'] == 'apocalyptic_shadow',
+             ocr_confidence=confidence).save(config)
     pending = iter(scenes)
     current = None
     geometry = Geometry(0, 0, 1920, 1080)
 
     def capture():
         nonlocal current
-        current = next(pending)
-        return current.image, geometry
+        current = next(pending, EmptyCapture('fixture transition'))
+        if isinstance(current, Exception):
+            raise current
+        return current.image.copy(), geometry
 
     def read(image, geometry):
         return Scene(list(current.tokens), image, geometry)
 
     window = Mock(hwnd=1, capture=Mock(side_effect=capture))
+    if not foreground:
+        window.guard.side_effect = FocusLost('fixture background')
     kernel = SimpleNamespace(CreateMutexW=Mock(return_value=1), CloseHandle=Mock())
     ticks = count(1000., .01)
     clock = SimpleNamespace(monotonic=lambda: next(ticks))
@@ -52,9 +57,11 @@ def prepare_with_fake_window(root, scenes):
         stack.enter_context(patch('autohsr.app.threading.Thread'))
         stack.enter_context(patch('autohsr.app.is_elevated', return_value=False))
         stack.enter_context(patch('autohsr.app.find_game', return_value=window))
-        stack.enter_context(patch('autohsr.app.Vision', return_value=SimpleNamespace(read=read)))
+        stack.enter_context(patch('autohsr.app.Vision', return_value=vision or SimpleNamespace(read=read)))
         stack.enter_context(patch('autohsr.windows.kernel32', kernel))
         stack.enter_context(patch.object(Runner, '_arm_hotkeys'))
+        stack.enter_context(patch.object(Runner, '_prepare_daily_game', side_effect=AssertionError('no startup')))
+        stack.enter_context(patch('autohsr.overlay.OverlayService', side_effect=AssertionError('no overlay')))
         stack.enter_context(patch.object(Context, 'sleep', lambda ctx, seconds: ctx.checkpoint()))
         for module in ('app', 'challenge_prepare', 'challenge_pages'):
             stack.enter_context(patch(f'autohsr.{module}.time', clock))
@@ -123,8 +130,7 @@ class ChallengeIntegrationTests(unittest.TestCase):
         Settings(challenge_plan=dict(PLAN, mode='pure_fiction', levels=[1, 4])).validate('challenge_prepare')
         apocalypse = Settings(challenge_plan=dict(PLAN, mode='apocalyptic_shadow', levels=[1, 4]))
         apocalypse.validate('save')
-        with self.assertRaises(SettingsError):
-            apocalypse.validate('challenge_prepare')
+        apocalypse.validate('challenge_prepare')
 
     def test_preview_has_strict_bounded_json_without_loading_config_or_runner(self):
         from autohsr.__main__ import main
@@ -151,7 +157,8 @@ class ChallengeIntegrationTests(unittest.TestCase):
             plan = Path(folder) / 'plan.json'
             Settings().save(config)
             before = config.read_bytes()
-            for values in (PLAN, dict(PLAN, mode='pure_fiction', levels=[2, 4])):
+            for values in (PLAN, dict(PLAN, mode='pure_fiction', levels=[2, 4]),
+                           dict(PLAN, mode='apocalyptic_shadow', levels=[3, 4])):
                 with self.subTest(mode=values['mode']):
                     plan.write_text(json.dumps(values), encoding='utf-8')
                     fake = Mock()
@@ -162,17 +169,6 @@ class ChallengeIntegrationTests(unittest.TestCase):
                     self.assertEqual(factory.call_args.kwargs['operation'], 'challenge_prepare')
                     self.assertEqual(factory.call_args.args[0].challenge_plan, values)
                     self.assertEqual(config.read_bytes(), before)
-
-    def test_apocalyptic_plan_does_not_open_the_preparation_runner(self):
-        from autohsr.__main__ import main
-        with tempfile.TemporaryDirectory() as folder:
-            plan = Path(folder) / 'plan.json'
-            config = Path(folder) / 'config.json'
-            Settings().save(config)
-            plan.write_text(json.dumps(dict(PLAN, mode='apocalyptic_shadow', levels=[1, 4])), encoding='utf-8')
-            with patch('autohsr.app.Runner', side_effect=AssertionError('no runner')), \
-                 redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-                self.assertEqual(main(['--challenge-prepare', '--challenge-plan', str(plan), '--config', str(config)]), 2)
 
     def test_mixed_or_orphan_options_are_rejected_before_config_or_game(self):
         from autohsr.__main__ import main

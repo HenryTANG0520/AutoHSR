@@ -1,4 +1,4 @@
-"""Observed preparation only; this module cannot select a team or start combat."""
+"""Observe preparation pages and authorize the limited existing level selection."""
 from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
@@ -10,10 +10,14 @@ import time
 from .challenge_account import verified_account
 from .currency_wars_identity import AccountNotObserved
 from .models import AutomationError, EmptyCapture, InputInterrupted, Stopped, TaskResult
-from .storage import replace_file
+from .storage import hold_read_sources, replace_file
 
 OPERATION = 'challenge_prepare'
+APOCALYPTIC_MODE = 'apocalyptic_shadow'
 MAX_BYTES = 8 * 1024 * 1024
+MAX_PNG_BYTES = 64 * 1024 * 1024
+MAX_SCENE_AGE = 8
+UID_VETO_FLOOR = .65
 
 
 def _json(value):
@@ -32,6 +36,13 @@ class PreparationAction:
     target: object
 
 
+@dataclass(frozen=True)
+class _ObservedFrame:
+    scene: object
+    observation: object
+    source: dict
+
+
 class ChallengePreparation:
     def __init__(self, context):
         from .challenge_cli import validate_settings
@@ -39,6 +50,11 @@ class ChallengePreparation:
             raise AutomationError('高难备战仅用于明确的独立准备任务。')
         self.c = context
         self.plan = validate_settings(context.settings, requested=True)
+        if getattr(context.runner, '_challenge_prepare_mode', self.plan.mode) != self.plan.mode:
+            raise AutomationError('高难计划模式已改变。')
+        self.read_only = self.plan.mode == APOCALYPTIC_MODE
+        if self.read_only:
+            context.vision.uid_counterevidence_floor = UID_VETO_FLOOR
         directory = Path(context.report.run_dir)
         if not directory.is_absolute() or not directory.is_dir():
             raise AutomationError('高难备战缺少已建立的本次运行目录。')
@@ -48,6 +64,7 @@ class ChallengePreparation:
         self.epoch = context.runner.input_epoch
         self.account = None
         self.request = None
+        self._readonly_receipt = None
         self.data = dict(schema=1, operation=OPERATION, status='running', plan=self.plan.to_dict(),
             plan_digest=self.plan.digest, input_epoch=self.epoch, actions=[], observations=[],
             preparation_page_verified=False, team_verified=False, battle_started=False,
@@ -91,27 +108,35 @@ class ChallengePreparation:
     def _require_current(self, scene, *, allow_missing_account=False):
         self._check_attempt()
         if (scene is not self.c.last_scene or type(scene.captured_at) not in (int, float)
-                or not 0 <= time.monotonic() - scene.captured_at <= 8
+                or not 0 <= time.monotonic() - scene.captured_at <= MAX_SCENE_AGE
                 or scene.image is None or scene.geometry is None):
             raise AutomationError('高难备战需要当前新鲜画面及窗口来源。')
         try:
-            self.account = verified_account(scene, self.c.settings.ocr_confidence, expected=self.account)
+            self.account = self._read_account(scene)
         except AccountNotObserved:
             if allow_missing_account:
                 return False
             raise
         return True
 
-    def _source(self, scene, observation, label):
-        self._fresh(scene)
+    def _read_account(self, scene):
+        return verified_account(scene, self.c.settings.ocr_confidence, expected=self.account,
+                                veto_floor=UID_VETO_FLOOR if self.read_only else None)
+
+    def _read_png(self, path):
         directory = Path(self.c.report.run_dir).resolve()
-        path = Path(self.c.evidence(scene, 'challenge_' + label)).resolve()
+        path = Path(path).resolve()
         if not path.is_relative_to(directory) or path.suffix.lower() != '.png':
             raise AutomationError('高难备战证据不在本次运行目录内。')
         with path.open('rb') as stream:
-            raw = stream.read(64 * 1024 * 1024 + 1)
-        if not raw or len(raw) > 64 * 1024 * 1024:
+            raw = stream.read(MAX_PNG_BYTES + 1)
+        if not raw or len(raw) > MAX_PNG_BYTES:
             raise AutomationError('高难备战PNG证据大小异常。')
+        return path, raw
+
+    def _source(self, scene, observation, label):
+        self._fresh(scene)
+        path, raw = self._read_png(self.c.evidence(scene, 'challenge_' + label))
         import cv2
         import numpy as np
         image = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
@@ -138,7 +163,7 @@ class ChallengePreparation:
         return PreparationAction('select_level', level, choices[0])
 
     def authorize(self, scene, action):
-        if self.request is None or self.request != action:
+        if self.read_only or self.request is None or self.request != action:
             raise AutomationError('高难层数选择与当前页面或冻结计划不符。')
         self._fresh(scene)
 
@@ -158,7 +183,7 @@ class ChallengePreparation:
         if not path.is_relative_to(Path(self.c.report.run_dir).resolve()):
             raise AutomationError('高难选择证据来源越界。')
         with path.open('rb') as stream:
-            evidence = stream.read(64 * 1024 * 1024 + 1)
+            evidence = stream.read(MAX_PNG_BYTES + 1)
         if (hashlib.sha256(evidence).hexdigest() != source['sha256']
                 or source['pixel_sha256'] != _pixels(scene)
                 or source['shape'] != list(scene.image.shape)
@@ -214,11 +239,169 @@ class ChallengePreparation:
             self.c.evidence(scene, 'challenge_unverified')
         raise AutomationError('高难备战未在有限观察内核实' + description + '，没有重发选择。')
 
+    def _observe_apocalyptic(self):
+        import numpy as np
+        from .challenge_apocalyptic_prepare import observe, same_page
+        previous, geometry = None, None
+        last_scene = None
+        latest_capture = 0.
+        deadline = time.monotonic() - self.c.runner.inactive_duration + 30
+        for attempt in range(8):
+            if attempt:
+                self.c.sleep(.3)
+            if time.monotonic() - self.c.runner.inactive_duration >= deadline:
+                break
+            try:
+                scene = self.c.snapshot()
+            except EmptyCapture:
+                self._check_attempt()
+                latest_capture = max(latest_capture, time.monotonic())
+                previous = None
+                continue
+            last_scene = scene
+            account = self._fresh(scene, allow_missing_account=True)
+            if geometry is None:
+                geometry = scene.geometry
+            if scene.geometry != geometry or scene.image.shape != (geometry.height, geometry.width, 3):
+                raise AutomationError('末日备战采集窗口来源发生变化。')
+            increasing = scene.captured_at > latest_capture
+            latest_capture = max(latest_capture, scene.captured_at)
+            if not account or not increasing:
+                previous = None
+                continue
+            pixel_sha256 = _pixels(scene)
+            page = observe(scene, self.c.settings.ocr_confidence)
+            if page.kind == 'unknown':
+                previous = None
+                continue
+            sequence = self.c.capture_sequence
+            source = self._source(scene, page, f'apocalyptic_{sequence}')
+            if source['pixel_sha256'] != pixel_sha256:
+                raise AutomationError('末日备战识别后的图像像素发生变化。')
+            source['capture_sequence'] = sequence
+            source['geometry'] = [geometry.left, geometry.top, geometry.width, geometry.height]
+            frame = _ObservedFrame(scene, page, source)
+            self.data['observations'].append(source)
+            self.data['account_key'] = self.account
+            self._persist()
+            if (previous is not None and sequence == previous.source['capture_sequence'] + 1
+                    and not np.may_share_memory(previous.scene.image, scene.image)
+                    and same_page(previous.observation, page)):
+                return self._publish_apocalyptic((previous, frame), deadline)
+            previous = frame
+        if last_scene is not None and self.c.last_scene is None:
+            self.c.evidence(last_scene, 'challenge_unverified')
+        raise AutomationError('末日备战缺少同账号连续两张可核实的当前页面。')
+
+    def _recheck_apocalyptic(self, pair, deadline):
+        from .challenge_apocalyptic_prepare import observe
+        current = pair[-1].scene
+        confidence = self.c.settings.ocr_confidence
+        self._fresh(current)
+        first, last = (frame.source for frame in pair)
+        if (first['captured_at'] >= last['captured_at'] or first['capture_sequence'] + 1 != last['capture_sequence']
+                or Path(first['path']).samefile(last['path'])):
+            raise AutomationError('末日备战回执需要两次独立采集和独立原图。')
+        for frame in pair:
+            scene, source = frame.scene, frame.source
+            path, raw = self._read_png(source['path'])
+            g = scene.geometry
+            if (g != current.geometry or source['captured_at'] != scene.captured_at or source['path'] != str(path)
+                    or source['geometry'] != [g.left, g.top, g.width, g.height]
+                    or source['sha256'] != hashlib.sha256(raw).hexdigest()
+                    or source['pixel_sha256'] != _pixels(scene)
+                    or observe(scene, confidence) != frame.observation
+                    or self._read_account(scene) != self.account):
+                raise AutomationError('末日备战回执与原画面不同。')
+        self._fresh(current)
+        self.c.window.guard(current.geometry)
+        # The native guard can finish after an F9 or F10 event.
+        runner = self.c.runner
+        if runner.stop_requested:
+            raise Stopped('末日备战观察已停止。')
+        if runner.input_epoch != self.epoch or self.c.scene_epoch != self.epoch:
+            raise InputInterrupted('末日备战观察的输入代次已改变。')
+        now = time.monotonic()
+        if (current is not self.c.last_scene or self.c.capture_sequence != last['capture_sequence']
+                or not 0 <= now - first['captured_at'] <= MAX_SCENE_AGE
+                or now - runner.inactive_duration >= deadline):
+            raise AutomationError('末日备战回执超过本次连续观察范围。')
+
+    @staticmethod
+    def _check_payload(path, expected):
+        with path.open('rb') as stream:
+            if stream.read(len(expected) + 1) != expected:
+                raise AutomationError('末日备战待保存记录或原回执发生变化。')
+
+    def _publish_apocalyptic(self, pair, deadline):
+        page = pair[-1].observation
+        sources = [frame.source for frame in pair]
+        ready = page.kind == 'node_setup' and page.level == self.plan.level_start
+        receipt = dict(kind=page.kind, mode=page.mode, level=page.level, node=page.basis.get('node'),
+                       period=page.basis.get('period'), frames=sources)
+        data = dict(self.data, status='prepared' if ready else 'page_observed',
+                    page_observation=receipt, preparation_page_verified=ready)
+        if ready:
+            data.update(entry='existing_node_setup', preparation_frames=sources)
+        payload = _json(data).encode('utf-8')
+
+        def recheck():
+            self._check_payload(self.path.with_suffix('.tmp'), payload)
+            self._recheck_apocalyptic(pair, deadline)
+
+        with hold_read_sources(row['path'] for row in sources):
+            self._persist(data, before_replace=recheck)
+        self._readonly_receipt = pair, deadline, payload
+        self.data.update(data)
+        if ready:
+            return TaskResult(OPERATION, 'ok', '已核实末日幻影首个目标难度的双节点备战页面。')
+        self.c.report.safe_next = '可在同账号打开计划首个难度的双节点备战页后重新核对。'
+        return TaskResult(OPERATION, 'partial', '已保存末日幻影当前页面的双帧观察，目标难度备战待核实。')
+
+    def save_report(self, temporary, write_report):
+        destination = self.path.parent / 'report.json'
+        pair, deadline, receipt_payload = self._readonly_receipt
+        result = next(item for item in self.c.report.results if item.task == OPERATION)
+        try:
+            with hold_read_sources([self.path, *(frame.source['path'] for frame in pair)]):
+                payload = write_report()
+
+                def recheck():
+                    self._check_payload(self.path, receipt_payload)
+                    if self.c.report.challenge is not self.data or _json(self.data).encode('utf-8') != receipt_payload:
+                        raise AutomationError('末日备战报告字段与原回执不同。')
+                    with temporary.open(encoding='utf-8') as stream:
+                        if stream.read(len(payload) + 1) != payload:
+                            raise AutomationError('末日备战待保存报告发生变化。')
+                    self._recheck_apocalyptic(pair, deadline)
+
+                replace_file(temporary, destination, before_replace=recheck)
+        except (AutomationError, OSError, ValueError, TypeError) as error:
+            self.data.clear()
+            self.data.update(json.loads(receipt_payload))
+            self.data.pop('page_observation', None)
+            self.data.pop('preparation_frames', None)
+            self.data.pop('entry', None)
+            self.data.update(status='stopped' if isinstance(error, Stopped) else 'partial',
+                             preparation_page_verified=False)
+            report = self.c.report
+            report.challenge = self.data
+            report.status = self.data['status']
+            report.failure_task = OPERATION
+            report.error = str(error)
+            report.safe_next = '保留末日备战原回执和截图，重新核对当前前台页面。'
+            result.status = report.status
+            result.detail = '末日备战最终报告未核实，原回执保留。'
+            write_report()
+            replace_file(temporary, destination)
+
     def run(self):
         from .challenge_pages import observe, target
         level = self.plan.level_start
         ready = lambda page: page.kind == 'team_setup' and page.level == level and page.mode == self.plan.mode
         try:
+            if self.read_only:
+                return self._observe_apocalyptic()
             scene, observation, frames, deadline = self._wait(lambda scene, page: ready(page) or
                 page.kind == 'lobby' and target(scene, 'select_level', self.c.settings.ocr_confidence,
                                                level=level) is not None, '当前模式与首个目标层')

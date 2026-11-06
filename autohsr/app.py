@@ -132,7 +132,7 @@ class Context:
                 self.window.guard(geometry)
             except FocusLost:
                 self.last_scene = None
-                if self.report.operation == 'challenge_result':
+                if self.report.operation == 'challenge_result' or getattr(self.runner, '_challenge_read_only', False) is True:
                     raise
                 self.runner.wait_for_focus(self.window)
                 continue
@@ -256,6 +256,8 @@ class Context:
     def challenge_prepare_input(self, scene, action) -> float:
         if self.report.operation != 'challenge_prepare':
             raise AutomationError('当前任务不允许高难备战选择。')
+        if getattr(self.runner, '_challenge_read_only', False) is True:
+            raise AutomationError('末日幻影备战只读观察当前前台页面。')
         workflow = getattr(self, 'challenge_preparation', None)
         if workflow is None or workflow.c is not self:
             raise AutomationError('缺少本次高难备战流程和落盘意图。')
@@ -1935,6 +1937,9 @@ class Runner:
             raise ValueError('打开超频 A0 难度页需要独立超频入口。')
         self.currency_overclock_open_a0 = currency_overclock_open_a0
         self.settings = settings
+        self._challenge_prepare_mode = (settings.challenge_plan.get('mode') if operation == 'challenge_prepare'
+                                        and isinstance(settings.challenge_plan, dict) else None)
+        self._challenge_read_only = (operation == 'challenge_result' or self._challenge_prepare_mode == 'apocalyptic_shadow')
         self._emit = emit or (lambda event: None)
         self._overlay = None
         self.report = RunReport()
@@ -2227,7 +2232,7 @@ class Runner:
             for message, level in self._overlay.drain_notices():
                 self.log(message, level)
         if self._window is not None:
-            if self.report.operation == 'challenge_result':
+            if self._challenge_read_only:
                 self._window.guard()
             else:
                 self.wait_for_focus()
@@ -2349,7 +2354,7 @@ class Runner:
         build_target_preview = self.report.operation == 'build_target_preview' or build_target_plan
         build_target = build_target_read or build_target_preview
         challenge_result = self.report.operation == 'challenge_result'
-        guard_publication = challenge_result or build_target_plan
+        guard_publication = self._challenge_read_only or build_target_plan
         build_target_safe_next = ('请核对当前培养目标或打开同一材料的获得途径。'
                                   if build_target_preview else '请在当前账号的生存索引核对培养目标页。材料详情与副本来源待校准。')
         if build_target or challenge_result:
@@ -2372,6 +2377,8 @@ class Runner:
             if not (guide_only or currency_wars) and self.report.operation not in ("daily", "reward_only", "redemption", "challenge_prepare", "du_rewards", "differential_universe"):
                 raise AutomationError("未知运行类型，未访问游戏。")
             self.settings.validate('build_target_preview' if build_target_preview else 'du_rewards' if du_rewards else 'challenge_prepare' if challenge_prepare else "check" if guide_only else "currency_wars" if currency_wars else "differential_universe" if differential_universe else 'redemption' if redemption else "power_plan" if self.use_power_plan else "daily")
+            if challenge_prepare and self.settings.challenge_plan['mode'] != self._challenge_prepare_mode:
+                raise SettingsError('challenge_plan', '高难计划模式已改变，请重新开始备战。')
             if self.report.operation != 'currency_wars' and not challenge_result:
                 from .du_reward_store import preflight
                 preflight(directory.parent)
@@ -2433,11 +2440,11 @@ class Runner:
             self._window = self._window or find_game(self.settings.game_path)
             if self.report.operation != "currency_wars" and is_elevated(self._window.hwnd) is True and not is_admin():
                 raise AutomationError("游戏以管理员运行，请在设置启用管理员免重复确认启动后重开助手，或使用 Start-AutoHSR-Admin.cmd。")
-            if challenge_result:
+            if self._challenge_read_only:
                 self._window.guard()
             else:
                 self._window.focus()
-            if self.settings.overlay_logs and not challenge_result:
+            if self.settings.overlay_logs and not self._challenge_read_only:
                 from .overlay import OverlayService
                 self._overlay = OverlayService()
                 try:
@@ -2454,7 +2461,7 @@ class Runner:
             context.overclock_session = overclock_session
             context.battle_budget = self.battle_budget
             from .workflow_identity import prepare as prepare_workflow_identity
-            if not (build_target or challenge_result):
+            if not (build_target or self._challenge_read_only):
                 prepare_workflow_identity(context)
             if defer_battle_budget:
                 self.battle_budget.begin(new_run=self.new_battle_run,
@@ -2495,10 +2502,13 @@ class Runner:
                 self.report.failure_task = 'challenge_prepare'
                 self.emit(dict(type='task', task='challenge_prepare', status='running', detail='核实当前高难模式与首个目标层备战'))
                 result = prepare_challenge(context)
+                if self._challenge_read_only:
+                    challenge_reader = context.challenge_preparation
                 self.report.results.append(result)
                 self.report.status = 'success' if result.status == 'ok' else 'partial'
                 self.report.failure_task = '' if result.status == 'ok' else 'challenge_prepare'
-                self.emit(dict(type='task', **result.__dict__))
+                if not self._challenge_read_only:
+                    self.emit(dict(type='task', **result.__dict__))
             elif challenge_result:
                 from .challenge_result import ResultReader
                 self.emit(dict(type='task', task='challenge_result', status='running', detail='只读核对当前高难结算反馈'))
