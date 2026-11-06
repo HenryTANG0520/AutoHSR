@@ -142,13 +142,15 @@ Windows 发布回执时持有两张 PNG 的只读句柄，发布最终报告时�
 
 一般控件反馈以「返回虚构叙事」「前往节点二」「返回末日幻影」的唯一局部原件及同位置完整 OCR 核对。普通混沌与普通末日终局还可使用下述完整布局核对。出现异模式结算原件或支付、确认领取等遮挡迹象时保留未核实。「前往节点二」只记文字所指去向，单独出现时模式也保持未知。红色「败」字是可见标记，需与模式专属返回控件同帧。固定上游的判断分支也在不同战况复用返回或节点去向控件。混沌与常驻回忆共享「返回忘却之庭」，需按本期混沌布局的同屏字段区分。[虚构结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/purefiction.py#L184-L204) · [末日结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/apocalyptic.py#L268-L294) · [混沌结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/memoryofchaos.py#L176-L203)
 
-双帧核实模式反馈后 `challenge_result.status=feedback_verified`，只有去向文案时为 `caption_verified`，证据不足时为 `unknown`。剩余轮、总分和分项按下述已校准布局发布。实际半场、已到节点、星数、胜负与最终结算分别留空或为 `unknown`，`completion_verified` 和 `rewards_verified` 为 `false`。运行状态为 `partial`，CLI 退出 1。已有主页星数仍属于主页历史观察，备战回执仍由 `--challenge-prepare` 独立记录。[反馈入口验证](../VALIDATION.md#2026-11-06-高难结算只读反馈)
+双帧核实模式反馈后 `challenge_result.status=feedback_verified`，只有去向文案时为 `caption_verified`，证据不足时为 `unknown`。成绩按下述已校准布局发布。实际半场、已到节点、胜负与最终结算分别留空或为 `unknown`，`completion_verified` 和 `rewards_verified` 为 `false`。运行状态为 `partial`，CLI 退出 1。已有主页星数仍属于主页历史观察，备战回执仍由 `--challenge-prepare` 独立记录。[反馈入口验证](../VALIDATION.md#2026-11-06-高难结算只读反馈)
 
 ### 本期常规混沌剩余轮
 
 4.6 本期「物竞天择」的已校准 16:9 版式须同屏出现居中关卡标题、独立「挑战成功」、单列轮数和「剩余轮」、左侧三行普通星级目标、底部居中「返回忘却之庭」。相邻两张新帧须读到相同轮数和相互重叠的对应字段框。核实后回执记录 `remaining_rounds` 与返回控件。普通终局的奖励栏属于独立内容。识别到「节点二」交接、星启、历史详情、确认弹窗或冲突字段时保留未核实。[4.6 官方排期](https://www.taptap.cn/moment/853326330178046059)
 
-十一层原片的 02:19.800 和 02:20.200 是第二队入场，04:40 与 04:47 的终局均为 30 轮。另一场十一层在 03:42.800 与 03:43.300 均为 29 轮，但 OCR 两次都漏掉标题末字「一」。层号留空，当前场星数与领奖另待校准。常驻回忆终局也可同时显示「挑战成功」「剩余轮」「返回忘却之庭」。原片只在本地做去 UID 裁片校准，仓库记录字段、时间和哈希。[十一层交接](https://www.bilibili.com/video/BV1oG4h6UEVo/?t=139.8) · [十一层终局](https://www.bilibili.com/video/BV1oG4h6UEVo/?t=280) · [29 轮原片](https://www.bilibili.com/video/BV1AK4c6GExo/?t=222.8) · [常驻回忆终局](https://www.bilibili.com/video/BV1L7uG6QENm/?t=79.2) · [脱敏字段与哈希](../autohsr/tests/fixtures/challenge_chaos_result_4_6.json)
+十一层原片的 02:19.800 和 02:20.200 是第二队入场，04:40 与 04:47 的终局均为 30 轮。另一场十一层在 03:42.800 与 03:43.300 均为 29 轮，整屏 OCR 两次都漏掉标题末字「一」。常驻回忆终局也可同时显示「挑战成功」「剩余轮」「返回忘却之庭」。原片只在本地做去 UID 裁片校准，仓库记录字段、时间和哈希。[十一层交接](https://www.bilibili.com/video/BV1oG4h6UEVo/?t=139.8) · [十一层终局](https://www.bilibili.com/video/BV1oG4h6UEVo/?t=280) · [29 轮原片](https://www.bilibili.com/video/BV1AK4c6GExo/?t=222.8) · [常驻回忆终局](https://www.bilibili.com/video/BV1L7uG6QENm/?t=79.2) · [脱敏字段与哈希](../autohsr/tests/fixtures/challenge_chaos_result_4_6.json)
+
+十、十一层的 `level` 和 `stars=3` 使用同一对新帧中的独立画面证据。层号逐字核对居中标题内「十」的交叉笔画与独立末字「一」。每一颗实得星须在对应星级目标左侧呈稳定金色，并匹配已校准的轮廓和位置。回执分别保存数字字形框与三项星标框。灰星、过曝闪光、标题缺笔或两帧字段冲突时，仍可发布已独立核实的剩余轮。稳定 0 至 2 星、其他层号及失败或重打版式继续留作待核实。[十层稳定三金](https://www.bilibili.com/video/BV1wT4c6rEyX/?t=257.9) · [十一层稳定三金](https://www.bilibili.com/video/BV1AK4c6GExo/?t=222.6) · [同场灰星与闪光](https://www.bilibili.com/video/BV1wT4c6rEyX/?t=257) · [主页历史星数](https://www.bilibili.com/video/BV1wT4c6rEyX/?t=266) · [视觉证据坐标与哈希](../autohsr/tests/fixtures/challenge_chaos_result_detail_4_6.json)
 
 ### 普通虚构总分
 

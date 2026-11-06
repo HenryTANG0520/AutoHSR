@@ -104,6 +104,31 @@ def chaos_result_frame(name='ordinary_eleven_a'):
     return public_result_frame(CHAOS_RESULT_FIXTURE, name)
 
 
+def chaos_detail_frame(level, star_color=(95, 190, 255)):
+    source = chaos_result_frame('ordinary_eleven_29_a')
+    geo = Geometry(GEO.left, GEO.top, 1280, 720)
+    image = np.full((geo.height, geo.width, 3), 24, dtype=np.uint8)
+    success = next(t for t in source.tokens if t.text == '挑战成功')
+    count = 6 if level == 10 else 7
+    left = round(success.center[0] * geo.width - (14 * (count - 1) + 12) / 2)
+    ink = (65, 112, 160)
+    # The first five positions stand in for the separately read season title.
+    for x in range(left, left + 70, 14):
+        cv2.rectangle(image, (x, 110), (x + 11, 121), ink, 1)
+    x = left + 70
+    cv2.line(image, (x, 115), (x + 11, 115), ink, 1)
+    cv2.line(image, (x + 5, 110), (x + 5, 121), ink, 1)
+    if count == 7:
+        cv2.line(image, (x + 14, 115), (x + 25, 115), ink, 1)
+    for y in (257, 290, 323):
+        color = star_color if y == 323 else (95, 190, 255)
+        cv2.line(image, (369, y), (383, y), color, 2)
+        cv2.line(image, (376, y - 7), (376, y + 7), color, 2)
+        cv2.line(image, (372, y - 4), (380, y + 4), color, 1)
+        cv2.line(image, (372, y + 4), (380, y - 4), color, 1)
+    return Scene(source.tokens, image, geo, time.monotonic())
+
+
 class FictionScoreObservationTests(unittest.TestCase):
     def test_merged_and_split_comma_fields_read_the_same_total(self):
         for scene in (fiction_final(), formatted_final()):
@@ -273,6 +298,38 @@ class ChaosRoundsObservationTests(unittest.TestCase):
         formatted = [replace(t, text='３０') if t.text == '30' else t for t in scene.tokens]
         observed = observe_feedback(replace(scene, tokens=formatted))
         self.assertEqual(observed.memory_rounds.value, 30)
+
+
+class ChaosDetailObservationTests(unittest.TestCase):
+    def test_same_caption_read_separates_ten_and_eleven_from_their_visual_strokes(self):
+        for level in (10, 11):
+            with self.subTest(level=level):
+                scene = chaos_detail_frame(level)
+                feedback = observe_feedback(scene)
+                self.assertEqual(feedback.memory_rounds.title, '物竞天择其十')
+                self.assertEqual(feedback.memory_rounds.value, 29)
+                detail = feedback.memory_detail
+                self.assertEqual(detail.level, level)
+                self.assertEqual(len(detail.level_glyphs), level - 9)
+                self.assertEqual(len(detail.goal_stars), 3)
+
+    def test_clipped_one_or_contradictory_ocr_keeps_only_rounds(self):
+        cropped = chaos_detail_frame(11)
+        cropped.image[106:126, 681:700] = 24
+        ten = chaos_detail_frame(10)
+        ten.tokens = [replace(t, text='物竞天择其十一') if t.text == '物竞天择其十' else t for t in ten.tokens]
+        for scene in (cropped, ten):
+            with self.subTest(title=scene.tokens[1].text):
+                feedback = observe_feedback(scene)
+                self.assertEqual(feedback.memory_rounds.value, 29)
+                self.assertIsNone(feedback.memory_detail)
+
+    def test_grey_or_overexposed_goal_leaves_star_and_level_unknown(self):
+        for color in ((97, 97, 97), (250, 250, 250)):
+            with self.subTest(color=color):
+                feedback = observe_feedback(chaos_detail_frame(11, color))
+                self.assertEqual(feedback.memory_rounds.value, 29)
+                self.assertIsNone(feedback.memory_detail)
 
 
 class ResultObservationTests(unittest.TestCase):
@@ -505,6 +562,31 @@ class ResultEntryTests(unittest.TestCase):
                 data = self.run_cli([first, gap, first, second])['challenge_result']
                 self.assertEqual(data['remaining_rounds'], 30)
                 self.assertEqual([row['capture_sequence'] for row in data['evidence']], [3, 4])
+
+    def test_cli_chaos_reports_visual_level_and_three_current_stars_with_separate_boxes(self):
+        first = chaos_detail_frame(11)
+        second = chaos_detail_frame(11)
+        report = self.run_cli([first, second], geometry=first.geometry)
+        data = report['challenge_result']
+        self.assertEqual((data['remaining_rounds'], data['level'], data['stars']), (29, 11, 3))
+        self.assertEqual((data['outcome'], data['settlement_status']), ('unknown', 'unknown'))
+        self.assertFalse(data['completion_verified'])
+        self.assertFalse(data['rewards_verified'])
+        for row in data['evidence']:
+            self.assertEqual(len(row['chaos_fields']['level_glyphs']), 2)
+            self.assertEqual(len(row['chaos_fields']['goal_stars']), 3)
+        receipt = Path(report['run_dir']) / 'challenge-result.json'
+        self.assertEqual(json.loads(receipt.read_bytes()), data)
+
+    def test_cli_chaos_missing_or_conflicting_visual_fields_keep_rounds(self):
+        first = chaos_detail_frame(11)
+        for other in (chaos_detail_frame(10), chaos_detail_frame(11, (97, 97, 97))):
+            with self.subTest(visual=observe_feedback(other).memory_detail):
+                data = self.run_cli([first, other], geometry=first.geometry)['challenge_result']
+                self.assertEqual((data['status'], data['remaining_rounds']), ('feedback_verified', 29))
+                self.assertIsNone(data['level'])
+                self.assertIsNone(data['stars'])
+                self.assertTrue(all('chaos_fields' not in row for row in data['evidence']))
 
     def test_cli_apocalyptic_score_requires_same_parts_in_consecutive_complete_frames(self):
         good = apocalyptic_score_frame('terminal_first')

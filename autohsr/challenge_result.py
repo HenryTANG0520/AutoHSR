@@ -10,7 +10,7 @@ import time
 import cv2
 import numpy as np
 
-from . import challenge_pages as pages
+from . import challenge_chaos_detail as chaos_detail, challenge_pages as pages
 from .currency_wars_identity import UID_COUNTEREVIDENCE, AccountNotObserved, account_key
 from .models import FULL, ROI, AutomationError, EmptyCapture, InputInterrupted, Scene, Stopped, TaskResult, Token, normalize
 from .storage import hold_read_sources, replace_file
@@ -114,6 +114,7 @@ class Feedback:
     anchors: tuple[Token, ...]
     score: _ResultScore | None = None
     memory_rounds: _MemoryRounds | None = None
+    memory_detail: chaos_detail.Detail | None = None
 
 
 def _same_score_row(parts):
@@ -248,9 +249,10 @@ def _read_apocalyptic_terminal(tokens, words, minimum):
     return score, anchors
 
 
-def _read_chaos_terminal(tokens, words, minimum):
+def _read_chaos_terminal(scene, words, minimum):
     if any(blocker in word for word in words for blocker in _CHAOS_BLOCKERS):
         return None
+    tokens = scene.tokens
     regions = (_CHAOS_TITLE, _CHAOS_SUCCESS, _CHAOS_ROUNDS, _CHAOS_ROUNDS_LABEL,
                *_CHAOS_GOAL_ROWS, _CHAOS_RETURN)
     groups = tuple(_score_line(tokens, region, minimum) for region in regions)
@@ -273,11 +275,13 @@ def _read_chaos_terminal(tokens, words, minimum):
            and _SCORE_NUMBER.fullmatch(_score_text((token,))) for token in extras):
         return None
 
-    # OCR can drop the final 一 from 十一 on successive frames. Retain the
-    # title for comparison, but publish only the independent rounds read.
+    # OCR can drop the final 一 from 十一 on successive frames. The stage
+    # and stars need their own visual proof, independently of the round read.
     reading = _MemoryRounds(title, value[0], tuple(_score_box(parts) for parts in groups))
     anchor = Token(_CHAOS_RETURN_ANCHOR, min(token.score for token in leave), _score_box(leave))
-    return Feedback(pages.MODE, (anchor,), memory_rounds=reading)
+    detail = chaos_detail.observe(scene.image, title, _CHAOS_TITLE, _score_box(success),
+                                  _CHAOS_GOAL_ROWS, tuple(_score_box(row) for row in goals))
+    return Feedback(pages.MODE, (anchor,), memory_rounds=reading, memory_detail=detail)
 
 
 def observe_feedback(scene, confidence=.65):
@@ -294,7 +298,7 @@ def observe_feedback(scene, confidence=.65):
     modes = {mode for mode, title in pages._MODE_WORDS.items() if any(title in word for word in words)}
     modes.update(_CONTROLS[name][0] for name in controls)
     if not controls and modes.issubset({pages.MODE}):
-        terminal = _read_chaos_terminal(clean.tokens, words, max(.85, confidence))
+        terminal = _read_chaos_terminal(clean, words, max(.85, confidence))
         if terminal is not None and not any(pages._hits(clean, name, FULL) for name in (*_CONTROLS, _FAILURE)):
             return terminal
         return None
@@ -471,8 +475,18 @@ class ResultReader:
         names = [anchor.text for anchor in frames[-1].feedback.anchors]
         mode = frames[-1].feedback.mode
         rounds = frames[-1].feedback.memory_rounds
+        detail = frames[-1].feedback.memory_detail
+        if detail is not None and not detail.agrees_with(frames[0].feedback.memory_detail):
+            detail = None
+        if detail is not None:
+            for row, frame in zip(evidence, frames):
+                proof = frame.feedback.memory_detail
+                row['chaos_fields'] = dict(level_glyphs=[list(box) for box in proof.level_glyphs],
+                                           goal_stars=[list(box) for box in proof.goal_stars])
         apocalyptic_score = score if mode == pages.APOCALYPTIC else None
         data = dict(self.data, status='feedback_verified' if mode else 'caption_verified', mode=mode,
+                    level=detail.level if detail is not None else None,
+                    stars=len(detail.goal_stars) if detail is not None else None,
                     visible_controls=[_CONTROL_CAPTIONS[name] for name in names if name in _CONTROL_CAPTIONS],
                     failure_marker_observed=True if _FAILURE in names else None,
                     destination_node_in_caption=2 if _NEXT_NODE in names else None,
@@ -520,6 +534,8 @@ class ResultReader:
                     result.detail = '已核实本次末日幻影两个节点得分与总分，星数与领奖状态待核实。'
                 elif self.data['total_score'] is not None:
                     result.detail = '已核实本次虚构叙事总分，星数与领奖状态待核实。'
+                elif self.data['stars'] is not None:
+                    result.detail = '已核实本次混沌回忆层号、剩余轮与三枚实得星，领奖状态待核实。'
                 elif self.data['remaining_rounds'] is not None:
                     result.detail = '已核实本次混沌回忆剩余轮，关卡层号、星数与领奖状态待核实。'
                 else:

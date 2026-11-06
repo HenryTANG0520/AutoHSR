@@ -1,0 +1,151 @@
+{
+  "schema": 1,
+  "origin": "Public 4.6 recordings. Only field positions and digests, no UID or original pixels.",
+  "geometry": "Normalized x1,y1,x2,y2 in 1280x720 original playback. Glyph boxes record 十 then any final 一. Star boxes follow the three objective rows.",
+  "frames": {
+    "ten_final_a": {
+      "role": "稳定十层三枚金星",
+      "source": "https://www.bilibili.com/video/BV1wT4c6rEyX/?p=1&t=257.9",
+      "cid": 43256580703,
+      "seek_seconds": 257.9,
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "7411591e9790dc7c31af943f24c368076e23b84f8dc4047cee063c37448dc2e0",
+      "title_ocr": ["物竞天择其十"],
+      "level": 10,
+      "glyph_boxes": [[0.5281, 0.1542, 0.5375, 0.1694]],
+      "star_boxes": [[0.2891, 0.3472, 0.3, 0.3681], [0.2883, 0.3931, 0.3008, 0.4153], [0.2883, 0.4389, 0.3008, 0.4625]]
+    },
+    "ten_final_b": {
+      "role": "稳定十层三枚金星",
+      "source": "https://www.bilibili.com/video/BV1wT4c6rEyX/?p=1&t=258.1",
+      "cid": 43256580703,
+      "seek_seconds": 258.1,
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "65b472f0a6beea6a20f99909415254d8402b7d8c40a87a896d1fa3558c25de05",
+      "title_ocr": ["物竞天择其十"],
+      "level": 10,
+      "glyph_boxes": [[0.5281, 0.1542, 0.5375, 0.1694]],
+      "star_boxes": [[0.2891, 0.3472, 0.3016, 0.3694], [0.2883, 0.3931, 0.3008, 0.4167], [0.2883, 0.4389, 0.3008, 0.4625]]
+    },
+    "eleven_final_a": {
+      "role": "稳定十一层三枚金星，整屏 OCR 漏末字",
+      "source": "https://www.bilibili.com/video/BV1AK4c6GExo/?p=1&t=222.6",
+      "cid": 43256713025,
+      "seek_seconds": 222.6,
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "b7c6c089a27d5c7da77bf802509698414eacf2b44942fb2ebcecaf7cd7e00dfc",
+      "title_ocr": ["物竞天择其十"],
+      "level": 11,
+      "glyph_boxes": [[0.5227, 0.1528, 0.532, 0.1694], [0.5336, 0.1597, 0.543, 0.1625]],
+      "star_boxes": [[0.2891, 0.3472, 0.3, 0.3681], [0.2891, 0.3931, 0.3, 0.4139], [0.2883, 0.4389, 0.3, 0.4625]]
+    },
+    "eleven_final_b": {
+      "role": "稳定十一层三枚金星，整屏 OCR 漏末字",
+      "source": "https://www.bilibili.com/video/BV1AK4c6GExo/?p=1&t=222.8",
+      "cid": 43256713025,
+      "seek_seconds": 222.8,
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "b1a28ce19ace43cc23a5f4eb243234b3d2ecf3132428e6a11f28a1cc9534cdc0",
+      "title_ocr": ["物竞天择其十"],
+      "level": 11,
+      "glyph_boxes": [[0.5227, 0.1528, 0.532, 0.1694], [0.5336, 0.1597, 0.543, 0.1625]],
+      "star_boxes": [[0.2891, 0.3472, 0.3, 0.3681], [0.2891, 0.3944, 0.3, 0.4139], [0.2883, 0.4389, 0.3, 0.4625]]
+    },
+    "independent_eleven_a": {
+      "role": "独立来源稳定十一层三枚金星",
+      "source": "https://www.bilibili.com/video/BV1oG4h6UEVo/?p=1&t=280",
+      "cid": 43359866313,
+      "seek_seconds": 280,
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "2d3f5ac6630a368131c7da3aa9c27daa6d3cbf3231b18ebba3bf97dae211a93a",
+      "title_ocr": ["物竞天择其十一"],
+      "level": 11,
+      "glyph_boxes": [[0.5172, 0.1556, 0.5266, 0.1694], [0.5281, 0.1597, 0.5375, 0.1611]],
+      "star_boxes": [[0.2828, 0.3444, 0.2953, 0.3694], [0.2828, 0.3931, 0.2953, 0.4167], [0.2828, 0.4389, 0.2953, 0.4639]]
+    },
+    "independent_eleven_b": {
+      "role": "独立来源稳定十一层三枚金星",
+      "source": "https://www.bilibili.com/video/BV1oG4h6UEVo/?p=1&t=287",
+      "cid": 43359866313,
+      "seek_seconds": 287,
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "1d0fb2ccba245d272313455c093fc7529245a63d20ede6b949c094d864da9bdf",
+      "title_ocr": ["物竞天择其十一"],
+      "level": 11,
+      "glyph_boxes": [[0.5172, 0.1556, 0.5266, 0.1694], [0.5281, 0.1597, 0.5375, 0.1611]],
+      "star_boxes": [[0.2812, 0.3444, 0.2953, 0.3694], [0.2828, 0.3931, 0.2961, 0.4167], [0.2828, 0.4389, 0.2961, 0.4639]]
+    },
+    "ten_gray": {
+      "role": "第三项目标灰色，点亮动画未结束",
+      "source": "https://www.bilibili.com/video/BV1wT4c6rEyX/?p=1&t=257",
+      "cid": 43256580703,
+      "seek_seconds": 257,
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "d0ced11637c787e4ca77c84fac5c348c1e83a1ced11921d72f0450bead090e6e",
+      "title_ocr": ["物竞天择其十"],
+      "level": null,
+      "glyph_boxes": null,
+      "star_boxes": null
+    },
+    "ten_flash_early": {
+      "role": "白色过曝闪光",
+      "source": "https://www.bilibili.com/video/BV1wT4c6rEyX/?p=1&t=257.15",
+      "cid": 43256580703,
+      "seek_seconds": 257.15,
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "7126f38ccc6038f3f34847c025e579a7a238f47458cfbd3551cac4269c23e8e0",
+      "title_ocr": ["物竞天择其十"],
+      "level": null,
+      "glyph_boxes": null,
+      "star_boxes": null
+    },
+    "eleven_flash_last": {
+      "role": "白色过曝闪光",
+      "source": "https://www.bilibili.com/video/BV1AK4c6GExo/?p=1&t=222",
+      "cid": 43256713025,
+      "seek_seconds": 222,
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "0b11a084b55ec16bfeef9f5cb6263f43b451a9a095359b59c6db5cf443382c35",
+      "title_ocr": ["物竞天择其十"],
+      "level": null,
+      "glyph_boxes": null,
+      "star_boxes": null
+    },
+    "historical_home": {
+      "role": "主页晶体下的历史星数",
+      "source": "https://www.bilibili.com/video/BV1wT4c6rEyX/?p=1&t=266",
+      "cid": 43256580703,
+      "seek_seconds": 266,
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "c571ffd1e83959dc91094cf726e2e044bbe6eccc4f0af0a902c7b35f8af4c0fd",
+      "title_ocr": [],
+      "level": null,
+      "glyph_boxes": null,
+      "star_boxes": null
+    },
+    "handoff": {
+      "role": "第二队入场",
+      "source": "https://www.bilibili.com/video/BV1oG4h6UEVo/?p=1&t=139.8",
+      "cid": 43359866313,
+      "seek_seconds": 139.8,
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "20b760ada1ee4bc16d151de8d40a3e33edffe22de274f05aea5c12c16e1cdc3b",
+      "title_ocr": [],
+      "level": null,
+      "glyph_boxes": null,
+      "star_boxes": null
+    },
+    "starward": {
+      "role": "同赛季星启终局",
+      "source": "https://www.bilibili.com/video/BV1cg4c6zEsh/?p=1&t=1140",
+      "cid": 43255992065,
+      "seek_seconds": 1140,
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "47d59a05f7996539445252df5ecb15c83445fe4a2469288b76d42f3131cf1a98",
+      "title_ocr": ["物竞天择其十二"],
+      "level": null,
+      "glyph_boxes": null,
+      "star_boxes": null
+    }
+  }
+}
