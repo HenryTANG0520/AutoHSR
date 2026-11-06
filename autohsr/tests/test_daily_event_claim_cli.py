@@ -1,5 +1,5 @@
 """Exercise the explicit command with the real Runner and a fake Win32 window."""
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import io
 import json
 import os
@@ -9,11 +9,10 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from autohsr import app
+from autohsr import app, daily_event_claim_flow as flow
 from autohsr.__main__ import main
 from autohsr.config import Settings
 from autohsr.daily_observe import EVENT_CLAIM_OPERATION
-from autohsr.daily_event_claim_flow import replace_file
 from autohsr.models import Token
 from autohsr.tests import test_daily_event_claim as cases
 
@@ -46,13 +45,15 @@ class DailyEventClaimCliTests(unittest.TestCase):
             return Token(str(self.amount), .97, (0, 0, 1, 1))
         return None
 
-    def invoke(self, *flags):
+    def invoke(self, *flags, report_saved=True):
         config = self.fixture.root / 'settings.json'
         with redirect_stdout(io.StringIO()) as stdout, redirect_stderr(io.StringIO()) as stderr:
             code = main(['--daily-event-claim', '4', '--config', str(config), '--game-path', str(self.fixture.exe), *flags])
         self.close_notice = stderr.getvalue()
         data = json.loads(stdout.getvalue())
-        self.assertEqual(json.loads((Path(data['run_dir']) / 'report.json').read_text(encoding='utf8')), data)
+        self.assertIs(data['report_saved'], report_saved)
+        if report_saved:
+            self.assertEqual(json.loads((Path(data['run_dir']) / 'report.json').read_text(encoding='utf8')), data)
         self.assertNotIn(cases.ACCOUNT.text, stdout.getvalue())
         self.assertNotIn(str(self.fixture.exe), stdout.getvalue())
         self.assertFalse(config.exists())
@@ -157,14 +158,15 @@ class DailyEventClaimCliTests(unittest.TestCase):
     def test_report_does_not_claim_success_after_the_return_receipt_is_replaced(self):
         self.queue_manual_return({1, 2, 3, 4})
         replacement = b'{"external":true}'
+        publish = flow.publish_claim_report
 
-        def replace_before_report(source, target, **kwargs):
-            if 'attempt_scope' in kwargs:
+        def replace_before_report(directory, report, **kwargs):
+            if 'hold_evidence' in kwargs:
                 verified, = (self.fixture.root / 'runs' / 'daily-event-claim').glob('*.verified.json')
                 verified.write_bytes(replacement)
-            return replace_file(source, target, **kwargs)
+            return publish(directory, report, **kwargs)
 
-        with patch('autohsr.daily_event_claim_flow.replace_file', side_effect=replace_before_report):
+        with patch.object(flow, 'publish_claim_report', side_effect=replace_before_report):
             code, report = self.invoke('--observe-daily-event-return')
         claim = report['daily_event_claim']
         self.assertEqual((code, report['status'], claim['state'], claim['stage']),
@@ -185,14 +187,15 @@ class DailyEventClaimCliTests(unittest.TestCase):
         self.queue_manual_return({1, 2, 3, 4})
         ledger = self.fixture.root / 'runs' / 'daily-event-claim'
         replaced = {}
+        publish = flow.publish_claim_report
 
-        def replace_before_report(source, target, **kwargs):
-            if 'attempt_scope' in kwargs:
+        def replace_before_report(directory, report, **kwargs):
+            if 'hold_evidence' in kwargs:
                 receipt, = ledger.glob(suffix)
                 replaced[receipt] = self._replace_with_same_bytes(receipt)
-            return replace_file(source, target, **kwargs)
+            return publish(directory, report, **kwargs)
 
-        with patch('autohsr.daily_event_claim_flow.replace_file', side_effect=replace_before_report):
+        with patch.object(flow, 'publish_claim_report', side_effect=replace_before_report):
             code, report = self.invoke('--observe-daily-event-return')
         state = report['daily_event_claim']
         self.assertEqual((code, report['status'], state['state'], state['submission']),
@@ -225,6 +228,127 @@ class DailyEventClaimCliTests(unittest.TestCase):
                          (1, 'partial', 'pending', 'sent'))
         self.assertEqual(len(replaced), 1)
         self.assertEqual({path: path.read_bytes() for path in replaced}, replaced)
+        self.fixture.native.SendInput.assert_called_once()
+
+    def test_competing_report_at_native_link_preserves_same_card_receipt_and_blocks_retry(self):
+        self.queue_manual_return({1, 2, 3, 4})
+        ledger = self.fixture.root / 'runs' / 'daily-event-claim'
+        expected_report = b'{"external":"run report"}'
+        originals = {}
+        native_link = os.link
+
+        def occupy_report(source, destination):
+            originals.update({path: path.read_bytes() for path in ledger.glob('*.json')})
+            with destination.open('xb') as stream:
+                stream.write(expected_report)
+            return native_link(source, destination)
+
+        with patch.object(flow.os, 'link', side_effect=occupy_report):
+            code, report = self.invoke('--observe-daily-event-return', report_saved=False)
+        state = report['daily_event_claim']
+        self.assertEqual((code, report['status'], state['state'], state['submission']),
+                         (1, 'partial', 'verified', 'sent'))
+        self.assertIn('同日卡回执已保存', report['report_write_error'])
+        directory = Path(report['run_dir'])
+        self.assertEqual((directory / 'report.json').read_bytes(), expected_report)
+        self.assertFalse(list(directory.glob('.odyssey-report-*.tmp')))
+        self.assertEqual({json.loads(raw)['state'] for raw in originals.values()},
+                         {'pending', 'reserved', 'submitted', 'verified'})
+        self.frames = iter((cases.day_cards({1, 2, 3}), None) for _ in range(2))
+        code, retry = self.invoke()
+        self.assertEqual((code, retry['status']), (1, 'failed'))
+        self.assertEqual((directory / 'report.json').read_bytes(), expected_report)
+        self.assertEqual({path: path.read_bytes() for path in ledger.glob('*.json')}, originals)
+        self.fixture.native.SendInput.assert_called_once()
+
+    def test_preflight_failure_preserves_competing_report_and_existing_temporary(self):
+        self.fixture.native.GetForegroundWindow.return_value = 55
+        prior = b'{"external":"preflight"}'
+        native_link = os.link
+
+        def occupy_report(source, destination):
+            destination.write_bytes(prior)
+            destination.with_suffix('.tmp').write_bytes(prior)
+            return native_link(source, destination)
+
+        with patch.object(flow.os, 'link', side_effect=occupy_report):
+            code, report = self.invoke(report_saved=False)
+        self.assertEqual((code, report['status'], report['daily_event_claim']['submission']),
+                         (1, 'failed', 'not_sent'))
+        directory = Path(report['run_dir'])
+        self.assertEqual((directory / 'report.json').read_bytes(), prior)
+        self.assertEqual((directory / 'report.tmp').read_bytes(), prior)
+        self.assertFalse(list(directory.glob('.odyssey-report-*.tmp')))
+        self.fixture.native.SendInput.assert_not_called()
+
+    def test_report_stage_replaced_by_identical_bytes_stays_unpublished_and_foreign_stage_remains(self):
+        self.queue_manual_return({1, 2, 3, 4})
+        read_sources = flow.hold_read_sources
+        replacements = {}
+
+        def replace_before_stage_lock(paths):
+            for path in paths:
+                if path.name.startswith('.odyssey-report-'):
+                    replacements[path] = self._replace_with_same_bytes(path)
+            return read_sources(paths)
+
+        with patch.object(flow, 'hold_read_sources', side_effect=replace_before_stage_lock):
+            code, report = self.invoke('--observe-daily-event-return', report_saved=False)
+        self.assertEqual((code, report['status'], report['daily_event_claim']['state']),
+                         (1, 'partial', 'verified'))
+        self.assertFalse((Path(report['run_dir']) / 'report.json').exists())
+        self.assertEqual(len(replacements), 1)
+        self.assertEqual({path: path.read_bytes() for path in replacements}, replacements)
+        self.fixture.native.SendInput.assert_called_once()
+
+    def test_native_link_and_readback_hold_the_original_at_each_name(self):
+        self.queue_manual_return({1, 2, 3, 4})
+        native_link = os.link
+        read_sources = flow.hold_read_sources
+        attempts = []
+
+        def try_replacing(source, destination):
+            competing = destination.with_name('outside.tmp')
+            competing.write_bytes(b'external')
+            with self.assertRaises(OSError):
+                competing.replace(source)
+            native_link(source, destination)
+            attempts.append(competing)
+
+        @contextmanager
+        def try_replacing_during_readback(paths):
+            with read_sources(paths):
+                for path in paths:
+                    if path.name == 'report.json':
+                        with self.assertRaises(OSError):
+                            attempts[0].replace(path)
+                yield
+
+        with (patch.object(flow.os, 'link', side_effect=try_replacing),
+              patch.object(flow, 'hold_read_sources', side_effect=try_replacing_during_readback)):
+            code, report = self.invoke('--observe-daily-event-return')
+        self.assertEqual((code, report['status'], report['daily_event_claim']['state']),
+                         (0, 'success', 'verified'))
+        self.assertEqual([path.read_bytes() for path in attempts], [b'external'])
+        self.assertFalse(list(Path(report['run_dir']).glob('.odyssey-report-*.tmp')))
+        self.fixture.native.SendInput.assert_called_once()
+
+    def test_report_replaced_after_native_link_does_not_claim_it_was_saved(self):
+        self.queue_manual_return({1, 2, 3, 4})
+        native_link = os.link
+        replaced = {}
+
+        def replace_before_readback(source, destination):
+            native_link(source, destination)
+            replaced[destination] = self._replace_with_same_bytes(destination)
+
+        with patch.object(flow.os, 'link', side_effect=replace_before_readback):
+            code, report = self.invoke('--observe-daily-event-return', report_saved=False)
+        self.assertEqual((code, report['status'], report['daily_event_claim']['state']),
+                         (1, 'partial', 'verified'))
+        self.assertEqual(len(replaced), 1)
+        self.assertEqual({path: path.read_bytes() for path in replaced}, replaced)
+        self.assertFalse(list(Path(report['run_dir']).glob('.odyssey-report-*.tmp')))
         self.fixture.native.SendInput.assert_called_once()
 
     def test_return_option_cannot_start_an_unrelated_operation(self):

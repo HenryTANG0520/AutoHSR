@@ -1,13 +1,16 @@
 """Coordinate one explicitly selected Odyssey card on an already open page."""
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, contextmanager, nullcontext
+import json
+import os
 from pathlib import Path
+from tempfile import mkstemp
 import time
 
 from .currency_wars_identity import AccountNotObserved
 from .daily_event_claim import (ACTIVITY, OPERATION, _AGE, _QUANTITY_BY_DAY, _RETURN_CAPTURE_LIMIT, _VERSION,
                                 _pair, _require_fresh, _supported_day, bind_current_claim_frame, prepare_claim)
 from .models import AutomationError, Stopped, TaskResult
-from .storage import hold_read_sources, replace_file
+from .storage import hold_read_sources, remove_owned_stage
 from .windows import GameWindow
 from .workflow_identity import active as active_account_scope
 from .workflow_lease import sequence_lease
@@ -36,6 +39,44 @@ def _ledger(root):
         if not directory.is_dir() or directory.resolve(strict=True) != directory:
             raise AutomationError('巡星之礼本地回执目录来源已变化。')
     return directory
+
+
+def publish_claim_report(directory, report, *, hold_evidence=nullcontext):
+    """Create this run's report once, from an exclusively staged original."""
+    destination = directory / 'report.json'
+    payload = json.dumps(report.to_dict(), ensure_ascii=False, indent=2).encode('utf8')
+    descriptor, name = mkstemp(dir=directory, prefix='.odyssey-report-', suffix='.tmp')
+    temporary, created = Path(name), None
+
+    def require_original(path, links):
+        if path.resolve(strict=True) != path:
+            raise OSError('巡星之礼报告来源已变化。')
+        with path.open('rb') as stream:
+            current = os.fstat(stream.fileno())
+            if (not created.st_ino or not os.path.samestat(created, current) or current.st_nlink != links
+                    or current.st_size != len(payload) or stream.read(len(payload) + 1) != payload):
+                raise OSError('巡星之礼报告原件待核对。')
+
+    try:
+        with os.fdopen(descriptor, 'wb') as stream:
+            created = os.fstat(stream.fileno())
+            if stream.write(payload) != len(payload):
+                raise OSError('巡星之礼报告暂存写入不完整。')
+            stream.flush()
+            os.fsync(stream.fileno())
+        with hold_read_sources((temporary,)):
+            require_original(temporary, 1)
+            with hold_evidence():
+                # Keep the staged bytes locked through exclusive publication and readback.
+                os.link(temporary, destination)
+                with hold_read_sources((destination,)):
+                    require_original(destination, 2)
+    finally:
+        if created is not None:
+            try:
+                remove_owned_stage(temporary, created)
+            except OSError:
+                pass
 
 
 class DailyEventClaim:
@@ -155,10 +196,9 @@ class DailyEventClaim:
                 self.record['stage'] = 'popup'
             self.record.update(popup='unknown', quantity=None)
 
-    def save_verified_report(self, temporary, write_report):
+    def save_report(self, directory):
         """Guard the current popup or the already published same-card receipt."""
         report = self.context.report
-        destination = temporary.with_name('report.json')
         verified = self.record['state'] == 'verified'
         detail = '奖励弹窗在报告发布前失去核验证据，保留原领取意图。'
 
@@ -173,19 +213,15 @@ class DailyEventClaim:
                         origin = before[-1]
                         popup = _pair(self._popup, origin=origin)
                         locks.enter_context(hold_read_sources((origin.scope.executable.with_name('config.ini'),)))
-                    with hold_read_sources((temporary,)):
-                        if temporary.read_text(encoding='utf8') != payload:
-                            raise AutomationError(detail)
-                        if not verified:
-                            _require_fresh(before + popup)
-                            popup[-1].guard()
+                    if not verified:
+                        _require_fresh(before + popup)
+                        popup[-1].guard()
                 except (OSError, UnicodeError):
                     raise AutomationError(detail) from None
                 yield
 
         try:
-            payload = write_report()
-            replace_file(temporary, destination, attempt_scope=verify_attempt)
+            publish_claim_report(directory, report, hold_evidence=verify_attempt)
         except AutomationError as error:
             if verified:
                 detail = '同日卡回执在报告发布前待核对，已保留原件。'
@@ -199,8 +235,7 @@ class DailyEventClaim:
             report.error = detail
             report.failure_task = OPERATION
             report.results[-1] = TaskResult(OPERATION, report.status, detail)
-            write_report()
-            replace_file(temporary, destination)
+            publish_claim_report(directory, report)
 
     def run(self):
         context = self.context

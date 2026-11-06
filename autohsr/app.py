@@ -3595,9 +3595,14 @@ class Runner:
                     self.report.report_saved = True
                     self._save_run_report(directory, workflow_screen_source=workflow_screen_source,
                                           workflow_navigation=workflow_navigation)
-                elif daily_claim_flow is not None and daily_claim_flow.record['popup'] == 'observed':
+                elif daily_claim:
+                    from .daily_event_claim_flow import publish_claim_report
+
                     self.report.report_saved = True
-                    self._save_run_report(directory, daily_observation_reader=daily_claim_flow)
+                    if daily_claim_flow is not None and daily_claim_flow.record['popup'] == 'observed':
+                        daily_claim_flow.save_report(directory)
+                    else:
+                        publish_claim_report(directory, self.report)
                 elif daily_reply_flow is not None and daily_reply_flow.record['feedback_status'] == 'confirmed':
                     self.report.report_saved = True
                     self._save_run_report(directory, daily_observation_reader=daily_reply_flow)
@@ -3628,6 +3633,8 @@ class Runner:
                     error = OSError('巡星之礼单日提交报告未发布。')
                     if daily_claim_flow is not None:
                         daily_claim_flow.invalidate_popup()
+                    if self.report.daily_event_claim.get('state') == 'verified':
+                        error = OSError('巡星之礼同日卡回执已保存，本次运行报告未发布。')
                 elif achievement_claim:
                     error = OSError('成就领奖报告未发布。')
                     self.report.achievement_bulk_claim['account_verified'] = False
@@ -3650,16 +3657,19 @@ class Runner:
                 if daily_observation or daily_claim or daily_reply or achievement_claim:
                     if self.stop_requested or status_before_save_failure == 'stopped':
                         self.report.status = 'stopped'
-                    elif (status_before_save_failure == 'partial' or daily_reply
+                    elif (status_before_save_failure == 'partial'
+                          or daily_claim and self.report.daily_event_claim.get('state') in ('pending', 'verified')
+                          or daily_reply
                           and self.report.daily_message_reply.get('ledger_status') in ('pending', 'confirmed')):
                         self.report.status = 'partial'
                     self.report.failure_task = self.report.operation
                     if daily_observation_reader is not None:
                         daily_observation_reader.invalidate(self.report.status, f'{observation_name}观察报告未发布。')
-                    try:
-                        (directory / 'report.tmp').unlink(missing_ok=True)
-                    except OSError:
-                        pass
+                    if not daily_claim:
+                        try:
+                            (directory / 'report.tmp').unlink(missing_ok=True)
+                        except OSError:
+                            pass
                 self.report.error = (self.report.error + "；" if self.report.error else "") + f"报告保存失败：{error}"
                 self.report.safe_next = ("报告未保存；保留动作记录和截图，人工核对后重新识别。" if self.report.operation.startswith("currency_wars") else
                                          build_target_safe_next if build_target else
