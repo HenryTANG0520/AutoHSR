@@ -2,6 +2,7 @@
 
 MESSAGE_OPERATION = 'daily_message_observe'
 EVENT_OPERATION = 'daily_event_observe'
+EVENT_CLAIM_OPERATION = 'daily_event_claim'
 REWARD_OPERATION = 'daily_reward_observe'
 SCREEN_OPERATION = 'screen_test'
 READ_ONLY_OPERATIONS = frozenset((MESSAGE_OPERATION, EVENT_OPERATION, SCREEN_OPERATION))

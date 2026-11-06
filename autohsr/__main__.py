@@ -60,6 +60,12 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--read-build-target", action="store_true", help="从已打开的生存索引核对培养目标页入口并留证")
     mode.add_argument("--daily-reward-observe", choices=DAILY_OBSERVATION_MODES,
                       help="核对前台成就、漫游签证、短信或巡星之礼，分别记录导航与观察结果")
+    mode.add_argument("--daily-event-claim", type=int, choices=range(3, 8), metavar='DAY',
+                      help="在已核实的巡星之礼页提交第 3–7 天中的一天，并核对奖励弹窗")
+    mode.add_argument("--reward-guide-stitch", type=Path, nargs='+', metavar='PNG',
+                      help="按滚动顺序拼接 1–3 张本地奖励指南内容裁片")
+    parser.add_argument("--reward-guide-output", type=Path, metavar='NEW_PNG',
+                        help="拼接结果的本地新文件，配合 --reward-guide-stitch")
     mode.add_argument("--screen-test", action="store_true", help="只读核对当前前台日常页面，输出匿名双帧回执")
     mode.add_argument("--preview-build-target", action="store_true", help="只读核对培养目标、材料详情与配方、花萼预览及结算提示")
     mode.add_argument('--build-target', action='store_true', help='核实用户指定的培养材料来源并生成单项体力草稿；只读')
@@ -141,6 +147,12 @@ def main(argv: list[str] | None = None) -> int:
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
     validate_workflow_arguments(args, parser)
+    if args.reward_guide_stitch is not None or args.reward_guide_output is not None:
+        from .reward_guide_cli import run as run_reward_guide
+        return run_reward_guide(args, raw_args, parser)
+    if args.daily_event_claim is not None:
+        from .daily_event_claim_cli import run as run_daily_event_claim
+        return run_daily_event_claim(args, raw_args, parser)
     if args.daily_attachment_only:
         attachment_flags = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
         if attachment_flags.count('--daily-attachment-only') != 1 or set(attachment_flags) - {
