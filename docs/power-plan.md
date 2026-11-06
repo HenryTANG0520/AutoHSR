@@ -141,7 +141,7 @@
 
 ### 材料来源与体力计划预览
 
-手工打开培养目标页、显示「获得途径」的材料详情、花萼挑战页或仍显示「培养尚需」的成功结算，再执行只读预览。命令使用当前配置的开拓力上限，以当前游戏窗口、账号及输入代次核对两张相邻画面。截图保存后再次核对账号、窗口和画面时效。
+手工打开培养目标页、显示「获得途径」的材料详情、梦现管锥的材料合成配方、花萼挑战页或仍显示「培养尚需」的成功结算，再执行只读预览。命令使用当前配置的开拓力上限，以当前游戏窗口、账号及输入代次核对两张相邻画面。截图保存后再次核对账号、窗口和画面时效。
 
 ```powershell
 .\.venv\Scripts\python.exe -m autohsr --preview-build-target
@@ -161,7 +161,7 @@
 
 「角色培养」区与推荐、设置栏目按同页顺序出现，且明确写有「已获得足够的等级和行迹材料」时，预览记录 `target_materials_sufficient`。这是等级和行迹的区块状态，逐件 `shortfall` 留空。依据为 2026-09-29 真珠实机的两次原始 OCR 记录，当前页面几何用合成字段测试。3.1 官图的材料图标下数字与进入按钮旁的体力费用分列。4.6 官方真珠前瞻所示「需要获取的材料」「材料总计」及合成高稀有度材料分栏来自米游社计算器。[4.6 实机日志](https://github.com/moesnow/March7thAssistant/issues/1239) · [3.1 官方演示](https://www.bilibili.com/opus/1036626436780195864) · [官方计算器示意](https://www.miyoushe.com/sr/article/78288294)
 
-花萼页的 `calyx_reward_preview` 记录目录关卡、所选难度、所选轮数、显示的开拓力费用和 `rewards=possible_items`。轮数与费用须分别读到，并符合每轮 10 开拓力。配置内可写入一份手动草稿的理论上限为 `min(6, 配置开拓力上限 // 10)`。`selected_stamina_within_config` 比较当前画面费用与配置上限，当前账号实际预算仍留空。可合成数量、固定单轮产量和建议次数仍待证，手动草稿由明确材料、地点及次数产生。
+花萼页的 `calyx_reward_preview` 记录目录关卡、所选难度、所选轮数、显示的开拓力费用和 `rewards=possible_items`。轮数与费用须分别读到，并符合每轮 10 开拓力。配置内可写入一份手动草稿的理论上限为 `min(6, 配置开拓力上限 // 10)`。`selected_stamina_within_config` 比较当前画面费用与配置上限，当前账号实际预算仍留空。
 
 国服 4.6.0 本地原件中，2026-10-20 的回忆之蕾／绘世学院 V 和欢愉之蕾／「世界尽头」酒馆 VI 均显示「可能获取」图标、挑战次数 `1` 和费用 `×10`，右端的 `24` 为滑杆上限。两张详情原图 SHA-256 分别为 `7d04430c5f0484e8d793d58ed4bf410c9cc65f4b0d2629b75503584b8c2e314b`、`2d7ab77973989b00d4afb5542255be75d206cce192220d2996b5b3a21d894517`。结算有独立「成功奖励」和各图标实得数量。绘世学院 V 的两次单轮原件在同一奖励图标下分别为 `2`、`3`，两张 4.6.0 双轮原件分别为 `4`、`6`。单轮样本取自 10 月 11 日 09:18:22 和 09:40:57，源报告无精确构建号。图标对齐核实了变动，具体物品名和单轮保底仍待证。活动期间可额外结算一份奖励，采样时需单列加成状态。[本地实机记录](../VALIDATION.md#2026-10-20六类日常副本与次数选择) · [花萼双倍官方公告](https://www.taptap.cn/moment/864551668203651116?group_id=311675)
 
@@ -177,13 +177,21 @@
 
 [脱敏数量夹具](../autohsr/tests/fixtures/dungeons/build_target_quantities.json) 保留 9 张画面的限定 OCR 与来源、时间及哈希，另存 7 个独立结算的实得数。金花 V 原件经具名图标交叉核验，变化的是虚数残叶，单轮见 `2` 和 `3`，两轮见 `4` 和 `6`。赤花欢愉 VI 的单轮预览列绒绒号三阶，结算中阶和低阶各 `1`，高阶未见卡。全部实测记录使用 `observed_total`，加成状态保留未知。夹具只存限定文字、数值和来源，原像素和完整 OCR 留在私有证据目录。游戏图像归各权利人。[虚数残叶图鉴](https://wiki.hoyolab.com/pc/hsr/entry/326?lang=zh-cn) · [典藏版合集图鉴](https://wiki.hoyolab.com/pc/hsr/entry/4766?lang=zh-cn)
 
+`suggestion_reason` 说明建议轮数为空的原因。培养材料槽缺少逐件实名时为 `material_shortfall_unbound`，花萼可能奖励为 `possible_rewards_only`，结算累计为 `settled_batch_only`，合成配方为 `recipe_only`。等级行迹需求已满足和当前画面未核实分别记录 `level_trace_requirements_met`、`no_current_evidence`。
+
 以下源码工具复放实际批量和合成算例。实际记录的建议次数为空。合成算例校验同材料、关卡地点、难度、版本及基础加成条件齐备时的向上取整、零缺口和超草稿额度。配置限制复用原花萼费用和六轮上限。计算结果属于开发验证，正式草稿仍由明确选择的入口发布。
 
 ```powershell
 .\.venv\Scripts\python.exe tools/build_target_plan_probe.py --stamina 60
 ```
 
-另核对固定 4.6 国际服客户端数据镜像。均衡 5 的 20 项赤花配置含 82 个不同 `DropList` 键，所对应版本的 `RewardData` 无法解析这些键的实际掉落规则。当前国服各材料的单轮保底仍待独立来源。[固定 CocoonConfig](https://gitlab.com/Dimbreath/turnbasedgamedata/-/blob/74a7b96fba32f00cf495a5c00b0311bd02207aaf/ExcelOutput/CocoonConfig.json) · [固定 RewardData](https://gitlab.com/Dimbreath/turnbasedgamedata/-/blob/74a7b96fba32f00cf495a5c00b0311bd02207aaf/ExcelOutput/RewardData.json)
+另核对固定 4.6 国际服客户端数据镜像。均衡 5 的 20 项赤花配置含 82 个不同 `DropList` 键，所对应版本的 `RewardData` 无法解析这些键的实际掉落规则。回忆之蕾 V 的漫游指南和虚数残叶、欢愉之蕾 VI 的绒绒号三阶、智识之蕾 VI 的银河沙盘均能核对展示物品 ID。对应的国服基础单轮最低产量仍需独立证据。[固定 CocoonConfig](https://gitlab.com/Dimbreath/turnbasedgamedata/-/blob/74a7b96fba32f00cf495a5c00b0311bd02207aaf/ExcelOutput/CocoonConfig.json) · [固定 RewardData](https://gitlab.com/Dimbreath/turnbasedgamedata/-/blob/74a7b96fba32f00cf495a5c00b0311bd02207aaf/ExcelOutput/RewardData.json)
+
+### 材料合成配方与确认弹层
+
+10 月 6 日 4.6 时期的原生材料合成页显示梦现管锥持有 `0`、所选合成量 `6` 和滑杆右端上限 `765`。只读预览在 `synthesis_preview` 内分别记录 `held`、`selected_output`、`slider_limit`。全图 OCR 漏掉选中量时，仅在同帧放大带有「合成数量」标签的数量栏补读。两个相邻画面须核实同一材料及相同读数。该上限只对应当前配方与库存，培养目标的可合成量 `craftable` 留空。[玩家原图出处](https://www.miyoushe.com/sr/article/78733970) · [脱敏字段和变换](../autohsr/tests/fixtures/dungeons/build_target_synthesis.json)
+
+10 月 4 日真珠行迹的「材料补全」弹层展示拟生成的《绒绒号》典藏版合集 `4` 和梦现管锥 `2`，对应当次确认前的合成提案。10 月 31 日的「培养目标设置」也显示拟切换目标的资源分组。两个弹层均阻断培养页和草稿核验，当前培养缺口仍从已选目标的实际材料槽核对。[材料补全原片](https://www.bilibili.com/video/BV1PAHi6YEQB/?t=10) · [目标设置原片](https://www.bilibili.com/video/BV1tyxk6YEHc/?t=4)
 
 ### 明确选择并生成体力草稿
 
@@ -210,7 +218,7 @@ if ((Get-FileHash -LiteralPath $planFile -Algorithm SHA256).Hash -ne $draft.buil
 
 #### 当前客户端最小补样
 
-- 选一项确实缺少的赤花材料，保留培养目标行、打开其道具卡、关闭后的同一行三段画面。画面保留角色与目标设置、材料图标和缺口区数字、完整道具名、当前持有、获得途径和可用地点。若界面另列可合成数，保留同材料的合成详情与数量标签即可。
-- 从该来源保留关卡、地点、难度、所选一轮、费用和双倍状态。已有授权单轮时再关联成功奖励、材料图标或名称、实得数量和完成波次。固定产量或保底需要独立明确来源，单次结算只证实该次所得。
+- 选一项当前确实缺少的赤花材料，保留培养目标行、打开其道具卡、关闭后的同一行三段画面。保留当前角色、材料图标和缺口槽、完整道具名、持有量、获得途径及可用地点。若同一材料显示培养补全或合成数量，再保留数量标签、材料名和对应控件。
+- 记录该花萼的关卡、地点、难度、客户端版本和加成状态。接通建议需独立来源明确同材料在该难度的基础单轮最低产量。已有授权的一轮预览与成功奖励可核对费用、材料和实得量，单次结算只证实该次所得。
 
 虚影另待一份材料详情完整来源行。官方已确认侵略凝块与溟簇之形的关系。[3.3 官方关卡](https://www.taptap.cn/moment/669973110769847733)

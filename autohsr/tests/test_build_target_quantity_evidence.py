@@ -4,24 +4,45 @@ from dataclasses import replace
 import json
 import re
 import unittest
+from unittest.mock import patch
 
-from autohsr.models import Token
+from autohsr.models import Scene, Token
 from autohsr.tests import test_build_target_preview as fixtures
 from tools.build_target_plan_probe import FIXTURE, Scope, Yield, estimate, replay_fixture
 
 
 DATA = json.loads(FIXTURE.read_text(encoding='utf-8'))
 FRAMES = {row['id']: row for row in DATA['frames']}
+SYNTHESIS = json.loads(FIXTURE.with_name('build_target_synthesis.json').read_text(encoding='utf-8'))
+
+
+def evidence_token(field):
+    return Token(field['t'], field['q'], tuple(field['box']))
 
 
 class QuantityEvidenceCliTests(unittest.TestCase):
     setup = fixtures.BuildTargetPreviewTests
     setUp, runtime, cli, draft_cli = setup.setUp, setup.runtime, setup.cli, setup.draft_cli
+    material, route = setup.material, setup.route
 
     @staticmethod
     def frame(key):
-        return [fixtures.fixtures.ACCOUNT,
-                *(Token(t['t'], t['q'], tuple(t['box'])) for t in FRAMES[key]['tokens'])]
+        return [fixtures.fixtures.ACCOUNT, *map(evidence_token, FRAMES[key]['tokens'])]
+
+    @staticmethod
+    def recipe():
+        return [fixtures.fixtures.ACCOUNT, *map(evidence_token, SYNTHESIS['recipe']['tokens'])]
+
+    @staticmethod
+    def recipe_crop(fields):
+        read_frame = fixtures.fixtures.Window.read
+
+        def read(window, image, geometry=None):
+            if geometry is None:
+                return Scene(list(fields), image)
+            return read_frame(window, image, geometry)
+
+        return patch.object(fixtures.fixtures.Window, 'read', read)
 
     def assert_observations_only(self, report):
         self.assertNotIn('draft', report['build_target'])
@@ -38,6 +59,7 @@ class QuantityEvidenceCliTests(unittest.TestCase):
         self.assertTrue(report['build_target']['page_verified'])
         self.assertTrue(preview['target_section_visible'])
         self.assertEqual(preview['state'], 'target_level_trace_complete')
+        self.assertEqual(preview['suggestion_reason'], 'level_trace_requirements_met')
         self.assertEqual(preview['shortfall_rows'], [])
         self.assertNotIn('draft', self.draft_cli([frame, frame], code=1)['build_target'])
 
@@ -45,6 +67,7 @@ class QuantityEvidenceCliTests(unittest.TestCase):
         report = self.cli([self.frame('need-a'), self.frame('need-c')])
         preview = self.assert_observations_only(report)
         self.assertEqual(preview['state'], 'target_resources_needed')
+        self.assertEqual(preview['suggestion_reason'], 'material_shortfall_unbound')
         self.assertEqual(preview['shortfall_rows'], [{'observed_needed': [90], 'shown_stamina': 10}])
 
     def test_different_shortfall_slots_on_one_row_are_kept_separate(self):
@@ -60,6 +83,7 @@ class QuantityEvidenceCliTests(unittest.TestCase):
         self.assertNotIn('post_battle_shortfall', pending)
         preview = self.assert_observations_only(self.cli([before, first, second]))
         self.assertEqual(preview['state'], 'calyx_result_shortfall')
+        self.assertEqual(preview['suggestion_reason'], 'settled_batch_only')
         self.assertEqual(preview['post_battle_shortfall'], dict(
             observed_needed=[72], completed_rounds=18, repeat_stamina=180))
 
@@ -118,11 +142,61 @@ class QuantityEvidenceCliTests(unittest.TestCase):
         self.assertEqual(preview['state'], 'unverified')
         preview = self.assert_observations_only(self.cli([stage, stage]))
         self.assertEqual(preview['state'], 'calyx_reward_preview')
+        self.assertEqual(preview['suggestion_reason'], 'possible_rewards_only')
         self.assertEqual(preview['calyx_reward_preview'], dict(
             category='calyx_crimson', target='智识之蕾', difficulty=6, selected_rounds=18,
             shown_total_stamina=180, rewards='possible_items', stamina_per_challenge=10,
             selected_stamina_within_config=False, max_draft_challenges_by_config=2,
         ))
+
+    def test_native_recipe_counts_are_separate_and_cannot_prepare_a_draft(self):
+        frame = self.recipe()
+        crop = tuple(map(evidence_token, SYNTHESIS['recipe']['quantity_crop_tokens']))
+        with self.recipe_crop(crop):
+            preview = self.assert_observations_only(self.cli([frame, frame]))
+            self.assertNotIn('draft', self.draft_cli([frame] * 8, code=1)['build_target'])
+        self.assertEqual(preview['state'], 'synthesis_preview')
+        self.assertEqual(preview['suggestion_reason'], 'recipe_only')
+        self.assertEqual(preview['synthesis_preview'], dict(
+            material='梦现管锥', held=0, selected_output=6, slider_limit=765))
+
+    def test_recipe_accepts_a_larger_merged_quantity_but_rejects_conflicts(self):
+        frame = self.recipe()
+        selected = [replace(t, text='合成数量：123') if t.text == '合成数量：' else t for t in frame]
+        preview = self.assert_observations_only(self.cli([selected, selected]))
+        self.assertEqual(preview['synthesis_preview']['selected_output'], 123)
+        conflicts = (
+            [replace(t, text='合成数量：766') if t.text == '合成数量：' else t for t in frame],
+            [*selected, fixtures.token('6', .706, .779, width=.01, score=.77)],
+            [*selected, fixtures.token('童真蜡笔', .644, .154, width=.05, score=.79)],
+            [t for t in selected if t.text != '+'],
+            [*selected, fixtures.token('开拓力不足', .53, .57, width=.12)],
+        )
+        for conflict in conflicts:
+            with self.subTest(fields=[t.text for t in conflict]):
+                preview = self.assert_observations_only(self.cli([conflict] * 8))
+                self.assertEqual(preview['state'], 'unverified')
+
+    def test_recipe_crop_needs_its_label_and_both_frames_need_the_same_quantity(self):
+        frame = self.recipe()
+        crop = tuple(map(evidence_token, SYNTHESIS['recipe']['quantity_crop_tokens']))
+        with self.recipe_crop(crop[1:]):
+            preview = self.assert_observations_only(self.cli([frame] * 8))
+            self.assertEqual(preview['state'], 'unverified')
+        with self.recipe_crop(crop):
+            changed = [replace(t, text='合成数量：12') if t.text == '合成数量：' else t for t in frame]
+            preview = self.assert_observations_only(self.cli([frame, changed] * 4))
+            self.assertEqual(preview['state'], 'unverified')
+
+    def test_native_confirmation_titles_block_an_underlying_current_target_or_draft(self):
+        for sample in SYNTHESIS['blocked']:
+            title = evidence_token(sample['title'])
+            with self.subTest(title=title.text):
+                target = [*self.frame('need-b'), title]
+                preview = self.assert_observations_only(self.cli([target] * 8))
+                self.assertEqual((preview['state'], preview['suggestion_reason']), ('unverified', 'no_current_evidence'))
+                detail = [*self.material(), self.route('城郊雪原', .50), title]
+                self.assertNotIn('draft', self.draft_cli([detail] * 8, code=1)['build_target'])
 
 
 class QuantityEvidenceDataTests(unittest.TestCase):

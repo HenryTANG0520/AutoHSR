@@ -22,7 +22,7 @@ SHORTFALL = '培养还需获取资源'
 RECOMMENDATIONS = ('隧洞遗器推荐', '位面饰品推荐')
 AUTHENTICATION = ('验证码', '账号登录', '扫码登录', '用户协议', '资源下载', '更新游戏')
 MODAL = ('提示', '确认', '确定', '取消', '获得物品', '获得途径', '选择角色', '列车补给',
-         '点击空白处关闭', '点击任意位置关闭', '点击空白处继续', '开始挑战')
+         '点击空白处关闭', '点击任意位置关闭', '点击空白处继续', '开始挑战', '培养目标设置', '材料补全')
 
 
 def _has_split_label(scene, labels, roi, *, exact=True):
@@ -65,7 +65,7 @@ def _has_split_label(scene, labels, roi, *, exact=True):
     return False
 
 
-def guide_blocked(scene, *, modal=MODAL):
+def guide_blocked(scene, *, modal=MODAL, forbidden=FORBIDDEN):
     fragments = trusted(scene, 0.)
     return (replenishment_dialog(scene) or scene.has(AUTHENTICATION)
             or scene.has(modal, MODAL_AREA, exact=True)
@@ -73,7 +73,7 @@ def guide_blocked(scene, *, modal=MODAL):
             or _has_split_label(fragments, AUTHENTICATION, FULL, exact=False)
             or _has_split_label(fragments, modal, MODAL_AREA)
             or _has_split_label(fragments, ('更换培养目标',), CHANGE_AREA)
-            or scene.has(FORBIDDEN + ('每日实训', '旷宇纷争', '行动摘要'), TITLE, exact=True))
+            or scene.has(forbidden + ('每日实训', '旷宇纷争', '行动摘要'), TITLE, exact=True))
 
 
 def guide_entry(scene, page):

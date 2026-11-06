@@ -558,6 +558,34 @@ class BuildTargetPreviewTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(), original)
         self.assertEqual(config.read_bytes(), saved)
 
+    def test_explicitly_running_a_prepared_file_preserves_an_old_pending_payment(self):
+        from autohsr.tests.test_power_plan_entry import runtime
+
+        frame = [*self.material(), self.route('城郊雪原', .50)]
+        draft = self.draft_cli([frame, frame])
+        path = Path(draft['run_dir']) / draft['build_target']['draft']['file']
+        plan = path.read_bytes()
+        config = self.root / 'config.json'
+        saved = config.read_bytes()
+        ledger = self.root / 'runs' / 'battle-session.json'
+        pending = b'{"version":1,"spent":0,"pending":10,"limit":20,"status":"active"}'
+        ledger.write_bytes(pending)
+        args = ['--run', '--power-plan', '--power-plan-file', str(path), '--config', str(config)]
+        for options in ([], ['--new-battle-run']):
+            with self.subTest(options=options):
+                output, logs = io.StringIO(), io.StringIO()
+                with (runtime(self.root, self.settings) as (window, find),
+                      patch.object(Runner, '_prepare_daily_game') as prepare,
+                      redirect_stdout(output), redirect_stderr(logs)):
+                    self.assertEqual(main([*args, *options]), 1, logs.getvalue())
+                prepare.assert_not_called()
+                find.assert_not_called()
+                self.assertEqual(window.world.paid, [])
+                self.assertIn('上次刷本支付仍待核对', json.loads(output.getvalue())['error'])
+                self.assertEqual(ledger.read_bytes(), pending)
+        self.assertEqual(path.read_bytes(), plan)
+        self.assertEqual(config.read_bytes(), saved)
+
     def test_cli_preserves_every_exact_location_without_claiming_a_plan_or_quantity(self):
         frame = [*self.material(), self.route('流云渡', .46), self.route('城郊雪原', .50),
                  self.route('筑梦边境', .55), token('129', .45, .60), token('10', .70, .51)]

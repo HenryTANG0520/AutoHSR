@@ -8,6 +8,7 @@ from .build_target_read import (
     BuildTargetRead, _has_split_label, guide_blocked, guide_entry,
 )
 from .build_target_shortfall import ROLE, ResultShortfall, TargetPanel, result_shortfall, target_panel
+from .build_target_synthesis import SynthesisPreview, synthesis_preview
 from .currency_wars_prepare import trusted
 from .dungeon_workflow import guide_row_fields
 from .dungeons import BY_KEY, CATEGORIES, Dungeon, count_limit
@@ -204,10 +205,14 @@ def _title_candidate(token):
 
 
 def _classify(reader, scene, *, read_quantities=False):
-    if guide_blocked(scene, modal=DETAIL_BLOCKERS):
-        return None, None
     captured = trusted(scene, reader.collection_confidence)
     page = trusted(captured, reader.confidence)
+    if read_quantities:
+        recipe, anchor = synthesis_preview(reader, scene, page)
+        if recipe is not None:
+            return recipe, anchor
+    if guide_blocked(scene, modal=DETAIL_BLOCKERS):
+        return None, None
     entry = guide_entry(scene, page)
     if entry is None:
         if not read_quantities:
@@ -294,6 +299,8 @@ def run_preview(ctx, *, selection=None):
                    source_locations=[], candidates=[])
     ctx.report.build_target = dict(reader.record, preview=preview)
     observe_quantities = selection is None
+    if observe_quantities:
+        preview['suggestion_reason'] = 'no_current_evidence'
     scene, observation = reader._observe(
         classify=lambda current: _classify(reader, current, read_quantities=observe_quantities),
         merge=_merge_preview if observe_quantities else None, require_adjacent=observe_quantities,
@@ -315,18 +322,25 @@ def run_preview(ctx, *, selection=None):
         if _classify(reader, scene)[0] != observation:
             raise AutomationError('保存画面后培养材料或来源发生变化，未生成体力草稿。')
     reader._verify_observation(scene)
+    if observe_quantities:
+        preview['suggestion_reason'] = 'material_shortfall_unbound'
     if isinstance(observation, CalyxRewardPreview):
         rule = BY_KEY[observation.category]
         preview.update(state='calyx_reward_preview', calyx_reward_preview=dict(
             **asdict(observation), rewards='possible_items', stamina_per_challenge=rule.cost,
             selected_stamina_within_config=observation.shown_total_stamina <= limit,
             max_draft_challenges_by_config=min(rule.batch, count_limit(rule, limit))))
+        preview['suggestion_reason'] = 'possible_rewards_only'
         detail = f'已核对{observation.target}难度 {observation.difficulty} 的奖励预览与挑战费用。'
     elif isinstance(observation, ResultShortfall):
         preview.update(state='calyx_result_shortfall', post_battle_shortfall=dict(
             observed_needed=list(observation.observed_needed), completed_rounds=observation.completed_rounds,
             repeat_stamina=observation.repeat_stamina))
+        preview['suggestion_reason'] = 'settled_batch_only'
         detail = '已核对结算中的培养剩余提示和实际完成波次。'
+    elif isinstance(observation, SynthesisPreview):
+        preview.update(state='synthesis_preview', synthesis_preview=asdict(observation), suggestion_reason='recipe_only')
+        detail = '已核对材料配方的持有量、所选合成量和滑杆上限。'
     elif isinstance(observation, TargetPanel):
         ctx.report.build_target['page_verified'] = True
         preview.update(state=observation.state, target_section_visible=True, shortfall_rows=[
@@ -338,6 +352,8 @@ def run_preview(ctx, *, selection=None):
             'target_materials_sufficient': '培养目标页显示已获得足够的等级和行迹材料。',
             'target_resources_needed': '已观察培养目标的缺口区，材料与单轮产量需分别核实。',
         }[observation.state]
+        if observation.state != 'target_resources_needed':
+            preview['suggestion_reason'] = 'level_trace_requirements_met'
     elif observation == 'panel':
         ctx.report.build_target['page_verified'] = True
         preview.update(state='panel_observed', target_section_visible=True)
