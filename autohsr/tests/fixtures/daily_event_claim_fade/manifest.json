@@ -1,0 +1,163 @@
+{
+  "source": "https://www.bilibili.com/video/BV1JZaV6XEH3/?p=5",
+  "source_sha256": "8b81a95fa3f001175c3ff7d6193016824810c41ae9f058499d81ade79d3fb480",
+  "frame_rate": 30,
+  "client_period": "4.6",
+  "source_license": "Uploader 星阳希 permits taking the source material. Original game art belongs to HoYoverse.",
+  "transform": "Keep only the six measured native 640×360 regions with 3-pixel padding. All other pixels cleared. No UID or account identifier.",
+  "padded_rectangles": [
+    [
+      533,
+      51,
+      617,
+      79
+    ],
+    [
+      17,
+      95,
+      82,
+      128
+    ],
+    [
+      365,
+      131,
+      386,
+      200
+    ],
+    [
+      303,
+      20,
+      337,
+      64
+    ],
+    [
+      296,
+      152,
+      344,
+      206
+    ],
+    [
+      311,
+      190,
+      330,
+      205
+    ]
+  ],
+  "frames": {
+    "3420": {
+      "raw_bgr_sha256": "456d108c1820879f5046d0327bae717d40212f783711b088b25bf2b34a4996af",
+      "fixture": "p5-3420.png",
+      "fixture_sha256": "2818a519c337f75ceb90d72e50c5ae68b92824a096b1b1b68de930753c9a29e8"
+    },
+    "3735": {
+      "raw_bgr_sha256": "d1228634b9b6316b0c54b674728a662af2b70ed3e51641678dfa13fc153dce87",
+      "fixture": "p5-3735.png",
+      "fixture_sha256": "5f02ed341cd92a575c89f298b9ec47bdd9e6f18e3147f422d4a5c3340c443f18"
+    },
+    "3763": {
+      "raw_bgr_sha256": "4e616df0eb0807fb7f5fd493a2285a399681d5722c4b2c68439d5f4033fca111",
+      "fixture": "p5-3763.png",
+      "fixture_sha256": "e00b08be0ac381fbbbc4b6b9feda11c0178833b3a289e660af4ca95ecc7a33d3"
+    },
+    "3779": {
+      "raw_bgr_sha256": "674a9b7db81e3af06c72dd9261915fc07643f3a59291a3d0e7b8a2bcab9109d9",
+      "fixture": "p5-3779.png",
+      "fixture_sha256": "1ebee1d0396e841b62aefdb8b3a6f4900c4053d4cdd8af5717aa545d42147413"
+    },
+    "3785": {
+      "raw_bgr_sha256": "f4bc2f1f51211421e4dbec0e72a3acdb56dc8e6f4bd8dc946586fdbaaaf3c526",
+      "fixture": "p5-3785.png",
+      "fixture_sha256": "d6fd92591cfa738d4e2ec83b7a93322360cf5c0f79229cbaf3a0af7e6d5f405d"
+    },
+    "3795": {
+      "raw_bgr_sha256": "925b5124f7599bb6b91f7ced031ba12a6c7d1f51a7083ea7f65562b0e5111b8b",
+      "fixture": "p5-3795.png",
+      "fixture_sha256": "5cd6bc6b9957992d964ee01b68537262cb6f0825e5f121b6b947f08c85aadaa1"
+    },
+    "3837": {
+      "raw_bgr_sha256": "07c225665d3b680f68bdb9bd60c04e81f39b604c5dd00f5cf5d2ee7c301fe78a",
+      "fixture": "p5-3837.png",
+      "fixture_sha256": "ae65f0e86655d3173c94394d923a02d48c4b740d733731edaaa654ab5d177e49"
+    },
+    "3842": {
+      "raw_bgr_sha256": "299780c8d5f18c29a207fb5e50be2879101b1d6f6166c8a5c5dc2b66ea5d32d3",
+      "fixture": "p5-3842.png",
+      "fixture_sha256": "afd0c56ce4e432a0d5ef030e39d2751e612fb220a6708ddab217ee478cc10b61"
+    },
+    "3844": {
+      "raw_bgr_sha256": "a47a58865ce38d4c981e592b267e82ee9b7518db76b73b1513a8e5a1aa157288",
+      "fixture": "p5-3844.png",
+      "fixture_sha256": "8e1881dd13d2e0a5563cca74b5fee79642d23aa3a02ba171620b2e501b5d8461"
+    },
+    "3855": {
+      "raw_bgr_sha256": "1e2ce20de74cc35cbab988c11923228dff2a29207ea8f1a66769bbe7ad33b951",
+      "fixture": "p5-3855.png",
+      "fixture_sha256": "df9bacc819085f2a9d1b2267f8c2b6d6f5c26406c108159434820d3d628a9221"
+    },
+    "3870": {
+      "raw_bgr_sha256": "d3824fd9398ce6e519067d4fce39eb9adc95e2fa89858904150f49a46fe8ecee",
+      "fixture": "p5-3870.png",
+      "fixture_sha256": "72cd1878b6647ae58166d8971af5e99eced4378a3cd3a2fd61dbbf5466eaa16d"
+    },
+    "3903": {
+      "raw_bgr_sha256": "9ec31810532e8bd30a16527bf06a55bd61793d5a41b18411e31c8efbb8cd5385",
+      "fixture": "p5-3903.png",
+      "fixture_sha256": "3910ea686bd48ddd02865737f10e15863159baa5a6d3d561f165d3da2f998346"
+    },
+    "3908": {
+      "raw_bgr_sha256": "a74228d0587129ec46face21faa73016c9362622ac9b1ed30256d5ee61f01519",
+      "fixture": "p5-3908.png",
+      "fixture_sha256": "b7a2c88e2556b06f90cec62aa38fabb8be20b3d19e42c29e03dbeaffc1a2c57b"
+    },
+    "3910": {
+      "raw_bgr_sha256": "6fdc84d36e8565d333a7f777b9c0ebb31d6c855ab3ecb8a8073978826b584e90",
+      "fixture": "p5-3910.png",
+      "fixture_sha256": "397cf2ba4d2f2d126db9fcf3c474506e25573a08479cc4ec14721a24895fde9e"
+    },
+    "3912": {
+      "raw_bgr_sha256": "2bab77bf8a985c107c20b432ced5c8c0c52f78403d2547b9750d00e2fc2808c8",
+      "fixture": "p5-3912.png",
+      "fixture_sha256": "7255568e3a9983fd169c89cd2867746c9295a429ab76bb2efb5223357a6f0c61"
+    },
+    "3930": {
+      "raw_bgr_sha256": "a91045038a67996e75c5f9738283c7ab5128d2b9d1d1f736039ec908fdde6cbe",
+      "fixture": "p5-3930.png",
+      "fixture_sha256": "26fdae7f539a8e6d73932471804825a054b4309f7723ffef24d2933504ac3c06"
+    },
+    "3966": {
+      "raw_bgr_sha256": "9e59d4ec6bd549f7cf9fea199290fc45872f1ed695a0bdb3b179224e062e24fd",
+      "fixture": "p5-3966.png",
+      "fixture_sha256": "2a89b62775122f73002b912bc82854bfae43b4de1ad3687b482231311ac8921d"
+    },
+    "3982": {
+      "raw_bgr_sha256": "f6d208ff4cb9bf7c9f2205f086a74f477db63d5274439b7b03a180c89f0b6e69",
+      "fixture": "p5-3982.png",
+      "fixture_sha256": "1e0db8078ee906d5177908a54d593b7845b03aacc2baf52d1065ef8a68d3fe77"
+    },
+    "4005": {
+      "raw_bgr_sha256": "1fd0253edae5aaf36b321f52ab8ad8a8d28d3980addfeb7634c4835085b1b9b7",
+      "fixture": "p5-4005.png",
+      "fixture_sha256": "a7e45612dbde75bae67a8f83f36e2c213655e9c384c2119e50fc352b0bd66d34"
+    },
+    "4044": {
+      "raw_bgr_sha256": "c990dbfa9150ea846b82101d87e23a4aa93904ab43cc3ae31013afc2b27c8afe",
+      "fixture": "p5-4044.png",
+      "fixture_sha256": "8b7b7864a4e5e574925e81fb898d8677338bfed940073777750d891c4261ef35"
+    },
+    "4068": {
+      "raw_bgr_sha256": "19adfef183ef10f363c43d6ab961307cef91d75747d67f970c73d7cebecf5288",
+      "fixture": "p5-4068.png",
+      "fixture_sha256": "9c060807276717b75b832346016053ba0ecd33e5764448fa2debcb59cf6f244b"
+    },
+    "4140": {
+      "raw_bgr_sha256": "75b1067591c58b81daf2d9cd14bda9c21def9841e31ecda88473bbb0b8e80e58",
+      "fixture": "p5-4140.png",
+      "fixture_sha256": "eed15874d28b3457b557efd6669ba1abc162cfc1ca6e728f28377e4c4e0f1575"
+    },
+    "7014": {
+      "raw_bgr_sha256": "fa2659fd95539d063169da8cc4c7eafa533a7bcdc69aef6df3b4ef8aa317287b",
+      "fixture": "p5-7014.png",
+      "fixture_sha256": "89585d87298e071277d3aeaa887dcdbd9beba6615db96309ef6682146f27ab41"
+    }
+  }
+}

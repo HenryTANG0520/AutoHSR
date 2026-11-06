@@ -9,6 +9,7 @@ import time
 from .currency_wars_identity import AccountNotObserved
 from .daily_event_claim import (ACTIVITY, OPERATION, _AGE, _QUANTITY_BY_DAY, _RETURN_CAPTURE_LIMIT, _VERSION,
                                 _pair, _require_fresh, _supported_day, bind_current_claim_frame, prepare_claim)
+from .daily_event_claim_fade import observed_return_fade
 from .models import AutomationError, Stopped, TaskResult
 from .storage import hold_read_sources, remove_owned_stage
 from .windows import GameWindow
@@ -158,19 +159,24 @@ class DailyEventClaim:
         popup = self._popup
         previous = popup[-1]
         waiting, returned = [], []
+        fade_waited = False
         self.record['stage'] = 'return_check'
         try:
             previous.guard()
             self._runner.emit(dict(type='daily_event_manual_close', message=MANUAL_CLOSE))
             for _ in range(_RETURN_CAPTURE_LIMIT):
-                self.context.sleep(_RETURN_DELAY if not returned else _FRAME_DELAY)
+                self.context.sleep(_FRAME_DELAY if returned or fade_waited else _RETURN_DELAY)
                 if time.monotonic() - before[0].captured_at >= _AGE:
                     break
                 frame = self._capture(snapshot, reader)
                 _pair((previous, frame), origin=before[-1])
-                if not returned and frame.page is None and frame.tickets == popup[-1].tickets:
+                if (not returned and not fade_waited and frame.page is None
+                        and frame.tickets == popup[-1].tickets):
                     waiting.append(frame)
                     self._popup = previous, frame
+                elif not returned and not fade_waited and observed_return_fade(before[-1], popup[-1], frame):
+                    waiting.append(frame)
+                    fade_waited = True
                 elif (frame.page is not None and frame.tickets is None and frame.button is None
                       and self._day in frame.page.claimed_days):
                     returned.append(frame)

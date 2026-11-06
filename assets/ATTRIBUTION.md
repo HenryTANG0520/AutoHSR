@@ -13,6 +13,8 @@
 | `activity-list-scrolled.png` | 两块保留区域 | `b3ae44449fab612b2a77d4416f597b246c2f003f100bed47ee319d4d772c194c` |
 | `claim-popup.png` | 两块保留区域 | `a0ada14aeaefc54e866172d87993ae8f84d27eece99f0edff12461c7d3c11970` |
 
+巡星之礼手动回页复放仍用同一 P5 640×360 原视频。23 份 PNG 各仅保留标题、侧栏、日卡分隔线、物品标记、票面及数标的六个像素框，边缘留 3 像素，其余清零。回放不含 UID 或账号信息。帧索引、原始与脱敏哈希、像素框及来源许可记在[淡出回放清单](../autohsr/tests/fixtures/daily_event_claim_fade/manifest.json)。
+
 ## 2026-11-07 奖励指南旅程热点
 
 素材取自星阳希公开的国服简中 4.6 活动实录 P5。使用上节同一 640×360、约 30 fps 播放源，视频 SHA-256 为 `8b81a95fa3f001175c3ff7d6193016824810c41ae9f058499d81ade79d3fb480`。两个模板从 233.8 秒的原解码 BGR 帧直接裁剪并编码 PNG，该帧 SHA-256 为 `fa2659fd95539d063169da8cc4c7eafa533a7bcdc69aef6df3b4ef8aa317287b`。裁剪为左闭右开像素框。游戏美术权利归 HoYoverse 及相应权利人，原视频归上传者及相应权利人。[P5 原片](https://www.bilibili.com/video/BV1JZaV6XEH3/?p=5)

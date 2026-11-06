@@ -14,6 +14,7 @@ import numpy as np
 
 from .challenge_pages import _clean, _inside, _overlaps
 from .currency_wars_identity import UID_COUNTEREVIDENCE, checked_account_key, installed_client
+from .daily_event_claim_fade import observed_return_fade
 from .daily_observe import EVENT_CLAIM_OPERATION as OPERATION
 from .daily_event_pages import OdysseyObservation, _CENTERS, _VERSION, _label, _pale_fraction, read_gift_of_odyssey
 from .models import AutomationError, Stopped, Token, normalize
@@ -542,7 +543,8 @@ class ClaimIntent:
             if (previous.scene is current.scene or np.may_share_memory(previous.image, current.image)
                     or previous.sequence + 1 != current.sequence or not previous.captured_at < current.captured_at):
                 raise AutomationError('巡星之礼回页观察的画面时序待核实。')
-        if (any(frame.tickets != quantity or frame.page is not None for frame in overlay)
+        stable_waiting = waiting[:-1] if waiting and observed_return_fade(origin, reward[-1], waiting[-1]) else waiting
+        if (any(frame.tickets != quantity or frame.page is not None for frame in reward + stable_waiting)
                 or any(frame.page is None or frame.tickets is not None for frame in returned)):
             raise AutomationError('巡星之礼单笔星轨专票弹窗或同卡返回待核对。')
         active_before = set(before[0].page.claimable_days).union(before[1].page.claimable_days)
