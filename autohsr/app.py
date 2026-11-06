@@ -2173,7 +2173,7 @@ class Context:
 class Runner:
     def __init__(self, settings: Settings, emit=None, *, new_battle_run=False, operation="daily",
                  du_runs=None, du_resume_active=False, du_periodic_rank=None, du_use_cassettes=False, du_until_points=False,
-                 du_periodic_rewards=False,
+                 du_periodic_rewards=False, du_weekly_reward=None,
                  currency_source_slot=3,currency_zone='back',currency_target_level=0,currency_start_from_lobby=False,
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
                  currency_configure=False, currency_wealth=None, currency_resume=False, weekly_plan=None, currency_strategy=None,
@@ -2204,8 +2204,13 @@ class Runner:
             raise ValueError('已有月下卡带选项仅用于独立差分领奖。')
         if type(du_periodic_rewards) is not bool or du_periodic_rewards and (operation != 'du_rewards' or du_use_cassettes):
             raise ValueError('周期积分领奖需要独立差分领奖，且与月下卡带互斥。')
+        if du_weekly_reward is not None:
+            from .du_weekly_rewards import WeeklyRewardHandoff
+            if type(du_weekly_reward) is not WeeklyRewardHandoff or not du_periodic_rewards or new_battle_run:
+                raise ValueError('周常差分领奖需要独立周期领奖和原积分来源。')
         self.du_use_cassettes = du_use_cassettes
         self.du_periodic_rewards = du_periodic_rewards
+        self.du_weekly_reward = du_weekly_reward
         if (type(use_power_plan) is not bool or type(new_power_plan) is not bool or new_power_plan and not use_power_plan
                 or use_power_plan and (operation!='daily' or not settings.battle)):
             raise ValueError('体力计划仅用于已选择刷本的日常入口，新目标须明确启用体力计划。')
@@ -2559,6 +2564,8 @@ class Runner:
     def checkpoint(self):
         self._control_checkpoint()
         require_followup_week()
+        if self.du_weekly_reward is not None:
+            self.du_weekly_reward.require_current()
         if self._overlay is not None:
             for message, level in self._overlay.drain_notices():
                 self.log(message, level)
@@ -2888,8 +2895,10 @@ class Runner:
                 detail = ('核对差分周期积分和已有奖励' if self.du_periodic_rewards
                           else '核对并领取已有差分红点奖励；不开始演算')
                 self.emit(dict(type='task', task='du_rewards', status='running', detail=detail))
-                result = run_rewards(context, use_cassettes=self.du_use_cassettes,
-                                     **(dict(periodic_only=True) if self.du_periodic_rewards else {}))
+                options = dict(periodic_only=True) if self.du_periodic_rewards else {}
+                if self.du_weekly_reward is not None:
+                    options['weekly_handoff'] = self.du_weekly_reward
+                result = run_rewards(context, use_cassettes=self.du_use_cassettes, **options)
                 self.report.results.append(result)
                 self.report.status = 'success' if result.status == 'ok' else 'partial'
                 self.report.failure_task = '' if result.status == 'ok' else 'du_rewards'

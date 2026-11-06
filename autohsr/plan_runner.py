@@ -11,7 +11,7 @@ import threading
 import uuid
 
 from .config import ROOT, SettingsError
-from .models import RunReport, Stopped, TaskResult
+from .models import AutomationError, RunReport, Stopped, TaskResult
 from .run_control import stop_requested
 from .storage import replace_file
 from .weekly_plan import CHINA, WeeklyGuard, weekly_slot
@@ -24,7 +24,7 @@ def _daily_tasks(settings):
 
 class PlanRunner:
     def __init__(self, settings, emit=None, *, new_battle_run=False, runner_factory=None, root=None, now=None, resume_weekly_currency=False,
-                 use_power_plan=False,new_power_plan=False,du_until_points=False):
+                 use_power_plan=False,new_power_plan=False,du_until_points=False,du_claim_weekly_rewards=False):
         from .app import Runner
         if (type(use_power_plan) is not bool or type(new_power_plan) is not bool or new_power_plan and not use_power_plan
                 or use_power_plan and (resume_weekly_currency or not settings.battle)):
@@ -37,7 +37,10 @@ class PlanRunner:
         if (type(du_until_points) is not bool or du_until_points and
                 (not settings.weekly_enabled or settings.weekly_mode != 'differential_universe')):
             raise ValueError('周期积分目标需要已启用的差分周常。')
+        if type(du_claim_weekly_rewards) is not bool or du_claim_weekly_rewards and not du_until_points:
+            raise ValueError('差分周常领奖需要明确开启本次周期积分目标。')
         self.du_until_points = du_until_points
+        self.du_claim_weekly_rewards = du_claim_weekly_rewards
         self.settings = replace(settings)
         if resume_weekly_currency:
             self.settings=replace(self.settings,assignments=False,battle=False,daily=False,mail=False,battlepass=False,
@@ -143,15 +146,73 @@ class PlanRunner:
             report.budget_scope='original_daily_run'
         self.emit(dict(type='plan_daily_result',report=daily,reused=reused))
 
-    def _run_weekly_du(self):
+    def _finish_weekly_du_rewards(self, guard, settings, weekly, identity, mark):
+        from .du_weekly_rewards import WeeklyRewardHandoff
+
+        report = self.report
+        info = report.weekly_plan
+        child = {}
+        info['score_rewards_receipt_state'] = 'needs_review'
+        try:
+            self._checkpoint()
+            if info['objective'] != 'points':
+                raise AutomationError('原固定局数周常已完成，本次缺少满额积分回执。')
+            identity.require_step(mark)
+            if not identity.has_step_proof(mark, run_dir=weekly['run_dir']):
+                raise AutomationError('差分积分子任务缺少本次账号证明。')
+            handoff = WeeklyRewardHandoff(guard.receipt)
+            with handoff.hold_goal():
+                previous = handoff.read_finished()
+                self._checkpoint()
+                handoff.require_current()
+                if previous is not None:
+                    info.update(score_rewards_verified=True, score_rewards_delivery_verified=True,
+                                score_rewards_home_verified=True, score_rewards_receipt_state='reused',
+                                score_rewards_receipt=str(handoff.path))
+                    self._weekly_result('already_complete', '已只读核对原差分积分、到账、返回和周领奖回执。')
+                    return
+                if guard.reused_report is not None:
+                    raise AutomationError('原积分目标已完成，缺少可复用的周领奖回执。')
+
+                reward_mark = identity.mark()
+                child = self._run(replace(settings, redemption_enabled=False), phase='weekly_rewards',
+                                  operation='du_rewards', du_periodic_rewards=True, du_weekly_reward=handoff)
+                info['children'].append(dict(operation='du_rewards', run_dir=child.get('run_dir', '')))
+                record = handoff.inspect_child(child)
+                if record is not None:
+                    info.update(score_rewards_delivery_verified=record.get('periodic_rewards_verified') is True,
+                                score_rewards_home_verified=bool(record.get('final_home_frames')))
+                self._checkpoint()
+                if record is None or child.get('status') != 'success' or child.get('report_saved') is not True:
+                    raise AutomationError(child.get('error') or '独立周期领奖或报告尚未完整核实。')
+                identity.require_step(reward_mark)
+                if not identity.has_step_proof(reward_mark, run_dir=child['run_dir']):
+                    raise AutomationError('独立周期领奖子任务缺少本次账号证明。')
+                handoff.publish(child, record, checkpoint=self._checkpoint, stopped=lambda: self.stop_requested)
+                info.update(score_rewards_verified=True, score_rewards_receipt_state='complete',
+                            score_rewards_receipt=str(handoff.path))
+                self._weekly_result('complete', '本周差分积分、到账、返回与周领奖回执均已核实。')
+        except Exception as error:
+            stopped = isinstance(error, Stopped) or self.stop_requested
+            report.status = 'stopped' if stopped else 'partial'
+            report.error = str(error)
+            report.safe_next = child.get('safe_next') or '核对独立周期领奖和原周回执。'
+            if stopped:
+                self.stop()
+                info['score_rewards_receipt_state'] = 'stopped'
+            self._weekly_result('needs_review', '原周常目标已完成，周期领奖收尾待核对。')
+
+    def _run_weekly_du(self, identity):
         self.emit(dict(type="task", task="weekly", status="running", detail="核对本周演算记录"))
-        guard = WeeklyGuard(self.root, self.settings, self.slot, until_points=self.du_until_points)
+        guard = WeeklyGuard(self.root, self.settings, self.slot, until_points=self.du_until_points,
+                            **(dict(strict_points_account=True) if self.du_claim_weekly_rewards else {}))
         maximum = guard.settings.weekly_runs
         weekly_settings = replace(self.settings, assignments=False, battle=False, daily=False,
                                   mail=False, battlepass=False, differential_universe_mode="periodic",
                                   differential_universe_runs=maximum,
                                   differential_universe_daily=False, differential_universe_save=False,
                                   differential_universe_rewards=False)
+        mark = identity.mark() if self.du_claim_weekly_rewards else None
         weekly = self._run(weekly_settings, phase="weekly", operation="differential_universe",
                            du_runs=maximum, weekly_plan=guard,
                            **(dict(du_until_points=True) if guard.until_points else {}))
@@ -182,9 +243,13 @@ class PlanRunner:
         state = guard.receipt.data["state"] if original is not None else guard.complete(weekly, checkpoint=self._checkpoint)
         if objective == "points":
             info["points_capped"] = state == "complete"
+        if self.du_claim_weekly_rewards:
+            info.update(goal_receipt_state=state, goal_receipt=str(guard.receipt.path))
         if state == "exhausted":
             report.status = "partial"
             self._weekly_result("exhausted", f"本周 {maximum} 局开局上限已用完，周期积分仍未满。")
+        elif self.du_claim_weekly_rewards:
+            self._finish_weekly_du_rewards(guard, weekly_settings, weekly, identity, mark)
         elif guard.already_complete:
             self._weekly_result("already_complete", "本周原演算目标已完成，已跳过。")
         elif objective == "points":
@@ -204,6 +269,9 @@ class PlanRunner:
                                  status="waiting", score_rewards_verified=False, children=[])
         if self.settings.weekly_mode == 'differential_universe':
             report.weekly_plan['objective'] = 'points' if self.du_until_points else 'fixed_runs'
+        if self.du_claim_weekly_rewards:
+            report.weekly_plan.update(score_rewards_requested=True, score_rewards_delivery_verified=False,
+                                      score_rewards_home_verified=False, score_rewards_receipt_state='not_started')
         from .workflow_lease import sequence_lease
         from .workflow_identity import sequence_identity
         scopes = ExitStack()
@@ -288,7 +356,7 @@ class PlanRunner:
                                         reason+('日常结果已保留。' if daily_reference is not None else '')+
                                         ('原目标已保留。' if data.get('loop_id') else ''))
             else:
-                self._run_weekly_du()
+                self._run_weekly_du(identity)
         except Stopped as exc:
             self.stop()
             report.status, report.error = "stopped", str(exc)

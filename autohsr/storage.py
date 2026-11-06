@@ -68,18 +68,26 @@ def file_revision(path: str | Path) -> tuple[int, int, int, int, int]:
         return metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns, change
 
 
-def replace_file(source, destination, *, before_replace=None, attempt_scope=nullcontext):
-    """Retry the rename, entering the optional scope for each attempt."""
+def replace_file(source, destination, *, before_replace=None, attempt_scope=nullcontext, exclusive=False):
+    """Retry publication under the optional scope, with no overwrite if exclusive."""
     source,destination=Path(source),Path(destination)
     for attempt in range(len(REPLACE_RETRY_DELAYS)+1):
         if before_replace is not None:
             before_replace()
         with attempt_scope():
             try:
-                source.replace(destination)
-                return
+                if not exclusive:
+                    source.replace(destination)
+                elif os.name == 'nt':
+                    source.rename(destination)
+                else:
+                    os.link(source, destination)
             except OSError as error:
                 sharing=isinstance(error,PermissionError) or getattr(error,'winerror',None) in (5,32,33)
                 if not sharing or attempt==len(REPLACE_RETRY_DELAYS):
                     raise
+            else:
+                if exclusive and os.name != 'nt':
+                    source.unlink(missing_ok=True)
+                return
         time.sleep(REPLACE_RETRY_DELAYS[attempt])

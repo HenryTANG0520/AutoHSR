@@ -131,9 +131,10 @@ def _overlay(scene):
 
 
 class RewardWorkflow:
-    def __init__(self,context,*,use_cassettes=False,periodic_only=False):
+    def __init__(self,context,*,use_cassettes=False,periodic_only=False,weekly_handoff=None):
         if (context.report.operation!='du_rewards' or type(use_cassettes) is not bool
-                or type(periodic_only) is not bool or periodic_only and use_cassettes):
+                or type(periodic_only) is not bool or periodic_only and use_cassettes
+                or weekly_handoff is not None and not periodic_only):
             raise AutomationError('独立差分领奖需要明确操作和布尔卡带授权。')
         self.c=context;self.epoch=context.runner.input_epoch
         self.run_dir=str(Path(context.report.run_dir).resolve(strict=True))
@@ -142,7 +143,12 @@ class RewardWorkflow:
             raise AutomationError('差分领奖当前窗口或输入代次未核实。')
         self.confidence=max(.85,context.settings.ocr_confidence)
         self.periodic_only = periodic_only
-        self.week = periodic.current_week() if periodic_only else None
+        self.weekly_handoff = weekly_handoff
+        if weekly_handoff is not None:
+            weekly_handoff.require_current()
+            self.week = weekly_handoff.week
+        else:
+            self.week = periodic.current_week() if periodic_only else None
         self.data=dict(schema=1,operation='du_rewards',status='running',rewards_verified=False,
             safe_to_restart=False,battle_started=False,use_cassettes=use_cassettes,input_epoch=self.epoch,
             window=self.hwnd,account_key=None,actions=[],claims=[],observations=[],obligation=None,
@@ -152,6 +158,8 @@ class RewardWorkflow:
         if periodic_only:
             self.data.update(requested_categories=[periodic.CATEGORY], game_week=self.week,
                              periodic_rewards_verified=False)
+        if weekly_handoff is not None:
+            self.data['weekly_points_source'] = deepcopy(weekly_handoff.scope)
         self.store=RewardStore(self.run_dir,self.data)
         context.report.du_rewards=self.data;context.du_rewards_workflow=self
         self.request=None;self.store.persist()
@@ -549,6 +557,8 @@ class RewardWorkflow:
         home = self.data['observations'][frames[-1]]['readback']
         if home['current'] != periodic.LIMIT or home['cap'] != periodic.LIMIT or not home['marked']:
             raise AutomationError('本入口需要已打开的差分主页、满额18000积分及对应左下红点。')
+        if self.weekly_handoff is not None:
+            self.weekly_handoff.require_account(scene, self.confidence)
         self.data.update(account_key=home['account'], home_frames=frames)
         self.store.persist()
         opened_home = periodic.home_control(scene, self.week, self.confidence)
@@ -574,16 +584,18 @@ class RewardWorkflow:
             return None
 
         scene = self._back(scene, 'home', returned)
+        self.data.update(remaining_categories=[] if success else [periodic.CATEGORY],
+                         final_home_frames=deepcopy(self.data['actions'][-1]['after']))
         self._fresh(scene)
         self.data.update(status='complete' if success else 'partial', safe_to_restart=True,
-                         rewards_verified=success, remaining_categories=[] if success else [periodic.CATEGORY],
-                         final_home_frames=deepcopy(self.data['actions'][-1]['after']))
+                         rewards_verified=success)
 
         def require_same_week():
             if periodic.current_week() != self.week:
                 raise AutomationError('差分周期领奖回执落盘前已跨周，保留原周领取与返回证据，结果待核对。')
 
         self.store.persist(before_replace=require_same_week)
+        require_same_week()
         return TaskResult('du_rewards', 'ok' if success else 'partial',
                           '已核实周期积分物品、原十档和差分主页返回。' if success
                           else '积分面板可领取状态未核实，已回到差分主页。')
@@ -655,5 +667,6 @@ class RewardWorkflow:
             raise
 
 
-def run_rewards(context, *, use_cassettes=False, periodic_only=False):
-    return RewardWorkflow(context,use_cassettes=use_cassettes,periodic_only=periodic_only).run()
+def run_rewards(context, *, use_cassettes=False, periodic_only=False, weekly_handoff=None):
+    return RewardWorkflow(context, use_cassettes=use_cassettes, periodic_only=periodic_only,
+                          weekly_handoff=weekly_handoff).run()

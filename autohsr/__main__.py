@@ -82,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--du-runs", type=int, help="差分宇宙局数，1～10；仅配合 --differential-universe")
     parser.add_argument('--du-until-points', action='store_true',
                         help='周期积分满额即停止。独立演算用 --du-runs，已启用的差分 --plan 用配置中的周常局数作为上限')
+    parser.add_argument('--du-claim-weekly-rewards', action='store_true',
+                        help='仅配合 --plan --du-until-points，在本次差分周积分满额回执保存后独立核对领取')
     parser.add_argument("--du-team", help="每次开局从预设编队选择此名称；默认哈哈哈哈")
     parser.add_argument("--du-mode", choices=('periodic','normal'), help="演算模式；默认 periodic 周期演算")
     parser.add_argument('--du-custom-stations',action=argparse.BooleanOptionalAction,default=None,
@@ -265,6 +267,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.du_until_points and args.differential_universe and args.du_runs is None:
         print(_json({'error': '--du-until-points 须配合 --du-runs 指定局数上限。'}), file=sys.stderr)
         return 2
+    if args.du_claim_weekly_rewards and not (args.plan and args.du_until_points):
+        print(_json({'error': '--du-claim-weekly-rewards 须配合 --plan --du-until-points。'}), file=sys.stderr)
+        return 2
     if args.du_periodic_rank is not None and not args.differential_universe:
         print(_json({"error": "--du-periodic-rank 仅用于 --differential-universe。"}), file=sys.stderr)
         return 2
@@ -444,6 +449,7 @@ def main(argv: list[str] | None = None) -> int:
             from .plan_runner import PlanRunner
             runner = PlanRunner(settings, emit, new_battle_run=args.new_battle_run,resume_weekly_currency=args.resume_weekly_currency,
                 **(dict(use_power_plan=True,new_power_plan=args.new_power_plan) if args.power_plan else {}),
+                **(dict(du_claim_weekly_rewards=True) if args.du_claim_weekly_rewards else {}),
                 **(dict(du_until_points=True) if args.du_until_points else {}))
         else:
             runner = Runner(settings, emit, new_battle_run=args.new_battle_run,

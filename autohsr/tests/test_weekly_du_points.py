@@ -22,13 +22,20 @@ from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.differential_universe import DifferentialUniverseWorkflow
 from autohsr.du_daily import account_key
+from autohsr.du_reward_store import NAME as REWARD_SESSION
+from autohsr.du_rewards_only import RewardWorkflow
 from autohsr.models import AutomationError, Scene, TaskResult
 from autohsr.plan_runner import PlanRunner
 from autohsr.tests.test_du_periodic_points import ACCOUNT, OTHER, token, with_account
+from autohsr.tests.test_du_periodic_rewards import points_home, points_panel, twice
+from autohsr.tests.test_du_rewards_only import overlay
 from autohsr.tests.test_du_team import fixture
 from autohsr.tests.test_weekly_plan import du_report
 from autohsr.weekly_plan import CHINA, WeeklyGuard, WeeklyReceipt, weekly_slot
 from autohsr.windows import Geometry
+
+
+CLAIM_WEEKLY = '--du-claim-weekly-rewards'
 
 
 class WeeklyDuPointsTests(unittest.TestCase):
@@ -74,7 +81,7 @@ class WeeklyDuPointsTests(unittest.TestCase):
             page = next(frames, None)
             if page is None:
                 raise AutomationError('synthetic capture sequence exhausted')
-            return Scene(list(page.tokens), image, geometry)
+            return Scene(list(page.tokens), image if page.image is None else page.image, geometry)
 
         def click(x, y, geometry, *, before_send=None):
             if before_send is not None:
@@ -100,7 +107,9 @@ class WeeklyDuPointsTests(unittest.TestCase):
             stack.enter_context(patch('autohsr.plan_runner.ROOT', self.root))
             stack.enter_context(patch('autohsr.weekly_plan.datetime', Clock))
             stack.enter_context(patch('autohsr.du_periodic_points.local_now', lambda: self.now))
-            for module in ('app', 'differential_universe', 'du_periodic_points', 'workflow_identity'):
+            stack.enter_context(patch('autohsr.du_periodic_rewards.local_now', lambda: self.now))
+            for module in ('app', 'differential_universe', 'du_periodic_points', 'du_periodic_rewards',
+                           'du_rewards_only', 'workflow_identity'):
                 stack.enter_context(patch(f'autohsr.{module}.time', clock))
             stack.enter_context(patch('autohsr.app.find_game', return_value=window))
             stack.enter_context(patch('autohsr.app.Vision', return_value=vision))
@@ -129,6 +138,302 @@ class WeeklyDuPointsTests(unittest.TestCase):
     def receipt(self):
         slot = weekly_slot(self.settings, self.now)
         return WeeklyReceipt(self.runs, account_key(self.home()), slot).path
+
+    def reward_receipt(self):
+        goal = self.receipt()
+        return goal.parent / 'periodic-rewards' / goal.name
+
+    def reward_frames(self, *, account=ACCOUNT):
+        def page_in_week(scene):
+            fields = [replace(value, text=value.text.replace('6天18小时', '2天18小时'))
+                      for value in scene.tokens if not value.text.startswith('UID')]
+            return Scene([*fields, account], scene.image)
+
+        ready = page_in_week(points_home(True))
+        return [ready, ready, *twice(ready), *twice(page_in_week(points_panel())), *twice(overlay()),
+                *twice(page_in_week(points_panel(claimed=True))), *twice(page_in_week(points_home(False)))]
+
+    @contextmanager
+    def reward_runtime(self, frames, *, before_reward_send=lambda: None, native_submit=lambda: None):
+        with self.runtime(frames) as (window, starts):
+            raw = windows.GameWindow.__new__(windows.GameWindow)
+            raw.guard = lambda _expected=None: self.geometry
+            raw.emergency_pressed = lambda: False
+            original_click = window.click.side_effect
+            batches = []
+
+            def send(size, *_):
+                native_submit()
+                batches.append(size)
+                return size
+
+            def click(x, y, geometry, *, before_send=None, before_submit=None):
+                if before_submit is None:
+                    return original_click(x, y, geometry, before_send=before_send)
+                # The last F10 query follows authorization and the foreground
+                # guard, and precedes the final capture/week checks.
+                window.emergency_pressed.side_effect = before_reward_send
+                return raw.click(x, y, geometry, before_submit=before_submit)
+
+            native = SimpleNamespace(SendInput=send, MapVirtualKeyW=lambda *_: 1,
+                                     GetSystemMetrics=lambda i: {76:0, 77:0, 78:320, 79:180}[i])
+            window.click.side_effect = click
+            window.key.side_effect = raw.key
+            with patch.object(windows, 'user32', native):
+                yield starts, batches
+
+    def test_opt_in_zero_run_claim_and_read_only_same_week_reuse(self):
+        self.settings = replace(self.settings, differential_universe_station_custom=True,
+                                differential_universe_station_reroll=True)
+        with self.reward_runtime([self.home()] * 5 + self.reward_frames()) as (starts, sends):
+            code, report = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual(code, 0, report.get('error'))
+        self.assertEqual((starts, sends), ([], [3, 3, 3, 1, 1]))
+        summary = report['weekly_plan']
+        self.assertTrue(summary['points_capped'])
+        self.assertEqual(summary['goal_receipt_state'], 'complete')
+        self.assertTrue(summary['score_rewards_verified'])
+        self.assertTrue(summary['score_rewards_delivery_verified'])
+        self.assertTrue(summary['score_rewards_home_verified'])
+        self.assertEqual(summary['score_rewards_receipt_state'], 'complete')
+        self.assertEqual(summary['completed_runs'], 0)
+        paths = (self.receipt(), self.reward_receipt(), self.runs / REWARD_SESSION)
+        originals = [path.read_bytes() for path in paths]
+        reward = json.loads(originals[1])
+        self.assertEqual(reward['source']['receipt_sha256'], hashlib.sha256(originals[0]).hexdigest())
+        self.assertEqual(reward['journal_sha256'], hashlib.sha256(originals[2]).hexdigest())
+
+        # A later standalone native run may replace the canonical pointer.
+        # The weekly receipt references the original journal, not that pointer.
+        (self.runs / REWARD_SESSION).unlink()
+        with self.reward_runtime([self.home()] * 3) as (starts, sends):
+            code, replay = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual(code, 0, replay.get('error'))
+        self.assertEqual((starts, sends), ([], []))
+        self.assertEqual(replay['weekly_plan']['score_rewards_receipt_state'], 'reused')
+        self.assertEqual([path.read_bytes() for path in paths[:2]], originals[:2])
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows sharing locks')
+    def test_win_then_claim_holds_all_original_goal_sources_at_native_send(self):
+        goal = self.receipt()
+        sources = []
+        denied = []
+
+        def try_write_at_send():
+            if sources:
+                return
+            original = json.loads(goal.read_bytes())
+            sources.extend([goal, Path(original['report']), Path(original['ledger']['path']),
+                            *map(Path, original['evidence'])])
+            for path in sources:
+                try:
+                    with path.open('r+b'):
+                        pass
+                except PermissionError:
+                    denied.append(path)
+
+        with self.reward_runtime(self.win_frames(18000) + self.reward_frames(),
+                                 native_submit=try_write_at_send) as (starts, sends):
+            code, report = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual(code, 0, report.get('error'))
+        self.assertEqual((len(starts), sends), (1, [3, 3, 3, 1, 1]))
+        self.assertEqual(denied, sources)
+        self.assertTrue(sources)
+        self.assertEqual(report['weekly_plan']['completed_runs'], 1)
+
+    def test_old_points_only_receipt_does_not_start_a_reward_child(self):
+        with self.runtime([self.home()] * 5):
+            code, _ = self.cli()
+        self.assertEqual(code, 0)
+        raw = self.receipt().read_bytes()
+        with self.reward_runtime([self.home()] * 3) as (starts, sends):
+            code, report = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual((code, starts, sends), (1, [], []))
+        self.assertEqual(self.receipt().read_bytes(), raw)
+        self.assertTrue(report['weekly_plan']['points_capped'])
+        self.assertEqual(len(report['weekly_plan']['children']), 1)
+        self.assertFalse(self.reward_receipt().exists())
+
+    def test_two_different_uid_candidates_cannot_relabel_a_weekly_reward_receipt(self):
+        with self.reward_runtime([self.home()] * 5 + self.reward_frames()):
+            code, report = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual(code, 0, report.get('error'))
+        receipt = self.reward_receipt()
+        original = receipt.read_bytes()
+        # The strict reader can see OTHER below y=.94, while the legacy
+        # reader would read ACCOUNT farther right and below y=.95.
+        mixed = self.home(account=replace(OTHER, box=(.02, .942, .13, .952)))
+        mixed.tokens.append(replace(ACCOUNT, box=(.25, .959, .32, .983)))
+        with self.reward_runtime([self.home(account=OTHER)] * 2 + [mixed]) as (starts, sends):
+            code, rejected = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual((code, starts, sends), (1, [], []))
+        self.assertFalse(rejected['weekly_plan']['score_rewards_verified'])
+        self.assertEqual(receipt.read_bytes(), original)
+
+    def test_account_change_at_reward_child_cannot_open_panel(self):
+        with self.reward_runtime([self.home()] * 5 + self.reward_frames(account=OTHER)) as (starts, sends):
+            code, report = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual((code, starts, sends), (1, [], []))
+        self.assertTrue(report['weekly_plan']['points_capped'])
+        self.assertFalse(report['weekly_plan']['score_rewards_verified'])
+        self.assertTrue(report['execution_identity']['account_changed'])
+        self.assertFalse(self.reward_receipt().exists())
+
+    def test_goal_image_changed_after_receipt_blocks_reward_before_child(self):
+        complete = WeeklyGuard.complete
+
+        def change(guard, report, **kwargs):
+            result = complete(guard, report, **kwargs)
+            source = next(iter(guard.receipt.data['evidence']))
+            Path(source).write_bytes(b'synthetic source replacement')
+            return result
+
+        with (self.reward_runtime([self.home()] * 5) as (starts, sends),
+              patch.object(WeeklyGuard, 'complete', change)):
+            code, report = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual((code, starts, sends), (1, [], []))
+        self.assertEqual(len(report['weekly_plan']['children']), 1)
+        self.assertEqual(json.loads(self.receipt().read_bytes())['state'], 'complete')
+        self.assertFalse((self.runs / REWARD_SESSION).exists())
+
+    def test_original_week_checked_after_last_f10_query_before_send(self):
+        original = self.receipt()
+
+        def cross_week():
+            self.now = datetime(2026, 11, 9, 4, tzinfo=CHINA)
+            return False
+
+        with self.reward_runtime([self.home()] * 5 + self.reward_frames(),
+                                 before_reward_send=cross_week) as (starts, sends):
+            code, report = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual((code, starts, sends), (1, [], []))
+        self.assertTrue(report['weekly_plan']['points_capped'])
+        self.assertFalse(report['weekly_plan']['score_rewards_delivery_verified'])
+        self.assertEqual(json.loads(original.read_bytes())['state'], 'complete')
+        self.assertFalse(self.receipt().exists())
+
+    def test_late_f10_stops_the_weekly_claim_packet(self):
+        checks = 0
+
+        def f10():
+            nonlocal checks
+            checks += 1
+            return checks == 2
+
+        with self.reward_runtime([self.home()] * 5 + self.reward_frames(),
+                                 before_reward_send=f10) as (starts, sends):
+            code, report = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual((code, starts, sends, checks), (1, [], [3], 2))
+        self.assertEqual(report['status'], 'stopped')
+        summary = report['weekly_plan']
+        self.assertTrue(summary['points_capped'])
+        self.assertFalse(summary['score_rewards_delivery_verified'])
+        self.assertFalse(self.reward_receipt().exists())
+        native = json.loads((self.runs / REWARD_SESSION).read_bytes())
+        self.assertEqual([step['status'] for step in native['actions']], ['verified', 'unknown'])
+        self.assertEqual(native['actions'][-1]['request']['intent'], 'du_reward_periodic_claim')
+
+    def test_stop_after_delivery_preserves_original_goal_and_blocks_replay(self):
+        back = RewardWorkflow._back
+
+        def stop(flow, scene, destination, check=None):
+            if flow.data.get('periodic_rewards_verified') is True:
+                flow.c.runner.stop()
+            return back(flow, scene, destination, check)
+
+        with (self.reward_runtime([self.home()] * 5 + self.reward_frames()) as (starts, sends),
+              patch.object(RewardWorkflow, '_back', stop)):
+            code, report = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual((code, starts, sends), (1, [], [3, 3, 3]))
+        self.assertEqual(report['status'], 'stopped')
+        summary = report['weekly_plan']
+        self.assertTrue(summary['points_capped'])
+        self.assertTrue(summary['score_rewards_delivery_verified'])
+        self.assertFalse(summary['score_rewards_home_verified'])
+        self.assertEqual(summary['score_rewards_receipt_state'], 'stopped')
+        self.assertFalse(self.reward_receipt().exists())
+        goal, native = self.receipt(), self.runs / REWARD_SESSION
+        original = goal.read_bytes(), native.read_bytes()
+        with self.reward_runtime([]) as (starts, sends):
+            code, retry = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual((code, starts, sends), (1, [], []))
+        self.assertIn('待核对', retry['error'])
+        self.assertEqual((goal.read_bytes(), native.read_bytes()), original)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows sharing retry')
+    def test_reward_week_receipt_rename_retry_preserves_delivery_and_home(self):
+        goal, receipt = self.receipt(), self.reward_receipt()
+        rename_path = Path.rename
+        attempted = []
+
+        def cross(source, destination):
+            if Path(destination) == receipt:
+                attempted.append(destination)
+                self.now = datetime(2026, 11, 9, 4, tzinfo=CHINA)
+                raise PermissionError('synthetic sharing violation')
+            return rename_path(source, destination)
+
+        with (self.reward_runtime([self.home()] * 5 + self.reward_frames()) as (starts, sends),
+              patch.object(Path, 'rename', cross)):
+            code, report = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual((code, starts, sends), (1, [], [3, 3, 3, 1, 1]))
+        self.assertEqual(attempted, [receipt])
+        summary = report['weekly_plan']
+        self.assertTrue(summary['points_capped'])
+        self.assertTrue(summary['score_rewards_delivery_verified'])
+        self.assertTrue(summary['score_rewards_home_verified'])
+        self.assertFalse(summary['score_rewards_verified'])
+        self.assertEqual(json.loads(goal.read_bytes())['state'], 'complete')
+        self.assertFalse(receipt.exists())
+
+    def test_native_receipt_retry_crossing_week_preserves_verified_home_but_blocks_replay(self):
+        self.assert_native_receipt_rollover(sharing_conflict=True)
+
+    def test_native_receipt_rename_return_after_reset_also_keeps_original_result_unknown(self):
+        self.assert_native_receipt_rollover(sharing_conflict=False)
+
+    def assert_native_receipt_rollover(self, *, sharing_conflict):
+        goal, weekly_receipt = self.receipt(), self.reward_receipt()
+        canonical = self.runs / REWARD_SESSION
+        replace_path = Path.replace
+        attempted = []
+
+        def cross(source, destination):
+            if Path(destination) == canonical and json.loads(source.read_bytes())['status'] == 'complete':
+                attempted.append(destination)
+                if not sharing_conflict:
+                    published = replace_path(source, destination)
+                self.now = datetime(2026, 11, 9, 4, tzinfo=CHINA)
+                if sharing_conflict:
+                    raise PermissionError('synthetic sharing violation on canonical receipt')
+                return published
+            return replace_path(source, destination)
+
+        with (self.reward_runtime([self.home()] * 5 + self.reward_frames()) as (starts, sends),
+              patch.object(Path, 'replace', cross)):
+            code, report = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual((code, starts, sends), (1, [], [3, 3, 3, 1, 1]))
+        self.assertEqual(attempted, [canonical])
+        self.assertEqual(report['status'], 'partial')
+        summary = report['weekly_plan']
+        self.assertTrue(summary['points_capped'])
+        self.assertTrue(summary['score_rewards_delivery_verified'])
+        self.assertTrue(summary['score_rewards_home_verified'])
+        self.assertFalse(summary['score_rewards_verified'])
+        self.assertFalse(weekly_receipt.exists())
+        goal_bytes, reward_bytes = goal.read_bytes(), canonical.read_bytes()
+        self.assertEqual(json.loads(goal_bytes)['state'], 'complete')
+        record = json.loads(reward_bytes)
+        self.assertEqual(record['status'], 'unknown')
+        self.assertEqual(record['game_week'], '2026-11-02')
+        self.assertFalse(record['safe_to_restart'])
+        self.assertEqual(Path(record['journal']).read_bytes(), reward_bytes)
+        self.assertEqual(record['actions'][-1]['after'], record['final_home_frames'])
+        with self.reward_runtime([]) as (starts, sends):
+            code, retry = self.cli(extra=(CLAIM_WEEKLY,))
+        self.assertEqual((code, starts, sends), (1, [], []))
+        self.assertIn('待核对', retry['error'])
+        self.assertEqual((goal.read_bytes(), canonical.read_bytes()), (goal_bytes, reward_bytes))
 
     def test_full_points_uses_two_captures_zero_starts_and_same_week_dedupe(self):
         with self.runtime([self.home()] * 5) as (window, sent):
@@ -606,3 +911,10 @@ class WeeklyDuPointsTests(unittest.TestCase):
                 self.assertEqual(code, 2)
                 self.assertIn('error', error)
                 native.assert_not_called()
+
+    def test_claim_flag_requires_explicit_du_points_plan(self):
+        with patch('autohsr.plan_runner.PlanRunner') as native:
+            self.assertEqual(self.cli(points=False, extra=(CLAIM_WEEKLY,))[0], 2)
+            self.settings = replace(self.settings, weekly_mode='currency_wars')
+            self.assertEqual(self.cli(extra=(CLAIM_WEEKLY,))[0], 2)
+            native.assert_not_called()

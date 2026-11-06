@@ -277,3 +277,10 @@ class PeriodicRewardTests(unittest.TestCase):
         self.assertFalse(receipt['rewards_verified'])
         with self.assertRaises(AutomationError):
             preflight(root)
+        self.assertEqual(store.checked_run(root, receipt['run_dir']), receipt)
+        for index in receipt['final_home_frames']:
+            receipt['observations'][index]['readback']['game_week'] = '2026-11-02'
+        receipt['digest'] = digest({key: value for key, value in receipt.items() if key != 'digest'})
+        Path(receipt['journal']).write_bytes(encoded(receipt))
+        with self.assertRaisesRegex(AutomationError, '原主页、同周面板或返回范围不符'):
+            store.checked_run(root, receipt['run_dir'])

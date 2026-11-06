@@ -65,6 +65,12 @@ class StorageTests(unittest.TestCase):
         rename.assert_called_once();sleep.assert_not_called()
         self.assertEqual(self.destination.read_text(),'old')
 
+    def test_exclusive_publication_cannot_replace_an_existing_destination(self):
+        with self.assertRaises(FileExistsError):
+            replace_file(self.source, self.destination, exclusive=True)
+        self.assertEqual(self.destination.read_text(), 'old')
+        self.assertEqual(self.source.read_text(), 'new')
+
     @unittest.skipUnless(os.name=='nt','Windows sharing semantics')
     def test_read_hold_blocks_live_mapping_writer_and_replacement_until_exit(self):
         with self.destination.open('r+b') as writer:

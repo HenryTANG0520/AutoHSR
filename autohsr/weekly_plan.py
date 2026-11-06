@@ -29,6 +29,21 @@ def _json_bytes(value):
     return json.dumps(value, ensure_ascii=False, indent=2).replace("\n", os.linesep).encode("utf-8")
 
 
+def claim_account_key(scene, confidence):
+    from .currency_wars_identity import checked_account_key
+    from .du_daily import account_key
+    from .du_periodic_points import GuidePointsUnverified, _account
+
+    # The week ledger and the native sequence use different fingerprint
+    # formats. Admit only one UID candidate across both readers' regions.
+    try:
+        _account(scene, confidence, allow_hidden=False)
+        checked_account_key(scene, confidence)
+        return account_key(scene)
+    except (AutomationError, GuidePointsUnverified) as error:
+        raise AutomationError("差分周常领奖未核实唯一的当前账号。") from error
+
+
 def validate_schedule(settings):
     from .config import SettingsError
     if type(settings.weekly_enabled) is not bool:
@@ -337,12 +352,15 @@ class WeeklyReceipt:
 class WeeklyGuard:
     """Called inside the ordinary DU Runner's input lock, before any new run."""
 
-    def __init__(self, root, settings, slot, *, until_points=False):
+    def __init__(self, root, settings, slot, *, until_points=False, strict_points_account=False):
         if (type(until_points) is not bool or until_points and
                 (settings.weekly_enabled is not True or settings.weekly_mode != "differential_universe")):
             raise ValueError("周期积分目标需要已启用的差分周常。")
+        if type(strict_points_account) is not bool or strict_points_account and not until_points:
+            raise ValueError("周期领奖账号绑定需要差分周积分目标。")
         self.root, self.settings, self.slot = root, replace(settings), slot
         self.until_points = until_points
+        self.strict_points_account = strict_points_account
         self.receipt = None
         self.already_complete = False
         self._ledger = None
@@ -369,7 +387,8 @@ class WeeklyGuard:
         context.checkpoint()
         scene = context.snapshot()
         try:
-            account = account_key(scene)
+            account = (claim_account_key(scene, max(.85, context.settings.ocr_confidence))
+                       if self.strict_points_account else account_key(scene))
         except AutomationError as exc:
             raise AutomationError("周常未核实当前账号；未开始演算。") from exc
         self.require_current_week()

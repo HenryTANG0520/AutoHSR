@@ -107,7 +107,10 @@ def _checked(root, data, *, sources=False):
              and data['actions']==[] and data['claims']==[] and data.get('obligation') is None
              and data.get('rewards_verified') is False
              and (not periodic_only or data['periodic_rewards_verified'] is False))
-    if data.get('safe_to_restart') is True and not aborted:
+    # A periodic return can be fully observed before publication fails.
+    # Validate the original chain even when the record must stay unknown.
+    if (data.get('safe_to_restart') is True and not aborted
+            or periodic_only and 'final_home_frames' in data):
         if not re.fullmatch('[0-9a-f]{64}',str(data.get('account_key',''))):
             raise AutomationError('差分领奖没有当前账号来源。')
         final=pair(data['final_home_frames'],kind='home')
@@ -196,6 +199,8 @@ def _checked_periodic(data, pair, final):
     from . import du_periodic_rewards as periodic
 
     success = data['periodic_rewards_verified']
+    restartable = data.get('safe_to_restart')
+    expected_status = ('complete' if success else 'partial') if restartable else 'unknown'
     scope = dict(account=data['account_key'], current=periodic.LIMIT, cap=periodic.LIMIT,
                  game_week=data['game_week'])
     actions = data['actions']
@@ -203,8 +208,8 @@ def _checked_periodic(data, pair, final):
         periodic.OPEN, periodic.BACK]
     if ([action['request']['intent'] for action in actions] != expected
             or any(action['status'] != 'verified' for action in actions)
-            or data['status'] != ('complete' if success else 'partial')
-            or data.get('rewards_verified') is not success
+            or type(restartable) is not bool or data['status'] != expected_status
+            or data.get('obligation') is not None or data.get('rewards_verified') is not (success and restartable)
             or data.get('remaining_categories') != ([] if success else [periodic.CATEGORY])):
         raise AutomationError('差分周期领奖动作、回执或最终状态不符。')
     home = pair(data['home_frames'], kind='home')
@@ -246,6 +251,18 @@ def preflight(root):
         return deepcopy(data)
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as error:
         raise AutomationError('差分领奖原记录或证据未核实，未重放。') from error
+
+
+def checked_run(root, directory):
+    """Read this original run without treating it as permission to restart."""
+    root, directory = Path(root).resolve(strict=True), Path(directory).resolve(strict=True)
+    path = directory / 'du-rewards.json'
+    if directory.parent != root or path.resolve(strict=True) != path:
+        raise AutomationError('差分领奖原账本不在本次运行目录。')
+    record = _checked(root, read(path), sources=True)
+    if record['journal'] != str(path):
+        raise AutomationError('差分领奖原账本与当前子报告来源不同。')
+    return record
 
 
 class RewardStore:
