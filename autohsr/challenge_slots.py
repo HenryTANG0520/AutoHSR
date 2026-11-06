@@ -277,7 +277,7 @@ def _has_regular_rim(arcs):
     return min(arcs) >= 3 and sum(arcs) >= 23
 
 
-def _read_regular_slot(image, x, y, position, arcs):
+def _read_regular_slot(image, x, y, position, arcs, *, empty_sector_limit=18):
     width, height = _REFERENCE_SIZE
     slot = _unknown_slot(position, ((x - 17.5) / width, (y - 17.5) / height,
                                     (x + 17.5) / width, (y + 17.5) / height))
@@ -290,7 +290,7 @@ def _read_regular_slot(image, x, y, position, arcs):
     head, body, gap = (float(gray[part].mean()) for part in (_GLYPH_HEAD, _GLYPH_BODY, _GLYPH_GAP))
     if (background <= 65 and abs(head - body) <= 28 and min(head, body) - background >= 30
             and min(head, body) - gap >= 12):
-        if max(ranges) > 18:
+        if max(ranges) > empty_sector_limit:
             return slot
         return dict(slot, occupancy='empty', evidence=dict(evidence, source='empty_slot_glyph',
                     glyph_luma=[head, body, gap, background]))

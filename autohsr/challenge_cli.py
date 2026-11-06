@@ -20,6 +20,8 @@ def add_arguments(mode, parser):
     mode.add_argument('--challenge-check', type=Path, help='离线核对高难双队与层数计划；不访问游戏或保存配置')
     mode.add_argument('--challenge-prepare', action='store_true', help='核实高难首个目标层备战，末日幻影只读观察当前前台页面')
     mode.add_argument('--challenge-result', action='store_true', help='只读核对前台高难结算反馈，保存本次独立证据')
+    mode.add_argument('--challenge-preset-observe', action='store_true',
+                      help='只读核对已打开的常规混沌十层预设页与可见成员')
     mode.add_argument('--challenge-lobby', choices=tuple(MODE_LIMITS), help='从当前指南导航到指定高难主页')
     mode.add_argument('--team-preset-calibration', action='store_true',
                       help='从当前前台手机核实后打开编队一次，保存编队与预设校准证据')
@@ -48,6 +50,10 @@ def dispatch(args, parser, raw_args):
         allowed = {'--challenge-result', '--config', '--game-path'}
         if any(token.startswith('--') and token.split('=')[0] not in allowed for token in raw_args):
             parser.error('高难结算只读观察仅接受配置与游戏路径，不能混入其他操作。')
+    if args.challenge_preset_observe:
+        allowed = {'--challenge-preset-observe', '--config', '--game-path'}
+        if any(token.startswith('--') and token.split('=')[0] not in allowed for token in raw_args):
+            parser.error('高难预设只读观察仅接受配置与游戏路径。')
     if args.challenge_prepare:
         allowed = {'--challenge-prepare', '--challenge-plan', '--config', '--game-path',
                    '--notify', '--no-notify', '--notify-profile'}

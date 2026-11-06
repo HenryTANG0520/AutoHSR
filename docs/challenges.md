@@ -4,9 +4,9 @@
 
 用户已明确允许仅这三种高难按明确角色名单编双队，见[开发约定](../AGENTS.md)。日常、差分和饰品等既有预设规则继续保留。配置中的明确名单不证明角色已拥有、解锁、可用或实际入队；本轮原生流程尚不选择角色。
 
-2026-11-01用户提供队伍预设名及强度顺序：“哈哈哈哈 → 记忆 → 组一辈子列车 → 神主日”，越左越强。此处记录为后续选队偏好，不把预设名当成四名角色或猜测成员；当前`ChallengePlan`仍要求两队各四名明确角色。尚待核实这些预设的实际成员、形态、两队是否重复、可用及完整入队反馈，再接入高难执行。没有据此改写已保存配置或启动游戏。
+2026-11-01用户提供队伍预设名及强度顺序：“哈哈哈哈 → 记忆 → 组一辈子列车 → 神主日”，越左越强。当前 `ChallengePlan` 仍要求两队各四名明确角色。当前预设名称与头像的逐位证据见[常规混沌十层预设观察](#常规混沌十层预设观察)，实际可用、双队无重复与入队反馈须在备战时独立核实。
 
-2026-10-23 的脱敏饰品回放可核实历史「哈哈哈哈」已启用，四人为火花、爻光、银狼LV.999、真珠。「记忆」也有四个可见头像，目前只达到遐蝶与缇宝两名历史候选的模板门槛。四队当前成员、实际可用状态和高难入队仍需在本次校准中核对。[历史启用画面](../autohsr/tests/fixtures/du_runtime/planar_preset_enabled.png) · [预设历史记录](differential-universe.md)
+2026-10-23 的脱敏饰品回放可核实历史「哈哈哈哈」已启用，四人为火花、爻光、银狼LV.999、真珠。「记忆」也有四个可见头像，其中遐蝶与缇宝达到当时的模板门槛。[历史启用画面](../autohsr/tests/fixtures/du_runtime/planar_preset_enabled.png) · [预设历史记录](differential-universe.md)
 
 ## 明确计划
 
@@ -47,11 +47,12 @@
 
 ## CLI与原生范围
 
-[独立 CLI](../autohsr/challenge_cli.py)提供计划预览、主页导航、有限备战和结算观察。
+[独立 CLI](../autohsr/challenge_cli.py)提供计划预览、主页导航、预设观察、有限备战和结算观察。
 
 ```powershell
 python -m autohsr --challenge-check .\my-challenge.json
 python -m autohsr --challenge-lobby apocalyptic_shadow
+python -m autohsr --challenge-preset-observe
 python -m autohsr --challenge-prepare --challenge-plan .\my-challenge.json
 python -m autohsr --challenge-result
 ```
@@ -79,6 +80,14 @@ python -m autohsr --challenge-result
 「物竞天择」的已校准层图在同屏分开记录层号、三枚灰星与晶体、锁定字样及三角框。11 的亮圆环仍可与「未解锁」同屏。圆环只作为可见图形保存，当前选中层保留未知。08、09 的 `available` 保留未知，11、12 为锁定。整屏漏读 11 时，仅可在该锁定字样上方用独立数字裁片补读。[字段与取证](../autohsr/tests/fixtures/challenge_chaos_map_4_6.json)
 
 4.6.0 实机校准在「10」文字框中心单击一次并进入「物竞天择其十」。正式备战入口只在本期相符地图、可读安装版本、明确双队计划和两张连续同账号同窗画面下提交这次点击。发送前持有安装配置、两份主页原图和待发送记录，核对焦点、F9／F10、代次与时效。请求其他层或版本未核实可获得 `page_observed`，当前备战待核实。发送后需两张新鲜同层图，分别核对标题笔画、两个编队页签、两个节点数字、对应的建议属性和八个圆位。可见圆位只证明备战布局，队伍身份与入槽状态另行核对。最终报告复核输入和到页证据，未知点击保留原记录。[验证](../VALIDATION.md#2026-11-06-常规混沌第十层备战)
+
+### 常规混沌十层预设观察
+
+`--challenge-preset-observe` 读取已在前台的 4.6「物竞天择其十」编队页。请打开左侧「预设编队」，每次滚动到新位置后独立运行。此入口只接受 `--config` 和 `--game-path` 作为可选参数，零游戏输入。仍在「角色列表」时记录 `role_list_observed`，取得同账号、同窗、同代次的相邻双帧才核实当前页签。核实结果为 `preset_tab_observed`，页签、窗口、账号或来源无法配对时保留 `unknown`。[识别与入口](../autohsr/challenge_preset_page.py) · [回执发布](../autohsr/challenge_preset_observe.py)
+
+`report.json` 中的 `challenge.visible_presets` 以当前可见的完整偏好名分行，每行按左至右记录四槽。每槽分别核对等级字框与同位完整头像，头像沿用固定 105 个原件、0.96 门槛及歧义检查。两帧同名、同槽且资产身份一致时保存 `portrait_asset_id` 与目录显示名，其余留空。两帧的原截图名、SHA-256、采集序号与定位框放在 `challenge.evidence`，发布前重新核对双帧、账号和原件。
+
+右侧备战槽位独立记录。只有两个队各四槽都在两帧读到圆环及空位符号，才发布 `eight_slots_empty=true`。头像原件和等级用于核对计划候选的身份。角色可用、预设应用、双队完整入槽及出战各需独立反馈。[当前四队读数与验证](../VALIDATION.md#2026-11-06-常规混沌十层预设观察)
 
 ## 页面与证据
 
