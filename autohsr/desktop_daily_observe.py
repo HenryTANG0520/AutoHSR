@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from tkinter import ttk
 
 from . import theme
+from .desktop_selected_page_check import MODE as SELECTED_PAGES
+from .desktop_selected_page_check import PageCheckDraft, SelectedPageCheckFields, result_text as selected_page_result
 
 
 @dataclass(frozen=True)
@@ -24,6 +26,8 @@ _SCOPES = {
                       '先打开游戏手机菜单或巡星之礼活动页。开始核对后切回游戏，只读当前页面。'),
     'screen': _Scope('当前页面', 'screen_test',
                      '先在游戏中打开日常页面。开始核对后手动切回游戏，让已登录的窗口保持前台。只读当前页面。'),
+    SELECTED_PAGES: _Scope('核对所选页面', 'task_workflow',
+                           '按勾选顺序切换并核对，巡星之礼排在最后。开始后请手动切回已登录的游戏前台。'),
 }
 _BY_LABEL = {scope.label: mode for mode, scope in _SCOPES.items()}
 _UNKNOWN = ('结果待核对', '请核对游戏前台和所选范围。')
@@ -38,6 +42,8 @@ def _navigation_result(mode, value, status):
     destination = value.get('destination_status')
     if (mode == 'achievements' and status == 'success' and value.get('page_verified') is True
             and value.get('entry_input') == 'sent' and destination == 'achievement_overview'):
+        if value.get('bulk_claim_visible') is True:
+            return title + '已核实', '两帧均看到「一键领取奖励」。'
         return title + '已核实', '奖励状态待核对。'
     if mode == 'support':
         steps = value.get('steps')
@@ -164,6 +170,7 @@ class _State:
     mode: str = 'achievements'
     job: object = None
     results: dict = field(default_factory=dict)
+    page_check: PageCheckDraft = field(default_factory=PageCheckDraft)
 
 
 class DailyObservationPanel(ttk.Frame):
@@ -183,11 +190,14 @@ class DailyObservationPanel(ttk.Frame):
         self.hint.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(pad, 0))
         theme.wrapped_label(self, text='领取操作由你在游戏内完成。', style='CardHint.TLabel').grid(
             row=3, column=0, columnspan=2, sticky='ew', pady=(round(pad / 2), 0))
-        ttk.Separator(self).grid(row=4, column=0, columnspan=2, sticky='ew', pady=(pad, pad))
+        self.page_check = SelectedPageCheckFields(self, model.page_check, scale=ui.ui_scale,
+            can_edit=self._can_edit_page_check, changed=self._page_check_changed)
+        self.page_check.grid(row=4, column=0, columnspan=2, sticky='ew', pady=(pad, 0))
+        ttk.Separator(self).grid(row=5, column=0, columnspan=2, sticky='ew', pady=(pad, pad))
         self.result_title = theme.wrapped_label(self, style='Card.TLabel')
-        self.result_title.grid(row=5, column=0, columnspan=2, sticky='ew')
+        self.result_title.grid(row=6, column=0, columnspan=2, sticky='ew')
         self.result_detail = theme.wrapped_label(self, style='CardHint.TLabel')
-        self.result_detail.grid(row=6, column=0, columnspan=2, sticky='ew', pady=(round(pad / 2), 0))
+        self.result_detail.grid(row=7, column=0, columnspan=2, sticky='ew', pady=(round(pad / 2), 0))
         self.refresh()
 
     @property
@@ -200,6 +210,8 @@ class DailyObservationPanel(ttk.Frame):
                 and self.ui._selected_tool == 'daily_observation')
 
     def primary_action(self):
+        if self.model.mode == SELECTED_PAGES:
+            return '核对所选页面', self.start, self._can_edit_page_check() and self.page_check.recipe is not None
         return '核对页面', self.start, self._idle and self._active
 
     def focus_entry(self):
@@ -213,6 +225,11 @@ class DailyObservationPanel(ttk.Frame):
             self.scope.set(scope.label)
         self.scope.configure(state='readonly' if self._idle else 'disabled')
         self.hint.configure(text=scope.hint)
+        if model.mode == SELECTED_PAGES:
+            self.page_check.grid()
+            self.page_check.refresh()
+        else:
+            self.page_check.grid_remove()
         title, detail = _RUNNING if model.job is not None else model.results.get(model.mode, _WAITING)
         self.result_title.configure(text=title)
         self.result_detail.configure(text=detail)
@@ -223,10 +240,22 @@ class DailyObservationPanel(ttk.Frame):
         self.refresh()
         self.ui._tool_action_changed()
 
+    def _can_edit_page_check(self):
+        return self.model.mode == SELECTED_PAGES and self._idle and self._active
+
+    def _page_check_changed(self, selection_changed):
+        if selection_changed:
+            self.model.results.pop(SELECTED_PAGES, None)
+        self.refresh()
+        self.ui._tool_action_changed()
+
     def start(self):
         if not self._idle or not self._active:
             return False
         ui, model, mode = self.ui, self.model, self.model.mode
+        recipe = self.page_check.recipe if mode == SELECTED_PAGES else None
+        if mode == SELECTED_PAGES and recipe is None:
+            return False
         ticket = model.job = object()
 
         def update():
@@ -238,11 +267,17 @@ class DailyObservationPanel(ttk.Frame):
         def complete(report):
             if model.job is ticket:
                 model.job = None
-                model.results[mode] = observation_result(mode, report)
+                if recipe is not None:
+                    if ui.closing:
+                        return
+                    model.results[mode] = selected_page_result(recipe, report)
+                else:
+                    model.results[mode] = observation_result(mode, report)
                 update()
 
         try:
-            accepted = ui._start_daily_observation(mode, complete)
+            accepted = (ui._start_selected_page_check(recipe, complete) if recipe is not None
+                        else ui._start_daily_observation(mode, complete))
         except Exception:
             if model.job is ticket:
                 model.job = None

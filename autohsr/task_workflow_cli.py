@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import sys
 
-from .task_workflow import WorkflowError, compile_recipe, read
+from .task_workflow import WORKFLOW_PAGES, WorkflowError, compile_recipe, read
 
 
 def add_arguments(mode, parser):
@@ -12,6 +12,10 @@ def add_arguments(mode, parser):
     mode.add_argument('--task-workflow-export', type=Path, help='把已保存的任务流JSON及其便携素材导出为ZIP')
     mode.add_argument('--task-workflow-import', type=Path, help='把任务流素材ZIP校验后解包到新目录')
     mode.add_argument('--task-workflow-convert-yaml', type=Path, help='把支持的三月七 YAML 步骤转换成新的任务流 JSON')
+    mode.add_argument('--screen-check-plan', nargs='+', choices=WORKFLOW_PAGES,
+                      help='离线预览所选页面的顺序和预算，巡星之礼须放最后')
+    mode.add_argument('--screen-check-pages', nargs='+', choices=WORKFLOW_PAGES,
+                      help='从已登录前台按指定顺序导航核对，结果待核对时停止')
     parser.add_argument('--workflow-bundle-destination', type=Path, help='导出的新ZIP路径或导入的新目录')
     parser.add_argument('--workflow-json-destination', type=Path, help='三月七 YAML 转换生成的新 JSON 路径')
     parser.add_argument('--workflow-yaml-native-vision', action='store_true',
@@ -83,6 +87,42 @@ def _convert_yaml(args, parser, raw_args):
     return 0
 
 
+def _screen_check(args, parser, raw_args):
+    targets = args.screen_check_plan or args.screen_check_pages
+    if targets is None:
+        return None
+    preview = args.screen_check_plan is not None
+    flag = '--screen-check-plan' if preview else '--screen-check-pages'
+    provided = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
+    allowed = {flag} if preview else {flag, '--config'}
+    if provided.count(flag) != 1 or set(provided) - allowed:
+        parser.error('所选页面核对须单独运行，执行时可指定 --config。')
+    from .selected_page_check import build_recipe, saved_result
+
+    runner = None
+    try:
+        recipe = build_recipe(targets)
+        if preview:
+            data = dict(status='success', mode='preview', pages=list(targets),
+                        reservations=recipe.profile, game_accessed=False)
+        else:
+            from .config import Settings
+            from .task_workflow_run import TaskWorkflowRunner
+
+            settings = Settings.load(args.config)
+            runner = TaskWorkflowRunner(settings, recipe.document, base_dir=recipe.base_dir)
+            data = saved_result(recipe, runner.run().to_dict())
+    except KeyboardInterrupt:
+        if runner is not None:
+            runner.stop()
+        data = dict(status='stopped')
+    except (WorkflowError, OSError) as error:
+        print(json.dumps(dict(status='failed', error=str(error)), ensure_ascii=False), file=sys.stderr)
+        return 2
+    print(json.dumps(data, ensure_ascii=False, indent=2))
+    return 0 if data['status'] == 'success' else 130 if data['status'] == 'stopped' else 1
+
+
 def dispatch(args, parser, raw_args):
     yaml_result = _convert_yaml(args, parser, raw_args)
     if yaml_result is not None:
@@ -90,6 +130,9 @@ def dispatch(args, parser, raw_args):
     bundle_result = _bundle(args, parser, raw_args)
     if bundle_result is not None:
         return bundle_result
+    screen_result = _screen_check(args, parser, raw_args)
+    if screen_result is not None:
+        return screen_result
     selected = args.task_workflow or args.task_workflow_check
     if selected is None:
         if args.workflow_step_path is not None:

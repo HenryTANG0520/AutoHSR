@@ -183,7 +183,7 @@ class DailyObservationPanelTests(unittest.TestCase):
     def test_select_five_ranges_and_submit_only_current_explicit_mode(self):
         expected = (('成就总览', 'achievements'), ('漫游签证', 'support'), ('短信', 'messages'),
                     ('巡星之礼', 'odyssey'), ('当前页面', 'screen'))
-        self.assertEqual(tuple(self.panel.scope['values']), tuple(label for label, _ in expected))
+        self.assertEqual(tuple(self.panel.scope['values']), (*[label for label, _ in expected], '核对所选页面'))
         for label, mode in expected:
             self.select(label)
             self.assertIn('切回游戏', self.panel.hint['text'])

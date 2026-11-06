@@ -1,5 +1,7 @@
 """Observe the current calibrated daily page and publish only anonymous facts."""
 
+from .achievement_pages import (ACHIEVEMENT_CATEGORIES, achievement_reward_panel_started,
+                                observe_achievement_screen)
 from .models import AutomationError, Stopped, TaskResult
 from .storage import hold_read_sources, replace_file
 from .workflow_navigation import COLLECTION_FLOOR, classify_page
@@ -16,6 +18,11 @@ _PAGE_NAMES = {
     'phone': '手机', 'guide': '星际和平指南', 'daily_training': '每日实训', 'survival_index': '生存索引',
     'assignments': '委托', 'mail': '邮件', 'battlepass': '无名勋礼',
 }
+_ACHIEVEMENT_NAMES = {
+    'achievement_overview': '成就总览', 'achievement_list': '成就分类', 'achievement_receipt': '成就奖励面板',
+}
+_NAMES = _PAGE_NAMES | _ACHIEVEMENT_NAMES
+_CLAIM_CONTROLS = {'achievement_overview': 'bulk', 'achievement_list': 'single'}
 
 
 def initial_record():
@@ -28,14 +35,44 @@ def _verified_page(value):
             or value.get('input_sent') is not False):
         return None
     page = value.get('page')
-    return page if isinstance(page, str) and page in _PAGE_NAMES else None
+    if not isinstance(page, str) or page not in _NAMES:
+        return None
+    if page in _PAGE_NAMES:
+        return page if 'achievement' not in value else None
+    achievement = value.get('achievement')
+    if not isinstance(achievement, dict) or achievement.keys() != {'category', 'visible_claim'}:
+        return None
+    category, claim = achievement['category'], achievement['visible_claim']
+    if page == 'achievement_list':
+        if not isinstance(category, str) or category not in ACHIEVEMENT_CATEGORIES:
+            return None
+    elif category is not None:
+        return None
+    return page if claim is None or claim == _CLAIM_CONTROLS.get(page) else None
+
+
+def _observed_record(observation):
+    page, category, claim = observation
+    record = dict(initial_record(), page=page, page_verified=True, account_verified=True)
+    if page in _ACHIEVEMENT_NAMES:
+        record['achievement'] = dict(category=category, visible_claim=claim)
+    return record
 
 
 def desktop_result(value, status):
     page = _verified_page(value) if status == 'success' else None
     if page is None:
         return '当前页面待核对', SAFE_NEXT
-    return f'当前页面已核实 · {_PAGE_NAMES[page]}', '同一账号的连续两帧一致。'
+    title = f'当前页面已核实 · {_NAMES[page]}'
+    if page not in _ACHIEVEMENT_NAMES:
+        return title, '同一账号的连续两帧一致。'
+    if page == 'achievement_receipt':
+        return title, '成就奖励面板可见，实际到账待核对。'
+    state = value['achievement']
+    category = state['category']
+    claim = {'bulk': '两帧均看到「一键领取奖励」。', 'single': '两帧均看到可用的领取按钮。'}
+    detail = claim.get(state['visible_claim'], '奖励可领状态待核对。')
+    return title, (f'{category}。{detail}' if category is not None else detail)
 
 
 class ScreenTestObserver:
@@ -43,14 +80,25 @@ class ScreenTestObserver:
         self.context = context
         self.record = initial_record()
         self.result = None
-        self._reader = self._pair = self._page = None
+        self._reader = self._pair = self._observation = None
         self._daily = DailyWorkflow(context)
         self._confidence = max(.85, context.settings.ocr_confidence)
 
+    def _read_scene(self, scene):
+        page = classify_page(scene, self._confidence, self._daily)
+        achievement = observe_achievement_screen(scene, self._confidence)
+        if page is None:
+            return achievement
+        if achievement is None and page in _PAGE_NAMES and not achievement_reward_panel_started(scene):
+            return page, None, None
+        return None
+
     def _read_pair(self, pair):
-        first, second = (classify_page(frame.scene, self._confidence, self._daily) for frame in pair)
+        first, second = (self._read_scene(frame.scene) for frame in pair)
         self._reader.verify_pair(*pair)
-        return first if first == second and first in _PAGE_NAMES else None
+        if first is None or second is None or first[:2] != second[:2]:
+            return None
+        return (*first[:2], first[2] if first[2] == second[2] else None)
 
     def _result(self, status, detail):
         self.result = TaskResult(OPERATION, status, detail)
@@ -71,20 +119,20 @@ class ScreenTestObserver:
             first = self._reader.capture()
             context.sleep(.15)
             pair = first, self._reader.capture()
-            page = self._read_pair(pair)
+            observation = self._read_pair(pair)
         except Stopped:
             self.invalidate('stopped', _STOPPED)
             raise Stopped(_STOPPED) from None
         except AutomationError:
             return self._result('partial', _UNVERIFIED)
-        if page is None:
+        if observation is None:
             return self._result('partial', _UNVERIFIED)
-        self._pair, self._page = pair, page
-        self.record.update(page=page, page_verified=True, account_verified=True)
-        return self._result('ok', f'已双帧核实当前页面为{_PAGE_NAMES[page]}。')
+        self._pair, self._observation = pair, observation
+        self.record.update(_observed_record(observation))
+        return self._result('ok', f'已双帧核实当前页面为{_NAMES[observation[0]]}。')
 
     def invalidate(self, status, detail):
-        self._pair = self._page = None
+        self._pair = self._observation = None
         self.record.clear()
         self.record.update(initial_record())
         if self.result is not None:
@@ -92,16 +140,17 @@ class ScreenTestObserver:
 
     def _check_record(self):
         context = self.context
-        if (self._pair is None or self._page is None or context.report.operation != OPERATION
+        if (self._pair is None or self._observation is None or context.report.operation != OPERATION
                 or context.report.status != 'success' or self.result is None or self.result.status != 'ok'
                 or getattr(context, 'screen_test_observer', None) is not self
                 or getattr(context.report, OPERATION, None) is not self.record
-                or self.record.keys() != initial_record().keys() or _verified_page(self.record) != self._page):
+                or self.record != _observed_record(self._observation)
+                or _verified_page(self.record) != self._observation[0]):
             raise AutomationError(_PUBLICATION_FAILED)
 
     def guard_publication(self):
         self._check_record()
-        if self._read_pair(self._pair) != self._page:
+        if self._read_pair(self._pair) != self._observation:
             raise AutomationError(_PUBLICATION_FAILED)
         self._check_record()
 

@@ -41,7 +41,18 @@
 
 ### 当前页面核对
 
-「设置 → 工具 → 日常页面核对 → 当前页面」在用户手动切回前台后，只读核对当前页面。独立 CLI `python -m autohsr --screen-test` 要求游戏已在前台。手机、指南、每日实训、生存索引、委托、邮件和无名勋礼复用任务流的页面识别。只有同一账号连续双帧一致并完成报告发布时的复核，才给出固定页名。报告不导出原图、OCR 内容或 UID。三月七的 `screen_test` 会实际切换多个页面并汇总结果。AutoHSR 的逐页导航通过 `workflow_open_page` 另行明确配置，多页诊断入口待接入。[三月七固定实现](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/base/screen_test.py)
+「设置 → 工具 → 日常页面核对 → 当前页面」在用户手动切回前台后，只读核对当前页面。独立 CLI `python -m autohsr --screen-test` 要求游戏已在前台。手机、指南、每日实训、生存索引、委托、邮件和无名勋礼复用任务流的页面识别，成就总览、分类和奖励面板使用各自的布局证据。只有同一账号连续双帧一致并完成报告发布时的复核，才给出固定页名。报告不导出原图、OCR 内容或 UID。[成就领奖布局](../DAILY_FLOW.md#成就领奖布局核对)
+
+### 核对所选页面
+
+三月七的 `screen_test` 会实际切换多个页面并汇总结果。AutoHSR 的多页核对把用户选择编译为一次临时任务流，复用 `workflow_open_page` 的前台、账号和输入检查。桌面在日常页面核对中选择「核对所选页面」，先预览实际顺序，再启动并手动切回已登录游戏。CLI 可用以下独立命令。预览只编译，执行要求游戏已在前台。[三月七固定实现](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/base/screen_test.py)
+
+```powershell
+python -m autohsr --screen-check-plan phone mail odyssey
+python -m autohsr --screen-check-pages phone mail odyssey
+```
+
+候选为手机、指南、每日实训、生存索引、委托、邮件、无名勋礼和巡星之礼，每页只选一次。巡星之礼须排在最后，因为目前已校准的是进入路线。已在目标页时不发送输入。遇到首次待核对时，保留之前已核实的页面及已发送、发送不完整的动作计数，后续页面记为未执行。核对不会领取奖励、开战、建立资源预算或发送通知。
 
 音频支持 1 或 2 声道、8 或 16 位、8～48 kHz，文件最多 32 MiB、时长最多 120 秒。播放完成来自 Windows 驱动反馈。主动通知在桌面运行时显示本次最多步骤数和方案别名，授权后沿用冻结的方案版本。CLI 显式使用 `--workflow-allow-notify`。每次流程最多 20 个主动通知步骤。应用内定时暂未开放这项授权。通知正文留在流程文件及明确发往的渠道，运行回执只记结果及必要的匿名事实。[通知设置](notifications.md)
 

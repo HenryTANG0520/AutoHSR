@@ -17,10 +17,17 @@ import numpy as np
 from autohsr import screen_test
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, RunReport, Scene, Stopped
 from autohsr.storage import hold_read_sources, replace_file
+from autohsr.tests.test_achievement_pages import category_view, gold_controls, label, overview, receipt_rows
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, phone
 from autohsr.tests.test_du_team import fixture
 from autohsr.tests.test_workflow_navigation import Context, badge, battlepass, identified, world
 from autohsr.vision import Vision
+
+
+def achievement_frame(tokens, *buttons):
+    image = gold_controls(*buttons)
+    image[230:360, 430:720] = 145
+    return Scene([ACCOUNT, *tokens, *buttons], image)
 
 
 class ReadOnlyContext(Context):
@@ -112,6 +119,45 @@ class ScreenTestTests(TestCase):
                        [source, phone(badge('确认', .50, .54, score=.72))],
                        [source, phone(badge('战斗失败', .50, .45))],
                        [source, phone(badge('加载中', .50, .45, score=.70))]):
+            observer = self.observer(frames)
+            self.assertEqual(self.observe(observer).status, 'partial')
+            self.assertEqual(observer.record, screen_test.initial_record())
+
+    def test_achievement_pages_publish_only_fixed_states_and_whitelisted_category(self):
+        bulk = label('一键领取奖励', .824, .897)
+        single = label('领取', .924, .286)
+        row = label('东山再起', .176, .258)
+        detail = [label('成就奖励', .50, .114), label('与你同行的回忆', .127, .193),
+                  row, label('5', .83, .258),
+                  label('总计获得', .467, .838), label('确认', .502, .926)]
+        for page, category, claim, frame in (
+                ('achievement_overview', None, 'bulk', achievement_frame(overview(), bulk)),
+                ('achievement_list', '与你同行的回忆', 'single', achievement_frame(category_view(), single)),
+                ('achievement_receipt', None, None, Scene([ACCOUNT, *detail], receipt_rows(row)))):
+            with self.subTest(page=page):
+                observer = self.observer([frame, frame])
+                self.assertEqual(self.observe(observer).status, 'ok')
+                saved = self.save(observer)['screen_test']
+                self.assertEqual(saved['page'], page)
+                self.assertEqual(saved['achievement'], dict(category=category, visible_claim=claim))
+                self.assertNotIn('东山再起', json.dumps(saved, ensure_ascii=False))
+                self.assertTrue(screen_test.desktop_result(saved, 'success')[0].startswith('当前页面已核实'))
+
+    def test_achievement_button_disagreement_stays_unknown_and_conflicting_pages_are_rejected(self):
+        bulk = label('一键领取奖励', .824, .897)
+        seen = achievement_frame(overview(), bulk)
+        observer = self.observer([seen, achievement_frame(overview())])
+        self.assertEqual(self.observe(observer).status, 'ok')
+        self.assertIsNone(observer.record['achievement']['visible_claim'])
+        observer.record['achievement']['visible_claim'] = 'bulk'
+        self.assertEqual(self.save(observer)['screen_test'], screen_test.initial_record())
+
+        mail = fixture('mail_claimable')
+        conflicting = achievement_frame([*overview(), *mail.tokens], bulk)
+        wrong_category = achievement_frame(category_view('众秘探奇'))
+        opening = achievement_frame([*overview(), label('成就奖励', .50, .114, score=.71)], bulk)
+        for frames in ([conflicting, conflicting], [achievement_frame(category_view()), wrong_category],
+                       [opening, opening]):
             observer = self.observer(frames)
             self.assertEqual(self.observe(observer).status, 'partial')
             self.assertEqual(observer.record, screen_test.initial_record())

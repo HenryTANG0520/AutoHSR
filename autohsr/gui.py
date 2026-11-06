@@ -1090,6 +1090,19 @@ class AutoHSRWindow:
 
         return self._start_scoped_runner('核对日常页面', operation, factory, on_report)
 
+    def _start_selected_page_check(self, recipe, on_report) -> bool:
+        settings = self._read_settings(operation='check')
+        if settings is None:
+            return False
+
+        def factory(emit):
+            from .task_workflow_run import TaskWorkflowRunner
+
+            return TaskWorkflowRunner(settings, recipe.document, emit, base_dir=recipe.base_dir,
+                                      wait_for_foreground=True)
+
+        return self._start_scoped_runner('核对所选页面', 'task_workflow', factory, on_report)
+
     def _start_daily_attachment(self, operation, on_report=None) -> bool:
         item = ATTACHMENT_SECTIONS[operation]
         settings = self._read_settings(operation=operation)

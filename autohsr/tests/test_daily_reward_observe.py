@@ -22,7 +22,7 @@ from autohsr.daily_reward_observe import OPERATION, phone_achievement_target
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, RunReport, Scene, Token
 from autohsr.policy import guard_click
 from autohsr.storage import hold_read_sources
-from autohsr.tests.test_achievement_pages import overview
+from autohsr.tests.test_achievement_pages import gold_controls, label as achievement_label, overview
 from autohsr.tests.test_daily_visa_pages import replay as replay_visa
 from autohsr.tests.test_du_team import fixture
 from autohsr.tests.test_redemption_pages import (form_scene, four_row_more_scene, more_scene, phone_scene,
@@ -223,6 +223,18 @@ class DailyRewardObserveTests(unittest.TestCase):
         self.assertEqual(report['daily_reward_observe']['entry_input'], 'sent')
         self.assertEqual(report['daily_reward_observe']['destination_status'], 'unknown')
         self.assertEqual(len(self.events), 1)
+
+    def test_achievement_arrival_exposes_only_agreed_visible_bulk_control(self):
+        button = achievement_label('一键领取奖励', .824, .897)
+        pixels = cv2.resize(gold_controls(button), (1920, 1080))
+        with_button = Scene([ACCOUNT, *overview(), button], pixels)
+        before = [phone(), phone(), phone()]
+        for ending, expected in (([with_button, with_button], True), ([with_button, achievement_page()], False)):
+            with self.subTest(expected=expected):
+                report = self.run_cli([*before, *ending], exit_code=0)
+                result = report['daily_reward_observe']
+                self.assertEqual(result.get('bulk_claim_visible', False), expected)
+                self.assertEqual(len(self.events), 1)
 
     @unittest.skipUnless(os.name == 'nt', 'requires Windows file sharing')
     def test_achievement_report_sharing_retry_rechecks_after_frames(self):

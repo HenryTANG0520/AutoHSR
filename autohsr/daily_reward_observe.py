@@ -10,7 +10,7 @@ import time
 
 import numpy as np
 
-from .achievement_pages import achievement_overview
+from .achievement_pages import achievement_bulk_claim_visible, observe_achievement_screen
 from .daily_visa_pages import visa_overview
 from .build_target_read import _has_split_label
 from .currency_wars_identity import AccountNotObserved, checked_account_key
@@ -120,8 +120,10 @@ _OVERVIEWS = dict(achievements=('achievement_overview', '成就总览'),
 
 def _destination_hint(scene, confidence, mode):
     clean = trusted(scene, COLLECTION_FLOOR)
-    if mode == 'achievements' and achievement_overview(scene, confidence):
-        return 'achievement_overview'
+    if mode == 'achievements':
+        achievement = observe_achievement_screen(scene, confidence)
+        if achievement is not None and achievement[0] == 'achievement_overview':
+            return 'achievement_overview'
     if mode == 'support' and visa_overview(scene, confidence):
         return 'support_collection_overview'
     if mode == 'support' and _support_visa_target(scene, confidence) is not None:
@@ -372,6 +374,10 @@ class DailyRewardObserver:
             self.step['diagnostic_screenshot'] = self._path(
                 self.c.evidence(self.c.last_scene, 'daily_reward_unverified')).name
 
+    def _bulk_claim_visible(self):
+        return self.mode == 'achievements' and len(self.arrival) == 2 and all(
+            achievement_bulk_claim_visible(frame.scene, self.confidence) for frame in self.arrival)
+
     def save_verified_report(self, temporary, write_report):
         report = self.c.report
         destination = self.directory / 'report.json'
@@ -392,6 +398,8 @@ class DailyRewardObserver:
                     self._verify_frame(frame)
                     if self._digest(path) != row['sha256'] or frame.sequence != row['capture_sequence']:
                         raise AutomationError(f'{label}到页证据在报告提交前已变化。')
+                if self.record.get('bulk_claim_visible', False) is not self._bulk_claim_visible():
+                    raise AutomationError('成就一键领取控件的双帧状态在报告提交前已变化。')
                 if temporary.read_text(encoding='utf8') != payload:
                     raise AutomationError(f'{label}报告临时文件在提交前已变化。')
                 if self.window.emergency_pressed():
@@ -404,6 +412,7 @@ class DailyRewardObserver:
             replace_file(temporary, destination, attempt_scope=stable_arrival)
         except (OSError, AutomationError) as error:
             self.record.update(page_verified=False, destination_status='unknown')
+            self.record.pop('bulk_claim_visible', None)
             self.step['destination_status'] = 'unknown'
             stopped = isinstance(error, Stopped)
             if stopped:
@@ -446,6 +455,8 @@ class DailyRewardObserver:
             if after[-1].hint == overview_hint:
                 self.arrival = after
                 self.record['page_verified'] = True
+                if self._bulk_claim_visible():
+                    self.record['bulk_claim_visible'] = True
                 return TaskResult(OPERATION, 'ok', f'已双帧核实当前账号的{overview_label}。')
             detail = f'{label}入口已发送，已保留随后双帧，{label}页待核实。'
         else:
