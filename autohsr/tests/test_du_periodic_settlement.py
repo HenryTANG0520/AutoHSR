@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import Mock
 
 from autohsr.config import Settings
-from autohsr.differential_universe import DifferentialUniverseWorkflow
+from autohsr.differential_universe import DifferentialUniverseWorkflow, classify_page
 from autohsr.du_periodic_points import periodic_settlement_observation
 from autohsr.models import RunReport, Scene, Token
 from autohsr.tests.test_currency_wars_weekly_rewards import overlay, panel
@@ -86,6 +86,30 @@ class PeriodicSettlementTests(unittest.TestCase):
         self.assertEqual(flow.report['completed_runs'], 0)
         self.assertEqual(flow.report['periodic_points_goal']['observations'], [])
         context.click.assert_not_called()
+
+    def test_twenty_region_victory_requires_the_actual_archive_control(self):
+        original_frame = original('public-20-of-20-save-control')
+        self.assertEqual(classify_page(original_frame), 'victory')
+        archive = original_frame.find('记录本次存档', exact=True)
+        page = replace(original_frame, tokens=[t for t in original_frame.tokens if t is not archive])
+
+        # The saved marker replaces the open control on the verified historical layout.
+        saved = Token('本局已存档', .9944, (.5823, .8491, .6406, .8741))
+        self.assertEqual(classify_page(replace(page, tokens=[*page.tokens, saved])), 'victory')
+        for controls in ((), (archive, saved), (replace(archive, score=.74),),
+                         (replace(archive, box=(.33, .86, .39, .90)),),
+                         (archive, Token('提示', .74, (.46, .35, .54, .39)))):
+            with self.subTest(controls=controls):
+                candidate = replace(page, tokens=[*page.tokens, *controls])
+                self.assertNotEqual(classify_page(candidate), 'victory')
+
+        progress = page.find('周期演算（20/20）', exact=True)
+        full_width = [replace(t, text='周期演算（２０／２０）') if t is progress else t for t in page.tokens]
+        self.assertEqual(classify_page(replace(page, tokens=[*full_width, archive])), 'victory')
+        for value in ('周期演算（19/20）', '周期演算（21/21）', '常规演算（20/20）'):
+            with self.subTest(progress=value):
+                tokens = [replace(t, text=value) if t is progress else t for t in page.tokens]
+                self.assertNotEqual(classify_page(replace(page, tokens=[*tokens, archive])), 'victory')
 
     def test_transitional_and_other_mode_pages_never_publish_settlement(self):
         complete = original('bonus-fresh')

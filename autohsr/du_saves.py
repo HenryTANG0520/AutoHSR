@@ -3,6 +3,24 @@ import re
 from .models import AutomationError,normalize
 
 
+def extended_periodic_victory(scene):
+    """Recognize the calibrated 20-region victory with its live archive control."""
+    from .du_periodic_points import periodic_settlement_observation
+
+    if (scene.has(('提示', '更改存档名'), (.30, .33, .70, .43), exact=True)
+            or scene.has(('取消', '确认'), (.28, .58, .72, .67), exact=True)):
+        return False
+    controls = [t for t in scene.tokens if normalize(t.text) in ('记录本次存档', '本局已存档')]
+    if len(controls) != 1 or not .85 <= controls[0].score <= 1:
+        return False
+    left, top, right, bottom = controls[0].box
+    if not (.50 <= left < right <= .75 and .83 <= top < bottom <= .97):
+        return False
+    result = periodic_settlement_observation(scene)
+    return (result is not None and result['outcome'] == '探索成功'
+            and result['area_index'] == result['area_total'] == 20)
+
+
 def management(scene):
     return (scene.has('差分宇宙',(0,0,.32,.13)) and
             scene.has('存档管理',(0,0,.32,.13),exact=True))

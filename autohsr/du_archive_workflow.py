@@ -145,7 +145,7 @@ class ArchiveWorkflow:
     def _facts(self, scene, stage):
         page = self._clean(scene)
         if stage in ('origin','returned'):
-            if not _victory(page):return None
+            if not _victory(page) or not _victory(scene):return None
             if stage == 'origin':
                 try:current = account_key(page,self.confidence)
                 except AutomationError:return None

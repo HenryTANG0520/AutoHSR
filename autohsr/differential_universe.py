@@ -122,7 +122,7 @@ def classify_page(scene: Scene, context=None) -> str:
             and scene.has('取消',(.29,.58,.49,.66),exact=True)
             and scene.has('确认',(.51,.58,.71,.66),exact=True)):
         return 'low_rank_warning'
-    from .du_saves import management,rename_dialog
+    from .du_saves import extended_periodic_victory, management, rename_dialog
     if rename_dialog(scene):
         return "save_name"
     if management(scene):
@@ -145,6 +145,8 @@ def classify_page(scene: Scene, context=None) -> str:
         return "victory"
     if du_tutorial_close_prompt(scene) is not None:
         return "tutorial_overlay"
+    if '周期演算' in text and '探索成功' in text and extended_periodic_victory(scene):
+        return "victory"
     if du_miracle_target_labels(scene):
         # A selected station's detail can say “胜利后选择祝福时”.
         # Its fixed selector heading takes precedence over reward wording.
