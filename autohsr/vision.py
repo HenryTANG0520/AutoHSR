@@ -61,7 +61,7 @@ class Vision:
                 scene.field_reads[COUNTEREVIDENCE] = counterevidence
         return scene
 
-    def template(self, scene: Scene, path: Path, roi=(0, 0, 1, 1), threshold=0.88):
+    def template(self, scene: Scene, path: Path, roi=(0, 0, 1, 1), threshold=0.88, *, all_matches=False):
         """Optional local UI anchor matching, resized to the 1080p baseline."""
         import cv2
         import numpy as np
@@ -74,13 +74,25 @@ class Vision:
         ratio = width / 1920
         template = cv2.resize(template, None, fx=ratio, fy=ratio)
         if template.shape[0] > patch.shape[0] or template.shape[1] > patch.shape[1]:
-            return None
+            return [] if all_matches else None
         if template.ndim==3 and template.shape[2]==4:
             mask=template[:,:,3]
             scores=cv2.matchTemplate(patch,template[:,:,:3],cv2.TM_CCORR_NORMED,mask=mask)
             scores=np.nan_to_num(scores,nan=-1,posinf=-1,neginf=-1)
         else:
             scores = cv2.matchTemplate(patch, template, cv2.TM_CCOEFF_NORMED)
+        if all_matches:
+            matches = []
+            half_width, half_height = template.shape[1] // 2, template.shape[0] // 2
+            while True:
+                _, confidence, _, (x, y) = cv2.minMaxLoc(scores)
+                if not np.isfinite(confidence) or confidence < threshold:
+                    return matches
+                matches.append(((x1 + x + template.shape[1] / 2) / width,
+                                (y1 + y + template.shape[0] / 2) / height, confidence))
+                # Neighboring alignments of the same icon are one observation.
+                scores[max(0, y - half_height):y + half_height + 1,
+                       max(0, x - half_width):x + half_width + 1] = -np.inf
         _, confidence, _, point = cv2.minMaxLoc(scores)
         if confidence < threshold:
             return None

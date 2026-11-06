@@ -2,11 +2,12 @@
 
 import re
 
+from .config import RESOURCE_ROOT
 from .currency_wars_identity import AccountNotObserved, checked_account_key
 from .free_rewards import reward_overlay
 from .models import AutomationError, EmptyCapture, Stopped, normalize
 from .policy import replenishment_dialog
-from .workflows import REWARDS, REWARD_SLOTS, TITLE
+from .workflows import REWARD_SLOTS, TITLE
 
 
 _ACTIVITY_VALUE = (.15, .30, .205, .36)
@@ -25,16 +26,21 @@ def _blocked(scene):
 
 
 def _markers(workflow, scene, name, confidence):
+    path = RESOURCE_ROOT / 'assets' / 'templates' / (name + '.png')
+    if not path.is_file():
+        return None
     result = {}
-    for x, y, _score in workflow._matches(scene, name, REWARDS):
-        points = next((index * 100 for index, slot in enumerate(REWARD_SLOTS, 1)
-                       if slot[0] < x < slot[2]), None)
-        if points is None:
-            continue
-        caption = (x - .02, y + .025, x + .02, y + .066)
-        numbers = [t for t in scene.tokens if t.within(caption) and re.fullmatch(r'[0-9]{1,3}', t.text.strip())]
-        if len(numbers) == 1 and numbers[0].text.strip() == str(points) and confidence <= numbers[0].score <= 1:
-            result[points] = (x, y)
+    for index, slot in enumerate(REWARD_SLOTS, 1):
+        points = index * 100
+        matches = workflow.ctx.vision.template(scene, path, slot, .90, all_matches=True)
+        for x, y, _score in matches:
+            caption = (x - .02, y + .025, x + .02, y + .066)
+            numbers = [t for t in scene.tokens if t.within(caption) and re.fullmatch(r'[0-9]{1,3}', t.text.strip())]
+            if len(numbers) != 1 or numbers[0].text.strip() != str(points) or not confidence <= numbers[0].score <= 1:
+                continue
+            if points in result:
+                return None
+            result[points] = x, y
     return result
 
 
@@ -48,13 +54,16 @@ def _band(workflow, scene, activity, confidence):
             or workflow._icon(scene, 'daily_activity_badge', (.13, .23, .225, .37), threshold=.85) is None):
         return None
     gifts = _markers(workflow, scene, 'daily_reward', confidence)
-    claimed = frozenset(_markers(workflow, scene, 'daily_completed', confidence))
+    checks = _markers(workflow, scene, 'daily_completed', confidence)
+    if gifts is None or checks is None:
+        return None
+    claimed = frozenset(checks)
     if claimed.intersection(gifts) or any(points > activity for points in claimed.union(gifts)):
         return None
     return gifts, claimed
 
 
-def _after_claim(workflow, require_source, activity, confidence, points, previous):
+def _after_claim(workflow, require_source, activity, confidence, points, previous, *, source_sequence):
     context = workflow.ctx
     candidate = None
     close_sent = False
@@ -62,6 +71,8 @@ def _after_claim(workflow, require_source, activity, confidence, points, previou
         try:
             scene = workflow._snapshot()
             require_source(scene)
+            if context.capture_sequence <= source_sequence:
+                raise AutomationError('实训领取后缺少本次的新画面。')
         except (AccountNotObserved, EmptyCapture):
             candidate = None
         else:
@@ -115,9 +126,11 @@ def claim_reached_milestones(workflow, scene, activity):
                 scene = context.last_scene
                 require_source(scene)
                 pending = max(available)
+                source_sequence = context.capture_sequence
                 context.click(scene, available[pending])
                 workflow._pause()
-                after = _after_claim(workflow, require_source, activity, confidence, pending, previous)
+                after = _after_claim(workflow, require_source, activity, confidence, pending, previous,
+                                     source_sequence=source_sequence)
                 if after is None:
                     break
                 confirmed.update(after[1] - previous)

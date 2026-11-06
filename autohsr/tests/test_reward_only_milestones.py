@@ -61,8 +61,9 @@ def item_overlay(*, account=ACCOUNT):
 
 
 class RewardOnlyMilestonesTests(unittest.TestCase):
-    def invoke(self, *phases):
+    def invoke(self, *phases, short_reward=False):
         clicks = []
+        releases = []
         phone = phone_scene()
         phone.tokens.append(ACCOUNT)
         phases = ((phone,), *phases)
@@ -79,9 +80,14 @@ class RewardOnlyMilestonesTests(unittest.TestCase):
 
         def submit(length, raw, _size):
             events = ctypes.cast(raw, ctypes.POINTER(INPUT))
-            self.assertEqual([events[i].mi.dwFlags for i in range(length)], [0xC001, 2, 4])
+            flags = [events[i].mi.dwFlags for i in range(length)]
+            if length == 1:
+                self.assertEqual(flags, [4])
+                releases.extend(flags)
+                return length
+            self.assertEqual(flags, [0xC001, 2, 4])
             clicks.append((events[0].mi.dx / 65535, events[0].mi.dy / 65535))
-            return length
+            return 2 if short_reward and len(clicks) == 2 else length
 
         window = _Window(frames())
         window.focus = Mock()
@@ -130,6 +136,7 @@ class RewardOnlyMilestonesTests(unittest.TestCase):
                                                        'battle_completed')], [0] * 5)
             with (Path(report['run_dir']) / 'report.json').open(encoding='utf8') as stream:
                 self.assertEqual(json.load(stream), report)
+        self.assertEqual(releases, [4] if short_reward else [])
         return code, report, clicks
 
     def test_partial_activity_claims_the_visible_reached_gift_and_requires_return(self):
@@ -196,3 +203,39 @@ class RewardOnlyMilestonesTests(unittest.TestCase):
         self.assertAlmostEqual(clicks[-1][0], .50, places=2)
         self.assertIn('400档本次领取反馈待核对', report['results'][0]['detail'])
         self.assertFalse(report['daily_verified'])
+
+    def test_duplicate_gifts_or_checkmarks_stop_every_milestone_input(self):
+        for marker, old in (
+                ('daily_reward', training(400, gifts=(100, 400))),
+                ('daily_completed', training(400, gifts=(400,), claimed=(100,)))):
+            with self.subTest(marker=marker):
+                stamp(old.image, marker, .260, .287)
+                old.tokens.append(token('100', .260, .33))
+                _, report, clicks = self.invoke((old,))
+                self.assertEqual(len(clicks), 1)  # Only the original guide navigation.
+                self.assertFalse(report['daily_verified'])
+
+    def test_duplicate_return_checkmarks_keep_the_sent_milestone_pending(self):
+        old = training(400, gifts=(300, 400))
+        returned = training(400, gifts=(300,), claimed=(400,))
+        stamp(returned.image, 'daily_completed', .672, .288)
+        returned.tokens.append(token('400', .672, .33))
+        _, report, clicks = self.invoke((old,), (returned,))
+        self.assertEqual(len(clicks), 2)
+        self.assertIn('400档本次领取反馈待核对', report['results'][0]['detail'])
+
+    def test_short_native_claim_cannot_authorize_an_item_overlay_close(self):
+        old = training(400, gifts=(400,))
+        _, report, clicks = self.invoke((old,), (item_overlay(),), short_reward=True)
+        self.assertEqual(len(clicks), 2)  # An incomplete claim and its left-button release.
+        self.assertIn('400档本次领取反馈待核对', report['results'][0]['detail'])
+
+    def test_ambiguous_item_overlay_cannot_authorize_a_close(self):
+        old = training(400, gifts=(400,))
+        for extra in (token('获得物品', .60, .32), token('点击空白处关闭', .59, .82)):
+            with self.subTest(label=extra.text):
+                overlay = item_overlay()
+                overlay.tokens.append(extra)
+                _, report, clicks = self.invoke((old,), (overlay,))
+                self.assertEqual(len(clicks), 2)
+                self.assertIn('400档本次领取反馈待核对', report['results'][0]['detail'])
