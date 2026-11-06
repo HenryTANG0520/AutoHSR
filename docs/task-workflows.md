@@ -39,6 +39,22 @@
 
 页面切换与实时图文共享前台及账号门禁。目标为 `phone` 手机、`guide` 指南、`daily_training` 每日实训、`survival_index` 生存索引、`assignments` 委托、`mail` 邮件、`battlepass` 无名勋礼、`odyssey` 巡星之礼、`reward_guide` 奖励指南和 `messages` 短信通知。泛指南目标保留当前指南子页。已经在目标页时零输入。每次点击或返回都要求当前页面和可用入口有证据，再双帧核对新页面。遇到登录、弹窗、战斗、失焦或不认识的页面时保留已有动作回执。只有已核实到达的结果才提供 `page_verified=true`。导航不领取奖励、不开战，也不建立资源预算。活动与短信通知目标目前支持已校准的 4.6.0 版式。短信从带可见未读角标的大世界或已打开的通知双栏开始，最多提交一次气泡点击。[活动页面导航](daily-event-observation.md#独立导航) · [短信导航](../DAILY_FLOW.md#短信只读校准)
 
+### 漫游签证角色展示
+
+在任务流编辑器选择「切换到游戏页面 → 漫游签证角色展示」，或在 JSON 使用 `workflow_open_page` 的 `target: "visa_characters"`。先在 4.6.0 客户端打开漫游签证的「收集展示」，保持游戏窗口前台。该步骤从同账号的连续两帧定位中间页签，最多提交一次点击。角色页签选中且两帧均核实「支援角色」「星海同行」后才记录到达，已在角色展示时零输入核对。反馈待核对时保留已发生的输入状态。
+
+```json
+{
+  "version": 1,
+  "name": "切换漫游签证角色展示",
+  "steps": [
+    {"id": "visa", "type": "task", "task": "workflow_open_page", "params": {"target": "visa_characters"}}
+  ]
+}
+```
+
+用 `python -m autohsr --task-workflow visa-characters.json` 运行上面保存的文件。只读支援观察继续使用 `--daily-reward-observe support`。4.6 公开图在 1280×720 和 1920×1080 回放中通过版式识别，960×540 的缩小回放留在待核对。连续点击和到页目前用假窗口回放。[签证版式来源](../autohsr/tests/fixtures/daily_visa/sources.json)
+
 ### 当前页面核对
 
 「设置 → 工具 → 日常页面核对 → 当前页面」在用户手动切回前台后，只读核对当前页面。独立 CLI `python -m autohsr --screen-test` 要求游戏已在前台。手机、指南、每日实训、生存索引、委托、邮件、无名勋礼和奖励指南复用任务流的页面识别，成就总览、分类和奖励面板使用各自的布局证据。只有同一账号连续双帧一致并完成报告发布时的复核，才给出固定页名。报告不导出原图、OCR 内容或 UID。[成就领奖布局](../DAILY_FLOW.md#成就领奖布局核对)

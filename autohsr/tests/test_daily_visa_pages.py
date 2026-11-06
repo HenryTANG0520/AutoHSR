@@ -8,7 +8,7 @@ import unittest
 import cv2
 import numpy as np
 
-from autohsr.daily_visa_pages import visa_overview, visa_support_section
+from autohsr.daily_visa_pages import visa_character_tab, visa_overview, visa_support_section
 from autohsr.models import Scene, Token
 
 
@@ -57,6 +57,32 @@ class VisaOverviewTests(unittest.TestCase):
             self.assertFalse(visa_support_section(other))
             self.assertFalse(visa_support_section(replace(other, tokens=self.characters.tokens)))
             self.assertFalse(visa_support_section(replace(other, image=self.characters.image)))
+
+    def test_character_tab_is_the_genuine_unselected_middle_control_on_collection(self):
+        scene = self.collection
+        expected = next(token for token in scene.tokens if token.text == '角色展示')
+        for width, height in ((1368, 807), (1920, 1080), (1280, 720), (960, 540)):
+            with self.subTest(size=(width, height)):
+                scaled = replace(scene, image=cv2.resize(scene.image, (width, height)))
+                self.assertEqual(visa_character_tab(scaled, client_version='4.6.0'), expected)
+        for other, version in ((scene, '4.7.0'), (self.characters, '4.6.0'), (self.battle_record, '4.6.0')):
+            self.assertIsNone(visa_character_tab(other, client_version=version))
+
+    def test_character_tab_needs_visible_bright_strokes_against_the_dark_pill(self):
+        source = self.collection
+        boxes = ((652, 94, 717, 115), (702, 94, 717, 115))
+        for left, top, right, bottom in boxes:
+            image = source.image.copy()
+            image[top:bottom, left:right] = 51
+            obscured = replace(source, image=image)
+            self.assertTrue(visa_overview(obscured))
+            self.assertIsNone(visa_character_tab(obscured, client_version='4.6.0'))
+        dimmed = source.image.copy()
+        dimmed[94:115, 652:717] = np.rint(dimmed[94:115, 652:717] * .65).astype(np.uint8)
+        self.assertIsNone(visa_character_tab(replace(source, image=dimmed), client_version='4.6.0'))
+        conflict = Token('角色展示', .71, (.29, .46, .34, .50))
+        self.assertIsNone(visa_character_tab(replace(source, tokens=[*source.tokens, conflict]),
+                                            client_version='4.6.0'))
 
     def test_layout_at_resized_fixture_and_without_the_top_capture_border(self):
         for classify, scene in ((visa_overview, self.collection), (visa_support_section, self.characters)):

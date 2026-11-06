@@ -22,7 +22,8 @@ from .vision import Vision, save_scene,helper_overlay
 from .ocr_isolation import IsolatedVision
 from .windows import find_game, is_admin, is_elevated, launch
 from .storage import file_revision, hold_read_sources, replace_file
-from .task_workflow import GAME_VISION_TASKS, PAGE_TASK, TEMPLATE_TASKS, WORKFLOW_FOREGROUND_TASKS, WORKFLOW_PAGES
+from .task_workflow import (GAME_VISION_TASKS, PAGE_TASK, TEMPLATE_TASKS, WORKFLOW_FOREGROUND_TASKS,
+                            WORKFLOW_NAVIGATION_TARGETS)
 
 
 def launch_game(settings: Settings) -> str:
@@ -2317,7 +2318,7 @@ class Runner:
         self.workflow_screen_query = deepcopy(workflow_screen_query)
         self._workflow_screen_window = None
         if operation == PAGE_TASK:
-            if workflow_page not in WORKFLOW_PAGES:
+            if workflow_page not in WORKFLOW_NAVIGATION_TARGETS:
                 raise ValueError('请选择任务流支持的游戏页面。')
         elif workflow_page is not None:
             raise ValueError('游戏页面目标只适用于任务流的专用切换入口。')
@@ -2903,17 +2904,17 @@ class Runner:
                 replace_file(temporary, directory / 'report.json', before_replace=verify_page_result)
             else:
                 @contextmanager
-                def activity_publication():
+                def installation_publication():
                     with ExitStack() as locks:
                         try:
                             locks.enter_context(hold_read_sources((source,)))
                         except OSError:
-                            verify_page_result(AutomationError('活动页面导航的客户端安装来源待核实。'))
+                            verify_page_result(AutomationError('日常页面导航的客户端安装来源待核实。'))
                         else:
                             verify_page_result()
                         yield
 
-                replace_file(temporary, directory / 'report.json', attempt_scope=activity_publication)
+                replace_file(temporary, directory / 'report.json', attempt_scope=installation_publication)
             return
         if preview_source is not None:
             def verify_preview():

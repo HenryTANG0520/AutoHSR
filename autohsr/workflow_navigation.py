@@ -18,19 +18,21 @@ from .daily_event_pages import _VERSION, phone_journey_event_entry, read_gift_of
 from .daily_message_observe import message_panel, phone_message_entry
 from .daily_message_world import world_message_target
 from .daily_reward_observe import phone_achievement_target
+from .daily_visa_pages import VISA_LAYOUT_VERSION, visa_character_tab, visa_overview, visa_support_section
 from .dungeons import CATEGORIES
 from .free_rewards import battlepass_modal, battlepass_page, mail_entry, mailbox
 from .models import FULL, AutomationError, EmptyCapture, InputInterrupted, Stopped, TaskResult, Token, normalize
 from .screenshot_tool import MAX_PIXELS
 from .storage import hold_read_sources
-from .task_workflow import ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, WORKFLOW_PAGES
+from .task_workflow import (ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, VISA_CHARACTERS_PAGE,
+                            WORKFLOW_NAVIGATION_TARGETS)
 from .team_calibration_pages import calibration_overlay
 from .vision import helper_overlay
 from .workflows import DailyWorkflow, TITLE
 
 
 OPERATION = 'workflow_open_page'
-TARGETS = WORKFLOW_PAGES
+TARGETS = WORKFLOW_NAVIGATION_TARGETS
 SAFE_NEXT = '请核对当前页面和本次导航回执，反馈待核对时保留当前画面。'
 COLLECTION_FLOOR = .65
 _MAX_AGE = 8.
@@ -39,6 +41,7 @@ _MAX_ACTIONS = 4
 _GUIDE_TITLES = {'行动摘要': 'guide', '每日实训': 'daily_training', '生存索引': 'survival_index',
                  '旷宇纷争': 'guide', '逐光捡金': 'guide'}
 _GUIDE_PAGES = ('guide', 'daily_training', 'survival_index')
+_VISA_COLLECTION = 'visa_collection'
 _PHONE_CAPTIONS = {
     'guide': (('指南', '星际和平指南'), (.655, .713, .742, .763)),
     'assignments': (('委托',), (.884, .357, .921, .398)),
@@ -158,12 +161,12 @@ class WorkflowNavigation:
         self.occlusions = context.capture_occlusion_count
         self.key = self.geometry = self.account = None
         self.intent = self.arrival = None
-        self._event_installation = None
+        self._installation = None
         self.started = False
 
     @property
     def installation_source(self):
-        return self._event_installation.source if self._event_installation is not None else None
+        return self._installation.source if self._installation is not None else None
 
     def _control(self):
         c = self.c
@@ -178,7 +181,7 @@ class WorkflowNavigation:
 
     def _guard(self):
         self._control()
-        if self._event_installation is not None and read_event_installation(self.window) != self._event_installation:
+        if self._installation is not None and read_event_installation(self.window) != self._installation:
             raise AutomationError('日常页面导航的游戏安装来源或版本已变化。')
         if (not self.key or self.window.current_window_key() != self.key
                 or self.window.guard(self.geometry) != self.geometry):
@@ -233,9 +236,13 @@ class WorkflowNavigation:
             if panel:
                 return MESSAGE_WORKFLOW_PAGE
             return 'world' if world_message_target(scene) is not None else None
-        if page is not None or self._event_installation is None:
+        if page is not None or self._installation is None:
             return page
-        options = dict(client_version=self._event_installation.version, confidence=self.confidence)
+        if self.target == VISA_CHARACTERS_PAGE:
+            if visa_overview(scene, self.confidence):
+                return _VISA_COLLECTION
+            return VISA_CHARACTERS_PAGE if visa_support_section(scene, self.confidence) else None
+        options = dict(client_version=self._installation.version, confidence=self.confidence)
         if self.target == 'reward_guide':
             from .daily_reward_guide_pages import reward_guide_page
 
@@ -253,10 +260,15 @@ class WorkflowNavigation:
         if self.target == MESSAGE_WORKFLOW_PAGE:
             token = world_message_target(frame.scene) if page == 'world' else None
             return _Action('open_messages', (MESSAGE_WORKFLOW_PAGE,), token) if token else None
+        if self.target == VISA_CHARACTERS_PAGE:
+            if page != _VISA_COLLECTION or self._installation is None:
+                return None
+            tab = visa_character_tab(frame.scene, client_version=self._installation.version, confidence=self.confidence)
+            return _Action('open_' + VISA_CHARACTERS_PAGE, (VISA_CHARACTERS_PAGE,), tab) if tab is not None else None
         if page == 'world':
             return None if message_panel(frame.scene) else _Action('open_phone', ('phone',))
-        if self._event_installation is not None and page in ('phone', 'activity_list', 'odyssey'):
-            options = dict(client_version=self._event_installation.version, confidence=self.confidence)
+        if self._installation is not None and page in ('phone', 'activity_list', 'odyssey'):
+            options = dict(client_version=self._installation.version, confidence=self.confidence)
             if page == 'phone':
                 token = phone_journey_event_entry(frame.scene, **options)
                 destinations = ('activity_list', 'odyssey')
@@ -439,12 +451,14 @@ class WorkflowNavigation:
         if self.geometry is None or not 0 < self.geometry.width * self.geometry.height <= MAX_PIXELS:
             raise AutomationError('日常页面导航缺少可核实的游戏客户区。')
         self._guard()
-        if self.target in (*ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE):
-            self._event_installation = read_event_installation(self.window)
-            if self._event_installation.version != _VERSION:
+        visa_navigation = self.target == VISA_CHARACTERS_PAGE
+        if visa_navigation or self.target in (*ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE):
+            self._installation = read_event_installation(self.window)
+            version = VISA_LAYOUT_VERSION if visa_navigation else _VERSION
+            if self._installation.version != version:
                 raise AutomationError('当前客户端尚未校准所选页面导航。')
-            self.record['client_version'] = self._event_installation.version
-        pair = self._pair()
+            self.record['client_version'] = self._installation.version
+        pair = self._pair(expected=(_VISA_COLLECTION, VISA_CHARACTERS_PAGE) if visa_navigation else ())
         while not self._satisfies(pair[-1].page):
             if len(self.record['actions']) >= _MAX_ACTIONS:
                 raise AutomationError('日常页面导航达到本次输入上限。')

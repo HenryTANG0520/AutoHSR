@@ -3,6 +3,7 @@
 import ctypes
 from itertools import chain, count, repeat
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import time
 from types import SimpleNamespace
 import unittest
@@ -15,7 +16,7 @@ from autohsr import windows
 from autohsr.config import RESOURCE_ROOT, Settings
 from autohsr.currency_wars_identity import UID_COUNTEREVIDENCE
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, RunReport, Scene, Stopped, Token
-from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, phone
+from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, phone, visa_collection
 from autohsr.tests.test_du_team import fixture
 from autohsr.vision import Vision
 from autohsr.workflow_navigation import OPERATION, WorkflowNavigation
@@ -132,6 +133,81 @@ class WorkflowNavigationTests(unittest.TestCase):
         self.sent.append(tuple((event.type, event.mi.dwFlags if event.type == 0 else event.ki.dwFlags)
                                for event in (data[index] for index in range(count))))
         return count
+
+    def _visa_context(self, frames):
+        install = TemporaryDirectory()
+        self.addCleanup(install.cleanup)
+        root = Path(install.name).resolve()
+        executable = root / 'StarRail.exe'
+        executable.touch()
+        (root / 'config.ini').write_text('[General]\ngame_version=4.6.0\n', encoding='utf8')
+        context = Context('visa_characters', frames)
+        context.window.current_executable = Mock(return_value=str(executable))
+        return context
+
+    def test_visa_switch_has_no_click_from_obscured_tab_or_inconsistent_source(self):
+        source = visa_collection()
+        covered = visa_collection()
+        tab = next(token for token in covered.tokens if token.text == '角色展示')
+        left, top, right, bottom = (round(value * size) for value, size in zip(tab.box, (1920, 1080) * 2))
+        covered.image[top:bottom, left:right] = 50
+        for tag, frames in (('masked tab', [source, covered]), ('phone', [phone()] * 2),
+                            ('other account', [source, visa_collection(account=OTHER)]),
+                            ('nonadjacent', [source, EmptyCapture('fade'), source]),
+                            ('wrong tab', [visa_collection('battle-record')] * 2)):
+            with self.subTest(tag=tag):
+                context = self._visa_context(frames)
+                with self.assertRaises(AutomationError):
+                    context.workflow_navigation.run()
+                self.assertEqual(self.sent, [])
+                self.assertEqual(context.workflow_navigation.record['actions'], [])
+                self.assertFalse(context.workflow_navigation.record['page_verified'])
+
+    def test_visa_switch_does_not_repeat_when_destination_has_no_same_account_pair(self):
+        source = visa_collection()
+        role = visa_collection('characters')
+        cases = (('still on collection', [source] * 6),
+                 ('gap on role page', [role, EmptyCapture('fade'), role]),
+                 ('other account', [visa_collection('characters', account=OTHER)] * 2))
+        for tag, after in cases:
+            with self.subTest(tag=tag):
+                self.sent.clear()
+                context = self._visa_context([source, source, *after])
+                with self.assertRaises(AutomationError):
+                    context.workflow_navigation.run()
+                self.assertEqual(self.sent, [_CLICK])
+                [action] = context.workflow_navigation.record['actions']
+                self.assertEqual((action['input_status'], action['destination_status']), ('sent', 'unknown'))
+                self.assertFalse(context.workflow_navigation.record['page_verified'])
+
+    def test_visa_switch_stops_at_native_boundary_or_records_short_send_without_retry(self):
+        context = self._visa_context([visa_collection()] * 2)
+        native_click = context.window.click
+
+        def stop_before_click(*args, **kwargs):
+            self.native.GetAsyncKeyState.return_value = 0x8001
+            return native_click(*args, **kwargs)
+
+        context.window.click = stop_before_click
+        with self.assertRaises(Stopped):
+            context.workflow_navigation.run()
+        self.assertEqual(self.sent, [])
+        self.assertEqual(context.workflow_navigation.record['actions'], [])
+
+        self.native.GetAsyncKeyState.return_value = 0
+
+        def short(count, events, size):
+            self.send(count, events, size)
+            return 2 if count == 3 else count
+
+        self.native.SendInput.side_effect = short
+        context = self._visa_context([visa_collection()] * 2 + [visa_collection('characters')] * 2)
+        with self.assertRaises(AutomationError):
+            context.workflow_navigation.run()
+        self.assertEqual(self.sent, [_CLICK, ((0, 0x0004),)])
+        [action] = context.workflow_navigation.record['actions']
+        self.assertEqual((action['input_status'], action['destination_status']), ('unconfirmed', 'unknown'))
+        self.assertFalse(context.workflow_navigation.record['page_verified'])
 
     def test_each_already_open_page_needs_two_frames_and_zero_input(self):
         for target, scene in (('phone', phone()), ('guide', identified(fixture('guide_du_capped'))),

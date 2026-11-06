@@ -22,8 +22,10 @@ GAME_VISION_TASKS = {'workflow_game_image', 'workflow_game_text'}
 PAGE_TASK = 'workflow_open_page'
 ACTIVITY_WORKFLOW_PAGES = ('odyssey', 'reward_guide')
 MESSAGE_WORKFLOW_PAGE = 'messages'
+VISA_CHARACTERS_PAGE = 'visa_characters'
 WORKFLOW_PAGES = ('phone', 'guide', 'daily_training', 'survival_index', 'assignments', 'mail', 'battlepass',
                   *ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE)
+WORKFLOW_NAVIGATION_TARGETS = (*WORKFLOW_PAGES, VISA_CHARACTERS_PAGE)
 WORKFLOW_FOREGROUND_TASKS = GAME_VISION_TASKS | {PAGE_TASK}
 GAME_TASKS = {'daily', 'plan', 'differential_universe', 'currency_wars_loop',
               'currency_wars_points', 'currency_wars_rewards', 'du_rewards'} | WORKFLOW_FOREGROUND_TASKS
@@ -262,7 +264,7 @@ def _params(task, params):
             if type(value) not in (int, float) or not .5 <= value <= 1:
                 raise WorkflowError('识别阈值须在 0.5～1 之间。')
     elif task == PAGE_TASK:
-        if params.get('target') not in WORKFLOW_PAGES:
+        if params.get('target') not in WORKFLOW_NAVIGATION_TARGETS:
             raise WorkflowError('请选择任务流支持的游戏页面。')
     elif task == 'workflow_notify':
         from .notify_profiles import NotifyError, alias, text

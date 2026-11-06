@@ -19,7 +19,7 @@ from autohsr.daily_event_observe import read_event_installation
 from autohsr.models import FocusLost, Scene, Token
 from autohsr.tests.test_daily_event_navigation import activity_frame
 from autohsr.tests.test_daily_event_pages import _odyssey
-from autohsr.tests.test_daily_reward_observe import ACCOUNT, _Window, phone
+from autohsr.tests.test_daily_reward_observe import ACCOUNT, _Window, phone, visa_collection
 from autohsr.tests.test_task_workflow import condition, recipe, task
 
 
@@ -35,6 +35,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
 
             pages = tuple(Scene(frame.tokens, cv2.resize(frame.image, (1920, 1080)))
                           for frame in (world_pair()[-1], bright_sequence()[-1]))
+        elif target == 'visa_characters':
+            pages = (visa_collection(), visa_collection('characters'))
         elif target in ('odyssey', 'reward_guide'):
             banner = activity_frame()
             banner.tokens.append(ACCOUNT)
@@ -185,6 +187,39 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         result = native['workflow_navigation']
         self.assertFalse(result['page_verified'])
         self.assertEqual(result['actions'][0]['input_status'], 'sent')
+
+    def test_opens_character_showcase_with_one_explicit_task_and_no_other_input(self):
+        sent, steps, native = self.run_navigation(target='visa_characters', check_publication_lock=True)
+        self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)])
+        tab = next(token for token in visa_collection().tokens if token.text == '角色展示')
+        self.assertAlmostEqual(self.clicks[0][0], tab.center[0], delta=.001)
+        self.assertAlmostEqual(self.clicks[0][1], tab.center[1], delta=.001)
+        result = native['workflow_navigation']
+        self.assertEqual(result['client_version'], '4.6.0')
+        self.assertTrue(result['page_verified'])
+        self.assertTrue(steps[0]['facts']['page_verified'])
+        self.assertEqual(result['actions'], [
+            dict(action='open_visa_characters', source_page='visa_collection', expected_pages=['visa_characters'],
+                 input_status='sent', destination_status='verified', destination_page='visa_characters')])
+
+    def test_character_switch_already_open_is_zero_input_and_wrong_version_stops(self):
+        for version, verified in (('4.6.0', True), ('4.7.0', False)):
+            with self.subTest(version=version):
+                sent, steps, native = self.run_navigation(target='visa_characters', already_open=True, version=version)
+                self.assertEqual(sent, [])
+                self.assertEqual(native['workflow_navigation']['actions'], [])
+                self.assertIs(native['workflow_navigation']['page_verified'], verified)
+                self.assertIs(steps[0]['facts'].get('page_verified', False), verified)
+
+    def test_character_switch_preserves_only_the_sent_action_on_late_focus_or_version_change(self):
+        for overrides in (dict(late_loss=True), dict(late_version=True)):
+            with self.subTest(overrides=overrides):
+                sent, steps, native = self.run_navigation(target='visa_characters', **overrides)
+                self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)])
+                result = native['workflow_navigation']
+                self.assertFalse(result['page_verified'])
+                self.assertNotIn('page_verified', steps[0]['facts'])
+                self.assertEqual([action['input_status'] for action in result['actions']], ['sent'])
 
     def test_publication_focus_loss_preserves_sent_action_without_a_page_fact(self):
         sent, steps, native = self.run_navigation(late_loss=True)

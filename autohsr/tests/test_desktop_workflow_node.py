@@ -73,6 +73,9 @@ class WorkflowNodeFormTests(unittest.TestCase):
         self.write_params('{"target":"mail"}')
         self.form._show_page_picker()
         self.assertEqual(self.form.page_target.get(), "邮件")
+        self.form.page_target.set("漫游签证角色展示")
+        self.form._select_page(None)
+        self.assertEqual(self.submitted()["params"], {"target": "visa_characters"})
 
     def test_edit_locks_node_type_and_can_clear_optional_values(self):
         node = dict(id="original", type="task", name="旧名称", enabled=True, task="daily",

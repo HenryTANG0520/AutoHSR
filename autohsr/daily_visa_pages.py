@@ -13,6 +13,8 @@ from .team_calibration_pages import calibration_overlay
 from .vision import helper_overlay
 
 
+VISA_LAYOUT_VERSION = '4.6.0'
+
 _TITLE = (.028, .020, .132, .120)
 _SUBTITLE = (.028, .045, .145, .160)
 _RULE = (.835, .020, .950, .141)
@@ -65,12 +67,12 @@ def _tab_highlight(image, token):
     return values
 
 
-def _visa_view(scene, confidence, selected):
+def _visa_tabs(scene, confidence, selected):
     if (not isinstance(scene, Scene) or type(confidence) not in (int, float) or not 0 <= confidence <= 1
             or not isinstance(scene.image, np.ndarray) or scene.image.dtype != np.uint8
             or scene.image.ndim != 3 or scene.image.shape[2] != 3
             or scene.image.shape[0] < 360 or scene.image.shape[1] < 640):
-        return False
+        return None
     visible = trusted(scene, .65)
     if (calibration_overlay(visible) or helper_overlay(visible)
             or visible.has(_MODAL_LABELS, exact=True) or visible.has(_MODAL_PHRASES)
@@ -78,15 +80,15 @@ def _visa_view(scene, confidence, selected):
             or visible.has('物品', _MODAL_BODY, exact=True)
             or _has_split_label(visible, _MODAL_LABELS, FULL)
             or _has_split_label(visible, _MODAL_PHRASES, FULL, exact=False)):
-        return False
+        return None
 
     minimum = max(.85, confidence)
     if selected == '角色展示':
         if (_landmark(visible, '支援角色', _SUPPORT_HEADING, minimum) is None
                 or _landmark(visible, '星海同行', _COMPANION_HEADING, minimum) is None):
-            return False
+            return None
     elif visible.has(('支援角色', '星海同行'), _SHOWCASE_BODY, exact=True):
-        return False
+        return None
 
     title = _landmark(visible, '漫游签证', _TITLE, minimum)
     subtitle = _landmark(visible, selected, _SUBTITLE, minimum, copies=2)
@@ -94,29 +96,54 @@ def _visa_view(scene, confidence, selected):
     tabs = {label: _landmark(visible, label, area, minimum, copies=2 if label == selected else 1)
             for label, area in _TABS}
     if title is None or subtitle is None or rule is None or any(tab is None for tab in tabs.values()):
-        return False
+        return None
     if (_has_split_label(visible, tuple(label for label in tabs if label != selected), _SUBTITLE)
             or not .013 <= subtitle.center[1] - title.center[1] <= .045
             or abs(subtitle.center[0] - title.center[0]) > .025):
-        return False
+        return None
     ordered_tabs = tuple(tabs.values())
     tab_y = [tab.center[1] for tab in ordered_tabs]
     if (max(tab_y) - min(tab_y) > .012
             or not .023 <= tab_y[0] - title.center[1] <= .065
             or any(not .074 <= right.center[0] - left.center[0] <= .124
                    for left, right in zip(ordered_tabs, ordered_tabs[1:]))):
-        return False
+        return None
 
     active = _tab_highlight(scene.image, tabs[selected])
     inactive = (_tab_highlight(scene.image, tab) for label, tab in tabs.items() if label != selected)
-    return min(active) >= .80 and all(max(pill) <= .10 for pill in inactive)
+    if min(active) >= .80 and all(max(pill) <= .10 for pill in inactive):
+        return tabs
+    return None
 
 
 def visa_overview(scene, confidence=.85):
     """Return whether one frame matches the profile's collection overview."""
-    return _visa_view(scene, confidence, '收集展示')
+    return _visa_tabs(scene, confidence, '收集展示') is not None
 
 
 def visa_support_section(scene, confidence=.85):
     """Return whether the selected character showcase has its support section."""
-    return _visa_view(scene, confidence, '角色展示')
+    return _visa_tabs(scene, confidence, '角色展示') is not None
+
+
+def visa_character_tab(scene, *, client_version, confidence=.85):
+    """Locate the unselected character tab on the calibrated collection page."""
+    if client_version != VISA_LAYOUT_VERSION:
+        return None
+    tabs = _visa_tabs(scene, confidence, '收集展示')
+    if tabs is None:
+        return None
+    tab = tabs['角色展示']
+    height, width = scene.image.shape[:2]
+    left, top, right, bottom = (round(value * size) for value, size in zip(tab.box, (width, height) * 2))
+    pixels = scene.image[top:bottom, left:right]
+    if pixels.shape[0] < 7 or pixels.shape[1] < 16:
+        return None
+    # Check the pale strokes in all four glyph positions against the dark tab
+    # fill. OCR alone can retain the old label while the control is obscured.
+    for glyph in np.array_split(pixels, 4, axis=1):
+        bright = (glyph.min(axis=2) >= 110).mean()
+        dark = (glyph.max(axis=2) <= 95).mean()
+        if not .09 <= bright <= .42 or dark < .50:
+            return None
+    return tab
