@@ -2305,7 +2305,8 @@ class Runner:
         from dataclasses import replace
         if (type(observation_wait_for_foreground) is not bool
                 or observation_wait_for_foreground
-                and operation not in DAILY_OBSERVATION_OPERATIONS | WORKFLOW_FOREGROUND_TASKS | {ACHIEVEMENT_CLAIM_OPERATION}):
+                and operation not in DAILY_OBSERVATION_OPERATIONS | WORKFLOW_FOREGROUND_TASKS | {
+                    ACHIEVEMENT_CLAIM_OPERATION, MESSAGE_REPLY_OPERATION}):
             raise ValueError('前台等待只适用于明确启动的游戏页面核对。')
         self.observation_wait_for_foreground = observation_wait_for_foreground
         if operation in WORKFLOW_FOREGROUND_TASKS and (new_battle_run or use_power_plan or new_power_plan or weekly_plan is not None):

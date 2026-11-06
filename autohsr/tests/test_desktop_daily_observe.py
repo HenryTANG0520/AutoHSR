@@ -8,7 +8,10 @@ import unittest
 from unittest.mock import Mock, patch
 
 from autohsr import theme
-from autohsr.desktop_daily_observe import ACHIEVEMENT_CLAIM, build_daily_observation_panel, observation_result
+from autohsr.daily_message_reply import P179_SELECTION, REPLY_CHOICE, REPLY_NODE
+from autohsr.daily_observe import MESSAGE_REPLY_OPERATION
+from autohsr.desktop_daily_observe import (ACHIEVEMENT_CLAIM, build_daily_observation_panel, message_reply_result,
+                                          observation_result)
 from autohsr.desktop_tools import ToolsShelf
 
 
@@ -51,6 +54,12 @@ def achievement_claim(*, status='success', saved=True, **overrides):
                  overlay_quantity=20, overview_return_verified=True, overview_controls_cleared=True,
                  jade_balance_before=100, jade_balance_after=120, jade_balance_delta=20, jade_attributed=None)
     return report(ACHIEVEMENT_CLAIM, value | overrides, status=status, saved=saved)
+
+
+def message_reply(selection=P179_SELECTION, *, status='success', saved=True, **overrides):
+    value = dict(node=selection[0], choice=selection[1], input_status='sent', feedback_status='confirmed',
+                 ledger_status='confirmed')
+    return report(MESSAGE_REPLY_OPERATION, value | overrides, status=status, saved=saved)
 
 
 class DailyObservationReceiptTests(unittest.TestCase):
@@ -218,6 +227,37 @@ class DailyObservationReceiptTests(unittest.TestCase):
         _, detail = observation_result(ACHIEVEMENT_CLAIM, achievement_claim(jade_attributed=20))
         self.assertIn('余额归因 · 已归因 20 星琼', detail)
 
+    def test_message_reply_receipt_separates_current_send_feedback_and_ledger(self):
+        title, detail = message_reply_result(P179_SELECTION, message_reply())
+        self.assertEqual(title, '本次短信回复已核实')
+        self.assertEqual(detail.splitlines(), [
+            '最近一次 · 工作与休假／提议休假出游', '输入 · 已发送', '反馈 · 新发出回复已核实',
+            '持久账本 · 确认记录已保存',
+        ])
+        for status, saved, sent, ledger, title, ledger_text in (
+            ('partial', True, 'not_sent', 'confirmed', '已有确认记录，本次未发送', '已有确认记录'),
+            ('success', True, 'not_sent', 'confirmed', '已有确认记录，本次未发送', '已有确认记录'),
+            ('partial', True, 'unconfirmed', 'pending', '本次短信回复待核对', '待核对记录已保留'),
+            ('stopped', True, 'sent', 'confirmed', '本次短信回复已停止', '确认记录已保存'),
+            ('partial', False, 'sent', 'confirmed', '本次短信回复待核对', '确认记录已保存'),
+            ('failed', True, 'not_sent', 'none', '本次短信回复待核对', '未取得记录'),
+        ):
+            with self.subTest(status=status, sent=sent, ledger=ledger):
+                receipt = message_reply(status=status, saved=saved, input_status=sent, ledger_status=ledger)
+                actual, detail = message_reply_result(P179_SELECTION, receipt)
+                self.assertEqual(actual, title)
+                self.assertIn('反馈 · 待核对', detail)
+                self.assertIn('持久账本 · ' + ledger_text, detail)
+                self.assertEqual('本次报告 · 未发布' in detail, not saved)
+                self.assertNotIn(_MARKER, detail)
+
+    def test_message_reply_rejects_unbound_or_unknown_receipts(self):
+        unknown = ('本次短信回复待核对', '本次回复回执待核对。')
+        for receipt in (message_reply((REPLY_NODE, REPLY_CHOICE)), message_reply(schema=True),
+                        message_reply(input_status=_MARKER), messages(), dict(message_reply(), report_saved=1)):
+            self.assertEqual(message_reply_result(P179_SELECTION, receipt), unknown)
+        self.assertEqual(message_reply_result(list(P179_SELECTION), message_reply()), unknown)
+
 
 class DailyObservationPanelTests(unittest.TestCase):
     def setUp(self):
@@ -230,7 +270,8 @@ class DailyObservationPanelTests(unittest.TestCase):
         self.ui = SimpleNamespace(root=self.root, ui_scale=1., busy=False, closing=False, active=True,
                                   _selected_tool='daily_observation', _in_tools=lambda: self.ui.active,
                                   _tool_action_changed=Mock(), _start_daily_observation=Mock(side_effect=self.start),
-                                  _start_achievement_bulk_claim=Mock(side_effect=self.start_claim))
+                                  _start_achievement_bulk_claim=Mock(side_effect=self.start_claim),
+                                  _start_daily_message_reply=Mock(side_effect=self.start))
         self.panel = self.ui.daily_observation_panel = build_daily_observation_panel(self.root, self.ui)
         self.panel.pack(fill='x')
 
@@ -259,7 +300,7 @@ class DailyObservationPanelTests(unittest.TestCase):
         expected = (('成就总览', 'achievements'), ('漫游签证', 'support'), ('短信', 'messages'),
                     ('巡星之礼', 'odyssey'), ('当前页面', 'screen'))
         self.assertEqual(tuple(self.panel.scope['values']),
-                         (*[label for label, _ in expected], '核对所选页面', '本次成就一键领取'))
+                         (*[label for label, _ in expected], '核对所选页面', '本次成就一键领取', '本次短信回复'))
         for label, mode in expected:
             self.select(label)
             self.assertIn('切回游戏', self.panel.hint['text'])
@@ -283,7 +324,57 @@ class DailyObservationPanelTests(unittest.TestCase):
         self.assertEqual(self.panel.result_title['text'], '当前页面已核实 · 星际和平指南')
         self.assertEqual(self.ui._start_daily_observation.call_count, 5)
         self.ui._start_achievement_bulk_claim.assert_not_called()
+        self.ui._start_daily_message_reply.assert_not_called()
         self.assertEqual(self.root.state(), 'withdrawn')
+
+    def test_sms_reply_requires_both_selections_and_shared_footer(self):
+        self.select('短信')
+        self.assertEqual(self.panel.primary_action()[0], '核对页面')
+        self.assertTrue(self.panel.start())
+        self.deliver(messages())
+        self.select('本次短信回复')
+        self.assertTrue(self.panel.reply_fields.grid_info())
+        self.assertEqual((self.panel.reply_node.get(), self.panel.reply_choice.get()), ('', ''))
+        self.assertTrue(self.panel.reply_choice.instate(('disabled',)))
+        self.assertFalse(self.panel.start())
+        self.panel.reply_node.set(REPLY_NODE)
+        self.panel._reply_node_selected()
+        self.assertEqual(tuple(self.panel.reply_choice['values']), (REPLY_CHOICE,))
+        self.assertEqual(self.panel.reply_choice.get(), '')
+        self.assertFalse(self.panel.primary_action()[2])
+        self.panel.reply_choice.set(REPLY_CHOICE)
+        self.panel._reply_choice_selected()
+        self.assertTrue(self.panel.primary_action()[2])
+        self.panel.reply_node.set(P179_SELECTION[0])
+        self.panel._reply_node_selected()
+        self.assertEqual(self.panel.reply_choice.get(), '')
+        self.panel.reply_choice.set(REPLY_CHOICE)
+        self.panel._reply_choice_selected()
+        self.assertFalse(self.panel.primary_action()[2])
+        self.panel.reply_choice.set(P179_SELECTION[1])
+        self.panel._reply_choice_selected()
+        self.ui._start_daily_message_reply.assert_not_called()
+        label, invoke, enabled = self.panel.primary_action()
+        self.assertEqual((label, enabled), ('提交本次短信回复', True))
+        self.assertTrue(invoke())
+        self.assertEqual(self.callbacks[-1][0], P179_SELECTION)
+        self.assertTrue(all(widget.instate(('disabled',)) for widget in
+                            (self.panel.scope, self.panel.reply_node, self.panel.reply_choice)))
+        self.assertFalse(self.panel.start())
+
+        self.panel.destroy()
+        self.panel = self.ui.daily_observation_panel = build_daily_observation_panel(self.root, self.ui)
+        self.panel.pack(fill='x')
+        self.assertEqual((self.panel.reply_node.get(), self.panel.reply_choice.get()), P179_SELECTION)
+        self.deliver(message_reply(status='partial', input_status='not_sent', feedback_status='unknown'))
+        self.deliver(message_reply())
+        self.assertEqual(self.panel.result_title['text'], '已有确认记录，本次未发送')
+        self.assertEqual((self.panel.reply_node.get(), self.panel.reply_choice.get()), ('', ''))
+        self.assertFalse(self.panel.primary_action()[2])
+        self.select('短信')
+        self.assertEqual(self.panel.result_title['text'], '手机短信入口已核实')
+        self.assertNotIn(_MARKER, repr(self.ui._daily_observation_state))
+        self.ui._start_daily_message_reply.assert_called_once()
 
     def test_achievement_claim_requires_explicit_scope_and_footer_then_preserves_read_only_result(self):
         self.assertEqual(self.panel.scope.get(), '成就总览')

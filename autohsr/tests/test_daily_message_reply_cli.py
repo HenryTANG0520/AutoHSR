@@ -261,6 +261,47 @@ class DailyMessageReplyCliTests(unittest.TestCase):
         self.native.SendInput.assert_not_called()
         self.assertFalse(self.ledger())
 
+    def test_desktop_opt_in_waits_for_manual_foreground_before_capture_and_input(self):
+        self.frames = iter(replay.replay_frames())
+        self.native.GetForegroundWindow.return_value = 55
+
+        def handoff(_):
+            self.window.capture.assert_not_called()
+            self.native.SendInput.assert_not_called()
+            self.native.GetForegroundWindow.return_value = self.window.hwnd
+
+        clock = SimpleNamespace(monotonic=time.monotonic, sleep=Mock(side_effect=handoff))
+        runner = app.Runner(Settings.load(self.config), operation=reply.OPERATION,
+                            daily_message_reply=(reply.REPLY_NODE, reply.REPLY_CHOICE),
+                            observation_wait_for_foreground=True)
+        with patch('autohsr.screenshot_tool.time', clock):
+            report = runner.run().to_dict()
+        clock.sleep.assert_called_once()
+        self.assertEqual(report['status'], 'success')
+        self.assertEqual(report['daily_message_reply']['feedback_status'], 'confirmed')
+        self.native.SendInput.assert_called_once()
+        self.assert_ledger_status('confirmed')
+        self.assertEqual(self.config.read_bytes(), self.original_config)
+
+    def test_desktop_foreground_wait_honors_f10_without_capture_or_ledger(self):
+        self.native.GetForegroundWindow.return_value = 55
+
+        def stop(_):
+            self.native.GetAsyncKeyState.side_effect = lambda key: 0x8000 if key == 0x79 else 0
+
+        clock = SimpleNamespace(monotonic=time.monotonic, sleep=Mock(side_effect=stop))
+        runner = app.Runner(Settings.load(self.config), operation=reply.OPERATION,
+                            daily_message_reply=(reply.REPLY_NODE, reply.REPLY_CHOICE),
+                            observation_wait_for_foreground=True)
+        with patch('autohsr.screenshot_tool.time', clock):
+            report = runner.run().to_dict()
+        clock.sleep.assert_called_once()
+        self.assertEqual(report['status'], 'stopped')
+        self.assertEqual(report['daily_message_reply']['input_status'], 'not_sent')
+        self.window.capture.assert_not_called()
+        self.native.SendInput.assert_not_called()
+        self.assertFalse(self.ledger())
+
     def test_short_batch_only_releases_left_button_and_pending_blocks_replay(self):
         frames = list(replay.replay_frames())
         self.frames = iter(frames)

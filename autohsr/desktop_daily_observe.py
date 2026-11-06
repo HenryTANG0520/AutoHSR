@@ -4,12 +4,17 @@ from dataclasses import dataclass, field
 from tkinter import ttk
 
 from . import theme
+from .daily_message_reply import REPLY_SELECTIONS
+from .daily_message_reply_flow import supported_selection
 from .daily_observe import ACHIEVEMENT_CLAIM_OPERATION as ACHIEVEMENT_CLAIM
+from .daily_observe import MESSAGE_REPLY_OPERATION
 from .desktop_selected_page_check import MODE as SELECTED_PAGES
 from .desktop_selected_page_check import PageCheckDraft, SelectedPageCheckFields, result_text as selected_page_result
 
 
 _CLAIM_LABEL = '本次成就一键领取'
+_REPLY_LABEL = '提交本次短信回复'
+_REPLY_NODES = tuple(dict.fromkeys(node for node, _ in REPLY_SELECTIONS))
 
 
 @dataclass(frozen=True)
@@ -35,6 +40,8 @@ _SCOPES = {
                            '按预览顺序切换并核对，活动页面排在末尾。开始后请手动切回已登录的游戏前台。'),
     ACHIEVEMENT_CLAIM: _Scope(_CLAIM_LABEL, ACHIEVEMENT_CLAIM,
                               '先在游戏打开有金色一键按钮的成就总览。开始后手动切回游戏并保持前台。'),
+    MESSAGE_REPLY_OPERATION: _Scope('本次短信回复', MESSAGE_REPLY_OPERATION,
+                                    '先在游戏手动选中对应会话节点并保留回复选项。提交后手动切回游戏前台。'),
 }
 _BY_LABEL = {scope.label: mode for mode, scope in _SCOPES.items()}
 _UNKNOWN = ('结果待核对', '请核对游戏前台和所选范围。')
@@ -256,12 +263,51 @@ def observation_result(mode, report):
     return _navigation_result(mode, value, status)
 
 
+def message_reply_result(selection, report):
+    unverified = ('本次短信回复待核对', '本次回复回执待核对。')
+    if (not supported_selection(selection) or not isinstance(report, dict)
+            or report.get('operation') != MESSAGE_REPLY_OPERATION or type(report.get('report_saved')) is not bool):
+        return unverified
+    value, status = report.get(MESSAGE_REPLY_OPERATION), report.get('status')
+    if (not isinstance(value, dict) or type(value.get('schema')) is not int or value['schema'] != 1
+            or (value.get('node'), value.get('choice')) != selection
+            or status not in ('success', 'partial', 'failed', 'stopped')):
+        return unverified
+    sent, feedback, ledger = (value.get(key) for key in ('input_status', 'feedback_status', 'ledger_status'))
+    if (sent not in ('not_sent', 'unconfirmed', 'sent') or feedback not in ('unknown', 'confirmed')
+            or ledger not in ('none', 'pending', 'confirmed')):
+        return unverified
+
+    saved = report['report_saved']
+    confirmed = saved and status == 'success' and sent == 'sent' and feedback == ledger == 'confirmed'
+    historical = sent == 'not_sent' and ledger == 'confirmed'
+    title = '本次短信回复待核对'
+    if status == 'stopped':
+        title = '本次短信回复已停止'
+    elif confirmed:
+        title = '本次短信回复已核实'
+    elif historical:
+        title = '已有确认记录，本次未发送'
+    input_text = {'not_sent': '未发送', 'unconfirmed': '发送待核对', 'sent': '已发送'}[sent]
+    ledger_text = {'none': '未取得记录', 'pending': '待核对记录已保留', 'confirmed': '确认记录已保存'}[ledger]
+    if historical:
+        ledger_text = '已有确认记录'
+    feedback_text = '新发出回复已核实' if confirmed else '待核对'
+    lines = [f'最近一次 · {selection[0]}／{selection[1]}', f'输入 · {input_text}',
+             f'反馈 · {feedback_text}', f'持久账本 · {ledger_text}']
+    if not saved:
+        lines.append('本次报告 · 未发布')
+    return title, '\n'.join(lines)
+
+
 @dataclass
 class _State:
     mode: str = 'achievements'
     job: object = None
     results: dict = field(default_factory=dict)
     page_check: PageCheckDraft = field(default_factory=PageCheckDraft)
+    reply_node: str = ''
+    reply_choice: str = ''
 
 
 class DailyObservationPanel(ttk.Frame):
@@ -284,6 +330,16 @@ class DailyObservationPanel(ttk.Frame):
         self.page_check = SelectedPageCheckFields(self, model.page_check, scale=ui.ui_scale,
             can_edit=self._can_edit_page_check, changed=self._page_check_changed)
         self.page_check.grid(row=4, column=0, columnspan=2, sticky='ew', pady=(pad, 0))
+        self.reply_fields = ttk.Frame(self, style='Card.TFrame')
+        self.reply_fields.grid(row=4, column=0, columnspan=2, sticky='ew', pady=(pad, 0))
+        self.reply_node = ttk.Combobox(self.reply_fields, values=_REPLY_NODES, state='readonly', width=18)
+        self.reply_choice = ttk.Combobox(self.reply_fields, state='disabled', width=18)
+        for row, (label, widget) in enumerate((('短信节点', self.reply_node), ('回复选项', self.reply_choice))):
+            ttk.Label(self.reply_fields, text=label, style='Card.TLabel').grid(
+                row=row, column=0, sticky='w', padx=(0, pad), pady=(0, round(pad / 2)))
+            widget.grid(row=row, column=1, sticky='w', pady=(0, round(pad / 2)))
+        self.reply_node.bind('<<ComboboxSelected>>', self._reply_node_selected)
+        self.reply_choice.bind('<<ComboboxSelected>>', self._reply_choice_selected)
         ttk.Separator(self).grid(row=5, column=0, columnspan=2, sticky='ew', pady=(pad, pad))
         self.result_title = theme.wrapped_label(self, style='Card.TLabel')
         self.result_title.grid(row=6, column=0, columnspan=2, sticky='ew')
@@ -303,6 +359,8 @@ class DailyObservationPanel(ttk.Frame):
     def primary_action(self):
         if self.model.mode == SELECTED_PAGES:
             return '核对所选页面', self.start, self._can_edit_page_check() and self.page_check.recipe is not None
+        if self.model.mode == MESSAGE_REPLY_OPERATION:
+            return _REPLY_LABEL, self.start, self._can_edit_reply() and self._reply_selection() is not None
         title = _CLAIM_LABEL if self.model.mode == ACHIEVEMENT_CLAIM else '核对页面'
         return title, self.start, self._idle and self._active
 
@@ -318,15 +376,26 @@ class DailyObservationPanel(ttk.Frame):
         self.scope.configure(state='readonly' if self._idle else 'disabled')
         self.hint.configure(text=scope.hint)
         claim = model.mode == ACHIEVEMENT_CLAIM
-        self.note.configure(text=('本次只提交一键领取和专属明细确认。出现星琼物品提示后，请手动关闭并留在总览。'
-                                  if claim else '领取操作由你在游戏内完成。'))
+        reply = model.mode == MESSAGE_REPLY_OPERATION
+        self.note.configure(text={
+            ACHIEVEMENT_CLAIM: '本次只提交一键领取和专属明细确认。出现星琼物品提示后，请手动关闭并留在总览。',
+            MESSAGE_REPLY_OPERATION: '明确选择节点和选项后，本次只提交该回复一次。',
+        }.get(model.mode, '领取操作由你在游戏内完成。'))
         if model.mode == SELECTED_PAGES:
             self.page_check.grid()
             self.page_check.refresh()
         else:
             self.page_check.grid_remove()
+        if reply:
+            self.reply_fields.grid()
+            self._refresh_reply_fields()
+        else:
+            self.reply_fields.grid_remove()
         waiting = ('等待领取', '') if claim else _WAITING
         running = ('正在执行本次成就领取', _RUNNING[1]) if claim else _RUNNING
+        if reply:
+            waiting = ('等待提交回复' if self._reply_selection() else '等待选择节点和回复', '')
+            running = ('正在执行本次短信回复', _RUNNING[1])
         title, detail = running if model.job is not None else model.results.get(model.mode, waiting)
         self.result_title.configure(text=title)
         self.result_detail.configure(text=detail)
@@ -340,6 +409,38 @@ class DailyObservationPanel(ttk.Frame):
     def _can_edit_page_check(self):
         return self.model.mode == SELECTED_PAGES and self._idle and self._active
 
+    def _can_edit_reply(self):
+        return self.model.mode == MESSAGE_REPLY_OPERATION and self._idle and self._active
+
+    def _reply_selection(self):
+        selection = self.model.reply_node, self.model.reply_choice
+        return selection if supported_selection(selection) else None
+
+    def _refresh_reply_fields(self):
+        model = self.model
+        choices = tuple(choice for node, choice in REPLY_SELECTIONS if node == model.reply_node)
+        editable = self._can_edit_reply()
+        self.reply_node.configure(state='readonly' if editable else 'disabled')
+        self.reply_node.set(model.reply_node)
+        self.reply_choice.configure(values=choices, state='readonly' if editable and choices else 'disabled')
+        self.reply_choice.set(model.reply_choice)
+
+    def _reply_node_selected(self, _event=None):
+        if self._can_edit_reply():
+            node = self.reply_node.get()
+            if node != self.model.reply_node:
+                self.model.reply_node = node if node in _REPLY_NODES else ''
+                self.model.reply_choice = ''
+        self.refresh()
+        self.ui._tool_action_changed()
+
+    def _reply_choice_selected(self, _event=None):
+        if self._can_edit_reply():
+            choice = self.reply_choice.get()
+            self.model.reply_choice = choice if (self.model.reply_node, choice) in REPLY_SELECTIONS else ''
+        self.refresh()
+        self.ui._tool_action_changed()
+
     def _page_check_changed(self, selection_changed):
         if selection_changed:
             self.model.results.pop(SELECTED_PAGES, None)
@@ -351,7 +452,10 @@ class DailyObservationPanel(ttk.Frame):
             return False
         ui, model, mode = self.ui, self.model, self.model.mode
         recipe = self.page_check.recipe if mode == SELECTED_PAGES else None
+        reply = self._reply_selection() if mode == MESSAGE_REPLY_OPERATION else None
         if mode == SELECTED_PAGES and recipe is None:
+            return False
+        if mode == MESSAGE_REPLY_OPERATION and reply is None:
             return False
         ticket = model.job = object()
 
@@ -368,6 +472,9 @@ class DailyObservationPanel(ttk.Frame):
                     if ui.closing:
                         return
                     model.results[mode] = selected_page_result(recipe, report)
+                elif reply is not None:
+                    model.reply_node = model.reply_choice = ''
+                    model.results[mode] = message_reply_result(reply, report)
                 else:
                     model.results[mode] = observation_result(mode, report)
                 update()
@@ -375,6 +482,8 @@ class DailyObservationPanel(ttk.Frame):
         try:
             if mode == ACHIEVEMENT_CLAIM:
                 accepted = ui._start_achievement_bulk_claim(complete)
+            elif reply is not None:
+                accepted = ui._start_daily_message_reply(reply, complete)
             elif recipe is not None:
                 accepted = ui._start_selected_page_check(recipe, complete)
             else:
@@ -382,7 +491,10 @@ class DailyObservationPanel(ttk.Frame):
         except Exception:
             if model.job is ticket:
                 model.job = None
-                model.results[mode] = observation_result(mode, None) if mode == ACHIEVEMENT_CLAIM else _FAILED
+                if reply is not None:
+                    model.results[mode] = message_reply_result(reply, None)
+                else:
+                    model.results[mode] = observation_result(mode, None) if mode == ACHIEVEMENT_CLAIM else _FAILED
             update()
             return False
         if not accepted and model.job is ticket:

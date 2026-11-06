@@ -298,6 +298,26 @@ class Lifecycle(unittest.TestCase):
         self.assertFalse(AutoHSRWindow._start_achievement_bulk_claim(host, callback))
         host._start_scoped_runner.assert_not_called()
 
+    def test_sms_reply_routes_only_supported_explicit_pairs_to_its_native_runner(self):
+        from autohsr.daily_message_reply import P179_SELECTION, REPLY_CHOICE, REPLY_NODE
+        from autohsr.daily_observe import MESSAGE_REPLY_OPERATION
+
+        settings, callback, emit = Settings(auto_launch=True), Mock(), Mock()
+        host = SimpleNamespace(_read_settings=Mock(return_value=settings), _start_scoped_runner=Mock(return_value=True))
+        self.assertFalse(AutoHSRWindow._start_daily_message_reply(host, (REPLY_NODE, P179_SELECTION[1]), callback))
+        host._read_settings.assert_not_called()
+        host._start_scoped_runner.assert_not_called()
+        for selection in ((REPLY_NODE, REPLY_CHOICE), P179_SELECTION):
+            with self.subTest(selection=selection), patch('autohsr.app.Runner') as runner:
+                self.assertTrue(AutoHSRWindow._start_daily_message_reply(host, selection, callback))
+                title, operation, factory, present = host._start_scoped_runner.call_args.args
+                self.assertEqual((title, operation), ('本次短信回复', MESSAGE_REPLY_OPERATION))
+                self.assertIs(present, callback)
+                runner.assert_not_called()
+                self.assertIs(factory(emit), runner.return_value)
+                runner.assert_called_once_with(settings, emit, operation=MESSAGE_REPLY_OPERATION,
+                                               daily_message_reply=selection, observation_wait_for_foreground=True)
+
     def test_schedule_activation_rejects_saved_revision_source_and_budget_drift(self):
         with TemporaryDirectory(prefix='autohsr-schedule-desktop-qa-') as directory:
             root = Path(directory)

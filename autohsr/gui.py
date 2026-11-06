@@ -1117,6 +1117,24 @@ class AutoHSRWindow:
 
         return self._start_scoped_runner('本次成就一键领取', ACHIEVEMENT_CLAIM, factory, on_report)
 
+    def _start_daily_message_reply(self, selection, on_report) -> bool:
+        from .daily_message_reply_flow import supported_selection
+        from .daily_observe import MESSAGE_REPLY_OPERATION
+
+        if not supported_selection(selection):
+            return False
+        settings = self._read_settings(operation='check')
+        if settings is None:
+            return False
+
+        def factory(emit):
+            from .app import Runner
+
+            return Runner(settings, emit, operation=MESSAGE_REPLY_OPERATION,
+                          daily_message_reply=selection, observation_wait_for_foreground=True)
+
+        return self._start_scoped_runner('本次短信回复', MESSAGE_REPLY_OPERATION, factory, on_report)
+
     def _start_daily_attachment(self, operation, on_report=None) -> bool:
         item = ATTACHMENT_SECTIONS[operation]
         settings = self._read_settings(operation=operation)
