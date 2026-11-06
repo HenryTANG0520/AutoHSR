@@ -808,10 +808,20 @@ class Context:
             if support_decision is not None:
                 support_decision.require_current(self, scene)
             require_current()
+            if support_decision is None:
+                ready_to_send = True
+
+        def before_submit():
+            nonlocal ready_to_send
+            support_decision.require_current(self, scene)
+            require_current()
             ready_to_send = True
 
         try:
-            self.window.click(*target.center, geometry, before_send=before_send)
+            checks = {'before_send': before_send}
+            if support_decision is not None:
+                checks['before_submit'] = before_submit
+            self.window.click(*target.center, geometry, **checks)
         except (AutomationError, OSError) as error:
             # The task tree's final week check can veto after before_send.
             if ready_to_send and not isinstance(error, FollowupWeekExpired):

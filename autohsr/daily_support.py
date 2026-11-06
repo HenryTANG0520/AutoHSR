@@ -7,7 +7,7 @@ from time import monotonic
 
 from .currency_wars_identity import account_key
 from .du_daily import CHINA, game_day
-from .models import AutomationError, normalize
+from .models import AutomationError, Stopped, normalize
 
 
 TASK = '使用支援角色并获得战斗胜利1次'
@@ -133,7 +133,34 @@ class _Window:
             return method
 
         def checked(*args, **kwargs):
-            self.decision.require(self.ctx, self.scene if self.scene is not None else self.ctx.last_scene)
+            from .windows import GameWindow
+            from .workflow_identity import _Window as AccountWindow
+
+            scene = self.scene if self.scene is not None else self.ctx.last_scene
+            self.decision.require(self.ctx, scene)
+            native = self.window._raw if isinstance(self.window, AccountWindow) else self.window
+            if isinstance(native, GameWindow):
+                geometry = scene.geometry
+                if geometry is None:
+                    raise AutomationError('实训支援当前窗口位置未核实，未发送输入。')
+                if name == 'key' and kwargs.setdefault('expected', geometry) != geometry:
+                    raise AutomationError('实训支援按键窗口与当前画面不符，未发送输入。')
+                finish = kwargs.get('before_submit')
+
+                def before_submit():
+                    native.guard(geometry)
+                    if native.emergency_pressed():
+                        raise Stopped('F10 紧急停止。')
+                    if getattr(self.ctx.runner, 'stop_requested', False) is True:
+                        raise Stopped('任务已停止。')
+                    if scene.geometry != geometry:
+                        raise AutomationError('实训支援当前窗口位置已变化，未发送输入。')
+                    self.decision.require_current(self.ctx, scene)
+                    # A planned payment marks its native attempt only after this gate.
+                    if finish is not None:
+                        finish()
+
+                kwargs['before_submit'] = before_submit
             return method(*args, **kwargs)
         return checked
 

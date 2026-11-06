@@ -6,19 +6,23 @@ import io
 import json
 from pathlib import Path
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
+from autohsr import windows
 from autohsr.app import Context
 from autohsr.config import Settings
-from autohsr.daily_support import ACTIVITY, observe, read_state
+from autohsr.currency_wars_identity import account_key
+from autohsr.daily_support import ACTIVITY, Decision, observe, read_state
 from autohsr.du_daily import CHINA
 from autohsr.models import AutomationError, RunReport, Scene, Token, normalize
 from autohsr.planar_team import entry as planar_preset_entry
 from autohsr.recovery import BattleBudget
 from autohsr.tests import test_core as core, test_power_plan as battles
 from autohsr.tests.test_du_team import fixture as team_fixture
+from autohsr.workflow_identity import account_scope
 from autohsr.workflows import DailyWorkflow
 
 
@@ -75,6 +79,72 @@ class DailySupportReadingTests(unittest.TestCase):
             self.assertEqual(ctx.report.support_selections, [])
             page.captured_at = 9.95
             self.assertEqual(observe(workflow).day, '2026-11-05')
+
+
+class DailySupportNativeTests(unittest.TestCase):
+    def test_last_window_check_preserves_scope_and_vetoes_stale_input(self):
+        geometry = windows.Geometry(40, 30, 960, 540)
+        for name, change in (('click', 'day'), ('click', 'epoch'), ('click', 'account'),
+                             ('click', 'stop'), ('click', 'emergency'), ('click', 'focus'), ('esc', 'day'),
+                             ('click', None), ('esc', None)):
+            with self.subTest(action=name, change=change):
+                target = Token('支援', .99, (.65, .84, .73, .89))
+                scene = Scene([target, Token('队伍', .99, (.08, .04, .13, .08)),
+                               Token('UID:123456789', .99, (.01, .96, .16, .99))],
+                              geometry=geometry, captured_at=time.monotonic())
+                day = '2026-11-06'
+                decision = Decision('needed', day, account_key(scene), 0, .85)
+                runner = SimpleNamespace(settings=Settings(), report=RunReport(operation='daily'),
+                                         input_epoch=0, stop_requested=False, checkpoint=Mock(), log=Mock(),
+                                         wait_for_focus=Mock())
+                window = windows.GameWindow.__new__(windows.GameWindow)
+                window.hwnd = 71
+                native = Mock()
+                native.IsWindow.return_value = 1
+                native.IsIconic.return_value = 0
+                native.GetSystemMetrics.side_effect = {76: 0, 77: 0, 78: 1920, 79: 1080}.__getitem__
+                native.GetAsyncKeyState.return_value = 0
+                native.MapVirtualKeyW.return_value = 1
+                native.SendInput.side_effect = lambda size, *_: size
+                scope = SimpleNamespace(require=Mock())
+
+                def foreground():
+                    nonlocal day
+                    if native.GetForegroundWindow.call_count == (1 if name == 'esc' else 2):
+                        if change == 'day':
+                            day = '2026-11-07'
+                        elif change == 'epoch':
+                            runner.input_epoch += 1
+                        elif change == 'account':
+                            scene.tokens.append(Token('UID:987654321', .74, (.01, .96, .17, .99)))
+                        elif change == 'stop':
+                            runner.stop_requested = True
+                    if change == 'emergency' and native.GetForegroundWindow.call_count == 3:
+                        native.GetAsyncKeyState.return_value = 0x8000
+                    if change == 'focus' and native.GetForegroundWindow.call_count == 3:
+                        return window.hwnd + 1
+                    return window.hwnd
+
+                native.GetForegroundWindow.side_effect = foreground
+                with (account_scope(scope), patch.object(windows, 'user32', native),
+                      patch.object(windows, 'geometry', return_value=geometry), patch('autohsr.windows.time.sleep'),
+                      patch('autohsr.daily_support.game_day', side_effect=lambda _now: day)):
+                    ctx = Context(runner, window, Mock())
+                    outer = ctx.window
+                    ctx.last_scene = scene
+                    ctx.sleep = Mock()
+                    with decision.inputs(ctx):
+                        submit = (lambda: ctx.key('esc')) if name == 'esc' else (lambda: ctx.click(scene, target))
+                        if change is not None:
+                            with self.assertRaises(AutomationError):
+                                submit()
+                            native.SendInput.assert_not_called()
+                        else:
+                            submit()
+                            sizes = [call.args[0] for call in native.SendInput.call_args_list]
+                            self.assertEqual(sizes, [1, 1] if name == 'esc' else [3])
+                    self.assertIs(ctx.window, outer)
+                    scope.require.assert_called_once_with(ctx)
 
 
 class World(battles.World):

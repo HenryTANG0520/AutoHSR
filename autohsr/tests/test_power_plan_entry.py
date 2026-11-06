@@ -41,9 +41,10 @@ class Window:
     def focus(self):pass
     def emergency_pressed(self):return False
 
-    def click(self,x,y,geometry,*,before_send=None):
+    def click(self,x,y,geometry,*,before_send=None,before_submit=None):
         target=next(t for t in self.scene.tokens if abs(t.center[0]-x)<1e-6 and abs(t.center[1]-y)<1e-6)
         if before_send is not None:before_send()
+        if before_submit is not None:before_submit()
         driver=FakeContext(self.world,self.world.settings,self.owner.report,self.owner.battle_budget)
         driver.last_scene=self.scene;driver.click(self.scene,target)
         if self.interrupt_start and target.text=='开始挑战':

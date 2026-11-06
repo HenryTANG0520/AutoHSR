@@ -354,6 +354,41 @@ class DailyPlanContinuityTests(unittest.TestCase):
         unsent, = [result for result in journal['power_plan']['results'] if result.get('reason') == 'payment_not_sent']
         self.assertTrue(read_ref(self.root / 'runs', unsent['evidence']).is_file())
 
+    def test_support_day_rollover_after_payment_callback_retires_only_the_unsent_intent(self):
+        later = row('cavern', 1, CAVERN, '残响回廊')
+        for mode in ('--run', '--plan'):
+            with self.subTest(mode=mode):
+                folder = self.root / mode
+                world = BalanceWorld(CAVERN, None)
+                starts, vetoes = [], []
+                day = NOW.date().isoformat()
+                require_week = windows.require_followup_week
+
+                @contextmanager
+                def native(root, settings, value):
+                    with native_payment_window(root, settings, value, starts, vetoes) as (window, find):
+                        def after_payment_check():
+                            nonlocal day
+                            require_week()
+                            if world.settings.target_name == CAVERN and window.owner.report.stamina_pending == 40:
+                                day = (NOW + timedelta(days=1)).date().isoformat()
+                                vetoes.append('day')
+
+                        with (patch.object(windows, 'require_followup_week', after_payment_check),
+                              patch('autohsr.daily_support.game_day', side_effect=lambda _now: day)):
+                            yield window, find
+
+                with patch(__name__ + '.runtime', native):
+                    code, report, _ = self.cli(folder, world, later, mode=mode)
+                self.assert_stopped_with_prior_proof(folder, world, code, report)
+                self.assertEqual((starts, vetoes), ([(ECHO, 30), (FIRST, 10)], ['day']))
+                self.assertIn('开始挑战未发送', report['error'])
+                journal = read(folder / 'runs' / 'battle-session.json')
+                self.assertIsNone(journal['power_plan']['intent'])
+                unsent, = [result for result in journal['power_plan']['results'] if result.get('reason') == 'payment_not_sent']
+                self.assertEqual((unsent['row'], unsent['requested'], unsent['completed']), (1, 1, 0))
+                self.assertTrue(read_ref(folder / 'runs', unsent['evidence']).is_file())
+
     def test_explicit_next_budget_uses_original_confirmed_counts(self):
         folder = self.root / 'resume'
         world = BalanceWorld(CAVERN, 'missing_uid')
