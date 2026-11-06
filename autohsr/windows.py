@@ -276,8 +276,9 @@ class GameWindow:
     def emergency_pressed() -> bool:
         return bool(user32.GetAsyncKeyState(0x79) & 0x8001)  # F10, including a brief tap
 
-    def send(self, events: list[INPUT], expected: Geometry | None = None, *, before_send=None) -> None:
-        """Submit a batch after window checks and the optional final source check."""
+    def send(self, events: list[INPUT], expected: Geometry | None = None, *,
+             before_send=None, before_submit=None) -> None:
+        """Run the source check and week guard before the native submission hook."""
         self.guard(expected)
         if self.emergency_pressed():
             from .models import Stopped
@@ -286,10 +287,12 @@ class GameWindow:
         if before_send is not None:
             before_send()
         require_followup_week()
+        if before_submit is not None:
+            before_submit()
         if user32.SendInput(len(items), items, C.sizeof(INPUT)) != len(items):
             raise AutomationError("模拟输入被 Windows 拒绝；请以管理员身份启动 AutoHSR。")
 
-    def click(self, x: float, y: float, expected: Geometry, *, before_send=None) -> None:
+    def click(self, x: float, y: float, expected: Geometry, *, before_send=None, before_submit=None) -> None:
         g = self.guard(expected)
         if not (0 <= x < 1 and 0 <= y < 1):
             raise AutomationError("点击坐标超出游戏客户区。")
@@ -300,10 +303,12 @@ class GameWindow:
         down = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, 0x0002, 0, 0))
         up = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, 0x0004, 0, 0))
         events = [move, down, up]
-        if before_send is None:
-            self.send(events, expected)
-        else:
-            self.send(events, expected, before_send=before_send)
+        checks = {}
+        if before_send is not None:
+            checks["before_send"] = before_send
+        if before_submit is not None:
+            checks["before_submit"] = before_submit
+        self.send(events, expected, **checks)
 
     def click_held(self,x: float,y: float,expected: Geometry,*,checkpoint=lambda:None) -> None:
         """One frame-visible click; release even after a pause or focus loss."""
@@ -332,20 +337,24 @@ class GameWindow:
         px, py = g.left + round(x*(g.width-1)), g.top + round(y*(g.height-1))
         self.send([INPUT(type=0, mi=MOUSEINPUT(round((px-vx)*65535/(vw-1)), round((py-vy)*65535/(vh-1)), 0, 0xC001, 0, 0))], expected)
 
-    def key(self, name: str) -> None:
+    def key(self, name: str, *, expected: Geometry | None = None, before_submit=None) -> None:
         vk = {"esc": 0x1B, "f": 0x46, "f1": 0x70, "f2": 0x71, "f4": 0x73, "v": 0x56, "space": 0x20,
               "1": 0x31, "2": 0x32, "3": 0x33, "4": 0x34}.get(name.casefold())
         if vk is None:
             raise ValueError(f"Unsupported key: {name}")
         scan = user32.MapVirtualKeyW(vk, 0)
-        self.send([INPUT(type=1, ki=KEYBDINPUT(0, scan, 0x8, 0, 0))])
+        down = INPUT(type=1, ki=KEYBDINPUT(0, scan, 0x8, 0, 0))
+        if expected is None and before_submit is None:
+            self.send([down])
+        else:
+            self.send([down], expected, before_submit=before_submit)
         try:
             time.sleep(0.08)  # Unity polls keys once per frame.
         finally:
             release = INPUT(type=1, ki=KEYBDINPUT(0, scan, 0xA, 0, 0))
             user32.SendInput(1, C.byref(release), C.sizeof(INPUT))
 
-    def type_du_save_name(self, name: str, expected: Geometry, *, checkpoint):
+    def type_du_save_name(self, name: str, expected: Geometry, *, checkpoint, before_submit=None):
         """Replace the focused archive-name field with a generated ASCII name."""
         import re
         if re.fullmatch(r'AutoHSR(?: - |-)\d{1,6}',name) is None:
@@ -355,13 +364,24 @@ class GameWindow:
         a_down=INPUT(type=1,ki=KEYBDINPUT(0x41,0,0,0,0))
         a_up=INPUT(type=1,ki=KEYBDINPUT(0x41,0,2,0,0))
         checkpoint()
+        started = before_submit is None
+
+        def start():
+            nonlocal started
+            before_submit()
+            started = True
+
         try:
-            self.send([ctrl_down,a_down],expected)
+            if before_submit is None:
+                self.send([ctrl_down,a_down],expected)
+            else:
+                self.send([ctrl_down,a_down],expected,before_submit=start)
             time.sleep(.08)
         finally:
-            releases=(INPUT*2)(a_up,ctrl_up)
-            if user32.SendInput(2,releases,C.sizeof(INPUT))!=2:
-                raise AutomationError('存档名全选按键释放失败。')
+            if started:
+                releases=(INPUT*2)(a_up,ctrl_up)
+                if user32.SendInput(2,releases,C.sizeof(INPUT))!=2:
+                    raise AutomationError('存档名全选按键释放失败。')
         for char in name:
             checkpoint()
             down=INPUT(type=1,ki=KEYBDINPUT(0,ord(char),4,0,0))

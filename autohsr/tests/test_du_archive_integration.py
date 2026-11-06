@@ -22,7 +22,9 @@ class ArchiveIntegrationTests(unittest.TestCase):
             flow = DifferentialUniverseWorkflow(context, 1, resume_active=True)
             flow.report['current_run'] = 1
             flow.report['run_results'].append(entry)
-            def send(*args):
+            def send(*args, before_submit=None):
+                if before_submit is not None:
+                    before_submit()
                 if context.window.click.call_count == 5:
                     raise InputInterrupted('synthetic confirmation interruption')
             context.window.click.side_effect = send

@@ -1252,22 +1252,65 @@ class Context:
                 or action.key is not None and action.key != 'esc'
                 or action.name is not None and not isinstance(action.name, str)):
             raise AutomationError('差分存档动作类型未核实，未输入。')
-        self.checkpoint()
-        workflow.authorize(scene, action)
-        self.window.guard(scene.geometry)
-        self.checkpoint()
-        workflow.authorize(scene, action)
-        held = self._du_held_checkpoint(scene) if action.name is not None else None
-        self.last_scene, self._scroll_anchor = None, None
+        window, geometry, captured_at = self.window, scene.geometry, scene.captured_at
+        epoch, occlusions = self.scene_epoch, self.capture_occlusion_count
+        tokens = tuple(scene.tokens)
+        durable_checked = False
+        attempted = False
+
+        def before_submit():
+            nonlocal attempted
+            self.checkpoint()
+            workflow.require_current_input(scene, action)
+            require_followup_week()
+            window.guard(geometry)
+            if (window.emergency_pressed() is True
+                    or getattr(self.runner, 'stop_requested', False) is True):
+                raise Stopped('差分存档已停止，未发送当前动作。')
+            if (attempted or self.window is not window or scene is not self.last_scene
+                    or self.scene_epoch != epoch or self.runner.input_epoch != epoch
+                    or scene.geometry != geometry or scene.captured_at != captured_at
+                    or scene.image is not image or tuple(scene.tokens) != tokens
+                    or self.capture_occlusion_count != occlusions
+                    or not 0 <= time.monotonic() - captured_at <= 8):
+                raise InputInterrupted('差分存档发送前的画面或窗口来源已变化。')
+            attempted = True
+            self.last_scene, self._scroll_anchor = None, None
+
         try:
+            import numpy as np
+
+            if geometry is None:
+                raise AutomationError('差分存档缺少当前窗口几何。')
+            if not isinstance(scene.image, np.ndarray):
+                raise AutomationError('差分存档缺少当前画面的原始像素。')
+            # Keep the validated pixels immutable until the first native packet.
+            image = np.frombuffer(scene.image.tobytes(), dtype=scene.image.dtype).reshape(scene.image.shape)
+            scene.image = image
+            self.checkpoint()
+            workflow.authorize(scene, action)
+            window.guard(geometry)
+            self.checkpoint()
+            workflow.authorize(scene, action)
+            durable_checked = True
             if action.target is not None:
-                self.window.click(*action.target.center, scene.geometry)
+                window.click(*action.target.center, geometry, before_submit=before_submit)
             elif action.name is not None:
-                self.window.type_du_save_name(action.name, scene.geometry, checkpoint=held)
+                window.type_du_save_name(action.name, geometry, checkpoint=self._du_held_checkpoint(scene),
+                                         before_submit=before_submit)
             else:
-                self.window.key('esc')
-        except FocusLost:
-            self._focus_interrupted()
+                window.key('esc', expected=geometry, before_submit=before_submit)
+        except (AutomationError, OSError) as error:
+            if not attempted:
+                self.last_scene, self._scroll_anchor = None, None
+                if durable_checked:
+                    workflow.mark_not_sent(action)
+            elif isinstance(error, FocusLost):
+                self._focus_interrupted()
+            raise
+        if not attempted:
+            self.last_scene, self._scroll_anchor = None, None
+            raise AutomationError('差分存档原生发送缺少边界回执，动作待核对。')
         self.sleep(self.settings.action_delay)
 
     def differential_universe_attack(self, scene, target, intent):

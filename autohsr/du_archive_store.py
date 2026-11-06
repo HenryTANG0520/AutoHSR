@@ -129,9 +129,12 @@ def _checked(root, data, *, check_history=True):
                 or first['evidence']['path'] == last['evidence']['path'] or first['facts'] != last['facts']):
             raise AutomationError('差分保存双帧反馈不连续或字段冲突。')
         return last['facts']
-    aborted = (data['status'] == 'abort_before_input' and not actions and data['safe_to_restart']
+    aborted = (data['status'] == 'abort_before_input' and data['safe_to_restart']
+               and all(action.get('status') == 'not_sent' for action in actions)
                and not data['save_verified'] and not data['skip_verified'] and not data['return_verified'])
-    if not aborted:
+    if data['status'] == 'abort_before_input' and not aborted:
+        raise AutomationError('差分保存零输入中止与动作记录不一致。')
+    if not aborted or actions:
         if not re.fullmatch('[0-9a-f]{64}', str(data.get('account_key', ''))):
             raise AutomationError('差分保存当前账号来源缺失。')
         origin = pair(data['origin_frames'], 'origin')
@@ -145,11 +148,14 @@ def _checked(root, data, *, check_history=True):
         if (type(action.get('id')) is not int or action['id'] != index or request.get('id') != index
                 or request.get('intent') != expected[index] or type(before) is not int
                 or not 0 <= before < len(observations)
-                or action.get('status') not in ('pending','submitted','verified','unknown')
+                or action.get('status') not in ('pending','submitted','verified','unknown','not_sent')
                 or sum(request.get(key) is not None for key in ('target','key','name')) != 1):
             raise AutomationError('差分保存动作或原意图链不完整。')
         if index and actions[index-1]['status'] != 'verified':
             raise AutomationError('差分保存越过未核实动作。')
+        if action['status'] == 'not_sent' and (action['after'] != []
+                or data['status'] not in ('abort_before_input','unknown')):
+            raise AutomationError('差分保存未发送动作与反馈记录冲突。')
         if action['status'] == 'verified':
             facts = pair(action['after'], STAGES[request['intent']], observations[before]['captured_at'])
             if request['intent'] in ('du_save_name','du_save_confirm') and facts.get('name') != plan['name']:

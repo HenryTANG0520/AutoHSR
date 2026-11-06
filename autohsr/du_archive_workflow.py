@@ -256,6 +256,15 @@ class ArchiveWorkflow:
             if action.intent == 'du_save_confirm' and self._facts(scene,'named') is None:
                 raise AutomationError('差分保存确认前没有完整回读确切冻结名称。')
 
+    def require_current_input(self, scene, action):
+        self._fresh(scene)
+        if self.request is not action or self.data['actions'][action.id]['status'] != 'pending':
+            raise AutomationError('差分保存最后核验的动作已变化。')
+
+    def mark_not_sent(self, action):
+        if self.request is action and self.data['actions'][action.id]['status'] == 'pending':
+            self.data['actions'][action.id]['status'] = 'not_sent'
+
     def _step(self, scene, intent, stage, *, target=None, key=None, name=None):
         facts = self._facts(scene,self.stage)
         if facts is None:raise AutomationError('差分保存提交前页面来源不完整。')
@@ -302,7 +311,8 @@ class ArchiveWorkflow:
         except Exception as error:
             for action in self.data['actions']:
                 if action['status'] in ('pending','submitted'):action['status'] = 'unknown'
-            unsent = not self.data['actions'] and not self.data['save_verified'] and not self.data['skip_verified']
+            unsent = (all(action['status'] == 'not_sent' for action in self.data['actions'])
+                      and not self.data['save_verified'] and not self.data['skip_verified'])
             self.data.update(status='abort_before_input' if unsent else 'unknown',safe_to_restart=unsent)
             try:self._persist();self.finished = unsent
             except (OSError,ValueError,AutomationError):pass

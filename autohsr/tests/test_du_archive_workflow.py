@@ -1,4 +1,5 @@
 """Real archive Context dispatch with synthetic pages and temporary evidence."""
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import replace
 import json
@@ -102,7 +103,11 @@ def make_context(folder, pages, *, fresh=False, session_id=None, run_id=None):
     def checkpoint():
         if runner._stop.is_set():raise Stopped('synthetic stop')
     runner.checkpoint=checkpoint
-    window=SimpleNamespace(hwnd=123,guard=Mock(),click=Mock(),key=Mock(),type_du_save_name=Mock())
+    def send(*args, before_submit=None, **kwargs):
+        if before_submit is not None:
+            before_submit()
+    window=SimpleNamespace(hwnd=123,guard=Mock(),emergency_pressed=lambda:False,click=Mock(side_effect=send),
+                           key=Mock(side_effect=send),type_du_save_name=Mock(side_effect=send))
     context=Context(runner,window,Mock());context.sleep=Mock()
     def evidence(current,label):
         path=directory/(label+'.png');Image.fromarray(current.image[:,:,::-1]).save(path)
@@ -117,15 +122,31 @@ def make_context(folder, pages, *, fresh=False, session_id=None, run_id=None):
     return flow,context,install_pages(context,pages)
 
 
+@contextmanager
+def archive_replay_clock():
+    """Share one clock between synthetic captures and archive checks."""
+    now = 100.
+
+    def advance(seconds):
+        nonlocal now
+        now += seconds
+
+    clock = SimpleNamespace(monotonic=lambda: now, sleep=advance)
+    with (patch(f'{__name__}.time', clock), patch('autohsr.du_archive_workflow.time', clock),
+          patch('autohsr.app.time', clock)):
+        yield advance
+
+
 class ArchiveWorkflowTests(unittest.TestCase):
     def test_normal_chain_uses_real_context_and_saves_before_closing_without_touching_du_counts(self):
         with tempfile.TemporaryDirectory() as folder:
             flow,c,first=make_context(folder,normal_pages())
-            def close(key):
+            def close(key, *, expected, before_submit):
                 record=json.loads(Path(folder,NAME).read_text('utf8'))
                 self.assertTrue(record['save_verified']);self.assertFalse(record['return_verified'])
                 self.assertEqual(record['actions'][-1]['request']['intent'],'du_save_close')
                 self.assertEqual(record['actions'][-1]['status'],'pending')
+                before_submit()
             c.window.key.side_effect=close
             after,kind=save_victory(flow,first)
             data=preflight(folder);entry=flow.report['run_results'][-1]
@@ -173,7 +194,8 @@ class ArchiveWorkflowTests(unittest.TestCase):
     def test_confirmation_sent_then_interrupted_blocks_new_runner_and_retains_original(self):
         with tempfile.TemporaryDirectory() as folder:
             flow,c,first=make_context(folder,normal_pages())
-            def interrupt(*args):
+            def interrupt(*args, before_submit):
+                before_submit()
                 if c.du_archive_workflow.request.intent=='du_save_confirm':raise InputInterrupted('synthetic pause')
             c.window.click.side_effect=interrupt
             with self.assertRaises(AutomationError) as raised:save_victory(flow,first)
@@ -188,7 +210,10 @@ class ArchiveWorkflowTests(unittest.TestCase):
     def test_saved_fact_survives_close_failure_but_future_input_and_save_remain_blocked(self):
         with tempfile.TemporaryDirectory() as folder:
             flow,c,first=make_context(folder,normal_pages())
-            c.window.key.side_effect=InputInterrupted('synthetic close interruption')
+            def interrupt(*args, expected, before_submit):
+                before_submit()
+                raise InputInterrupted('synthetic close interruption')
+            c.window.key.side_effect=interrupt
             with self.assertRaises(AutomationError):save_victory(flow,first)
             data=json.loads(Path(folder,NAME).read_text('utf8'))
             self.assertTrue(data['save_verified']);self.assertFalse(data['return_verified'])
@@ -303,8 +328,9 @@ class ArchiveWorkflowTests(unittest.TestCase):
             with self.assertRaises(AutomationError):preflight(folder)
 
     def test_ten_fresh_games_in_one_native_context_keep_separate_immutable_receipts(self):
-        with tempfile.TemporaryDirectory() as folder:
+        with archive_replay_clock() as advance, tempfile.TemporaryDirectory() as folder:
             flow,c,first=make_context(folder,normal_pages(),fresh=True)
+            c.sleep.side_effect=advance
             originals=[]
             for run in range(1,11):
                 if run>1:
@@ -318,6 +344,20 @@ class ArchiveWorkflowTests(unittest.TestCase):
             self.assertEqual(len({path for path,_ in originals}),10)
             self.assertTrue(all(path.read_bytes()==raw for path,raw in originals))
             self.assertEqual(flow.report['completed_runs'],0)
+
+    def test_expired_victory_frame_stops_before_archive_input(self):
+        with archive_replay_clock() as advance, tempfile.TemporaryDirectory() as folder:
+            flow,context,first=make_context(folder,normal_pages(),fresh=True)
+            advance(9)
+            with self.assertRaises(AutomationError) as stopped:
+                save_victory(flow,first)
+            self.assertIsInstance(stopped.exception.__cause__,InputInterrupted)
+            context.window.click.assert_not_called()
+            context.window.type_du_save_name.assert_not_called()
+            context.window.key.assert_not_called()
+            record=preflight(folder)
+            self.assertEqual(record['status'],'abort_before_input')
+            self.assertEqual(record['actions'],[])
 
     def test_name_feedback_normalizes_format_but_input_and_receipt_remain_exact(self):
         for name in ('AutoHSR-2','aUtOhSr -2'):
