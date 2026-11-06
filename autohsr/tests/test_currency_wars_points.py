@@ -9,15 +9,22 @@ import tempfile
 import unittest
 from unittest.mock import Mock,patch
 
+import numpy as np
+from PIL import Image
+
 from autohsr.app import Context,Runner
 from autohsr.config import Settings
+from autohsr.currency_wars_defeat import archive_proof
 from autohsr.currency_wars_identity import account_key
+from autohsr.currency_wars_loop_store import LoopStore
 from autohsr.currency_wars_navigation import next_action
 from autohsr.currency_wars_points import game_week,period_evidence,proof_tokens,read_points
-from autohsr.currency_wars_points_run import OPERATION,latest,validate_observation
+from autohsr.currency_wars_points_run import OPERATION,latest,require_no_active_match,validate_observation
+from autohsr.currency_wars_replay import save_sample
 from autohsr.currency_wars_session import StandardSession
 from autohsr.models import AutomationError,Scene,Token
 from autohsr.weekly_plan import CHINA
+from autohsr.tests import test_currency_wars_defeat as defeat_helpers
 from autohsr.tests import test_currency_wars_loop as loop_helpers
 from autohsr.tests import test_currency_wars_navigation as nav
 from autohsr.tests import test_currency_wars_standard as ranks
@@ -41,6 +48,50 @@ def runner(states):
 
 
 class PointsTests(unittest.TestCase):
+    def _settled_defeat(self, root):
+        runs = root / 'runs'
+        runs.mkdir(exist_ok=True)
+        factory = defeat_helpers.ActualFactory(root, ['defeat'])
+        child = factory(Settings(overlay_logs=False), None, operation='currency_wars_standard',
+                        currency_loop_guard=None)
+        child._loop_test_account = '100000000'
+        session_path = runs / 'currency-standard-session.json'
+        seeded = StandardSession(session_path)
+        start = Path(seeded.data['actions'][0]['before'])
+        with Image.open(start) as image:
+            scene = Scene([Token('UID:' + child._loop_test_account, .99, (.01, .96, .10, .99))],
+                          image=np.asarray(image))
+            save_sample(scene, start, stage='entry')
+        with loop_helpers.real_runtime(root) as window, \
+             patch('autohsr.currency_wars_replay.save_sample', save_sample):
+            report = child.run()
+        self.assertEqual(report.status, 'partial', report.error)
+        self.assertTrue(report.report_saved)
+        self.assertEqual(window.click.call_count, 4)
+        store = StandardSession(session_path)
+        self.assertTrue(defeat_helpers.settled(store.data))
+        self.assertEqual(store.data['match_outcome'], 'defeat')
+        self.assertIs(store.data['node_attempt']['node_verified'], False)
+        self.assertIs(store.data['completion_verified'], False)
+        self.assertEqual(store.data['rules_version'], '4.6')
+        self.assertEqual(store.data['client']['version'], '4.6')
+        return store, Path(report.run_dir) / 'report.json'
+
+    def _assert_independent_entries_blocked(self, root):
+        from autohsr.currency_wars_weekly_rewards import OPERATION as REWARDS_OPERATION
+
+        for operation in (OPERATION, REWARDS_OPERATION):
+            with self.subTest(operation=operation), loop_helpers.real_runtime(root) as window, \
+                 patch('autohsr.app.find_game', return_value=window) as find:
+                child = Runner(Settings(overlay_logs=False), operation=operation)
+                child._loop_test_scenes = []
+                self.assertEqual(child.run().status, 'failed')
+                find.assert_not_called()
+                window.click.assert_not_called()
+                window.key.assert_not_called()
+        self.assertFalse(list((root / 'runs').glob('currency-points/*/*/*.json')))
+        self.assertFalse((root / 'runs' / 'currency-weekly-rewards-current.json').exists())
+
     def test_exact_redacted_old_ocr_pages_have_separate_zero_and_full_results(self):
         fixture=json.loads((Path(__file__).parent/'fixtures/currency_wars_points.json').read_text(encoding='utf-8'))
         self.assertIs(fixture['independent_acceptance'],False)
@@ -166,6 +217,159 @@ class PointsTests(unittest.TestCase):
             r=runner([lobby() for _ in range(3)])
             with loop_helpers.real_runtime(root),patch('autohsr.currency_wars_points_run.local_now',return_value=NOW):report=r.run()
             self.assertEqual(report.status,'success',report.error);self.assertEqual(path.read_bytes(),raw)
+
+    def test_independent_points_and_rewards_accept_saved_settled_defeat_without_altering_it(self):
+        from autohsr.tests import test_currency_wars_weekly_rewards as rewards
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            store, _ = self._settled_defeat(root)
+            originals = {p: p.read_bytes() for p in (root / 'runs').rglob('*') if p.is_file()}
+            with self.assertRaises(AutomationError):
+                require_no_active_match(store.data)
+
+            score = 1800
+            points_child = runner([lobby(score) for _ in range(3)])
+            with loop_helpers.real_runtime(root) as window, \
+                 patch('autohsr.currency_wars_points_run.local_now', return_value=NOW):
+                points_report = points_child.run()
+            self.assertEqual(points_report.status, 'success', points_report.error)
+            self.assertEqual(points_report.currency_wars['current'], score)
+            self.assertFalse(points_report.currency_wars['rewards_verified'])
+            self.assertFalse(points_report.currency_wars['completion_verified'])
+            window.click.assert_not_called()
+            window.key.assert_not_called()
+            data = points_report.currency_wars
+            self.assertEqual(latest(root / 'runs', data['account_key'], data['game_week'])['observation'], data)
+
+            with rewards.runtime(root) as window:
+                rewards_report = rewards.runner(rewards.stages(score)).run()
+            self.assertEqual(rewards_report.status, 'success', rewards_report.error)
+            self.assertEqual([a['intent'] for a in rewards_report.currency_wars['actions']],
+                             ['open_points_rewards', 'claim_weekly_rewards', 'dismiss_weekly_rewards',
+                              'return_weekly_lobby'])
+            self.assertEqual(window.click.call_count, 3)
+            window.key.assert_called_once_with('esc')
+            self.assertTrue(rewards_report.currency_wars['claimed_now'])
+            self.assertFalse(rewards_report.currency_wars['weekly_rewards_verified'])
+            self.assertFalse(rewards_report.currency_wars['completion_verified'])
+            reward_store = rewards.RewardStore(root / 'runs')
+            reward_store.load()
+            reward_store.check_receipt()
+            for path, raw in originals.items():
+                self.assertEqual(path.read_bytes(), raw, str(path))
+
+    def test_settled_defeat_does_not_widen_weekly_or_overclock_preflight(self):
+        from autohsr.currency_wars_overclock import OPERATION as OVERCLOCK_OPERATION
+        from autohsr.currency_wars_overclock_session import START_OPERATION
+        from autohsr.currency_wars_weekly import preflight
+        from autohsr.tests import test_currency_wars_overclock_start as opening
+
+        legacy = opening.OverclockStartNativeTests()
+        self.addCleanup(legacy.doCleanups)
+        legacy.setUp()
+        preview = opening.boss(account=0)
+        started = legacy.native_cli(opening.frame('a0', account=0), preview, preview)
+        legacy.assert_session(started, started=True)
+        a0_receipt = legacy.session.read_bytes()
+        legacy.session.unlink()
+
+        store, _ = self._settled_defeat(legacy.root)
+        original = store.path.read_bytes()
+        with self.assertRaisesRegex(AutomationError, '未核实结束的标准对局'):
+            preflight(legacy.runs)
+        for operation in (OVERCLOCK_OPERATION, START_OPERATION):
+            with self.subTest(operation=operation), loop_helpers.real_runtime(legacy.root) as window, \
+                 patch('autohsr.app.find_game', return_value=window) as find:
+                child = Runner(Settings(overlay_logs=False), operation=operation)
+                result = child.run()
+                self.assertEqual(result.status, 'failed')
+                self.assertIn('未核实结束的标准对局', result.error)
+                find.assert_not_called()
+
+        legacy.session.write_bytes(a0_receipt)
+        self.assertEqual(legacy.ledger()['account_key'], store.data['account_key'])
+        blocked = legacy.legacy_runner(False, preview)
+        legacy.assert_preflight_veto(blocked)
+        self.assertIn('未核实结束的标准对局', blocked.report['error'])
+        self.assertEqual(legacy.session.read_bytes(), a0_receipt)
+        self.assertEqual(store.path.read_bytes(), original)
+
+    def test_unproven_defeat_stops_both_independent_entries_before_window_enumeration(self):
+        for case in ('missing_report', 'changed_report', 'missing_frame', 'missing_sample',
+                     'wrong_sample_image', 'synthetic_sample', 'unknown', 'client_version', 'rules_version',
+                     'conflicting_victory', 'changed_account'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                store, original_report = self._settled_defeat(root)
+                report = json.loads(original_report.read_text(encoding='utf-8'))
+                if case == 'missing_report':
+                    original_report.unlink()
+                elif case == 'changed_report':
+                    report['currency_wars']['reason'] = 'changed original result'
+                    original_report.write_text(json.dumps(report), encoding='utf-8')
+                elif case == 'missing_frame':
+                    Path(store.data['node_attempt']['defeat_frames'][0]).unlink()
+                elif case in ('missing_sample', 'wrong_sample_image', 'synthetic_sample'):
+                    first, second = (Path(path).with_suffix('.sample.json')
+                                     for path in store.data['node_attempt']['defeat_frames'])
+                    if case == 'missing_sample':
+                        first.unlink()
+                    elif case == 'wrong_sample_image':
+                        first.write_bytes(second.read_bytes())
+                    else:
+                        sample = json.loads(first.read_text(encoding='utf-8'))
+                        sample['origin'] = 'synthetic'
+                        first.write_text(json.dumps(sample), encoding='utf-8')
+                else:
+                    if case == 'unknown':
+                        store.data.update(status='active', defeat_settlement_verified=False,
+                                          settlement_verified=False)
+                        store.data['actions'][-1]['status'] = 'unknown'
+                    elif case == 'client_version':
+                        store.data['client']['version'] = '4.7'
+                    elif case == 'rules_version':
+                        store.data['rules_version'] = '4.7'
+                    elif case == 'changed_account':
+                        other = Scene([Token('UID:100000001', .99, (.01, .96, .10, .99))])
+                        store.data['account_key'] = account_key(other)
+                    else:
+                        store.data['match_victory_observed'] = True
+                    report['currency_wars'] = store.data
+                    # Write deliberately invalid records without the fixture's validation.
+                    store.path.write_text(json.dumps(store.data), encoding='utf-8')
+                    original_report.write_text(json.dumps(report), encoding='utf-8')
+                if case == 'changed_account':
+                    archive_proof(LoopStore(root / 'runs'), store.data, original_report)
+
+                originals = {p: p.read_bytes() for p in (root / 'runs').rglob('*') if p.is_file()}
+                self._assert_independent_entries_blocked(root)
+                for path, raw in originals.items():
+                    self.assertEqual(path.read_bytes(), raw, str(path))
+
+    def test_every_original_defeat_png_is_verified_before_independent_entries(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            store, report = self._settled_defeat(root)
+            proof = archive_proof(LoopStore(root / 'runs'), store.data, report)
+            self.assertEqual(len(proof['ending_evidence']), 11)
+            originals = {p: p.read_bytes() for p in (root / 'runs').rglob('*') if p.is_file()}
+            for image in map(Path, proof['ending_evidence']):
+                with self.subTest(image=image.name):
+                    with Image.open(image) as original:
+                        changed = original.convert('RGB')
+                    red, green, blue = changed.getpixel((0, 0))
+                    changed.putpixel((0, 0), ((red + 1) % 256, green, blue))
+                    try:
+                        changed.save(image)
+                        changed_bytes = image.read_bytes()
+                        self.assertNotEqual(changed_bytes, originals[image])
+                        self._assert_independent_entries_blocked(root)
+                        self.assertEqual(image.read_bytes(), changed_bytes)
+                    finally:
+                        image.write_bytes(originals[image])
+            for path, raw in originals.items():
+                self.assertEqual(path.read_bytes(), raw, str(path))
 
     def test_period_recheck_uses_the_same_configured_confidence(self):
         with tempfile.TemporaryDirectory() as folder:

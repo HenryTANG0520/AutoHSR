@@ -2571,7 +2571,7 @@ class Runner:
                 if self.report.operation == OVERCLOCK_CONFIGURE:
                     require_no_active_match(saved, purpose='超频模式配置')
                 else:
-                    require_no_active_match(saved)
+                    require_no_active_match(saved, defeat_root=directory.parent)
             if self.report.operation != 'currency_wars' and not challenge_result:
                 from .currency_wars_weekly_reward_store import RewardStore
                 rewards=RewardStore(directory.parent)

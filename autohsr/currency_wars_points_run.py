@@ -20,11 +20,39 @@ from .storage import replace_file
 OPERATION='currency_wars_points'
 
 
-def require_no_active_match(data, *, purpose='积分导航'):
-    if data is not None and (data['status']!='settled' or data.get('completion_verified') is not True
-                            or data.get('settlement_verified') is not True
-                            or any(a.get('status')!='verified' for a in data['actions'])):
-        raise AutomationError(f'已有未核实结束的标准对局；{purpose}未开始，不放弃或重开当前局。')
+def require_no_active_match(data, *, purpose='积分导航', defeat_root=None):
+    if data is None:
+        return
+    unresolved = f'已有未核实结束的标准对局；{purpose}未开始，不放弃或重开当前局。'
+    if defeat_root is not None and data.get('match_outcome') == 'defeat':
+        from .currency_wars_defeat import archive_proof, settled
+        from .currency_wars_loop_store import LoopStore
+        from .currency_wars_replay import load_sample
+
+        client = data.get('client')
+        if (data.get('completion_verified') is not False or data.get('rules_version') != '4.6'
+                or not isinstance(client, dict) or client.get('version') != '4.6' or not settled(data)):
+            raise AutomationError(unresolved)
+        try:
+            returned = Path(data['actions'][-1]['after'])
+            proof = archive_proof(LoopStore(defeat_root), data, returned.with_name('report.json'))
+            for name, digest in proof['ending_evidence'].items():
+                image = Path(name)
+                manifest = image.with_suffix('.sample.json')
+                if manifest.resolve(strict=True) != manifest:
+                    raise AutomationError('标准败局原图清单路径已改变，未开始积分导航。')
+                sample, original = load_sample(manifest)
+                if (sample['image'] != image.name or sample['sha256'] != digest
+                        or sample['origin'] != 'unverified_capture'
+                        or account_key(original) != data['account_key']):
+                    raise AutomationError('标准败局原图或原账号与结算记录不符，未开始积分导航。')
+        except (OSError, ValueError, TypeError, AttributeError) as error:
+            raise AutomationError('标准败局原报告或结算证据不可核实，未开始积分导航。') from error
+        return
+    if (data['status'] != 'settled' or data.get('completion_verified') is not True
+            or data.get('settlement_verified') is not True
+            or any(a.get('status') != 'verified' for a in data['actions'])):
+        raise AutomationError(unresolved)
 
 
 def _inside(root,value):
