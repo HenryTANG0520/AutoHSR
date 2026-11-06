@@ -96,6 +96,8 @@ def supplement_numbers(scene: Scene, reader) -> Scene:
     Obscured fields remain unknown; no value is inferred from button color.
     """
     import cv2
+    from .currency_wars_encounter_notice import supplement as supplement_encounter_notice
+    scene = supplement_encounter_notice(scene, reader)
     page = classify_page(scene.tokens)
     loss_hint = merged_loss_node_hint(scene.tokens) if page == 'unknown' else None
     if scene.image is None or (loss_hint is None and page not in (

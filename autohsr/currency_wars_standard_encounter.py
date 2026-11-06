@@ -345,7 +345,7 @@ def arrival_receipt(session, attempt):
     return arrival_evidence(session, attempt)[0]
 
 
-def commit_feedback(c, store, guard, choice, captures, result, write_evidence):
+def commit_feedback(c, store, guard, choice, captures, result, write_evidence, *, reward_notice=None):
     """Save the new pair and stage together, keeping a failed write pending."""
     previous = store.data
     scope = _scope(previous, c.report.run_dir, c.runner.input_epoch)
@@ -367,7 +367,16 @@ def commit_feedback(c, store, guard, choice, captures, result, write_evidence):
         frames.append(_frame(scene, path, scope))
     action.update(encounter_frames=frames, feedback=result)
     attempt, actions = session['node_attempt'], session['actions']
-    if choice.encounter_arrival is not None:
+    if reward_notice is not None:
+        from .currency_wars_standard_encounter_notice import RECORD
+        from .currency_wars_standard_progress import progress_verified
+        action[RECORD] = reward_notice[0]
+        action['progress_frames'] = [dict(evidence=frame['source']['path'], captured_at=frame['captured_at'],
+                                          input_epoch=frame['input_epoch']) for frame in frames]
+        session['node_history'] = list(previous.get('node_history', []))
+        progress_verified(session, choice, after, c.settings.ocr_confidence)
+        session.update(action_status='transition_verified', page_kind=result['page_kind'])
+    elif choice.encounter_arrival is not None:
         from .currency_wars_standard_encounter_battle import complete
         complete(c, session, action, choice, after, scope)
     elif action['action'] == _CONTINUE:
@@ -388,6 +397,8 @@ def commit_feedback(c, store, guard, choice, captures, result, write_evidence):
         session.update(action_status='transition_verified', page_kind=result['page_kind'])
     sources = dispatch_sources(previous, choice, scope['run_dir'], scope['input_epoch'], store.path.parent)
     sources += tuple((Path(frame['source']['path']), frame['source']) for frame in frames)
+    if reward_notice is not None:
+        sources += reward_notice[1]
     with hold_read_sources(path for path, _ in sources):
         require_files(sources, scope['run_dir'])
         if store.require_pending(choice.intent, scope['input_epoch']) != previous:
@@ -401,7 +412,14 @@ def commit_feedback(c, store, guard, choice, captures, result, write_evidence):
             raise AutomationError(_ERROR)
         store.data = session
         try:
-            store.persist()
+            if reward_notice is None:
+                store.persist()
+            else:
+                def pending_unchanged():
+                    if (c.runner.input_epoch != scope['input_epoch']
+                            or store.require_pending(choice.intent, scope['input_epoch']) != previous):
+                        raise AutomationError('遭遇奖励观察的原继续意图已改变。')
+                store.persist(before_replace=pending_unchanged)
         except Exception:
             store.data = previous
             raise

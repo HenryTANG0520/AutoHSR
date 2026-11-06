@@ -79,7 +79,7 @@ class StandardSession:
                 from .currency_wars_defeat import settled
                 if not settled(data):raise ValueError('失败结算缺少完整来源，不能标记结束')
 
-    def persist(self):
+    def persist(self, *, before_replace=None):
         self.validate(self.data)
         raw=json.dumps(self.data,ensure_ascii=False,indent=2,allow_nan=False).encode('utf-8')
         if len(raw)>MAX_SESSION_BYTES:
@@ -87,7 +87,10 @@ class StandardSession:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix('.tmp')
         temporary.write_bytes(raw)
-        replace_file(temporary, self.path)
+        if before_replace is None:
+            replace_file(temporary, self.path)
+        else:
+            replace_file(temporary, self.path, before_replace=before_replace)
 
     def begin(self, run_dir, entry):
         if self.data is not None:

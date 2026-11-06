@@ -1232,6 +1232,7 @@ def run_standard(c):
         feedback as encounter_feedback, record_start as record_encounter_start,
     )
     from .currency_wars_standard_encounter_battle import bind_input as bind_encounter_followup, feedback as encounter_followup_feedback
+    from .currency_wars_standard_encounter_notice import begin as watch_encounter_reward
     if c.report.operation != 'currency_wars_standard':
         raise AutomationError('标准对局开发须使用独立入口。')
     # This initial path is intentionally not an acceptance counter. Any repair
@@ -1603,6 +1604,7 @@ def run_standard(c):
                            or INVESTMENT_REFRESH_BINDING in action
                            or choice.intent.startswith((ENVIRONMENT_SELECT, ENVIRONMENT_CONFIRM)))
         observed_at = scene.captured_at
+        notice_watch = watch_encounter_reward(store.data, choice, scene, c.report.run_dir, c.runner.input_epoch)
         c.currency_standard_input(scene, choice)
         elapsed, after, stable, previous_popup = 0., None, 0, None
         previous_pickup = None
@@ -1615,6 +1617,8 @@ def run_standard(c):
                 after = c.snapshot()
             except EmptyCapture:
                 after = None
+                if notice_watch is not None:
+                    notice_watch.observe(None, c.settings.ocr_confidence, elapsed)
                 overflow_frame = None
                 previous_progress = None
                 progress_frames.clear()
@@ -1685,6 +1689,11 @@ def run_standard(c):
                             initial_return_frames.append(after)
                             initial_return_paths.append(evidence(c, after, 'currency_standard_initial_shop_return_'+str(len(initial_return_frames))))
                 fresh = after.captured_at > observed_at
+                if notice_watch is not None:
+                    notice_watch.observe(after if fresh and same_account else None, c.settings.ocr_confidence, elapsed)
+                    if (ready and progress and progress.get('page_kind') in ('preparation', 'shop')
+                            and not notice_watch.ready(elapsed)):
+                        ready = False
                 if strict_feedback:
                     if fresh:
                         observed_at = after.captured_at
@@ -1692,6 +1701,7 @@ def run_standard(c):
                         ready = False
                 paired_progress = (progress if ready and progress is not None
                                    and (investment_progress or closing_intro or loss_progress or encounter_step or encounter_followup
+                                        or notice_watch is not None and notice_watch.notice is not None
                                         or progress.get('page_kind') in ('boss_intro', ENCOUNTER_OFFER))
                                    else None)
                 if ((encounter_followup or encounter_step or paired_progress and paired_progress.get('page_kind') == ENCOUNTER_OFFER)
@@ -1744,6 +1754,14 @@ def run_standard(c):
                                          lambda frame, label: evidence(c, frame, label))
                         scene = after
                         break
+                    if notice_watch is not None and progress and progress.get('page_kind') in ('preparation', 'shop'):
+                        receipt = notice_watch.receipt(c, store, choice, guard, after,
+                                                       lambda frame, label: evidence(c, frame, label))
+                        if receipt is not None:
+                            commit_encounter(c, store, guard, choice, progress_frames, paired_progress,
+                                             lambda frame, label: evidence(c, frame, label), reward_notice=receipt)
+                            scene = after
+                            break
                     after_path = evidence(c, after, 'currency_standard_after_'+choice.intent)
                     if paired_progress is not None:
                         captured_at, first = progress_frames[0]

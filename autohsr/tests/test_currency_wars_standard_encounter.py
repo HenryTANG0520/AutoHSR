@@ -2,6 +2,7 @@
 from contextlib import ExitStack
 from dataclasses import replace
 from contextlib import ExitStack
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -19,6 +20,7 @@ from autohsr.currency_wars_session import StandardSession, require_session_acces
 from autohsr.currency_wars_standard_budget import StandardBudget
 from autohsr.currency_wars_standard_encounter import CONFIRM, OFFER, SELECT, record_start
 from autohsr.currency_wars_standard_encounter_battle import BINDING, START
+from autohsr.currency_wars_standard_encounter_notice import RECORD as REWARD_NOTICE
 from autohsr.currency_wars_standard_flow import next_action, run_standard
 from autohsr.currency_wars_standard_ledger import ledger_status
 from autohsr.models import AutomationError, EmptyCapture, InputInterrupted, Scene, Stopped, Token
@@ -83,7 +85,7 @@ def fake_observation(scene, confidence):
 
 class StandardEncounterTests(unittest.TestCase):
     def run_path(self, node, scenes, *, original=True, stale=(), native_failure=None, stop_at_arrival=True,
-                 actual_readers=False, battle_node=None):
+                 actual_readers=False, battle_node=None, observe_reward=False):
         sandbox = TemporaryDirectory(prefix='cw-enc-')
         self.addCleanup(sandbox.cleanup)
         root = Path(sandbox.name)
@@ -140,10 +142,13 @@ class StandardEncounterTests(unittest.TestCase):
             active = getattr(c, 'currency_standard_session', None)
             if stop_at_arrival and active is not None and active.data.get('node_history'):
                 raise Stopped('synthetic verified arrival')
+            if observe_reward and active is not None and active.data.get('node_history'):
+                if active.data['node_history'][-1]['node'] == battle_node:
+                    raise Stopped('synthetic encounter result and following node')
 
         def log(_message):
             active = c.currency_standard_session.data['node_attempt']
-            if battle_node == active['node'] and active.get('status') == 'verified':
+            if not observe_reward and battle_node == active['node'] and active.get('status') == 'verified':
                 raise Stopped('synthetic encounter result verified')
 
         def snapshot():
@@ -158,6 +163,13 @@ class StandardEncounterTests(unittest.TestCase):
             c.last_scene = capture(scenes[frame_id-1], last_stamp, 42 + frame_id)
             c.scene_epoch = runner.input_epoch
             durable = c.currency_standard_session.data
+            pending = durable['actions'][-1]
+            if (observe_reward and native_failure == 'reward_journal' and not injected
+                    and pending['action'] == CONTINUE and pending.get('target', [])[:1] == [battle_node]):
+                changed = StandardSession(store.path)
+                changed.data['synthetic_foreign_revision'] = True
+                changed.persist()
+                injected.append(native_failure)
             observed_windows.append((frame_id, budget.window(durable), durable['actions'][-1]['action']))
             return c.last_scene
 
@@ -262,8 +274,10 @@ class StandardEncounterTests(unittest.TestCase):
         native.SendInput.side_effect = send
         clock = SimpleNamespace(monotonic=lambda: now)
         persist = StandardSession.persist
+        from autohsr import currency_wars_session as session_module
+        replace_file = session_module.replace_file
 
-        def save(instance):
+        def save(instance, **options):
             active = instance.data['actions']
             blocked = {'publish': CONFIRM, 'battle_publish': START}.get(native_failure)
             if (blocked is not None and active and active[-1]['action'] == blocked and active[-1]['status'] == 'verified'
@@ -279,13 +293,25 @@ class StandardEncounterTests(unittest.TestCase):
                         path.write_bytes(b'tampered during receipt publication')
                     self.assertEqual(path.read_bytes(), expected)
                 injected.append('publish_holds')
-            persist(instance)
+            if native_failure == 'reward_publish' and active and REWARD_NOTICE in active[-1]:
+                injected.append(native_failure)
+                raise PermissionError('synthetic locked reward notice')
+            persist(instance, **options)
+
+        def replace_session(source, destination, **options):
+            if native_failure == 'reward_replace_late' and options.get('before_replace') is not None:
+                foreign = StandardSession(destination).data
+                foreign['synthetic_foreign_revision'] = True
+                destination.write_text(json.dumps(foreign), encoding='utf-8')
+                injected.append(native_failure)
+            return replace_file(source, destination, **options)
 
         error = None
         with (ExitStack() as strategy, patch('autohsr.windows.user32', native), patch('autohsr.windows.geometry', return_value=GEOMETRY),
               patch('autohsr.currency_wars.time', clock), patch('autohsr.currency_wars_standard_flow.time', clock),
               patch('autohsr.currency_wars_standard_node.time', clock),
-              patch.object(StandardSession, 'persist', save)):
+              patch.object(StandardSession, 'persist', save),
+              patch.object(session_module, 'replace_file', replace_session)):
             if not actual_readers:
                 strategy.enter_context(patch('autohsr.currency_wars_encounter.read_encounter', fake_observation))
                 strategy.enter_context(patch('autohsr.currency_wars_encounter.read_encounter_targets', fake_targets))
