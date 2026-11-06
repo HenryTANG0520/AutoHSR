@@ -135,9 +135,15 @@ python -m autohsr --challenge-result
 
 Windows 发布回执时持有两张 PNG 的只读句柄，发布最终报告时同时持有回执和两张 PNG。每次共享锁重试都复核原文件、帧时效和输入代次，并在 OCR 和读盘之后查询实际前台。暂停与停止监视持续到最终报告发布结束。最终复核失败时报告与 CLI 保留 `unknown`，已写回执及原证据留存。普通 OCR 沿用配置阈值，账号正向确认仍要求至少 0.85。仅高难结果将配置阈值过滤掉但达到 0.65 的完整 UID 留作冲突反证。账号仅在本次内存核验中使用，公开裁片仍需去 UID。[复验记录](../VALIDATION.md#2026-11-06-高难结算来源复核)
 
-一般控件反馈以「返回虚构叙事」「前往节点二」「返回末日幻影」的唯一局部原件及同位置完整 OCR 核对。普通末日终局还可使用下述完整布局核对。出现异模式结算原件或支付、确认领取等遮挡迹象时保留未核实。「前往节点二」只记文字所指去向，单独出现时模式也保持未知。红色「败」字是可见标记，需与模式专属返回控件同帧。固定上游的判断分支也在不同战况复用返回或节点去向控件。混沌的「返回忘却之庭」缺少能区分常驻回忆的结果页锚。[虚构结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/purefiction.py#L184-L204) · [末日结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/apocalyptic.py#L268-L294) · [混沌结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/memoryofchaos.py#L176-L203)
+一般控件反馈以「返回虚构叙事」「前往节点二」「返回末日幻影」的唯一局部原件及同位置完整 OCR 核对。普通混沌与普通末日终局还可使用下述完整布局核对。出现异模式结算原件或支付、确认领取等遮挡迹象时保留未核实。「前往节点二」只记文字所指去向，单独出现时模式也保持未知。红色「败」字是可见标记，需与模式专属返回控件同帧。固定上游的判断分支也在不同战况复用返回或节点去向控件。混沌与常驻回忆共享「返回忘却之庭」，需按本期混沌布局的同屏字段区分。[虚构结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/purefiction.py#L184-L204) · [末日结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/apocalyptic.py#L268-L294) · [混沌结算判断](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/memoryofchaos.py#L176-L203)
 
-双帧核实模式反馈后 `challenge_result.status=feedback_verified`，只有去向文案时为 `caption_verified`，证据不足时为 `unknown`。总分和分项按下述已校准布局发布。实际半场、已到节点、星数、胜负与最终结算分别留空或为 `unknown`，`completion_verified` 和 `rewards_verified` 为 `false`。运行状态为 `partial`，CLI 退出 1。已有主页星数仍属于主页历史观察，备战回执仍由 `--challenge-prepare` 独立记录。[反馈入口验证](../VALIDATION.md#2026-11-06-高难结算只读反馈)
+双帧核实模式反馈后 `challenge_result.status=feedback_verified`，只有去向文案时为 `caption_verified`，证据不足时为 `unknown`。剩余轮、总分和分项按下述已校准布局发布。实际半场、已到节点、星数、胜负与最终结算分别留空或为 `unknown`，`completion_verified` 和 `rewards_verified` 为 `false`。运行状态为 `partial`，CLI 退出 1。已有主页星数仍属于主页历史观察，备战回执仍由 `--challenge-prepare` 独立记录。[反馈入口验证](../VALIDATION.md#2026-11-06-高难结算只读反馈)
+
+### 本期常规混沌剩余轮
+
+4.6 本期「物竞天择」的已校准 16:9 版式须同屏出现居中关卡标题、独立「挑战成功」、单列轮数和「剩余轮」、左侧三行普通星级目标、底部居中「返回忘却之庭」。相邻两张新帧须读到相同轮数和相互重叠的对应字段框。核实后回执记录 `remaining_rounds` 与返回控件。普通终局的奖励栏属于独立内容。识别到「节点二」交接、星启、历史详情、确认弹窗或冲突字段时保留未核实。[4.6 官方排期](https://www.taptap.cn/moment/853326330178046059)
+
+十一层原片的 02:19.800 和 02:20.200 是第二队入场，04:40 与 04:47 的终局均为 30 轮。另一场十一层在 03:42.800 与 03:43.300 均为 29 轮，但 OCR 两次都漏掉标题末字「一」。层号留空，当前场星数与领奖另待校准。常驻回忆终局也可同时显示「挑战成功」「剩余轮」「返回忘却之庭」。原片只在本地做去 UID 裁片校准，仓库记录字段、时间和哈希。[十一层交接](https://www.bilibili.com/video/BV1oG4h6UEVo/?t=139.8) · [十一层终局](https://www.bilibili.com/video/BV1oG4h6UEVo/?t=280) · [29 轮原片](https://www.bilibili.com/video/BV1AK4c6GExo/?t=222.8) · [常驻回忆终局](https://www.bilibili.com/video/BV1L7uG6QENm/?t=79.2) · [脱敏字段与哈希](../autohsr/tests/fixtures/challenge_chaos_result_4_6.json)
 
 ### 普通虚构总分
 
@@ -159,7 +165,7 @@ Windows 发布回执时持有两张 PNG 的只读句柄，发布最终报告时�
 | --- | --- |
 | 虚构叙事 | 同层上半结束、下半接续、最终总览。总览保留两半得分、总分、星数和结束标识。另留失败或主动退出对照 |
 | 末日幻影 | 首节点成功与失败反馈、节点二实际到达、最终总览的两节点分、总分和星。已挑战详情单独留历史分字段作对照 |
-| 混沌回忆 | 可区别常驻回忆的结算页锚、同层上下半交接、成功与失败结算。保留本次所得星和逐项目标 |
+| 混沌回忆 | 当前客户端的同层上下半交接、不同剩余轮和重打版式、失败结算。保留本次实得星和逐项目标 |
 
 领奖可用与已领取状态各需独立页面证据。现有入口的边界为观察当前结果反馈。
 

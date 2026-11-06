@@ -33,6 +33,7 @@ LOCK = f'Local\\AutoHSR.HighResults.Tests.{os.getpid()}.{uuid4().hex}'
 GEO = Geometry(4, 8, 960, 540)
 FIXTURES = Path(__file__).parent / 'fixtures' / 'du_runtime'
 APOCALYPTIC_SCORE_FIXTURE = FIXTURES.parent / 'challenge_apocalyptic_result_4_6.json'
+CHAOS_RESULT_FIXTURE = FIXTURES.parent / 'challenge_chaos_result_4_6.json'
 
 
 def token(text, xyxy, score=.99):
@@ -89,10 +90,18 @@ def formatted_final():
     ), extra=(token('新纪录', (540, 109, 579, 128)),))
 
 
-def apocalyptic_score_frame(name):
-    sample = json.loads(APOCALYPTIC_SCORE_FIXTURE.read_text(encoding='utf-8'))['frames'][name]
+def public_result_frame(fixture, name):
+    sample = json.loads(fixture.read_text(encoding='utf-8'))['frames'][name]
     tokens = [Token(row['text'], row['confidence'], tuple(row['box'])) for row in sample['tokens']]
     return frame(extra=tokens)
+
+
+def apocalyptic_score_frame(name):
+    return public_result_frame(APOCALYPTIC_SCORE_FIXTURE, name)
+
+
+def chaos_result_frame(name='ordinary_eleven_a'):
+    return public_result_frame(CHAOS_RESULT_FIXTURE, name)
 
 
 class FictionScoreObservationTests(unittest.TestCase):
@@ -218,6 +227,52 @@ class ApocalypticScoreObservationTests(unittest.TestCase):
             with self.subTest(field=old):
                 altered = replace(scene, tokens=[wrong if item.text == old else item for item in scene.tokens])
                 self.assertIsNone(observe_feedback(altered))
+
+
+class ChaosRoundsObservationTests(unittest.TestCase):
+    def test_current_ordinary_terminal_binds_the_same_frame_fields(self):
+        for name, expected in (('ordinary_ten_b', 30), ('ordinary_eleven_a', 30), ('ordinary_eleven_29_a', 29)):
+            with self.subTest(name=name):
+                observed = observe_feedback(chaos_result_frame(name))
+                self.assertEqual(observed.mode, pages.MODE)
+                self.assertEqual(observed.memory_rounds.value, expected)
+                self.assertIsNone(observed.score)
+                self.assertEqual([anchor.text for anchor in observed.anchors], ['chaos_terminal_return_ocr'])
+
+        scene = chaos_result_frame()
+        for missing in scene.tokens[1:]:
+            if missing.text == '成功奖励':
+                continue
+            with self.subTest(missing=missing.text):
+                self.assertIsNone(observe_feedback(replace(scene, tokens=[t for t in scene.tokens if t != missing])))
+
+    def test_public_wrong_pages_never_use_the_same_return_as_a_result(self):
+        for name in ('team_setup', 'node_two_handoff_a', 'permanent_fourteen_a', 'prior_period_twelve_a',
+                     'starward_twelve_a', 'title_animation', 'historical_stars_16_9'):
+            with self.subTest(name=name):
+                self.assertIsNone(observe_feedback(chaos_result_frame(name)))
+
+    def test_nearby_title_and_number_must_be_unique_exact_and_local(self):
+        scene = chaos_result_frame()
+        title = '物竞天择其十一'
+        for old, wrong in ((title, '回忆其十一'), (title, '来生泅渡其十一'), (title, '物竞天择其十三'),
+                           ('挑战成功', '挑战成功！'), ('30', '31'), ('30', '0 3'),
+                           ('剩余轮', '当前剩余轮'), ('取得胜利时，剩余20轮以上', '取得胜利时，剩余18轮以上')):
+            with self.subTest(wrong=wrong):
+                altered = [replace(item, text=wrong) if item.text == old else item for item in scene.tokens]
+                self.assertIsNone(observe_feedback(replace(scene, tokens=altered)))
+        for bad in (token('29', (545, 143, 565, 162), .76), token('物竞天择其十', (70, 130, 180, 145)),
+                    token('返回忘却之庭', (690, 460, 800, 477)), token('节点二', (720, 185, 770, 204)),
+                    token('星启模式', (740, 60, 790, 78)), token('支付', (736, 60, 790, 78))):
+            with self.subTest(text=bad.text):
+                self.assertIsNone(observe_feedback(replace(scene, tokens=[*scene.tokens, bad])))
+        for part in (FICTION, FAILURE):
+            with self.subTest(part=part):
+                self.assertIsNone(observe_feedback(frame(part, extra=scene.tokens[1:])))
+
+        formatted = [replace(t, text='３０') if t.text == '30' else t for t in scene.tokens]
+        observed = observe_feedback(replace(scene, tokens=formatted))
+        self.assertEqual(observed.memory_rounds.value, 30)
 
 
 class ResultObservationTests(unittest.TestCase):
@@ -411,6 +466,45 @@ class ResultEntryTests(unittest.TestCase):
         for row in data['evidence']:
             self.assertEqual([proof['source'] for proof in row['anchors']], ['ocr', 'ocr'])
             self.assertEqual(hashlib.sha256((directory / row['screenshot']).read_bytes()).hexdigest(), row['sha256'])
+
+    def test_cli_ordinary_chaos_rounds_survive_repeated_title_ocr_error_without_reporting_a_stage(self):
+        first = chaos_result_frame('ordinary_eleven_29_a')
+        second = chaos_result_frame('ordinary_eleven_29_b')
+        self.assertEqual([item.tokens[1].text for item in (first, second)], ['物竞天择其十', '物竞天择其十'])
+        report = self.run_cli([first, second])
+        data = report['challenge_result']
+        self.assertEqual((report['status'], data['status'], data['mode'], data['remaining_rounds']),
+                         ('partial', 'feedback_verified', pages.MODE, 29))
+        self.assertEqual(data['visible_controls'], ['返回忘却之庭'])
+        self.assertEqual([row['capture_sequence'] for row in data['evidence']], [1, 2])
+        for field in ('level', 'half', 'node', 'destination_node_in_caption', 'upper_half_score',
+                      'lower_half_score', 'node_one_score', 'node_two_score', 'total_score', 'stars',
+                      'failure_marker_observed'):
+            self.assertIsNone(data[field])
+        self.assertEqual((data['outcome'], data['settlement_status']), ('unknown', 'unknown'))
+        self.assertFalse(data['completion_verified'])
+        self.assertFalse(data['rewards_verified'])
+        self.assertIn('已核实本次混沌回忆剩余轮', report['results'][0]['detail'])
+        directory = Path(report['run_dir'])
+        self.assertEqual(json.loads((directory / 'challenge-result.json').read_bytes()), data)
+        for row in data['evidence']:
+            self.assertEqual([(anchor['source'], anchor['text']) for anchor in row['anchors']],
+                             [('ocr', '返回忘却之庭')])
+            self.assertEqual(hashlib.sha256((directory / row['screenshot']).read_bytes()).hexdigest(), row['sha256'])
+
+    def test_cli_chaos_requires_consecutive_unambiguous_rounds(self):
+        first = chaos_result_frame()
+        second = chaos_result_frame('ordinary_eleven_b')
+        changed = replace(second, tokens=[replace(t, text='29') if t.text == '30' else t for t in second.tokens])
+        unknown = self.run_cli([first, changed])
+        self.assertEqual(unknown['challenge_result']['status'], 'unknown')
+        self.assertIsNone(unknown['challenge_result']['remaining_rounds'])
+        self.assertFalse((Path(unknown['run_dir']) / 'challenge-result.json').exists())
+        for gap in (EmptyCapture('blank'), chaos_result_frame('node_two_handoff_a'), changed):
+            with self.subTest(gap=type(gap).__name__):
+                data = self.run_cli([first, gap, first, second])['challenge_result']
+                self.assertEqual(data['remaining_rounds'], 30)
+                self.assertEqual([row['capture_sequence'] for row in data['evidence']], [3, 4])
 
     def test_cli_apocalyptic_score_requires_same_parts_in_consecutive_complete_frames(self):
         good = apocalyptic_score_frame('terminal_first')

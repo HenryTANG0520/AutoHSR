@@ -1,0 +1,231 @@
+{
+  "schema": 1,
+  "origin": "Only public Simplified Chinese Forgotten Hall field OCR. No UID, video pixels, or creator overlay.",
+  "coordinates": "Normalized x1,y1,x2,y2 in original playback. The permanent negative is wider than 16:9.",
+  "note": "The source glyphs say 物竞天择其十一 in both ordinary_eleven_29 frames; RapidOCR drops the final 一.",
+  "frames": {
+    "ordinary_ten_b": {
+      "source": "https://www.bilibili.com/video/BV1wT4c6rEyX/?p=1&t=258.1",
+      "cid": 43256580703,
+      "part": 1,
+      "seek_seconds": 258.1,
+      "playback_pixels": [1280, 720],
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "65b472f0a6beea6a20f99909415254d8402b7d8c40a87a896d1fa3558c25de05",
+      "tokens": [
+        {"text": "物竞天择其十", "confidence": 0.9919, "box": [0.4703, 0.1486, 0.5398, 0.1764]},
+        {"text": "挑战成功", "confidence": 0.9917, "box": [0.4406, 0.1861, 0.5703, 0.2458]},
+        {"text": "30", "confidence": 0.9992, "box": [0.4906, 0.2597, 0.5211, 0.3028]},
+        {"text": "剩余轮", "confidence": 0.9973, "box": [0.4867, 0.3069, 0.525, 0.3375]},
+        {"text": "取得胜利时，剩余10轮以上", "confidence": 0.992, "box": [0.3078, 0.3444, 0.4625, 0.3708]},
+        {"text": "取得胜利时，剩余20轮以上", "confidence": 0.9927, "box": [0.3078, 0.3889, 0.4641, 0.4153]},
+        {"text": "没有角色无法战斗", "confidence": 0.9912, "box": [0.3063, 0.4347, 0.4117, 0.4667]},
+        {"text": "成功奖励", "confidence": 0.9961, "box": [0.482, 0.5236, 0.5297, 0.5514]},
+        {"text": "返回忘却之庭", "confidence": 0.9962, "box": [0.4664, 0.8597, 0.5547, 0.8917]}
+      ]
+    },
+    "ordinary_eleven_a": {
+      "source": "https://www.bilibili.com/video/BV1oG4h6UEVo/?p=1&t=280",
+      "cid": 43359866313,
+      "part": 1,
+      "seek_seconds": 280,
+      "playback_pixels": [1280, 720],
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "2d3f5ac6630a368131c7da3aa9c27daa6d3cbf3231b18ebba3bf97dae211a93a",
+      "tokens": [
+        {"text": "物竞天择其十一", "confidence": 0.948, "box": [0.4602, 0.1486, 0.5336, 0.175]},
+        {"text": "挑战成功", "confidence": 0.9936, "box": [0.4344, 0.1847, 0.5648, 0.2458]},
+        {"text": "30", "confidence": 0.9994, "box": [0.4844, 0.2597, 0.5156, 0.3028]},
+        {"text": "剩余轮", "confidence": 0.9906, "box": [0.4813, 0.3042, 0.5203, 0.3389]},
+        {"text": "取得胜利时，剩余10轮以上", "confidence": 0.9941, "box": [0.3016, 0.3444, 0.4578, 0.3708]},
+        {"text": "取得胜利时，剩余20轮以上", "confidence": 0.9943, "box": [0.2992, 0.3889, 0.4578, 0.4153]},
+        {"text": "没有角色无法战斗", "confidence": 0.9925, "box": [0.2797, 0.4333, 0.4055, 0.4681]},
+        {"text": "成功奖励", "confidence": 0.9977, "box": [0.4766, 0.5236, 0.5242, 0.5514]},
+        {"text": "返回忘却之庭", "confidence": 0.9927, "box": [0.45, 0.8583, 0.5508, 0.8944]}
+      ]
+    },
+    "ordinary_eleven_b": {
+      "source": "https://www.bilibili.com/video/BV1oG4h6UEVo/?p=1&t=287",
+      "cid": 43359866313,
+      "part": 1,
+      "seek_seconds": 287,
+      "playback_pixels": [1280, 720],
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "1d0fb2ccba245d272313455c093fc7529245a63d20ede6b949c094d864da9bdf",
+      "tokens": [
+        {"text": "物竞天择其十一", "confidence": 0.9011, "box": [0.4602, 0.1486, 0.532, 0.175]},
+        {"text": "挑战成功", "confidence": 0.9937, "box": [0.4336, 0.1833, 0.5641, 0.2444]},
+        {"text": "30", "confidence": 0.9995, "box": [0.4844, 0.2597, 0.5156, 0.3042]},
+        {"text": "剩余轮", "confidence": 0.9957, "box": [0.4813, 0.3042, 0.5203, 0.3389]},
+        {"text": "取得胜利时，剩余10轮以上", "confidence": 0.9941, "box": [0.3008, 0.3417, 0.4586, 0.3722]},
+        {"text": "取得胜利时，剩余20轮以上", "confidence": 0.992, "box": [0.2797, 0.3875, 0.4586, 0.4194]},
+        {"text": "没有角色无法战斗", "confidence": 0.9904, "box": [0.2812, 0.4375, 0.4047, 0.4653]},
+        {"text": "成功奖励", "confidence": 0.9974, "box": [0.4766, 0.5236, 0.5242, 0.5514]},
+        {"text": "返回忘却之庭", "confidence": 0.9978, "box": [0.4516, 0.8611, 0.55, 0.8931]}
+      ]
+    },
+    "ordinary_eleven_29_a": {
+      "source": "https://www.bilibili.com/video/BV1AK4c6GExo/?p=1&t=222.8",
+      "cid": 43256713025,
+      "part": 1,
+      "seek_seconds": 222.8,
+      "playback_pixels": [1280, 720],
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "b1a28ce19ace43cc23a5f4eb243234b3d2ecf3132428e6a11f28a1cc9534cdc0",
+      "tokens": [
+        {"text": "物竞天择其十", "confidence": 0.9886, "box": [0.4656, 0.1486, 0.5367, 0.175]},
+        {"text": "挑战成功", "confidence": 0.9917, "box": [0.4406, 0.1861, 0.5703, 0.2458]},
+        {"text": "29", "confidence": 0.9996, "box": [0.4891, 0.2597, 0.5211, 0.3042]},
+        {"text": "剩余轮", "confidence": 0.9972, "box": [0.4867, 0.3069, 0.525, 0.3375]},
+        {"text": "取得胜利时，剩余10轮以上", "confidence": 0.9949, "box": [0.3078, 0.3431, 0.4633, 0.3694]},
+        {"text": "取得胜利时，剩余20轮以上", "confidence": 0.9938, "box": [0.307, 0.3889, 0.4648, 0.4194]},
+        {"text": "没有角色无法战斗", "confidence": 0.9827, "box": [0.3047, 0.4347, 0.4117, 0.4667]},
+        {"text": "成功奖励", "confidence": 0.9965, "box": [0.482, 0.5236, 0.5297, 0.5514]},
+        {"text": "返回忘却之庭", "confidence": 0.9965, "box": [0.4672, 0.8611, 0.5555, 0.8931]}
+      ]
+    },
+    "ordinary_eleven_29_b": {
+      "source": "https://www.bilibili.com/video/BV1AK4c6GExo/?p=1&t=223.3",
+      "cid": 43256713025,
+      "part": 1,
+      "seek_seconds": 223.3,
+      "playback_pixels": [1280, 720],
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "9510c77c879cb00164864b04ba05b0dab0f64808fd7beeee713d80283c46f74f",
+      "tokens": [
+        {"text": "物竞天择其十", "confidence": 0.9898, "box": [0.4648, 0.1486, 0.5375, 0.175]},
+        {"text": "挑战成功", "confidence": 0.9917, "box": [0.4406, 0.1861, 0.5703, 0.2458]},
+        {"text": "29", "confidence": 0.9996, "box": [0.4891, 0.2597, 0.5211, 0.3042]},
+        {"text": "剩余轮", "confidence": 0.997, "box": [0.4867, 0.3069, 0.525, 0.3375]},
+        {"text": "取得胜利时，剩余10轮以上", "confidence": 0.9948, "box": [0.3063, 0.3403, 0.4641, 0.3722]},
+        {"text": "取得胜利时，剩余20轮以上", "confidence": 0.994, "box": [0.3078, 0.3889, 0.4641, 0.4153]},
+        {"text": "没有角色无法战斗", "confidence": 0.9924, "box": [0.3063, 0.4347, 0.4117, 0.4667]},
+        {"text": "成功奖励", "confidence": 0.9966, "box": [0.482, 0.5236, 0.5297, 0.5514]},
+        {"text": "返回忘却之庭", "confidence": 0.9957, "box": [0.4688, 0.8486, 0.5711, 0.9069]}
+      ]
+    },
+    "team_setup": {
+      "source": "https://www.bilibili.com/video/BV1oG4h6UEVo/?p=1&t=4",
+      "cid": 43359866313,
+      "part": 1,
+      "seek_seconds": 4,
+      "playback_pixels": [1280, 720],
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "22a7c5634d7cd9a1b062374b5b70bea78fdceb81aa18e9d364186bd82e4453e5",
+      "tokens": [
+        {"text": "物竞天择其十一", "confidence": 0.9907, "box": [0.3289, 0.1125, 0.4508, 0.1458]},
+        {"text": "挑战目标", "confidence": 0.9966, "box": [0.3281, 0.2583, 0.382, 0.2861]},
+        {"text": "取得胜利时，剩余10轮以上", "confidence": 0.9956, "box": [0.357, 0.3056, 0.5141, 0.3333]},
+        {"text": "取得胜利时，剩余20轮以上", "confidence": 0.9963, "box": [0.3578, 0.35, 0.5148, 0.3778]},
+        {"text": "没有角色无法战斗", "confidence": 0.9936, "box": [0.357, 0.3931, 0.4617, 0.4236]},
+        {"text": "角色编队", "confidence": 0.9994, "box": [0.3281, 0.6069, 0.382, 0.6403]}
+      ]
+    },
+    "node_two_handoff_a": {
+      "source": "https://www.bilibili.com/video/BV1oG4h6UEVo/?p=1&t=139.8",
+      "cid": 43359866313,
+      "part": 1,
+      "seek_seconds": 139.8,
+      "playback_pixels": [1280, 720],
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "20b760ada1ee4bc16d151de8d40a3e33edffe22de274f05aea5c12c16e1cdc3b",
+      "tokens": [
+        {"text": "节点二", "confidence": 0.9972, "box": [0.4758, 0.15, 0.5227, 0.1875]}
+      ]
+    },
+    "starward_twelve_a": {
+      "source": "https://www.bilibili.com/video/BV1cg4c6zEsh/?p=1&t=1140",
+      "cid": 43255992065,
+      "part": 1,
+      "seek_seconds": 1140,
+      "playback_pixels": [1280, 720],
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "47d59a05f7996539445252df5ecb15c83445fe4a2469288b76d42f3131cf1a98",
+      "tokens": [
+        {"text": "星启模式", "confidence": 0.9951, "box": [0.4727, 0.0569, 0.5266, 0.0903]},
+        {"text": "物竞天择其十二", "confidence": 0.9966, "box": [0.4594, 0.1028, 0.5398, 0.1347]},
+        {"text": "挑战结束", "confidence": 0.9774, "box": [0.4336, 0.1347, 0.5664, 0.1944]},
+        {"text": "43", "confidence": 0.9986, "box": [0.4844, 0.1958, 0.5242, 0.2361]},
+        {"text": "新纪录！", "confidence": 0.9605, "box": [0.5219, 0.1986, 0.5695, 0.2306]},
+        {"text": "剩余轮", "confidence": 0.9888, "box": [0.482, 0.2333, 0.5195, 0.2639]},
+        {"text": "消耗轮次：", "confidence": 0.9534, "box": [0.6156, 0.2542, 0.6875, 0.2806]},
+        {"text": "节点二", "confidence": 0.9988, "box": [0.2789, 0.2917, 0.3211, 0.3264]},
+        {"text": "消耗轮次：0轮", "confidence": 0.9689, "box": [0.6125, 0.2889, 0.7227, 0.3292]},
+        {"text": "节点三", "confidence": 0.9974, "box": [0.2797, 0.3417, 0.3211, 0.3708]},
+        {"text": "消耗轮次：1轮", "confidence": 0.9847, "box": [0.6148, 0.3403, 0.7211, 0.3722]},
+        {"text": "星级目标", "confidence": 0.9987, "box": [0.2719, 0.3861, 0.3273, 0.4181]},
+        {"text": "取得胜利时，剩余15轮以上", "confidence": 0.994, "box": [0.2797, 0.4292, 0.4586, 0.4625]},
+        {"text": "取得胜利时，剩余30轮以上", "confidence": 0.9943, "box": [0.2812, 0.4792, 0.4578, 0.5069]},
+        {"text": "没有角色无法战斗", "confidence": 0.987, "box": [0.2805, 0.525, 0.4055, 0.5556]},
+        {"text": "通关奖励", "confidence": 0.998, "box": [0.4766, 0.6264, 0.5242, 0.6556]},
+        {"text": "重新挑战", "confidence": 0.9982, "box": [0.3438, 0.8444, 0.3961, 0.8722]},
+        {"text": "返回忘却之庭", "confidence": 0.9975, "box": [0.5914, 0.8444, 0.6711, 0.875]}
+      ]
+    },
+    "permanent_fourteen_a": {
+      "source": "https://www.bilibili.com/video/BV1L7uG6QENm/?p=1&t=79.2",
+      "cid": 40718436064,
+      "part": 1,
+      "seek_seconds": 79.2,
+      "playback_pixels": [1280, 580],
+      "crop_xyxy": [312, 20, 958, 562],
+      "public_crop_sha256": "293bb77e7091beddf326524cd3ffa7fba7fa017d9e5364ae1d6c0b21f884472c",
+      "tokens": [
+        {"text": "回忆其十四", "confidence": 0.9947, "box": [0.4711, 0.0586, 0.5305, 0.0897]},
+        {"text": "挑战成功", "confidence": 0.9876, "box": [0.4352, 0.1052, 0.5641, 0.1776]},
+        {"text": "30", "confidence": 0.999, "box": [0.4844, 0.1948, 0.5156, 0.2517]},
+        {"text": "剩余轮", "confidence": 0.9987, "box": [0.4805, 0.2552, 0.5203, 0.2948]},
+        {"text": "取得胜利时，剩余12轮以上", "confidence": 0.9948, "box": [0.3008, 0.3052, 0.4562, 0.3362]},
+        {"text": "取得胜利时，剩余18轮以上", "confidence": 0.993, "box": [0.3008, 0.3621, 0.4562, 0.3983]},
+        {"text": "无法战斗角色不超过1名", "confidence": 0.989, "box": [0.3008, 0.4224, 0.4359, 0.4534]},
+        {"text": "成功奖励", "confidence": 0.9989, "box": [0.4758, 0.5293, 0.525, 0.5655]},
+        {"text": "10", "confidence": 0.9993, "box": [0.5578, 0.6845, 0.5695, 0.7069]},
+        {"text": "返回忘却之庭", "confidence": 0.9981, "box": [0.4711, 0.8328, 0.5492, 0.8655]}
+      ]
+    },
+    "prior_period_twelve_a": {
+      "source": "https://www.bilibili.com/video/BV1NQpq6kEyC/?p=1&t=1478",
+      "cid": 42709419657,
+      "part": 1,
+      "seek_seconds": 1478,
+      "playback_pixels": [1280, 720],
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "500eb206c1ee79d40020eaf055f32138af13c517119be5654a3a2dcdecc36921",
+      "tokens": [
+        {"text": "挑战成功", "confidence": 0.991, "box": [0.4336, 0.2806, 0.5648, 0.3417]},
+        {"text": "21", "confidence": 0.999, "box": [0.4844, 0.3528, 0.518, 0.4028]},
+        {"text": "剩余轮", "confidence": 0.9933, "box": [0.4805, 0.4014, 0.5203, 0.4347]},
+        {"text": "取得胜利时，剩余10轮以上", "confidence": 0.9943, "box": [0.2984, 0.4389, 0.4594, 0.4694]},
+        {"text": "取得胜利时，剩余20轮以上", "confidence": 0.9909, "box": [0.2797, 0.4833, 0.4602, 0.5194]},
+        {"text": "没有角色无法战斗", "confidence": 0.9897, "box": [0.2805, 0.5319, 0.4055, 0.5639]},
+        {"text": "返回忘却之庭", "confidence": 0.9974, "box": [0.4516, 0.8611, 0.55, 0.8944]}
+      ]
+    },
+    "title_animation": {
+      "source": "https://www.bilibili.com/video/BV1wT4c6rEyX/?p=1&t=256",
+      "cid": 43256580703,
+      "part": 1,
+      "seek_seconds": 256,
+      "playback_pixels": [1280, 720],
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "3175728cc2b362e4f8ae9bee01d4d1081b0c3d548e8860504f5a0acff89a9798",
+      "tokens": [
+        {"text": "物竞天择其十", "confidence": 0.9838, "box": [0.4625, 0.4139, 0.5469, 0.4472]},
+        {"text": "挑战成功", "confidence": 0.9904, "box": [0.4234, 0.4611, 0.5867, 0.5389]}
+      ]
+    },
+    "historical_stars_16_9": {
+      "source": "https://www.bilibili.com/video/BV1wT4c6rEyX/?p=1&t=266",
+      "cid": 43256580703,
+      "part": 1,
+      "seek_seconds": 266,
+      "playback_pixels": [1280, 720],
+      "crop_xyxy": [312, 24, 958, 696],
+      "public_crop_sha256": "c571ffd1e83959dc91094cf726e2e044bbe6eccc4f0af0a902c7b35f8af4c0fd",
+      "tokens": [
+        {"text": "09", "confidence": 0.9995, "box": [0.2977, 0.5111, 0.3383, 0.5667]},
+        {"text": "10", "confidence": 0.9996, "box": [0.4813, 0.5847, 0.5172, 0.6347]}
+      ]
+    }
+  }
+}

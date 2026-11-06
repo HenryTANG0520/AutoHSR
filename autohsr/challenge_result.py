@@ -64,7 +64,24 @@ _APOCALYPTIC_SCORE_BLOCKERS = ('星启', '节点三', '节点3', '节点３', '�
                               '返回主界面', '返回主页')
 _APOCALYPTIC_OCR_CONTROLS = {'apocalyptic_terminal_retry_ocr': '重新挑战',
                             'apocalyptic_terminal_return_ocr': '返回末日幻影'}
-_CONTROL_CAPTIONS = {name: caption for name, (_, caption) in _CONTROLS.items()} | _APOCALYPTIC_OCR_CONTROLS
+
+# The 16:9 normal-mode 4.6 "物竞天择" result. Its return caption is also
+# used by permanent Forgotten Hall and Starward mode, so it is insufficient alone.
+_CHAOS_TITLE = (.443, .137, .554, .179)
+_CHAOS_SUCCESS = (.413, .180, .586, .252)
+_CHAOS_ROUNDS = (.464, .253, .539, .306)
+_CHAOS_ROUNDS_LABEL = (.460, .301, .543, .341)
+_CHAOS_GOAL_ROWS = ((.267, .337, .474, .378), (.267, .379, .474, .425), (.267, .426, .474, .475))
+_CHAOS_GOALS = ('取得胜利时剩余10轮以上', '取得胜利时剩余20轮以上', '没有角色无法战斗')
+_CHAOS_RETURN = (.426, .836, .580, .920)
+_CHAOS_TITLE_PATTERN = re.compile(r'物竞天择[·•]?其(?:[一二三四五六七八九]|十[一二]?)')
+_CHAOS_RETURN_ANCHOR = 'chaos_terminal_return_ocr'
+_CHAOS_RETURN_CAPTION = '返回忘却之庭'
+_CHAOS_BLOCKERS = ('星启', '节点一', '节点二', '节点三', '节点3', '节点３', '前往节点',
+                   '挑战失败', '挑战结束', '退出', '重新挑战', '角色编队', '通关详情',
+                   '历史积分', '历史最高', '快速通关', '返回主界面', '返回主页')
+_OCR_CONTROLS = _APOCALYPTIC_OCR_CONTROLS | {_CHAOS_RETURN_ANCHOR: _CHAOS_RETURN_CAPTION}
+_CONTROL_CAPTIONS = {name: caption for name, (_, caption) in _CONTROLS.items()} | _OCR_CONTROLS
 
 
 @dataclass(frozen=True)
@@ -81,10 +98,22 @@ class _ResultScore:
 
 
 @dataclass(frozen=True)
+class _MemoryRounds:
+    title: str
+    value: int
+    boxes: tuple[ROI, ...]
+
+    def agrees_with(self, other):
+        return (other is not None and self.title == other.title and self.value == other.value
+                and all(pages._overlaps(a, b) for a, b in zip(self.boxes, other.boxes)))
+
+
+@dataclass(frozen=True)
 class Feedback:
     mode: str | None
     anchors: tuple[Token, ...]
     score: _ResultScore | None = None
+    memory_rounds: _MemoryRounds | None = None
 
 
 def _same_score_row(parts):
@@ -219,8 +248,40 @@ def _read_apocalyptic_terminal(tokens, words, minimum):
     return score, anchors
 
 
+def _read_chaos_terminal(tokens, words, minimum):
+    if any(blocker in word for word in words for blocker in _CHAOS_BLOCKERS):
+        return None
+    regions = (_CHAOS_TITLE, _CHAOS_SUCCESS, _CHAOS_ROUNDS, _CHAOS_ROUNDS_LABEL,
+               *_CHAOS_GOAL_ROWS, _CHAOS_RETURN)
+    groups = tuple(_score_line(tokens, region, minimum) for region in regions)
+    stage, success, raw_rounds, label, *goals, leave = groups
+    title = _score_text(stage).replace(' ', '')
+    value = _score_value(raw_rounds, '')
+    if (not _CHAOS_TITLE_PATTERN.fullmatch(title) or _score_text(success).replace(' ', '') != '挑战成功'
+            or _score_text(label).replace(' ', '') != '剩余轮' or value is None or value[0] > 30
+            or tuple(normalize(_score_text(row)) for row in goals) != _CHAOS_GOALS
+            or _score_text(leave).replace(' ', '') != _CHAOS_RETURN_CAPTION):
+        return None
+
+    known = [token for parts in groups for token in parts]
+    extras = [token for token in tokens if token not in known]
+    extra_words = tuple(normalize(token.text) for token in extras) + pages._line_words(extras, gap=.012)
+    unique = ('物竞天择', '挑战成功', '剩余轮', *_CHAOS_GOALS, _CHAOS_RETURN_CAPTION)
+    if any(label in word for word in extra_words for label in unique):
+        return None
+    if any(token.within((.31, .253, .69, .306))
+           and _SCORE_NUMBER.fullmatch(_score_text((token,))) for token in extras):
+        return None
+
+    # OCR can drop the final 一 from 十一 on successive frames. Retain the
+    # title for comparison, but publish only the independent rounds read.
+    reading = _MemoryRounds(title, value[0], tuple(_score_box(parts) for parts in groups))
+    anchor = Token(_CHAOS_RETURN_ANCHOR, min(token.score for token in leave), _score_box(leave))
+    return Feedback(pages.MODE, (anchor,), memory_rounds=reading)
+
+
 def observe_feedback(scene, confidence=.65):
-    """Identify visible controls, failure and calibrated final scores."""
+    """Identify visible controls, failure and calibrated result fields."""
     clean = pages._clean(scene, confidence, blockers=())
     if clean is None:
         return None
@@ -232,7 +293,12 @@ def observe_feedback(scene, confidence=.65):
                 if any(caption in word for word in words)}
     modes = {mode for mode, title in pages._MODE_WORDS.items() if any(title in word for word in words)}
     modes.update(_CONTROLS[name][0] for name in controls)
-    if not controls or len(modes) != 1:
+    if not controls and modes.issubset({pages.MODE}):
+        terminal = _read_chaos_terminal(clean.tokens, words, max(.85, confidence))
+        if terminal is not None and not any(pages._hits(clean, name, FULL) for name in (*_CONTROLS, _FAILURE)):
+            return terminal
+        return None
+    if not controls or len(modes) != 1 or any(_CHAOS_RETURN_CAPTION in word for word in words):
         return None
 
     anchors = []
@@ -297,13 +363,15 @@ def _pixels(image):
 
 
 def _same_feedback(first, second):
-    return (first.mode == second.mode and len(first.anchors) == len(second.anchors)
+    rounds = first.memory_rounds
+    same_rounds = rounds is second.memory_rounds or (rounds is not None and rounds.agrees_with(second.memory_rounds))
+    return (first.mode == second.mode and same_rounds and len(first.anchors) == len(second.anchors)
             and all(a.text == b.text and pages._overlaps(a.box, b.box)
                     for a, b in zip(first.anchors, second.anchors)))
 
 
 def _anchor_proof(anchor):
-    label = _APOCALYPTIC_OCR_CONTROLS.get(anchor.text)
+    label = _OCR_CONTROLS.get(anchor.text)
     if label is not None:
         return dict(source='ocr', text=label, box=list(anchor.box), score=anchor.score)
     return pages._proof(anchor.text, anchor)
@@ -324,7 +392,7 @@ class ResultReader:
         self.receipt = None
         self.data = dict(schema=1, status='unknown', mode=None, level=None, half=None, node=None,
                          destination_node_in_caption=None, upper_half_score=None, lower_half_score=None,
-                         node_one_score=None, node_two_score=None, total_score=None, stars=None,
+                         node_one_score=None, node_two_score=None, total_score=None, remaining_rounds=None, stars=None,
                          settlement_status='unknown', outcome='unknown', visible_controls=[],
                          failure_marker_observed=None, completion_verified=False, rewards_verified=False,
                          evidence=[])
@@ -402,6 +470,7 @@ class ResultReader:
             raise AutomationError('高难结果观察需要分别保存两张新画面。')
         names = [anchor.text for anchor in frames[-1].feedback.anchors]
         mode = frames[-1].feedback.mode
+        rounds = frames[-1].feedback.memory_rounds
         apocalyptic_score = score if mode == pages.APOCALYPTIC else None
         data = dict(self.data, status='feedback_verified' if mode else 'caption_verified', mode=mode,
                     visible_controls=[_CONTROL_CAPTIONS[name] for name in names if name in _CONTROL_CAPTIONS],
@@ -410,6 +479,7 @@ class ResultReader:
                     node_one_score=apocalyptic_score.node_one if apocalyptic_score is not None else None,
                     node_two_score=apocalyptic_score.node_two if apocalyptic_score is not None else None,
                     total_score=score.total if score is not None else None,
+                    remaining_rounds=rounds.value if rounds is not None else None,
                     evidence=evidence)
         path = self.directory / 'challenge-result.json'
         temporary = path.with_suffix('.tmp')
@@ -450,6 +520,8 @@ class ResultReader:
                     result.detail = '已核实本次末日幻影两个节点得分与总分，星数与领奖状态待核实。'
                 elif self.data['total_score'] is not None:
                     result.detail = '已核实本次虚构叙事总分，星数与领奖状态待核实。'
+                elif self.data['remaining_rounds'] is not None:
+                    result.detail = '已核实本次混沌回忆剩余轮，关卡层号、星数与领奖状态待核实。'
                 else:
                     result.detail = '已核实当前可见反馈，关卡成绩与领奖状态待核实。'
                 payload = write_report()
