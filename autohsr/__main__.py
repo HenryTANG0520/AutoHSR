@@ -290,7 +290,8 @@ def main(argv: list[str] | None = None) -> int:
         result = unittest.TextTestRunner(verbosity=2).run(tests)
         return 0 if result.wasSuccessful() else 1
     if not any((args.check, args.scan_dungeons, build_target, args.launch, args.run, args.plan,
-                args.redeem_codes, args.challenge_prepare, args.challenge_result, args.challenge_lobby, args.du_rewards_only,
+                args.redeem_codes, args.challenge_prepare, args.challenge_result, args.team_preset_calibration,
+                args.challenge_lobby, args.du_rewards_only,
                 args.currency_wars_check, args.currency_wars_prepare, args.currency_wars_locate,
                 args.currency_wars_configure, overclock_entry,
                 args.currency_wars_standard, args.currency_wars_loop, args.currency_wars_points,
@@ -388,7 +389,8 @@ def main(argv: list[str] | None = None) -> int:
             settings = reward_only_settings(settings)
         from .redemption_cli import apply_overrides as apply_redemption_overrides
         apply_redemption_overrides(args, parser, settings)
-        check_only = args.check or args.scan_dungeons or args.read_build_target or args.challenge_result or args.challenge_lobby
+        check_only = (args.check or args.scan_dungeons or args.read_build_target
+                      or args.challenge_result or args.challenge_lobby or args.team_preset_calibration)
         settings.validate('build_target_preview' if args.preview_build_target or args.build_target else 'du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "check" if check_only else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or overclock_entry or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "power_plan" if args.power_plan else "daily")
         from .app import Runner, inspect_game, launch_game
         if args.check:
@@ -402,13 +404,15 @@ def main(argv: list[str] | None = None) -> int:
             if kind != "finished":
                 print(json.dumps(event, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
         wrap_notifications = None
-        if not (build_target or args.challenge_result or args.challenge_lobby or overclock_entry):
+        if not (build_target or args.challenge_result or args.challenge_lobby or args.team_preset_calibration or overclock_entry):
             from .notify_runtime import hooks as notification_hooks
             emit, wrap_notifications = notification_hooks(settings, emit)
         if args.challenge_result:
             runner = Runner(settings, emit, operation='challenge_result')
         elif args.challenge_lobby:
             runner = Runner(settings, emit, operation='challenge_lobby', challenge_lobby_mode=args.challenge_lobby)
+        elif args.team_preset_calibration:
+            runner = Runner(settings, emit, operation='team_preset_calibration')
         elif args.build_target:
             runner = Runner(settings, emit, operation='build_target_plan', build_target_selection=build_target_selection)
         elif build_target:

@@ -788,6 +788,14 @@ masked; sidecars retain hashes and non-identifier OCR. These are local
 regression samples, not independent automation-success evidence. Game artwork
 remains the property of HoYoverse.
 
+`upstream/March7thAssistant/team-calibration/configure_team.png` preserves a
+single original crop from moesnow and contributors at
+`7cf6c6bed474539485d3b1504077ac352866829f`. It supports read-only normal team
+page identification alongside separate OCR fields. Source path, Git blob,
+SHA-256, and upstream GPL v3 attribution are recorded in the
+[team calibration source notes](upstream/March7thAssistant/team-calibration/README.md).
+The game artwork remains the property of HoYoverse.
+
 `du_runtime/last_area_confirm` is a locally captured final-route warning from
 the 4.6 client, resized to the 1920-pixel baseline with the bottom identifier
 strip masked. Its sidecar records the source hash and non-identifier OCR.

@@ -21,6 +21,8 @@ def add_arguments(mode, parser):
     mode.add_argument('--challenge-prepare', action='store_true', help='核实高难首个目标层备战，末日幻影只读观察当前前台页面')
     mode.add_argument('--challenge-result', action='store_true', help='只读核对前台高难结算反馈，保存本次独立证据')
     mode.add_argument('--challenge-lobby', choices=tuple(MODE_LIMITS), help='从当前指南导航到指定高难主页')
+    mode.add_argument('--team-preset-calibration', action='store_true',
+                      help='从当前前台手机核实后打开编队一次，保存编队与预设校准证据')
     parser.add_argument('--challenge-plan', type=Path, help='仅用于本次高难备战的明确双队JSON计划；不保存配置')
 
 
@@ -51,6 +53,10 @@ def dispatch(args, parser, raw_args):
                    '--notify', '--no-notify', '--notify-profile'}
         if any(token.startswith('--') and token.split('=')[0] not in allowed for token in raw_args):
             parser.error('高难备战不能混入日常、资源、其他玩法或接续选项。')
+    if args.team_preset_calibration:
+        allowed = {'--team-preset-calibration', '--config', '--game-path'}
+        if any(token.startswith('--') and token.split('=')[0] not in allowed for token in raw_args):
+            parser.error('编队入口校准仅接受配置与游戏路径，不能混入其他操作。')
     return None
 
 
