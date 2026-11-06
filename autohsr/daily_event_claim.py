@@ -357,6 +357,13 @@ def _require_fresh(frames, *, pixels=True):
 
 def _publish(path, raw, checkpoint, frames):
     last = frames[-1]
+    created = None
+
+    def write(stream):
+        nonlocal created
+        stream.write(raw)
+        metadata = os.fstat(stream.fileno())
+        created = metadata.st_dev, metadata.st_ino
 
     def check():
         checkpoint()
@@ -372,11 +379,14 @@ def _publish(path, raw, checkpoint, frames):
     source = last.scope.executable.with_name('config.ini')
     with hold_read_sources((source,)):
         try:
-            publish_new(path, lambda stream: stream.write(raw), cancel=check, limit=4096)
+            publish_new(path, write, cancel=check, limit=4096)
         except WarpError:
             raise AutomationError('巡星之礼已有记录或写入未核实，保留原件且不重放。') from None
         with _hold_records(((path, raw),)):
-            return file_revision(path)
+            revision = file_revision(path)
+            if revision[:2] != created:
+                raise AutomationError('巡星之礼本次发布的回执来源已变化。')
+            return revision
 
 
 def _require_records(rows):
@@ -431,6 +441,8 @@ class ClaimIntent:
                                         sequence=before[-1].sequence))
         self._intent_revision = revision
         self._authorization_revision = None
+        self._sent_revision = None
+        self._verified_revision = None
         self._submit_lock = Lock()
         self._attempted = False
         self._sent = None
@@ -442,6 +454,10 @@ class ClaimIntent:
         if (self._authorization_revision is not None
                 and file_revision(self._reserved_path) != self._authorization_revision):
             raise AutomationError('巡星之礼原提交保留文件已变化。')
+        if self._sent_revision is not None and file_revision(self._sent_path) != self._sent_revision:
+            raise AutomationError('巡星之礼原已发送回执文件已变化。')
+        if self._verified_revision is not None and file_revision(self._verified_path) != self._verified_revision:
+            raise AutomationError('巡星之礼原同卡回页回执文件已变化。')
 
     def submit(self, context):
         """Consume this intent at the native click boundary for its bound Context."""
@@ -499,7 +515,7 @@ class ClaimIntent:
                     sent = _raw(dict(schema=1, state='submitted', intent_sha256=sha256(self._raw).hexdigest(),
                                      authorization_sha256=sha256(self._authorization).hexdigest(),
                                      sequence=origin.sequence))
-                    _publish(self._sent_path, sent, context.checkpoint, before)
+                    self._sent_revision = _publish(self._sent_path, sent, context.checkpoint, before)
                     self._sent = sent
         finally:
             if self._attempted and context.last_scene is origin.scene:
@@ -530,9 +546,10 @@ class ClaimIntent:
                 or any(frame.page is None or frame.tickets is not None for frame in returned)):
             raise AutomationError('巡星之礼单笔星轨专票弹窗或同卡返回待核对。')
         active_before = set(before[0].page.claimable_days).union(before[1].page.claimable_days)
-        claimed_before = _days(before, 'claimed_days')
-        active_after, claimed_after = (_days(returned, field) for field in ('claimable_days', 'claimed_days'))
-        if claimed_after != claimed_before | {day} or not active_before - {day} <= active_after:
+        expected_claimed = _days(before, 'claimed_days') | {day}
+        active_after = _days(returned, 'claimable_days')
+        if (any(set(frame.page.claimed_days) != expected_claimed for frame in returned)
+                or not active_before - {day} <= active_after):
             raise AutomationError('巡星之礼同一日卡的领取变化待核对。')
         record = dict(schema=1, state='verified', activity=ACTIVITY, client_version=_VERSION, day=day,
                       button_observed=True, submission_acknowledged=True, item=ITEM, quantity=quantity,
@@ -541,7 +558,7 @@ class ClaimIntent:
                             (self._sent_path, self._sent))):
             self._require_original_records()
             raw = _raw(record)
-            _publish(self._verified_path, raw, checkpoint, before + overlay + returned)
+            self._verified_revision = _publish(self._verified_path, raw, checkpoint, before + overlay + returned)
             self._verified = raw
         return record
 

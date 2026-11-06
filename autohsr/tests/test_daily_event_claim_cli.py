@@ -2,6 +2,7 @@
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
 import time
 from types import SimpleNamespace
@@ -101,6 +102,26 @@ class DailyEventClaimCliTests(unittest.TestCase):
         self.assertFalse(list((self.fixture.root / 'runs' / 'daily-event-claim').glob('*.verified.json')))
         self.fixture.native.SendInput.assert_called_once()
 
+    def test_one_return_frame_showing_another_claimed_day_is_counterevidence(self):
+        def without_fifth_day(scene):
+            x, y = cases.claim._CENTERS[4]
+            label = scene.find('领取', (x - .025, y - .020, x + .025, y + .020), exact=True)
+            self.assertIsNotNone(label)
+            scene.tokens.remove(label)
+            return scene
+
+        before = [without_fifth_day(cases.day_cards({1, 2, 3})) for _ in range(2)]
+        self.frames = iter([(scene, None) for scene in before] + [(cases.popup(), 1) for _ in range(2)]
+                           + [(cases.day_cards({1, 2, 3, 4, 5}), None),
+                              (without_fifth_day(cases.day_cards({1, 2, 3, 4})), None)])
+        code, report = self.invoke('--observe-daily-event-return')
+        state = report['daily_event_claim']
+        self.assertEqual((code, report['status'], state['state'], state['submission']),
+                         (1, 'partial', 'pending', 'sent'))
+        self.assertEqual(self.window.capture.call_count, 6)
+        self.assertFalse(list((self.fixture.root / 'runs' / 'daily-event-claim').glob('*.verified.json')))
+        self.fixture.native.SendInput.assert_called_once()
+
     def test_conflicting_account_between_popup_and_return_leaves_the_original_pending(self):
         conflict = cases.popup()
         conflict.tokens.append(cases.OTHER)
@@ -148,6 +169,60 @@ class DailyEventClaimCliTests(unittest.TestCase):
                          (1, 'partial', 'pending', 'return_unverified'))
         verified, = (self.fixture.root / 'runs' / 'daily-event-claim').glob('*.verified.json')
         self.assertEqual(verified.read_bytes(), replacement)
+        self.fixture.native.SendInput.assert_called_once()
+
+    def _replace_with_same_bytes(self, path):
+        raw, identity = path.read_bytes(), path.stat().st_ino
+        external = path.with_name('outside.tmp')
+        external.write_bytes(raw)
+        external.replace(path)
+        self.assertNotEqual(path.stat().st_ino, identity)
+        return raw
+
+    def _check_same_byte_replacement_before_report(self, suffix):
+        self.queue_manual_return({1, 2, 3, 4})
+        ledger = self.fixture.root / 'runs' / 'daily-event-claim'
+        replaced = {}
+
+        def replace_before_report(source, target, **kwargs):
+            if 'attempt_scope' in kwargs:
+                receipt, = ledger.glob(suffix)
+                replaced[receipt] = self._replace_with_same_bytes(receipt)
+            return replace_file(source, target, **kwargs)
+
+        with patch('autohsr.daily_event_claim_flow.replace_file', side_effect=replace_before_report):
+            code, report = self.invoke('--observe-daily-event-return')
+        state = report['daily_event_claim']
+        self.assertEqual((code, report['status'], state['state'], state['submission']),
+                         (1, 'partial', 'pending', 'sent'))
+        self.assertEqual(len(replaced), 1)
+        self.assertEqual({path: path.read_bytes() for path in replaced}, replaced)
+        self.fixture.native.SendInput.assert_called_once()
+
+    def test_original_verified_receipt_must_keep_its_file_identity_until_report(self):
+        self._check_same_byte_replacement_before_report('*.verified.json')
+
+    def test_original_submitted_receipt_must_keep_its_file_identity_until_report(self):
+        self._check_same_byte_replacement_before_report('*.submitted.json')
+
+    def test_same_byte_replacement_at_verified_rename_is_not_the_created_receipt(self):
+        self.queue_manual_return({1, 2, 3, 4})
+        native_rename = os.rename
+        replaced = {}
+
+        def swap_after_rename(source, destination):
+            native_rename(source, destination)
+            path = Path(destination)
+            if path.name.endswith('.verified.json'):
+                replaced[path] = self._replace_with_same_bytes(path)
+
+        with patch('autohsr.warp_service.os.rename', side_effect=swap_after_rename):
+            code, report = self.invoke('--observe-daily-event-return')
+        state = report['daily_event_claim']
+        self.assertEqual((code, report['status'], state['state'], state['submission']),
+                         (1, 'partial', 'pending', 'sent'))
+        self.assertEqual(len(replaced), 1)
+        self.assertEqual({path: path.read_bytes() for path in replaced}, replaced)
         self.fixture.native.SendInput.assert_called_once()
 
     def test_return_option_cannot_start_an_unrelated_operation(self):
