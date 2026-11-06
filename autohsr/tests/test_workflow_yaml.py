@@ -198,7 +198,7 @@ class WorkflowYamlTests(unittest.TestCase):
         self.assertFalse(self.target.exists())
 
     def test_notification_requires_explicit_text_for_ambiguous_plain_scalars(self):
-        for literal in ('0x10', '0o17', '.nan', '2026-11-07'):
+        for literal in ('0x10', '0o17', '0b101', '1_000', '.nan', '2026-11-07', '2026-11-07 06:04:00'):
             with self.subTest(literal=literal):
                 source = 'name: 通知\nsteps: [{type: send_message, text: %s}]\n'
                 self.write(source % literal)
@@ -207,6 +207,13 @@ class WorkflowYamlTests(unittest.TestCase):
                 self.write(source % json.dumps(literal))
                 draft = load_march7th_yaml(self.source, notify_profile='manual-test')
                 self.assertEqual(draft.document['steps'][0]['params']['message'], literal)
+
+    def test_notification_preserves_plain_text_starting_with_numbers_or_periods(self):
+        for message in ('7 次完成', '2026-11-07 更新', '12:34', '0x10 个项目', '.完成'):
+            with self.subTest(message=message):
+                self.write(f'name: 通知\nsteps:\n- type: send_message\n  text: {message}\n')
+                draft = load_march7th_yaml(self.source, notify_profile='manual-test')
+                self.assertEqual(draft.document['steps'][0]['params']['message'], message)
 
     def test_known_switch_screen_targets_preserve_daily_page_identity(self):
         names = ('menu', 'guide2', 'guide3', 'dispatch', 'mail', 'reward_guide', 'pass1', 'pass2')

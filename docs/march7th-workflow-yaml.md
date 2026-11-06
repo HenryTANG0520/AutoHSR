@@ -32,7 +32,7 @@
 .\.venv\Scripts\python.exe -m autohsr --task-workflow-convert-yaml workflow.yaml --workflow-json-destination migrated.json --workflow-yaml-notify-profile my-profile
 ```
 
-`text` 须为非空字符串，最多 1800 个字符。支持原样保留内部空格和换行。三月七发送前会裁去首尾空白，这类正文会拒绝转换。多行正文可用 `|-` 明确省去 YAML 默认追加的末尾换行。以数字或小数点开头的正文请用引号或文本块，避免上游把裸标量解析为数字或日期。`with_screenshot` 可省略或显式填布尔 `false`，截图及节点自带的方案、标题和渠道字段均不支持。[上游通知步骤](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/module/workflow/__init__.py#L1314-L1345)
+`text` 须为非空字符串，最多 1800 个字符。支持原样保留内部空格和换行。三月七发送前会裁去首尾空白，这类正文会拒绝转换。多行正文可用 `|-` 省去 YAML 默认追加的末尾换行。「7 次完成」等普通正文可直接写入。纯数字、日期及其他会被上游解析为非文本的标量，须用引号或文本块明确表示文字。`with_screenshot` 可省略或显式填布尔 `false`，截图及节点自带的方案、标题和渠道字段均不支持。[上游通知步骤](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/module/workflow/__init__.py#L1203-L1232) · [上游 YAML 版本](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/requirements.txt#L1)
 
 迁移只保留正文的发送意图。三月七的全局标题、渠道、通知级别、合并发送及布尔成功结果没有逐节点等价项。原生使用选定方案、固定任务流标题和独立提交回执。通知失败后可继续流程，提交待核对时会阻止后续主动通知。原生每次运行最多 20 个通知步骤的限制仍适用。[上游全局通知器](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/module/notification/notification.py#L271-L318)
 

@@ -39,6 +39,17 @@ _STEP_FIELDS = {
 }
 _INTEGER = re.compile(r'^[+-]?[0-9]+$')
 _NUMBER = re.compile(r'^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$')
+# The pinned upstream ruamel resolver also types these plain scalars.
+_UPSTREAM_NUMBER = re.compile(
+    r'[+-]?(?:0b[01_]+|0o[0-7_]+|0x[0-9a-fA-F_]+'
+    r'|[0-9][0-9_]*(?:\.[0-9_]*)?(?:[eE][+-]?[0-9]+)?'
+    r'|\.[0-9_]+(?:[eE][+-][0-9]+)?|\.(?:inf|Inf|INF))|[+-][0-9_]+|\.(?:nan|NaN|NAN)'
+)
+_UPSTREAM_TIMESTAMP = re.compile(
+    r'[0-9]{4}-(?:[0-9]{2}-[0-9]{2}'
+    r'|[0-9]{1,2}-[0-9]{1,2}(?:[Tt]|[ \t]+)[0-9]{1,2}:[0-9]{2}:[0-9]{2}'
+    r'(?:\.[0-9]*)?(?:[ \t]*(?:Z|[+-][0-9]{1,2}(?::[0-9]{2})?))?)'
+)
 _PAGE_TARGETS = {
     'menu': 'phone', 'guide2': 'daily_training', 'guide3': 'survival_index',
     'dispatch': 'assignments', 'mail': 'mail', 'reward_guide': 'reward_guide',
@@ -97,8 +108,8 @@ class _Loader(yaml.SafeLoader):
             keys.add(key.value)
         result = super().construct_mapping(node, deep=deep)
         message = result.get('text')
-        if result.get('type') == 'send_message' and isinstance(message, str) and re.match(r'[+-]?[0-9.]', message):
-            # Upstream can implicitly type more plain scalars (e.g. 0x10 or a date).
+        if (result.get('type') == 'send_message' and isinstance(message, str)
+                and (_UPSTREAM_NUMBER.fullmatch(message) or _UPSTREAM_TIMESTAMP.fullmatch(message))):
             for key, value in node.value:
                 if key.value == 'text' and isinstance(value, ScalarNode) and value.style is None:
                     raise WorkflowError(f'第 {value.start_mark.line + 1} 行的通知正文须加引号或使用文本块。')
