@@ -17,6 +17,26 @@ from .models import AutomationError, ROI, Scene
 _APOCALYPTIC = 'apocalyptic_shadow'
 _EMPTY = 'empty_slot_marker'
 
+# Regular Domination of Oblivion 04, measured in the 802x454 client crop.
+# These are eight circular slots under the two node headers, separate from
+# the editor's rectangular character cards and the far-right node controls.
+_REGULAR_04_LAYOUT = 'domination_oblivion_regular_04_circles'
+_REFERENCE_SIZE = (802, 454)
+_SLOT_ROWS = tuple(tuple((x, y) for x in (430., 467., 503., 539.)) for y in (168., 287.5))
+_SLOT_Y, _SLOT_X = np.mgrid[-17:18, -17:18].astype(np.float32)
+_SLOT_DISK = np.hypot(_SLOT_X, _SLOT_Y) <= 12.8
+_SLOT_SECTORS = tuple(_SLOT_DISK & side for side in
+                      (_SLOT_X < -4, _SLOT_X > 4, _SLOT_Y < -5, _SLOT_Y > 5))
+_GLYPH_CENTER = np.abs(_SLOT_X) <= 1
+_GLYPH_HEAD = _GLYPH_CENTER & (_SLOT_Y >= -6) & (_SLOT_Y <= -4)
+_GLYPH_BODY = _GLYPH_CENTER & (_SLOT_Y >= -1) & (_SLOT_Y <= 3)
+_GLYPH_GAP = _GLYPH_CENTER & (_SLOT_Y == -2)
+_GLYPH_BACKGROUND = _SLOT_DISK & (np.abs(_SLOT_X) >= 5)
+_RIM_ANGLES = np.arange(32) * (2 * np.pi / 32)
+_RIM_RADII = np.arange(13.5, 18.01, .75)[:, None]
+_RIM_X = (_RIM_RADII * np.cos(_RIM_ANGLES)).astype(np.float32)
+_RIM_Y = (_RIM_RADII * np.sin(_RIM_ANGLES)).astype(np.float32)
+
 
 @dataclass(frozen=True)
 class _SlotLayout:
@@ -213,7 +233,7 @@ def _consensus(first, second):
         return dict(slot, identity_status='exact', asset_id=first['asset_id'])
     alternatives = {item['asset_id'] for item in (first, second) if item['asset_id'] is not None}
     alternatives.update(asset for item in (first, second) for asset in item.get('alternatives', ()))
-    return dict(slot, identity_status='ambiguous', alternatives=sorted(alternatives))
+    return dict(slot, identity_status='ambiguous', alternatives=sorted(alternatives)) if alternatives else slot
 
 
 def _compare(plan, first, second, node, captures):
@@ -239,6 +259,85 @@ def _compare(plan, first, second, node, captures):
                 team_members_match=False if empty or duplicate or outside_team else True if complete else None,
                 slot_order_match=False if empty or duplicate or wrong_position else True if complete else None,
                 execution_supported=False)
+
+
+def _sample_regular_slot(image, x, y, sample_x, sample_y):
+    height, width = image.shape[:2]
+    return cv2.remap(image, (sample_x + x) * (width / _REFERENCE_SIZE[0]),
+                     (sample_y + y) * (height / _REFERENCE_SIZE[1]), cv2.INTER_LINEAR)
+
+
+def _regular_rim(image, x, y):
+    radial = _sample_regular_slot(image, x, y, _RIM_X, _RIM_Y).astype(np.int16)
+    edges = np.abs(np.diff(radial, axis=0)).max(axis=(0, 2))
+    return tuple(int(count) for count in (edges >= 19).reshape(4, 8).sum(axis=1))
+
+
+def _has_regular_rim(arcs):
+    return min(arcs) >= 3 and sum(arcs) >= 23
+
+
+def _read_regular_slot(image, x, y, position, arcs):
+    width, height = _REFERENCE_SIZE
+    slot = _unknown_slot(position, ((x - 17.5) / width, (y - 17.5) / height,
+                                    (x + 17.5) / width, (y + 17.5) / height))
+    if not _has_regular_rim(arcs):
+        return slot
+    gray = cv2.cvtColor(_sample_regular_slot(image, x, y, _SLOT_X, _SLOT_Y), cv2.COLOR_BGR2GRAY)
+    ranges = [float(np.quantile(gray[sector], .9) - np.quantile(gray[sector], .1)) for sector in _SLOT_SECTORS]
+    evidence = dict(rim_arcs=list(arcs), sector_luma_ranges=ranges, box=slot['box'])
+    background = float(np.median(gray[_GLYPH_BACKGROUND]))
+    head, body, gap = (float(gray[part].mean()) for part in (_GLYPH_HEAD, _GLYPH_BODY, _GLYPH_GAP))
+    if (background <= 65 and abs(head - body) <= 28 and min(head, body) - background >= 30
+            and min(head, body) - gap >= 12):
+        if max(ranges) > 18:
+            return slot
+        return dict(slot, occupancy='empty', evidence=dict(evidence, source='empty_slot_glyph',
+                    glyph_luma=[head, body, gap, background]))
+    # The pointer can span all sectors of a dark empty slot but covers less
+    # of the interior than the visible portraits in the reference frames.
+    lit_fraction = float((gray[_SLOT_DISK] >= 48).mean())
+    if min(ranges) >= 27 and lit_fraction >= .56:
+        return dict(slot, occupancy='occupied', evidence=dict(evidence, source='circular_portrait',
+                    lit_fraction=lit_fraction))
+    return slot
+
+
+def _compare_apocalyptic_setup(plan, frames, images):
+    """Compare slot pixels from the preparation workflow's held source pair."""
+    if plan.mode != _APOCALYPTIC or plan.level_start != 4 or len(frames) != 2 or len(images) != 2:
+        return _unknown('unverified_regular_apocalyptic_setup')
+    for frame in frames:
+        page = frame.observation
+        nodes = [node['node'] for node in page.basis.get('nodes', ())]
+        if (page.kind != 'node_setup' or page.mode != plan.mode or page.level != plan.level_start
+                or page.basis.get('layout') != 'domination_oblivion_normal' or nodes != [1, 2]):
+            return _unknown('unverified_regular_apocalyptic_setup')
+    # The recording and alternate client crops differ slightly horizontally.
+    # One shift must support both rows in both frames, with disjoint slots.
+    alignments = []
+    for shift in (0, -2, 2, -4, 4):
+        rims = [tuple(tuple(_regular_rim(image, x + shift, y) for x, y in row) for row in _SLOT_ROWS)
+                for image in images]
+        agreed = sum(_has_regular_rim(a) and _has_regular_rim(b)
+                     for row_a, row_b in zip(*rims) for a, b in zip(row_a, row_b))
+        strength = sum(sum(arcs) for frame in rims for row in frame for arcs in row)
+        alignments.append(((agreed, strength), shift, rims))
+    _, shift, rims = max(alignments, key=lambda item: item[0])
+    if any(sum(map(_has_regular_rim, row)) < 3 for frame in rims for row in frame):
+        return _unknown('unverified_regular_apocalyptic_slot_rows')
+    readings = []
+    for image, frame_rims in zip(images, rims):
+        teams = []
+        for row, row_rims in zip(_SLOT_ROWS, frame_rims):
+            teams.append([_read_regular_slot(image, x + shift, y, position, arcs)
+                          for position, ((x, y), arcs) in enumerate(zip(row, row_rims), 1)])
+        readings.append(dict(layout_source=_REGULAR_04_LAYOUT, teams=teams))
+    captures = [frame.source['captured_at'] for frame in frames]
+    result = _compare(plan, readings[0], readings[1], None, captures)
+    if all(slot['occupancy'] == 'unknown' for team in result['teams'] for slot in team):
+        return _unknown('no_agreed_regular_apocalyptic_slot_state')
+    return dict(result, node_order=[1, 2])
 
 
 def compare_roster_frames(plan, first, second, *, expected_node=None, confidence=.65):

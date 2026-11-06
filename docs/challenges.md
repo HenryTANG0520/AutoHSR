@@ -111,11 +111,15 @@ python -m autohsr --challenge-result
 
 2026-11-05新增列表候选观察。混沌和虚构的原生备战流程仅在保存已核实同模式备战页时，将`candidate_list`附入来源`basis`。105 幅既有完整头像逐份核对固定 manifest、SHA-256、Git blob 和尺寸，使用固定上游列表裁剪范围，保留身份、完整框与模板来源。残缺、遮挡及过期画面排除，跨素材重叠匹配保留歧义。[列表候选观察](../autohsr/challenge_roster.py)
 
-列表候选的`ownership`、`availability`、`selected`、`complete`均为`unknown`。混沌与虚构使用上游`BaseChallenge.select_characters`的 1920×1080、xywh`(30,115,530,810)`。末日的独立候选探针采用`(30,110,550,850)`，本次正式末日备战回执范围限于页面字段。[列表候选实现](../autohsr/challenge_roster.py)
+列表候选的`ownership`、`availability`、`selected`、`complete`均为`unknown`。混沌与虚构使用上游`BaseChallenge.select_characters`的 1920×1080、xywh`(30,115,530,810)`。末日的独立候选探针采用`(30,110,550,850)`。常规 04 的正式回执以右侧圆槽核对占位，左侧名单另作候选证据。[列表候选实现](../autohsr/challenge_roster.py)
 
 ### 槽位与双队对照
 
-`observe_setup_roster(scene)`先核实备战页，再分别读`candidate_list`和`team_slots`。混沌和虚构只在保存备战帧时将两项附入回执，末日`node_setup`可单独调用只读观察。当前三种模式均缺实际槽位校准，`team_slots.reason`为`missing_slot_calibration`，两组四个计划位置的画面坐标、占用、身份与对照结果均保持未知。队伍编号和节点标题能关联队伍，固定上游头像只证明所匹配的素材身份。角色可选性仍须独立状态证据。[槽位实现](../autohsr/challenge_slots.py) · [固定上游队伍列表](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/basechallenge.py#L70) · [固定上游末日控件](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/apocalyptic.py#L193)
+`observe_setup_roster(scene)`先核实备战页，再分别读`candidate_list`和`team_slots`。混沌和虚构在保存备战帧时将两项附入回执。这一路的通用槽位布局待真实采样，缺布局时标为`missing_slot_calibration`。固定上游头像只证明所匹配的素材身份。角色可选性仍须独立状态证据。[槽位实现](../autohsr/challenge_slots.py) · [固定上游队伍列表](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/basechallenge.py#L70) · [固定上游末日控件](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/challenge/apocalyptic.py#L193)
+
+末日常规 04 从正式 `--challenge-prepare` 的相邻两张原图核对槽位。两张都须读到计划首个难度 04 和两个节点标题。`page_observation.team_slots` 按 `node_order=[1,2]` 排列上下两队，每队从左到右四槽，交互焦点 `selected_node` 留空。圆槽须在两帧保持共同的几何位置。`occupied` 需要环缘和覆盖槽内主体的头像纹理，`empty` 需要环缘与暗底小人符号。裁切、遮挡或两帧不一致的槽为 `unknown`。候选角标、首领圆控件和编队预设各有独立区域。报告发布沿用两张原图的读锁、哈希、账号及前台复核。[常规 04 取证](#2026-11-06-末日常规-04-双队槽位)
+
+`eight_slots_occupied` 只记物理占用。明确空槽可证实未满，缺读则保留未知。圆槽的角色身份、形态、可用性和名单匹配均需另外证明。完整占用时 `eight_identities_known` 留空，`team_verified` 保持 `false`。[只读回执](../autohsr/challenge_prepare.py)
 
 合成校准将槽位绑定到当帧所属队伍或节点的标题。每队须有四个完整、互不重叠的槽框，并与候选列表分离。已占槽须有槽框内的完整头像匹配，明确空槽须有独立空位标记。缺读、裁切和冲突保留未知，多个身份同时命中时保留候选歧义。已占槽也不推导该角色当前可选。
 
@@ -188,6 +192,14 @@ Windows 发布回执时持有两张 PNG 的只读句柄，发布最终报告时�
 领奖可用与已领取状态各需独立页面证据。现有入口的边界为观察当前结果反馈。
 
 ## 验证与未完成项
+
+### 2026-11-06 末日常规 04 双队槽位
+
+`BV1P1Ho6sETd` P1 的 09:59.995／10:00.173 首次进入 04，28:24.828／28:25.007 换队后进入同难度，均显示上下各四个圆槽。28:27.252 至 28:27.287，节点一第 4 槽从头像变为带灰白小人符号的暗圆，左侧对应卡片的「队伍1」同步消失。关闭名单后，28:28.606／28:29.212 保留该空槽及难度 04。28:30.317 至 28:30.602 另见节点二第 3 槽清空。[首次备战](https://www.bilibili.com/video/BV1P1Ho6sETd/?p=1&t=599) · [换队及移除槽位](https://www.bilibili.com/video/BV1P1Ho6sETd/?p=1&t=1704)
+
+同片 29:10.338／29:10.374 已出现「队伍2」候选角标，节点二第 3 槽仍显示空位，29:10.409 才出现头像。选角名单打开后遮住难度徽标，这段用于区分候选和入槽。可选与禁用的实际拒绝反馈待采样。米游社另一视频的角色详情可读「巡猎／三月七」和「智识／姬子·启行」，详情到具体圆槽的对应关系待核实。现有方形头像模板在公开圆槽帧上未达到精确身份门槛。[候选转为实际入槽](https://www.bilibili.com/video/BV1P1Ho6sETd/?p=1&t=1750) · [单角色详情](https://www.miyoushe.com/sr/article/78807463)
+
+主片去顶部 26 像素录屏边框后为 802×454，保留当前难度、两个节点标题及圆槽区域。米游社独立来源 5.000／5.033 秒用于验证不同横向偏移的八槽布局。其左上标题区遮去发布者水印，布局测试单独补合成标题，按布局留出记录。上排绿字遮挡、星启 04 三排和清空提示保留为对照。原片时点、变换和哈希保存在独立树本地 `runs/regular04-slot-qa/` 及取证目录，素材再利用许可待核。[独立布局](https://www.miyoushe.com/sr/article/78698476) · [字幕遮挡](https://www.miyoushe.com/sr/article/78807463) · [星启三排](https://www.bilibili.com/video/BV1quHC6rEmd/?p=1&t=8) · [离线验证](../VALIDATION.md#2026-11-06-末日常规-04-双队槽位)
 
 ### 2026-11-06 末日常规 04 换队转场
 

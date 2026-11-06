@@ -334,6 +334,22 @@ class ChallengePreparation:
             if stream.read(len(expected) + 1) != expected:
                 raise AutomationError('末日备战待保存记录或原回执发生变化。')
 
+    def _apocalyptic_slot_evidence(self, pair):
+        import cv2
+        import numpy as np
+        from .challenge_slots import _compare_apocalyptic_setup
+
+        images = []
+        for frame in pair:
+            _, raw = self._read_png(frame.source['path'])
+            if hashlib.sha256(raw).hexdigest() != frame.source['sha256']:
+                raise AutomationError('末日槽位原图已改变。')
+            image = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+            if image is None or image.shape != frame.scene.image.shape:
+                raise AutomationError('末日槽位原图尺寸与采集画面不同。')
+            images.append(image)
+        return _compare_apocalyptic_setup(self.plan, pair, images)
+
     def _publish_apocalyptic(self, pair, deadline):
         page = pair[-1].observation
         sources = [frame.source for frame in pair]
@@ -345,17 +361,18 @@ class ChallengePreparation:
                            visible_selected_level=page.level)
         if page.kind == 'locked_node_detail':
             receipt.update(matches_plan_level=page.level == self.plan.level_start, team_editability='locked')
-        data = dict(self.data, status='prepared' if ready else 'page_observed',
-                    page_observation=receipt, preparation_page_verified=ready)
-        if ready:
-            data.update(entry='existing_node_setup', preparation_frames=sources)
-        payload = _json(data).encode('utf-8')
-
         def recheck():
             self._check_payload(self.path.with_suffix('.tmp'), payload)
             self._recheck_apocalyptic(pair, deadline)
 
         with hold_read_sources(row['path'] for row in sources):
+            if ready and page.level == 4:
+                receipt['team_slots'] = self._apocalyptic_slot_evidence(pair)
+            data = dict(self.data, status='prepared' if ready else 'page_observed',
+                        page_observation=receipt, preparation_page_verified=ready)
+            if ready:
+                data.update(entry='existing_node_setup', preparation_frames=sources)
+            payload = _json(data).encode('utf-8')
             self._persist(data, before_replace=recheck)
         self._readonly_receipt = pair, deadline, payload
         self.data.update(data)
