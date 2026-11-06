@@ -1,5 +1,6 @@
 """Daily guide content. The desktop shell owns routing and the run lifecycle."""
 
+from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
@@ -42,18 +43,23 @@ def assignment_result(report):
     workflow = report.get('workflow') or {}
     steps = workflow.get('steps', [])
     if (report.get('operation') == 'task_workflow' and report.get('report_saved') is True
-            and workflow.get('name') == ASSIGNMENT_FLOW and len(steps) == 1 and steps[0].get('step') == ASSIGNMENT_STEP):
+            and workflow.get('name') == ASSIGNMENT_FLOW and len(steps) == 1
+            and steps[0].get('step') == ASSIGNMENT_STEP and steps[0].get('task') == 'daily'):
         step = steps[0]
         source = step.get('source') or {}
         try:
             path = Path(source.get('path', ''))
             child = json.loads(_verified_file(path, source.get('sha256'), 64 * 1024 * 1024))
-            rows = [row for row in child['results'] if row.get('task') == 'assignments']
-            if child.get('operation') == 'daily' and child.get('report_saved') is True and len(rows) == 1:
-                verified = step.get('account_verified') is True and step.get('status') == 'success'
-                if verified and rows[0].get('status') == 'ok':
+            if child.get('operation') == 'daily' and child.get('report_saved') is True:
+                rows = [row for row in child['results'] if row.get('task') == ASSIGNMENT_STEP]
+                verified = (step.get('account_verified') is True and step.get('status') == 'success'
+                            and child.get('status') == 'success')
+                if verified and len(rows) == 1 and rows[0].get('status') == 'ok':
                     return '委托状态已核实', rows[0]['detail'], path
-                return '委托结果待核对', rows[0]['detail'], path
+                incomplete = len(rows) == 1 and rows[0].get('status') in ('partial', 'failed', 'stopped')
+                title = '已停止' if report.get('status') == 'stopped' else '委托结果待核对'
+                detail = rows[0].get('detail') if incomplete else report.get('error')
+                return title, detail or '请查看本次原始报告。', path
         except (KeyError, OSError, TypeError, ValueError):
             return '委托记录待核对', '请查看本次运行报告。', None
     title = '已停止' if report.get('status') == 'stopped' else '委托结果待核对'
@@ -121,6 +127,14 @@ def _draft_data(report):
     return path, item
 
 
+def _draft_key(report):
+    draft = report.get('build_target', {}).get('draft') or {}
+    directory, digest = report.get('run_dir'), draft.get('sha256')
+    if isinstance(directory, str) and isinstance(digest, str):
+        return directory, digest
+    return None
+
+
 def support_result_text(report):
     labels = {
         'needed': '实训需要借用支援', 'completed': '实训已完成支援要求',
@@ -163,6 +177,8 @@ class DailyPanel(ttk.Frame):
         self.candidates = []
         self.material = None
         self.draft_report = None
+        self._applied_drafts = set()
+        self._assignment_report = None
         self.assignment_title = tk.StringVar(self, '等待领取')
         self.assignment_detail = tk.StringVar(self, '领取已有奖励，原委托继续累计。')
         self.build_title = tk.StringVar(self, '等待预览')
@@ -176,7 +192,8 @@ class DailyPanel(ttk.Frame):
         self.assignment = ttk.Frame(self, style='Card.TFrame', padding=d(20))
         self.assignment.columnconfigure(0, weight=1)
         self._heading(self.assignment, '持续委托', self.assignment_title, self.assignment_detail)
-        self.assignment_record = ttk.Button(self.assignment, text='查看原始报告', style='Panel.TButton', state='disabled')
+        self.assignment_record = ttk.Button(self.assignment, text='查看原始报告', style='Panel.TButton',
+                                            state='disabled', command=self._open_assignment_report)
         self.assignment_record.grid(row=3, column=0, sticky='w', pady=(d(10), 0))
 
         self.build = ttk.Frame(self, style='Card.TFrame', padding=d(20))
@@ -225,6 +242,36 @@ class DailyPanel(ttk.Frame):
     def set_busy(self, busy):
         self.busy = busy
         self._controls()
+
+    def snapshot_draft(self):
+        """Copy the panel state without keeping references to the old widgets."""
+        return deepcopy(dict(
+            section=self.section, assignment_report=self._assignment_report,
+            build_title=self.build_title.get(), build_detail=self.build_detail.get(),
+            draft_detail=self.draft_detail.get(), draft_report=self.draft_report,
+            applied_drafts=self._applied_drafts, material=self.material, candidates=self.candidates,
+            selected=self.source.current(), source_text=self.source.get(), count=self.count.get(),
+        ))
+
+    def restore_draft(self, state):
+        """Restore a snapshot taken from the outgoing view before a resize."""
+        state = deepcopy(state)
+        self._assignment_report = state['assignment_report']
+        self._refresh_assignment()
+        self.build_title.set(state['build_title'])
+        self.build_detail.set(state['build_detail'])
+        self.material = state['material']
+        self.candidates = state['candidates']
+        self._show_sources(state['source_text'], selected=state['selected'])
+        self.count.set(state['count'])
+        self._applied_drafts = state['applied_drafts']
+        self.draft_report = None
+        self.draft_detail.set(state['draft_detail'])
+        if state['draft_report'] is not None:
+            self._present_draft(state['draft_report'])
+            if self.draft_report is not None:
+                self.draft_detail.set(state['draft_detail'])
+        self.show(state['section'])
 
     def _controls(self):
         locked = self.busy or self.ui.busy
@@ -278,16 +325,29 @@ class DailyPanel(ttk.Frame):
             self.draft_detail.set(f'无法加入体力计划：{error}')
             return
         self.draft_detail.set('已加入体力计划草稿。')
+        self._applied_drafts.add(_draft_key(self.draft_report))
         self.draft_report = None
         self._controls()
 
+    def _refresh_assignment(self):
+        if self._assignment_report is None:
+            title, detail, path = '等待领取', '领取已有奖励，原委托继续累计。', None
+        else:
+            title, detail, path = assignment_result(self._assignment_report)
+        self.assignment_title.set(title)
+        self.assignment_detail.set(detail)
+        self.assignment_record.configure(state='normal' if path else 'disabled')
+        return path
+
+    def _open_assignment_report(self):
+        path = self._refresh_assignment()
+        if path is not None:
+            self.ui._open_path(path)
+
     def present(self, operation, report):
         if operation == ASSIGNMENTS:
-            title, detail, path = assignment_result(report)
-            self.assignment_title.set(title)
-            self.assignment_detail.set(detail)
-            self.assignment_record.configure(state='normal' if path else 'disabled',
-                                             command=lambda: self.ui._open_path(path))
+            self._assignment_report = deepcopy(report)
+            self._refresh_assignment()
         elif operation == PREVIEW:
             self._present_preview(report)
         elif operation == DRAFT:
@@ -306,15 +366,24 @@ class DailyPanel(ttk.Frame):
                            if row.get('category') in BY_KEY and row.get('location')
                            and type(row.get('max_challenges_by_config')) is int
                            and row['max_challenges_by_config'] > 0]
-        self.source.configure(values=[f"{row['target']} · {row['location']} · {row['stamina_cost']} 开拓力／次"
-                                      for row in self.candidates])
-        self.source.set('请选择副本来源' if self.candidates else '来源待核实')
+        self._show_sources('请选择副本来源' if self.candidates else '来源待核实')
         self.count.set('')
         self.draft_report = None
         self.draft_detail.set('')
 
+    def _show_sources(self, placeholder, *, selected=-1):
+        self.source.configure(values=[f"{row['target']} · {row['location']} · {row['stamina_cost']} 开拓力／次"
+                                      for row in self.candidates])
+        if 0 <= selected < len(self.candidates):
+            self.source.current(selected)
+        else:
+            self.source.set(placeholder)
+
     def _present_draft(self, report):
         self.draft_report = None
+        if _draft_key(report) in self._applied_drafts:
+            self.draft_detail.set('已加入体力计划草稿。')
+            return
         try:
             _, item = _draft_data(report)
         except (OSError, ValueError, TypeError):
