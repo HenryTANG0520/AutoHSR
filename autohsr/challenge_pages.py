@@ -338,6 +338,12 @@ def _stars(scene, label, all_labels, *, name='star', region=LEVEL_REGION, bgr=(1
 
 
 def observe(scene, confidence=.65):
+    if any(normalize(token.text) in ('物竞天择', '物竞天择其十') for token in getattr(scene, 'tokens', ())
+           if isinstance(token, Token) and isinstance(token.text, str)):
+        from .challenge_chaos_map import observe as observe_current_chaos
+        current = observe_current_chaos(scene, confidence)
+        if current is not None:
+            return current
     collected = _clean(scene, confidence)
     if collected is None or not (references := _references()):
         return _unknown('invalid_stale_blocked_or_missing_reference')
@@ -536,8 +542,13 @@ def _observe_apocalyptic(scene, minimum, title, words):
 def target(scene, intent, confidence=.65, level=None):
     if intent != 'select_level' or type(level) is not int or not 1 <= level <= 12:
         return None
-    observation = observe(scene, confidence)
+    return level_target(observe(scene, confidence), level)
+
+
+def level_target(observation, level):
+    if type(level) is not int or not 1 <= level <= 12:
+        return None
     if observation.kind != 'lobby':
         return None
-    choices = [token for action, token in observation.targets if action == intent and int(token.text) == level]
+    choices = [token for action, token in observation.targets if action == 'select_level' and int(token.text) == level]
     return choices[0] if len(choices) == 1 else None

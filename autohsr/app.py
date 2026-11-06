@@ -386,11 +386,17 @@ class Context:
         workflow.authorize(scene, action)
         self.window.guard(scene.geometry)
         workflow._fresh(scene)
-        self.last_scene, self._scroll_anchor = None, None
         try:
-            self.window.click(*action.target.center, scene.geometry)
+            if workflow.calibrated_selection is None:
+                self.last_scene, self._scroll_anchor = None, None
+                self.window.click(*action.target.center, scene.geometry)
+            else:
+                with workflow.lock_calibrated_selection() as recheck:
+                    self.window.click(*action.target.center, scene.geometry, before_submit=recheck)
         except FocusLost:
             self._focus_interrupted()
+        finally:
+            self.last_scene, self._scroll_anchor = None, None
         submitted_at = time.monotonic()
         self.sleep(self.settings.action_delay)
         return submitted_at
@@ -2859,12 +2865,14 @@ class Runner:
                 self.report.failure_task = 'challenge_prepare'
                 self.emit(dict(type='task', task='challenge_prepare', status='running', detail='核实当前高难模式与首个目标层备战'))
                 result = prepare_challenge(context)
-                if self._challenge_read_only:
-                    challenge_reader = context.challenge_preparation
+                preparation = getattr(context, 'challenge_preparation', None)
+                if getattr(preparation, 'publication_receipt', None) is not None:
+                    challenge_reader = preparation
+                    guard_publication = True
                 self.report.results.append(result)
                 self.report.status = 'success' if result.status == 'ok' else 'partial'
                 self.report.failure_task = '' if result.status == 'ok' else 'challenge_prepare'
-                if not self._challenge_read_only:
+                if challenge_reader is None:
                     self.emit(dict(type='task', **result.__dict__))
             elif challenge_lobby:
                 from .challenge_lobby import ChallengeLobbyNavigation

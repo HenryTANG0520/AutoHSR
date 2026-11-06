@@ -12,6 +12,10 @@
 
 4.6 常规末日及星启的公开原片用作布局正反例。仓库保存 RapidOCR 文字、原画面归一化坐标、原件时间和最小去 UID 裁片 SHA-256。游戏美术归 HoYoverse 及相应权利人，原片归各上传者及相应权利人。[字段与来源清单](../autohsr/tests/fixtures/challenge_apocalyptic_result_4_6.json)
 
+## 2026-11-06 常规混沌层图与备战 OCR 字段
+
+4.6.0 本机授权校准用于对照灰星、锁定、亮圆环及第十层双队备战。仓库保存筛选后的界面字段、归一化坐标及去 UID 裁片摘要。星形继续使用已有 March7thAssistant 原件，游戏界面权利归 HoYoverse 及相应权利人。[字段与来源清单](../autohsr/tests/fixtures/challenge_chaos_map_4_6.json) · [已有星形来源](upstream/March7thAssistant/challenge-ui/sources.json)
+
 ## 2026-11-06 高难结算反馈局部图
 
 新增固定 March7thAssistant 的两幅模式返回图、一幅节点去向图和一幅红色「败」字图。四幅原件保留原始字节，作者为 moesnow 及其贡献者，游戏美术权利归 HoYoverse 及相应权利人。原路径、尺寸、Git blob、SHA-256 和观察用途记入来源清单。[局部图说明](upstream/March7thAssistant/challenge-ui/README.md) · [原图清单](upstream/March7thAssistant/challenge-ui/sources.json) · [GPL v3](upstream/March7thAssistant/LICENSE)

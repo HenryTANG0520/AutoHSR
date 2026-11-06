@@ -1,4 +1,5 @@
 """Observe preparation pages and authorize the limited existing level selection."""
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
@@ -9,12 +10,15 @@ from pathlib import Path
 import time
 
 from .challenge_account import verified_account
-from .currency_wars_identity import AccountNotObserved
+from .challenge_chaos_map import LAYOUT as CHAOS_MAP, SETUP_LAYOUT as CHAOS_SETUP, collect_digits
+from .currency_wars_identity import AccountNotObserved, installed_client
 from .models import AutomationError, EmptyCapture, InputInterrupted, Stopped, TaskResult
 from .storage import hold_read_sources, replace_file
 
 OPERATION = 'challenge_prepare'
 APOCALYPTIC_MODE = 'apocalyptic_shadow'
+CHAOS_MODE = 'memory_of_chaos'
+CHAOS_CLIENT = '4.6.0'
 MAX_BYTES = 8 * 1024 * 1024
 MAX_PNG_BYTES = 64 * 1024 * 1024
 MAX_SCENE_AGE = 8
@@ -54,8 +58,10 @@ class ChallengePreparation:
         if getattr(context.runner, '_challenge_prepare_mode', self.plan.mode) != self.plan.mode:
             raise AutomationError('高难计划模式已改变。')
         self.read_only = self.plan.mode == APOCALYPTIC_MODE
+        vision = getattr(context, 'vision', None)
+        if vision is not None and (self.read_only or self.plan.mode == CHAOS_MODE):
+            vision.uid_counterevidence_floor = UID_VETO_FLOOR
         if self.read_only:
-            context.vision.uid_counterevidence_floor = UID_VETO_FLOOR
             context.vision.keep_apocalyptic_counterevidence = True
         directory = Path(context.report.run_dir)
         if not directory.is_absolute() or not directory.is_dir():
@@ -66,7 +72,8 @@ class ChallengePreparation:
         self.epoch = context.runner.input_epoch
         self.account = None
         self.request = None
-        self._readonly_receipt = None
+        self.publication_receipt = None
+        self.calibrated_selection = None
         self.data = dict(schema=1, operation=OPERATION, status='running', plan=self.plan.to_dict(),
             plan_digest=self.plan.digest, input_epoch=self.epoch, actions=[], observations=[],
             preparation_page_verified=False, team_verified=False, battle_started=False,
@@ -122,8 +129,9 @@ class ChallengePreparation:
         return True
 
     def _read_account(self, scene):
+        use_veto_floor = self.read_only or self.plan.mode == CHAOS_MODE
         return verified_account(scene, self.c.settings.ocr_confidence, expected=self.account,
-                                veto_floor=UID_VETO_FLOOR if self.read_only else None)
+                                veto_floor=UID_VETO_FLOOR if use_veto_floor else None)
 
     def _read_png(self, path):
         directory = Path(self.c.report.run_dir).resolve()
@@ -148,21 +156,30 @@ class ChallengePreparation:
             pixel_sha256=_pixels(scene), shape=list(scene.image.shape), captured_at=scene.captured_at,
             kind=observation.kind, mode=observation.mode, level=observation.level,
             stars=observation.stars, basis=deepcopy(observation.basis))
-        if observation.kind == 'team_setup' and observation.mode == self.plan.mode:
+        if (observation.kind == 'team_setup' and observation.mode == self.plan.mode
+                and observation.basis.get('layout') != CHAOS_SETUP):
             # Optional roster observations are separate from page readiness.
             from .challenge_slots import _setup_roster
             record['basis'].update(_setup_roster(scene, observation))
         return record
 
-    def _derive(self, scene):
+    def _observe_page(self, scene):
         from .challenge_pages import observe
-        observation = observe(scene, self.c.settings.ocr_confidence)
+        confidence = self.c.settings.ocr_confidence
+        if self.plan.mode == CHAOS_MODE:
+            read_number = getattr(getattr(self.c, 'vision', None), 'read_number', None)
+            if callable(read_number):
+                collect_digits(scene, confidence, read_number)
+        return observe(scene, confidence)
+
+    def _derive(self, scene):
+        from .challenge_pages import level_target
+        observation = self._observe_page(scene)
         level = self.plan.level_start
-        choices = [token for intent, token in observation.targets
-                   if intent == 'select_level' and int(token.text) == level]
-        if observation.kind != 'lobby' or observation.mode != self.plan.mode or len(choices) != 1:
+        target = level_target(observation, level)
+        if observation.mode != self.plan.mode or target is None:
             raise AutomationError('当前高难主页没有本次层数的唯一导航目标。')
-        return PreparationAction('select_level', level, choices[0])
+        return PreparationAction('select_level', level, target)
 
     def authorize(self, scene, action):
         if self.read_only or self.request is None or self.request != action:
@@ -193,9 +210,10 @@ class ChallengePreparation:
             raise AutomationError('高难层数选择证据与当前画面不同。')
 
     def _wait(self, acceptable, description, *, after_input=None):
-        from .challenge_pages import observe, target
+        from .challenge_pages import level_target
         frames, previous = [], None
         feedback = after_input is not None
+        track_latest = feedback
         latest_capture = after_input
         deadline = time.monotonic() - self.c.runner.inactive_duration + 30
         for _ in range(100):
@@ -209,22 +227,30 @@ class ChallengePreparation:
                 scene = None
             if scene is not None:
                 account_observed = self._fresh(scene, allow_missing_account=feedback or self.account is None)
-                observation = observe(scene, self.c.settings.ocr_confidence)
+                observation = self._observe_page(scene)
                 if observation.mode is not None and observation.mode != self.plan.mode:
                     raise AutomationError('当前高难模式与明确计划不符。')
+                layout = observation.basis.get('layout')
+                scoped = layout in (CHAOS_MAP, CHAOS_SETUP)
+                track_latest |= scoped
                 increasing = latest_capture is None or scene.captured_at > latest_capture
-                if feedback and increasing:
+                if track_latest and increasing:
                     latest_capture = scene.captured_at
-                if account_observed and increasing and acceptable(scene, observation):
-                    token = target(scene, 'select_level', self.c.settings.ocr_confidence, level=self.plan.level_start)
+                if account_observed and increasing and (acceptable(observation) or not feedback and layout == CHAOS_MAP):
+                    token = level_target(observation, self.plan.level_start)
                     signature = (observation.kind, observation.mode, observation.level, observation.stars,
-                                 token.box if token is not None else None)
-                    if signature != previous:
+                                 token.box if token is not None else None, layout,
+                                 tuple((row['level'], row.get('appearance'), row['available'], row['stars'])
+                                       for row in observation.basis.get('levels', ())) if layout == CHAOS_MAP else ())
+                    if signature != previous or scoped and frames and not self._adjacent(frames[-1], scene):
                         frames = []
                     previous = signature
-                    if not frames or scene.captured_at > frames[-1]['captured_at']:
-                        frames.append(self._source(scene, observation, 'observation_' + str(len(self.data['observations']))))
-                        self.data['observations'].append(frames[-1])
+                    if not frames or scene.captured_at > frames[-1].source['captured_at']:
+                        source = self._source(scene, observation, 'observation_' + str(len(self.data['observations'])))
+                        if scoped:
+                            self._add_geometry(source, scene)
+                        frames.append(_ObservedFrame(scene, observation, source))
+                        self.data['observations'].append(source)
                         self.data['account_key'] = self.account
                         self._persist()
                     if len(frames) == 2:
@@ -240,6 +266,20 @@ class ChallengePreparation:
         if scene is not None:
             self.c.evidence(scene, 'challenge_unverified')
         raise AutomationError('高难备战未在有限观察内核实' + description + '，没有重发选择。')
+
+    def _add_geometry(self, source, scene):
+        geometry = scene.geometry
+        if scene.image.shape != (geometry.height, geometry.width, 3):
+            raise AutomationError('高难备战采集窗口与画面尺寸不同。')
+        source.update(capture_sequence=self.c.capture_sequence,
+                      geometry=[geometry.left, geometry.top, geometry.width, geometry.height])
+
+    def _adjacent(self, frame, scene):
+        import numpy as np
+        return (self.c.capture_sequence == frame.source['capture_sequence'] + 1
+                and scene.geometry == frame.scene.geometry
+                and 0 <= time.monotonic() - frame.scene.captured_at <= MAX_SCENE_AGE
+                and not np.may_share_memory(scene.image, frame.scene.image))
 
     def _observe_apocalyptic(self):
         import numpy as np
@@ -312,11 +352,25 @@ class ChallengePreparation:
         raise AutomationError('末日备战缺少同账号连续两张可核实的当前页面。')
 
     def _recheck_apocalyptic(self, frames, deadline):
-        import numpy as np
         from .challenge_apocalyptic_prepare import observe
+        self._recheck_frames(frames, deadline, observe, '末日备战回执')
+
+    def _recheck_chaos(self, frames, deadline):
+        from .challenge_pages import observe
+        self._recheck_frames(frames, deadline, observe, '混沌备战回执')
+
+    def _check_calibrated_controls(self):
+        runner = self.c.runner
+        if self.c.window.emergency_pressed() is True or runner.stop_requested:
+            raise Stopped('F10 紧急停止。')
+        if runner.input_epoch != self.epoch or self.c.scene_epoch != self.epoch:
+            raise InputInterrupted('混沌备战输入代次已改变。')
+
+    def _recheck_frames(self, frames, deadline, observe, label):
+        import numpy as np
         current = frames[-1].scene
         confidence = self.c.settings.ocr_confidence
-        self._fresh(current)
+        self._require_current(current)
         first, last = frames[0].source, frames[-1].source
         sources = [frame.source for frame in frames]
         if (any(a['captured_at'] >= b['captured_at'] or a['capture_sequence'] + 1 != b['capture_sequence']
@@ -324,7 +378,7 @@ class ChallengePreparation:
                 or any(Path(a.source['path']).samefile(b.source['path'])
                        or np.may_share_memory(a.scene.image, b.scene.image)
                        for a, b in combinations(frames, 2))):
-            raise AutomationError('末日备战回执需要连续独立采集和独立原图。')
+            raise AutomationError(label + '需要连续独立采集和独立原图。')
         for frame in frames:
             scene, source = frame.scene, frame.source
             path, raw = self._read_png(source['path'])
@@ -335,26 +389,64 @@ class ChallengePreparation:
                     or source['pixel_sha256'] != _pixels(scene)
                     or observe(scene, confidence) != frame.observation
                     or self._read_account(scene) != self.account):
-                raise AutomationError('末日备战回执与原画面不同。')
-        self._fresh(current)
+                raise AutomationError(label + '与原画面不同。')
+        self._require_current(current)
         self.c.window.guard(current.geometry)
         # The native guard can finish after an F9 or F10 event.
         runner = self.c.runner
         if runner.stop_requested:
-            raise Stopped('末日备战观察已停止。')
+            raise Stopped(label + '已停止。')
         if runner.input_epoch != self.epoch or self.c.scene_epoch != self.epoch:
-            raise InputInterrupted('末日备战观察的输入代次已改变。')
+            raise InputInterrupted(label + '的输入代次已改变。')
         now = time.monotonic()
         if (current is not self.c.last_scene or self.c.capture_sequence != last['capture_sequence']
                 or not 0 <= now - first['captured_at'] <= MAX_SCENE_AGE
                 or now - runner.inactive_duration >= deadline):
-            raise AutomationError('末日备战回执超过本次连续观察范围。')
+            raise AutomationError(label + '超过本次连续观察范围。')
 
     @staticmethod
     def _check_payload(path, expected):
         with path.open('rb') as stream:
             if stream.read(len(expected) + 1) != expected:
-                raise AutomationError('末日备战待保存记录或原回执发生变化。')
+                raise AutomationError('高难备战待保存记录或原回执发生变化。')
+
+    def _calibrated_client(self):
+        client = installed_client(self.c.window.current_executable())
+        return client if client['full_version'] == CHAOS_CLIENT else None
+
+    def _selection_sources(self):
+        if self.calibrated_selection is None:
+            return ()
+        action = self.data['actions'][-1]
+        return (*action['lobby_frames'], action['before'])
+
+    def _recheck_selection_sources(self):
+        for record in self._selection_sources():
+            path, raw = self._read_png(record['path'])
+            if str(path) != record['path'] or hashlib.sha256(raw).hexdigest() != record['sha256']:
+                raise AutomationError('混沌备战原选层证据发生变化。')
+
+    @contextmanager
+    def lock_calibrated_selection(self):
+        frames, deadline, client = self.calibrated_selection
+        current = frames[-1].scene
+        paths = [self.path, client['source'], *(record['path'] for record in self._selection_sources())]
+
+        def recheck():
+            self._recheck_chaos(frames, deadline)
+            if self._calibrated_client() != client:
+                raise AutomationError('混沌层图校准版本或安装来源发生变化。')
+            self._fresh(current)
+            self.c.window.guard(current.geometry)
+            self._require_current(current)
+            now = time.monotonic()
+            if (now - frames[0].scene.captured_at > MAX_SCENE_AGE
+                    or now - self.c.runner.inactive_duration >= deadline):
+                raise AutomationError('混沌层图选择超过本次连续观察范围。')
+            self._check_calibrated_controls()
+
+        with hold_read_sources(paths):
+            yield recheck
 
     def _apocalyptic_images(self, frames):
         import cv2
@@ -408,7 +500,7 @@ class ChallengePreparation:
                 data.update(entry='existing_node_setup', preparation_frames=sources)
             payload = _json(data).encode('utf-8')
             self._persist(data, before_replace=recheck)
-        self._readonly_receipt = frames, deadline, payload
+        self.publication_receipt = frames, deadline, payload
         self.data.update(data)
         if ready:
             return TaskResult(OPERATION, 'ok', '已核实末日幻影首个目标难度的双节点备战页面。')
@@ -418,22 +510,53 @@ class ChallengePreparation:
         self.c.report.safe_next = '可在同账号打开计划首个难度的双节点备战页后重新核对。'
         return TaskResult(OPERATION, 'partial', '已保存末日幻影当前页面的双帧观察，目标难度备战待核实。')
 
+    def _publish_chaos(self, data, frames, deadline):
+        payload = _json(data).encode('utf-8')
+
+        def recheck():
+            self._check_payload(self.path.with_suffix('.tmp'), payload)
+            self._recheck_selection_sources()
+            self._recheck_chaos(frames, deadline)
+            self._check_calibrated_controls()
+
+        with hold_read_sources([*(frame.source['path'] for frame in frames),
+                                *(source['path'] for source in self._selection_sources())]):
+            self._persist(data, before_replace=recheck)
+        self.publication_receipt = frames, deadline, payload
+        self.data.update(data)
+
+    def _observe_chaos_map(self, frames, deadline, reason):
+        page = frames[-1].observation
+        receipt = dict(kind=page.kind, mode=page.mode, period=page.basis['period'], level=page.level,
+                       requested_level=self.plan.level_start, levels=page.basis['levels'],
+                       frames=[frame.source for frame in frames], reason=reason)
+        self._publish_chaos(dict(self.data, status='page_observed', page_observation=receipt), frames, deadline)
+        self.c.report.safe_next = '查看混沌层图的本次观察，核对计划层与当前版本。'
+        return TaskResult(OPERATION, 'partial', '已保存混沌层图双帧观察，目标层备战待核实。')
+
     def save_report(self, temporary, write_report):
         destination = self.path.parent / 'report.json'
-        frames, deadline, receipt_payload = self._readonly_receipt
+        frames, deadline, receipt_payload = self.publication_receipt
+        label = '末日备战' if self.read_only else '混沌备战'
+        verify = self._recheck_apocalyptic if self.read_only else self._recheck_chaos
         result = next(item for item in self.c.report.results if item.task == OPERATION)
         try:
-            with hold_read_sources([self.path, *(frame.source['path'] for frame in frames)]):
+            with hold_read_sources([self.path, *(frame.source['path'] for frame in frames),
+                                    *(source['path'] for source in self._selection_sources())]):
                 payload = write_report()
 
                 def recheck():
                     self._check_payload(self.path, receipt_payload)
                     if self.c.report.challenge is not self.data or _json(self.data).encode('utf-8') != receipt_payload:
-                        raise AutomationError('末日备战报告字段与原回执不同。')
+                        raise AutomationError(label + '报告字段与原回执不同。')
                     with temporary.open(encoding='utf-8') as stream:
                         if stream.read(len(payload) + 1) != payload:
-                            raise AutomationError('末日备战待保存报告发生变化。')
-                    self._recheck_apocalyptic(frames, deadline)
+                            raise AutomationError(label + '待保存报告发生变化。')
+                    if not self.read_only:
+                        self._recheck_selection_sources()
+                    verify(frames, deadline)
+                    if not self.read_only:
+                        self._check_calibrated_controls()
 
                 replace_file(temporary, destination, before_replace=recheck)
         except (AutomationError, OSError, ValueError, TypeError) as error:
@@ -443,34 +566,49 @@ class ChallengePreparation:
             self.data.pop('preparation_frames', None)
             self.data.pop('entry', None)
             self.data.update(status='stopped' if isinstance(error, Stopped) else 'partial',
-                             preparation_page_verified=False)
+                             preparation_page_verified=False, selected_level=None)
+            for action in self.data['actions']:
+                action['status'] = 'unknown'
             report = self.c.report
             report.challenge = self.data
             report.status = self.data['status']
             report.failure_task = OPERATION
             report.error = str(error)
-            report.safe_next = '保留末日备战原回执和截图，重新核对当前前台页面。'
+            report.safe_next = '保留' + label + '原回执和截图，重新核对当前前台页面。'
             result.status = report.status
-            result.detail = '末日备战最终报告未核实，原回执保留。'
+            result.detail = label + '最终报告未核实，原回执保留。'
             write_report()
             replace_file(temporary, destination)
 
     def run(self):
-        from .challenge_pages import observe, target
+        from .challenge_pages import level_target
         level = self.plan.level_start
         ready = lambda page: page.kind == 'team_setup' and page.level == level and page.mode == self.plan.mode
         try:
             if self.read_only:
                 return self._observe_apocalyptic()
-            scene, observation, frames, deadline = self._wait(lambda scene, page: ready(page) or
-                page.kind == 'lobby' and target(scene, 'select_level', self.c.settings.ocr_confidence,
-                                               level=level) is not None, '当前模式与首个目标层')
+            scene, observation, frames, deadline = self._wait(
+                lambda page: ready(page) or level_target(page, level) is not None, '当前模式与首个目标层')
             record = None
+            calibrated = observation.basis.get('layout') == CHAOS_MAP
+            if calibrated:
+                if level_target(observation, level) is None:
+                    return self._observe_chaos_map(frames, deadline, 'requested_level_not_calibrated')
+                try:
+                    client = self._calibrated_client()
+                except (AutomationError, OSError):
+                    client = None
+                if client is None:
+                    return self._observe_chaos_map(frames, deadline, 'client_not_verified_for_selection')
+                self.calibrated_selection = tuple(frames), deadline, client
             if not ready(observation):
                 action = self._derive(scene)
                 record = dict(intent=action.intent, level=level, target=list(action.target.box), status='pending',
                     input_epoch=self.epoch, plan_digest=self.plan.digest,
-                    before=self._source(scene, observation, 'before_level_selection'), lobby_frames=frames)
+                    before=self._source(scene, observation, 'before_level_selection'),
+                    lobby_frames=[frame.source for frame in frames])
+                if calibrated:
+                    record['client_version'] = client['full_version']
                 self.data['actions'].append(record)
                 self.request = action
                 self._persist()
@@ -478,28 +616,32 @@ class ChallengePreparation:
                 self.request = None
                 record['status'] = 'submitted'
                 self._persist()
-                scene, _, frames, deadline = self._wait(lambda scene, page: ready(page), '同层备战页面',
-                                                         after_input=after_input)
+                scene, observation, frames, deadline = self._wait(
+                    lambda page: ready(page) and (not calibrated or page.basis.get('layout') == CHAOS_SETUP),
+                    '同层备战页面', after_input=after_input)
 
+            sources = [frame.source for frame in frames]
             prepared = dict(self.data, status='prepared', selected_level=level, preparation_page_verified=True,
-                            preparation_frames=frames)
+                            preparation_frames=sources)
             if record is None:
                 prepared['entry'] = 'existing_team_setup'
             else:
-                prepared['actions'] = [dict(record, status='verified', after=frames)]
+                prepared['actions'] = [dict(record, status='verified', after=sources)]
 
             def recheck():
                 self._fresh(scene)
                 self.c.window.guard(scene.geometry)
-                if (scene.captured_at != frames[-1]['captured_at']
-                        or not ready(observe(scene, self.c.settings.ocr_confidence))):
+                if scene.captured_at != sources[-1]['captured_at'] or not ready(self._observe_page(scene)):
                     raise AutomationError('高难备战最终记录与原观察不同。')
                 self._fresh(scene)
                 if time.monotonic() - self.c.runner.inactive_duration >= deadline:
                     raise AutomationError('高难备战确认超过有限观察时间。')
 
-            self._persist(prepared, before_replace=recheck)
-            self.data.update(prepared)
+            if observation.basis.get('layout') == CHAOS_SETUP:
+                self._publish_chaos(prepared, frames, deadline)
+            else:
+                self._persist(prepared, before_replace=recheck)
+                self.data.update(prepared)
             return TaskResult(OPERATION, 'ok', '已核实本次目标层备战页面。')
         except Exception as error:
             if self.data['actions'] and self.data['actions'][-1]['status'] in ('pending', 'submitted'):
