@@ -98,12 +98,16 @@ def _publish(target, sources, image, checkpoint):
                 raise OSError()
             stream.flush()
             os.fsync(stream.fileno())
+            created = os.fstat(stream.fileno())
         checkpoint()
         if local_path(staged) != staged:
             raise OSError()
         with hold_read_sources((staged,)):
-            if (local_path(staged) != staged or staged.stat().st_size != len(payload)
-                    or staged.read_bytes() != payload):
+            if local_path(staged) != staged:
+                raise OSError()
+            current = staged.stat()
+            if (not created.st_ino or not os.path.samestat(created, current) or current.st_nlink != 1
+                    or current.st_size != len(payload) or staged.read_bytes() != payload):
                 raise OSError()
             _verify_sources(sources)
             check_destination()

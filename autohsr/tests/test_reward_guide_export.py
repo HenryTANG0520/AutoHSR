@@ -156,6 +156,29 @@ class RewardGuideExportTests(unittest.TestCase):
             self.assert_unpublished(self.export(), 'invalid_target', (115,))
         self.assertEqual(list((self.root / 'moved-output').iterdir()), [])
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows hard-link identity')
+    def test_identical_staged_hard_link_to_an_existing_file_is_rejected(self):
+        existing = self.root / 'existing.png'
+        self.write(existing, self.image[:237])
+        original = existing.read_bytes()
+        hold = service.hold_read_sources
+
+        @contextmanager
+        def substitute(paths):
+            for path in paths:
+                if path.name == 'calendar.tmp':
+                    self.assertEqual(path.read_bytes(), original)
+                    path.unlink()
+                    os.link(existing, path)
+                    self.assertTrue(os.path.samefile(existing, path))
+            with hold(paths):
+                yield
+
+        with patch.object(service, 'hold_read_sources', substitute):
+            self.assert_unpublished(self.export(), 'publish_failed', (115,))
+        self.assertEqual(existing.read_bytes(), original)
+        self.assertEqual(existing.stat().st_nlink, 1)
+
     @unittest.skipUnless(os.name == 'nt', 'Windows sharing semantics')
     def test_real_ntfs_holds_inputs_and_staged_parent_through_the_exclusive_link(self):
         link = os.link
