@@ -27,6 +27,7 @@ ACTIVITY = 'gift_of_odyssey_4_6'
 ITEM = '星轨专票'
 _QUANTITY_BY_DAY = {3: 2, 4: 1, 5: 1, 6: 1, 7: 3}
 _AGE = 8
+_RETURN_CAPTURE_LIMIT = 8
 _HEADER = (.461, .132, .539, .199)
 _ITEM = (.465, .556, .535, .600)
 _CLOSE = (.438, .708, .563, .757)
@@ -355,13 +356,20 @@ def _require_fresh(frames, *, pixels=True):
 
 
 def _publish(path, raw, checkpoint, frames):
+    last = frames[-1]
+
     def check():
         checkpoint()
-        frames[-1].guard()
+        last.guard()
         _require_fresh(frames)
+        if last.context.runner.stop_requested or last.window.emergency_pressed():
+            raise Stopped('巡星之礼回执发布已停止。')
+        if (last.context.runner.input_epoch != last.scope.epoch
+                or not 0 <= time.monotonic() - frames[0].captured_at <= _AGE):
+            raise AutomationError('巡星之礼回执的采集代次或时间已变化。')
         return False
 
-    source = frames[-1].scope.executable.with_name('config.ini')
+    source = last.scope.executable.with_name('config.ini')
     with hold_read_sources((source,)):
         try:
             publish_new(path, lambda stream: stream.write(raw), cancel=check, limit=4096)
@@ -426,6 +434,7 @@ class ClaimIntent:
         self._submit_lock = Lock()
         self._attempted = False
         self._sent = None
+        self._verified = None
 
     def _require_original_records(self):
         if file_revision(self._path) != self._intent_revision:
@@ -497,7 +506,7 @@ class ClaimIntent:
                 context.last_scene = context._scroll_anchor = None
             self._submit_lock.release()
 
-    def verify(self, popup, after, *, checkpoint):
+    def verify(self, popup, after, *, checkpoint, waiting=()):
         """Publish a verified chain only after the exact receipt and same card both agree."""
         origin = self._before[-1]
         day = origin.scope.day
@@ -507,10 +516,18 @@ class ClaimIntent:
         before = _pair(self._before)
         reward = _pair(popup, origin=origin)
         returned = _pair(after, origin=origin)
-        if (origin.sequence + 1 != reward[0].sequence or reward[-1].sequence + 1 != returned[0].sequence
-                or not origin.captured_at < reward[0].captured_at < reward[1].captured_at < returned[0].captured_at
-                or any(frame.tickets != quantity or frame.page is not None for frame in reward)
-                or any(frame.page is None for frame in returned)):
+        if not isinstance(waiting, tuple) or len(waiting) > _RETURN_CAPTURE_LIMIT - 2:
+            raise AutomationError('巡星之礼回页观察超出原采集范围。')
+        if any(not isinstance(frame, _Frame) or frame.context is not origin.context
+               or frame.window is not origin.window or frame.scope != origin.scope for frame in waiting):
+            raise AutomationError('巡星之礼回页观察的窗口、账号或活动来源已变化。')
+        overlay = reward + waiting
+        for previous, current in zip((origin,) + overlay, overlay + returned[:1]):
+            if (previous.scene is current.scene or np.may_share_memory(previous.image, current.image)
+                    or previous.sequence + 1 != current.sequence or not previous.captured_at < current.captured_at):
+                raise AutomationError('巡星之礼回页观察的画面时序待核实。')
+        if (any(frame.tickets != quantity or frame.page is not None for frame in overlay)
+                or any(frame.page is None or frame.tickets is not None for frame in returned)):
             raise AutomationError('巡星之礼单笔星轨专票弹窗或同卡返回待核对。')
         active_before = set(before[0].page.claimable_days).union(before[1].page.claimable_days)
         claimed_before = _days(before, 'claimed_days')
@@ -523,8 +540,20 @@ class ClaimIntent:
         with _hold_records(((self._path, self._raw), (self._reserved_path, self._authorization),
                             (self._sent_path, self._sent))):
             self._require_original_records()
-            _publish(self._verified_path, _raw(record), checkpoint, before + reward + returned)
+            raw = _raw(record)
+            _publish(self._verified_path, raw, checkpoint, before + overlay + returned)
+            self._verified = raw
         return record
+
+    @contextmanager
+    def hold_verified(self):
+        if self._verified is None:
+            raise AutomationError('巡星之礼缺少已保存的同卡回页凭据。')
+        rows = ((self._path, self._raw), (self._reserved_path, self._authorization),
+                (self._sent_path, self._sent), (self._verified_path, self._verified))
+        with _hold_records(rows):
+            self._require_original_records()
+            yield
 
 
 def prepare_claim(directory, before, *, day, checkpoint):

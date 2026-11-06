@@ -4,8 +4,8 @@ from pathlib import Path
 import time
 
 from .currency_wars_identity import AccountNotObserved
-from .daily_event_claim import (ACTIVITY, OPERATION, _QUANTITY_BY_DAY, _VERSION, _pair, _require_fresh,
-                                _supported_day, bind_current_claim_frame, prepare_claim)
+from .daily_event_claim import (ACTIVITY, OPERATION, _AGE, _QUANTITY_BY_DAY, _RETURN_CAPTURE_LIMIT, _VERSION,
+                                _pair, _require_fresh, _supported_day, bind_current_claim_frame, prepare_claim)
 from .models import AutomationError, Stopped, TaskResult
 from .storage import hold_read_sources, replace_file
 from .windows import GameWindow
@@ -15,8 +15,10 @@ from .workflow_lease import sequence_lease
 
 _FRAME_DELAY = .15
 _POPUP_DELAY = .75
+_RETURN_DELAY = .4
 _LEDGER_DIRECTORY = 'daily-event-claim'
 SAFE_NEXT = '请在游戏内核对所选签到日。已有待核对记录时保留原记录，避免重复领取。'
+MANUAL_CLOSE = '已核实巡星之礼奖励弹窗。请手动关闭当前弹窗，程序将核对同一日卡。'
 
 
 def initial_record(day):
@@ -43,10 +45,11 @@ class DailyEventClaim:
     foreground branch of Context.snapshot. A lost window must raise promptly.
     """
 
-    def __init__(self, context, *, root, day):
+    def __init__(self, context, *, root, day, observe_return=False):
         if not _supported_day(day):
             raise AutomationError('巡星之礼只核对明确选择的第三至第七日。')
         self.context, self._root, self._day = context, root, day
+        self._check_return = observe_return
         self._window, self._runner, self._vision = context.window, context.runner, context.vision
         self.record = initial_record(day)
         self._started = False
@@ -110,30 +113,72 @@ class DailyEventClaim:
         self._popup = popup
         self.record.update(stage='return', popup='observed', quantity=second.tickets)
 
+    def _observe_return(self, before, snapshot, reader):
+        popup = self._popup
+        previous = popup[-1]
+        waiting, returned = [], []
+        self.record['stage'] = 'return_check'
+        try:
+            previous.guard()
+            self._runner.emit(dict(type='daily_event_manual_close', message=MANUAL_CLOSE))
+            for _ in range(_RETURN_CAPTURE_LIMIT):
+                self.context.sleep(_RETURN_DELAY if not returned else _FRAME_DELAY)
+                if time.monotonic() - before[0].captured_at >= _AGE:
+                    break
+                frame = self._capture(snapshot, reader)
+                _pair((previous, frame), origin=before[-1])
+                if not returned and frame.page is None and frame.tickets == popup[-1].tickets:
+                    waiting.append(frame)
+                    self._popup = previous, frame
+                elif (frame.page is not None and frame.tickets is None and frame.button is None
+                      and self._day in frame.page.claimed_days):
+                    returned.append(frame)
+                    if len(returned) == 2:
+                        self._intent.verify(popup, returned, waiting=tuple(waiting), checkpoint=self.context.checkpoint)
+                        self.record.update(stage='done', state='verified')
+                        return TaskResult(OPERATION, 'ok', '已核实巡星之礼指定日卡变为已领取。')
+                else:
+                    break
+                previous = frame
+        except Stopped:
+            self.record['stage'] = 'return_unverified'
+            raise
+        except (AutomationError, OSError):
+            pass
+        self.record['stage'] = 'return_unverified'
+        return TaskResult(OPERATION, 'partial', '关闭后的同日卡待核对，已保留原领取意图。')
+
     def invalidate_popup(self):
-        if self._popup is not None:
+        if self._popup is not None and self.record['state'] != 'verified':
             self._popup = None
-            self.record.update(stage='popup', popup='unknown', quantity=None)
+            if self.record['stage'] != 'return_unverified':
+                self.record['stage'] = 'popup'
+            self.record.update(popup='unknown', quantity=None)
 
     def save_verified_report(self, temporary, write_report):
-        """Publish the observed popup without promoting the pending claim."""
+        """Guard the current popup or the already published same-card receipt."""
         report = self.context.report
         destination = temporary.with_name('report.json')
+        verified = self.record['state'] == 'verified'
         detail = '奖励弹窗在报告发布前失去核验证据，保留原领取意图。'
 
         @contextmanager
         def verify_attempt():
             with ExitStack() as locks:
                 try:
-                    origin = self._intent._before[-1]
-                    before = self._intent._before
-                    popup = _pair(self._popup, origin=origin)
-                    locks.enter_context(hold_read_sources((origin.scope.executable.with_name('config.ini'),)))
+                    if verified:
+                        locks.enter_context(self._intent.hold_verified())
+                    else:
+                        before = self._intent._before
+                        origin = before[-1]
+                        popup = _pair(self._popup, origin=origin)
+                        locks.enter_context(hold_read_sources((origin.scope.executable.with_name('config.ini'),)))
                     with hold_read_sources((temporary,)):
                         if temporary.read_text(encoding='utf8') != payload:
                             raise AutomationError(detail)
-                        _require_fresh(before + popup)
-                        popup[-1].guard()
+                        if not verified:
+                            _require_fresh(before + popup)
+                            popup[-1].guard()
                 except (OSError, UnicodeError):
                     raise AutomationError(detail) from None
                 yield
@@ -142,6 +187,9 @@ class DailyEventClaim:
             payload = write_report()
             replace_file(temporary, destination, attempt_scope=verify_attempt)
         except AutomationError as error:
+            if verified:
+                detail = '同日卡回执在报告发布前待核对，已保留原件。'
+                self.record.update(state='pending', stage='return_unverified')
             self.invalidate_popup()
             if isinstance(error, Stopped):
                 self._runner.stop()
@@ -188,4 +236,6 @@ class DailyEventClaim:
                 return TaskResult(OPERATION, 'partial', '提交后的画面缺少当前账号证据，已保留原领取意图。')
             except (AutomationError, OSError):
                 return TaskResult(OPERATION, 'partial', '奖励弹窗待同账号连续核对，已保留原领取意图。')
+            if self._check_return:
+                return self._observe_return(before, snapshot, reader)
             return TaskResult(OPERATION, 'partial', '已核实同账号奖励弹窗，领取仍待核对关闭后的同卡状态。')

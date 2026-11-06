@@ -2301,7 +2301,8 @@ class Runner:
                  use_power_plan=False,new_power_plan=False,currency_overclock_open_a0=False,build_target_selection=None,
                  challenge_lobby_mode=None, assignments_only=False, daily_reward_mode=None,
                  daily_attachment_only=None, workflow_screen_query=None, workflow_page=None,
-                 observation_wait_for_foreground=False, daily_event_claim_day=None, daily_message_reply=None,
+                 observation_wait_for_foreground=False, daily_event_claim_day=None, daily_event_observe_return=False,
+                 daily_message_reply=None,
                  reward_guide_capture=None):
         from dataclasses import replace
         if (type(observation_wait_for_foreground) is not bool
@@ -2354,6 +2355,9 @@ class Runner:
         if operation in READ_ONLY_OPERATIONS and (new_battle_run or use_power_plan or new_power_plan
                                                   or weekly_plan is not None):
             raise ValueError('日常页面只读观察需要独立入口，不能附带资源计划。')
+        if (type(daily_event_observe_return) is not bool
+                or daily_event_observe_return and operation != EVENT_CLAIM_OPERATION):
+            raise ValueError('巡星之礼回页观察需要独立单日提交。')
         if operation == EVENT_CLAIM_OPERATION or daily_event_claim_day is not None:
             from .daily_event_claim import _supported_day
 
@@ -2361,6 +2365,7 @@ class Runner:
                     or new_battle_run or use_power_plan or new_power_plan or weekly_plan is not None):
                 raise ValueError('巡星之礼领取需要独立入口和明确的第三至第七日。')
         self.daily_event_claim_day = daily_event_claim_day
+        self.daily_event_observe_return = daily_event_observe_return
         if operation == ACHIEVEMENT_CLAIM_OPERATION and (new_battle_run or use_power_plan or new_power_plan
                                                         or weekly_plan is not None):
             raise ValueError('独立成就领奖不能附带刷本或周常计划。')
@@ -3297,11 +3302,13 @@ class Runner:
             elif daily_claim:
                 from .daily_event_claim_flow import DailyEventClaim
                 daily_claim_flow = context.daily_event_claim = DailyEventClaim(
-                    context, root=ROOT, day=self.daily_event_claim_day)
+                    context, root=ROOT, day=self.daily_event_claim_day, observe_return=self.daily_event_observe_return)
                 self.report.daily_event_claim = daily_claim_flow.record
                 result = daily_claim_flow.run()
                 self.report.results.append(result)
-                self.report.status = 'partial'
+                self.report.status = 'success' if result.status == 'ok' else 'partial'
+                if self.report.status == 'success':
+                    self.report.failure_task = ''
             elif daily_reply:
                 from .daily_message_reply_flow import DailyMessageReply
                 daily_reply_flow = context.daily_message_reply = DailyMessageReply(

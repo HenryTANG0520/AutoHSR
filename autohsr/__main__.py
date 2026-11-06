@@ -65,6 +65,8 @@ def main(argv: list[str] | None = None) -> int:
                       help="核对前台成就、漫游签证、短信或巡星之礼，分别记录导航与观察结果")
     mode.add_argument("--daily-event-claim", type=int, choices=range(3, 8), metavar='DAY',
                       help="在已核实的巡星之礼页提交第 3–7 天中的一天，并核对奖励弹窗")
+    parser.add_argument('--observe-daily-event-return', action='store_true',
+                        help='仅配合 --daily-event-claim，等待手动关闭后核对同一日卡')
     from .daily_message_reply_cli import add_arguments as add_daily_message_reply_arguments
     add_daily_message_reply_arguments(mode)
     mode.add_argument("--reward-guide-stitch", type=Path, nargs='+', metavar='PNG',
@@ -153,6 +155,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    if args.observe_daily_event_return and args.daily_event_claim is None:
+        parser.error('--observe-daily-event-return 仅配合 --daily-event-claim。')
     if args.reward_guide_capture is not None:
         return run_capture(args, raw_args, parser)
     if args.reward_guide_notify is not None or args.reward_guide_notify_profile is not None:
