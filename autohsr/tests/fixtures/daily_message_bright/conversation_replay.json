@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "scope": "短信通知选行的离线取证。未接入识别候选或输入入口。只归档帧索引、几何和比较结果，原视频及 OCR 文本不入库。",
+  "baseline": "4655df6",
+  "game_layout": "4.6 时期简体中文 PC 新消息通知双栏。公开录像无法核实实际 EXE、窗口和账号连续性。",
+  "upstream": {
+    "revision": "7cf6c6bed474539485d3b1504077ac352866829f",
+    "navigation": "https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L28-L33",
+    "task": "https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/reward/message.py#L35-L83",
+    "observation": "大世界 P 键到新消息通知。任务在左栏找两个图标之一，找不到则有限滚动，找到则点击图标位置。其后根据局部图标与预置坐标回复，另尝试关闭奖励提示。图标匹配与消失均不提供指定段落或切入后正文对应的证据。",
+    "layout_release_note": "https://www.taptap.cn/moment/643510187197465497"
+  },
+  "replay": {
+    "opencv": "5.0.0",
+    "rapidocr_onnxruntime": "1.4.4",
+    "time_basis": "从零开始的 OpenCV 解码帧索引及容器 PTS 秒。帧哈希计算自未缩放的 BGR 像素。",
+    "scale": "852×480 原始 AVC 抽样被当前最小尺寸门禁拒绝。整段只读扫描用 INTER_LINEAR 放大到 960×540，再由现有面板门禁用 INTER_AREA 归一化到 480×270。标题 OCR 在 960×540 诊断帧运行，不视为原生客户区取证。",
+    "fields": "表内列依次为帧序号、PTS 秒、双栏门禁、可见未读红标、选中行半开纵坐标、左右标题严格一致、原选中会话核验通过、原始帧 SHA-256。红标为当前全左栏可见状态。标题结果使用现有选中会话 OCR 规则，文本和摘要均不保存。",
+    "lower_avatar_area_xyxy": [82, 94, 98, 222],
+    "prior_native_index": {
+      "commit": "36526b6",
+      "path": "autohsr/tests/fixtures/daily_message_conversation_evidence/manifest.json",
+      "rechecked_p178_frames": [139, 144, 155, 160, 162, 338],
+      "rechecked_p179_frames": [48, 54, 60, 75, 84]
+    },
+    "cross_clip_check": "P178 帧 160、P179 帧 75、本表两源帧 115 和 84 均通过现有选中会话核验。四帧规范化显示名相同；P178 与 P179 对应不同已知段落，因此显示名不足以区分段落。"
+  },
+  "sources": [
+    {
+      "url": "https://www.bilibili.com/video/BV1ppxt6HEQd/?p=1",
+      "author": "零风_ZeroWind",
+      "cid": 43244914455,
+      "avc_sha256": "8d9851eee0dedc435a6ec25c99a8dabd2d7cf937e60cc31e96ea814306d930b3",
+      "decoded_frames": 1628,
+      "geometry_panel_frames": 1524,
+      "geometry_badge_frames": 55,
+      "geometry_selected_frames": 1456,
+      "panel_lower_avatar_max_gray": 65,
+      "frames": [
+        [42, 1.463563, true, true, null, false, false, "ca29d97dd6f60ecbbfa1de7defcd3c27616ea7db569e1dcd6c5a61992b7ab7ae"],
+        [52, 1.812063, true, true, null, false, false, "24976b7c01c16cb1ac0c6a9143072285d8095200f1d77330132adb265f966ed1"],
+        [96, 3.345375, true, false, null, true, false, "dd297fa91ea3337291c6c6ecb5ffb7ea28190d74570e5b9fb0487f8d7c21c30d"],
+        [102, 3.554438, true, false, [68, 92], true, true, "0e74ec6935d202e1cab6cc58743540a44a5c7fc12dc29d586519e112ec350bec"],
+        [115, 4.007437, true, false, [68, 92], true, true, "ce000b79f010177105767b07d96b018f8df10a1179bc9ecddcb46232cadbcbe6"]
+      ]
+    },
+    {
+      "url": "https://www.bilibili.com/video/BV1x44K6AE96/?p=1",
+      "author": "零风_ZeroWind",
+      "cid": 43274600721,
+      "avc_sha256": "c3c2b70144411757ada29d2edfe8d63de2748bc97be4a683b9c9c39aa691925e",
+      "decoded_frames": 1768,
+      "geometry_panel_frames": 1679,
+      "geometry_badge_frames": 23,
+      "geometry_selected_frames": 1644,
+      "panel_lower_avatar_max_gray": 65,
+      "frames": [
+        [54, 1.8, true, true, null, false, false, "8b104e459003108b0fcf2063370dda746c3f2d3c711a0d637d1748912b2bdb92"],
+        [65, 2.166688, true, true, null, false, false, "85522c9e795b52821461f7b1f491a664f522111193a8a7dbef30d163ba42c291"],
+        [72, 2.4, true, false, null, true, false, "e910aace3bee69186a7ce031fe8b9e6f459c0181d219ffc732dd7aa2c6d27103"],
+        [75, 2.5, true, false, [68, 92], true, true, "c4fdfb5b1683e592e9564ffa8bf6e0b1f044d4fdff9a924b154b13d817f0b9da"],
+        [84, 2.8, true, false, [68, 92], true, true, "73dfcdb6712e349644e27d6eb4669f36275f9c24e3bbf01caa2dd062e22928eb"]
+      ]
+    }
+  ],
+  "historical_counterexample": {
+    "source": "https://www.reddit.com/r/HonkaiStarRail/comments/18ppvla/i_guess_the_messages_are_not_for_me/",
+    "scope": "2023 年的英文单栏通知截图，可见六条带红标的行。两组显示名及各自头像分别重复三次，行内摘要不同。用于说明按名称和头像消歧的风险，当前简中双栏的几何、切换反馈及客户端版本需另取证。"
+  },
+  "result": "4.6 时期四个样本只核实空右栏到单会话选中。两段亮底均有标题已对应但选中几何尚未通过的反例。现有观察按匿名状态比对双帧，全左栏红标和单个选中几何没有行级归属。选择会话、查看右栏、收到新入站内容、实际发出回复及领奖须分别核对。",
+  "minimum_live_capture": [
+    "同一当前简中 PC 客户区的两张新鲜前帧，均完整展示至少两行。保留当前已选 A 和明确请求的非当前行 B，记录 B 的红标归属或可区分同名的同位字段。记录前台、账号一致性、客户区和输入代次。",
+    "人工单击 B 的左栏行一次，取两张连续新帧核实 B 的高亮、右标题及可独立区分 B 的首个入站项。可见时另保留标题已变但原内容仍在的转场帧。同名邻行和红标属于相邻行仍需作为反例。",
+    "实机取证单独授权，记录选行是否改变已读状态。会话核验在查看阶段结束。发送和领奖分别沿用其独立回执，未核实的切换不重复点击。"
+  ],
+  "rights": "公开录像与游戏美术归原作者及相应权利人。本清单只记录来源和量测，未分发原片、账号、肖像或正文。"
+}
