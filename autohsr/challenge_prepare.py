@@ -55,6 +55,7 @@ class ChallengePreparation:
         self.read_only = self.plan.mode == APOCALYPTIC_MODE
         if self.read_only:
             context.vision.uid_counterevidence_floor = UID_VETO_FLOOR
+            context.vision.keep_apocalyptic_counterevidence = True
         directory = Path(context.report.run_dir)
         if not directory.is_absolute() or not directory.is_dir():
             raise AutomationError('高难备战缺少已建立的本次运行目录。')
@@ -339,6 +340,9 @@ class ChallengePreparation:
         ready = page.kind == 'node_setup' and page.level == self.plan.level_start
         receipt = dict(kind=page.kind, mode=page.mode, level=page.level, node=page.basis.get('node'),
                        period=page.basis.get('period'), frames=sources)
+        if page.kind == 'played_overview':
+            receipt.update(matches_plan_level=page.level == self.plan.level_start,
+                           visible_selected_level=page.level)
         if page.kind == 'locked_node_detail':
             receipt.update(matches_plan_level=page.level == self.plan.level_start, team_editability='locked')
         data = dict(self.data, status='prepared' if ready else 'page_observed',

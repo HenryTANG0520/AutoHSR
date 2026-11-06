@@ -15,6 +15,7 @@ def helper_overlay(scene):
 
 class Vision:
     uid_counterevidence_floor = None
+    keep_apocalyptic_counterevidence = False
 
     def __init__(self, confidence: float = 0.65):
         from rapidocr_onnxruntime import RapidOCR
@@ -53,6 +54,11 @@ class Vision:
             uid_candidates = tuple(candidate for candidate in candidates if complete_uid(candidate))
             if uid_candidates:
                 scene.field_reads[UID_COUNTEREVIDENCE] = uid_candidates
+        if weak and self.keep_apocalyptic_counterevidence:
+            from .challenge_apocalyptic_prepare import COUNTEREVIDENCE, VETO_FLOOR
+            counterevidence = tuple(token(*item) for item in weak if item[2] >= VETO_FLOOR)
+            if counterevidence:
+                scene.field_reads[COUNTEREVIDENCE] = counterevidence
         return scene
 
     def template(self, scene: Scene, path: Path, roi=(0, 0, 1, 1), threshold=0.88):
