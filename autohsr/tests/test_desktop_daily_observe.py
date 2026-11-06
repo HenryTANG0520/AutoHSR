@@ -8,10 +8,11 @@ import unittest
 from unittest.mock import Mock, patch
 
 from autohsr import theme
+from autohsr.daily_event_claim import ACTIVITY
 from autohsr.daily_message_reply import P179_SELECTION, REPLY_CHOICE, REPLY_NODE
-from autohsr.daily_observe import MESSAGE_REPLY_OPERATION
-from autohsr.desktop_daily_observe import (ACHIEVEMENT_CLAIM, build_daily_observation_panel, message_reply_result,
-                                          observation_result)
+from autohsr.daily_observe import EVENT_CLAIM_OPERATION, MESSAGE_REPLY_OPERATION
+from autohsr.desktop_daily_observe import (ACHIEVEMENT_CLAIM, build_daily_observation_panel, event_claim_result,
+                                          message_reply_result, observation_result)
 from autohsr.desktop_tools import ToolsShelf
 
 
@@ -60,6 +61,12 @@ def message_reply(selection=P179_SELECTION, *, status='success', saved=True, **o
     value = dict(node=selection[0], choice=selection[1], input_status='sent', feedback_status='confirmed',
                  ledger_status='confirmed')
     return report(MESSAGE_REPLY_OPERATION, value | overrides, status=status, saved=saved)
+
+
+def event_claim(*, status='partial', saved=True, **overrides):
+    value = dict(activity=ACTIVITY, day=4, stage='return', state='pending', submission='sent',
+                 popup='observed', quantity=1)
+    return report(EVENT_CLAIM_OPERATION, value | overrides, status=status, saved=saved)
 
 
 class DailyObservationReceiptTests(unittest.TestCase):
@@ -258,6 +265,43 @@ class DailyObservationReceiptTests(unittest.TestCase):
             self.assertEqual(message_reply_result(P179_SELECTION, receipt), unknown)
         self.assertEqual(message_reply_result(list(P179_SELECTION), message_reply()), unknown)
 
+    def test_event_claim_keeps_submission_popup_return_and_balance_separate(self):
+        title, detail = event_claim_result(4, False, event_claim())
+        self.assertEqual(title, '本次巡星之礼领取待核对')
+        self.assertEqual(detail.splitlines(), [
+            '最近一次 · 第 4 天', '输入 · 已发送', '奖励弹窗 · 已核实 星轨专票 ×1',
+            '关闭后同卡 · 本次未启用核对', '账户余额 · 待核对',
+        ])
+        receipt = event_claim(status='success', state='verified', stage='done', balance=120)
+        title, detail = event_claim_result(4, True, receipt)
+        self.assertEqual(title, '本次巡星之礼领取已核实')
+        self.assertIn('关闭后同卡 · 已核实为已领取', detail)
+        self.assertIn('账户余额 · 待核对', detail)
+        self.assertNotIn('120', detail)
+        self.assertNotIn(_MARKER, detail)
+        self.assertIn('关闭后同卡 · 本次未启用核对', event_claim_result(4, False, receipt)[1])
+
+    def test_event_claim_does_not_credit_old_unsaved_or_conflicting_feedback(self):
+        for receipt, input_status, popup_status in (
+            (event_claim(status='failed', submission='not_sent', state='verified', stage='done'), '未发送', '未观察'),
+            (event_claim(submission='unconfirmed', popup='not_observed'), '发送待核对', '待核对'),
+            (event_claim(status='stopped', popup='unknown'), '已发送', '待核对'),
+            (event_claim(status='success', saved=False, state='verified', stage='done'), '已发送', '待核对'),
+            (event_claim(status='success', state='verified', stage='done', quantity=3), '已发送', '待核对'),
+            (event_claim(stage='return_unverified'), '已发送', '已核实 星轨专票 ×1'),
+        ):
+            with self.subTest(receipt=receipt):
+                title, detail = event_claim_result(4, True, receipt)
+                self.assertNotEqual(title, '本次巡星之礼领取已核实')
+                self.assertIn(f'输入 · {input_status}', detail)
+                self.assertIn(f'奖励弹窗 · {popup_status}', detail)
+                self.assertIn('关闭后同卡 · 待核对', detail)
+                self.assertIn('账户余额 · 待核对', detail)
+                self.assertEqual('本次报告 · 未发布' in detail, not receipt['report_saved'])
+        for invalid in (event(), event_claim(day=5), event_claim(day=4.0), event_claim(schema=True)):
+            self.assertEqual(event_claim_result(4, True, invalid),
+                             ('本次巡星之礼领取待核对', '本次领取回执待核对。\n账户余额 · 待核对'))
+
 
 class DailyObservationPanelTests(unittest.TestCase):
     def setUp(self):
@@ -271,7 +315,8 @@ class DailyObservationPanelTests(unittest.TestCase):
                                   _selected_tool='daily_observation', _in_tools=lambda: self.ui.active,
                                   _tool_action_changed=Mock(), _start_daily_observation=Mock(side_effect=self.start),
                                   _start_achievement_bulk_claim=Mock(side_effect=self.start_claim),
-                                  _start_daily_message_reply=Mock(side_effect=self.start))
+                                  _start_daily_message_reply=Mock(side_effect=self.start),
+                                  _start_daily_event_claim=Mock(side_effect=self.start_event_claim))
         self.panel = self.ui.daily_observation_panel = build_daily_observation_panel(self.root, self.ui)
         self.panel.pack(fill='x')
 
@@ -287,6 +332,9 @@ class DailyObservationPanelTests(unittest.TestCase):
     def start_claim(self, complete):
         return self.start(ACHIEVEMENT_CLAIM, complete)
 
+    def start_event_claim(self, day, observe_return, complete):
+        return self.start((day, observe_return), complete)
+
     def select(self, label, panel=None):
         panel = self.panel if panel is None else panel
         panel.scope.set(label)
@@ -300,7 +348,8 @@ class DailyObservationPanelTests(unittest.TestCase):
         expected = (('成就总览', 'achievements'), ('漫游签证', 'support'), ('短信', 'messages'),
                     ('巡星之礼', 'odyssey'), ('当前页面', 'screen'))
         self.assertEqual(tuple(self.panel.scope['values']),
-                         (*[label for label, _ in expected], '核对所选页面', '本次成就一键领取', '本次短信回复'))
+                         (*[label for label, _ in expected], '核对所选页面', '本次成就一键领取', '本次短信回复',
+                          '本次巡星之礼领取'))
         for label, mode in expected:
             self.select(label)
             self.assertIn('切回游戏', self.panel.hint['text'])
@@ -325,6 +374,56 @@ class DailyObservationPanelTests(unittest.TestCase):
         self.assertEqual(self.ui._start_daily_observation.call_count, 5)
         self.ui._start_achievement_bulk_claim.assert_not_called()
         self.ui._start_daily_message_reply.assert_not_called()
+        self.ui._start_daily_event_claim.assert_not_called()
+        self.assertEqual(self.root.state(), 'withdrawn')
+
+    def test_event_claim_requires_day_and_footer_with_independent_return_choice(self):
+        self.assertEqual(self.panel.scope.get(), '成就总览')
+        self.select('巡星之礼')
+        self.assertFalse(self.panel.event_fields.grid_info())
+        self.assertTrue(self.panel.primary_action()[1]())
+        self.deliver(event())
+        read_only = self.panel.result_detail['text']
+
+        self.select('本次巡星之礼领取')
+        self.assertTrue(self.panel.event_fields.grid_info())
+        self.assertIn('手动打开巡星之礼活动页', self.panel.hint['text'])
+        self.assertEqual(self.panel.event_day.get(), '')
+        self.assertFalse(self.panel.event_return.get())
+        self.assertEqual(tuple(self.panel.event_day['values']), tuple(f'第 {day} 天' for day in range(3, 8)))
+        self.panel.event_return_check.invoke()
+        self.assertTrue(self.panel.event_return.get())
+        self.assertIn('手动关闭', self.panel.event_return_hint['text'])
+        self.assertFalse(self.panel.primary_action()[2])
+        self.assertFalse(self.panel.start())
+        for label, enabled in (('第 2 天', False), ('第 7 天', True), ('第 4 天', True)):
+            self.panel.event_day.set(label)
+            self.panel._event_day_selected()
+            self.assertEqual(self.panel.primary_action()[2], enabled)
+        self.ui._start_daily_event_claim.assert_not_called()
+        label, invoke, enabled = self.panel.primary_action()
+        self.assertEqual((label, enabled), ('提交本次巡星之礼领取', True))
+        self.assertTrue(invoke())
+        self.assertEqual(self.callbacks[-1][0], (4, True))
+        self.assertTrue(all(widget.instate(('disabled',)) for widget in
+                            (self.panel.scope, self.panel.event_day, self.panel.event_return_check)))
+        self.assertFalse(self.panel.start())
+
+        self.panel.destroy()
+        self.panel = self.ui.daily_observation_panel = build_daily_observation_panel(self.root, self.ui)
+        self.panel.pack(fill='x')
+        self.assertEqual(self.panel.event_day.get(), '第 4 天')
+        self.assertTrue(self.panel.event_return.get())
+        self.deliver(event_claim(status='success', state='verified', stage='done'))
+        self.deliver(event_claim())
+        self.assertEqual(self.panel.result_title['text'], '本次巡星之礼领取已核实')
+        self.assertIn('账户余额 · 待核对', self.panel.result_detail['text'])
+        self.assertEqual(self.panel.event_day.get(), '')
+        self.assertFalse(self.panel.event_return.get())
+        self.assertFalse(self.panel.primary_action()[2])
+        self.select('巡星之礼')
+        self.assertEqual(self.panel.result_detail['text'], read_only)
+        self.ui._start_daily_event_claim.assert_called_once()
         self.assertEqual(self.root.state(), 'withdrawn')
 
     def test_sms_reply_requires_both_selections_and_shared_footer(self):
@@ -483,6 +582,18 @@ class DailyObservationPanelTests(unittest.TestCase):
                         self.assertEqual(shelf.primary_action()[0], '本次成就一键领取')
                         self.assertLessEqual(panel.winfo_reqwidth(), available)
                         self.assertEqual(len(panel.result_detail['text'].splitlines()), 7)
+                        self.select('本次巡星之礼领取', panel)
+                        self.assertFalse(shelf.primary_action()[2])
+                        panel.event_day.set('第 4 天')
+                        panel._event_day_selected()
+                        panel.event_return_check.invoke()
+                        self.root.update_idletasks()
+                        self.assertLessEqual(panel.winfo_reqwidth(), available)
+                        self.assertTrue(shelf.primary_action()[2])
+                        self.assertTrue(shelf.primary_action()[1]())
+                        self.deliver(event_claim(stage='return_unverified'))
+                        self.assertIn('关闭后同卡 · 待核对', panel.result_detail['text'])
+                        self.assertFalse(shelf.primary_action()[2])
                         self.ui.settings_shell.canvas.yview_moveto.assert_called_with(0)
                         self.assertEqual(self.root.state(), 'withdrawn')
                     finally:

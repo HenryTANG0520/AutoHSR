@@ -1135,6 +1135,24 @@ class AutoHSRWindow:
 
         return self._start_scoped_runner('本次短信回复', MESSAGE_REPLY_OPERATION, factory, on_report)
 
+    def _start_daily_event_claim(self, day, observe_return, on_report) -> bool:
+        from .daily_event_claim import _supported_day
+        from .daily_observe import EVENT_CLAIM_OPERATION
+
+        if not _supported_day(day) or type(observe_return) is not bool:
+            return False
+        settings = self._read_settings(operation='check')
+        if settings is None:
+            return False
+
+        def factory(emit):
+            from .app import Runner
+
+            return Runner(settings, emit, operation=EVENT_CLAIM_OPERATION, daily_event_claim_day=day,
+                          daily_event_observe_return=observe_return, observation_wait_for_foreground=True)
+
+        return self._start_scoped_runner('本次巡星之礼领取', EVENT_CLAIM_OPERATION, factory, on_report)
+
     def _start_daily_attachment(self, operation, on_report=None) -> bool:
         item = ATTACHMENT_SECTIONS[operation]
         settings = self._read_settings(operation=operation)

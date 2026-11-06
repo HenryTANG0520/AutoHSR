@@ -1,13 +1,14 @@
 """Desktop entry and anonymous receipts for daily page observations."""
 
 from dataclasses import dataclass, field
-from tkinter import ttk
+from tkinter import BooleanVar, ttk
 
 from . import theme
+from .daily_event_claim import ACTIVITY, ITEM, _QUANTITY_BY_DAY, _supported_day
 from .daily_message_reply import REPLY_SELECTIONS
 from .daily_message_reply_flow import supported_selection
 from .daily_observe import ACHIEVEMENT_CLAIM_OPERATION as ACHIEVEMENT_CLAIM
-from .daily_observe import MESSAGE_REPLY_OPERATION
+from .daily_observe import EVENT_CLAIM_OPERATION, MESSAGE_REPLY_OPERATION
 from .desktop_selected_page_check import MODE as SELECTED_PAGES
 from .desktop_selected_page_check import PageCheckDraft, SelectedPageCheckFields, result_text as selected_page_result
 
@@ -15,6 +16,8 @@ from .desktop_selected_page_check import PageCheckDraft, SelectedPageCheckFields
 _CLAIM_LABEL = '本次成就一键领取'
 _REPLY_LABEL = '提交本次短信回复'
 _REPLY_NODES = tuple(dict.fromkeys(node for node, _ in REPLY_SELECTIONS))
+_EVENT_CLAIM_LABEL = '提交本次巡星之礼领取'
+_EVENT_DAYS = {f'第 {day} 天': day for day in _QUANTITY_BY_DAY}
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,8 @@ _SCOPES = {
                               '先在游戏打开有金色一键按钮的成就总览。开始后手动切回游戏并保持前台。'),
     MESSAGE_REPLY_OPERATION: _Scope('本次短信回复', MESSAGE_REPLY_OPERATION,
                                     '先在游戏手动选中对应会话节点并保留回复选项。提交后手动切回游戏前台。'),
+    EVENT_CLAIM_OPERATION: _Scope('本次巡星之礼领取', EVENT_CLAIM_OPERATION,
+                                  '请先在游戏中手动打开巡星之礼活动页。提交后手动切回游戏并保持前台，F10 可停止。'),
 }
 _BY_LABEL = {scope.label: mode for mode, scope in _SCOPES.items()}
 _UNKNOWN = ('结果待核对', '请核对游戏前台和所选范围。')
@@ -300,6 +305,43 @@ def message_reply_result(selection, report):
     return title, '\n'.join(lines)
 
 
+def event_claim_result(day, observe_return, report):
+    pending = '本次巡星之礼领取待核对'
+    unknown = (pending, '本次领取回执待核对。\n账户余额 · 待核对')
+    if (not _supported_day(day) or type(observe_return) is not bool or not isinstance(report, dict)
+            or report.get('operation') != EVENT_CLAIM_OPERATION or type(report.get('report_saved')) is not bool):
+        return unknown
+    value, status = report.get(EVENT_CLAIM_OPERATION), report.get('status')
+    if (not isinstance(value, dict) or type(value.get('schema')) is not int or value['schema'] != 1
+            or value.get('activity') != ACTIVITY or type(value.get('day')) is not int or value['day'] != day
+            or status not in ('success', 'partial', 'failed', 'stopped')):
+        return unknown
+    sent, popup, quantity = (value.get(key) for key in ('submission', 'popup', 'quantity'))
+    input_text = {'not_sent': '未发送', 'unconfirmed': '发送待核对', 'sent': '已发送'}
+    if sent not in ('not_sent', 'unconfirmed', 'sent'):
+        return unknown
+
+    saved = report['report_saved']
+    observed = (saved and sent == 'sent' and popup == 'observed'
+                and type(quantity) is int and quantity == _QUANTITY_BY_DAY[day])
+    returned = (observe_return and observed and status == 'success' and value.get('state') == 'verified'
+                and value.get('stage') == 'done')
+    title = pending
+    if status == 'stopped':
+        title = '本次巡星之礼领取已停止'
+    elif returned:
+        title = '本次巡星之礼领取已核实'
+    elif sent == 'not_sent':
+        title = '本次巡星之礼领取未发送'
+    popup_text = f'已核实 {ITEM} ×{quantity}' if observed else '未观察' if sent == 'not_sent' else '待核对'
+    return_text = '已核实为已领取' if returned else '待核对' if observe_return else '本次未启用核对'
+    lines = [f'最近一次 · 第 {day} 天', f'输入 · {input_text[sent]}', f'奖励弹窗 · {popup_text}',
+             f'关闭后同卡 · {return_text}', '账户余额 · 待核对']
+    if not saved:
+        lines.append('本次报告 · 未发布')
+    return title, '\n'.join(lines)
+
+
 @dataclass
 class _State:
     mode: str = 'achievements'
@@ -308,6 +350,8 @@ class _State:
     page_check: PageCheckDraft = field(default_factory=PageCheckDraft)
     reply_node: str = ''
     reply_choice: str = ''
+    event_day: int | None = None
+    event_observe_return: bool = False
 
 
 class DailyObservationPanel(ttk.Frame):
@@ -340,6 +384,21 @@ class DailyObservationPanel(ttk.Frame):
             widget.grid(row=row, column=1, sticky='w', pady=(0, round(pad / 2)))
         self.reply_node.bind('<<ComboboxSelected>>', self._reply_node_selected)
         self.reply_choice.bind('<<ComboboxSelected>>', self._reply_choice_selected)
+        self.event_fields = ttk.Frame(self, style='Card.TFrame')
+        self.event_fields.grid(row=4, column=0, columnspan=2, sticky='ew', pady=(pad, 0))
+        self.event_fields.columnconfigure(1, weight=1)
+        ttk.Label(self.event_fields, text='领取日卡', style='Card.TLabel').grid(
+            row=0, column=0, sticky='w', padx=(0, pad))
+        self.event_day = ttk.Combobox(self.event_fields, values=tuple(_EVENT_DAYS), state='readonly', width=10)
+        self.event_day.grid(row=0, column=1, sticky='w')
+        self.event_day.bind('<<ComboboxSelected>>', self._event_day_selected)
+        self.event_return = BooleanVar(self, value=False)
+        self.event_return_check = ttk.Checkbutton(
+            self.event_fields, text='同时核对关闭弹窗后的同一卡片', style='Card.TCheckbutton',
+            variable=self.event_return, command=self._event_return_selected)
+        self.event_return_check.grid(row=1, column=0, columnspan=2, sticky='w', pady=(pad, 0))
+        self.event_return_hint = theme.wrapped_label(self.event_fields, style='CardHint.TLabel')
+        self.event_return_hint.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(round(pad / 2), 0))
         ttk.Separator(self).grid(row=5, column=0, columnspan=2, sticky='ew', pady=(pad, pad))
         self.result_title = theme.wrapped_label(self, style='Card.TLabel')
         self.result_title.grid(row=6, column=0, columnspan=2, sticky='ew')
@@ -361,6 +420,8 @@ class DailyObservationPanel(ttk.Frame):
             return '核对所选页面', self.start, self._can_edit_page_check() and self.page_check.recipe is not None
         if self.model.mode == MESSAGE_REPLY_OPERATION:
             return _REPLY_LABEL, self.start, self._can_edit_reply() and self._reply_selection() is not None
+        if self.model.mode == EVENT_CLAIM_OPERATION:
+            return _EVENT_CLAIM_LABEL, self.start, self._can_edit_event() and _supported_day(self.model.event_day)
         title = _CLAIM_LABEL if self.model.mode == ACHIEVEMENT_CLAIM else '核对页面'
         return title, self.start, self._idle and self._active
 
@@ -377,9 +438,11 @@ class DailyObservationPanel(ttk.Frame):
         self.hint.configure(text=scope.hint)
         claim = model.mode == ACHIEVEMENT_CLAIM
         reply = model.mode == MESSAGE_REPLY_OPERATION
+        event = model.mode == EVENT_CLAIM_OPERATION
         self.note.configure(text={
             ACHIEVEMENT_CLAIM: '本次只提交一键领取和专属明细确认。出现星琼物品提示后，请手动关闭并留在总览。',
             MESSAGE_REPLY_OPERATION: '明确选择节点和选项后，本次只提交该回复一次。',
+            EVENT_CLAIM_OPERATION: '选择第 3 至 7 天中的一天，再点底栏提交。本次最多点击该日卡一次。',
         }.get(model.mode, '领取操作由你在游戏内完成。'))
         if model.mode == SELECTED_PAGES:
             self.page_check.grid()
@@ -391,11 +454,19 @@ class DailyObservationPanel(ttk.Frame):
             self._refresh_reply_fields()
         else:
             self.reply_fields.grid_remove()
+        if event:
+            self.event_fields.grid()
+            self._refresh_event_fields()
+        else:
+            self.event_fields.grid_remove()
         waiting = ('等待领取', '') if claim else _WAITING
         running = ('正在执行本次成就领取', _RUNNING[1]) if claim else _RUNNING
         if reply:
             waiting = ('等待提交回复' if self._reply_selection() else '等待选择节点和回复', '')
             running = ('正在执行本次短信回复', _RUNNING[1])
+        if event:
+            waiting = ('等待提交领取' if _supported_day(model.event_day) else '等待选择日卡', '')
+            running = ('正在执行本次巡星之礼领取', _RUNNING[1])
         title, detail = running if model.job is not None else model.results.get(model.mode, waiting)
         self.result_title.configure(text=title)
         self.result_detail.configure(text=detail)
@@ -441,6 +512,32 @@ class DailyObservationPanel(ttk.Frame):
         self.refresh()
         self.ui._tool_action_changed()
 
+    def _can_edit_event(self):
+        return self.model.mode == EVENT_CLAIM_OPERATION and self._idle and self._active
+
+    def _refresh_event_fields(self):
+        model, editable = self.model, self._can_edit_event()
+        self.event_day.configure(state='readonly' if editable else 'disabled')
+        self.event_day.set(f'第 {model.event_day} 天' if _supported_day(model.event_day) else '')
+        self.event_return_check.state(('!disabled',) if editable else ('disabled',))
+        self.event_return.set(model.event_observe_return)
+        self.event_return_hint.configure(text=(
+            '奖励弹窗稳定后请尽快手动关闭，并留在活动页。程序在领取前画面起算的八秒内最多复读八次。'
+            if model.event_observe_return
+            else '默认只核对奖励弹窗。启用回页核对后，请按这里的说明手动关闭。'))
+
+    def _event_day_selected(self, _event=None):
+        if self._can_edit_event():
+            self.model.event_day = _EVENT_DAYS.get(self.event_day.get())
+        self.refresh()
+        self.ui._tool_action_changed()
+
+    def _event_return_selected(self):
+        if self._can_edit_event():
+            self.model.event_observe_return = self.event_return.get()
+        self.refresh()
+        self.ui._tool_action_changed()
+
     def _page_check_changed(self, selection_changed):
         if selection_changed:
             self.model.results.pop(SELECTED_PAGES, None)
@@ -453,9 +550,13 @@ class DailyObservationPanel(ttk.Frame):
         ui, model, mode = self.ui, self.model, self.model.mode
         recipe = self.page_check.recipe if mode == SELECTED_PAGES else None
         reply = self._reply_selection() if mode == MESSAGE_REPLY_OPERATION else None
+        day = model.event_day if mode == EVENT_CLAIM_OPERATION else None
+        observe_return = model.event_observe_return
         if mode == SELECTED_PAGES and recipe is None:
             return False
         if mode == MESSAGE_REPLY_OPERATION and reply is None:
+            return False
+        if mode == EVENT_CLAIM_OPERATION and not _supported_day(day):
             return False
         ticket = model.job = object()
 
@@ -475,6 +576,10 @@ class DailyObservationPanel(ttk.Frame):
                 elif reply is not None:
                     model.reply_node = model.reply_choice = ''
                     model.results[mode] = message_reply_result(reply, report)
+                elif mode == EVENT_CLAIM_OPERATION:
+                    model.event_day = None
+                    model.event_observe_return = False
+                    model.results[mode] = event_claim_result(day, observe_return, report)
                 else:
                     model.results[mode] = observation_result(mode, report)
                 update()
@@ -484,6 +589,8 @@ class DailyObservationPanel(ttk.Frame):
                 accepted = ui._start_achievement_bulk_claim(complete)
             elif reply is not None:
                 accepted = ui._start_daily_message_reply(reply, complete)
+            elif mode == EVENT_CLAIM_OPERATION:
+                accepted = ui._start_daily_event_claim(day, observe_return, complete)
             elif recipe is not None:
                 accepted = ui._start_selected_page_check(recipe, complete)
             else:
@@ -493,6 +600,8 @@ class DailyObservationPanel(ttk.Frame):
                 model.job = None
                 if reply is not None:
                     model.results[mode] = message_reply_result(reply, None)
+                elif mode == EVENT_CLAIM_OPERATION:
+                    model.results[mode] = event_claim_result(day, observe_return, None)
                 else:
                     model.results[mode] = observation_result(mode, None) if mode == ACHIEVEMENT_CLAIM else _FAILED
             update()

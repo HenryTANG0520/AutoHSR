@@ -318,6 +318,28 @@ class Lifecycle(unittest.TestCase):
                 runner.assert_called_once_with(settings, emit, operation=MESSAGE_REPLY_OPERATION,
                                                daily_message_reply=selection, observation_wait_for_foreground=True)
 
+    def test_event_claim_routes_only_explicit_days_and_boolean_return_to_the_scoped_runner(self):
+        from autohsr.daily_observe import EVENT_CLAIM_OPERATION
+
+        settings, callback, emit = Settings(auto_launch=True), Mock(), Mock()
+        host = SimpleNamespace(_read_settings=Mock(return_value=settings), _start_scoped_runner=Mock(return_value=True))
+        for day, observe_return in ((2, False), (8, True), (True, False), (4, 1), ('4', False)):
+            with self.subTest(day=day, observe_return=observe_return):
+                self.assertFalse(AutoHSRWindow._start_daily_event_claim(host, day, observe_return, callback))
+        host._read_settings.assert_not_called()
+        host._start_scoped_runner.assert_not_called()
+        for day, observe_return in ((3, False), (7, True)):
+            with self.subTest(day=day, observe_return=observe_return), patch('autohsr.app.Runner') as runner:
+                self.assertTrue(AutoHSRWindow._start_daily_event_claim(host, day, observe_return, callback))
+                title, operation, factory, present = host._start_scoped_runner.call_args.args
+                self.assertEqual((title, operation), ('本次巡星之礼领取', EVENT_CLAIM_OPERATION))
+                self.assertIs(present, callback)
+                runner.assert_not_called()
+                self.assertIs(factory(emit), runner.return_value)
+                runner.assert_called_once_with(settings, emit, operation=EVENT_CLAIM_OPERATION,
+                                               daily_event_claim_day=day, daily_event_observe_return=observe_return,
+                                               observation_wait_for_foreground=True)
+
     def test_schedule_activation_rejects_saved_revision_source_and_budget_drift(self):
         with TemporaryDirectory(prefix='autohsr-schedule-desktop-qa-') as directory:
             root = Path(directory)
