@@ -80,8 +80,53 @@ _CHAOS_RETURN_CAPTION = '返回忘却之庭'
 _CHAOS_BLOCKERS = ('星启', '节点一', '节点二', '节点三', '节点3', '节点３', '前往节点',
                    '挑战失败', '挑战结束', '退出', '重新挑战', '角色编队', '通关详情',
                    '历史积分', '历史最高', '快速通关', '返回主界面', '返回主页')
-_OCR_CONTROLS = _APOCALYPTIC_OCR_CONTROLS | {_CHAOS_RETURN_ANCHOR: _CHAOS_RETURN_CAPTION}
+_STELLAR_RETRY = 'stellar_retry_ocr'
+_STELLAR_RETURNS = {pages.MODE: ('stellar_chaos_return_ocr', _CHAOS_RETURN_CAPTION),
+                    pages.FICTION: ('stellar_fiction_return_ocr', '返回虚构叙事'),
+                    pages.APOCALYPTIC: ('stellar_apocalyptic_return_ocr', '返回末日幻影')}
+_STELLAR_OCR_CONTROLS = {_STELLAR_RETRY: '重新挑战'} | dict(_STELLAR_RETURNS.values())
+_OCR_CONTROLS = _APOCALYPTIC_OCR_CONTROLS | {_CHAOS_RETURN_ANCHOR: _CHAOS_RETURN_CAPTION} | _STELLAR_OCR_CONTROLS
 _CONTROL_CAPTIONS = {name: caption for name, (_, caption) in _CONTROLS.items()} | _OCR_CONTROLS
+_STELLAR_NODES = ('节点一', '节点二', '节点三')
+_STELLAR_BLOCKERS = ('前往节点', '退出', '挑战失败', '角色编队', '尚未挑战', '常规模式', '通关详情',
+                     '最高积分', '历史积分', '历史最高', '快速通关', '返回主界面', '返回主页')
+_STELLAR_POINTS = re.compile(r'(?:0|[1-9][0-9]{0,5}|[1-9][0-9]{0,2},[0-9]{3})')
+_STELLAR_RETRY_BOX = (.317, .829, .427, .894)
+_STELLAR_RETURN_BOX = (.562, .829, .708, .894)
+_STELLAR_ROUNDS_LABEL = (.459, .230, .549, .269)
+
+
+@dataclass(frozen=True)
+class _StellarLayout:
+    stage: str
+    heading: str
+    badge_box: ROI
+    stage_box: ROI
+    heading_box: ROI
+    value_box: ROI
+    row_bands: tuple[tuple[float, float], ...]
+
+
+_STELLAR_LAYOUTS = {
+    pages.MODE: _StellarLayout(
+        '物竞天择其十二', '挑战结束',
+        (.443, .043, .563, .096), (.433, .094, .573, .141),
+        (.413, .126, .590, .203), (.465, .190, .547, .239),
+        ((.267, .315), (.315, .361), (.361, .409)),
+    ),
+    pages.FICTION: _StellarLayout(
+        '取象为文其四', '挑战成功',
+        (.441, .075, .563, .124), (.435, .125, .570, .165),
+        (.413, .156, .589, .224), (.423, .218, .565, .275),
+        ((.295, .344), (.344, .390), (.390, .438)),
+    ),
+    pages.APOCALYPTIC: _StellarLayout(
+        '支配遗忘难度04', '挑战结束',
+        (.441, .043, .563, .099), (.432, .099, .572, .140),
+        (.413, .128, .589, .199), (.421, .190, .557, .246),
+        ((.265, .315), (.315, .361), (.361, .409)),
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -109,12 +154,24 @@ class _MemoryRounds:
 
 
 @dataclass(frozen=True)
+class _StellarRead:
+    value: int
+    nodes: tuple[int, int, int]
+    boxes: tuple[ROI, ...]
+
+    def agrees_with(self, other):
+        return (other is not None and self.value == other.value and self.nodes == other.nodes
+                and all(pages._overlaps(a, b) for a, b in zip(self.boxes, other.boxes)))
+
+
+@dataclass(frozen=True)
 class Feedback:
     mode: str | None
     anchors: tuple[Token, ...]
     score: _ResultScore | None = None
     memory_rounds: _MemoryRounds | None = None
     memory_detail: chaos_detail.Detail | None = None
+    stellar: _StellarRead | None = None
 
 
 def _same_score_row(parts):
@@ -144,7 +201,7 @@ def _score_box(parts):
             max(t.box[2] for t in parts), max(t.box[3] for t in parts))
 
 
-def _score_value(parts, label):
+def _score_value(parts, label, *, pattern=_SCORE_NUMBER, suffix=''):
     pieces = [token.text.translate(_SCORE_WIDTH).strip(' ') for token in parts]
     text = ''.join(pieces)
     if not text.startswith(label):
@@ -152,9 +209,13 @@ def _score_value(parts, label):
     digits = text[len(label):].lstrip(' ')
     if label:
         digits = digits.removeprefix(':').lstrip(' ')
+    if suffix:
+        if not digits.endswith(suffix):
+            return None
+        digits = digits.removesuffix(suffix)
     # Label fragments may join on the same line. Two digit fragments need
     # the printed grouping comma to establish that they are one number.
-    if (not _SCORE_NUMBER.fullmatch(digits) or not all(pieces)
+    if (not pattern.fullmatch(digits) or not all(pieces)
             or any(left[-1].isdigit() and right[0].isdigit() for left, right in zip(pieces, pieces[1:]))):
         return None
     number_parts = [token for token, piece in zip(parts, pieces) if any(ch.isdigit() for ch in piece)]
@@ -195,15 +256,15 @@ def _read_fiction_score(tokens, words, minimum):
     return _ResultScore(total, first, second, boxes)
 
 
-def _apocalyptic_node(tokens, roi, label, minimum):
+def _result_node(tokens, roi, label, minimum, *, rounds=False):
     left, top, right, bottom = roi
     row = [token for token in tokens if pages._overlaps(token.box, roi)]
     name = _score_line(row, (left, top, .356, bottom), minimum)
-    value = _score_line(row, (.649, top, right, bottom), minimum)
+    value = _score_line(row, (.605 if rounds else .649, top, right, bottom), minimum)
     if (not name or not value or len(name) + len(value) != len(row)
             or not _same_score_row(row) or _score_text(name).replace(' ', '') != label):
         return None
-    number = _score_value(value, '')
+    number = _score_value(value, '消耗轮次', suffix='轮') if rounds else _score_value(value, '')
     if number is None:
         return None
     return name, value, number[0]
@@ -226,7 +287,7 @@ def _read_apocalyptic_terminal(tokens, words, minimum):
            and ('积分' in token.text or any(ch.isdecimal() for ch in token.text)) for token in tokens):
         return None
     total_read = _score_value(total, '积分')
-    first, second = (_apocalyptic_node(tokens, roi, label, minimum)
+    first, second = (_result_node(tokens, roi, label, minimum)
                      for roi, label in zip(_APOCALYPTIC_ROWS, ('节点一', '节点二')))
     if total_read is None or first is None or second is None:
         return None
@@ -247,6 +308,60 @@ def _read_apocalyptic_terminal(tokens, words, minimum):
     anchors = tuple(Token(name, min(token.score for token in parts), _score_box(parts))
                     for name, parts in zip(_APOCALYPTIC_OCR_CONTROLS, controls))
     return score, anchors
+
+
+def _read_stellar_terminal(scene, words, modes, minimum):
+    if any(blocker in word for word in words for blocker in _STELLAR_BLOCKERS):
+        return None
+    returns = [mode for mode, (_, caption) in _STELLAR_RETURNS.items() if caption in words]
+    if len(returns) != 1 or modes - set(returns):
+        return None
+    mode = returns[0]
+    layout = _STELLAR_LAYOUTS[mode]
+    return_name, return_caption = _STELLAR_RETURNS[mode]
+    rounds = mode == pages.MODE
+    tokens = scene.tokens
+    # Adjacent header rows may have slightly overlapping OCR boxes.
+    # Assign each token by its own center, then require the full local field.
+    def local(region):
+        return _score_line(tuple(token for token in tokens if token.within(region)), region, minimum)
+
+    badge, stage, heading, total, retry, leave = (local(region) for region in (
+        layout.badge_box, layout.stage_box, layout.heading_box, layout.value_box,
+        _STELLAR_RETRY_BOX, _STELLAR_RETURN_BOX,
+    ))
+    labels = ('星启模式', layout.stage, layout.heading, '重新挑战', return_caption)
+    if (tuple(normalize(_score_text(row)) for row in (badge, stage, heading, retry, leave)) != labels
+            or not _same_score_row((*retry, *leave))):
+        return None
+    rounds_label = local(_STELLAR_ROUNDS_LABEL) if rounds else ()
+    if rounds and normalize(_score_text(rounds_label)) != '剩余轮':
+        return None
+    value = _score_value(total, '' if rounds else '积分', pattern=_STELLAR_POINTS)
+    rows = tuple(_result_node(tokens, (.26, top, .748, bottom), name, minimum, rounds=rounds)
+                 for (top, bottom), name in zip(layout.row_bands, _STELLAR_NODES))
+    if value is None or any(row is None for row in rows):
+        return None
+    nodes = tuple(row[2] for row in rows)
+    expected = 45 - sum(nodes) if rounds else sum(nodes)
+    if value[0] != expected or (not rounds and value[0] == 0):
+        return None
+
+    groups = (badge, stage, heading, total, retry, leave, *((rounds_label,) if rounds else ()),
+              *(parts for name, amount, _ in rows for parts in (name, amount)))
+    remaining = [token for token in tokens if not any(token in group for group in groups)]
+    metrics = ('剩余轮', '消耗轮次') if rounds else ('积分',)
+    duplicate = (*labels, *_STELLAR_NODES, '挑战结束', '挑战成功', *metrics)
+    extra_words = tuple(normalize(token.text) for token in remaining) + pages._line_words(remaining, gap=.012)
+    if any(label in word for word in extra_words for label in duplicate):
+        return None
+    if any(token.within((.31, layout.value_box[1], .70, layout.value_box[3]))
+           and _STELLAR_POINTS.fullmatch(_score_text((token,))) for token in remaining):
+        return None
+    reading = _StellarRead(value[0], nodes, tuple(_score_box(group) for group in groups))
+    controls = tuple(Token(name, min(token.score for token in parts), _score_box(parts))
+                     for name, parts in ((_STELLAR_RETRY, retry), (return_name, leave)))
+    return Feedback(mode, controls, stellar=reading)
 
 
 def _read_chaos_terminal(scene, words, minimum):
@@ -297,6 +412,13 @@ def observe_feedback(scene, confidence=.65):
                 if any(caption in word for word in words)}
     modes = {mode for mode, title in pages._MODE_WORDS.items() if any(title in word for word in words)}
     modes.update(_CONTROLS[name][0] for name in controls)
+    if '星启模式' in words:
+        stellar = _read_stellar_terminal(clean, words, modes, max(.85, confidence))
+        if stellar is not None:
+            blockers = (_FAILURE, _NEXT_NODE, *(key for key, (kind, _) in _CONTROLS.items()
+                                                if kind != stellar.mode and key != _NEXT_NODE))
+            if not any(pages._hits(clean, name, FULL) for name in blockers):
+                return stellar
     if not controls and modes.issubset({pages.MODE}):
         terminal = _read_chaos_terminal(clean, words, max(.85, confidence))
         if terminal is not None and not any(pages._hits(clean, name, FULL) for name in (*_CONTROLS, _FAILURE)):
@@ -369,7 +491,9 @@ def _pixels(image):
 def _same_feedback(first, second):
     rounds = first.memory_rounds
     same_rounds = rounds is second.memory_rounds or (rounds is not None and rounds.agrees_with(second.memory_rounds))
-    return (first.mode == second.mode and same_rounds and len(first.anchors) == len(second.anchors)
+    stellar = first.stellar
+    same_stellar = stellar is second.stellar or (stellar is not None and stellar.agrees_with(second.stellar))
+    return (first.mode == second.mode and same_rounds and same_stellar and len(first.anchors) == len(second.anchors)
             and all(a.text == b.text and pages._overlaps(a.box, b.box)
                     for a, b in zip(first.anchors, second.anchors)))
 
@@ -397,6 +521,7 @@ class ResultReader:
         self.data = dict(schema=1, status='unknown', mode=None, level=None, half=None, node=None,
                          destination_node_in_caption=None, upper_half_score=None, lower_half_score=None,
                          node_one_score=None, node_two_score=None, total_score=None, remaining_rounds=None, stars=None,
+                         stellar_result=None,
                          settlement_status='unknown', outcome='unknown', visible_controls=[],
                          failure_marker_observed=None, completion_verified=False, rewards_verified=False,
                          evidence=[])
@@ -495,6 +620,12 @@ class ResultReader:
                     total_score=score.total if score is not None else None,
                     remaining_rounds=rounds.value if rounds is not None else None,
                     evidence=evidence)
+        stellar = frames[-1].feedback.stellar
+        if stellar is not None:
+            if mode == pages.MODE:
+                data['stellar_result'] = dict(remaining_rounds=stellar.value, node_rounds_spent=list(stellar.nodes))
+            else:
+                data['stellar_result'] = dict(total_score=stellar.value, node_scores=list(stellar.nodes))
         path = self.directory / 'challenge-result.json'
         temporary = path.with_suffix('.tmp')
         payload = json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
@@ -530,7 +661,9 @@ class ResultReader:
         try:
             with hold_read_sources([receipt_path, *(path for path, _ in proof.pngs)]):
                 self.data.update(json.loads(proof.payload))
-                if self.data['node_one_score'] is not None:
+                if self.data['stellar_result'] is not None:
+                    result.detail = '已核实星启结果页显示的三节点与汇总数值，实际通关与领奖状态待核实。'
+                elif self.data['node_one_score'] is not None:
                     result.detail = '已核实本次末日幻影两个节点得分与总分，星数与领奖状态待核实。'
                 elif self.data['total_score'] is not None:
                     result.detail = '已核实本次虚构叙事总分，星数与领奖状态待核实。'

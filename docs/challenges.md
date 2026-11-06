@@ -167,6 +167,16 @@ Windows 发布回执时持有两张 PNG 的只读句柄，发布最终报告时�
 
 可复核结果写入 `node_one_score`、`node_two_score` 和 `total_score`。完整布局通过时，回执可用这两个当前 OCR 控件作来源，按实际来源标记。公开的 17:30.650 与 17:31.000 分别读到 3,223、3,505 和 6,728，07:41.600 的节点一结束、07:45 的节点二入场及星启画面作对照。层号、星数、胜负和领奖仍待实机核对。[常规终局](https://www.bilibili.com/video/BV1VxJ266ErP/?t=1050.65) · [节点交接](https://www.bilibili.com/video/BV1VxJ266ErP/?t=461.6) · [星启终局](https://www.bilibili.com/video/BV1pq4K6xEg7/?t=900) · [脱敏字段和原裁片哈希](../autohsr/tests/fixtures/challenge_apocalyptic_result_4_6.json)
 
+### 4.6 星启终局显示
+
+星启自 4.3 加在各玩法最高难度，可用三支队伍分别挑战节点，各节点可单独重打。三月七启动器固定提交 `26bee153` 的混沌、虚构、末日入口分别传最高关 12、4、4。共享流程先以常规处理范围内的较低关，范围包含最高关时进入星启与第三队。其模式选择逻辑区分同时显示两种选项的菜单和仅显示当前模式的画面。混沌与虚构的模式入口在右上区域，末日使用居中的下方入口，末日三队角色列表采用数字节点。上游首次开场和节点间点击各有独立流程。[官方星启说明](https://www.taptap.cn/moment/809481781068696810) · [共享星启流程](https://github.com/moesnow/March7thAssistant/blob/26bee153544db44a882313f361b5ddbcefb001fa/tasks/challenge/stellar.py) · [混沌入口](https://github.com/moesnow/March7thAssistant/blob/26bee153544db44a882313f361b5ddbcefb001fa/tasks/challenge/memoryofchaos.py) · [虚构入口](https://github.com/moesnow/March7thAssistant/blob/26bee153544db44a882313f361b5ddbcefb001fa/tasks/challenge/purefiction.py) · [末日入口](https://github.com/moesnow/March7thAssistant/blob/26bee153544db44a882313f361b5ddbcefb001fa/tasks/challenge/apocalyptic.py)
+
+4.6 原片中，混沌十一层返回主页后显示十二层与星启已开启提示，随后备战列出三个节点。虚构主页的四层晶体下可见历史积分与星数。末日主页下方显示所选星启模式、三个节点和 04 的历史成绩，节点详情各有自己的节点号。这些页面各自作为结算错页对照。模式双选项菜单的当前原片、三队编队和出战流程仍待独立校准。[混沌星启提示](https://www.bilibili.com/video/BV1cg4c6zEsh/?t=205) · [混沌三节点](https://www.bilibili.com/video/BV1cg4c6zEsh/?t=214) · [虚构最高层主页](https://www.bilibili.com/video/BV1jEnE6vELU/?t=2) · [末日星启主页](https://www.bilibili.com/video/BV14QHH6YESx/?t=1098)
+
+独立结果入口在当前已校准布局同屏核对星启标识、期名关卡、结果标题、三个节点字段及底部「重新挑战」和玩法返回文案。两个相邻新帧的数值和对应位置均一致时，独立写入 `stellar_result`。混沌十二层的剩余轮为 35，三节点耗轮分别为 2、1、7，核对合计 45。虚构四层为 104,960，三项为 39,560、40,000、25,400。末日难度 04 为 10,780，三项为 3,454、3,635、3,691。末日展开的伤害和剩余行动值属于节点分项的明细。普通结果沿用各自原有字段。[混沌终局](https://www.bilibili.com/video/BV1Ht4F6MEG5/?t=1187) · [虚构终局](https://www.bilibili.com/video/BV1uBx96ME2j/?t=548) · [末日终局](https://www.bilibili.com/video/BV1u8Hp6qE8f/?t=1054.1) · [脱敏字段、坐标与哈希](../autohsr/tests/fixtures/challenge_stellar_result_4_6.json)
+
+虚构单节点重打后也可显示三项累计分。末日有先完成第三节点而出现「前往节点一」的中间页，题头同样写「挑战结束」。该中间页、主页历史、少行、冲突与模式选择均保留未核实。三项数据只记当前页面显示的挑战记录，连续三队通关、棱彩星与领奖各需独立证据。[虚构单节点重打](https://www.bilibili.com/video/BV1uBx96ME2j/?t=239) · [末日节点去向](https://www.bilibili.com/video/BV1vDHt6tEEH/?p=3&t=191.2)
+
 下一次原生画面校准需要下列证据，保留模式、层号、分项标题及原相对位置，导出时遮盖 UID 与无关个人信息。每个用于核实的状态留同账号连续两帧。
 
 | 模式 | 所需的最小页面证据 |

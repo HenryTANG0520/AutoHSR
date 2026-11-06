@@ -34,6 +34,7 @@ GEO = Geometry(4, 8, 960, 540)
 FIXTURES = Path(__file__).parent / 'fixtures' / 'du_runtime'
 APOCALYPTIC_SCORE_FIXTURE = FIXTURES.parent / 'challenge_apocalyptic_result_4_6.json'
 CHAOS_RESULT_FIXTURE = FIXTURES.parent / 'challenge_chaos_result_4_6.json'
+STELLAR_RESULT_FIXTURE = FIXTURES.parent / 'challenge_stellar_result_4_6.json'
 
 
 def token(text, xyxy, score=.99):
@@ -102,6 +103,10 @@ def apocalyptic_score_frame(name):
 
 def chaos_result_frame(name='ordinary_eleven_a'):
     return public_result_frame(CHAOS_RESULT_FIXTURE, name)
+
+
+def stellar_result_frame(name):
+    return public_result_frame(STELLAR_RESULT_FIXTURE, name)
 
 
 def chaos_detail_frame(level, star_color=(95, 190, 255)):
@@ -330,6 +335,57 @@ class ChaosDetailObservationTests(unittest.TestCase):
                 feedback = observe_feedback(chaos_detail_frame(11, color))
                 self.assertEqual(feedback.memory_rounds.value, 29)
                 self.assertIsNone(feedback.memory_detail)
+
+
+class StellarResultObservationTests(unittest.TestCase):
+    def test_three_mode_terminal_display_reads_each_separate_node(self):
+        for source, mode, value, nodes in (
+            ('chaos_final_a', pages.MODE, 35, (2, 1, 7)),
+            ('fiction_final_a', pages.FICTION, 104960, (39560, 40000, 25400)),
+            ('apocalyptic_final_a', pages.APOCALYPTIC, 10780, (3454, 3635, 3691)),
+            ('fiction_replay', pages.FICTION, 104960, (39560, 40000, 25400)),
+        ):
+            with self.subTest(source=source):
+                feedback = observe_feedback(stellar_result_frame(source))
+                self.assertEqual((feedback.mode, feedback.stellar.value, feedback.stellar.nodes), (mode, value, nodes))
+                self.assertIsNone(feedback.score)
+                self.assertIsNone(feedback.memory_rounds)
+
+    def test_actual_handoff_history_setup_and_clipped_result_are_not_terminal(self):
+        for source in ('apocalyptic_next_one', 'apocalyptic_home', 'chaos_scroll_clips_row', 'chaos_setup'):
+            with self.subTest(source=source):
+                self.assertIsNone(observe_feedback(stellar_result_frame(source)))
+
+    def test_missing_conflicting_or_malformed_fields_fail_closed(self):
+        fixture = stellar_result_frame('fiction_final_a')
+        cases = {
+            '星启模式': '常规模式',
+            '取象为文其四': '取象为文其三',
+            '节点三': '节点二',
+            '25400': '／',
+            '39560': '39561',
+            '积分104960': '积分10，49，60',
+            '返回虚构叙事': '前往节点三',
+        }
+        for old, wrong in cases.items():
+            with self.subTest(wrong=wrong):
+                altered = [replace(t, text=wrong) if t.text == old else t for t in fixture.tokens]
+                self.assertIsNone(observe_feedback(replace(fixture, tokens=altered)))
+        for token_ in (token('节点三', (260, 235, 310, 252)), token('常规模式', (711, 52, 785, 68)),
+                       token('积分100000', (570, 122, 645, 140)), token('前往节点一', (590, 456, 650, 474))):
+            with self.subTest(extra=token_.text):
+                self.assertIsNone(observe_feedback(replace(fixture, tokens=[*fixture.tokens, token_])))
+        foreign = frame((NEXT[0], None, *NEXT[2:]), extra=fixture.tokens[1:])
+        self.assertIsNone(observe_feedback(foreign))
+        formatted = [replace(t, text='积分：１０４，９６０') if t.text == '积分104960' else t for t in fixture.tokens]
+        self.assertEqual(observe_feedback(replace(fixture, tokens=formatted)).stellar.value, 104960)
+
+    def test_node_costs_are_not_rounds_left_or_unlabelled_numbers(self):
+        fixture = stellar_result_frame('chaos_final_a')
+        for text in ('7轮', '剩余轮次：7轮', '消耗轮次：7', '消耗轮次：8轮'):
+            with self.subTest(text=text):
+                altered = [replace(t, text=text) if t.text == '消耗轮次：7轮' else t for t in fixture.tokens]
+                self.assertIsNone(observe_feedback(replace(fixture, tokens=altered)))
 
 
 class ResultObservationTests(unittest.TestCase):
@@ -587,6 +643,42 @@ class ResultEntryTests(unittest.TestCase):
                 self.assertIsNone(data['level'])
                 self.assertIsNone(data['stars'])
                 self.assertTrue(all('chaos_fields' not in row for row in data['evidence']))
+
+    def test_cli_stellar_keeps_displayed_metrics_separate_from_ordinary_fields_and_completion(self):
+        for variant, expected in (
+            ('chaos', dict(remaining_rounds=35, node_rounds_spent=[2, 1, 7])),
+            ('fiction', dict(total_score=104960, node_scores=[39560, 40000, 25400])),
+            ('apocalyptic', dict(total_score=10780, node_scores=[3454, 3635, 3691])),
+        ):
+            with self.subTest(variant=variant):
+                report = self.run_cli([stellar_result_frame(f'{variant}_final_{part}') for part in ('a', 'b')])
+                data = report['challenge_result']
+                self.assertEqual((report['status'], data['status']), ('partial', 'feedback_verified'))
+                self.assertEqual(data['stellar_result'], expected)
+                for name in ('level', 'stars', 'remaining_rounds', 'node_one_score', 'node_two_score', 'total_score',
+                             'destination_node_in_caption', 'node'):
+                    self.assertIsNone(data[name])
+                self.assertFalse(data['completion_verified'])
+                self.assertFalse(data['rewards_verified'])
+                self.assertEqual((data['outcome'], data['settlement_status']), ('unknown', 'unknown'))
+                directory = Path(report['run_dir'])
+                self.assertEqual(json.loads((directory / 'challenge-result.json').read_bytes()), data)
+                self.assertEqual([row['capture_sequence'] for row in data['evidence']], [1, 2])
+
+    def test_cli_stellar_disagreed_components_break_pairing_even_with_same_total(self):
+        first = stellar_result_frame('fiction_final_a')
+        second = stellar_result_frame('fiction_final_b')
+        changed = replace(second, tokens=[replace(t, text={'39560': '39561', '25400': '25399'}.get(t.text, t.text))
+                                         for t in second.tokens])
+        report = self.run_cli([first, changed])
+        self.assertEqual(report['challenge_result']['status'], 'unknown')
+        self.assertIsNone(report['challenge_result']['stellar_result'])
+        for gap in (changed, EmptyCapture(), stellar_result_frame('apocalyptic_next_one')):
+            with self.subTest(gap=type(gap).__name__):
+                report = self.run_cli([first, gap, first, second])
+                data = report['challenge_result']
+                self.assertEqual(data['stellar_result']['total_score'], 104960)
+                self.assertEqual([row['capture_sequence'] for row in data['evidence']], [3, 4])
 
     def test_cli_apocalyptic_score_requires_same_parts_in_consecutive_complete_frames(self):
         good = apocalyptic_score_frame('terminal_first')
