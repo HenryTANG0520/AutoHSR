@@ -12,7 +12,7 @@ from .build_target_read import _has_split_label
 from .config import RESOURCE_ROOT
 from .currency_wars_identity import AccountNotObserved, UID_COUNTEREVIDENCE, checked_account_key
 from .currency_wars_prepare import trusted
-from .daily_event_navigation import odyssey_list_entry
+from .daily_event_navigation import odyssey_list_entry, reward_guide_entry
 from .daily_event_observe import read_event_installation
 from .daily_event_pages import _VERSION, phone_journey_event_entry, read_gift_of_odyssey
 from .daily_reward_observe import phone_achievement_target
@@ -21,7 +21,7 @@ from .free_rewards import battlepass_modal, battlepass_page, mail_entry, mailbox
 from .models import FULL, AutomationError, EmptyCapture, InputInterrupted, Stopped, TaskResult, Token, normalize
 from .screenshot_tool import MAX_PIXELS
 from .storage import hold_read_sources
-from .task_workflow import WORKFLOW_PAGES
+from .task_workflow import ACTIVITY_WORKFLOW_PAGES, WORKFLOW_PAGES
 from .team_calibration_pages import calibration_overlay
 from .vision import helper_overlay
 from .workflows import DailyWorkflow, TITLE
@@ -159,6 +159,10 @@ class WorkflowNavigation:
         self._event_installation = None
         self.started = False
 
+    @property
+    def installation_source(self):
+        return self._event_installation.source if self._event_installation is not None else None
+
     def _control(self):
         c = self.c
         if self.window.emergency_pressed() or c.runner.stop_requested:
@@ -221,9 +225,15 @@ class WorkflowNavigation:
         if page is not None or self._event_installation is None:
             return page
         options = dict(client_version=self._event_installation.version, confidence=self.confidence)
+        if self.target == 'reward_guide':
+            from .daily_reward_guide_pages import reward_guide_page
+
+            if reward_guide_page(scene, **options):
+                return 'reward_guide'
         if read_gift_of_odyssey(scene, **options) is not None:
             return 'odyssey'
-        if odyssey_list_entry(scene, **options) is not None:
+        list_entry = reward_guide_entry if self.target == 'reward_guide' else odyssey_list_entry
+        if list_entry(scene, **options) is not None:
             return 'activity_list'
         return None
 
@@ -231,11 +241,17 @@ class WorkflowNavigation:
         page = frame.page
         if page == 'world':
             return _Action('open_phone', ('phone',))
-        if self._event_installation is not None and page in ('phone', 'activity_list'):
+        if self._event_installation is not None and page in ('phone', 'activity_list', 'odyssey'):
             options = dict(client_version=self._event_installation.version, confidence=self.confidence)
             if page == 'phone':
                 token = phone_journey_event_entry(frame.scene, **options)
-                return _Action('open_journey_events', ('activity_list', 'odyssey'), token) if token else None
+                destinations = ('activity_list', 'odyssey')
+                if self.target == 'reward_guide':
+                    destinations += ('reward_guide',)
+                return _Action('open_journey_events', destinations, token) if token else None
+            if self.target == 'reward_guide':
+                token = reward_guide_entry(frame.scene, **options)
+                return _Action('open_reward_guide', ('reward_guide',), token) if token else None
             token = odyssey_list_entry(frame.scene, **options)
             return _Action('open_odyssey', ('odyssey',), token) if token else None
         if page == 'phone':
@@ -245,7 +261,7 @@ class WorkflowNavigation:
         if page in _GUIDE_PAGES and self.target in _TAB:
             token = self._guide_control(frame.scene, self.target)
             return _Action('open_' + self.target, (self.target,), token) if token else None
-        return _Action('return_to_hub', ('world', 'phone')) if page in TARGETS else None
+        return _Action('return_to_hub', ('world', 'phone')) if page in TARGETS and page not in ACTIVITY_WORKFLOW_PAGES else None
 
     def _satisfies(self, page):
         return page == self.target or self.target == 'guide' and page in _GUIDE_PAGES
@@ -374,8 +390,8 @@ class WorkflowNavigation:
             self.record['actions'].append(row)
             self.c.last_scene, self.c._scroll_anchor = None, None
 
-        installation = self._event_installation
-        source = hold_read_sources((installation.source,)) if installation is not None else nullcontext()
+        installation = self.installation_source
+        source = hold_read_sources((installation,)) if installation is not None else nullcontext()
         with _seal(pair), source:
             self._verify(pair)
             if planned.token is None:
@@ -407,10 +423,10 @@ class WorkflowNavigation:
         if self.geometry is None or not 0 < self.geometry.width * self.geometry.height <= MAX_PIXELS:
             raise AutomationError('日常页面导航缺少可核实的游戏客户区。')
         self._guard()
-        if self.target == 'odyssey':
+        if self.target in ACTIVITY_WORKFLOW_PAGES:
             self._event_installation = read_event_installation(self.window)
             if self._event_installation.version != _VERSION:
-                raise AutomationError('当前客户端尚未校准巡星之礼导航。')
+                raise AutomationError('当前客户端尚未校准所选活动页面导航。')
             self.record['client_version'] = self._event_installation.version
         pair = self._pair()
         while not self._satisfies(pair[-1].page):

@@ -30,6 +30,7 @@ from autohsr.vision import Vision
 ACCOUNT = Token('UID:135792468', .99, (.018, .957, .106, .985))
 OTHER = replace(ACCOUNT, text='UID:246813579')
 STATE_FIXTURES = Path(__file__).parent / 'fixtures/daily_message_state'
+BRIGHT_FIXTURES = STATE_FIXTURES.with_name('daily_message_bright')
 
 
 def phone(*extras):
@@ -56,11 +57,15 @@ def panel(*tokens, header=True, content=True):
     return Scene(list(tokens), image, captured_at=time.monotonic())
 
 
-def state_frame(name, *tokens):
-    data = (STATE_FIXTURES / name).read_bytes()
+def state_frame(name, *tokens, directory=STATE_FIXTURES):
+    data = (directory / name).read_bytes()
     reduced = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
     image = cv2.resize(reduced, (1920, 1080), interpolation=cv2.INTER_NEAREST)
     return Scene(list(tokens), image, captured_at=time.monotonic())
+
+
+def bright_sources():
+    return json.loads((BRIGHT_FIXTURES / 'manifest.json').read_text(encoding='utf8'))['sources']
 
 
 class MessagePageTests(unittest.TestCase):
@@ -106,6 +111,25 @@ class MessagePageTests(unittest.TestCase):
                 frame = _message_panel_frame(state_frame(name))
                 state = None if frame is None else read_panel_state(frame)
                 self.assertEqual(state, case['expected'])
+
+    def test_real_bright_panel_fixtures_reject_world_and_transition(self):
+        for source in bright_sources():
+            for case in source['cases']:
+                name = case['file']
+                with self.subTest(source=source['bvid'], phase=case['phase'], time=case['time_seconds']):
+                    self.assertEqual(sha256((BRIGHT_FIXTURES / name).read_bytes()).hexdigest(), case['sha256'])
+                    frame = _message_panel_frame(state_frame(name, directory=BRIGHT_FIXTURES))
+                    state = None if frame is None else read_panel_state(frame)
+                    self.assertEqual(state, case['expected'])
+
+    def test_bright_panel_requires_an_edge_across_more_than_one_band(self):
+        stable = next(case for case in bright_sources()[0]['cases'] if case['phase'] == 'panel')
+        for bottom, expected in ((448, True), (572, False)):
+            with self.subTest(bottom=bottom):
+                scene = state_frame(stable['file'], directory=BRIGHT_FIXTURES)
+                # Interrupt the edge while preserving the title and all four page patches.
+                scene.image[352:bottom, 736:780] = 90
+                self.assertEqual(message_panel(scene), expected)
 
 
 class MessageObserverTests(unittest.TestCase):
@@ -331,6 +355,16 @@ class MessageCliTests(unittest.TestCase):
                 self.assertEqual(report[OPERATION]['captures'], 2)
                 self.assertTrue(report[OPERATION]['account_verified'])
                 self.assertEqual(report[OPERATION]['reward_status'], 'unknown')
+
+    def test_cli_waits_for_a_stable_bright_panel_pair(self):
+        for source in bright_sources():
+            with self.subTest(source=source['bvid']):
+                frames = [state_frame(case['file'], ACCOUNT, directory=BRIGHT_FIXTURES) for case in source['cases']]
+                result = self.run_cli(frames)[OPERATION]
+                self.assertEqual(result, dict(schema=1, phone_entry='unknown', message_page='observed',
+                                              reward_status='unknown', input_sent=False,
+                                              account_verified=True, captures=5,
+                                              **(unknown_panel_state() | {'unread_status': 'badge_visible'})))
 
     def test_cli_publishes_agreed_reply_fields_and_revokes_them_on_late_stop(self):
         def frames():

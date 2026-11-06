@@ -7,7 +7,7 @@ import re
 
 from .config import ROOT
 from .storage import hold_read_sources
-from .task_workflow import PAGE_TASK, WORKFLOW_PAGES, Recipe, WorkflowError, _pairs, compile_recipe
+from .task_workflow import ACTIVITY_WORKFLOW_PAGES, PAGE_TASK, WORKFLOW_PAGES, Recipe, WorkflowError, _pairs, compile_recipe
 from .task_workflow_run import _bytes as _workflow_bytes
 from .workflow_navigation import _GUIDE_PAGES, _MAX_ACTIONS
 
@@ -26,8 +26,9 @@ def _document(targets):
             or any(type(target) is not str or target not in WORKFLOW_PAGES for target in targets)
             or len(set(targets)) != len(targets)):
         raise WorkflowError('请选择至少一个支持的日常页面，每页只选一次。')
-    if 'odyssey' in targets and targets[-1] != 'odyssey':
-        raise WorkflowError('巡星之礼只校准了进入路线，请将它放在最后。')
+    activity = tuple(page for page in ACTIVITY_WORKFLOW_PAGES if page in targets)
+    if activity and tuple(targets[-len(activity):]) != activity:
+        raise WorkflowError('活动页面须放在末尾，并按巡星之礼、奖励指南的顺序排列。')
     return dict(version=1, name=NAME, steps=[
         dict(id='page_' + target, type='task', task=PAGE_TASK, params=dict(target=target), on_failure='stop')
         for target in targets

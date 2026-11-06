@@ -13,6 +13,25 @@
 | `activity-list-scrolled.png` | 两块保留区域 | `b3ae44449fab612b2a77d4416f597b246c2f003f100bed47ee319d4d772c194c` |
 | `claim-popup.png` | 两块保留区域 | `a0ada14aeaefc54e866172d87993ae8f84d27eece99f0edff12461c7d3c11970` |
 
+## 2026-11-07 奖励指南旅程热点
+
+素材取自星阳希公开的国服简中 4.6 活动实录 P5。使用上节同一 640×360、约 30 fps 播放源，视频 SHA-256 为 `8b81a95fa3f001175c3ff7d6193016824810c41ae9f058499d81ade79d3fb480`。两个模板从 233.8 秒的原解码 BGR 帧直接裁剪并编码 PNG，该帧 SHA-256 为 `fa2659fd95539d063169da8cc4c7eafa533a7bcdc69aef6df3b4ef8aa317287b`。裁剪为左闭右开像素框。游戏美术权利归 HoYoverse 及相应权利人，原视频归上传者及相应权利人。[P5 原片](https://www.bilibili.com/video/BV1JZaV6XEH3/?p=5)
+
+| 模板 | 裁剪 `x1,y1,x2,y2` | PNG SHA-256 |
+| --- | --- | --- |
+| `reward_guide_title.png` | `12,12,70,31` | `c4907e1520335449211026214fabde2e53a917e692ec8bf3cb52b3d962f35b94` |
+| `reward_guide_highlights_banner.png` | `174,61,274,78` | `7062c6a9c8e58ec379cfdfcf47933a7934a66af35fd4bc60a6650d0d5562a890` |
+
+回放只保留左侧标题与页签 `[4,6,105,109]`、青色标题条 `[121,44,452,94]` 和浅色列表中段 `[355,110,455,320]`，其余像素清零。裁片不含 UID、账号信息、奖励数字或活动条目文字。原帧索引按视频秒数乘 30 取整。234.8 秒的退场帧仍可由 RapidOCR 读出「旅程热点」，亮色布局已消失。[回放文件](../autohsr/tests/fixtures/daily_reward_guide) · [识别回归](../autohsr/tests/test_daily_reward_guide_pages.py)
+
+| 回放 | 秒数／帧索引 | 原解码 BGR SHA-256 | PNG SHA-256 |
+| --- | --- | --- | --- |
+| `highlights-2328.png` | 232.8／6984 | `6151b79b13e81da8fd0998dd91a7cf4460e89741fc0e1cb3e06f0b83ba96aa7f` | `86379d16bab052c8c2dc662a8f96e0a62cfa42f5db8793732c6f7dee96b906a0` |
+| `highlights-2346.png` | 234.6／7038 | `f1c088ed4fedf40ee39464bac71ef9c7cf5c5d2db0c3aa6e665dcd9afda92604` | `8b61ef13f4759fc037aa5ece39e490358d6d516654aa9f67cff8453f951b6d28` |
+| `fade-2348.png` | 234.8／7044 | `5b0f276b12191e7bb6b426f178b47b9311076fcb7f4dfce5ffce5f7356331c43` | `6314a3e5ad4023f99e51c7620a0d4cc40419348e3b20131270f1e558baa129b4` |
+
+P5 的 234.6 秒鼠标位于首行「前往」按钮，235.2 秒开始显示活动列表，236.0 秒可见选中的星际幻宠乐园。这段录像只提供页面去向旁证。固定上游的页面映射另将奖励指南的 Esc 去向列为活动列表，仍待本机原生回退核验。[P5 原片](https://www.bilibili.com/video/BV1JZaV6XEH3/?p=5&t=234) · [三月七页面映射](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json)
+
 ## 2026-11-07 漫游签证选中页签
 
 三张国服 4.6 时期玩家公开静态截图用于核对收集展示、角色展示和战绩展示。夹具保留最小页签裁片与白名单界面文字、坐标及分数。原图、UID 和账号信息未入库。游戏界面权利归 HoYoverse 及相应权利人，原截图归上传者及相应权利人。[公开原帖](https://www.miyoushe.com/sr/article/79174169) · [来源、裁剪与哈希](../autohsr/tests/fixtures/daily_visa/sources.json)
@@ -844,6 +863,8 @@ luminance summaries and anonymous header ink counts. Game artwork remains
 with HoYoverse and the footage with its respective rights holders.
 [Source video](https://www.bilibili.com/video/BV1Pj421X7r1/)
 · [Fixture manifest](../autohsr/tests/fixtures/daily_message_state/manifest.json)
+
+亮背景双栏回归另从两段 4.6 时期公开 PC 录像各取五帧。夹具缩至 480×270，仅保留静态标题和 HUD 图块、匿名亮度统计与图形特征。来源、时间、转换范围、原解码帧和脱敏 PNG 的 SHA-256 见清单。视频及游戏界面归原作者、HoYoverse 和相应权利人。[亮背景夹具清单](../autohsr/tests/fixtures/daily_message_bright/manifest.json)
 
 `upstream/March7thAssistant/team-calibration/configure_team.png` preserves a
 single original crop from moesnow and contributors at

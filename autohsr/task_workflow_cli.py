@@ -13,7 +13,7 @@ def add_arguments(mode, parser):
     mode.add_argument('--task-workflow-import', type=Path, help='把任务流素材ZIP校验后解包到新目录')
     mode.add_argument('--task-workflow-convert-yaml', type=Path, help='把支持的三月七 YAML 步骤转换成新的任务流 JSON')
     mode.add_argument('--screen-check-plan', nargs='+', choices=WORKFLOW_PAGES,
-                      help='离线预览所选页面的顺序和预算，巡星之礼须放最后')
+                      help='离线预览所选页面的顺序和预算，活动页面须放末尾')
     mode.add_argument('--screen-check-pages', nargs='+', choices=WORKFLOW_PAGES,
                       help='从已登录前台按指定顺序导航核对，结果待核对时停止')
     parser.add_argument('--workflow-bundle-destination', type=Path, help='导出的新ZIP路径或导入的新目录')

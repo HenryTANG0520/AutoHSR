@@ -27,7 +27,7 @@ _SCOPES = {
     'screen': _Scope('当前页面', 'screen_test',
                      '先在游戏中打开日常页面。开始核对后手动切回游戏，让已登录的窗口保持前台。只读当前页面。'),
     SELECTED_PAGES: _Scope('核对所选页面', 'task_workflow',
-                           '按勾选顺序切换并核对，巡星之礼排在最后。开始后请手动切回已登录的游戏前台。'),
+                           '按预览顺序切换并核对，活动页面排在末尾。开始后请手动切回已登录的游戏前台。'),
 }
 _BY_LABEL = {scope.label: mode for mode, scope in _SCOPES.items()}
 _UNKNOWN = ('结果待核对', '请核对游戏前台和所选范围。')

@@ -33,6 +33,8 @@ _RECEIPT_CATEGORIES = (.05, .16, .30, .79)
 _RECEIPT_ROWS = (.13, .18, .38, .78)
 _RECEIPT_TOTAL = (.37, .79, .56, .88)
 _RECEIPT_CONFIRM = (.40, .89, .62, .97)
+_RECEIPT_RIM = ((0, -.023), (-.013, 0), (.013, 0), (0, .023))
+_RECEIPT_TICK = ((-.006, -.001), (-.001, .009), (.007, -.009))
 
 
 @dataclass(frozen=True)
@@ -120,24 +122,64 @@ def observe_achievement_list(scene, confidence=.85) -> AchievementListObservatio
     return AchievementListObservation(heading.text, claim)
 
 
-def _receipt_row_visible(scene, minimum, heading_bottom):
+def _receipt_check_visible(image, center_y):
+    height, width = image.shape[:2]
+    center_x = .872
+
+    def dark_fraction(dx, dy):
+        x, y = center_x + dx, center_y + dy
+        patch = image[round((y - .006) * height):round((y + .006) * height),
+                      round((x - .0035) * width):round((x + .0035) * width)]
+        return np.mean(np.mean(patch, axis=2) < 173)
+
+    # Four parts of the outline, both arms of the tick and its vertex, and the light interior.
+    return (all(dark_fraction(x, y) >= .12 for x, y in _RECEIPT_RIM)
+            and all(dark_fraction(x, y) >= .25 for x, y in _RECEIPT_TICK)
+            and dark_fraction(-.004, -.012) <= .08 and dark_fraction(.006, .013) <= .30)
+
+
+def _scrolled_receipt_rows(image, title_rows):
+    height, width = image.shape[:2]
+    if height < 540 or width < 960 or abs(width / height - 16 / 9) > .02 or len(title_rows) < 2:
+        return False
+    # Contiguous light bands are physical rows. Two OCR tokens in one band count once.
+    center = image[:, round(.55 * width):round(.74 * width)]
+    light = np.mean(np.all(center >= 195, axis=2), axis=1) >= .75
+    edges = np.flatnonzero(np.diff(np.r_[False, light, False])) / height
+    matched = 0
+    for start, end in zip(edges[::2], edges[1::2]):
+        if (.16 <= start < end <= .79 and .10 <= end - start <= .16
+                and any(start < y - .012 < y + .012 < end for y in title_rows)
+                and _receipt_check_visible(image, (start + end) / 2)):
+            matched += 1
+            if matched == 2:
+                return True
+    return False
+
+
+def _receipt_row_visible(scene, minimum, heading_bottom=None):
     image = scene.image
     if not isinstance(image, np.ndarray) or image.dtype != np.uint8 or image.ndim != 3 or image.shape[2] != 3:
         return False
     height, width = image.shape[:2]
+    title_rows = []
     for token in scene.tokens:
-        if token.score < minimum or token.box[1] <= heading_bottom or not _inside(token.box, _RECEIPT_ROWS):
+        if (token.score < minimum or not _inside(token.box, _RECEIPT_ROWS)
+                or heading_bottom is not None and token.box[1] <= heading_bottom):
             continue
         title = normalize(token.text)
         if (len(title) < 2 or title in ACHIEVEMENT_CATEGORIES or title in _BLOCKERS or title in _ROW_STATES
                 or not any(character.isalpha() for character in title)):
             continue
         y = token.center[1]
+        if heading_bottom is None:
+            title_rows.append(y)
+            continue
         # The independent detail row has a light band continuing across the panel center.
         band = image[round((y - .012) * height):round((y + .012) * height), round(.55 * width):round(.74 * width)]
         if band.size and np.mean(np.all(band >= 195, axis=2)) >= .75:
             return True
-    return False
+    return heading_bottom is None and _scrolled_receipt_rows(image, title_rows)
 
 
 def achievement_bulk_receipt_visible(scene, confidence=.85) -> bool:
@@ -153,6 +195,8 @@ def achievement_bulk_receipt_visible(scene, confidence=.85) -> bool:
     if confirm is None or normalize(confirm.text) != '确认':
         return False
     headings = sorted(_labels(visible, ACHIEVEMENT_CATEGORIES, _RECEIPT_CATEGORIES), key=lambda token: token.center[1])
+    if not headings:
+        return _receipt_row_visible(visible, minimum)
     verified = [token for token in headings if token.score >= minimum and _inside(token.box, _RECEIPT_CATEGORIES)]
     if not verified or any(right.box[1] < left.box[3] for left, right in zip(headings, headings[1:])):
         return False

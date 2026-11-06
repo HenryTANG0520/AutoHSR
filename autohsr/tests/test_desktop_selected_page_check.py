@@ -80,11 +80,11 @@ class DesktopSelectedPageCheckTests(TestCase):
         self.assertTrue(self.panel.page_check.preview_button.instate(('disabled',)))
         self.assertFalse(self.panel.primary_action()[2])
         self.assertFalse(self.panel.start())
-        self.select_pages('odyssey', 'mail', 'phone')
+        self.select_pages('reward_guide', 'odyssey', 'mail', 'phone')
         self.assertFalse(self.panel.start())
         recipe = self.preview()
-        self.assertEqual(targets(recipe), ('mail', 'phone', 'odyssey'))
-        self.assertEqual(self.panel.page_check.order['text'], '实际核对顺序 · 邮件 → 手机 → 巡星之礼')
+        self.assertEqual(targets(recipe), ('mail', 'phone', 'odyssey', 'reward_guide'))
+        self.assertEqual(self.panel.page_check.order['text'], '实际核对顺序 · 邮件 → 手机 → 巡星之礼 → 奖励指南')
         self.assertTrue(self.panel.primary_action()[2])
         self.ui._start_selected_page_check.assert_not_called()
         self.ui._start_daily_observation.assert_not_called()
@@ -92,7 +92,7 @@ class DesktopSelectedPageCheckTests(TestCase):
         self.assertIsNone(self.panel.page_check.recipe)
         self.assertFalse(self.panel.primary_action()[2])
         self.assertFalse(self.panel.start())
-        self.assertEqual(targets(self.preview()), ('phone', 'odyssey'))
+        self.assertEqual(targets(self.preview()), ('phone', 'odyssey', 'reward_guide'))
 
     def test_running_disables_edits_and_only_projects_anonymous_pages(self):
         self.select_pages('phone', 'mail', 'odyssey')

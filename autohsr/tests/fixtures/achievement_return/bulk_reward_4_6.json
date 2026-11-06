@@ -1,0 +1,106 @@
+{
+  "format_version": 1,
+  "version_series": "4.6",
+  "platform": "PC",
+  "locale": "zh_CN",
+  "quality": 64,
+  "frame_size": [1280, 720],
+  "frame_index_origin": 0,
+  "cases": [
+    {
+      "id": "BV1sta26pEP9-p2",
+      "source": {
+        "bvid": "BV1sta26pEP9",
+        "part": 2,
+        "cid": 42392817214,
+        "author": "梅绅士HT",
+        "published": "2026-10-02",
+        "media_size": 230632649,
+        "media_sha256": "ae948208de5d2066f16f406507be2c20d93520269f61dfc94417ced13d90c662"
+      },
+      "redaction_rects_px": [[0, 684, 282, 720], [998, 684, 1280, 720]],
+      "same_visible_account_frames_checked": 7,
+      "expected": {
+        "achievement_total": {"before": 911, "after": 911},
+        "bulk_control": {"before": "gold_enabled", "after": "absent"},
+        "category_badge": [{"category": "与你同行的回忆", "before": "red_exclamation", "after": "absent"}],
+        "list_category_before": "与你同行的回忆",
+        "list_progress_before": [218, 440],
+        "receipt_total": 20,
+        "receipt_rows": [
+          {"category": "与你同行的回忆", "name": "东山再起", "amount": 5, "checked": true},
+          {"category": "与你同行的回忆", "name": "超大杯", "amount": 5, "checked": true},
+          {"category": "与你同行的回忆", "name": "星辰的鼓动即是爱", "amount": 5, "checked": true},
+          {"category": "与你同行的回忆", "name": "口袋里的战士", "amount": 5, "checked": true}
+        ],
+        "confirm_visible": true,
+        "reward_item": "星琼",
+        "reward_quantity": 20,
+        "dismiss_visible": true,
+        "stellar_jade_balance": {"before": 4508, "after": 4528, "delta": 20},
+        "row_after": "unknown"
+      },
+      "frames": [
+        {"file": "balance-before-a.png", "index": 70725, "seconds": 2357.500, "page": "warp_before", "sha256": "bb482484f25c75be891ea42c3eebb3e4be9f72d484ed690284434bcd6e3229af"},
+        {"file": "balance-before-b.png", "index": 70740, "seconds": 2358.000, "page": "warp_before", "sha256": "ef48199cf63dc0fdf669bdbb8ab8df779711dab2a7d15c4df24d985622092492"},
+        {"file": "list-before.png", "index": 70935, "seconds": 2364.500, "page": "category_before", "sha256": "8dd423bfc6e1972089a1327dd3fbb719a6e4ddb5fb4f7eb7b163920eb18b551c"},
+        {"file": "overview-before-a.png", "index": 71004, "seconds": 2366.800, "page": "overview_before", "sha256": "0dd4975b83133202db35b2e8039292f655296b277cf316130753b3b7b1b02add"},
+        {"file": "overview-before-b.png", "index": 71013, "seconds": 2367.100, "page": "overview_before", "sha256": "3811d6f084fb289c242823a3ff9f3f4e90a8b3968f04fabe16d1795c0302c892"},
+        {"file": "receipt-a.png", "index": 71100, "seconds": 2370.000, "page": "achievement_receipt", "f4d1aac_receipt_visible": true, "sha256": "f24609e018e3651d78e7efd64208186e1d5d26cb702461ed35aca21fddb7545d"},
+        {"file": "receipt-b.png", "index": 71235, "seconds": 2374.500, "page": "achievement_receipt", "category_header_visible": false, "f4d1aac_receipt_visible": false, "scrolled_receipt_visible": true, "sha256": "141701a7af799234d2b50feff29599c0673daf7e0062c26ddf52893ae13bed8d"},
+        {"file": "reward-overlay-a.png", "index": 71262, "seconds": 2375.400, "page": "items_overlay", "sha256": "96b40d275aa35f2a9695ee3c28d55bab06f4e3e12e4b95f9786c848892917017"},
+        {"file": "reward-overlay-b.png", "index": 71268, "seconds": 2375.600, "page": "items_overlay", "overview_visible_under_overlay": true, "sha256": "16c6bce5de5ecfa30b2a901f516b1a79ac6bd35d610a0fdf6168ca62d8e6fe3a"},
+        {"file": "overview-after-a.png", "index": 71278, "seconds": 2375.933, "page": "overview_after", "sha256": "0b6348c304785dbff043c8ba8d3cf3730722ac32c0188fcbe88abb48d6a7b31a"},
+        {"file": "overview-after-b.png", "index": 71283, "seconds": 2376.100, "page": "overview_after", "sha256": "32b88261a3fad5de11d53aa4090f3f7982eb6546a2d24bd9cc92dcbc575bdfc2"},
+        {"file": "balance-after-a.png", "index": 71415, "seconds": 2380.500, "page": "warp_after", "sha256": "add8dcca0a8d0ad45b3b3b385073e3056a000e1fa8eb4f26329e30379c619dbd"},
+        {"file": "balance-after-b.png", "index": 71430, "seconds": 2381.000, "page": "warp_after", "sha256": "84c3fd70c1611b01aa34157b9a70ad58118a611853e60251eed1789b0752956b"}
+      ]
+    },
+    {
+      "id": "BV1Eraq6QERP-p6",
+      "source": {
+        "bvid": "BV1Eraq6QERP",
+        "part": 6,
+        "cid": 42269936053,
+        "author": "星阳希",
+        "published": "2026-09-28",
+        "media_size": 257668953,
+        "media_ranges": [
+          {"bytes_inclusive": [0, 4325375], "sha256": "737c1895f32187b44e66e615f3a57c302e431232e01410cab2792e2451ed5e9d"},
+          {"bytes_inclusive": [255590400, 257163263], "sha256": "205bf5d731a6bfa7c3653a15015a71b98f045d28c1b0dbf61ca225b7cca009a9"}
+        ]
+      },
+      "redaction_rects_px": [[0, 686, 220, 720], [1050, 686, 1280, 720]],
+      "same_visible_account_frames_checked": 4,
+      "expected": {
+        "achievement_total": {"before": 1688, "after": 1688},
+        "bulk_control": {"before": "gold_enabled", "after": "absent"},
+        "category_badge": [
+          {"category": "通往群星的轨道", "before": "red_exclamation", "after": "absent"},
+          {"category": "战意奔涌", "before": "red_exclamation", "after": "absent"}
+        ],
+        "receipt_total": 50,
+        "receipt_rows": [
+          {"category": "通往群星的轨道", "name": "不可饶恕的生命", "amount": 10, "checked": true},
+          {"category": "通往群星的轨道", "name": "祝你在地狱一切安好", "amount": 10, "checked": true},
+          {"category": "通往群星的轨道", "name": "重返乐园1999", "amount": 10, "checked": true},
+          {"category": "通往群星的轨道", "name": "游戏的人", "amount": 10, "checked": true},
+          {"category": "战意奔涌", "name": "四点的下午茶", "amount": 5, "checked": true},
+          {"category": "战意奔涌", "name": "明镜止水", "amount": 5, "checked": true}
+        ],
+        "confirm_visible": true,
+        "reward_item": "星琼",
+        "reward_quantity": 50,
+        "dismiss_visible": true,
+        "stellar_jade_balance": {"before": null, "after": null, "delta": null},
+        "row_after": "unknown"
+      },
+      "frames": [
+        {"file": "overview-before-2163015.png", "index": 64891, "seconds": 2163.015, "page": "overview_before", "sha256": "e7613dac9cbcda7e00f07b794bff6366d4bd97b40a43264ea845cd611a4d6f1e"},
+        {"file": "receipt-2171015.png", "index": 65131, "seconds": 2171.015, "page": "achievement_receipt", "sha256": "05a23edefbc5e4765599d536d345fa7c2de027bccede8170866d4ffc8df51529"},
+        {"file": "items-overlay-2172448.png", "index": 65174, "seconds": 2172.448, "page": "items_overlay", "sha256": "a78555b7ffdac79b9464aed4c9f1b0ce3c3ac3fc06e0516ffec66ce5f1beb2b9"},
+        {"file": "overview-after-2173015.png", "index": 65191, "seconds": 2173.015, "page": "overview_after", "sha256": "3675f4a2fea4caba91c14c0b7fa311f13fbd76ed8129279982df1ef489b3fb67"}
+      ]
+    }
+  ]
+}

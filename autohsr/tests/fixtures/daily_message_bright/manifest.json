@@ -1,0 +1,304 @@
+{
+  "schema": 1,
+  "version": "CN 4.6 release period",
+  "fixture_px": [
+    480,
+    270
+  ],
+  "representation": "INTER_AREA resize, only static title and HUD glyphs, column and row medians and anonymous header ink. No conversation content, portraits or account fields.",
+  "geometry": {
+    "title_xyxy": [
+      78,
+      52,
+      117,
+      65
+    ],
+    "hud_xyxy": [
+      49,
+      44,
+      70,
+      66
+    ],
+    "panel_patch_xyxy": [
+      [
+        70,
+        49,
+        78,
+        62
+      ],
+      [
+        326,
+        49,
+        384,
+        63
+      ],
+      [
+        365,
+        208,
+        398,
+        221
+      ],
+      [
+        418,
+        51,
+        442,
+        65
+      ]
+    ],
+    "edge_bands": {
+      "right": [
+        406,
+        417,
+        [
+          [
+            76,
+            92
+          ],
+          [
+            113,
+            138
+          ],
+          [
+            177,
+            197
+          ]
+        ]
+      ],
+      "divider": [
+        184,
+        195,
+        [
+          [
+            88,
+            112
+          ],
+          [
+            118,
+            143
+          ],
+          [
+            150,
+            172
+          ]
+        ]
+      ],
+      "left_outer": [
+        61,
+        76,
+        [
+          [
+            76,
+            92
+          ],
+          [
+            113,
+            138
+          ],
+          [
+            177,
+            197
+          ]
+        ]
+      ]
+    }
+  },
+  "rights": "Game UI artwork belongs to its respective rightsholders.",
+  "sources": [
+    {
+      "source": "https://www.bilibili.com/video/BV1ppxt6HEQd/?p=1",
+      "bvid": "BV1ppxt6HEQd",
+      "part": 1,
+      "cid": 43244914455,
+      "published_at_cst": "2026-11-02T00:09:44+08:00",
+      "original_px": [
+        1920,
+        1080
+      ],
+      "avc_px": [
+        852,
+        480
+      ],
+      "time_basis": "SIDX start plus relative decoded PTS",
+      "cases": [
+        {
+          "file": "BV1ppxt6HEQd_P1_0.418_world.png",
+          "sha256": "370ddf449ddf3ba0a80714f37dc06dc4719c51a8a600bd7e0f0cf2f7bbe748cd",
+          "time_seconds": 0.418187,
+          "phase": "world",
+          "source_decoded_frame_sha256": "bcc5418fe2ca3a4c2a74893700c6974a95cfcce9f87b5a0a961a9e8996bbc376",
+          "source_panel_medians": [
+            151.0,
+            95.0,
+            93.0,
+            78.5
+          ],
+          "expected": null
+        },
+        {
+          "file": "BV1ppxt6HEQd_P1_0.662_world.png",
+          "sha256": "0daf7bdbc5580d994e7e0f9fa7ff03a5e044f99d29cd46249d0e9e4cc0f5cce4",
+          "time_seconds": 0.662125,
+          "phase": "world",
+          "source_decoded_frame_sha256": "62c5f923fb83100ff08a0f907fdee1565062afbf318cc6288a4ac21f8203dcfc",
+          "source_panel_medians": [
+            151.0,
+            95.0,
+            94.0,
+            80.0
+          ],
+          "expected": null
+        },
+        {
+          "file": "BV1ppxt6HEQd_P1_0.976_transition.png",
+          "sha256": "2a25f1975e0205af15ec4fd5f27d82b3830b886835b53a868038d50821333c70",
+          "time_seconds": 0.97575,
+          "phase": "transition",
+          "source_decoded_frame_sha256": "c70c16c016f060e48e5f24e3731d1da1accabbd3b1a10a32304d69e1bc78c5bf",
+          "source_panel_medians": [
+            161.0,
+            100.0,
+            108.0,
+            90.0
+          ],
+          "expected": null
+        },
+        {
+          "file": "BV1ppxt6HEQd_P1_1.464_panel.png",
+          "sha256": "ba3bebe6676635f05b3d0ee75f92a246c1c74ea804c966703e0994cddecf578a",
+          "time_seconds": 1.463563,
+          "phase": "panel",
+          "source_decoded_frame_sha256": "ca29d97dd6f60ecbbfa1de7defcd3c27616ea7db569e1dcd6c5a61992b7ab7ae",
+          "source_panel_medians": [
+            40.0,
+            217.0,
+            218.0,
+            109.0
+          ],
+          "expected": {
+            "conversation_status": "unknown",
+            "unread_status": "badge_visible",
+            "reply_status": "unknown",
+            "reply_options": null
+          }
+        },
+        {
+          "file": "BV1ppxt6HEQd_P1_1.812_panel.png",
+          "sha256": "5b8968e52ac5c2f139975bb6b91a0be33f325549d1f79730fbd5b47c2caf1b67",
+          "time_seconds": 1.812063,
+          "phase": "panel",
+          "source_decoded_frame_sha256": "24976b7c01c16cb1ac0c6a9143072285d8095200f1d77330132adb265f966ed1",
+          "source_panel_medians": [
+            40.0,
+            217.0,
+            218.0,
+            109.0
+          ],
+          "expected": {
+            "conversation_status": "unknown",
+            "unread_status": "badge_visible",
+            "reply_status": "unknown",
+            "reply_options": null
+          }
+        }
+      ]
+    },
+    {
+      "source": "https://www.bilibili.com/video/BV1x44K6AE96/?p=1",
+      "bvid": "BV1x44K6AE96",
+      "part": 1,
+      "cid": 43274600721,
+      "published_at_cst": "2026-11-03T01:55:54+08:00",
+      "original_px": [
+        1920,
+        1080
+      ],
+      "avc_px": [
+        852,
+        480
+      ],
+      "time_basis": "SIDX start plus relative decoded PTS",
+      "cases": [
+        {
+          "file": "BV1x44K6AE96_P1_0.633_world.png",
+          "sha256": "b85d9ee13bb52194ccc8d92ba99f350b54a8063e316f535b12d0d103de46818d",
+          "time_seconds": 0.633312,
+          "phase": "world",
+          "source_decoded_frame_sha256": "07c843674a36a43721e4b8cbd86b1f6abeb8a305d39de6b880bbd06b1e83ccb7",
+          "source_panel_medians": [
+            144.0,
+            105.0,
+            84.0,
+            74.0
+          ],
+          "expected": null
+        },
+        {
+          "file": "BV1x44K6AE96_P1_0.867_world.png",
+          "sha256": "60407505b20b4065324b7b317849326d1758309e0f34892e2e4060d778a146ee",
+          "time_seconds": 0.866688,
+          "phase": "world",
+          "source_decoded_frame_sha256": "f1ce74e4c60fcdaf781d98328344f0ac71f1d79dce663a270265373c2957a48b",
+          "source_panel_medians": [
+            144.0,
+            108.0,
+            84.0,
+            75.0
+          ],
+          "expected": null
+        },
+        {
+          "file": "BV1x44K6AE96_P1_1.200_transition.png",
+          "sha256": "d486d09c69781ca56dc8f5fadd3bf37e5feb5db082cbe86320f82aeed2c2a604",
+          "time_seconds": 1.2,
+          "phase": "transition",
+          "source_decoded_frame_sha256": "0b77150635538d40229ee62f67fd8eecc3f08d279e332e29723d7badde85656e",
+          "source_panel_medians": [
+            153.0,
+            112.0,
+            98.0,
+            86.0
+          ],
+          "expected": null
+        },
+        {
+          "file": "BV1x44K6AE96_P1_1.800_panel.png",
+          "sha256": "6fd7da600469a36a49cbf1c46521024d9c5f0bc58f80fe5f6c3a59279f5f4b44",
+          "time_seconds": 1.8,
+          "phase": "panel",
+          "source_decoded_frame_sha256": "8b104e459003108b0fcf2063370dda746c3f2d3c711a0d637d1748912b2bdb92",
+          "source_panel_medians": [
+            38.0,
+            219.0,
+            216.0,
+            92.0
+          ],
+          "expected": {
+            "conversation_status": "unknown",
+            "unread_status": "badge_visible",
+            "reply_status": "unknown",
+            "reply_options": null
+          }
+        },
+        {
+          "file": "BV1x44K6AE96_P1_2.167_panel.png",
+          "sha256": "acc91d34498caf8be730877837539ebc8105e1866068da09ee10c7ae50688aba",
+          "time_seconds": 2.166688,
+          "phase": "panel",
+          "source_decoded_frame_sha256": "85522c9e795b52821461f7b1f491a664f522111193a8a7dbef30d163ba42c291",
+          "source_panel_medians": [
+            38.0,
+            219.0,
+            216.0,
+            92.0
+          ],
+          "expected": {
+            "conversation_status": "unknown",
+            "unread_status": "badge_visible",
+            "reply_status": "unknown",
+            "reply_options": null
+          }
+        }
+      ]
+    }
+  ]
+}

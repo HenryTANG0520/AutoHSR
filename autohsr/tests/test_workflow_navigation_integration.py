@@ -2,6 +2,7 @@
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -23,16 +24,25 @@ from autohsr.tests.test_task_workflow import condition, recipe, task
 
 class WorkflowNavigationIntegrationTests(unittest.TestCase):
     def run_navigation(self, *, already_open=False, late_loss=False, target='mail', version='4.6.0',
-                       start_in_list=False, late_version=False):
+                       start_in_list=False, late_version=False, from_odyssey=False, check_publication_lock=False):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
-        if target == 'odyssey':
+        if target in ('odyssey', 'reward_guide'):
             banner = activity_frame()
             banner.tokens.append(ACCOUNT)
             event = _odyssey()
-            destination = Scene([ACCOUNT, *event.tokens], cv2.resize(event.image, (1920, 1080)))
-            pages = (source, banner, destination)
+            odyssey = Scene([ACCOUNT, *event.tokens], cv2.resize(event.image, (1920, 1080)))
+            if target == 'reward_guide':
+                from autohsr.tests.test_daily_reward_guide_pages import guide_scene
+
+                destination = guide_scene(width=1920)
+                destination.tokens.append(ACCOUNT)
+                odyssey.image[:120] = banner.image[:120]
+                odyssey.image[:, 45:246] = banner.image[:, 45:246]
+                pages = (source, odyssey if from_odyssey else banner, destination)
+            else:
+                pages = (source, banner, odyssey)
         else:
             pages = (source, mailbox)
         sent = []
@@ -44,12 +54,24 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
 
         window = _Window(frames())
         previous = Runner._save_run_report
+        native_replace = Path.replace
+        installation_held = []
+
+        def replace_while_held(temporary, destination):
+            if os.name == 'nt':
+                with self.assertRaises(PermissionError), (game / 'config.ini').open('ab'):
+                    pass
+            installation_held.append(True)
+            return native_replace(temporary, destination)
 
         def save(runner, *args, **kwargs):
             if late_loss:
                 window.guard.side_effect = FocusLost('fake late focus loss')
             if late_version:
                 (game / 'config.ini').write_text('[General]\ngame_version=4.7.0\n', encoding='utf8')
+            if check_publication_lock and kwargs.get('workflow_navigation') is not None:
+                with patch.object(Path, 'replace', new=replace_while_held):
+                    return previous(runner, *args, **kwargs)
             return previous(runner, *args, **kwargs)
 
         def native_send(length, events, _size):
@@ -102,6 +124,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             stack.enter_context(redirect_stderr(err))
             code = main(['--task-workflow', str(workflow), '--config', str(config)])
             self.assertEqual(code, 1 if late_loss or late_version or version != '4.6.0' else 0, err.getvalue())
+            if check_publication_lock:
+                self.assertEqual(installation_held, [True])
             self.assertEqual(config.read_bytes(), original)
             parent = json.loads(out.getvalue())
             entry = parent['workflow']['steps'][0]
@@ -159,3 +183,25 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertFalse(result['page_verified'])
         self.assertEqual(result['actions'][0]['action'], 'open_odyssey')
         self.assertEqual(result['actions'][0]['input_status'], 'sent')
+
+    def test_reward_guide_opens_from_phone_or_odyssey_without_using_a_reward_row(self):
+        for start in ('phone', 'odyssey'):
+            with self.subTest(start=start):
+                sent, steps, native = self.run_navigation(target='reward_guide', start_in_list=start == 'odyssey',
+                                                           from_odyssey=start == 'odyssey')
+                clicks = 2 if start == 'phone' else 1
+                self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * clicks)
+                x, y = self.clicks[-1]
+                self.assertTrue(.20 <= x <= .28 and .037 <= y <= .09)
+                result = native['workflow_navigation']
+                self.assertEqual(result['actions'][-1]['action'], 'open_reward_guide')
+                self.assertEqual(result['actions'][-1]['source_page'],
+                                 'activity_list' if start == 'phone' else 'odyssey')
+                self.assertEqual(result['actions'][-1]['destination_page'], 'reward_guide')
+                self.assertTrue(steps[0]['facts']['page_verified'])
+
+    def test_already_open_reward_guide_is_verified_with_no_input(self):
+        sent, steps, native = self.run_navigation(target='reward_guide', already_open=True, check_publication_lock=True)
+        self.assertEqual(sent, [])
+        self.assertEqual(native['workflow_navigation']['actions'], [])
+        self.assertTrue(steps[0]['facts']['page_verified'])

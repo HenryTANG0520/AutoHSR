@@ -19,6 +19,7 @@ from autohsr.models import AutomationError, EmptyCapture, FocusLost, RunReport, 
 from autohsr.storage import hold_read_sources, replace_file
 from autohsr.tests.test_achievement_pages import category_view, gold_controls, label, overview, receipt_rows
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, phone
+from autohsr.tests.test_daily_reward_guide_pages import guide_scene
 from autohsr.tests.test_du_team import fixture
 from autohsr.tests.test_workflow_navigation import Context, badge, battlepass, identified, world
 from autohsr.vision import Vision
@@ -143,6 +144,37 @@ class ScreenTestTests(TestCase):
                 self.assertNotIn('东山再起', json.dumps(saved, ensure_ascii=False))
                 self.assertTrue(screen_test.desktop_result(saved, 'success')[0].startswith('当前页面已核实'))
 
+    def test_reward_guide_requires_actual_installation_and_rechecks_it_before_publication(self):
+        first, second = guide_scene(), guide_scene('highlights-2346.png')
+        for frame in (first, second):
+            frame.tokens.append(ACCOUNT)
+        executable = self.directory / 'StarRail.exe'
+        executable.touch()
+        config = self.directory / 'config.ini'
+        for version, expected in (('4.7.0', 'partial'), ('4.6.0', 'ok')):
+            with self.subTest(version=version):
+                config.write_text(f'[General]\ngame_version={version}\n', encoding='utf8')
+                observer = self.observer([first, second])
+                observer.context.window.current_executable = Mock(return_value=str(executable))
+                self.assertEqual(self.observe(observer).status, expected)
+                if expected == 'ok':
+                    self.assertEqual(observer.record['page'], 'reward_guide')
+                    native_replace = Path.replace
+                    locks = []
+
+                    def replace_while_held(temporary, destination):
+                        if os.name == 'nt':
+                            with self.assertRaises(PermissionError), config.open('ab'):
+                                pass
+                        locks.append(True)
+                        return native_replace(temporary, destination)
+
+                    with patch.object(Path, 'replace', new=replace_while_held):
+                        self.assertEqual(self.save(observer)['screen_test'], observer.record)
+                    self.assertEqual(locks, [True])
+                    config.write_text('[General]\ngame_version=4.7.0\n', encoding='utf8')
+                    self.assertEqual(self.save(observer)['screen_test'], screen_test.initial_record())
+
     def test_achievement_button_disagreement_stays_unknown_and_conflicting_pages_are_rejected(self):
         bulk = label('一键领取奖励', .824, .897)
         seen = achievement_frame(overview(), bulk)
@@ -266,7 +298,7 @@ class ScreenTestTests(TestCase):
         self.assertEqual(screen_test.desktop_result(record, 'partial')[0], '当前页面待核对')
 
         def tamper(temporary, destination, **options):
-            if 'before_replace' in options:
+            if 'attempt_scope' in options:
                 temporary.write_bytes(b'\xff private-test-marker')
             return replace_file(temporary, destination, **options)
 

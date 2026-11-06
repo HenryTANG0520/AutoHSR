@@ -145,13 +145,13 @@ class WorkflowYamlTests(unittest.TestCase):
                 self.assertFalse(self.target.exists())
 
     def test_known_switch_screen_targets_preserve_daily_page_identity(self):
-        names = ('menu', 'guide2', 'guide3', 'dispatch', 'mail')
+        names = ('menu', 'guide2', 'guide3', 'dispatch', 'mail', 'reward_guide')
         steps = ''.join(f'  - type: switch_screen\n    target_screen: {name}\n' for name in names)
         original = self.write('name: 日常页面\nsteps:\n' + steps)
         saved = convert_march7th_yaml(self.source, self.target)
-        self.assertEqual([node['task'] for node in saved.recipe.steps], ['workflow_open_page'] * 5)
+        self.assertEqual([node['task'] for node in saved.recipe.steps], ['workflow_open_page'] * len(names))
         self.assertEqual([node['params']['target'] for node in saved.recipe.steps],
-                         ['phone', 'daily_training', 'survival_index', 'assignments', 'mail'])
+                         ['phone', 'daily_training', 'survival_index', 'assignments', 'mail', 'reward_guide'])
         self.assertEqual(self.source.read_bytes(), original)
         for name in ('pass1', 'pass2', 'guide4', 'main', 'unknown'):
             with self.subTest(name=name):

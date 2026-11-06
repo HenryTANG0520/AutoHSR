@@ -1,10 +1,11 @@
 from unittest import TestCase
 
+import cv2
 import numpy as np
 
 from autohsr.achievement_pages import (
     AchievementListObservation, achievement_bulk_claim_visible, achievement_bulk_receipt_visible,
-    achievement_overview, observe_achievement_list,
+    achievement_overview, observe_achievement_list, observe_achievement_screen,
 )
 from autohsr.models import Scene, Token
 
@@ -41,6 +42,20 @@ def receipt_rows(*titles):
     for title in titles:
         y = title.center[1]
         frame[round((y - .022) * 720):round((y + .045) * 720), round(.08 * 1280):round(.92 * 1280)] = 232
+    return frame
+
+
+def scrolled_receipt_rows(titles, checks, *, mark='check', offset=0):
+    frame = gold_controls()
+    for index, title in enumerate(titles):
+        y = round(title.center[1] * 720) + 24
+        frame[y-47:y+47, 100:1180] = 224
+        if index in checks:
+            x = 1116 + offset
+            cv2.ellipse(frame, (x, y), (18, 17), 0, 0, 320, (111, 111, 111), 2, cv2.LINE_AA)
+            if mark == 'check':
+                points = np.array([(x-8, y-1), (x-2, y+7), (x+12, y-11)], dtype=np.int32)
+                cv2.polylines(frame, [points], False, (111, 111, 111), 4, cv2.LINE_AA)
     return frame
 
 
@@ -186,3 +201,29 @@ class AchievementReceiptTests(TestCase):
                                ([*anchors, row, label('取消', .561, .929, score=.71)], image)):
             with self.subTest(tokens=tokens):
                 self.assertFalse(achievement_bulk_receipt_visible(Scene(tokens, pixels)))
+
+    def test_scrolled_receipt_needs_two_separate_same_row_checkmarks(self):
+        anchors = [label('成就奖励', .50, .114), label('总计获得', .467, .838), label('确认', .502, .926)]
+        rows = [label('东山再起', .176, .206), label('超大杯', .166, .356)]
+        clean = scrolled_receipt_rows(rows, (0, 1))
+        scene = Scene([*anchors, *rows], clean)
+        self.assertEqual(observe_achievement_screen(scene, .85), ('achievement_receipt', None, None))
+        for rejected in (Scene([*anchors, *rows], scrolled_receipt_rows(rows, (0,))),
+                         Scene([*anchors, *rows], scrolled_receipt_rows(rows, (0, 1), mark='ring')),
+                         Scene([*anchors, *rows], scrolled_receipt_rows(rows, (0, 1), offset=30)),
+                         Scene([*anchors, rows[0], label('另一行文字', .177, .224)], clean)):
+            self.assertIsNone(observe_achievement_screen(rejected, .85))
+
+    def test_scrolled_receipt_still_requires_unique_anchors_and_clean_page(self):
+        title = label('成就奖励', .50, .114)
+        total = label('总计获得', .467, .838)
+        confirm = label('确认', .502, .926)
+        rows = [label('东山再起', .176, .206), label('超大杯', .166, .356)]
+        clean = scrolled_receipt_rows(rows, (0, 1))
+        for tokens in ((title, confirm), (title, total),
+                       (title, total, confirm, label('确认', .546, .926, score=.74)),
+                       (title, total, confirm, label('与你同行的回忆', .132, .178, score=.74)),
+                       (title, total, confirm, label('获得物品', .50, .15, score=.74)),
+                       (title, total, confirm, label('点击空白处关闭', .50, .74, score=.74))):
+            with self.subTest(tokens=tokens):
+                self.assertIsNone(observe_achievement_screen(Scene([*tokens, *rows], clean), .85))

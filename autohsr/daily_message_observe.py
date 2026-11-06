@@ -32,6 +32,8 @@ _MESSAGE_HEADER = RESOURCE_ROOT / 'assets/upstream/March7thAssistant/daily-messa
 _HEADER_ROI = (.145, .174, .256, .252)
 _PANEL_PATCHES = ((.145, .18, .162, .23), (.68, .18, .80, .235),
                   (.76, .77, .83, .82), (.87, .19, .92, .24))
+_DIVIDER_COLUMNS = slice(184, 195)
+_DIVIDER_BANDS = (slice(88, 112), slice(118, 143), slice(150, 172))
 
 
 def phone_message_entry(scene: Scene, confidence: float = .85) -> Token | None:
@@ -69,6 +71,15 @@ def message_panel(scene: Scene) -> bool:
     return _message_panel_frame(scene) is not None
 
 
+def _has_column_divider(frame: np.ndarray) -> bool:
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    columns = [np.median(gray[band, _DIVIDER_COLUMNS], axis=0) for band in _DIVIDER_BANDS]
+    # Allow one strip to contain a highlighted conversation row. The remaining
+    # strips must show the same sharp step from the dark list to the pale pane.
+    steps = np.asarray(columns)
+    return bool(np.any(np.count_nonzero(steps[:, 2:] - steps[:, :-2] >= 90, axis=0) >= 2))
+
+
 def _message_panel_frame(scene: Scene) -> np.ndarray | None:
     clean = _clean(scene, COLLECTION_FLOOR, blockers=())
     if (clean is None or helper_overlay(clean) or calibration_overlay(clean)
@@ -80,7 +91,11 @@ def _message_panel_frame(scene: Scene) -> np.ndarray | None:
     levels = [float(np.median(frame[round(y1 * 270):round(y2 * 270), round(x1 * 480):round(x2 * 480)]))
               for x1, y1, x2, y2 in _PANEL_PATCHES]
     left, top, bottom, outside = levels
-    if max(left, outside) > 85 or min(top, bottom) < 155 or not _MESSAGE_HEADER.is_file():
+    if left > 85 or min(top, bottom) < 155 or not _MESSAGE_HEADER.is_file():
+        return None
+    # A bright world behind the right edge can survive the modal dimming.
+    # Require an independent interior edge before accepting that variant.
+    if outside > 85 and not _has_column_divider(frame):
         return None
     try:
         if Vision.__new__(Vision).template(Scene([], frame), _MESSAGE_HEADER, _HEADER_ROI, .86) is not None:

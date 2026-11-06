@@ -18,7 +18,7 @@ from autohsr.__main__ import main
 from autohsr.app import Runner
 from autohsr.config import Settings
 from autohsr.models import FocusLost, Scene, Token
-from autohsr.task_workflow import PAGE_TASK, WORKFLOW_PAGES, WorkflowError
+from autohsr.task_workflow import ACTIVITY_WORKFLOW_PAGES, PAGE_TASK, WORKFLOW_PAGES, WorkflowError
 from autohsr.task_workflow_run import TaskWorkflowRunner, _bytes
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, _Window, phone
 from autohsr.windows import INPUT
@@ -65,7 +65,8 @@ class PageCheckProjectionTests(TestCase):
         return pages.project_result(self.recipe, self.report if report is None else report, read_source=self.load)
 
     def test_preview_order_is_explicit_and_never_writes_or_starts(self):
-        targets = (*reversed(WORKFLOW_PAGES[:-1]), 'odyssey')
+        ordinary = tuple(page for page in WORKFLOW_PAGES if page not in ACTIVITY_WORKFLOW_PAGES)
+        targets = (*reversed(ordinary), *ACTIVITY_WORKFLOW_PAGES)
         with patch.object(TaskWorkflowRunner, 'run', side_effect=AssertionError('preview cannot run')) as run:
             recipe = pages.build_recipe(targets, base_dir=self.root)
         self.assertEqual(tuple(step['params']['target'] for step in recipe.steps), targets)
@@ -74,7 +75,8 @@ class PageCheckProjectionTests(TestCase):
         self.assertTrue(all(value == 0 for field, value in recipe.profile.items() if field != 'executions'))
         self.assertEqual(list(self.root.iterdir()), [])
         run.assert_not_called()
-        for bad in (None, [], 'mail', ('mail', 'mail'), ['world'], ['unknown'], ['mail', {}], ['odyssey', 'mail']):
+        for bad in (None, [], 'mail', ('mail', 'mail'), ['world'], ['unknown'], ['mail', {}], ['odyssey', 'mail'],
+                    ['reward_guide', 'mail'], ['mail', 'reward_guide', 'odyssey']):
             with self.subTest(selection=bad), self.assertRaises(WorkflowError):
                 pages.build_recipe(bad, base_dir=self.root)
 

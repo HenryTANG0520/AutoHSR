@@ -5,13 +5,13 @@ import tkinter as tk
 from tkinter import ttk
 
 from . import theme
-from .task_workflow import WORKFLOW_PAGES, Recipe, WorkflowError
+from .task_workflow import ACTIVITY_WORKFLOW_PAGES, WORKFLOW_PAGES, Recipe, WorkflowError
 
 
 MODE = 'selected_pages'
 _PAGE_LABELS = {
     'phone': '手机', 'guide': '星际和平指南', 'daily_training': '每日实训', 'survival_index': '生存索引',
-    'assignments': '委托', 'mail': '邮件', 'battlepass': '无名勋礼', 'odyssey': '巡星之礼',
+    'assignments': '委托', 'mail': '邮件', 'battlepass': '无名勋礼', 'odyssey': '巡星之礼', 'reward_guide': '奖励指南',
 }
 _TITLES = {'success': '所选页面已核实', 'partial': '所选页面核对未完整结束',
            'failed': '核对未完成', 'stopped': '已停止', 'unknown': '结果待核对'}
@@ -88,8 +88,8 @@ class SelectedPageCheckFields(ttk.Frame):
         self.order.grid(row=row + 1, column=0, columnspan=2, sticky='ew', pady=(pad, 0))
 
     def _ordered_targets(self):
-        return tuple(target for target in self.draft.selected if target != 'odyssey') + (
-            ('odyssey',) if 'odyssey' in self.draft.selected else ())
+        ordinary = tuple(target for target in self.draft.selected if target not in ACTIVITY_WORKFLOW_PAGES)
+        return ordinary + tuple(target for target in ACTIVITY_WORKFLOW_PAGES if target in self.draft.selected)
 
     @property
     def recipe(self):

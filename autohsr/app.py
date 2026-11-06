@@ -2800,10 +2800,12 @@ class Runner:
             return
         write_report()
         if (workflow_screen_source is not None or workflow_navigation is not None) and self.report.status == 'success':
-            def verify_page_result():
+            def verify_page_result(source_error=None):
                 if self.report.status != 'success':
                     return
                 try:
+                    if source_error is not None:
+                        raise source_error
                     if workflow_navigation is not None:
                         workflow_navigation.guard_publication()
                         return
@@ -2827,7 +2829,22 @@ class Runner:
                     self.report.results[-1] = TaskResult(self.report.operation, self.report.status, str(error))
                     write_report()
 
-            replace_file(temporary, directory / 'report.json', before_replace=verify_page_result)
+            source = workflow_navigation.installation_source if workflow_navigation is not None else None
+            if source is None:
+                replace_file(temporary, directory / 'report.json', before_replace=verify_page_result)
+            else:
+                @contextmanager
+                def activity_publication():
+                    with ExitStack() as locks:
+                        try:
+                            locks.enter_context(hold_read_sources((source,)))
+                        except OSError:
+                            verify_page_result(AutomationError('活动页面导航的客户端安装来源待核实。'))
+                        else:
+                            verify_page_result()
+                        yield
+
+                replace_file(temporary, directory / 'report.json', attempt_scope=activity_publication)
             return
         if preview_source is not None:
             def verify_preview():

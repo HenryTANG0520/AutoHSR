@@ -1,7 +1,12 @@
 """Observe the current calibrated daily page and publish only anonymous facts."""
 
+from contextlib import ExitStack, contextmanager
+
 from .achievement_pages import (ACHIEVEMENT_CATEGORIES, achievement_reward_panel_started,
                                 observe_achievement_screen)
+from .daily_event_observe import read_event_installation
+from .daily_event_pages import _VERSION
+from .daily_reward_guide_pages import reward_guide_page
 from .models import AutomationError, Stopped, TaskResult
 from .storage import hold_read_sources, replace_file
 from .workflow_navigation import COLLECTION_FLOOR, classify_page
@@ -16,7 +21,7 @@ _UNVERIFIED = '当前日常页面或同账号连续双帧待核实。'
 _PUBLICATION_FAILED = '报告提交前的前台窗口或页面证据待核实。'
 _PAGE_NAMES = {
     'phone': '手机', 'guide': '星际和平指南', 'daily_training': '每日实训', 'survival_index': '生存索引',
-    'assignments': '委托', 'mail': '邮件', 'battlepass': '无名勋礼',
+    'assignments': '委托', 'mail': '邮件', 'battlepass': '无名勋礼', 'reward_guide': '奖励指南',
 }
 _ACHIEVEMENT_NAMES = {
     'achievement_overview': '成就总览', 'achievement_list': '成就分类', 'achievement_receipt': '成就奖励面板',
@@ -80,13 +85,24 @@ class ScreenTestObserver:
         self.context = context
         self.record = initial_record()
         self.result = None
-        self._reader = self._pair = self._observation = None
+        self._reader = self._pair = self._observation = self._guide_installation = None
         self._daily = DailyWorkflow(context)
         self._confidence = max(.85, context.settings.ocr_confidence)
 
     def _read_scene(self, scene):
         page = classify_page(scene, self._confidence, self._daily)
         achievement = observe_achievement_screen(scene, self._confidence)
+        reward_guide = reward_guide_page(scene, client_version=_VERSION, confidence=self._confidence)
+        if reward_guide:
+            if page is not None or achievement is not None or achievement_reward_panel_started(scene):
+                return None
+            installation = read_event_installation(self.context.window)
+            if installation.version != _VERSION:
+                return None
+            if self._guide_installation is not None and installation != self._guide_installation:
+                raise AutomationError('奖励指南的客户端安装来源已变化。')
+            self._guide_installation = installation
+            return 'reward_guide', None, None
         if page is None:
             return achievement
         if achievement is None and page in _PAGE_NAMES and not achievement_reward_panel_started(scene):
@@ -98,6 +114,8 @@ class ScreenTestObserver:
         self._reader.verify_pair(*pair)
         if first is None or second is None or first[:2] != second[:2]:
             return None
+        if first[0] == 'reward_guide' and read_event_installation(self.context.window) != self._guide_installation:
+            raise AutomationError('奖励指南的客户端安装来源已变化。')
         return (*first[:2], first[2] if first[2] == second[2] else None)
 
     def _result(self, status, detail):
@@ -132,7 +150,7 @@ class ScreenTestObserver:
         return self._result('ok', f'已双帧核实当前页面为{_NAMES[observation[0]]}。')
 
     def invalidate(self, status, detail):
-        self._pair = self._observation = None
+        self._pair = self._observation = self._guide_installation = None
         self.record.clear()
         self.record.update(initial_record())
         if self.result is not None:
@@ -158,19 +176,24 @@ class ScreenTestObserver:
         report = self.context.report
         destination = temporary.with_name('report.json')
 
+        @contextmanager
         def verify_attempt():
-            try:
-                with hold_read_sources((temporary,)):
-                    if type(payload) is not str or temporary.read_text(encoding='utf8') != payload:
-                        raise AutomationError(_PUBLICATION_FAILED)
-                    self.guard_publication()
-            except (OSError, UnicodeError):
-                raise AutomationError(_PUBLICATION_FAILED) from None
+            with ExitStack() as locks:
+                try:
+                    if self._guide_installation is not None:
+                        locks.enter_context(hold_read_sources((self._guide_installation.source,)))
+                    with hold_read_sources((temporary,)):
+                        if type(payload) is not str or temporary.read_text(encoding='utf8') != payload:
+                            raise AutomationError(_PUBLICATION_FAILED)
+                        self.guard_publication()
+                except (OSError, UnicodeError):
+                    raise AutomationError(_PUBLICATION_FAILED) from None
+                yield
 
         try:
             self._check_record()
             payload = write_report()
-            replace_file(temporary, destination, before_replace=verify_attempt)
+            replace_file(temporary, destination, attempt_scope=verify_attempt)
         except AutomationError as error:
             stopped = isinstance(error, Stopped)
             if stopped:

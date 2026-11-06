@@ -40,7 +40,7 @@ _INTEGER = re.compile(r'^[+-]?[0-9]+$')
 _NUMBER = re.compile(r'^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$')
 _PAGE_TARGETS = {
     'menu': 'phone', 'guide2': 'daily_training', 'guide3': 'survival_index',
-    'dispatch': 'assignments', 'mail': 'mail',
+    'dispatch': 'assignments', 'mail': 'mail', 'reward_guide': 'reward_guide',
 }
 _UNSUPPORTED = {
     'click_image': '模板点击没有等价的 AutoHSR 步骤',

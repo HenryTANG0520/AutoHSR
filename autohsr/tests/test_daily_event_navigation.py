@@ -7,7 +7,7 @@ import unittest
 import cv2
 import numpy as np
 
-from autohsr.daily_event_navigation import odyssey_list_entry
+from autohsr.daily_event_navigation import odyssey_list_entry, reward_guide_entry
 from autohsr.models import Scene, Token
 
 
@@ -46,3 +46,20 @@ class DailyEventNavigationTests(unittest.TestCase):
         source = activity_frame(size=(1280, 720))
         source.image[:80, 198:380] = 0
         self.assertIsNone(self.read(source))
+
+    def test_reward_guide_control_is_independent_of_the_odyssey_banner(self):
+        source = activity_frame(size=(1280, 720))
+        source.image[190:248, :166] = 0
+        options = dict(client_version='4.6.0', confidence=.85)
+        self.assertIsNone(reward_guide_entry(source, **options))
+        source.tokens.append(Token('活动札记', .96, (.052, .055, .104, .09)))
+        target = reward_guide_entry(source, **options)
+        self.assertEqual(target.text, '奖励指南')
+        self.assertTrue(.20 <= target.center[0] <= .28 and .037 <= target.center[1] <= .09)
+        self.assertIsNone(self.read(source))
+        self.assertIsNone(reward_guide_entry(activity_frame('claim-popup'), **options))
+        self.assertIsNone(reward_guide_entry(replace(source, image=source.image // 2), **options))
+        source.image[120:] = 0
+        self.assertIsNone(reward_guide_entry(source, **options))
+        source.image[:75, 200:266] = 0
+        self.assertIsNone(reward_guide_entry(source, **options))

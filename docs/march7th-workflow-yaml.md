@@ -10,7 +10,7 @@
 | `for` | 1～1000 次、非空 `children`，子步骤全部可转换。缺省 1 次 |
 | `break`、`continue` | 在可转换的循环体中 |
 | `stop_workflow` | 转为原生 `stop` |
-| `switch_screen` | `menu`、`guide2`、`guide3`、`dispatch`、`mail` 转为对应的手机、每日实训、生存索引、委托和邮件 |
+| `switch_screen` | `menu`、`guide2`、`guide3`、`dispatch`、`mail`、`reward_guide` 转为对应的手机、每日实训、生存索引、委托、邮件和奖励指南 |
 | `play_audio` | 显式填写普通相对路径或本地绝对路径，扩展名为 `.wav`。转为原生 `workflow_audio` |
 
 识别固定提交的上游步骤字段。上游编辑器在节点里同时写入其他步骤类型的默认字段，转换只取当前动作实际使用的字段。非循环节点携带非空子步骤、任何未知字段或动作，都会拒绝整份转换。错误给出出问题的步骤路径。
