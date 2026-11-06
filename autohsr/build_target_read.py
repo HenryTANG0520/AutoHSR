@@ -145,7 +145,7 @@ class BuildTargetRead:
         return any(mission in self.catalogue for category in CATEGORIES
                    for mission, _ in guide_rows(page, category.key))
 
-    def _observe(self, *, after=None, classify=None):
+    def _observe(self, *, after=None, classify=None, merge=None, require_adjacent=False):
         classify = self._classify if classify is None else classify
         previous = None
         for attempt in range(8):
@@ -164,13 +164,15 @@ class BuildTargetRead:
             if kind is None or after is not None and (kind != 'panel' or scene.captured_at <= after.captured_at):
                 previous = None
                 continue
+            sequence = self.ctx.capture_sequence if require_adjacent else 0
             if previous is not None:
-                old_kind, old_entry, old_scene = previous
+                old_kind, old_entry, old_scene, old_sequence = previous
                 if (scene is not old_scene and old_scene.captured_at < scene.captured_at
                         and 0 <= time.monotonic() - old_scene.captured_at <= 8 and kind == old_kind
+                        and (not require_adjacent or sequence == old_sequence + 1)
                         and all(abs(a - b) <= .01 for a, b in zip(entry.center, old_entry.center))):
-                    return scene, kind
-            previous = kind, entry, scene
+                    return scene, merge(old_kind, kind) if merge is not None else kind
+            previous = kind, entry, scene, sequence
         if after is not None:
             raise AutomationError('培养目标入口已发送，未从连续新画面核实到页。')
         raise AutomationError('未从连续新画面核实生存索引、培养目标入口及同一账号。')

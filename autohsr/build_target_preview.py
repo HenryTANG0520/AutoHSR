@@ -1,6 +1,7 @@
-"""Preview visible cultivation material routes against the bundled dungeon catalogue."""
-from dataclasses import dataclass
+"""Preview visible cultivation materials and Calyx rewards without game input."""
+from dataclasses import asdict, dataclass, field, replace
 import re
+from unicodedata import normalize as unicode_normalize
 
 from .build_target_read import (
     FRAGMENT_CONFIDENCE, MODAL, MODAL_AREA, SECTIONS, SHORTFALL,
@@ -11,16 +12,28 @@ from .dungeon_workflow import guide_row_fields
 from .dungeons import BY_KEY, CATEGORIES, Dungeon, count_limit
 from .models import AutomationError, TaskResult, normalize
 from .power_plan import items
+from .workflows import DailyWorkflow
 
 
 # The pinned BuildTarget uses the first crop for a compact material detail.
 # Its older Calyx reader bounds the source section within the second crop.
 MATERIAL_TITLE = (783 / 1920, 318 / 1080, 1083 / 1920, 373 / 1080)
+OBSERVATION_TITLE = (*MATERIAL_TITLE[:2], .61, MATERIAL_TITLE[3])
+HELD_AREA = (.25, .65, .39, .735)
 SOURCE_BODY = (790 / 1920, 377 / 1080, 1484 / 1920, 731 / 1080)
+OBSERVATION_SOURCE = (.40, SOURCE_BODY[1], SOURCE_BODY[2], .71)
 SOURCE_LABEL = '获得途径'
+LEVEL_TRACE_SUFFICIENT = '已获得足够的等级和行迹材料'
 DETAIL_BLOCKERS = tuple(label for label in MODAL if label != SOURCE_LABEL)
 CALYX_SOURCE = re.compile(r'拟造花萼〖([^〖〗\r\n]{2,64})〗')
 LOCK_MARKERS = ('未解锁', '尚未解锁')
+HELD_COUNT = r'(?:0|[1-9][0-9]{0,8}|[1-9][0-9]{0,2}(?:,[0-9]{3}){1,2})'
+CALYX_TITLE = (.59, .09, .96, .15)
+CALYX_DIFFICULTY = (.60, .148, .79, .20)
+CALYX_ROUNDS = (.58, .70, .94, .87)
+SELECTED_ROUND_VALUE = (.79, .75, .89, .84)
+CALYX_COST = (.61, .87, .79, .97)
+DIFFICULTIES = ('i', 'ii', 'iii', 'iv', 'v', 'vi')
 
 # Exact families from the pinned drop index, checked against assets/dungeons.json.
 # For golden Calyxes the screen must supply a location. Crimson locations here
@@ -44,6 +57,16 @@ class MaterialDetail:
     lock_marker_rows: int
     target_section_visible: bool
     repeated_locations: tuple[str, ...]
+    held: int | None = field(default=None, compare=False)
+
+
+@dataclass(frozen=True)
+class CalyxRewardPreview:
+    category: str
+    target: str
+    difficulty: int
+    selected_rounds: int
+    shown_total_stamina: int
 
 
 @dataclass(frozen=True)
@@ -65,6 +88,75 @@ class BuildTargetSelection:
 def _inside(token, region):
     x1, y1, x2, y2 = token.box
     return region[0] <= x1 < x2 <= region[2] and region[1] <= y1 < y2 <= region[3]
+
+
+def _material_held(scene, title, heading, confidence):
+    def text(token):
+        return re.sub(r'\s+', '', unicode_normalize('NFKC', token.text))
+
+    fields = [token for token in scene.tokens if _inside(token, HELD_AREA)
+              and token.box[0] < title.box[0] and token.box[1] > title.box[3]]
+    labels = [token for token in fields if text(token).startswith('当前持有')]
+    if (len(labels) != 1 or labels[0].score < confidence
+            or _has_split_label(scene, ('当前持有',), HELD_AREA, exact=False)):
+        return None
+    label = labels[0]
+    match = re.fullmatch(rf'当前持有:?({HELD_COUNT})?', text(label))
+    if match is None or label.box[2] >= heading.box[0]:
+        return None
+    numbers = [token for token in fields if token is not label
+               and 0 <= token.box[0] - label.box[2] <= .024
+               and abs(token.center[1] - label.center[1]) <= .014
+               and re.match(r'[0-9oO]', text(token))]
+    if match[1] is not None:
+        return None if numbers else int(match[1].replace(',', ''))
+    if len(numbers) == 1 and numbers[0].score >= confidence and re.fullmatch(HELD_COUNT, text(numbers[0])):
+        return int(text(numbers[0]).replace(',', ''))
+    return None
+
+
+def _calyx_preview(reader, scene, page):
+    if scene.has(('挑战成功', '挑战失败'), exact=True):
+        return None, None
+    if not (page.has('可能遭遇', (.59, .20, .78, .26), exact=True)
+            and page.has('可能获取', (.59, .54, .78, .63), exact=True)
+            and page.has('挑战', (.78, .87, .98, .97), exact=True)):
+        return None, None
+    fields = trusted(scene, 0.)
+    headers = [t for t in fields.tokens if t.within(CALYX_TITLE) and '拟造花萼' in normalize(t.text)]
+    levels = [t for t in fields.tokens if t.within(CALYX_DIFFICULTY) and normalize(t.text).startswith('难度')]
+    if len(headers) != 1 or len(levels) != 1 or headers[0] not in page.tokens or levels[0] not in page.tokens:
+        return None, None
+    header = headers[0]
+    difficulty = normalize(unicode_normalize('NFKC', levels[0].text)).removeprefix('难度')
+    if difficulty not in DIFFICULTIES:
+        return None, None
+    titles = {normalize(dungeon.name + BY_KEY[dungeon.category].label): (dungeon.category, dungeon.name)
+              for dungeon in reader.catalogue if dungeon.category in ('calyx_golden', 'calyx_crimson')}
+    calyx = titles.get(normalize(header.text))
+    if calyx is None:
+        return None, None
+    selectors = [t for t in fields.tokens if t.within(CALYX_ROUNDS)
+                 and normalize(t.text).startswith(('挑战次数', '挑战轮数'))]
+    costs = [t for t in fields.tokens if t.within(CALYX_COST) and normalize(t.text).startswith(('x', '×'))]
+    if (len(selectors) != 1 or selectors[0] not in page.tokens or len(costs) != 1
+            or not re.fullmatch(r'[x×][0-9]{1,3}', normalize(costs[0].text))
+            or _has_split_label(fields, ('挑战次数', '挑战轮数'), CALYX_ROUNDS, exact=False)):
+        return None, None
+    selector = selectors[0]
+    if re.search(r'[0-9]$', normalize(selector.text)) and any(
+            t is not selector and t.within(SELECTED_ROUND_VALUE) and re.fullmatch(r'[0-9]{1,2}', t.text.strip())
+            and abs(t.center[1] - selector.center[1]) < .04 and t.center[0] > selector.center[0]
+            for t in fields.tokens):
+        return None, None
+    rounds = DailyWorkflow._round_count(page)
+    # The cost includes the x glyph. Confirm its reading against the
+    # independent round control and the catalogue's per-round cost.
+    cost = DailyWorkflow._cost(trusted(scene, max(.80, reader.collection_confidence)))
+    if (rounds is None or rounds != DailyWorkflow._round_count(fields)
+            or cost != rounds * BY_KEY[calyx[0]].cost or cost != DailyWorkflow._cost(fields)):
+        return None, None
+    return CalyxRewardPreview(*calyx, DIFFICULTIES.index(difficulty) + 1, rounds, cost), header
 
 
 def _catalogue_row_areas(scene, catalogue):
@@ -106,29 +198,53 @@ def _calyx_locations(scene, page, fragments, heading):
     return tuple(dict.fromkeys(locations)), unreadable, locked, tuple(sorted(repeated))
 
 
-def _classify(reader, scene):
+def _title_candidate(token):
+    return (token.text.strip() in CALYX_BY_MATERIAL
+            or token.score >= FRAGMENT_CONFIDENCE and re.search(r'[\u3400-\u9fff]', token.text))
+
+
+def _target_materials_sufficient(scene, page):
+    fields = trusted(scene, 0.)
+    if fields.has(SHORTFALL, SECTIONS, exact=True) or _has_split_label(fields, (SHORTFALL,), SECTIONS):
+        return False
+    positions = []
+    for label, area in (
+        ('角色培养', SECTIONS), (LEVEL_TRACE_SUFFICIENT, SECTIONS),
+        ('遗器推荐', MODAL_AREA), ('培养设置', (.14, .26, .95, .96)),
+    ):
+        matches = [token for token in fields.tokens if token.within(area) and normalize(token.text) == label]
+        if len(matches) != 1 or matches[0] not in page.tokens:
+            return False
+        positions.append(matches[0].center[1])
+    return all(upper < lower for upper, lower in zip(positions, positions[1:]))
+
+
+def _classify(reader, scene, *, read_quantities=False):
     if guide_blocked(scene, modal=DETAIL_BLOCKERS):
         return None, None
     captured = trusted(scene, reader.collection_confidence)
     page = trusted(captured, reader.confidence)
     entry = guide_entry(scene, page)
     if entry is None:
-        return None, None
+        return _calyx_preview(reader, scene, page) if read_quantities else (None, None)
     catalogue_rows = tuple(_catalogue_row_areas(captured, reader.catalogue))
     headings = [token for token in captured.tokens if token.within(MODAL_AREA)
                 and normalize(token.text) == SOURCE_LABEL]
     title_region = [token for token in captured.tokens if token.within(MATERIAL_TITLE)]
     if not headings and not any(token.text.strip() in CALYX_BY_MATERIAL for token in title_region):
-        kind, entry = reader._classify(scene)
-        return (kind, entry) if kind == 'panel' and not catalogue_rows else (None, None)
-    titles = [token for token in title_region if token.text.strip() in CALYX_BY_MATERIAL
-              or (token.score >= FRAGMENT_CONFIDENCE and re.search(r'[\u3400-\u9fff]', token.text))]
+        if catalogue_rows:
+            return None, None
+        kind, panel_entry = reader._classify(scene)
+        if kind == 'panel':
+            return kind, panel_entry
+        if read_quantities and _target_materials_sufficient(scene, page):
+            return 'target_materials_sufficient', entry
+        return None, None
+    titles = [token for token in title_region if _title_candidate(token)]
     if len(titles) != 1 or len(headings) != 1:
         return None, None
     title, heading = titles[0], headings[0]
-    if (title.text.strip() not in CALYX_BY_MATERIAL or title not in page.tokens
-            or heading not in page.tokens or not _inside(title, MATERIAL_TITLE)
-            or not _inside(heading, SOURCE_BODY)):
+    if title.text.strip() not in CALYX_BY_MATERIAL or title not in page.tokens or heading not in page.tokens:
         return None, None
     # A separate directory background only vetoes the cultivation context.
     if any(heading.within(area) for area in catalogue_rows):
@@ -136,12 +252,23 @@ def _classify(reader, scene):
     fragments = trusted(scene, 0.)
     if _has_split_label(fragments, (SOURCE_LABEL,), MODAL_AREA):
         return None, None
-    locations, unreadable, locked, repeated = _calyx_locations(scene, page, fragments, heading)
+    held = _material_held(fragments, title, heading, reader.confidence) if read_quantities else None
+    if held is not None and any(token is not title and token.within(OBSERVATION_TITLE) and _title_candidate(token)
+                                for token in captured.tokens):
+        held = None
+    if _inside(title, MATERIAL_TITLE) and _inside(heading, SOURCE_BODY):
+        locations, unreadable, locked, repeated = _calyx_locations(scene, page, fragments, heading)
+    elif held is not None and _inside(title, OBSERVATION_TITLE) and _inside(heading, OBSERVATION_SOURCE):
+        # The longer item card still supplies inventory. Routes require the
+        # independently calibrated source layout.
+        locations, unreadable, locked, repeated = (), 0, 0, ()
+    else:
+        return None, None
     target_titles = [token for token in scene.tokens if token.within(SECTIONS)
                      and normalize(token.text) == SHORTFALL]
     target_visible = (len(target_titles) == 1 and target_titles[0] in page.tokens
                       and target_titles[0].box[3] <= title.box[1] and not catalogue_rows)
-    return MaterialDetail(title.text.strip(), locations, unreadable, locked, target_visible, repeated), entry
+    return MaterialDetail(title.text.strip(), locations, unreadable, locked, target_visible, repeated, held), entry
 
 
 def _catalogue_sources(detail, catalogue):
@@ -156,20 +283,30 @@ def _catalogue_sources(detail, catalogue):
     return sources
 
 
+def _merge_preview(first, second):
+    if isinstance(second, MaterialDetail) and first.held != second.held:
+        return replace(second, held=None)
+    return second
+
+
 def run_preview(ctx, *, selection=None):
     operation = 'build_target_preview' if selection is None else 'build_target_plan'
     if ctx.report.operation != operation:
         raise AutomationError('材料预览需要独立只读入口。')
     reader = BuildTargetRead(ctx)
     limit = ctx.settings.stamina_limit
-    preview = dict(state='unverified', material=None, shortfall=None, units_per_challenge=None,
+    preview = dict(state='unverified', material=None, held=None, shortfall=None, craftable=None, units_per_challenge=None,
                    count=None, configured_limit=limit, effective_limit=None, target_section_visible=False,
                    source_locations=[], candidates=[])
     ctx.report.build_target = dict(reader.record, preview=preview)
-    scene, observation = reader._observe(classify=lambda current: _classify(reader, current))
-    sources = [] if observation == 'panel' else _catalogue_sources(observation, reader.catalogue)
+    observe_quantities = selection is None
+    scene, observation = reader._observe(
+        classify=lambda current: _classify(reader, current, read_quantities=observe_quantities),
+        merge=_merge_preview if observe_quantities else None, require_adjacent=observe_quantities,
+    )
+    sources = _catalogue_sources(observation, reader.catalogue) if isinstance(observation, MaterialDetail) else []
     candidates = []
-    if observation != 'panel' and observation.target_section_visible:
+    if isinstance(observation, MaterialDetail) and observation.target_section_visible:
         for source in sources:
             rule = BY_KEY[source.category]
             candidates.append(dict(category=source.category, target=source.name, location=source.location,
@@ -184,13 +321,24 @@ def run_preview(ctx, *, selection=None):
         if _classify(reader, scene)[0] != observation:
             raise AutomationError('保存画面后培养材料或来源发生变化，未生成体力草稿。')
     reader._verify_observation(scene)
-    if observation == 'panel':
+    if isinstance(observation, CalyxRewardPreview):
+        rule = BY_KEY[observation.category]
+        preview.update(state='calyx_reward_preview', calyx_reward_preview=dict(
+            **asdict(observation), rewards='possible_items', stamina_per_challenge=rule.cost,
+            selected_stamina_within_config=observation.shown_total_stamina <= limit,
+            max_draft_challenges_by_config=min(rule.batch, count_limit(rule, limit))))
+        detail = f'已核对{observation.target}难度 {observation.difficulty} 的奖励预览与挑战费用。'
+    elif observation in ('panel', 'target_materials_sufficient'):
         ctx.report.build_target['page_verified'] = True
-        preview.update(state='panel_observed', target_section_visible=True)
-        detail = '已保存培养目标页。打开一项材料详情并显示获得途径可核对目录候选。'
+        if observation == 'target_materials_sufficient':
+            preview.update(state=observation, target_section_visible=True)
+            detail = '培养目标页显示已获得足够的等级和行迹材料。'
+        else:
+            preview.update(state='panel_observed', target_section_visible=True)
+            detail = '已保存培养目标页。打开一项材料详情并显示获得途径可核对目录候选。'
     else:
         preview.update(state='catalogue_candidates' if candidates else 'material_observed',
-                       material=observation.material, candidates=candidates,
+                       material=observation.material, held=observation.held, candidates=candidates,
                        target_section_visible=observation.target_section_visible,
                        source_locations=[source.location for source in sources],
                        lock_marker_rows=observation.lock_marker_rows,

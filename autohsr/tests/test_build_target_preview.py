@@ -84,6 +84,146 @@ class BuildTargetPreviewTests(unittest.TestCase):
         args = ('--build-target', '--material', material, '--location', location, '--count', str(count))
         return self.cli(frames, args=args, operation='build_target_plan', code=code)
 
+    def calyx(self, rounds, cost, *, title='回忆之蕾·拟造花萼（金）', difficulty='V'):
+        return [
+            fixtures.ACCOUNT, token(title, .73, .128, width=.19), token(f'难度{difficulty}', .66, .17),
+            token('可能遭遇', .656, .227), token('可能获取', .656, .582),
+            token(f'挑战次数{rounds}', .806, .80), token('24', .92, .825), token(f'×{cost}', .67, .91, score=.82),
+            token('挑战', .831, .91),
+        ]
+
+    def test_held_reads_explicit_zero_and_split_inventory_without_counting_as_shortfall(self):
+        base = [*self.material(), self.route('城郊雪原', .50), token('需要65', .45, .91)]
+        for fields, held in (
+            ([token('当前持有：0', .31, .684, width=.07)], 0),
+            ([token('当前持有：', .30, .684, width=.046), token('1,234', .349, .684, width=.036)], 1234),
+        ):
+            with self.subTest(held=held):
+                frame = [*base, *fields]
+                report = self.cli([frame, frame])
+                preview = report['build_target']['preview']
+                self.assertEqual(preview['held'], held)
+                self.assertEqual(preview['state'], 'catalogue_candidates')
+                self.assertTrue(all(preview[field] is None for field in
+                                    ('shortfall', 'craftable', 'units_per_challenge', 'count', 'effective_limit')))
+                self.assertNotIn('draft', report['build_target'])
+
+    def test_missing_conflicting_or_changed_inventory_never_guesses_amount(self):
+        base = [*self.material(), self.route('城郊雪原', .50)]
+        label = token('当前持有：2', .31, .683, width=.07)
+        for fields in (
+            [token('2', .34, .683)],
+            [replace(label, text='当前持有：O')],
+            [label, token('当前持有：7', .31, .716, width=.07, score=.70)],
+            [label, token('7', .362, .684, width=.025, score=.70)],
+            [label, token('当前', .278, .716, width=.035), token('持有：7', .324, .716, width=.05)],
+            [label, token('法吉娜之酒', .582, .326, width=.043, score=.78)],
+            [replace(label, box=(.40, .668, .47, .698))],
+        ):
+            with self.subTest(fields=fields):
+                frame = [*base, *fields]
+                preview = self.cli([frame, frame])['build_target']['preview']
+                self.assertIsNone(preview['held'])
+                self.assertEqual(preview['state'], 'catalogue_candidates')
+
+        two, three = [*base, label], [*base, replace(label, text='当前持有：3')]
+        preview = self.cli([two, three])['build_target']['preview']
+        self.assertEqual(preview['state'], 'catalogue_candidates')
+        self.assertEqual(preview['source_locations'], ['城郊雪原'])
+        self.assertIsNone(preview['held'])
+
+    def test_wider_held_card_layout_supplies_inventory_without_a_route(self):
+        frame = [
+            *self.guide, token('《绒绒号》典藏版合集', .499, .322, width=.16),
+            token('获得途径', .435, .672, width=.05), token('当前持有：2', .31, .686, width=.07),
+            token('需要65', .46, .89),
+        ]
+        preview = self.cli([frame, frame])['build_target']['preview']
+        self.assertEqual((preview['state'], preview['material'], preview['held']),
+                         ('material_observed', '《绒绒号》典藏版合集', 2))
+        self.assertEqual(preview['candidates'], [])
+        self.assertEqual(preview['source_locations'], [])
+        self.assertIsNone(preview['shortfall'])
+        conflict = [*frame, token('法吉娜之酒', .582, .326, width=.043, score=.78)]
+        preview = self.cli([conflict, conflict])['build_target']['preview']
+        self.assertEqual(preview['state'], 'unverified')
+        self.assertIsNone(preview['held'])
+
+    def test_target_materials_sufficient_is_a_page_state_without_an_item_count(self):
+        base = [*self.guide, token('角色培养', .45, .29),
+                token('遗器推荐', .44, .50), token('培养设置', .24, .89)]
+        enough = [*base, token('已获得足够的等级和行迹材料', .50, .40, width=.23)]
+        data = self.cli([enough, enough])['build_target']
+        preview = data['preview']
+        self.assertTrue(data['page_verified'])
+        self.assertEqual(preview['state'], 'target_materials_sufficient')
+        self.assertEqual(preview['candidates'], [])
+        self.assertIsNone(preview['shortfall'])
+
+        calculator = [*base, token('需要获取的材料', .50, .40), token('材料总计', .51, .44),
+                      token('需通过背包内多余材料合成的高稀有度材料', .50, .48)]
+        preview = self.cli([calculator, calculator])['build_target']['preview']
+        self.assertEqual(preview['state'], 'unverified')
+        self.assertIsNone(preview['craftable'])
+        for frame in (
+            [*base, token('已获得足够的等级和行迹材料', .50, .74, width=.23)],
+            [*enough, token('培养还需', .42, .42, width=.054), token('获取资源', .481, .42, width=.054)],
+        ):
+            with self.subTest(frame=frame):
+                preview = self.cli([frame, frame])['build_target']['preview']
+                self.assertEqual(preview['state'], 'unverified')
+
+    def test_calyx_preview_cost_and_difficulty_are_separate_from_possible_rewards(self):
+        for title, difficulty, rounds, cost, category, target, level in (
+            ('回忆之蕾·拟造花萼（金）', 'V', 1, 10, 'calyx_golden', '回忆之蕾', 5),
+            ('欢愉之蕾·拟造花萼（赤）', 'Ⅵ', 2, 20, 'calyx_crimson', '欢愉之蕾', 6),
+            ('回忆之蕾·拟造花萼（金）', 'V', 24, 240, 'calyx_golden', '回忆之蕾', 5),
+        ):
+            with self.subTest(rounds=rounds):
+                frame = self.calyx(rounds, cost, title=title, difficulty=difficulty)
+                report = self.cli([frame, frame])
+                preview = report['build_target']['preview']
+                self.assertEqual(preview['state'], 'calyx_reward_preview')
+                self.assertEqual(preview['calyx_reward_preview'], dict(
+                    category=category, target=target, difficulty=level, selected_rounds=rounds,
+                    shown_total_stamina=cost, rewards='possible_items', stamina_per_challenge=10,
+                    selected_stamina_within_config=cost <= 20, max_draft_challenges_by_config=2))
+                self.assertEqual(preview['candidates'], [])
+                self.assertTrue(all(preview[field] is None for field in
+                                    ('held', 'shortfall', 'craftable', 'units_per_challenge', 'count', 'effective_limit')))
+                self.assertNotIn('draft', report['build_target'])
+
+    def test_calyx_preview_requires_count_cost_agreement_and_rejects_result_overlay(self):
+        correct = self.calyx(1, 10)
+        for frame in (
+            self.calyx(1, 20),
+            [*correct, token('挑战成功', .50, .21), token('上轮挑战波次1', .63, .77)],
+            [*correct, token('×20', .69, .91, score=.70)],
+            [*correct, token('×2O', .69, .91, score=.86)],
+            [*correct, token('挑战次数', .74, .80), token('2', .852, .80)],
+            [*correct, token('2', .861, .80)],
+            [*correct, token('挑战', .694, .80, width=.04), token('次数2', .738, .80, width=.04)],
+            [replace(t, text='10') if t.text == '×10' else t for t in correct],
+            [t for t in correct if t.text != '可能获取'],
+        ):
+            with self.subTest(frame=frame):
+                preview = self.cli([frame] * 8)['build_target']['preview']
+                self.assertEqual(preview['state'], 'unverified')
+                self.assertNotIn('calyx_reward_preview', preview)
+        report = self.draft_cli([correct] * 8, code=1)
+        self.assertNotIn('draft', report['build_target'])
+        self.assertFalse((Path(report['run_dir']) / 'power-plan.json').exists())
+
+    def test_preview_does_not_pair_across_a_discarded_capture(self):
+        calyx = self.calyx(1, 10)
+        overlay = [token('助手遮挡', .50, .50)]
+        following = self.calyx(2, 20)
+        frames = [calyx, overlay, calyx, following, calyx, following, calyx, following, calyx]
+        with patch('autohsr.app.helper_overlay', side_effect=lambda scene: scene.has('助手遮挡', exact=True)):
+            preview = self.cli(frames)['build_target']['preview']
+        self.assertEqual(preview['state'], 'unverified')
+        self.assertNotIn('calyx_reward_preview', preview)
+
     def test_explicit_draft_persists_one_selected_power_item_without_input_or_spend(self):
         self.settings.allow_stamina_spend = False
         frame = [*self.material(), self.route('流云渡', .46), self.route('城郊雪原', .50),
