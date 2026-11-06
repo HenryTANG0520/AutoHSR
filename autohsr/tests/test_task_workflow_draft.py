@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import patch
 
 from autohsr import warp_service
-from autohsr.config import Settings
+from autohsr.config import ROOT, Settings
 from autohsr.task_workflow import MAX_BYTES, WorkflowError, read, task_spec
 from autohsr.task_workflow_draft import WorkflowDraft, WorkflowSaveConflict
 
@@ -38,6 +38,34 @@ class WorkflowDraftTests(unittest.TestCase):
         with self.assertRaises(WorkflowSaveConflict) as error:
             draft.save_as(target)
         self.assertEqual(error.exception.reason, reason)
+
+    def test_new_draft_is_in_memory_with_one_disabled_assignment_step(self):
+        draft = WorkflowDraft.new()
+        self.assertIsNone(draft.source)
+        self.assertFalse(draft.source_is_current())
+        self.assertFalse(draft.dirty)
+        template = draft.validate()
+        self.assertEqual(template.base_dir, ROOT.resolve())
+        self.assertEqual(template.profile['daily_calls'], 0)
+        step, = template.steps
+        self.assertFalse(step['enabled'])
+        self.assertEqual((step['task'], step['params']), ('daily', {'tasks': ['assignments']}))
+        self.assertEqual(list(self.root.iterdir()), [self.source])
+
+        draft.document['steps'][0]['enabled'] = True
+        draft.document['name'] = '我的持续委托'
+        checked = draft.validate(destination=self.target)
+        self.assertEqual(checked.base_dir, self.root)
+        self.assertEqual(checked.profile['daily_calls'], 1)
+        settings, _ = task_spec(Settings(), checked.steps[0], checked.base_dir)
+        self.assertTrue(settings.assignments)
+        self.assertFalse(any((settings.battle, settings.daily, settings.redemption_enabled, settings.mail,
+                              settings.battlepass)))
+        self.assertFalse(self.target.exists())
+        saved = draft.save_as(self.target)
+        self.assertIsNone(draft.source)
+        self.assertEqual(WorkflowDraft.load(saved.path).validate().document, checked.document)
+        self.assertEqual(self.source.read_bytes(), self.original)
 
     def test_load_edits_detached_tree_and_saves_a_verified_cli_document(self):
         from autohsr.__main__ import main

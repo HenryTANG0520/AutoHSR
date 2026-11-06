@@ -65,14 +65,22 @@ class SavedWorkflow:
 
 
 class WorkflowDraft:
-    """An editable copy of one explicitly loaded, valid v1 workflow."""
+    """An editable workflow created from a template or an explicit file."""
 
-    def __init__(self, source: Path, raw: bytes, revision, original: dict):
+    def __init__(self, source: Path | None, raw: bytes | None, revision, original: dict):
         self._source = source
         self._raw = raw
         self._revision = revision
         self._original = original
         self.document = deepcopy(original)
+
+    @classmethod
+    def new(cls) -> WorkflowDraft:
+        recipe = compile_recipe(dict(version=1, name='新建任务流', steps=[
+            dict(id='assignments', name='持续委托', type='task', task='daily', enabled=False,
+                 params=dict(tasks=['assignments'])),
+        ]))
+        return cls(None, None, None, recipe.document)
 
     @classmethod
     def load(cls, path) -> WorkflowDraft:
@@ -82,7 +90,7 @@ class WorkflowDraft:
         return cls(source, raw, revision, recipe.document)
 
     @property
-    def source(self) -> Path:
+    def source(self) -> Path | None:
         return self._source
 
     @property
@@ -90,14 +98,18 @@ class WorkflowDraft:
         return self.document != self._original
 
     def source_is_current(self) -> bool:
+        if self.source is None:
+            return False
         try:
             return _snapshot(self.source) == (self._raw, self._revision)
         except (WorkflowError, OSError):
             return False
 
     def validate(self, *, selected_path=None, destination=None) -> Recipe:
-        base = self.source.parent if destination is None else _selected_file(destination).parent
-        return compile_recipe(self.document, selected_path=selected_path, base_dir=base)
+        directory = self.source.parent if self.source is not None else None
+        if destination is not None:
+            directory = _selected_file(destination).parent
+        return compile_recipe(self.document, selected_path=selected_path, base_dir=directory)
 
     def save_as(self, path) -> SavedWorkflow:
         destination = _selected_file(path)

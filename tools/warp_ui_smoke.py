@@ -9,11 +9,12 @@ from threading import Event
 import tkinter as tk
 import unittest
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from autohsr import theme
-from autohsr.desktop_warp import ALL_ACCOUNTS, PAGE_SIZE, build_warp_panel
+from autohsr.desktop_warp import ALL_ACCOUNTS, GAME_CACHE, LINK_FILE, PAGE_SIZE, build_warp_panel
 from autohsr.warp_records import export, parse
 
 
@@ -63,6 +64,10 @@ class ToolHost:
 def record(index):
     return dict(id=str(9007199254740993000 + index), gacha_id="1001", gacha_type="11", item_id="1000",
                 time="2026-11-01 08:00:00", name=f"虚构物品 {index}", item_type="角色", rank_type="5", count="1")
+
+
+LINK = ("https://webstatic.mihoyo.com/?game_biz=hkrpg_cn&lang=zh-cn"
+        "&auth_appid=webview_gacha&authkey=synthetic-private-token")
 
 
 class WarpPanelSmoke(unittest.TestCase):
@@ -121,6 +126,11 @@ class WarpPanelSmoke(unittest.TestCase):
     def choose_format(self, label):
         self.panel.format.set(label)
         self.panel._choose_format()
+
+    def choose_reader(self, label):
+        self.panel.reader.set(label)
+        self.panel._choose_reader()
+        return self.panel.primary_action()[1]
 
     def choose_pool(self, key):
         self.panel.overview.selection_set(key)
@@ -260,6 +270,66 @@ class WarpPanelSmoke(unittest.TestCase):
         self.assertIsNone(self.host.pending)
         self.assertTrue(self.panel.can_import)
         self.assertEqual(self.panel.last_result, prior)
+
+    def test_link_fetch_exports_the_displayed_snapshot_after_rebuild_without_refetch(self):
+        link = self.folder / "private-link.txt"
+        link.write_text(LINK, encoding="utf8")
+        calls = []
+
+        def request(url):
+            query = parse_qs(urlsplit(url).query)
+            calls.append((query['gacha_type'][0], query['page'][0]))
+            rows = [dict(record(1), uid='100000000', lang='zh-cn')] if calls[-1] == ('11', '1') else []
+            return dict(retcode=0, data=dict(list=rows, region_time_zone=8))
+
+        with (patch('autohsr.warp_fetch.request_page', side_effect=request),
+              patch('autohsr.warp_fetch.time.sleep'),
+              patch('autohsr.desktop_warp.filedialog.askopenfilename', return_value=str(link))):
+            action = self.choose_reader(LINK_FILE)
+            self.assertEqual(self.panel.primary_action()[0], '联网读取链接文件')
+            self.assertEqual(calls, [])
+            action()
+            self.replace_panel()
+            self.assertTrue(self.panel.reader.instate(('disabled',)))
+            self.host.complete()
+            self.assertEqual(self.panel.last_result['status'], 'success')
+            self.assertIn(LINK_FILE, self.panel.sources_label.cget('text'))
+            self.assertFalse(self.panel.can_export)
+            self.assertEqual(link.read_text('utf8'), LINK)
+            link.unlink()  # Export is based on the completed fetch, not on a fresh link read.
+            self.choose_account('UID 100000000')
+            target = self.folder / 'fetched.json'
+            self.save_to(target)
+        self.assertEqual(len(calls), 7)
+        self.assertEqual(self.panel.last_result['status'], 'success')
+        raw = target.read_text('utf8')
+        self.assertNotIn('synthetic-private-token', raw)
+        accounts, _ = parse(json.loads(raw))
+        self.assertEqual([row['id'] for row in accounts[0]['list']], [record(1)['id']])
+
+    def test_cache_cancel_and_failed_online_read_leave_prior_local_result_available(self):
+        self.load_source()
+        self.choose_account('UID 100000000')
+        action = self.choose_reader(GAME_CACHE)
+        cache = self.folder / 'StarRail_Data' / 'webCaches' / '1' / 'Cache' / 'Cache_Data' / 'data_2'
+        cache.parent.mkdir(parents=True)
+        cache.write_text(LINK, encoding='utf8')
+        with patch('autohsr.warp_fetch.request_page', return_value={'retcode': -101}) as request:
+            with patch('autohsr.desktop_warp.filedialog.askdirectory', return_value=''):
+                action()
+            self.assertIsNone(self.host.pending)
+            request.assert_not_called()
+            with patch('autohsr.desktop_warp.filedialog.askdirectory', return_value=str(cache.parents[4])):
+                action()
+            self.host.complete()
+            request.assert_called_once()
+        self.assertEqual(self.panel.last_result['status'], 'failed')
+        self.assertIn('鉴权已过期', self.panel.feedback.cget('text'))
+        self.assertNotIn('synthetic-private-token', self.panel.feedback.cget('text'))
+        self.assertIn('1 份文件', self.panel.sources_label.cget('text'))
+        self.assertEqual(self.panel.account.get(), 'UID 100000000')
+        self.assertTrue(self.panel.can_export)
+        self.assertEqual(cache.read_text('utf8'), LINK)
 
 
 if __name__ == "__main__":

@@ -54,10 +54,7 @@ class ToolsShelf(ttk.Frame):
         return self.panels[key]
 
     def primary_action(self):
-        panel = self.current()
-        if self.selected == 'warp':
-            return '导入跃迁记录', panel.import_files, panel.can_import
-        return panel.primary_action()
+        return self.current().primary_action()
 
     def focus_entry(self):
         if not self.ui._in_tools() or self.ui.tools_shelf is not self:

@@ -1,4 +1,4 @@
-"""The guide's local warp-record view, backed by the existing record service."""
+"""The guide's warp-record view, backed by the existing record service."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -14,6 +14,8 @@ from .warp_records import MAX_BYTES, POOLS, WarpError
 from .warp_statistics import POOL_NAMES
 
 ALL_ACCOUNTS = "全部账号"
+LOCAL_RECORDS, GAME_CACHE, LINK_FILE = "本地记录", "游戏缓存", "链接文件"
+RECORD_SOURCES = (LOCAL_RECORDS, GAME_CACHE, LINK_FILE)
 FORMATS = {
     "UIGF JSON": ("uigf", ".json", "uigf-v4.2"),
     "SRGF JSON": ("srgf", ".srgf.json", "srgf-v1.0"),
@@ -27,12 +29,15 @@ PAGE_SIZE = 50
 class _State:
     sources: tuple[Path, ...] = ()
     digests: tuple[str, ...] = ()
+    snapshot: warp_service.WarpSnapshot | None = field(default=None, repr=False)
+    snapshot_source: str = ""
+    reader: str = LOCAL_RECORDS
     accounts: tuple[dict, ...] = ()
     choice: str = ""
     pool: str = ""
     format: str = "UIGF JSON"
     page: int = 0
-    message: str = "从底栏选择本地 UIGF 或 SRGF JSON。"
+    message: str = "选择记录来源后从底栏读取。联网来源使用官方跃迁记录接口。"
     result: dict = field(default_factory=dict)
     job: object | None = None
     revision: int = 0
@@ -79,7 +84,13 @@ class WarpPanel(ttk.Frame):
         self.rowconfigure(6, weight=1)
         self._rendered = -1
 
-        ttk.Label(self, text="跃迁记录", style="PageTitle.TLabel").grid(row=0, column=0, sticky="w")
+        heading = ttk.Frame(self, style="Panel.TFrame")
+        heading.grid(row=0, column=0, sticky="ew")
+        ttk.Label(heading, text="跃迁记录", style="PageTitle.TLabel").pack(side="left")
+        self.reader = ttk.Combobox(heading, values=RECORD_SOURCES, width=12, state="readonly")
+        self.reader.pack(side="right")
+        self.reader.bind("<<ComboboxSelected>>", self._choose_reader)
+        ttk.Label(heading, text="读取来源", style="Hint.TLabel").pack(side="right", padx=(0, self.px(8)))
         self.sources_label = theme.wrapped_label(self, style="Hint.TLabel")
         self.sources_label.grid(row=1, column=0, sticky="ew", pady=(self.px(2), self.px(4)))
         controls = ttk.Frame(self, style="Panel.TFrame")
@@ -153,8 +164,16 @@ class WarpPanel(ttk.Frame):
         """Metadata for this tool's most recent result, kept in the local view."""
         return self.model.result.copy()
 
+    def primary_action(self):
+        label, action = {
+            LOCAL_RECORDS: ("导入跃迁记录", self.import_files),
+            GAME_CACHE: ("联网读取游戏缓存", self.fetch_cache),
+            LINK_FILE: ("联网读取链接文件", self.fetch_link_file),
+        }[self.model.reader]
+        return label, action, self.can_import
+
     def focus_initial(self):
-        target = self.account if self.model.accounts else getattr(self.ui, "footer_start_button", None)
+        target = self.account if self.model.accounts else self.reader
         if target is not None and not target.instate(("disabled",)):
             target.focus_set()
 
@@ -164,6 +183,7 @@ class WarpPanel(ttk.Frame):
             self._rendered = model.revision
             self._render()
         enabled = self.can_import and bool(model.accounts)
+        self.reader.configure(state="readonly" if self.can_import else "disabled")
         self.account.configure(state="readonly" if enabled else "disabled")
         self.format.configure(state="readonly" if enabled else "disabled")
         self.export_button.configure(state="normal" if self.can_export else "disabled")
@@ -187,6 +207,13 @@ class WarpPanel(ttk.Frame):
 
     def _current(self):
         return getattr(self.ui, "warp_panel", self) is self
+
+    def _choose_reader(self, _event=None):
+        reader = self.reader.get()
+        if self.can_import and reader in RECORD_SOURCES and reader != self.model.reader:
+            self.model.reader = reader
+            self._change()
+            self.ui._tool_action_changed()
 
     def _choose_account(self, _event=None):
         choice = self.account.get()
@@ -221,9 +248,10 @@ class WarpPanel(ttk.Frame):
         self.account.configure(values=tuple(self._choices()))
         self.account.set(model.choice or "请选择账号")
         self.format.set(model.format)
+        self.reader.set(model.reader)
         records = sum(sum(pool["records"] for pool in a["pools"].values()) for a in model.accounts)
-        source_text = (f"记录窗口 · {len(model.sources)} 份文件 · {len(model.accounts)} 个账号 · {records} 条记录"
-                       if model.sources else "尚未导入。")
+        source = model.snapshot_source or (f"{len(model.sources)} 份文件" if model.sources else "")
+        source_text = f"记录窗口 · {source} · {len(model.accounts)} 个账号 · {records} 条记录" if source else "尚未读取。"
         self.sources_label.configure(text=source_text)
         message = model.message
         if model.choice == ALL_ACCOUNTS and FORMATS[model.format][0] == "srgf":
@@ -283,16 +311,31 @@ class WarpPanel(ttk.Frame):
             paths = selected if isinstance(selected, (list, tuple)) else self.tk.splitlist(selected)
             self._start("analysis", tuple(Path(path) for path in paths))
 
+    def fetch_cache(self):
+        if not self.can_import:
+            return
+        path = filedialog.askdirectory(parent=self.ui.root, title="选择 StarRail_Data 缓存目录", mustexist=True)
+        if path and self.can_import:
+            self._start("analysis", (), cache_dir=Path(path), snapshot_source=GAME_CACHE)
+
+    def fetch_link_file(self):
+        if not self.can_import:
+            return
+        path = filedialog.askopenfilename(parent=self.ui.root, title="选择 UTF-8 跃迁记录链接文件",
+                                          filetypes=[("文字文件", "*.txt"), ("所有文件", "*")])
+        if path and self.can_import:
+            self._start("analysis", (), url_file=Path(path), snapshot_source=LINK_FILE)
+
     def export(self):
         if not self.can_export:
             return
         model = self.model
-        frozen = model.sources, model.digests, model.choice, model.format
+        frozen = model.revision
         kind, extension, result_format = FORMATS[model.format]
         target = filedialog.asksaveasfilename(parent=self.ui.root, title="另存跃迁记录",
             defaultextension=extension, initialfile=f"跃迁记录{extension}", confirmoverwrite=False,
             filetypes=[(model.format, "*.xlsx" if kind == "xlsx" else "*.json")])
-        if target and self.can_export and frozen == (model.sources, model.digests, model.choice, model.format):
+        if target and self.can_export and frozen == model.revision:
             selected_uid = self._account().get("uid")
             self._start("export", model.sources, output=Path(target), kind=kind, selected_uid=selected_uid,
                         result_format=result_format)
@@ -301,26 +344,35 @@ class WarpPanel(ttk.Frame):
         if self.model.job is not None:
             self.ui.stop_requested.set()
 
-    def _start(self, mode, paths, *, output=None, kind="uigf", selected_uid=None, result_format=None):
+    def _start(self, mode, paths, *, output=None, kind="uigf", selected_uid=None, result_format=None,
+               url_file=None, cache_dir=None, snapshot_source=""):
         model, ui = self.model, self.ui
         expected = model.digests if output is not None else None
+        existing_snapshot = model.snapshot if output is not None else None
         job, previous = object(), model.message
 
         def work(cancel_event):
             cancel = cancel_event.is_set
             checkpoint(cancel)
-            if len(paths) > 1000:
-                raise WarpError("最多一次导入1000份记录文件。")
-            sources = tuple(path.resolve(strict=True) for path in paths)
-            with hold_read_sources(sources):
-                digests = _digests(sources, cancel)
-                if expected is not None and digests != expected:
-                    raise WarpError("导入原件内容已改变，请重新导入后再导出。")
-                if output is None:
-                    result = warp_service.run(imports=sources, analysis_only=True, include_details=True, cancel=cancel)
-                else:
-                    result = warp_service.run(imports=sources, output=output, format=kind,
-                                              selected_uid=selected_uid, cancel=cancel)
+            snapshot, sources, digests = None, (), ()
+            if snapshot_source:
+                snapshot = warp_service.fetch_snapshot(url_file=url_file, cache_dir=cache_dir, cancel=cancel)
+                result = snapshot.analyze(cancel=cancel)
+            elif existing_snapshot is not None:
+                result = existing_snapshot.export(output, format=kind, selected_uid=selected_uid, cancel=cancel)
+            else:
+                if len(paths) > 1000:
+                    raise WarpError("最多一次导入1000份记录文件。")
+                sources = tuple(path.resolve(strict=True) for path in paths)
+                with hold_read_sources(sources):
+                    digests = _digests(sources, cancel)
+                    if expected is not None and digests != expected:
+                        raise WarpError("导入原件内容已改变，请重新导入后再导出。")
+                    if output is None:
+                        result = warp_service.run(imports=sources, analysis_only=True, include_details=True, cancel=cancel)
+                    else:
+                        result = warp_service.run(imports=sources, output=output, format=kind,
+                                                  selected_uid=selected_uid, cancel=cancel)
             if result.get("status") != "success" or result.get("mode") != mode:
                 raise WarpError("本次跃迁结果待核对。")
             if output is None:
@@ -333,11 +385,11 @@ class WarpPanel(ttk.Frame):
             elif (result.get("format") != result_format or not output.is_file()
                   or not re.fullmatch(r"[0-9a-f]{64}", result.get("output_sha256") or "")):
                 raise WarpError("本次导出文件或回执待核对。")
-            return result, sources, digests
+            return result, sources, digests, snapshot
 
         def done(value):
-            result, sources, digests = value
-            self._finish(job, result, sources, digests, output)
+            result, sources, digests, snapshot = value
+            self._finish(job, result, sources, digests, output, snapshot=snapshot, snapshot_source=snapshot_source)
 
         def failed(error):
             stopped = isinstance(error, WarpStopped)
@@ -346,9 +398,10 @@ class WarpPanel(ttk.Frame):
             self._finish(job, dict(status="stopped" if stopped else "failed", mode=mode, message=message),
                          (), (), output)
 
-        title = "分析跃迁记录" if output is None else "导出跃迁记录"
+        title = ("联网读取跃迁记录" if snapshot_source else
+                 "分析跃迁记录" if output is None else "导出跃迁记录")
         model.job = job
-        model.message = "正在分析本地记录…" if output is None else "正在导出所选记录…"
+        model.message = f"正在{title}…"
         self._change()
         try:
             accepted = ui._submit_tool_job(title, work, done, failed)
@@ -360,7 +413,7 @@ class WarpPanel(ttk.Frame):
             self._change()
         ui._tool_action_changed()
 
-    def _finish(self, job, result, paths, digests, output):
+    def _finish(self, job, result, paths, digests, output, *, snapshot=None, snapshot_source=""):
         model, ui = self.model, self.ui
         if model.job is not job:
             return
@@ -369,6 +422,7 @@ class WarpPanel(ttk.Frame):
                                                     "output_sha256", "message") if key in result}
         if status == "success" and output is None:
             model.sources, model.digests = paths, digests
+            model.snapshot, model.snapshot_source = snapshot, snapshot_source
             model.accounts = tuple(result["details"]["accounts"])
             model.choice, model.pool, model.page = "", "", 0
             model.message = "分析完成。请选择账号。" if model.accounts else "分析完成。暂无账号记录。"
@@ -388,7 +442,7 @@ class WarpPanel(ttk.Frame):
 def build_warp_panel(parent, ui):
     """Build a frame for the host to place and retain as `ui.warp_panel`.
 
-    The host uses `import_files` in the footer and calls `refresh_actions`
+    The host uses `primary_action` in the footer and calls `refresh_actions`
     after navigation or lock changes. Its tool job interface runs the file
     work and delivers the result on the Tk thread after releasing the lock.
     """

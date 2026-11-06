@@ -173,6 +173,53 @@ class DesktopToolTests(unittest.TestCase):
         panel.pick_workflow()
         return panel
 
+    def test_new_workflow_requires_verified_save_and_an_explicit_run(self):
+        self.ui.workflow_panel = panel = tools.build_workflow_panel(None, self.ui)
+        panel.new_button.options['command']()
+        self.open_dialog.assert_not_called()
+        self.save_dialog.assert_not_called()
+        self.assertIsNone(panel.draft.source)
+        self.assertIn("尚未保存", panel.source.get())
+        self.assertTrue(panel.reload_button.instate(("disabled",)))
+        self.assertTrue(panel.run_button.instate(("disabled",)))
+        panel.validate()
+        self.assertIn("日常预算 0 份", panel.budget.get())
+        self.assertEqual(panel.source_status.get(), "")
+        panel.run_saved()
+        self.assertEqual(list(self.root.iterdir()), [self.source])
+
+        edited = json.loads(panel.editor.content)
+        edited['steps'][0]['enabled'] = True
+        panel.editor.user_text(json.dumps(edited, ensure_ascii=False))
+        panel.new()
+        self.discard.assert_called_once()
+        self.assertTrue(panel.dirty)
+        panel.validate()
+        self.assertIn("日常预算 1 份", panel.budget.get())
+        self.ui.workflow_panel = current = tools.build_workflow_panel(None, self.ui)
+        current.restore_draft(panel.snapshot_draft())
+        self.assertIsNone(current.draft.source)
+        self.assertTrue(current.dirty)
+        self.assertIn("校验通过", current.status.get())
+
+        self.save_dialog.return_value = str(self.source)
+        current.save_as()
+        self.assertIn("目标已存在", current.status.get())
+        self.assertEqual(self.source.read_bytes(), self.original)
+        self.assertIsNone(current.draft.source)
+        target = self.root / 'new-workflow.json'
+        self.save_dialog.return_value = str(target)
+        current.select_destination()
+        current.primary_action()[1]()
+        self.assertEqual(read(target), edited)
+        self.assertEqual(current.draft.source, target)
+        self.ui._start_task_workflow.assert_not_called()
+        self.open_dialog.return_value = str(target)
+        current.open()
+        current.run_saved()
+        self.ui._start_task_workflow.assert_called_once()
+        self.assertEqual(self.ui._start_task_workflow.call_args.args[0].document, edited)
+
     def test_workflow_validate_and_exclusive_save_rebase_without_touching_original(self):
         panel = self.open_workflow()
         self.document["name"] = "审阅后的流程"

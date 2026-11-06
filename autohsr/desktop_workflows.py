@@ -117,18 +117,19 @@ class _WorkflowPanel(_Panel):
         self.editor_text = ""
         self.saved_target = None
         self.loading = False
-        self.source = tk.StringVar(self, value="请选择已有任务流 JSON")
+        self.source = tk.StringVar(self, value="请选择新建草稿或打开任务流")
         self.destination = tk.StringVar(self, value="保存时选择新文件")
-        self.status = tk.StringVar(self, value="打开任务流后可编辑和校验。")
+        self.status = tk.StringVar(self, value="新建或打开任务流后可编辑和校验。")
         self.source_status = tk.StringVar(self)
         self.budget = tk.StringVar(self)
 
         toolbar = ttk.Frame(self)
         toolbar.grid(row=0, column=0, sticky="ew", pady=(0, self._size(8)))
-        self.open_button = self._button(toolbar, "打开任务流", self.open, 0)
-        self.reload_button = self._button(toolbar, "重新加载", self.reload, 1)
-        self.validate_button = self._button(toolbar, "校验草稿", self.validate, 2)
-        self.run_button = self._button(toolbar, "运行已保存流程", self.run_saved, 3)
+        self.new_button = self._button(toolbar, "新建草稿", self.new, 0)
+        self.open_button = self._button(toolbar, "打开任务流", self.open, 1)
+        self.reload_button = self._button(toolbar, "重新加载", self.reload, 2)
+        self.validate_button = self._button(toolbar, "校验草稿", self.validate, 3)
+        self.run_button = self._button(toolbar, "运行已保存流程", self.run_saved, 4)
 
         for row, title, variable in ((1, "来源", self.source), (2, "另存位置", self.destination)):
             line = ttk.Frame(self)
@@ -158,6 +159,10 @@ class _WorkflowPanel(_Panel):
     def dirty(self):
         return self.draft is not None and self._text() != self.clean_text
 
+    @property
+    def _source_file(self):
+        return self.draft.source if self.draft is not None else None
+
     def primary_action(self):
         return "另存为", self.save_as, self.draft is not None and not self._busy
 
@@ -169,12 +174,15 @@ class _WorkflowPanel(_Panel):
 
     def refresh(self):
         idle = not self._busy
-        loaded = self.draft is not None
+        has_draft = self.draft is not None
+        saved = self._source_file is not None
+        _set_enabled(self.new_button, idle)
         _set_enabled(self.open_button, idle)
-        for button in (self.reload_button, self.validate_button, self.target_button):
-            _set_enabled(button, idle and loaded)
-        _set_enabled(self.run_button, idle and loaded and not self.dirty)
-        self.editor.configure(state="normal" if idle and loaded else "disabled")
+        for button in (self.validate_button, self.target_button):
+            _set_enabled(button, idle and has_draft)
+        _set_enabled(self.reload_button, idle and saved)
+        _set_enabled(self.run_button, idle and saved and not self.dirty)
+        self.editor.configure(state="normal" if idle and has_draft else "disabled")
 
     def _edit(self, _=None):
         if not self.editor.edit_modified():
@@ -197,11 +205,19 @@ class _WorkflowPanel(_Panel):
         self.editor_text = self.clean_text
         self._replace_editor(self.editor, self.clean_text)
         self.loading = False
-        self.source.set(str(draft.source))
+        self.source.set(str(draft.source) if draft.source is not None else "新草稿 · 尚未保存")
         self.saved_target = None
         self.destination.set("保存时选择新文件")
         self.source_status.set("")
         self.budget.set("")
+
+    def new(self):
+        if not self._can_replace_form("新建草稿", "当前编辑尚未另存。放弃这些编辑？"):
+            return
+        self._install(WorkflowDraft.new())
+        self.status.set('持续委托步骤初始禁用。将 "enabled" 改为 true 可启用。')
+        self.editor.focus_set()
+        self._changed()
 
     def _load(self, path):
         if not self._can_replace_form("替换草稿", "当前编辑尚未另存。放弃这些编辑？"):
@@ -216,27 +232,34 @@ class _WorkflowPanel(_Panel):
             self.editor.focus_set()
         self._changed()
 
+    def _choose_workflow_file(self, title, *, save=False):
+        source = self._source_file
+        return self._choose_file(title, save=save, initialdir=source.parent if source is not None else None)
+
     def open(self):
         if self._busy:
             return
-        source = self._choose_file("打开任务流", initialdir=self.draft.source.parent if self.draft else None)
+        source = self._choose_workflow_file("打开任务流")
         if source is not None:
             self._load(source)
 
     def reload(self):
-        if not self._busy and self.draft is not None:
-            self._load(self.draft.source)
+        source = self._source_file
+        if not self._busy and source is not None:
+            self._load(source)
 
     def select_destination(self):
         if self._busy or self.draft is None:
             return
-        target = self._choose_file("选择任务流另存位置", save=True, initialdir=self.draft.source.parent)
+        target = self._choose_workflow_file("选择任务流另存位置", save=True)
         if target is not None and not self._busy:
             self.saved_target = target
             self.destination.set(str(target))
             self.validate()
 
     def _check_source(self):
+        if self._source_file is None:
+            return False
         current = self.draft.source_is_current()
         self.source_status.set("" if current else "来源已变化 · 可保留草稿另存，或重新加载。")
         return current
@@ -279,7 +302,7 @@ class _WorkflowPanel(_Panel):
     def save_as(self):
         if self._busy or self.draft is None:
             return
-        target = self.saved_target or self._choose_file("任务流另存为", save=True, initialdir=self.draft.source.parent)
+        target = self.saved_target or self._choose_workflow_file("任务流另存为", save=True)
         if target is None or self._busy:
             return
         self.saved_target = target
@@ -313,14 +336,15 @@ class _WorkflowPanel(_Panel):
         return fresh
 
     def run_saved(self):
-        if self._busy or self.draft is None or self.dirty:
+        source = self._source_file
+        if self._busy or source is None or self.dirty:
             return
         try:
-            with hold_read_sources((self.draft.source,)):
+            with hold_read_sources((source,)):
                 if not self._check_source():
                     self.status.set("运行前核验失败 · 请重新加载保存版本")
                 else:
-                    recipe = WorkflowDraft.load(self.draft.source).validate()
+                    recipe = WorkflowDraft.load(source).validate()
                     self.status.set("已提交已保存的任务流")
                     if not self.ui._start_task_workflow(recipe, on_report=self._deliver_report):
                         self.status.set("任务流未启动 · 当前执行权不可用")
