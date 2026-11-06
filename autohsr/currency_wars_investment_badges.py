@@ -16,8 +16,9 @@ _BUNDLES = {
     '昼之半神星徽套组': ('昼之半神星徽', ('风堇',), '生命之环'),
     # The fixture reads 飞雪. Retain the observed label if either form is read.
     '追击星徽套组': ('追击星徽', ('飞雪', '飞霄'), '永动机'),
+    '能量星徽套组': ('能量星徽', ('星期日',), '胜利之旗'),
 }
-_COUNT = r'([1-3一二两三])'
+_COUNT = r'([0-9]{1,2}|[一二两三])'
 _LABEL = r'【([\u4e00-\u9fff]{1,16})】'
 _DECLARATION = re.compile(rf'获得{_COUNT}个{_LABEL}和{_COUNT}个{_LABEL}以及{_COUNT}(?:个|件){_LABEL}')
 _CN_COUNTS = {'一': 1, '二': 2, '两': 2, '三': 3}
@@ -45,7 +46,10 @@ def parse_badge_declaration(title, effect):
     badge_count, badge, second_count, second, third_count, third = match.groups()
     if badge != known[0] or second not in known[1] or third != known[2]:
         return None
-    amounts = [int(_CN_COUNTS.get(count, count)) for count in (badge_count, second_count, third_count)]
+    counts = (badge_count, second_count, third_count)
+    if any(count not in _CN_COUNTS and count not in ('1', '2', '3') for count in counts):
+        return None
+    amounts = [int(_CN_COUNTS.get(count, count)) for count in counts]
     return BadgeDeclaration(badge, amounts[0], ((second, amounts[1]), (third, amounts[2])))
 
 
@@ -57,6 +61,12 @@ def read_badge_declaration(name, parts, confidence):
         parts = [t for t in parts if t.center[1] <= .55]
     elif title not in _BUNDLES:
         return None
+    effect = badge_effect_text(name, parts, confidence)
+    return parse_badge_declaration(title, effect) if effect is not None else None
+
+
+def badge_effect_text(name, parts, confidence):
+    """Read contiguous text from one card with its original row positions."""
     x = name.center[0]
     threshold = max(.85, confidence)
     if not parts or any(t.score < threshold or not x-.125 <= t.box[0] < t.box[2] <= x+.125
@@ -96,7 +106,23 @@ def read_badge_declaration(name, parts, confidence):
                 return None
         previous_line = start, y, top, bottom
 
-    return parse_badge_declaration(name.text, ''.join(t.text for row in rows for t in row))
+    return ''.join(t.text for row in rows for t in row)
+
+
+def bundle_declaration_conflicts(effect, declaration):
+    """Retain differing quantities and recognized names in complete alternate reads."""
+    match = _DECLARATION.fullmatch(normalize(effect))
+    if match is None:
+        return False
+    badge_count, badge, role_count, role, item_count, item = match.groups()
+    counts = tuple(int(_CN_COUNTS.get(count, count)) for count in (badge_count, role_count, item_count))
+    expected_counts = (declaration.badge_count, *(count for _, count in declaration.other_rewards))
+    if counts != expected_counts:
+        return True
+    expected_role, expected_item = (name for name, _ in declaration.other_rewards)
+    return (badge.endswith('星徽') and not declaration.badge.endswith(badge)
+            or role != expected_role and any(role in bundle[1] for bundle in _BUNDLES.values())
+            or item != expected_item and any(item == bundle[2] for bundle in _BUNDLES.values()))
 
 
 def _inside(token, region):

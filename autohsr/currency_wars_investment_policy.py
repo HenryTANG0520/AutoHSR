@@ -102,29 +102,26 @@ def options(scene, confidence=.65):
 
 def badge_declarations(scene, confidence=.65):
     """Summarize declarations without changing selection scores or refresh proofs."""
-    from .currency_wars_investment_badges import GRAIL_CARD, read_badge_declaration
+    from .currency_wars_investment_badges import read_badge_declaration
 
     try:
         choices = options(scene, confidence)
     except AutomationError:
         return []
     observed = trusted(scene, 0)
+    try:
+        selected = selected_slot(scene, choices)
+    except AutomationError:
+        selected = None
     declarations = []
     for choice in choices:
         declaration = read_badge_declaration(choice.name, _effect_parts(observed, choice.name), confidence)
         if declaration is None:
             continue
         title = normalize(choice.name.text)
-        entry = dict(slot=choice.slot, title=title, status='delivery_unverified',
-                     delivery_verified=False, **asdict(declaration))
-        if title == GRAIL_CARD:
-            try:
-                selected = selected_slot(scene, choices)
-            except AutomationError:
-                selected = None
-            entry['selection_state'] = ('unverified' if selected is None else
-                                        'selected' if selected == choice.slot else 'other_selected')
-        declarations.append(entry)
+        state = 'unverified' if selected is None else 'selected' if selected == choice.slot else 'other_selected'
+        declarations.append(dict(slot=choice.slot, title=title, status='delivery_unverified',
+                                 delivery_verified=False, selection_state=state, **asdict(declaration)))
     return declarations
 
 

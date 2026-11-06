@@ -16,7 +16,7 @@ from pathlib import Path
 from .models import AutomationError, Scene, Token
 
 
-def _ocr_job(input_path: str, output_path: str, confidence: float, configured_name=""):
+def _ocr_job(input_path: str, output_path: str, confidence: float, configured_name="", *, observe_badge_bundles=False):
     try:
         import numpy as np
         from .currency_wars_identity import UID_VETO_FLOOR
@@ -47,6 +47,9 @@ def _ocr_job(input_path: str, output_path: str, confidence: float, configured_na
         scene = refine_battle_node(scene, reader)
         from .currency_wars_encounter import supplement_encounter_fields
         scene = supplement_encounter_fields(scene, reader)
+        if observe_badge_bundles:
+            from .currency_wars_badge_observation import supplement_bundle_observation
+            scene = supplement_bundle_observation(scene, reader)
         from .currency_wars_settlement_observation import supplement_settlement_fields
         scene = supplement_settlement_fields(scene, reader, confidence)
         from .currency_wars_weekly_rewards import supplement_reward_controls
@@ -105,6 +108,8 @@ def _field_reads(result):
 
 
 class IsolatedVision:
+    observe_badge_bundles = False
+
     def __init__(self, confidence=.65, *, checkpoint=lambda: None, inactive=lambda: 0., timeout=30., configured_name=""):
         if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("OCR 超时必须为正数。")
@@ -133,8 +138,9 @@ class IsolatedVision:
             try:
                 arguments=(str(source),str(destination),self.confidence)
                 if self.configured_name:arguments+=(self.configured_name,)
+                options = {'observe_badge_bundles': True} if self.observe_badge_bundles else {}
                 process = multiprocessing.get_context("spawn").Process(
-                    target=_ocr_job, args=arguments, name="AutoHSR-OCR", daemon=True)
+                    target=_ocr_job, args=arguments, kwargs=options, name="AutoHSR-OCR", daemon=True)
                 process.start()
                 started = True
                 while True:

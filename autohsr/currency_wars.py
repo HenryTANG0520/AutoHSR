@@ -79,7 +79,17 @@ class CurrencyWarsWorkflow:
         self.c.checkpoint()
         started = time.monotonic()
         inactive_before = self.c.runner.inactive_duration
-        scene = self.c.snapshot()
+        from .ocr_isolation import IsolatedVision
+        reader = getattr(self.c, 'vision', None)
+        if isinstance(reader, IsolatedVision):
+            previous = reader.observe_badge_bundles
+            reader.observe_badge_bundles = True
+            try:
+                scene = self.c.snapshot()
+            finally:
+                reader.observe_badge_bundles = previous
+        else:
+            scene = self.c.snapshot()
         self.c.checkpoint()
         active_elapsed = time.monotonic() - started - (self.c.runner.inactive_duration - inactive_before)
         if active_elapsed > 30:
@@ -95,8 +105,14 @@ class CurrencyWarsWorkflow:
             observation = replace(observation, page_kind=settlement.page, page_verified=True)
         elif progress is not None:
             observation = replace(observation, page_kind=progress.page, page_verified=True)
+        bundle_badges = []
+        if observation.page_kind in ('unknown', 'investment_selection'):
+            from .currency_wars_badge_observation import read_bundle_observation
+            bundle_badges = read_bundle_observation(scene, confidence)
         encounter = None
-        if observation.page_kind == 'unknown':
+        if bundle_badges and observation.page_kind == 'unknown':
+            observation = replace(observation, page_kind='investment_selection', page_verified=True)
+        elif observation.page_kind == 'unknown':
             from .currency_wars_encounter import read_encounter
             encounter = read_encounter(scene, self.c.settings.ocr_confidence, include_experience=True)
             if encounter is not None and encounter.layout_verified:
@@ -133,7 +149,9 @@ class CurrencyWarsWorkflow:
                 data['red_noble_declaration'] = declaration
         if observation.page_kind == 'investment_selection':
             from .currency_wars_investment_policy import badge_declarations
-            data['investment_badge_declarations'] = badge_declarations(scene, self.c.settings.ocr_confidence)
+            badges = {d['slot']: d for d in badge_declarations(scene, self.c.settings.ocr_confidence)}
+            badges.update((d['slot'], d) for d in bundle_badges)
+            data['investment_badge_declarations'] = [badges[slot] for slot in sorted(badges)]
         if encounter is not None:
             data['encounter'] = asdict(encounter)
         if observation.page_kind == 'supply_selection':
