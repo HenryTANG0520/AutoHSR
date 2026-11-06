@@ -23,7 +23,7 @@ from autohsr.models import FocusLost, Scene, Stopped, Token
 from autohsr.task_workflow import ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, PAGE_TASK, WORKFLOW_PAGES, WorkflowError
 from autohsr.task_workflow_run import TaskWorkflowRunner, _bytes
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, _Window, phone
-from autohsr.windows import INPUT
+from autohsr.windows import GameWindow, INPUT
 
 
 def row(target, status, sent=None, unconfirmed=None):
@@ -264,6 +264,7 @@ class PageCheckRunnerTests(TestCase):
                 return length - 1 if short_send and length == 3 else length
 
             window = _Window(frames())
+            window.require_foreground = GameWindow.require_foreground.__get__(window)
             if targets == ('messages',):
                 (root / 'config.ini').write_text('[General]\ngame_version=4.6.0\n', encoding='utf8')
                 executable = root / 'StarRail.exe'
@@ -281,7 +282,8 @@ class PageCheckRunnerTests(TestCase):
                     changed = True
                 return saved
 
-            user = SimpleNamespace(GetAsyncKeyState=Mock(return_value=0), SendInput=Mock(side_effect=send),
+            user = SimpleNamespace(GetForegroundWindow=Mock(return_value=window.hwnd),
+                GetAsyncKeyState=Mock(return_value=0), SendInput=Mock(side_effect=send),
                 GetSystemMetrics=Mock(side_effect={76: 0, 77: 0, 78: 1920, 79: 1080}.__getitem__))
             kernel = SimpleNamespace(CreateMutexW=Mock(return_value=1), CloseHandle=Mock())
             for name, value in (('autohsr.app.ROOT', root), ('autohsr.windows.user32', user),
