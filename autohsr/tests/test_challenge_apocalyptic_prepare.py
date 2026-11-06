@@ -58,7 +58,81 @@ def frame(kind, *, level='03', node=1, include_uid=True):
                  captured_at=time.monotonic())
 
 
+def locked_detail(*, level='03', node=1):
+    label = ('节点一｜勾魂摄魄的支配者', '节点二迷惘之渊的裁定者')[node - 1]
+    tokens = [text(level, (.389, .117, .421, .160)),
+              text(label, (.438, .117, .616, .149)),
+              text('难度', (.389, .157, .419, .185)),
+              text('当前队伍', (.376, .720, .423, .746)),
+              text('不可更换', (.540, .821, .593, .845)),
+              text('角色详情', (.651, .883, .704, .913)),
+              text('前往挑战', (.848, .883, .900, .913))]
+    return Scene([*tokens, UID], np.full((1080, 1920, 3), 32, np.uint8),
+                 captured_at=time.monotonic())
+
+
 class ApocalypticPreparationPageTests(unittest.TestCase):
+    def test_locked_detail_reads_difficulty_and_node_with_zero_input_targets(self):
+        for level, node in (('03', 1), ('０３', 2), ('02', 2)):
+            with self.subTest(level=level, node=node):
+                page = observe(locked_detail(level=level, node=node))
+                self.assertEqual((page.kind, page.level, page.basis['node']),
+                                 ('locked_node_detail', int(level), node))
+                self.assertEqual(page.basis['team_editability'], 'locked')
+                self.assertIsNone(page.basis['period'])
+                self.assertIsNone(page.basis['selected_level'])
+                self.assertEqual(page.targets, ())
+
+    def test_locked_detail_requires_complete_lock_and_the_two_footer_controls(self):
+        for i, variant in (
+            (0, text('04', (.389, .117, .421, .160))),
+            (1, text('节点二勾魂摄魄的支配者', (.438, .117, .616, .149))),
+            (2, text('等级80', (.389, .157, .419, .185))),
+            (4, text('日不可更换', (.540, .821, .593, .845))),
+            (4, text('不可更换', (.540, .821, .593, .845), .80)),
+            (5, text('角色详情', (.651, .871, .704, .885))),
+            (6, text('更换编队', (.848, .883, .900, .913))),
+        ):
+            with self.subTest(variant=variant):
+                scene = locked_detail()
+                scene.tokens[i] = variant
+                self.assertEqual(observe(scene).kind, 'unknown')
+
+    def test_locked_detail_rejects_change_team_dialog_and_other_modes(self):
+        for extra in (
+            [text('更换编队', (.880, .748, .929, .778), .75)],
+            [text('将清空当前', (.341, .441, .427, .471)),
+             text('挑战队伍和对应节点积分', (.429, .441, .593, .471))],
+            [text('清空当前挑战队伍和对应节点积分', (.341, .441, .593, .471))],
+            [text('将清空当前', (.341, .441, .427, .471)),
+             text('挑战队伍和对应节点积分', (.341, .486, .593, .516))],
+            [text('重置对应关卡的成绩', (.384, .473, .571, .503), .76)],
+            [text('星启', (.871, .100, .903, .126))],
+            [text('返回末日幻影', (.678, .819, .770, .849))],
+            [text('前往编队', (.825, .883, .875, .913))],
+        ):
+            with self.subTest(extra=extra):
+                scene = locked_detail()
+                scene.tokens.extend(extra)
+                self.assertEqual(observe(scene).kind, 'unknown')
+
+    def test_locked_detail_rejects_conflicting_fields_crossing_header_boundary(self):
+        for counterexample in (
+            text('04', (.365, .116, .405, .160), .78),
+            text('节点二迷惘之渊的裁定者', (.493, .117, .669, .149), .78),
+            text('难度04', (.368, .151, .420, .184), .78),
+        ):
+            with self.subTest(counterexample=counterexample):
+                scene = locked_detail()
+                scene.tokens.append(counterexample)
+                self.assertEqual(observe(scene).kind, 'unknown')
+
+    def test_first_boss_header_with_old_footer_does_not_become_locked_detail(self):
+        scene = frame('boss_info')
+        scene.tokens = [t for t in scene.tokens if t.text not in ('本期不再提示', '下一步')]
+        scene.tokens.extend(locked_detail().tokens[3:7])
+        self.assertEqual(observe(scene).kind, 'unknown')
+
     def test_each_page_preserves_its_own_fields_and_never_has_a_target(self):
         for kind, node, level in (('lobby', None, None), ('boss_info', 1, 3),
                                   ('boss_info', 2, 3), ('node_setup', None, 3)):
@@ -139,6 +213,28 @@ class ApocalypticPreparationEntryTests(unittest.TestCase):
         self.assertTrue(report['report_saved'])
         self.assertEqual(json.loads((run / 'report.json').read_bytes()), report)
         return code, report, run, window
+
+    def test_locked_details_are_partial_and_keep_the_requested_level_separate(self):
+        for level, node, matches in (('03', 1, True), ('02', 2, False)):
+            with self.subTest(level=level, node=node):
+                scene = locked_detail(level=level, node=node)
+                code, report, run, _ = self.run_cli([scene, scene])
+                data = report['challenge']
+                page = data['page_observation']
+                self.assertEqual((code, report['status'], data['status']), (1, 'partial', 'page_observed'))
+                self.assertEqual((page['kind'], page['level'], page['node']), ('locked_node_detail', int(level), node))
+                self.assertEqual((page['matches_plan_level'], page['team_editability']), (matches, 'locked'))
+                self.assertEqual(data['actions'], [])
+                self.assertFalse(data['preparation_page_verified'])
+                self.assertFalse(data['battle_started'])
+                self.assertEqual(json.loads((run / 'challenge-preparation.json').read_bytes()), data)
+
+    def test_locked_node_frames_cannot_bridge_nodes_or_a_setup_frame(self):
+        one, two = locked_detail(node=1), locked_detail(node=2)
+        code, report, _, _ = self.run_cli([one, two, frame('node_setup'), two, two])
+        page = report['challenge']['page_observation']
+        self.assertEqual((code, page['kind'], page['node']), (1, 'locked_node_detail', 2))
+        self.assertEqual([row['capture_sequence'] for row in page['frames']], [4, 5])
 
     def test_all_four_pages_write_reviewable_two_capture_receipts(self):
         for kind, node, expected in (('lobby', None, 'page_observed'), ('boss_info', 1, 'page_observed'),

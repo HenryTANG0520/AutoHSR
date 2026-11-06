@@ -24,6 +24,13 @@ _BOSS_HEADER = (.397, .103, .663, .168)
 _BOSS_DIFFICULTY = (.400, .150, .454, .192)
 _BOSS_REMINDER = (.640, .873, .739, .932)
 _BOSS_BUTTON = (.744, .874, .938, .936)
+# A fixed-team node detail has its own header and two footer buttons.
+_LOCKED_HEADER = (.372, .104, .652, .171)
+_LOCKED_DIFFICULTY = (.371, .149, .444, .195)
+_LOCKED_TEAM = (.360, .703, .452, .766)
+_LOCKED_STATUS = (.527, .806, .625, .862)
+_LOCKED_ROLE_DETAIL = (.610, .870, .771, .938)
+_LOCKED_CHALLENGE = (.777, .870, .975, .938)
 _SETUP_HEADING = (.382, .108, .484, .168)
 _SETUP_LEVEL = (.126, .182, .184, .219)
 _SETUP_PERIOD = (.104, .216, .207, .267)
@@ -31,10 +38,11 @@ _SETUP_NODES = ((.499, .205, .706, .255), (.499, .466, .706, .518))
 _SETUP_BUTTON = (.719, .874, .929, .954)
 
 _NAVIGATION_CAPTIONS = ('前往挑战', '下一步', '前往编队')
+_LOCKED_WORDS = ('当前队伍', '不可更换', '角色详情')
 _BLOCKERS = (tuple(word for word in pages._BLOCKED if word != '未解锁')
              + tuple(word for word in pages._SIDE_BLOCKED if word not in _NAVIGATION_CAPTIONS)
-             + ('新难度等级解锁', '星启', '不可更换', '角色详情', '更换编队',
-                '当前队伍', '领取奖励', '混沌回忆', '虚构叙事', '节点三', '节点3'))
+             + ('新难度等级解锁', '星启', '更换编队', '领取奖励',
+                '混沌回忆', '虚构叙事', '节点三', '节点3'))
 
 
 def _text(token):
@@ -108,15 +116,23 @@ def _lobby(scene, title, minimum):
                         cards=cards, selected_level=None)
 
 
-def _boss_info(scene, title, heading, minimum):
+def _node_header(scene, header_region, difficulty_region, level_pattern, minimum):
     # OCR may fuse the difficulty numeral with the node/boss row, especially
     # at smaller resolutions. The label below still anchors its left edge.
-    header = _field(scene, _BOSS_HEADER, r'0[1-4]' + _NODE, minimum)
-    difficulty = _field(scene, _BOSS_DIFFICULTY, '难度', minimum)
-    reminder = _field(scene, _BOSS_REMINDER, '本期不再提示', minimum)
-    if (not all((header, difficulty, reminder)) or header.box[2] < .58
+    header = _field(scene, header_region, level_pattern + _NODE, minimum)
+    difficulty = _field(scene, difficulty_region, '难度', minimum)
+    if (not header or not difficulty or header.box[2] < .58
             or abs(header.box[0] - difficulty.box[0]) > .015 or header.center[1] >= difficulty.center[1]):
+        return None
+    return header, difficulty
+
+
+def _boss_info(scene, title, heading, minimum):
+    fields = _node_header(scene, _BOSS_HEADER, _BOSS_DIFFICULTY, r'0[1-4]', minimum)
+    reminder = _field(scene, _BOSS_REMINDER, '本期不再提示', minimum)
+    if fields is None or not reminder:
         return pages._unknown('incomplete_apocalyptic_boss_info')
+    header, difficulty = fields
     index = 1 if header.text[4] == '一' else 2
     caption = '下一步' if index == 1 else '前往编队'
     if _foreign_caption(scene, caption, _BOSS_BUTTON):
@@ -125,6 +141,40 @@ def _boss_info(scene, title, heading, minimum):
     return _observation('boss_info', dict(title=title, heading=heading, difficulty=difficulty,
                         header=header, reminder=reminder), caption, button,
                         level=int(header.text[:2]), node=index, boss=_BOSSES[index - 1], period=None)
+
+
+def _locked_node_detail(scene, words, minimum):
+    # Below the highest difficulty there is no Starward variant. Difficulty
+    # 04 needs its own normal-mode proof before this layout can be used there.
+    fields = _node_header(scene, _LOCKED_HEADER, _LOCKED_DIFFICULTY, r'0[1-3]', minimum)
+    team = _field(scene, _LOCKED_TEAM, '当前队伍', minimum)
+    locked = _field(scene, _LOCKED_STATUS, '不可更换', minimum)
+    details = _field(scene, _LOCKED_ROLE_DETAIL, '角色详情', minimum)
+    challenge = _field(scene, _LOCKED_CHALLENGE, '前往挑战', minimum)
+    if (fields is None or not all((team, locked, details, challenge))
+            or abs(details.center[1] - challenge.center[1]) > .016
+            or _foreign_caption(scene, '前往挑战', _LOCKED_CHALLENGE)
+            or any(fragment in word for word in words for fragment in
+                   ('未解锁', '本期不再提示', '角色编队', '清空当前', '对应节点积分', '重置对应关卡'))):
+        return pages._unknown('incomplete_apocalyptic_locked_node_detail')
+    header, difficulty = fields
+    if max(header.box[0], difficulty.box[0]) > .405:
+        return pages._unknown('wrong_apocalyptic_locked_node_header_position')
+    # A partly overlapping second numeral or node title still conflicts with
+    # this header even if its box is too wide to be a positive field.
+    for token in scene.tokens:
+        value = _text(token)
+        region = _LOCKED_DIFFICULTY if value.startswith('难度') else _LOCKED_HEADER
+        if (pages._overlaps(token.box, region) and not pages._inside(token.box, region)
+                and (value.startswith('难度') or value in _BOSSES
+                     or re.match(r'(?:0[1-4](?:$|节点)|节点[一二12])', value))):
+            return pages._unknown('conflicting_apocalyptic_locked_node_header')
+    index = 1 if header.text[4] == '一' else 2
+    anchors = dict(header=header, difficulty=difficulty, current_team=team,
+                   team_lock=locked, role_detail=details, challenge_caption=challenge)
+    return _observation('locked_node_detail', anchors, '前往挑战', challenge,
+                        level=int(header.text[:2]), node=index, boss=_BOSSES[index - 1],
+                        period=None, team_editability='locked', selected_level=None)
 
 
 def _node_setup(scene, title, heading, minimum):
@@ -155,7 +205,7 @@ def _node_setup(scene, title, heading, minimum):
 
 
 def observe(scene, confidence=.65):
-    """Recognize the four observed preparations without generating a target."""
+    """Recognize observed preparation layouts without generating a target."""
     clean = pages._clean(scene, confidence, blockers=())
     if clean is None:
         return pages._unknown('invalid_or_stale_apocalyptic_capture')
@@ -163,6 +213,8 @@ def observe(scene, confidence=.65):
     if any(fragment in word for fragment in _BLOCKERS for word in words):
         return pages._unknown('apocalyptic_other_mode_transition_or_dialog')
     minimum = max(.85, confidence)
+    if any(fragment in word for word in words for fragment in _LOCKED_WORDS):
+        return _locked_node_detail(clean, words, minimum)
     title = _field(clean, _TITLE, '末日幻影', minimum)
     if title is None:
         return pages._unknown('missing_apocalyptic_title')

@@ -339,6 +339,8 @@ class ChallengePreparation:
         ready = page.kind == 'node_setup' and page.level == self.plan.level_start
         receipt = dict(kind=page.kind, mode=page.mode, level=page.level, node=page.basis.get('node'),
                        period=page.basis.get('period'), frames=sources)
+        if page.kind == 'locked_node_detail':
+            receipt.update(matches_plan_level=page.level == self.plan.level_start, team_editability='locked')
         data = dict(self.data, status='prepared' if ready else 'page_observed',
                     page_observation=receipt, preparation_page_verified=ready)
         if ready:
@@ -355,6 +357,9 @@ class ChallengePreparation:
         self.data.update(data)
         if ready:
             return TaskResult(OPERATION, 'ok', '已核实末日幻影首个目标难度的双节点备战页面。')
+        if page.kind == 'locked_node_detail':
+            self.c.report.safe_next = '查看本次固定队伍节点详情及原图。'
+            return TaskResult(OPERATION, 'partial', '已保存末日幻影固定队伍节点详情的双帧观察。')
         self.c.report.safe_next = '可在同账号打开计划首个难度的双节点备战页后重新核对。'
         return TaskResult(OPERATION, 'partial', '已保存末日幻影当前页面的双帧观察，目标难度备战待核实。')
 
