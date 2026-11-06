@@ -56,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--check", action="store_true", help="检测窗口、客户端版本和 OCR，输出 JSON；不操作游戏")
     mode.add_argument("--scan-dungeons", action="store_true", help="采集生存索引全部副本入口；不开始挑战或消耗资源")
     mode.add_argument("--read-build-target", action="store_true", help="从已打开的生存索引核对培养目标页入口并留证")
+    mode.add_argument("--daily-reward-observe", choices=("achievements",),
+                      help="从当前前台本人手机核实并打开成就一次，保留到页证据")
     mode.add_argument("--preview-build-target", action="store_true", help="只读核对培养目标、材料详情与配方、花萼预览及结算提示")
     mode.add_argument('--build-target', action='store_true', help='核实用户指定的培养材料来源并生成单项体力草稿；只读')
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
@@ -133,6 +135,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    if args.daily_reward_observe and any(
+            arg.partition('=')[0] not in {'--daily-reward-observe', '--config', '--game-path'}
+            for arg in raw_args if arg.startswith('--')):
+        parser.error('日常奖励校准为独立入口，仅可附带 --config 和 --game-path。')
     overclock_config = args.currency_wars_configure_overclock or args.currency_wars_open_overclock_a0
     overclock_entry = overclock_config or args.currency_wars_start_overclock_a0 or args.currency_wars_prepare_overclock_a0
     overclock_flag = ("--currency-wars-prepare-overclock-a0" if args.currency_wars_prepare_overclock_a0
@@ -297,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:
         tests = unittest.defaultTestLoader.discover(str(test_path))
         result = unittest.TextTestRunner(verbosity=2).run(tests)
         return 0 if result.wasSuccessful() else 1
-    if not any((args.check, args.scan_dungeons, build_target, args.launch, args.run, args.plan,
+    if not any((args.check, args.scan_dungeons, build_target, args.daily_reward_observe, args.launch, args.run, args.plan,
                 args.redeem_codes, args.challenge_prepare, args.challenge_result, args.team_preset_calibration,
                 args.challenge_lobby, args.challenge_preset_observe, args.du_rewards_only,
                 args.currency_wars_check, args.currency_wars_prepare, args.currency_wars_locate,
@@ -401,7 +407,7 @@ def main(argv: list[str] | None = None) -> int:
         from .redemption_cli import apply_overrides as apply_redemption_overrides
         apply_redemption_overrides(args, parser, settings)
         challenge_observer = args.challenge_result or args.challenge_preset_observe
-        check_only = (args.check or args.scan_dungeons or args.read_build_target
+        check_only = (args.check or args.scan_dungeons or args.read_build_target or args.daily_reward_observe
                       or challenge_observer or args.challenge_lobby or args.team_preset_calibration)
         settings.validate('build_target_preview' if args.preview_build_target or args.build_target else 'du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "check" if check_only else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or overclock_entry or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "power_plan" if args.power_plan else "daily")
         from .app import Runner, inspect_game, launch_game
@@ -416,7 +422,8 @@ def main(argv: list[str] | None = None) -> int:
             if kind != "finished":
                 print(json.dumps(event, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
         wrap_notifications = None
-        if not (build_target or challenge_observer or args.challenge_lobby or args.team_preset_calibration or overclock_entry):
+        if not (build_target or args.daily_reward_observe or challenge_observer or args.challenge_lobby
+                or args.team_preset_calibration or overclock_entry):
             from .notify_runtime import hooks as notification_hooks
             emit, wrap_notifications = notification_hooks(settings, emit)
         if args.challenge_result:
@@ -427,6 +434,8 @@ def main(argv: list[str] | None = None) -> int:
             runner = Runner(settings, emit, operation='challenge_lobby', challenge_lobby_mode=args.challenge_lobby)
         elif args.team_preset_calibration:
             runner = Runner(settings, emit, operation='team_preset_calibration')
+        elif args.daily_reward_observe:
+            runner = Runner(settings, emit, operation='daily_reward_observe')
         elif args.build_target:
             runner = Runner(settings, emit, operation='build_target_plan', build_target_selection=build_target_selection)
         elif build_target:

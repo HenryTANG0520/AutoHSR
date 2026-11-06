@@ -145,6 +145,7 @@ class RunReport:
     report_write_error: str = ""
     challenge_result: dict = field(default_factory=dict)
     team_preset_calibration: dict = field(default_factory=dict)
+    daily_reward_observe: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         from dataclasses import asdict
@@ -153,4 +154,6 @@ class RunReport:
             del data['challenge_result']
         if self.operation != 'team_preset_calibration':
             del data['team_preset_calibration']
+        if self.operation != 'daily_reward_observe':
+            del data['daily_reward_observe']
         return data
