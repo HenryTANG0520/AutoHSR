@@ -168,6 +168,29 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(ctx.report.support_selections[-1]['selected']['friend'],'乙')
         self.assertEqual(ctx.report.support_selections[-1]['attempts'],2)
 
+    def test_overlapping_preferences_advance_to_another_card_after_full_and_ocr_jitter(self):
+        rows = [('甲', .203, 'Cyrene', True), ('甲', .331, 'Qingque', True)]
+        shifted = [('甲', .207, 'Cyrene', True), rows[1]]
+        before = picker(rows)
+        full = picker(rows)
+        full.tokens.append(core.token('队伍角色已满', .5, .3))
+        # OCR jitter moves the first row's crop while its visible pixels stay put.
+        cleared = Scene(picker(shifted).tokens, before.image)
+        team = core.support_team('green')
+        ctx, flow = self.run_support(
+            [core.support_team(), before, full, cleared, picker(shifted, marker='green'), team],
+            config([pref('Cyrene', '甲'), pref(friend='甲')]),
+        )
+
+        self.assertIs(flow._support(ctx.snapshot()), team)
+        self.assertEqual(ctx.clicks, ['支援', '好友', '好友', '确认'])
+        self.assertAlmostEqual(ctx.click_targets[1].center[1], .203)
+        self.assertAlmostEqual(ctx.click_targets[2].center[1], .331)
+        record = ctx.report.support_selections[-1]
+        self.assertEqual(record['attempts'], 2)
+        self.assertEqual(record['selected']['preference'], 1)
+        self.assertFalse(record['fallback_used'])
+
     def test_unknown_selection_feedback_does_not_try_next_or_confirm(self):
         rows=[('甲',.203,'Cyrene',True),('乙',.331,'Qingque',True)]
         ctx,flow=self.run_support([core.support_team(),picker(rows),picker(rows)],config([pref(friend='甲'),pref(friend='乙')]))

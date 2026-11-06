@@ -53,19 +53,28 @@ class Selector:
             if patch.size:portrait=hashlib.sha256(patch.tobytes()).hexdigest()
         return row[2],normalize(row[1].text),portrait or round(row[0].center[1],3)
 
-    def candidates(self,scene,rows,preferences):
-        result=[];matches={}
-        for index,pref in enumerate(preferences):
-            for row in rows:
-                if pref is not None and pref.friend and pref.friend!=row[2]:continue
-                portrait=None
+    def candidates(self, scene, rows, preferences):
+        result = []
+        matches = {}
+        matched_rows = set()
+        for index, pref in enumerate(preferences):
+            for row_index, row in enumerate(rows):
+                if row_index in matched_rows:
+                    continue
+                if pref is not None and pref.friend and pref.friend != row[2]:
+                    continue
+                portrait = None
                 if pref is not None and pref.character:
-                    key=self.signature(row),pref.character
-                    if key not in matches:matches[key]=identify(scene,row,{pref.character})
-                    portrait=matches[key]
-                    if portrait is None:continue
-                key=self.card_key(scene,row)
-                if key not in self.tried:result.append((index,row,portrait,key,pref))
+                    key = self.signature(row), pref.character
+                    if key not in matches:
+                        matches[key] = identify(scene, row, {pref.character})
+                    portrait = matches[key]
+                    if portrait is None:
+                        continue
+                matched_rows.add(row_index)
+                key = self.card_key(scene, row)
+                if key not in self.tried:
+                    result.append((index, row, portrait, key, pref))
         return result
 
     def open(self,scene):

@@ -1,6 +1,8 @@
 # 兑换码后端与逐码回执
 
-2026-11-06 开发版可从「设置 → 工具 → 兑换码」独立运行。原生 Flow／Context、配置和 CLI 的基础离线整合完成于 10 月 30 日，同日另增`auto`服务器解析，其最终接线验证另列，不能沿用基础版全量结论。真实游戏内表单、结果反馈、在线码表请求和组合运行仍待验收。
+2026-11-06 开发版可从「设置 → 工具 → 兑换码」独立运行。原生 Flow／Context、配置和 CLI 的基础离线整合完成于 10 月 30 日，同日另增`auto`服务器解析，其最终接线验证另列，不能沿用基础版全量结论。
+
+11 月 6 日通过正式 CLI 联网读取公开国服码表，17 条记录中筛出 5 条候选、跳过 12 条。该次只预览码表。游戏内表单、逐码结果、邮件交付和组合运行仍待实机验收。[读取记录](../VALIDATION.md#2026-11-06-工具桌面增量与培养目标实机校准)
 
 ## 固定来源与离线码表
 
@@ -15,7 +17,7 @@
 
 两份原件已在既有研究缓存中按固定Git tree核对Git blob、字节数和SHA-256，公开码表与缓存字节一致；Git文件属性保留码表原始字节，避免Windows换行转换改变固定来源哈希。机器可读记录见[source.json](../assets/upstream/March7thAssistant/source.json)，整体范围见[开发进度](development-roadmap.md)。码表仅作数据回退，不含账号凭据。
 
-上游四个在线来源依次写在`valid_codes_for_server`中，实际抓取并发竞争首个有效列表：`m7a.top`、`github.kotori.top`代理、jsDelivr固定仓库的`main`路径和GitHub raw的`main`路径；全失败时读取本地表。它们与本轮下载的固定提交原件不同，本轮没有访问这些实时码表来测试可用性。
+上游四个在线来源依次写在`valid_codes_for_server`中，实际抓取并发竞争首个有效列表：`m7a.top`、`github.kotori.top`代理、jsDelivr固定仓库的`main`路径和GitHub raw的`main`路径；全失败时读取本地表。初次对照只核对了固定提交原件。后续正式 CLI 预览核实了可读取的公开国服码表。
 
 页面来源另参考固定[导航配置](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json)与[Screen实现](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/module/screen/screen.py)。五幅原始局部图保留在[redemption-ui](../assets/upstream/March7thAssistant/redemption-ui/)；原路径、公开路径及哈希已在同一清单登记：
 
