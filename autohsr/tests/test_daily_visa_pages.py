@@ -4,11 +4,12 @@ import hashlib
 import json
 from pathlib import Path
 import unittest
+from unittest.mock import Mock
 
 import cv2
 import numpy as np
 
-from autohsr.daily_visa_pages import visa_character_tab, visa_overview, visa_support_section
+from autohsr.daily_visa_pages import refine_small_visa_title, visa_character_tab, visa_overview, visa_support_section
 from autohsr.models import Scene, Token
 
 
@@ -30,6 +31,20 @@ def replay(name):
     tokens = [Token(field['text'], field['score'], tuple(
         value / dimension for value, dimension in zip(field['xyxy_px'], (width, height) * 2)
     )) for field in row['tokens']]
+    return Scene(tokens, image)
+
+
+def small_visa(name):
+    scene = replay(name)
+    height = scene.image.shape[0]
+    tokens = []
+    for token in scene.tokens:
+        x1, y1, x2, y2 = token.box
+        box = (x1, (y1 * height - 37) / (height - 37), x2, (y2 * height - 37) / (height - 37))
+        text = '温游签证' if token.text == '漫游签证' else token.text
+        tokens.append(replace(token, text=text, box=box))
+    image = cv2.resize(scene.image[37:], (960, 540))
+    image[20:32, 52:90] = np.linspace(35, 150, 38, dtype=np.uint8)[None, :, None]
     return Scene(tokens, image)
 
 
@@ -83,6 +98,56 @@ class VisaOverviewTests(unittest.TestCase):
         conflict = Token('角色展示', .71, (.29, .46, .34, .50))
         self.assertIsNone(visa_character_tab(replace(source, tokens=[*source.tokens, conflict]),
                                             client_version='4.6.0'))
+
+    def test_low_resolution_title_retry_preserves_raw_text_and_other_page_gates(self):
+        for name, predicate in (('collection', visa_overview), ('characters', visa_support_section)):
+            with self.subTest(name=name):
+                scene = small_visa(name)
+                self.assertFalse(predicate(scene))
+                vision = Mock()
+                vision._read_field.return_value = Token('漫游签证', .88, (0, 0, 1, 1))
+                refine_small_visa_title(scene, vision, .65, client_version='4.6.0')
+                self.assertTrue(predicate(scene))
+                self.assertTrue(scene.has('温游签证', exact=True))
+                patch, expected = vision._read_field.call_args.args
+                self.assertEqual((patch.shape, patch.dtype, expected), ((51, 184), np.uint8, '漫游签证'))
+                self.assertEqual((int(patch.min()), int(patch.max())), (0, 255))
+                refine_small_visa_title(scene, vision, .65, client_version='4.6.0')
+                self.assertEqual(vision._read_field.call_count, 1)
+
+    def test_low_resolution_retry_keeps_version_score_ambiguity_and_overlay_vetoes(self):
+        source = small_visa('collection')
+        role = small_visa('characters')
+        bad_title = next(t for t in source.tokens if t.text == '温游签证')
+        remaining = [t for t in source.tokens if t is not bad_title]
+        invalid = (small_visa('battle-record'),
+                   replace(source, tokens=remaining + [replace(bad_title, score=.89)]),
+                   replace(source, tokens=source.tokens + [Token('漫游签证', .67, (.38, .40, .44, .44))]),
+                   replace(source, tokens=source.tokens + [Token('温游签证', .70, (.38, .40, .44, .44))]),
+                   replace(source, tokens=source.tokens + [Token('获得物品', .99, (.47, .26, .52, .30))]),
+                   replace(role, tokens=[t for t in role.tokens if t.text != '星海同行']),
+                   replace(source, image=cv2.resize(source.image, (1280, 720))))
+        vision = Mock()
+        vision._read_field.return_value = Token('漫游签证', .99, (0, 0, 1, 1))
+        for scene in invalid:
+            refine_small_visa_title(scene, vision, .65, client_version='4.6.0')
+        refine_small_visa_title(source, vision, .65, client_version='4.7.0')
+        vision._read_field.assert_not_called()
+        for text, score in (('温游签证', .99), ('漫游签证', .92)):
+            vision._read_field.return_value = Token(text, score, (0, 0, 1, 1))
+            refine_small_visa_title(source, vision, .93, client_version='4.6.0')
+            self.assertFalse(visa_overview(source))
+
+    def test_low_resolution_title_retry_cannot_supply_a_hidden_role_button(self):
+        scene = small_visa('collection')
+        tab = next(t for t in scene.tokens if t.text == '角色展示')
+        left, top, right, bottom = (round(value * size) for value, size in zip(tab.box, (960, 540) * 2))
+        scene.image[top:bottom, left:right] = 50
+        vision = Mock()
+        vision._read_field.return_value = Token('漫游签证', .99, (0, 0, 1, 1))
+        refine_small_visa_title(scene, vision, .65, client_version='4.6.0')
+        self.assertTrue(visa_overview(scene))
+        self.assertIsNone(visa_character_tab(scene, client_version='4.6.0'))
 
     def test_layout_at_resized_fixture_and_without_the_top_capture_border(self):
         for classify, scene in ((visa_overview, self.collection), (visa_support_section, self.characters)):

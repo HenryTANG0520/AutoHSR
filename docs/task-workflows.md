@@ -53,7 +53,9 @@
 }
 ```
 
-用 `python -m autohsr --task-workflow visa-characters.json` 运行上面保存的文件。只读支援观察继续使用 `--daily-reward-observe support`。4.6 公开图在 1280×720 和 1920×1080 回放中通过版式识别，960×540 的缩小回放留在待核对。连续点击和到页目前用假窗口回放。[签证版式来源](../autohsr/tests/fixtures/daily_visa/sources.json)
+用 `python -m autohsr --task-workflow visa-characters.json` 运行上面保存的文件。只读支援观察继续使用 `--daily-reward-observe support`。
+
+4.6 公开图在 1280×720 和 1920×1080 回放中通过版式识别。960×540 缩小图的整帧 OCR 会把左上标题读成「温游签证」。任务流仅在页签、所选副标题和规则入口完整时重读这处标题，角色页还须保留右侧双锚。两种缩小回放均通过默认阈值，配置 0.93 时线性样本保持待核对。连续切页目前用假窗口回放。实机最小采样为同一个已登录的 4.6.0 原生 960×540 窗口，分别采集收集与角色展示的两张稳定帧，再采一张标题或目标页签受遮挡的对照。[签证版式来源](../autohsr/tests/fixtures/daily_visa/sources.json)
 
 ### 当前页面核对
 

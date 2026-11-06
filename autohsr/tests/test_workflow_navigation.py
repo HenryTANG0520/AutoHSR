@@ -17,6 +17,7 @@ from autohsr.config import RESOURCE_ROOT, Settings
 from autohsr.currency_wars_identity import UID_COUNTEREVIDENCE
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, RunReport, Scene, Stopped, Token
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, phone, visa_collection
+from autohsr.tests.test_daily_visa_pages import small_visa
 from autohsr.tests.test_du_team import fixture
 from autohsr.vision import Vision
 from autohsr.workflow_navigation import OPERATION, WorkflowNavigation
@@ -65,8 +66,10 @@ class Window:
 
 
 class Context:
-    def __init__(self, target, frames):
+    def __init__(self, target, frames, *, geometry=_GEOMETRY):
         self.window = Window()
+        self.geometry = geometry
+        self.window.guard.return_value = geometry
         self.runner = SimpleNamespace(_foreground_only=True, stop_requested=False, input_epoch=0)
         self.settings = Settings(ocr_confidence=.85)
         self.report = RunReport(operation=OPERATION)
@@ -84,8 +87,8 @@ class Context:
         if isinstance(frame, Exception):
             raise frame
         stamp = time.monotonic()
-        pixels = cv2.resize(frame.image, (_GEOMETRY.width, _GEOMETRY.height))
-        self.last_scene = Scene(list(frame.tokens), pixels, _GEOMETRY, stamp, frame.field_reads.copy())
+        pixels = cv2.resize(frame.image, (self.geometry.width, self.geometry.height))
+        self.last_scene = Scene(list(frame.tokens), pixels, self.geometry, stamp, frame.field_reads.copy())
         return self.last_scene
 
     def template(self, scene, name, roi, threshold=.88):
@@ -134,16 +137,27 @@ class WorkflowNavigationTests(unittest.TestCase):
                                for event in (data[index] for index in range(count))))
         return count
 
-    def _visa_context(self, frames):
+    def _visa_context(self, frames, *, geometry=_GEOMETRY):
         install = TemporaryDirectory()
         self.addCleanup(install.cleanup)
         root = Path(install.name).resolve()
         executable = root / 'StarRail.exe'
         executable.touch()
         (root / 'config.ini').write_text('[General]\ngame_version=4.6.0\n', encoding='utf8')
-        context = Context('visa_characters', frames)
+        context = Context('visa_characters', frames, geometry=geometry)
         context.window.current_executable = Mock(return_value=str(executable))
         return context
+
+    def test_visa_switch_retries_only_the_small_heading_in_each_current_frame(self):
+        collection = identified(small_visa('collection'))
+        role = identified(small_visa('characters'))
+        context = self._visa_context([collection, collection, role, role], geometry=windows.Geometry(0, 0, 960, 540))
+        context.vision._read_field = Mock(return_value=Token('漫游签证', .88, (0, 0, 1, 1)))
+        result = context.workflow_navigation.run()
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(self.sent, [_CLICK])
+        self.assertEqual(context.vision._read_field.call_count, 4)
+        self.assertTrue(context.workflow_navigation.record['page_verified'])
 
     def test_visa_switch_has_no_click_from_obscured_tab_or_inconsistent_source(self):
         source = visa_collection()

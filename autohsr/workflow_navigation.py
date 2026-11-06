@@ -18,7 +18,8 @@ from .daily_event_pages import _VERSION, phone_journey_event_entry, read_gift_of
 from .daily_message_observe import message_panel, phone_message_entry
 from .daily_message_world import world_message_target
 from .daily_reward_observe import phone_achievement_target
-from .daily_visa_pages import VISA_LAYOUT_VERSION, visa_character_tab, visa_overview, visa_support_section
+from .daily_visa_pages import (VISA_LAYOUT_VERSION, refine_small_visa_title, visa_character_tab, visa_overview,
+                              visa_support_section)
 from .dungeons import CATEGORIES
 from .free_rewards import battlepass_modal, battlepass_page, mail_entry, mailbox
 from .models import FULL, AutomationError, EmptyCapture, InputInterrupted, Stopped, TaskResult, Token, normalize
@@ -314,6 +315,8 @@ class WorkflowNavigation:
         sample = image[::max(1, image.shape[0] // 160), ::max(1, image.shape[1] // 240)]
         if float(np.std(sample, axis=(0, 1)).max()) < 2:
             raise EmptyCapture('日常页面导航的过场画面为空。')
+        if self.target == VISA_CHARACTERS_PAGE and self._installation is not None:
+            refine_small_visa_title(scene, c.vision, self.confidence, client_version=self._installation.version)
         page = self._read_page(scene)
         account = self._account(scene)
         self.account = account

@@ -8,13 +8,16 @@ import numpy as np
 from .build_target_read import _has_split_label
 from .challenge_pages import _inside
 from .currency_wars_prepare import trusted
-from .models import FULL, Scene, normalize
+from .models import FULL, Scene, Token, normalize
 from .team_calibration_pages import calibration_overlay
 from .vision import helper_overlay
 
 
 VISA_LAYOUT_VERSION = '4.6.0'
 
+_TITLE_TEXT = '漫游签证'
+_SMALL_TITLE_MISREAD = '温游签证'
+_SMALL_TITLE_CROP = (49, 16, 95, 33)  # Client pixels at 960×540.
 _TITLE = (.028, .020, .132, .120)
 _SUBTITLE = (.028, .045, .145, .160)
 _RULE = (.835, .020, .950, .141)
@@ -67,7 +70,7 @@ def _tab_highlight(image, token):
     return values
 
 
-def _visa_tabs(scene, confidence, selected):
+def _visa_tabs(scene, confidence, selected, *, title_text=_TITLE_TEXT):
     if (not isinstance(scene, Scene) or type(confidence) not in (int, float) or not 0 <= confidence <= 1
             or not isinstance(scene.image, np.ndarray) or scene.image.dtype != np.uint8
             or scene.image.ndim != 3 or scene.image.shape[2] != 3
@@ -90,7 +93,7 @@ def _visa_tabs(scene, confidence, selected):
     elif visible.has(('支援角色', '星海同行'), _SHOWCASE_BODY, exact=True):
         return None
 
-    title = _landmark(visible, '漫游签证', _TITLE, minimum)
+    title = _landmark(visible, title_text, _TITLE, minimum)
     subtitle = _landmark(visible, selected, _SUBTITLE, minimum, copies=2)
     rule = _landmark(visible, '规则说明', _RULE, minimum)
     tabs = {label: _landmark(visible, label, area, minimum, copies=2 if label == selected else 1)
@@ -124,6 +127,36 @@ def visa_overview(scene, confidence=.85):
 def visa_support_section(scene, confidence=.85):
     """Return whether the selected character showcase has its support section."""
     return _visa_tabs(scene, confidence, '角色展示') is not None
+
+
+def refine_small_visa_title(scene, vision, confidence, *, client_version):
+    """Retry the left heading in a qualified 960×540 profile frame."""
+    if (client_version != VISA_LAYOUT_VERSION or not isinstance(scene, Scene)
+            or not isinstance(scene.image, np.ndarray) or scene.image.shape != (540, 960, 3)
+            or type(confidence) not in (int, float) or not 0 <= confidence <= 1):
+        return
+    visible = trusted(scene, .65)
+    if visible.has(_TITLE_TEXT, exact=True):
+        return
+    minimum = max(.85, confidence)
+    left, top, right, bottom = _SMALL_TITLE_CROP
+    area = (left / 960, top / 540, right / 960, bottom / 540)
+    title = _landmark(visible, _SMALL_TITLE_MISREAD, area, max(.95, minimum))
+    if title is None or not any(_visa_tabs(scene, confidence, selected, title_text=_SMALL_TITLE_MISREAD)
+                                for selected in ('收集展示', '角色展示')):
+        return
+    read = getattr(vision, '_read_field', None)
+    if not callable(read):
+        return
+    import cv2
+
+    # Expanding the strokes horizontally separates the first glyph in the
+    # calibrated low-resolution header. The caller's confidence still applies.
+    patch = cv2.resize(scene.image[top:bottom, left:right], None, fx=4, fy=3, interpolation=cv2.INTER_CUBIC)
+    gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
+    field = read(cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX), _TITLE_TEXT)
+    if field is not None and field.text == _TITLE_TEXT and minimum <= field.score <= 1:
+        scene.tokens.append(Token(_TITLE_TEXT, field.score, title.box))
 
 
 def visa_character_tab(scene, *, client_version, confidence=.85):
