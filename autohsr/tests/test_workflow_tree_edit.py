@@ -48,6 +48,40 @@ class WorkflowTreeEditTests(TestCase):
         self.assertEqual(draft.validate().steps[1]['steps'][0]['id'], 'first')
         self.assertEqual(draft.validate().steps[1]['else_steps'][0]['id'], 'other')
 
+    def test_live_condition_replaces_only_its_old_selector_and_preserves_children(self):
+        screen = dict(task='workflow_game_text', params=dict(text='每日实训', contains=False), value=False)
+        gate = dict(id='gate', type='if', condition=condition('@last'), steps=[wait('primary')],
+                    else_steps=[wait('fallback')])
+        draft = WorkflowTreeDraft(document(wait('prior'), gate))
+        draft.update('gate', dict(screen_condition=screen))
+        expected = {key: value for key, value in gate.items() if key != 'condition'}
+        self.assertEqual(draft.validate().steps[1], dict(expected, screen_condition=screen))
+        self.assertEqual(draft.add(dict(type='wait', seconds=1), parent_id='gate'), 'step_5')
+
+        current = draft.rows()
+        for changes in (dict(condition=condition('@last'), screen_condition=screen),
+                        dict(screen_condition=dict(screen, value=1)), dict(screen_condition=None)):
+            with self.subTest(changes=changes), self.assertRaises(WorkflowError):
+                draft.update('gate', changes)
+            self.assertEqual(draft.rows(), current)
+        draft.update('gate', dict(condition=condition('@last')))
+        restored = draft.validate().steps[1]
+        self.assertNotIn('screen_condition', restored)
+        self.assertEqual(restored['condition'], gate['condition'])
+        self.assertEqual(restored['else_steps'], gate['else_steps'])
+        self.assertEqual([node['id'] for node in restored['steps']], ['primary', 'step_5'])
+
+    def test_new_live_while_has_no_preceding_reference_and_can_accept_a_child(self):
+        draft = WorkflowTreeDraft(document())
+        query = dict(task='workflow_game_image', params=dict(template='assets/observe.png'), value=True)
+        identity = draft.add(dict(type='while', max_iterations=2, screen_condition=query))
+        child = draft.add(dict(type='wait', seconds=1), parent_id=identity)
+        self.assertEqual(draft.validate().steps[0], dict(id=identity, type='while', max_iterations=2,
+            screen_condition=query, steps=[dict(id=child, type='wait', seconds=1)]))
+        for changes in ({}, dict(condition=condition('@last'), screen_condition=query)):
+            with self.subTest(changes=changes), self.assertRaisesRegex(WorkflowError, '恰选一种'):
+                WorkflowTreeDraft(document(dict(id='invalid', type='if', steps=[wait('child')], **changes)))
+
     def test_add_both_branches_patch_and_move_keep_ids_and_children(self):
         draft = WorkflowTreeDraft(document())
         with self.assertRaises(WorkflowError):

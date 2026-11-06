@@ -17,10 +17,12 @@ import uuid
 
 from .config import ROOT
 from .du_points_followup import FollowupWeek, followup_week_scope
-from .models import RunReport, Stopped, TaskResult
+from .models import AutomationError, RunReport, Stopped, TaskResult
 from .storage import replace_file
 from .task_workflow import (FIELDS, GAME_TASKS, GAME_VISION_TASKS, MAX_EXECUTIONS, PAGE_TASK, TEMPLATE_TASKS,
-                            VISION_TASKS, WORKFLOW_FOREGROUND_TASKS, WorkflowError, compile_recipe, task_spec)
+                            VISION_TASKS, WORKFLOW_FOREGROUND_TASKS, WorkflowError, compile_recipe, execution_task,
+                            task_spec)
+from .task_workflow import execution_tasks as _tasks
 from .workflow_lease import workflow_lease
 
 
@@ -68,6 +70,10 @@ class _Halt(Exception):
     pass
 
 
+class _ConditionExpired(WorkflowError):
+    pass
+
+
 class _Control(Exception):
     def __init__(self, kind):
         self.kind = kind
@@ -76,7 +82,9 @@ class _Control(Exception):
 class TaskWorkflowRunner:
     def __init__(self, settings, document, emit=None, *, selected_path=None, base_dir=None,
                  root=None, runner_factory=None, plan_factory=None, currency_factory=None, warp_service=None,
-                 notification_versions=None, notification_service=None):
+                 notification_versions=None, notification_service=None, wait_for_foreground=False):
+        if type(wait_for_foreground) is not bool:
+            raise WorkflowError('任务流前台等待选项无效。')
         self.settings = replace(settings)
         self.recipe = compile_recipe(document, selected_path=selected_path, base_dir=base_dir)
         aliases = step_notification_aliases(self.recipe)
@@ -91,23 +99,15 @@ class TaskWorkflowRunner:
         self.root = Path(root) if root is not None else ROOT / 'runs'
         self.factories = dict(runner=runner_factory, plan=plan_factory, currency=currency_factory)
         self.warp_service = warp_service
-        self.specs = {}
-
-        def prepare(nodes):
-            for node in nodes:
-                if not node.get('enabled', True):
-                    continue
-                if node['type'] == 'task':
-                    self.specs[node['id']] = task_spec(self.settings, node, self.recipe.base_dir)
-                prepare(node.get('steps', []))
-                prepare(node.get('else_steps', []))
-        prepare(self.recipe.steps)
+        self.specs = {node['id']: task_spec(self.settings, node, self.recipe.base_dir)
+                      for node in _tasks(self.recipe.steps)}
         self.report = WorkflowReport(operation='task_workflow')
         self.child = None
         self._stop = threading.Event()
         self._end = threading.Event()
         self._lock = threading.RLock()
         self._paused = False
+        self._pause_generation = 0
         self._control_hwnd = None
         self._started = False
         self._latest = {}
@@ -117,6 +117,8 @@ class TaskWorkflowRunner:
         self._directory = None
         self._identity = None
         self._du_points_step = None
+        self._screen_sources = set()
+        self._initial_foreground_pending = wait_for_foreground
 
     @property
     def stop_requested(self):
@@ -138,6 +140,7 @@ class TaskWorkflowRunner:
     def toggle_pause(self):
         with self._lock:
             self._paused = self.child.toggle_pause() if self.child is not None else not self._paused
+            self._pause_generation += 1
             value = self._paused
         self.emit(dict(type='paused', paused=value))
         return value
@@ -230,7 +233,10 @@ class TaskWorkflowRunner:
     def _send(self, event, node):
         if event.get('type') == 'paused':
             with self._lock:
-                self._paused = bool(event.get('paused'))
+                paused = bool(event.get('paused'))
+                if paused != self._paused:
+                    self._pause_generation += 1
+                self._paused = paused
         # A child finishing cannot unlock the parent UI or claim total completion.
         if event.get('type') not in ('finished', 'warp_finished', 'warp_analysis_finished'):
             self.emit(dict(event, workflow_step=node['id'], workflow_task=node.get('task')))
@@ -239,6 +245,10 @@ class TaskWorkflowRunner:
         task = node['task']
         settings, options = self.specs[node['id']]
         options = deepcopy(options)
+        if self._initial_foreground_pending:
+            self._initial_foreground_pending = False
+            if task in WORKFLOW_FOREGROUND_TASKS:
+                options['observation_wait_for_foreground'] = True
         if task == 'plan':
             from .plan_runner import PlanRunner
             factory = self.factories['plan'] or PlanRunner
@@ -426,7 +436,7 @@ class TaskWorkflowRunner:
         _write(directory / 'report.json', result)
         return result
 
-    def _task(self, node, entry):
+    def _task(self, node, entry, *, enter=None):
         game = node['task'] in GAME_TASKS
         self.checkpoint()
         if game:
@@ -434,7 +444,7 @@ class TaskWorkflowRunner:
             if self._input_blocked:
                 raise WorkflowError('此前游戏任务未核实完成；失败后继续只能处理本地步骤，不能再发送游戏输入。')
         expected = {'plan': 'plan', 'currency_wars_loop': 'currency_wars_loop'}.get(node['task'], node['task'])
-        result = None
+        child = result = None
         identity_mark = self._identity.mark() if game else None
         followup = self._du_points_step[2] if game and self._du_points_step is not None else None
         try:
@@ -447,10 +457,14 @@ class TaskWorkflowRunner:
                             child.stop()
                         if self._paused:
                             child.toggle_pause()
+                    if enter is not None:
+                        enter()
                     result = child.run()
                 self._notice_stopped(result)
                 result = result.to_dict() if hasattr(result, 'to_dict') else result
             else:
+                if enter is not None:
+                    enter()
                 result = self._local_task(node, entry['sequence'])
                 self._notice_stopped(result)
             if not isinstance(result, dict) or result.get('status') not in ('success', 'partial', 'failed', 'stopped'):
@@ -472,6 +486,11 @@ class TaskWorkflowRunner:
                 if node['task'] == PAGE_TASK and result['workflow_navigation'].get('target') != options['workflow_page']:
                     raise WorkflowError('已核实页面与本步骤请求的目标不符。')
             entry['source'] = self._source(result, expected, native_points=native_points)
+            if entry['type'] == 'screen_condition' and result['status'] == 'success':
+                path = entry['source']['path']
+                if path in self._screen_sources:
+                    raise WorkflowError('实时条件重复使用了原始报告，未取得本次观察。')
+                self._screen_sources.add(path)
             if node['task'] == 'du_rewards':
                 self._du_rewards(result, entry, node)
             if native_points:
@@ -490,6 +509,8 @@ class TaskWorkflowRunner:
         except (Stopped, KeyboardInterrupt):
             self.stop()
             raise Stopped('当前任务已停止；流程未重试或继续下一项。')
+        except _ConditionExpired:
+            raise
         except Exception as error:
             self._notification_blocked |= node['task'] == 'workflow_notify'
             entry.update(status='partial' if game else 'failed', error=str(error))
@@ -516,43 +537,123 @@ class TaskWorkflowRunner:
             self._input_blocked |= game
             if node.get('on_failure', 'stop') == 'stop':
                 raise _Halt('步骤未完整完成；按失败策略停止。')
+        return child
 
-    def _steps(self, nodes, trail=()):
-        for node in nodes:
+    def _begin_step(self, node, trail, **details):
+        self.checkpoint()
+        self._check_du_points_week()
+        entries = self.report.workflow['steps']
+        if len(entries) >= MAX_EXECUTIONS:
+            raise WorkflowError('流程已达到10000次执行上限，未继续。')
+        entry = dict(sequence=len(entries) + 1, step=node['id'], type=node['type'], task=node.get('task'),
+                     trail=[list(item) for item in trail], status='running', started_at=_now())
+        entry.update(details)
+        entries.append(entry)
+        self._record(dict(event='intent', **entry))
+        self._save()
+        self.emit(dict(type='workflow_step', step=node['id'], sequence=entry['sequence'], status='running'))
+        return entry
+
+    def _finish_step(self, entry):
+        entry['finished_at'] = _now()
+        self._record(dict(event='result', **entry))
+        self._save()
+        self.emit(dict(type='workflow_step', step=entry['step'], sequence=entry['sequence'], status=entry['status']))
+
+    def _condition_boundary(self, generation, child):
+        def check_generation():
+            with self._lock:
+                if self._stop.is_set():
+                    raise Stopped('任务流程已停止；未进入实时条件分支。')
+                if self._pause_generation != generation:
+                    raise WorkflowError('暂停或恢复后实时条件已失效，未进入分支或继续循环。')
+
+        try:
             self.checkpoint()
-            self._check_du_points_week()
-            if len(self.report.workflow['steps']) >= MAX_EXECUTIONS:
-                raise WorkflowError('流程已达到10000次执行上限，未继续。')
-            entry = dict(sequence=len(self.report.workflow['steps']) + 1, step=node['id'], type=node['type'],
-                         task=node.get('task'), trail=[list(item) for item in trail], status='running', started_at=_now())
-            self.report.workflow['steps'].append(entry)
-            self._record(dict(event='intent', **entry))
-            self._save()
-            self.emit(dict(type='workflow_step', step=node['id'], sequence=entry['sequence'], status='running'))
+            check_generation()
+            guard = getattr(child, 'guard_workflow_condition', None)
+            if not callable(guard):
+                raise WorkflowError('实时条件缺少本次原生观察的前台核验。')
+            guard()
+            check_generation()
+        except Stopped:
+            self.stop()
+            raise
+        except (AutomationError, WorkflowError, OSError) as error:
+            self._input_blocked = True
+            detail = str(error) if isinstance(error, WorkflowError) else '实时条件的前台或输入代次已失效，未进入分支或继续循环。'
+            raise _ConditionExpired(detail) from None
+
+    def _evaluate_condition(self, node, trail, phase, iteration=None):
+        if 'screen_condition' not in node:
+            return self._condition(node['condition']), None
+        query = node['screen_condition']
+        task = execution_task(node)
+        details = {'phase': phase} if iteration is None else {'phase': phase, 'iteration': iteration}
+        entry = self._begin_step(task, trail, type='screen_condition', **details)
+        with self._lock:
+            generation = self._pause_generation
+        try:
+            child = self._task(task, entry)
+
+            def enter():
+                self._condition_boundary(generation, child)
+
+            enter()
+            field = 'image_found' if task['task'] in TEMPLATE_TASKS else 'text_found'
+            entry['condition'] = entry['facts'][field] is query['value']
+        except (Stopped, KeyboardInterrupt):
+            entry.update(status='stopped', facts={'status': 'stopped'})
+            raise
+        except Exception as error:
+            if entry['status'] in ('running', 'success'):
+                entry['status'] = 'partial'
+            entry['facts'] = {'status': entry['status']}
+            entry.setdefault('error', str(error))
+            raise
+        finally:
+            self._finish_step(entry)
+        enter()
+        return entry['condition'], enter
+
+    def _steps(self, nodes, trail=(), *, enter=None):
+        for node in nodes:
+            entry = self._begin_step(node, trail)
             try:
-                if not node.get('enabled', True):
+                enabled = node.get('enabled', True)
+                guard = enter if enabled else None
+                if guard is not None:
+                    enter = None
+                    if node['type'] != 'task':
+                        guard()
+                if not enabled:
                     entry['status'] = 'skipped'
                 elif node['type'] == 'task':
-                    self._task(node, entry)
+                    self._task(node, entry, enter=guard)
                 elif node['type'] == 'wait':
                     self._wait(node['seconds'])
                 elif node['type'] == 'if':
-                    entry['condition'] = self._condition(node['condition'])
-                    self._steps(node['steps'] if entry['condition'] else node.get('else_steps', []), trail)
+                    entry['condition'], branch = self._evaluate_condition(node, trail, 'branch')
+                    self._steps(node['steps'] if entry['condition'] else node.get('else_steps', []), trail, enter=branch)
                 elif node['type'] in ('for', 'while'):
                     bound = node.get('count', node.get('max_iterations'))
                     for iteration in range(bound):
                         self.checkpoint()
-                        if node['type'] == 'while' and not self._condition(node['condition']):
-                            break
+                        branch = None
+                        if node['type'] == 'while':
+                            passed, branch = self._evaluate_condition(node, trail, 'iteration', iteration)
+                            if not passed:
+                                break
                         entry['iterations'] = iteration + 1
                         try:
-                            self._steps(node['steps'], trail + ((node['id'], iteration),))
+                            self._steps(node['steps'], trail + ((node['id'], iteration),), enter=branch)
                         except _Control as control:
                             if control.kind == 'break':
                                 break
                     else:
-                        if node['type'] == 'while' and self._condition(node['condition']):
+                        if node['type'] == 'while' and self._evaluate_condition(node, trail, 'limit', bound)[0]:
+                            if 'screen_condition' in node:
+                                entry['limit_reached'] = True
                             raise WorkflowError('while达到原定上限但条件仍成立；未声称循环已完成。')
                 elif node['type'] in ('break', 'continue'):
                     raise _Control(node['type'])
@@ -573,13 +674,10 @@ class TaskWorkflowRunner:
                 entry.setdefault('error', str(error))
                 raise
             finally:
-                entry['finished_at'] = _now()
                 self._latest[node['id']] = dict(entry.get('facts', {}), status=entry['status'])
                 if node['type'] == 'task' and entry['status'] != 'skipped':
                     self._latest['@last'] = self._latest[node['id']]
-                self._record(dict(event='result', **entry))
-                self._save()
-                self.emit(dict(type='workflow_step', step=node['id'], sequence=entry['sequence'], status=entry['status']))
+                self._finish_step(entry)
 
     def run(self):
         with self._lock:
@@ -615,7 +713,7 @@ class TaskWorkflowRunner:
                 os.fsync(stream.fileno())
             report.workflow['definition_sha256'] = hashlib.sha256(raw).hexdigest()
             self._save()
-            if any(node['task'] in GAME_TASKS for node in _tasks(self.recipe.steps)):
+            if required:
                 monitor = threading.Thread(target=self._hotkeys, name='AutoHSR-workflow-hotkeys', daemon=True)
                 monitor.start()
             self._steps(self.recipe.steps)
@@ -651,15 +749,6 @@ class TaskWorkflowRunner:
             finally:
                 leases.close()
         return report
-
-
-def _tasks(nodes):
-    for node in nodes:
-        if node['type'] == 'task' and node.get('enabled', True):
-            yield node
-        if node.get('enabled', True):
-            yield from _tasks(node.get('steps', []))
-            yield from _tasks(node.get('else_steps', []))
 
 
 def step_notification_aliases(recipe):

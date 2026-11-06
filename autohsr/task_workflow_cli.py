@@ -14,9 +14,17 @@ def add_arguments(mode, parser):
     mode.add_argument('--task-workflow-convert-yaml', type=Path, help='把支持的三月七 YAML 步骤转换成新的任务流 JSON')
     parser.add_argument('--workflow-bundle-destination', type=Path, help='导出的新ZIP路径或导入的新目录')
     parser.add_argument('--workflow-json-destination', type=Path, help='三月七 YAML 转换生成的新 JSON 路径')
+    parser.add_argument('--workflow-yaml-native-vision', action='store_true',
+                        help='仅用于 --task-workflow-convert-yaml。显式采用 AutoHSR 原生双帧图文规则，默认关闭')
     parser.add_argument('--workflow-step-path', help='仅执行指定步骤子树，例如1/0；序号从0开始，不补执行前序步骤')
     parser.add_argument('--workflow-allow-notify', action='store_true',
                         help='授权本次明确选择的任务流程向已保存方案发送主动通知')
+
+
+def validate_arguments(args, parser):
+    """Check conversion-only switches before any CLI mode reads its sources."""
+    if args.workflow_yaml_native_vision and args.task_workflow_convert_yaml is None:
+        parser.error('--workflow-yaml-native-vision 仅用于 --task-workflow-convert-yaml。')
 
 
 def _bundle(args, parser, raw_args):
@@ -57,13 +65,13 @@ def _convert_yaml(args, parser, raw_args):
         return None
     if destination is None:
         parser.error('请用 --workflow-json-destination 指定新的 JSON 文件。')
-    allowed = {'--task-workflow-convert-yaml', '--workflow-json-destination'}
+    allowed = {'--task-workflow-convert-yaml', '--workflow-json-destination', '--workflow-yaml-native-vision'}
     if any(arg.partition('=')[0] not in allowed for arg in raw_args if arg.startswith('--')):
         parser.error('三月七 YAML 转换不能与其他运行参数混用。')
     from .workflow_yaml import convert_march7th_yaml
 
     try:
-        saved = convert_march7th_yaml(source, destination)
+        saved = convert_march7th_yaml(source, destination, use_native_vision=args.workflow_yaml_native_vision)
     except KeyboardInterrupt:
         print(json.dumps(dict(status='stopped', error='YAML 转换已停止。'), ensure_ascii=False), file=sys.stderr)
         return 130

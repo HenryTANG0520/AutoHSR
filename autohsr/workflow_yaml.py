@@ -1,4 +1,4 @@
-"""Convert supported controls and explicit WAV references from pinned March7thAssistant YAML.
+"""Convert the supported subset of pinned March7thAssistant YAML to a draft.
 
 Schema reference: March7thAssistant 7cf6c6b, module/workflow/__init__.py.
 Only the explicitly selected definition is read. A draft uses the same compiler
@@ -17,14 +17,19 @@ import yaml
 from yaml.events import AliasEvent
 from yaml.nodes import ScalarNode
 
+from .models import normalize
 from .task_workflow import MAX_BYTES, MAX_DEPTH, MAX_NODES, PAGE_TASK, WorkflowError, compile_recipe
 from .task_workflow_draft import SavedWorkflow, WorkflowDraft, _snapshot
+from .workflow_yaml_crop import parse_march7th_crop
 
 
 _YAML_DEPTH = 2 * MAX_DEPTH + 3
 _YAML_NODES = 64 * MAX_NODES + 32
 _META = {'author', 'version', 'description'}
 _YAML_SUFFIXES = {'.yaml', '.yml'}
+_TEMPLATE_SUFFIXES = {'.png', '.jpg', '.jpeg'}
+_VISION_STEPS = {'find_image', 'find_text', 'if', 'while'}
+_VISION_CONDITIONS = {'image_exists', 'image_not_exists', 'text_exists', 'text_not_exists'}
 _STEP_FIELDS = {
     'type', 'text', 'audio_path', 'target_screen', 'template_path', 'threshold',
     'crop', 'include', 'max_retries', 'seconds', 'count', 'condition_type',
@@ -151,31 +156,38 @@ def _valid_part(part):
             and not part.endswith(('.', ' ')) and not PureWindowsPath(part).is_reserved())
 
 
-def _audio_path(value, source_dir, where):
-    text = value.strip().replace('\\', '/') if isinstance(value, str) else ''
+def _media_reference(value, source_dir, where, *, label, suffixes, suffix_error):
+    """Bind a lexical media reference without accessing the media."""
+    text = value.replace('\\', '/')
     if len(text) > 4096:
-        raise WorkflowError(f'{where}的音频路径过长。')
+        raise WorkflowError(f'{where}的{label}路径过长。')
     path = Path(text)
-    if path.suffix.casefold() != '.wav':
-        raise WorkflowError(f'{where}须明确指定 WAV 文件，默认 MP3 和其他格式无法迁移。')
+    if path.suffix.casefold() not in suffixes:
+        raise WorkflowError(f'{where}{suffix_error}')
     # pathlib normalizes away a leading "./". March7th resolves this form
     # against its process cwd, so check the spelling before using the path.
     if text.startswith(('./', '../')):
-        raise WorkflowError(f'{where}的 ./ 或 ../ 音频路径依赖三月七进程的工作目录，无法确定来源。')
+        raise WorkflowError(f'{where}的 ./ 或 ../ {label}路径依赖三月七进程的工作目录，无法确定来源。')
     parts = path.parts[1:] if path.anchor else path.parts
     if (text.startswith('//') or text.endswith('/')
             or (path.anchor and not path.is_absolute()) or '..' in path.parts
             or not all(_valid_part(part) for part in parts)):
-        raise WorkflowError(f'{where}的音频路径无效，须为普通相对路径或本地绝对路径。')
+        raise WorkflowError(f'{where}的{label}路径无效，须为普通相对路径或本地绝对路径。')
     absolute = source_dir / path
     if not _is_local_disk(absolute):
-        raise WorkflowError(f'{where}的音频路径须位于本地磁盘。')
+        raise WorkflowError(f'{where}的{label}路径须位于本地磁盘。')
     # Keep an absolute reference so the draft and any Save As use the same
-    # upstream location. File checks belong to the native playback step.
+    # upstream location. File checks belong to the native task.
     reference = str(absolute)
     if len(reference) > 4096:
-        raise WorkflowError(f'{where}的音频路径过长。')
+        raise WorkflowError(f'{where}的{label}路径过长。')
     return reference
+
+
+def _audio_path(value, source_dir, where):
+    text = value.strip() if isinstance(value, str) else ''
+    return _media_reference(text, source_dir, where, label='音频', suffixes={'.wav'},
+                            suffix_error='须明确指定 WAV 文件，默认 MP3 和其他格式无法迁移。')
 
 
 def _whole(value, default, limit, *, quoted_grammar, where):
@@ -191,7 +203,95 @@ def _whole(value, default, limit, *, quoted_grammar, where):
     raise WorkflowError(f'{where}必须是 0～{limit} 的整数。')
 
 
-def _steps(values, source_dir, prefix=(), total=None):
+def _template_threshold(value, where):
+    try:
+        if value is None:
+            return .9
+        if isinstance(value, str):
+            value = _numeric(value.strip(), _NUMBER)
+        if isinstance(value, Decimal) and Decimal('.5') <= value <= 1:
+            return float(value)
+    except (ValueError, DecimalException):
+        pass
+    raise WorkflowError(f'{where}的图片阈值须在原生算法的 0.50～1 范围内。')
+
+
+def _vision_node(step, source_dir, where, *, use_native_vision):
+    kind = step['type']
+
+    def reject(detail):
+        prefix = '' if use_native_vision else _UNSUPPORTED[kind] + '。'
+        raise WorkflowError(f'{where}无法迁移。{prefix}{detail}。')
+
+    limit = None
+    if kind == 'while':
+        limit = _whole(step.get('max_iterations'), 20, 1000, quoted_grammar=_INTEGER, where=where + '的循环上限')
+        if not limit:
+            reject('上游条件循环的上限为 0 时会无限运行')
+    condition = None
+    if kind in ('if', 'while'):
+        condition = step.get('condition_type')
+        if condition is None or condition == '':
+            condition = 'text_exists'
+        if condition in ('last_result', 'last_result_failed'):
+            reject('上一动作的布尔值会被等待、控制节点和异常改写，无法绑定为原生的已核实事实')
+        if not isinstance(condition, str) or condition not in _VISION_CONDITIONS:
+            reject('条件类型无效')
+        image = condition.startswith('image_')
+    else:
+        image = kind == 'find_image'
+    try:
+        region = parse_march7th_crop(step.get('crop'))
+    except WorkflowError as error:
+        raise WorkflowError(f'{where}无法迁移。{error}') from None
+    attempts = _whole(step.get('max_retries'), 1, 10000, quoted_grammar=_INTEGER, where=where + '的检测尝试次数')
+    if not attempts:
+        reject('检测尝试次数须为正数')
+    if attempts > 1:
+        reject('原版尝试多次时任一次匹配即可通过，原生需要同次观察的两帧结果一致')
+    target = step.get('template_path' if image else 'text')
+    if not isinstance(target, str) or not target.strip():
+        reject('缺少明确的检测模板或目标文字')
+    if not image and len(target) > 120:
+        reject('目标文字超过原生的 120 字限制')
+    targets = [part.strip() for part in target.split(';') if part.strip()] if not image else []
+    if len(targets) > 1:
+        reject('原版按分号列出多个候选，原生文字判断只接收一个目标')
+    if not use_native_vision:
+        if kind == 'while':
+            reject('每轮需要重新取帧，已保存的步骤事实不能代替下一轮检测')
+        if kind == 'if':
+            reject('上游即时检测的失败值不能作为原生条件的已核实未匹配')
+        if image:
+            reject('模板可能使用透明掩码和不同方向的阈值，未读取素材确认匹配契约')
+        reject('上游文字按字面匹配，原生使用文字规范化和置信度要求')
+
+    if image:
+        if target != target.strip():
+            reject('模板路径首尾含空白，来源无法无损绑定')
+        task = 'workflow_game_image'
+        params = dict(template=_media_reference(
+            target, source_dir, where, label='模板', suffixes=_TEMPLATE_SUFFIXES,
+            suffix_error='须明确指定本地 PNG 或 JPEG 模板。',
+        ), threshold=_template_threshold(step.get('threshold'), where), region=region)
+    else:
+        contains = step.get('include', False)
+        if type(contains) is not bool:
+            reject('文字包含匹配须明确为布尔值')
+        if not targets or not normalize(targets[0]) or any(
+                ord(char) < 32 or 0xD800 <= ord(char) <= 0xDFFF for char in targets[0]):
+            reject('目标文字为空或含有原生无法表达的字符')
+        task = 'workflow_game_text'
+        params = dict(text=targets[0], contains=contains, region=region)
+    if condition is None:
+        return dict(type='task', task=task, params=params)
+    native = dict(screen_condition=dict(task=task, params=params, value=condition in ('image_exists', 'text_exists')))
+    if limit is not None:
+        native['max_iterations'] = limit
+    return native
+
+
+def _steps(values, source_dir, *, use_native_vision, prefix=(), total=None, in_loop=False):
     if total is None:
         total = [0]
     if not isinstance(values, list) or not values or len(prefix) >= MAX_DEPTH:
@@ -208,11 +308,17 @@ def _steps(values, source_dir, prefix=(), total=None):
         kind = value.get('type')
         if not isinstance(kind, str) or not kind:
             raise WorkflowError(f'{where}缺少明确的步骤类型。')
-        if kind in _UNSUPPORTED:
-            raise WorkflowError(f'{where}（{kind}）无法迁移。{_UNSUPPORTED[kind]}。')
         node = dict(id='m7-' + '-'.join(map(str, path)), type=kind)
+        if kind in _VISION_STEPS:
+            node.update(_vision_node(value, source_dir, f'{where}（{kind}）', use_native_vision=use_native_vision))
+        elif kind in _UNSUPPORTED:
+            raise WorkflowError(f'{where}（{kind}）无法迁移。{_UNSUPPORTED[kind]}。')
         children = value.get('children', [])
-        if kind != 'for' and children != []:
+        control = kind in ('for', 'if', 'while')
+        if control:
+            if not isinstance(children, list) or not children:
+                raise WorkflowError(f'{where}须有非空的子步骤列表。')
+        elif children != []:
             raise WorkflowError(f'{where}包含无法保留的子步骤。')
         if kind == 'wait':
             node['seconds'] = _whole(
@@ -224,7 +330,7 @@ def _steps(values, source_dir, prefix=(), total=None):
             )
             if not count:
                 raise WorkflowError(f'{where}是无限循环，无法迁移。')
-            node.update(count=count, steps=_steps(children, source_dir, path, total))
+            node['count'] = count
         elif kind == 'play_audio':
             node.update(type='task', task='workflow_audio',
                         params={'path': _audio_path(value.get('audio_path'), source_dir, where)},
@@ -238,15 +344,18 @@ def _steps(values, source_dir, prefix=(), total=None):
         elif kind == 'stop_workflow':
             node['type'] = 'stop'
         elif kind in ('break', 'continue'):
-            if not prefix:
+            if not in_loop:
                 raise WorkflowError(f'{where}的循环控制只能位于循环中。')
-        else:
+        elif kind not in _VISION_STEPS:
             raise WorkflowError(f'{where}的步骤类型未获支持。')
+        if control:
+            node['steps'] = _steps(children, source_dir, use_native_vision=use_native_vision, prefix=path, total=total,
+                                   in_loop=in_loop or kind in ('for', 'while'))
         result.append(node)
     return result
 
 
-def _decode(raw, source_dir):
+def _decode(raw, source_dir, *, use_native_vision):
     if len(raw) > MAX_BYTES:
         raise WorkflowError('三月七 YAML 超过 1 MiB。')
     try:
@@ -271,7 +380,8 @@ def _decode(raw, source_dir):
         if any(char == '\0' or 0xD800 <= ord(char) <= 0xDFFF for char in display):
             raise WorkflowError('三月七 YAML 的作者、版本或描述字段无效。')
         metadata[key] = display
-    return dict(version=1, name=value['name'], steps=_steps(value['steps'], source_dir)), metadata
+    steps = _steps(value['steps'], source_dir, use_native_vision=use_native_vision)
+    return dict(version=1, name=value['name'], steps=steps), metadata
 
 
 class March7thYamlDraft(WorkflowDraft):
@@ -290,18 +400,20 @@ class March7thYamlDraft(WorkflowDraft):
         return super().destination_path(destination)
 
 
-def load_march7th_yaml(path) -> March7thYamlDraft:
-    """Read and validate the selected YAML without writing or running anything."""
+def load_march7th_yaml(path, *, use_native_vision: bool = False) -> March7thYamlDraft:
+    """Read one YAML draft, with an explicit opt-in to native dual-frame vision."""
+    if type(use_native_vision) is not bool:
+        raise WorkflowError('实时图文适配开关必须为布尔值。')
     try:
         source = _local_path(path, _YAML_SUFFIXES, source=True)
         raw, _ = _snapshot(source)
     except (TypeError, OSError) as error:
         raise WorkflowError('无法读取所选三月七 YAML 文件。') from error
-    document, metadata = _decode(raw, source.parent)
+    document, metadata = _decode(raw, source.parent, use_native_vision=use_native_vision)
     recipe = compile_recipe(document, base_dir=source.parent)
     return March7thYamlDraft(None, None, None, recipe.document, original_source=source, metadata=metadata)
 
 
-def convert_march7th_yaml(source, destination) -> SavedWorkflow:
+def convert_march7th_yaml(source, destination, *, use_native_vision: bool = False) -> SavedWorkflow:
     """Validate then exclusively publish a separate native JSON definition."""
-    return load_march7th_yaml(source).save_as(destination)
+    return load_march7th_yaml(source, use_native_vision=use_native_vision).save_as(destination)

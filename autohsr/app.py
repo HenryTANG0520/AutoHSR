@@ -2251,8 +2251,9 @@ class Runner:
                  observation_wait_for_foreground=False):
         from dataclasses import replace
         if (type(observation_wait_for_foreground) is not bool
-                or observation_wait_for_foreground and operation not in DAILY_OBSERVATION_OPERATIONS):
-            raise ValueError('前台等待只适用于明确启动的日常页面核对。')
+                or observation_wait_for_foreground
+                and operation not in DAILY_OBSERVATION_OPERATIONS | WORKFLOW_FOREGROUND_TASKS):
+            raise ValueError('前台等待只适用于明确启动的游戏页面核对。')
         self.observation_wait_for_foreground = observation_wait_for_foreground
         if operation in WORKFLOW_FOREGROUND_TASKS and (new_battle_run or use_power_plan or new_power_plan or weekly_plan is not None):
             raise ValueError('任务流的页面观察或切换不能建立刷本或周常预算。')
@@ -2262,6 +2263,7 @@ class Runner:
         elif workflow_screen_query is not None:
             raise ValueError('游戏画面查询只适用于任务流的专用观察入口。')
         self.workflow_screen_query = deepcopy(workflow_screen_query)
+        self._workflow_screen_window = None
         if operation == PAGE_TASK:
             if workflow_page not in WORKFLOW_PAGES:
                 raise ValueError('请选择任务流支持的游戏页面。')
@@ -2752,6 +2754,30 @@ class Runner:
             self.stop()
             self._control_checkpoint()
 
+    def _guard_workflow_screen_window(self):
+        if self._workflow_screen_window is None:
+            raise AutomationError('游戏画面结果缺少本次原生窗口来源。')
+        window, geometry, captured_at, epoch, key = self._workflow_screen_window
+        if self.stop_requested or window.emergency_pressed():
+            self.stop()
+            raise Stopped('游戏画面判断已停止。')
+        if (self._window is not window or self.input_epoch != epoch or not key
+                or window.current_window_key() != key):
+            raise AutomationError('游戏画面结果的窗口或输入代次已改变。')
+        window.guard(geometry)
+        if self.stop_requested or window.emergency_pressed():
+            self.stop()
+            raise Stopped('游戏画面判断已停止。')
+        if self._window is not window or self.input_epoch != epoch or not 0 <= time.monotonic() - captured_at <= 8:
+            raise AutomationError('游戏画面结果已过期，或窗口与输入代次已改变。')
+
+    def guard_workflow_condition(self):
+        """Check the original native observation at its parent's branch boundary."""
+        if (self.report.operation not in GAME_VISION_TASKS or self.report.status != 'success'
+                or self.report.report_saved is not True):
+            raise AutomationError('实时条件缺少本次已保存的成功观察。')
+        self._guard_workflow_screen_window()
+
     def _save_run_report(self, directory, points_workflow=None, *, challenge_reader=None, preview_source=None,
                          daily_reward_reader=None, daily_observation_reader=None,
                          workflow_screen_source=None, workflow_navigation=None):
@@ -2780,19 +2806,11 @@ class Runner:
                     if workflow_navigation is not None:
                         workflow_navigation.guard_publication()
                         return
-                    context, scene, epoch, window_key = workflow_screen_source
+                    context, scene, window = workflow_screen_source
                     context.checkpoint()
-                    if (scene is None or self.input_epoch != epoch
-                            or context.last_scene is not scene
-                            or context.window.current_window_key() != window_key
-                            or not 0 <= time.monotonic() - scene.captured_at <= 8):
-                        raise AutomationError('游戏画面结果已过期，或窗口与输入代次已改变。')
-                    context.window.guard(scene.geometry)
-                    if self.stop_requested or context.window.emergency_pressed():
-                        self.stop()
-                        raise Stopped('游戏画面判断已停止。')
-                    if self.input_epoch != epoch:
-                        raise AutomationError('游戏画面的输入代次已改变。')
+                    self._guard_workflow_screen_window()
+                    if context.last_scene is not scene or context.window is not window:
+                        raise AutomationError('游戏画面结果的当前帧已改变。')
                 except AutomationError as error:
                     if workflow_navigation is not None:
                         self.report.workflow_navigation['page_verified'] = False
@@ -3031,7 +3049,7 @@ class Runner:
                     if self._window.emergency_pressed():
                         raise Stopped('F10 紧急停止。')
 
-                self.log('请手动切回游戏前台，AutoHSR 将核对所选日常页面。')
+                self.log('请手动切回游戏前台，AutoHSR 将核对当前页面。')
                 _foreground_geometry(self._window, handoff_checkpoint)
             elif self._foreground_only:
                 self._window.guard()
@@ -3124,7 +3142,10 @@ class Runner:
                 if set(observation) != {field} or type(observation[field]) is not bool:
                     raise AutomationError('游戏图文结果未核实。')
                 self.report.workflow_screen = observation
-                workflow_screen_source = (context, context.last_scene, context.scene_epoch, window_key)
+                scene = context.last_scene
+                workflow_screen_source = (context, scene, context.window)
+                self._workflow_screen_window = (self._window, scene.geometry, scene.captured_at,
+                                                context.scene_epoch, window_key)
                 self.report.results.append(TaskResult(operation, 'ok', '已核实当前游戏画面的判断结果。'))
                 self.report.status = 'success'
                 self.report.failure_task = ''

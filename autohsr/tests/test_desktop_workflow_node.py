@@ -1,6 +1,7 @@
 """The node editor with withdrawn Tk controls and in-memory draft callbacks."""
 from copy import deepcopy
 import gc
+import json
 import tkinter as tk
 import unittest
 from unittest.mock import Mock
@@ -143,6 +144,59 @@ class WorkflowNodeFormTests(unittest.TestCase):
         self.assertIn("计数字段", self.form.error.get())
         self.applied.assert_not_called()
 
+    def test_condition_source_switches_between_separate_explicit_parameter_drafts(self):
+        self.form.open(step_ids=('prior',))
+        values = self.form.values
+        values['type'].set('条件循环')
+        values['max_iterations'].set('3')
+        values['step'].set('@last')
+        values['condition_source'].set('实时图像')
+        self.assertFalse(self.form._result_condition_frame.grid_info())
+        self.assertTrue(self.form._parameters_frame.grid_info())
+        self.assertTrue(self.form.template_button.grid_info())
+        self.form.apply_button.invoke()
+        self.assertTrue(self.form.error.get())
+        self.applied.assert_not_called()
+        image = dict(template='assets/button.png', region=[.1, .2, .5, .7], threshold=.92)
+        self.write_params(json.dumps(image))
+        values['screen_value'].set('未匹配')
+        self.assertEqual(self.submitted(), dict(type='while', name=None, enabled=True, max_iterations=3,
+            screen_condition=dict(task='workflow_game_image', params=image, value=False)))
+
+        values['condition_source'].set('实时文字')
+        self.assertFalse(self.form.template_button.grid_info())
+        self.assertEqual(self.form._read_parameters(), {})
+        self.applied.reset_mock()
+        for raw in ('{"text":"已完成","contains":"false"}', '{"text":"x","image":"file.png"}', '[]'):
+            self.write_params(raw)
+            self.form.apply_button.invoke()
+            self.assertTrue(self.form.error.get())
+        self.applied.assert_not_called()
+        text = dict(text='已完成', contains=False, threshold=.81)
+        self.write_params(json.dumps(text))
+        self.assertEqual(self.submitted()['screen_condition'], dict(task='workflow_game_text', params=text, value=False))
+
+        values['condition_source'].set('实时图像')
+        self.assertEqual(self.submitted()['screen_condition']['params'], image)
+        values['condition_source'].set('前序步骤结果')
+        self.assertTrue(self.form._result_condition_frame.grid_info())
+        self.assertFalse(self.form._parameters_frame.grid_info())
+        self.assertEqual(self.submitted(), dict(type='while', name=None, enabled=True, max_iterations=3,
+            condition=dict(step='@last', field='status', op='eq', value='success')))
+
+    def test_existing_live_query_opens_with_its_explicit_value_and_required_field(self):
+        query = dict(task='workflow_game_text', params=dict(text='菜单', contains=True), value=False)
+        self.form.open(dict(id='gate', type='if', screen_condition=query,
+                            steps=[dict(id='child', type='wait', seconds=0)]))
+        self.assertEqual(self.form.values['condition_source'].get(), '实时文字')
+        self.assertEqual(self.form.values['screen_value'].get(), '未匹配')
+        self.assertEqual(self.submitted()['screen_condition'], query)
+        self.applied.reset_mock()
+        self.form.values['screen_value'].set('')
+        self.form.apply_button.invoke()
+        self.assertIn('布尔值', self.form.error.get())
+        self.applied.assert_not_called()
+
     def test_missing_future_or_self_step_is_rejected(self):
         for prior, selected in (((), "@last"), (("prior",), "later"), (("prior",), "edited")):
             with self.subTest(prior=prior, selected=selected):
@@ -221,6 +275,10 @@ class WorkflowNodeFormTests(unittest.TestCase):
                         self.root.update_idletasks()
                         self.assertLessEqual(form.winfo_reqwidth(), round(360 * scale))
                         self.assertEqual(self.root.state(), "withdrawn")
+                    for source in ('实时图像', '实时文字'):
+                        form.values['condition_source'].set(source)
+                        self.root.update_idletasks()
+                        self.assertLessEqual(form.winfo_reqwidth(), round(360 * scale))
                 finally:
                     form.destroy()
         theme.apply_theme(self.root, 1)

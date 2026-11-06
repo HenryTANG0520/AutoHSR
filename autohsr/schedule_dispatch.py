@@ -17,20 +17,11 @@ import re
 from .config import ROOT, Settings
 from .schedule_plan import ScheduleError, ScheduleSourceUnverified, revision, validate as validate_plan
 from .storage import hold_read_sources
-from .task_workflow import GAME_TASKS, MAX_BYTES, compile_recipe, loads, step_path, task_spec
+from .task_workflow import GAME_TASKS, MAX_BYTES, compile_recipe, execution_tasks, loads, step_path, task_spec
 
 
 def _json(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf8')
-
-
-def _nodes(nodes):
-    for node in nodes:
-        if not node.get('enabled', True):
-            continue
-        yield node
-        yield from _nodes(node.get('steps', []))
-        yield from _nodes(node.get('else_steps', []))
 
 
 def _text(value):
@@ -163,7 +154,7 @@ class NativeScheduleExecutor:
     def _checked_target(self, plan):
         target = validate_target(plan.get('target'))
         recipe, source = self._recipe(target)
-        tasks = [node for node in _nodes(recipe.steps) if node['type'] == 'task']
+        tasks = list(execution_tasks(recipe.steps))
         game = any(node['task'] in GAME_TASKS for node in tasks)
         if game and plan['repeat']['count'] != 1:
             raise ScheduleError('游戏计划重复须由同一任务树核对整批预算，不能分次建立新预算。')
@@ -254,7 +245,7 @@ class NativeScheduleExecutor:
             if source != manifest['source'] or str(recipe.base_dir) != manifest['base_dir'] or recipe.profile != manifest['profile']:
                 raise ValueError()
             if type(manifest['game']) is not bool or manifest['game'] != any(
-                    node['type'] == 'task' and node['task'] in GAME_TASKS for node in _nodes(recipe.steps)):
+                    node['task'] in GAME_TASKS for node in execution_tasks(recipe.steps)):
                 raise ValueError()
             for entry in manifest['dependencies']:
                 if _fingerprint(entry['path'], maximum=entry['size']) != entry:
@@ -309,7 +300,7 @@ class NativeScheduleExecutor:
                          base_dir=recipe.base_dir, root=self.run_root)
         bound_paths = None
         if native:
-            configured = ((node, *runner.specs[node['id']]) for node in _nodes(recipe.steps) if node['type'] == 'task')
+            configured = ((node, *runner.specs[node['id']]) for node in execution_tasks(recipe.steps))
             bound_paths = tuple(dict.fromkeys(path for path, _ in _dependency_paths(configured)))
         return VerifiedScheduleRunner(wrap(runner), source_scope=lambda: self._source_scope(manifest, bound_paths))
 

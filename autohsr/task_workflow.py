@@ -126,6 +126,38 @@ def _condition(value, previous):
         _integer(value['value'], 0, 1000000)
 
 
+def _screen_condition(value):
+    fields = ('task', 'params', 'value')
+    _keys(value, fields, fields)
+    task = value['task']
+    if not isinstance(task, str) or task not in GAME_VISION_TASKS:
+        raise WorkflowError('实时条件只支持正式游戏图文观察。')
+    _params(task, value['params'])
+    _boolean(value['value'])
+
+
+def execution_task(node):
+    """Project a control node's observation through the native task adapter."""
+    if node['type'] == 'task':
+        return node
+    if 'screen_condition' in node:
+        query = node['screen_condition']
+        return dict(id=node['id'], type='task', task=query['task'], params=query['params'])
+    return None
+
+
+def execution_tasks(nodes):
+    """List the enabled native task specifications in the selected tree."""
+    for node in nodes:
+        if not node.get('enabled', True):
+            continue
+        task = execution_task(node)
+        if task is not None:
+            yield task
+        yield from execution_tasks(node.get('steps', []))
+        yield from execution_tasks(node.get('else_steps', []))
+
+
 def _params(task, params):
     allowed = {
         'daily': {'tasks', 'use_power_plan', 'stamina_limit', 'rounds', 'target_name', 'target_location',
@@ -271,6 +303,8 @@ def _profile(nodes):
             count = node.get('count', node.get('max_iterations', 1))
             for key in total:
                 current[key] += nested[key] * count
+            if 'screen_condition' in node:
+                current['executions'] += count + 1 if kind == 'while' else 1
         for key in total:
             total[key] += current[key]
     return total
@@ -335,8 +369,8 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
                 raise WorkflowError('步骤必须为对象。')
             kind = node.get('type')
             fields = {'task': {'task', 'params', 'on_failure'}, 'wait': {'seconds'},
-                      'if': {'condition', 'steps', 'else_steps'}, 'for': {'count', 'steps'},
-                      'while': {'condition', 'max_iterations', 'steps'},
+                      'if': {'condition', 'screen_condition', 'steps', 'else_steps'}, 'for': {'count', 'steps'},
+                      'while': {'condition', 'screen_condition', 'max_iterations', 'steps'},
                       'break': set(), 'continue': set(), 'stop': set()}
             if not isinstance(kind, str) or kind not in fields:
                 raise WorkflowError('未知步骤类型；底层坐标、脚本和原版YAML不能直接执行。')
@@ -351,7 +385,12 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
                 _text(node['name'])
             _boolean(node.get('enabled', True))
             if kind in ('if', 'while'):
-                _condition(node.get('condition'), seen)
+                if ('condition' in node) == ('screen_condition' in node):
+                    raise WorkflowError('if／while 必须恰选一种步骤结果或实时画面条件。')
+                if 'screen_condition' in node:
+                    _screen_condition(node['screen_condition'])
+                else:
+                    _condition(node['condition'], seen)
             if kind in ('break', 'continue') and not in_loop:
                 raise WorkflowError('break／continue只能位于循环中。')
             if kind == 'task':

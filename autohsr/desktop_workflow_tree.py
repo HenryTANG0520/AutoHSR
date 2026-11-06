@@ -13,7 +13,7 @@ from .desktop_dialogs import place_dialog
 from .desktop_workflow_node import WorkflowNodeForm
 from .screenshot_tool import MAX_BYTES as MAX_IMAGE_BYTES
 from .storage import file_revision, hold_read_sources
-from .task_workflow import TEMPLATE_TASKS, WorkflowError
+from .task_workflow import TEMPLATE_TASKS, WorkflowError, execution_task
 from .workflow_bundle import _path as _asset_path
 from .workflow_tree_edit import WorkflowTreeDraft
 
@@ -62,8 +62,9 @@ class _TemplateBinding:
 
 def _referenced_templates(nodes, bindings):
     for node in nodes:
-        if node.get('task') in TEMPLATE_TASKS:
-            relative = node['params']['template']
+        task = execution_task(node)
+        if task is not None and task['task'] in TEMPLATE_TASKS:
+            relative = task['params']['template']
             binding = bindings.get((node['id'], Path(relative)))
             if binding is not None:
                 yield binding
@@ -168,11 +169,29 @@ class WorkflowTreeDialog(tk.Toplevel):
             '选中步骤可编辑、移动或添加同级步骤。选中流程根或分支可在其中添加步骤。'
         ))
         self.hint.grid(row=0, column=0, sticky='new')
-        self.form = WorkflowNodeForm(details, scale=scale, task_names=task_names,
+
+        self._property_view = ttk.Frame(details, style='Card.TFrame')
+        self._property_view.columnconfigure(0, weight=1)
+        self._property_view.rowconfigure(0, weight=1)
+        self._property_view.grid(row=0, column=0, sticky='nsew')
+        canvas = self._property_canvas = tk.Canvas(self._property_view, width=1, height=1, takefocus=False,
+                                                   background=theme.CARD, highlightthickness=0, borderwidth=0)
+        canvas.grid(row=0, column=0, sticky='nsew')
+        scroll = ttk.Scrollbar(self._property_view, orient='vertical', command=canvas.yview)
+        scroll.grid(row=0, column=1, sticky='ns')
+        canvas.configure(yscrollcommand=scroll.set)
+        self.form = WorkflowNodeForm(canvas, scale=scale, task_names=task_names,
                                      on_apply=self._store_node, on_cancel=self._close_form,
                                      on_capture_template=self._capture_template if self.base_dir is not None else None)
-        self.form.grid(row=0, column=0, sticky='nsew')
-        self.form.grid_remove()
+        window = canvas.create_window(0, 0, window=self.form, anchor='nw')
+        canvas.bind('<Configure>', lambda event: canvas.itemconfigure(window, width=event.width))
+        self.form.bind('<Configure>', lambda _event: canvas.configure(scrollregion=canvas.bbox(window)))
+        self.bind('<MouseWheel>', self._scroll_properties)
+        self.bind('<FocusIn>', self._reveal_property)
+        for control in (*self.form.controls.values(), self.form.value_choice, self.form.page_picker):
+            if isinstance(control, ttk.Combobox):
+                control.bind('<MouseWheel>', self._scroll_properties)
+        self._property_view.grid_remove()
 
         actions = ttk.Frame(page, style='Card.TFrame')
         actions.grid(row=3, columnspan=2, sticky='ew', pady=(pad, 0))
@@ -261,12 +280,38 @@ class WorkflowTreeDialog(tk.Toplevel):
         return tuple(row.identity for row in self.rows.values()
                      if row.path < path and path[:len(row.path)] != row.path)
 
+    def _scroll_properties(self, event):
+        if (event.delta and not isinstance(event.widget, tk.Text)
+                and str(event.widget).startswith(f'{self._property_view}.')):
+            self._property_canvas.yview_scroll(-1 if event.delta > 0 else 1, 'units')
+            return 'break'
+
+    def _reveal_property(self, event):
+        widget = event.widget
+        if (not isinstance(widget, tk.Widget) or not str(widget).startswith(f'{self.form}.')
+                or str(widget) != str(self.tk.call('focus'))
+                or not widget.winfo_ismapped()):
+            return
+        canvas = self._property_canvas
+        extent = self.form.winfo_height()
+        height = canvas.winfo_height()
+        if extent <= height:
+            return
+        offset = canvas.canvasy(0)
+        top = widget.winfo_rooty() - self.form.winfo_rooty()
+        bottom = top + widget.winfo_height()
+        if top < offset:
+            canvas.yview_moveto(top / extent)
+        elif bottom > offset + height:
+            canvas.yview_moveto((bottom - height) / extent)
+
     def _open_form(self, location, path, node=None):
         if self.editing is not None or self.ui.busy or self.ui.closing:
             return
         self.editing = location
         self.hint.grid_remove()
-        self.form.grid()
+        self._property_view.grid()
+        self._property_canvas.yview_moveto(0)
         self.form.open(node, step_ids=self._previous_ids(path))
         self.feedback.set('')
         self._refresh()
@@ -327,7 +372,6 @@ class WorkflowTreeDialog(tk.Toplevel):
         if self.editing is None or self.ui.busy or self.ui.closing:
             return
         identity, parent, branch, after = self.editing
-        binding = self.form.template_binding(fields)
         try:
             if identity is None:
                 identity = self.draft.add(fields, parent_id=parent, branch=branch, after=after)
@@ -336,6 +380,7 @@ class WorkflowTreeDialog(tk.Toplevel):
         except WorkflowError as error:
             self.feedback.set(str(error))
             return
+        binding = self.form.template_binding(fields)
         if binding is not None:
             self.template_bindings[identity, Path(binding.relative_path)] = binding
         self._close_form()
@@ -343,7 +388,7 @@ class WorkflowTreeDialog(tk.Toplevel):
 
     def _close_form(self):
         self.editing = None
-        self.form.grid_remove()
+        self._property_view.grid_remove()
         self.hint.grid()
         self.feedback.set('')
         self.tree.focus_set()

@@ -15,7 +15,7 @@ from PIL import Image
 from autohsr import workflow_bundle as bundles
 from autohsr.config import Settings
 from autohsr.models import Stopped
-from autohsr.task_workflow import compile_recipe, read, task_spec
+from autohsr.task_workflow import compile_recipe, execution_task, read, task_spec
 
 
 def task(identity, kind, **params):
@@ -24,6 +24,10 @@ def task(identity, kind, **params):
 
 def flow(*steps):
     return dict(version=1, name='测试素材', steps=list(steps))
+
+
+def screen(kind, value=True, **params):
+    return dict(task=kind, params=params, value=value)
 
 
 def encode(value):
@@ -113,6 +117,95 @@ class WorkflowBundleTests(unittest.TestCase):
         bundles.export_bundle(self.source, self.output)
         result = bundles.import_bundle(self.output, self.destination)
         self.assertEqual(list(self.destination.iterdir()), [result])
+
+    def test_live_image_conditions_round_trip_and_share_assets_with_task_nodes(self):
+        nested = self.media / 'private-nested.png'
+        with Image.new('RGB', (24, 24), color='red') as image:
+            image.save(nested)
+        wait = dict(id='wait', type='wait', seconds=0)
+        text = screen('workflow_game_text', False, text='当前页面', region=[.1, .2, .8, .9], contains=True)
+        false_branch = dict(id='retry', type='while', enabled=False, max_iterations=2,
+                            screen_condition=screen('workflow_game_image', template=str(self.jpg)), steps=[
+                                dict(id='nested', type='if', screen_condition=screen(
+                                    'workflow_game_image', False, template=str(nested)), steps=[wait]),
+                            ])
+        definition = flow(task('probe', 'workflow_game_image', template='../media/private-image.png'),
+                          dict(id='choose', type='if', screen_condition=screen(
+                              'workflow_game_image', template=str(self.png), threshold=.92),
+                               steps=[dict(id='text_loop', type='while', max_iterations=2, screen_condition=text,
+                                           steps=[dict(id='read_wait', type='wait', seconds=0)])],
+                               else_steps=[false_branch]))
+        source = self.save(definition)
+        bundles.export_bundle(self.source, self.output)
+        with ZipFile(self.output) as archive:
+            names = {'workflow.json', 'manifest.json', 'assets/0001.png', 'assets/0002.jpeg', 'assets/0003.png'}
+            self.assertEqual(set(archive.namelist()), names)
+            raw = archive.read('workflow.json')
+            self.assertNotIn(b'private-', raw)
+            self.assertNotIn(str(self.root).encode('utf-8'), raw)
+            manifest = json.loads(archive.read('manifest.json'))['files']
+            self.assertEqual(set(manifest), names - {'manifest.json'})
+            for name, original in (('assets/0001.png', self.png), ('assets/0002.jpeg', self.jpg),
+                                   ('assets/0003.png', nested)):
+                self.assertEqual(archive.read(name), original.read_bytes())
+                self.assertEqual(manifest[name]['sha256'], sha256(original.read_bytes()).hexdigest())
+
+        target = bundles.import_bundle(self.output, self.destination)
+        recipe = compile_recipe(read(target), base_dir=target.parent)
+        ordinary, control = recipe.steps
+        disabled_loop = control['else_steps'][0]
+        self.assertFalse(disabled_loop['enabled'])
+        self.assertEqual(control['steps'][0]['screen_condition'], text)
+        self.assertEqual(ordinary['params']['template'], control['screen_condition']['params']['template'])
+        for node, name in ((control, '0001.png'), (disabled_loop, '0002.jpeg'),
+                           (disabled_loop['steps'][0], '0003.png')):
+            _, options = task_spec(Settings(), execution_task(node), recipe.base_dir)
+            self.assertEqual(Path(options['workflow_screen_query']['template']), self.destination / 'assets' / name)
+        self.assertEqual(self.source.read_bytes(), source)
+
+    def test_live_text_conditions_do_not_create_material_members(self):
+        definition = flow(dict(id='text', type='if', screen_condition=screen(
+            'workflow_game_text', text='当前页面'), steps=[dict(id='wait', type='wait', seconds=0)]))
+        self.save(definition)
+        bundles.export_bundle(self.source, self.output)
+        with ZipFile(self.output) as archive:
+            self.assertEqual(set(archive.namelist()), {'workflow.json', 'manifest.json'})
+        self.assertEqual(read(bundles.import_bundle(self.output, self.destination)), definition)
+
+    def test_live_condition_import_rejects_wrong_template_location_type_and_manifest(self):
+        image = ('assets/0001.png', self.png.read_bytes())
+        audio = ('assets/0001.wav', self.wav.read_bytes())
+        cases = (
+            (str(self.png), [image], None, '相对引用'),
+            ('../private-image.png', [image], None, '相对引用'),
+            (r'assets\0001.png', [image], None, '相对引用'),
+            (audio[0], [audio], None, '相对引用'),
+            (image[0], [], None, '缺少'),
+            (image[0], [image, ('assets/0002.png', image[1])], None, '未引用'),
+            (image[0], [image], lambda manifest: manifest['files'][image[0]].update(sha256='0' * 64), '摘要'),
+        )
+        for template, assets, change, reason in cases:
+            with self.subTest(reason=reason):
+                self.write_archive(flow(dict(id='match', type='while', enabled=False, max_iterations=1,
+                                             screen_condition=screen('workflow_game_image', template=template),
+                                             steps=[dict(id='wait', type='wait', seconds=0)])),
+                                   assets, changed_manifest=change)
+                with self.assertRaisesRegex(bundles.BundleError, reason):
+                    bundles.import_bundle(self.output, self.destination)
+                self.assert_unpublished()
+
+    def test_live_condition_export_rejects_missing_and_wrong_type_even_in_disabled_branch(self):
+        for template in ('private-missing.png', str(self.wav)):
+            with self.subTest():
+                source = self.save(flow(dict(id='match', type='if', enabled=False,
+                                             screen_condition=screen('workflow_game_image', template=template),
+                                             steps=[dict(id='wait', type='wait', seconds=0)])))
+                with self.assertRaises(bundles.BundleError) as error:
+                    bundles.export_bundle(self.source, self.output)
+                self.assertNotIn('private-', str(error.exception))
+                self.assertFalse(self.output.exists())
+                self.assertEqual(self.source.read_bytes(), source)
+                self.assert_unpublished()
 
     def test_reject_external_nonmaterial_dependencies_even_when_disabled(self):
         for node, reason in (

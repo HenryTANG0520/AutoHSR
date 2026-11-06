@@ -6,7 +6,10 @@ import tkinter as tk
 from tkinter import ttk
 
 from . import theme
-from .task_workflow import FIELDS, PAGE_TASK, TASKS, TEMPLATE_TASKS, WorkflowError, _condition, _integer, _params, _text, loads
+from .task_workflow import (
+    FIELDS, GAME_VISION_TASKS, PAGE_TASK, TASKS, TEMPLATE_TASKS, WorkflowError,
+    _condition, _integer, _params, _screen_condition, _text, loads,
+)
 
 
 _KINDS = {
@@ -24,6 +27,10 @@ _VALUE_LABELS = {
     str: {"success": "成功", "partial": "部分完成", "failed": "失败", "stopped": "已停止", "skipped": "已跳过"},
     bool: {True: "是", False: "否"},
 }
+_CONDITION_KINDS = ("if", "while")
+_CONDITION_SOURCES = {"condition": "前序步骤结果", "workflow_game_image": "实时图像", "workflow_game_text": "实时文字"}
+_SCREEN_VALUES = {True: "已匹配", False: "未匹配"}
+_SCREEN_PARAMS = {"workflow_game_image": "条件 JSON · template", "workflow_game_text": "条件 JSON · text"}
 _FAILURE = {"stop": "停止流程", "continue": "继续后续步骤"}
 _PAGES = {
     "phone": "手机", "guide": "星际和平指南", "daily_training": "每日实训", "survival_index": "生存索引",
@@ -77,14 +84,14 @@ class WorkflowNodeForm(ttk.Frame):
         self._edit_kind = None
         self._loading = False
         self._steps = ()
-        self._current_task = None
-        self._task_drafts = {}
+        self._parameter_key = None
+        self._parameter_drafts = {}
         self._form_version = 0
         self._capture_pending = False
         self._captured_templates = {}
         self.values = {key: tk.StringVar(self) for key in (
             "type", "name", "task", "on_failure", "step", "field", "operator", "value",
-            "seconds", "count", "max_iterations",
+            "seconds", "count", "max_iterations", "condition_source", "screen_value",
         )}
         self.controls = {}
         self.enabled = tk.BooleanVar(self)
@@ -101,19 +108,22 @@ class WorkflowNodeForm(ttk.Frame):
         self._task_frame = self._section(3)
         self._field(self._task_frame, 0, 0, "task", "正式任务", tuple(self._tasks.values()))
         self._field(self._task_frame, 0, 1, "on_failure", "失败时", tuple(_FAILURE.values()))
-        ttk.Label(self._task_frame, text="高级参数 JSON", style="Settings.Note.TLabel").grid(
-            row=1, column=0, sticky="w", pady=(self._pad, 0))
-        self.template_button = ttk.Button(self._task_frame, style="Compact.TButton", command=self.capture_template,
+
+        self._parameters_frame = self._section(6)
+        self._parameters_label = tk.StringVar(self)
+        theme.wrapped_label(self._parameters_frame, textvariable=self._parameters_label, style="Settings.Note.TLabel").grid(
+            row=0, column=0, sticky="ew")
+        self.template_button = ttk.Button(self._parameters_frame, style="Compact.TButton", command=self.capture_template,
                                           text="采集模板…" if on_capture_template else "先选择另存位置")
-        self.template_button.grid(row=1, column=1, sticky="e", pady=(self._pad, 0))
+        self.template_button.grid(row=0, column=1, sticky="e")
         self.page_target = tk.StringVar(self)
-        self.page_picker = ttk.Combobox(self._task_frame, width=13, textvariable=self.page_target,
+        self.page_picker = ttk.Combobox(self._parameters_frame, width=13, textvariable=self.page_target,
                                        values=tuple(_PAGES.values()), state="readonly", style="Settings.TCombobox")
-        self.page_picker.grid(row=1, column=1, sticky="e", pady=(self._pad, 0))
+        self.page_picker.grid(row=0, column=1, sticky="e")
         self.page_picker.bind("<<ComboboxSelected>>", self._select_page)
-        editor = ttk.Frame(self._task_frame)
+        editor = ttk.Frame(self._parameters_frame)
         editor.columnconfigure(0, weight=1)
-        editor.grid(row=2, column=0, columnspan=2, sticky="ew")
+        editor.grid(row=1, column=0, columnspan=2, sticky="ew")
         self.parameters = tk.Text(editor, width=1, height=4, wrap="word", undo=True, relief="flat", bd=0,
                                   padx=self._pad, pady=self._pad, background=theme.FIELD, foreground=theme.TEXT,
                                   insertbackground=theme.TEXT, font=theme.native_font(self, 11))
@@ -130,10 +140,17 @@ class WorkflowNodeForm(ttk.Frame):
             self._number_frames[kind] = group
 
         self._condition_frame = self._section(5)
-        self._field(self._condition_frame, 0, 0, "step", "前序步骤", ())
-        self._field(self._condition_frame, 0, 1, "field", "结果字段", tuple(_FIELDS.values()))
-        self._field(self._condition_frame, 1, 0, "operator", "比较方式", ())
-        value_holder = self._slot(self._condition_frame, 1, 1, "比较值")
+        self._field(self._condition_frame, 0, 0, "condition_source", "条件来源", tuple(_CONDITION_SOURCES.values()))
+        self._screen_value_holder = self._field(self._condition_frame, 0, 1, "screen_value", "预期结果",
+                                                tuple(_SCREEN_VALUES.values()))
+        self._result_condition_frame = ttk.Frame(self._condition_frame)
+        self._result_condition_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(self._pad, 0))
+        for column in range(2):
+            self._result_condition_frame.columnconfigure(column, weight=1, uniform="property")
+        self._field(self._result_condition_frame, 0, 0, "step", "前序步骤", ())
+        self._field(self._result_condition_frame, 0, 1, "field", "结果字段", tuple(_FIELDS.values()))
+        self._field(self._result_condition_frame, 1, 0, "operator", "比较方式", ())
+        value_holder = self._slot(self._result_condition_frame, 1, 1, "比较值")
         self.value_choice = ttk.Combobox(value_holder, textvariable=self.values["value"], width=1,
                                          state="readonly", style="Settings.TCombobox")
         self.value_number = ttk.Entry(value_holder, textvariable=self.values["value"], width=1, style="Settings.TEntry")
@@ -142,9 +159,9 @@ class WorkflowNodeForm(ttk.Frame):
         self.value_number.grid_remove()
 
         theme.wrapped_label(self, textvariable=self.error, style="Hint.TLabel").grid(
-            row=6, column=0, sticky="ew", pady=(self._pad, 0))
+            row=7, column=0, sticky="ew", pady=(self._pad, 0))
         actions = ttk.Frame(self)
-        actions.grid(row=7, column=0, sticky="e", pady=(self._pad, 0))
+        actions.grid(row=8, column=0, sticky="e", pady=(self._pad, 0))
         self.cancel_button = ttk.Button(actions, text="取消", style="Panel.TButton", command=self.cancel)
         self.apply_button = ttk.Button(actions, text="应用属性", style="Panel.TButton", command=self.apply)
         self.cancel_button.grid(row=0, column=0, padx=(0, self._pad))
@@ -152,6 +169,7 @@ class WorkflowNodeForm(ttk.Frame):
 
         self.values["type"].trace_add("write", self._kind_changed)
         self.values["task"].trace_add("write", self._task_changed)
+        self.values["condition_source"].trace_add("write", self._condition_source_changed)
         self.values["field"].trace_add("write", self._field_changed)
         self._show_kind()
 
@@ -179,6 +197,7 @@ class WorkflowNodeForm(ttk.Frame):
             widget = ttk.Combobox(group, values=choices, state="readonly", style="Settings.TCombobox", **options)
         widget.grid(row=1, column=0, sticky="ew")
         self.controls[key] = widget
+        return group
 
     def open(self, node=None, *, step_ids=()):
         """Load a new node or edit the given type. The parent owns geometry."""
@@ -193,6 +212,9 @@ class WorkflowNodeForm(ttk.Frame):
         task = data.get("task", "daily")
         condition = data.get("condition")
         condition = condition if isinstance(condition, dict) else {}
+        screen = data.get("screen_condition")
+        screen = screen if isinstance(screen, dict) else {}
+        screen_value = screen.get("value", True)
         field = str(condition.get("field", "status"))
         value = condition.get("value", "success")
         value_type = FIELDS.get(field)
@@ -207,6 +229,8 @@ class WorkflowNodeForm(ttk.Frame):
                 "step": condition.get("step", ""), "field": _FIELDS.get(field, field),
                 "operator": _label(_OPERATORS, condition.get("op", "eq")),
                 "value": value_label,
+                "condition_source": _label(_CONDITION_SOURCES, screen.get("task", "condition")),
+                "screen_value": _SCREEN_VALUES.get(screen_value, "") if type(screen_value) is bool else "",
             }
             for key, _, minimum, _ in _NUMBERS.values():
                 initial[key] = str(data.get(key, minimum))
@@ -215,10 +239,12 @@ class WorkflowNodeForm(ttk.Frame):
             self.enabled.set(data.get("enabled", True) if node is not None else False)
             self.controls["type"].configure(state="disabled" if node is not None else "readonly")
             self.controls["step"].configure(values=("@last", *self._steps) if self._steps else ())
-            self._current_task = task if isinstance(task, str) else None
-            self._task_drafts.clear()
-            params = data.get("params", {}) if node is not None else _default_params(task)
-            self._set_parameters(json.dumps(params, ensure_ascii=False, indent=2))
+            self._parameter_key = None
+            self._parameter_drafts.clear()
+            key = self._parameter_target()
+            if node is not None and key is not None:
+                source = data if key[0] == "task" else screen
+                self._parameter_drafts[key] = json.dumps(source.get("params", {}), ensure_ascii=False, indent=2)
         finally:
             self._loading = False
         self.heading.set("编辑步骤属性" if node is not None else "新增步骤")
@@ -238,10 +264,10 @@ class WorkflowNodeForm(ttk.Frame):
             self._task_frame.grid()
         if kind in _NUMBERS:
             self._number_frames[kind].grid()
-        if kind in ("if", "while"):
+        if kind in _CONDITION_KINDS:
             self._condition_frame.grid()
-        self._show_template()
-        self._show_page_picker()
+            self._show_condition_source()
+        self._show_parameters()
 
     def _kind_changed(self, *_):
         if self._loading or self._edit_kind is not None:
@@ -257,25 +283,65 @@ class WorkflowNodeForm(ttk.Frame):
         self.parameters.edit_reset()
 
     def _task_changed(self, *_):
-        if self._loading:
-            return
-        task = _key(self._tasks, self.values["task"].get())
-        if task is None or task == self._current_task:
+        if self._loading or self._kind() != "task" or self._parameter_target() == self._parameter_key:
             return
         self._form_version += 1
-        if self._current_task is not None:
-            self._task_drafts[self._current_task] = self.parameters.get("1.0", "end-1c")
-        self._current_task = task
         if self._edit_kind is None:
             self.enabled.set(False)
-        text = self._task_drafts.get(task, json.dumps(_default_params(task), ensure_ascii=False, indent=2))
-        self._set_parameters(text)
         self.error.set("")
+        self._show_parameters()
+
+    def _condition_source(self):
+        return _key(_CONDITION_SOURCES, self.values["condition_source"].get())
+
+    def _show_condition_source(self):
+        if self._condition_source() in GAME_VISION_TASKS:
+            self._result_condition_frame.grid_remove()
+            self._screen_value_holder.grid()
+        else:
+            self._screen_value_holder.grid_remove()
+            self._result_condition_frame.grid()
+
+    def _condition_source_changed(self, *_):
+        if not self._loading and self._kind() in _CONDITION_KINDS:
+            self._form_version += 1
+            self.error.set("")
+            self._show_condition_source()
+            self._show_parameters()
+
+    def _parameter_target(self):
+        kind = self._kind()
+        if kind == "task":
+            task = _key(self._tasks, self.values["task"].get())
+            return ("task", task) if task is not None else None
+        if kind in _CONDITION_KINDS:
+            task = self._condition_source()
+            if task in GAME_VISION_TASKS:
+                return "screen_condition", task
+        return None
+
+    def _show_parameters(self):
+        key = self._parameter_target()
+        previous = self._parameter_key
+        if key != previous:
+            if previous is not None:
+                self._parameter_drafts[previous] = self.parameters.get("1.0", "end-1c")
+            self._parameter_key = key
+            if key is not None:
+                kind, task = key
+                default = _default_params(task) if kind == "task" else {}
+                self._set_parameters(self._parameter_drafts.get(key, json.dumps(default, ensure_ascii=False, indent=2)))
+        if key is None:
+            self._parameters_frame.grid_remove()
+        else:
+            kind, task = key
+            self._parameters_label.set("高级参数 JSON" if kind == "task" else _SCREEN_PARAMS[task])
+            self._parameters_frame.grid()
         self._show_template()
         self._show_page_picker()
 
     def _show_page_picker(self):
-        if self._kind() != "task" or self._current_task != PAGE_TASK:
+        if self._parameter_key != ("task", PAGE_TASK):
             self.page_picker.grid_remove()
             return
         self.page_picker.grid()
@@ -293,7 +359,7 @@ class WorkflowNodeForm(ttk.Frame):
 
     def _select_page(self, _event):
         target = _key(_PAGES, self.page_target.get())
-        if target is None or self._kind() != "task" or self._current_task != PAGE_TASK:
+        if target is None or self._parameter_key != ("task", PAGE_TASK):
             return
         try:
             raw = self.parameters.get("1.0", "end-1c")
@@ -310,11 +376,12 @@ class WorkflowNodeForm(ttk.Frame):
         self.error.set("")
 
     def _show_template(self):
-        if self._kind() == "task" and self._current_task in TEMPLATE_TASKS:
+        visible = self._parameter_key is not None and self._parameter_key[1] in TEMPLATE_TASKS
+        if visible:
             self.template_button.grid()
         else:
             self.template_button.grid_remove()
-        enabled = self._on_capture_template is not None and not self._capture_pending
+        enabled = visible and self._on_capture_template is not None and not self._capture_pending
         self.template_button.state(("!disabled" if enabled else "disabled",))
 
     def cancel(self):
@@ -322,8 +389,8 @@ class WorkflowNodeForm(ttk.Frame):
         self.on_cancel()
 
     def capture_template(self):
-        task = self._current_task
-        if (self._kind() != "task" or task not in TEMPLATE_TASKS or self._capture_pending
+        key = self._parameter_key
+        if (key is None or key[1] not in TEMPLATE_TASKS or self._capture_pending
                 or self._on_capture_template is None):
             return
         raw = self.parameters.get("1.0", "end-1c")
@@ -339,7 +406,7 @@ class WorkflowNodeForm(ttk.Frame):
                     or self.parameters.get("1.0", "end-1c") != raw):
                 return
             params["template"] = binding.relative_path
-            self._captured_templates[task, Path(binding.relative_path)] = binding
+            self._captured_templates[key, Path(binding.relative_path)] = binding
             self.parameters.edit_separator()
             self.parameters.replace("1.0", "end-1c", json.dumps(params, ensure_ascii=False, indent=2))
             self.parameters.edit_separator()
@@ -360,8 +427,11 @@ class WorkflowNodeForm(ttk.Frame):
                 pass
 
     def template_binding(self, fields):
-        template = fields.get("params", {}).get("template")
-        return self._captured_templates.get((fields.get("task"), Path(template))) if isinstance(template, str) else None
+        kind = "screen_condition" if "screen_condition" in fields else "task"
+        source = fields.get("screen_condition", fields)
+        template = source.get("params", {}).get("template")
+        key = kind, source.get("task")
+        return self._captured_templates.get((key, Path(template))) if isinstance(template, str) else None
 
     def _field_changed(self, *_):
         if not self._loading:
@@ -397,6 +467,10 @@ class WorkflowNodeForm(ttk.Frame):
         _condition(condition, self._steps)
         return condition
 
+    def _read_parameters(self):
+        raw = self.parameters.get("1.0", "end-1c")
+        return loads(raw) if raw.strip() else {}
+
     def _read_fields(self):
         kind = self._kind()
         if kind not in _KINDS:
@@ -406,15 +480,23 @@ class WorkflowNodeForm(ttk.Frame):
         if kind in _NUMBERS:
             key, _, low, high = _NUMBERS[kind]
             fields[key] = _number(self.values[key].get(), low, high)
-        if kind in ("if", "while"):
-            fields["condition"] = self._read_condition()
+        if kind in _CONDITION_KINDS:
+            source = self._condition_source()
+            if source == "condition":
+                fields["condition"] = self._read_condition()
+            else:
+                if source not in GAME_VISION_TASKS:
+                    raise WorkflowError("请选择条件来源。")
+                query = dict(task=source, params=self._read_parameters(),
+                             value=_key(_SCREEN_VALUES, self.values["screen_value"].get()))
+                _screen_condition(query)
+                fields["screen_condition"] = query
         if kind == "task":
             task = _key(self._tasks, self.values["task"].get())
             policy = _key(_FAILURE, self.values["on_failure"].get())
             if task is None or policy is None:
                 raise WorkflowError("请选择正式任务和失败策略。")
-            raw = self.parameters.get("1.0", "end-1c")
-            params = loads(raw) if raw.strip() else {}
+            params = self._read_parameters()
             _params(task, params)
             fields.update(task=task, params=params, on_failure=policy)
         return fields

@@ -10,7 +10,7 @@ import re
 
 from .task_workflow import (
     MAX_DEPTH, MAX_NODES, TASKS, Recipe, WorkflowError,
-    _boolean, _condition, _integer, _keys, _params, _text, compile_recipe, loads,
+    _boolean, _condition, _integer, _keys, _params, _screen_condition, _text, compile_recipe, loads,
 )
 
 
@@ -19,9 +19,9 @@ _COMMON_FIELDS = {'id', 'type', 'name', 'enabled'}
 _STEP_FIELDS = {
     'task': {'task', 'params', 'on_failure'},
     'wait': {'seconds'},
-    'if': {'condition', 'steps', 'else_steps'},
+    'if': {'condition', 'screen_condition', 'steps', 'else_steps'},
     'for': {'count', 'steps'},
-    'while': {'condition', 'max_iterations', 'steps'},
+    'while': {'condition', 'screen_condition', 'max_iterations', 'steps'},
     'break': set(),
     'continue': set(),
     'stop': set(),
@@ -76,13 +76,18 @@ def _validate_step(node, kind, *, in_loop):
         _text(node['name'])
     _boolean(node.get('enabled', True))
     if kind in ('if', 'while'):
-        condition = node.get('condition')
-        reference = condition.get('step') if isinstance(condition, dict) else None
-        if not isinstance(reference, str) or (reference != '@last' and not _ID.fullmatch(reference)):
-            raise WorkflowError('条件须填写步骤ID或@last。')
-        # The official validator checks the field/operator/value. Ordering and
-        # whether the reference is still present are checked at Apply time.
-        _condition(condition, {reference})
+        if ('condition' in node) == ('screen_condition' in node):
+            raise WorkflowError('if／while 必须恰选一种步骤结果或实时画面条件。')
+        if 'screen_condition' in node:
+            _screen_condition(node['screen_condition'])
+        else:
+            condition = node['condition']
+            reference = condition.get('step') if isinstance(condition, dict) else None
+            if not isinstance(reference, str) or (reference != '@last' and not _ID.fullmatch(reference)):
+                raise WorkflowError('条件须填写步骤ID或@last。')
+            # The official validator checks the field/operator/value. Ordering and
+            # whether the reference is still present are checked at Apply time.
+            _condition(condition, {reference})
     if kind in ('break', 'continue') and not in_loop:
         raise WorkflowError('break／continue只能位于循环中。')
     if kind == 'task':
@@ -177,7 +182,7 @@ class WorkflowTreeDraft:
 
     def _new_identity(self):
         references = {row.node['condition']['step'] for row in self._rows.values()
-                      if row.node['type'] in ('if', 'while')}
+                      if 'condition' in row.node}
         reserved = self._issued | references
         for number in count(len(self._issued) + 1):
             identity = f'step_{number}'
@@ -221,6 +226,9 @@ class WorkflowTreeDraft:
         if 'name' in fields and fields['name'] is None:
             node.pop('name', None)
             fields.pop('name')
+        if ('condition' in fields) != ('screen_condition' in fields):
+            other = 'screen_condition' if 'condition' in fields else 'condition'
+            node.pop(other, None)
         node.update(fields)
         self._commit(candidate)
 

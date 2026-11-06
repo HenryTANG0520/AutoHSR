@@ -29,6 +29,15 @@ def document(task='workflow_image'):
     ])
 
 
+def live_image_document():
+    query = dict(task='workflow_game_image', params=dict(template='旧模板.png', region=[.1, .2, .8, .9], threshold=.92),
+                 value=False)
+    return dict(version=1, name='实时条件', steps=[
+        dict(id='observe', type='if', enabled=False, screen_condition=query, steps=[dict(id='yes', type='wait', seconds=0)],
+             else_steps=[dict(id='no', type='wait', seconds=1)]),
+    ])
+
+
 class WorkflowTemplateBindingTests(TestCase):
     def setUp(self):
         try:
@@ -152,7 +161,7 @@ class WorkflowTemplateBindingTests(TestCase):
         panel._load(self.source)
         return panel
 
-    def edit_hidden(self, panel, modal=None):
+    def edit_hidden(self, panel, modal=None, *, after_capture=None):
         def edit(ui, draft, *, template_bindings, **options):
             dialog = WorkflowTreeDialog(ui, draft, **options)
             try:
@@ -161,6 +170,8 @@ class WorkflowTemplateBindingTests(TestCase):
                 with patch('autohsr.desktop_workflow_tree._ask_template',
                            side_effect=modal or (lambda *_args, **_kwargs: self.receipt)):
                     dialog.form.template_button.invoke()
+                if after_capture is not None:
+                    after_capture(dialog)
                 dialog.form.apply_button.invoke()
                 dialog.apply_button.invoke()
                 if dialog.result is not None:
@@ -172,6 +183,83 @@ class WorkflowTemplateBindingTests(TestCase):
 
         with patch('autohsr.desktop_workflow_tree.ask_workflow_tree', side_effect=edit):
             panel.edit_tree()
+
+    def test_live_image_template_binding_survives_alias_and_verified_save(self):
+        source = live_image_document()
+        self.source.write_text(json.dumps(source, ensure_ascii=False), encoding='utf8')
+        original = self.source.read_bytes()
+        panel = self.panel()
+
+        def add_alias(dialog):
+            self.assertEqual(dialog.form.values['condition_source'].get(), '实时图像')
+            self.assertEqual(dialog.form.values['screen_value'].get(), '未匹配')
+            params = self.parameters(dialog)
+            self.assertEqual(params['template'], self.receipt.relative_path)
+            params['template'] = './' + params['template']
+            dialog.form.parameters.replace('1.0', 'end-1c', json.dumps(params, ensure_ascii=False))
+
+        self.edit_hidden(panel, after_capture=add_alias)
+        expected = source['steps'][0]
+        expected['screen_condition']['params']['template'] = './' + self.receipt.relative_path
+        self.assertEqual(json.loads(panel._text())['steps'][0], expected)
+        self.assertIn(('observe', Path(self.receipt.relative_path)), panel._template_bindings)
+        self.assertEqual(self.source.read_bytes(), original)
+
+        self.make_capture(self.other)
+        different = panel.saved_target = self.other / 'elsewhere.json'
+        panel.save_as()
+        self.assertIn('绑定到原目录', panel.status.get())
+        self.assertFalse(different.exists())
+
+        target = panel.saved_target = self.base / 'verified.json'
+        from autohsr.task_workflow_draft import publish_new
+
+        def verify_locked(path, writer, *, limit):
+            if os.name == 'nt':
+                with self.assertRaises(PermissionError):
+                    self.receipt.path.write_bytes(b'replacement')
+            return publish_new(path, writer, limit=limit)
+
+        with patch('autohsr.task_workflow_draft.publish_new', side_effect=verify_locked) as publish:
+            panel.save_as()
+        publish.assert_called_once()
+        self.assertEqual(read(target)['steps'][0], expected)
+        panel._load(target)
+        self.assertEqual(panel._source_file, target)
+        self.assertIn(('observe', Path(self.receipt.relative_path)), panel._template_bindings)
+        self.ui._start_task_workflow.assert_not_called()
+
+    def test_switching_live_source_during_capture_does_not_fill_the_restored_form(self):
+        dialog = self.tree(live_image_document())
+        original = self.parameters(dialog)
+
+        def change_source(*_args, **_kwargs):
+            dialog.form.values['condition_source'].set('实时文字')
+            dialog.form.values['condition_source'].set('实时图像')
+            return self.receipt
+
+        with patch('autohsr.desktop_workflow_tree._ask_template', side_effect=change_source) as modal:
+            dialog.form.template_button.invoke()
+        modal.assert_called_once()
+        self.assertEqual(self.parameters(dialog), original)
+        dialog.form.apply_button.invoke()
+        self.assertEqual(dialog.template_bindings, {})
+
+    def test_live_properties_scroll_separately_from_json_tree_and_footer(self):
+        dialog = self.tree(live_image_document())
+        self.assertTrue(dialog._property_view.grid_info())
+        self.assertTrue(dialog.apply_button.pack_info())
+        canvas = dialog._property_canvas
+        self.assertTrue(canvas.cget('yscrollcommand'))
+        with patch.object(canvas, 'yview_scroll') as scroll:
+            event = SimpleNamespace(widget=dialog.form.controls['condition_source'], delta=-120)
+            self.assertEqual(dialog._scroll_properties(event), 'break')
+            for widget in (dialog.form.parameters, dialog.tree, dialog.apply_button):
+                self.assertIsNone(dialog._scroll_properties(SimpleNamespace(widget=widget, delta=-120)))
+        scroll.assert_called_once_with(1, 'units')
+        dialog.form.cancel_button.invoke()
+        self.assertFalse(dialog._property_view.grid_info())
+        self.assertEqual(self.ui.root.state(), 'withdrawn')
 
     def test_explicit_save_target_must_be_new_json_before_opening_capture(self):
         panel = self.panel()

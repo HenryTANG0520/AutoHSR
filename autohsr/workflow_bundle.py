@@ -15,7 +15,7 @@ from zlib import error as DeflateError
 from .models import AutomationError, Stopped
 from .screenshot_tool import MAX_BYTES as MAX_IMAGE_BYTES
 from .storage import file_revision, hold_read_sources, replace_file
-from .task_workflow import MAX_BYTES as MAX_WORKFLOW_BYTES, compile_recipe, loads, read
+from .task_workflow import MAX_BYTES as MAX_WORKFLOW_BYTES, compile_recipe, execution_task, loads, read
 from .workflow_audio import MAX_FILE_BYTES as MAX_AUDIO_BYTES, _local_drive
 
 
@@ -74,8 +74,9 @@ def _path(value, *, base=None, new=False):
 
 def _references(nodes):
     for node in nodes:
-        task = node.get('task')
-        params = node.get('params', {})
+        operation = execution_task(node) or {}
+        task = operation.get('task')
+        params = operation.get('params', {})
         if task in ('warp_analysis', 'warp_export'):
             raise BundleError('该任务流依赖跃迁记录文件，请移除对应步骤后打包。')
         if task == 'workflow_notify':

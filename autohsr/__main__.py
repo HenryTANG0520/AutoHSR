@@ -32,6 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     from .warp_cli import add_arguments as add_warp_arguments
     add_warp_arguments(mode,parser)
     from .task_workflow_cli import add_arguments as add_workflow_arguments
+    from .task_workflow_cli import validate_arguments as validate_workflow_arguments
     add_workflow_arguments(mode, parser)
     from .notify_cli import add_arguments as add_notify_arguments
     add_notify_arguments(mode, parser)
@@ -138,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    validate_workflow_arguments(args, parser)
     if args.daily_attachment_only:
         attachment_flags = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
         if attachment_flags.count('--daily-attachment-only') != 1 or set(attachment_flags) - {

@@ -142,6 +142,24 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
         self.assertTrue(self.panel.run_button.instate(("disabled",)))
         self.assertEqual(path.read_bytes(), raw)
 
+    def test_native_yaml_vision_uses_a_separate_explicit_import_action(self):
+        path = self.directory / "vision.yml"
+        path.write_text("name: 图文\nsteps: [{type: find_text, text: 提示}]\n", encoding="utf8")
+        self.open_dialog.return_value = str(path)
+        self.panel.open()
+        self.deliver(self.execute(threaded=True))
+        self.assertIn("失败", self.panel.status.get())
+        self.assertIsNone(self.panel.draft)
+
+        self.panel.import_native_yaml_button.invoke()
+        self.assertEqual(self.open_dialog.call_args.kwargs["filetypes"], tools._YAML_FILES)
+        self.assertTrue(self.panel.import_native_yaml_button.instate(("disabled",)))
+        self.deliver(self.execute(threaded=True))
+        self.assertIn("AutoHSR 图文规则", self.panel.status.get())
+        self.assertEqual(self.panel.draft.document["steps"][0]["task"], "workflow_game_text")
+        self.assertIsNone(self.panel.draft.source)
+        self.assertTrue(self.panel.run_button.instate(("disabled",)))
+
     def test_unsupported_yaml_keeps_the_current_draft(self):
         self.load_original()
         original = self.panel.draft

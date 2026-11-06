@@ -20,7 +20,8 @@ from .task_workflow_draft import WorkflowDraft, WorkflowSaveConflict
 
 
 _JSON_FILES = (("JSON 文件", "*.json"),)
-_WORKFLOW_FILES = (*_JSON_FILES, ("三月七 YAML 流程", ("*.yaml", "*.yml")))
+_YAML_FILES = (("三月七 YAML 流程", ("*.yaml", "*.yml")),)
+_WORKFLOW_FILES = (*_JSON_FILES, *_YAML_FILES)
 _ZIP_FILES = (("任务流素材包", "*.zip"),)
 _WORKFLOW_SCOPE = "整棵流程"
 _STEP_SCOPE = "指定步骤"
@@ -167,9 +168,10 @@ class _WorkflowPanel(_Panel):
 
         bundle_line = ttk.Frame(self)
         bundle_line.grid(row=3, column=0, sticky="ew", pady=(0, self._size(5)))
-        ttk.Label(bundle_line, text="素材包", style="Settings.Note.TLabel", width=9).grid(row=0, column=0, sticky="w")
+        ttk.Label(bundle_line, text="导入导出", style="Settings.Note.TLabel", width=9).grid(row=0, column=0, sticky="w")
         self.import_bundle_button = self._button(bundle_line, "导入素材包…", self.import_bundle, 1)
         self.export_bundle_button = self._button(bundle_line, "导出素材包…", self.export_bundle, 2)
+        self.import_native_yaml_button = self._button(bundle_line, "导入 YAML 图文…", self.import_native_yaml, 3)
 
         scope_line = ttk.Frame(self)
         scope_line.columnconfigure(3, weight=1)
@@ -250,6 +252,7 @@ class _WorkflowPanel(_Panel):
         _set_enabled(self.new_button, idle)
         _set_enabled(self.open_button, idle)
         _set_enabled(self.import_bundle_button, self._bundle_idle)
+        _set_enabled(self.import_native_yaml_button, self._bundle_idle)
         _set_enabled(self.export_bundle_button, self._bundle_idle and saved and not self.dirty)
         for button in (self.validate_button, self.target_button, self.visual_button):
             _set_enabled(button, idle and has_draft)
@@ -481,7 +484,15 @@ class _WorkflowPanel(_Panel):
             else:
                 self._load(source)
 
-    def _import_yaml(self, source):
+    def import_native_yaml(self):
+        if not self._bundle_idle:
+            return
+        source = self._choose_file("按 AutoHSR 图文规则导入三月七 YAML", filetypes=_YAML_FILES)
+        if source is not None:
+            panel = getattr(self.ui, "workflow_panel", self)
+            panel._import_yaml(source, use_native_vision=True)
+
+    def _import_yaml(self, source, *, use_native_vision=False):
         if not self._bundle_idle:
             return
         draft, text = self.draft, self._text()
@@ -494,7 +505,7 @@ class _WorkflowPanel(_Panel):
         def work(checkpoint):
             from .workflow_yaml import load_march7th_yaml
 
-            imported = load_march7th_yaml(source)
+            imported = load_march7th_yaml(source, use_native_vision=use_native_vision)
             checkpoint()
             return imported
 
@@ -506,7 +517,8 @@ class _WorkflowPanel(_Panel):
                 current.status.set("YAML 已转换 · 保留当前草稿")
                 return
             current._install(imported)
-            current.status.set("已转换为草稿 · 另存 JSON 并校验后可运行")
+            current.status.set("已按 AutoHSR 图文规则转换 · 另存 JSON 并校验后可运行" if use_native_vision
+                               else "已转换为草稿 · 另存 JSON 并校验后可运行")
             if current.winfo_ismapped():
                 current.editor.focus_set()
 

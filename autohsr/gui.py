@@ -1159,7 +1159,8 @@ class AutoHSRWindow:
             from .notify_runtime import hooks
             send, wrap = hooks(settings, emit)
             return wrap(TaskWorkflowRunner(settings, recipe.document, send, base_dir=recipe.base_dir,
-                                           selected_path='/'.join(map(str, recipe.path)) or None, **authorization))
+                                           selected_path='/'.join(map(str, recipe.path)) or None,
+                                           wait_for_foreground=game, **authorization))
 
         from .task_workflow import GAME_TASKS
         game = any(node['task'] in GAME_TASKS for node in _tasks(recipe.steps))
