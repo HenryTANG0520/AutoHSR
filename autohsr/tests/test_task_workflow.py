@@ -1047,6 +1047,27 @@ class WorkflowTests(unittest.TestCase):
         process = subprocess.run(command, capture_output=True, text=True, timeout=10)
         self.assertEqual(process.stdout.strip(), 'available')
 
+    def test_source_self_test_scopes_both_native_lock_names(self):
+        from autohsr import workflow_lease as locks
+        from autohsr.__main__ import main
+
+        original = locks.NAME, locks.NATIVE_NAME
+        seen = []
+
+        def probe():
+            seen.append((locks.NAME, locks.NATIVE_NAME))
+            self.assertTrue(locks.NAME.startswith('Local\\AutoHSR.SelfTest.'))
+            self.assertEqual(locks.NAME.rsplit('.', 1)[0], locks.NATIVE_NAME.rsplit('.', 1)[0])
+            self.assertNotEqual(locks.NAME, locks.NATIVE_NAME)
+
+        for _ in range(2):
+            suite = unittest.TestSuite((unittest.FunctionTestCase(probe),))
+            with (patch.object(unittest.defaultTestLoader, 'discover', return_value=suite),
+                  redirect_stderr(io.StringIO()) as output):
+                self.assertEqual(main(['--self-test']), 0, output.getvalue())
+            self.assertEqual((locks.NAME, locks.NATIVE_NAME), original)
+        self.assertNotEqual(seen[0], seen[1])
+
     def test_real_daily_runner_works_inside_workflow_with_fake_context(self):
         from autohsr.app import Runner
         from autohsr.tests.test_runner_recovery import RunnerRecoveryTests
