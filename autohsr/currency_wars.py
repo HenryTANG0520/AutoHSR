@@ -85,7 +85,16 @@ class CurrencyWarsWorkflow:
         if active_elapsed > 30:
             raise AutomationError("货币战争只读识别超过 30 秒，未发送游戏输入。")
         self._require_current_scene(scene)
-        observation = observe(scene, self.c.settings.ocr_confidence)
+        confidence = self.c.settings.ocr_confidence
+        observation = observe(scene, confidence)
+        from .currency_wars_points import read_points_observation
+        from .currency_wars_settlement_observation import read_settlement
+        settlement = read_settlement(scene, confidence)
+        progress = read_points_observation(scene, confidence)
+        if settlement is not None:
+            observation = replace(observation, page_kind=settlement.page, page_verified=True)
+        elif progress is not None:
+            observation = replace(observation, page_kind=progress.page, page_verified=True)
         encounter = None
         if observation.page_kind == 'unknown':
             from .currency_wars_encounter import read_encounter
@@ -109,6 +118,10 @@ class CurrencyWarsWorkflow:
                                  standard_interest_cap=5, overclock_interest=0),
             blocker=BLOCKER, decision=decision.action, decision_reason=decision.reason, sample=str(sample),
         )
+        if settlement is not None:
+            data['settlement_observation'] = asdict(settlement)
+        if progress is not None:
+            data['points_progress'] = asdict(progress)
         from .currency_wars_overclock import read_overclock
         mode = read_overclock(scene, self.c.settings.ocr_confidence)
         if mode.state != 'other_page':

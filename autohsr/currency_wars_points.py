@@ -11,6 +11,7 @@ import re
 import unicodedata
 
 from .currency_wars_navigation import page_kind
+from .currency_wars_prepare import trusted
 from .models import AutomationError, normalize
 from .weekly_plan import CHINA
 
@@ -72,16 +73,7 @@ class Points:
         return self.current==self.limit
 
 
-def read_points(scene, confidence=.85):
-    confidence=max(.85,confidence)
-    kind=page_kind(scene,confidence)
-    if kind not in SCORE_ROIS:
-        raise AutomationError('当前不是完整货币战争主页或积分面板。')
-    if kind=='lobby':
-        labels=[t for t in scene.tokens if t.within(LOBBY_ANCHORS['积分']) and normalize(t.text)=='积分'
-                and math.isfinite(t.score) and confidence<=t.score<=1]
-        if len(labels)!=1:raise AutomationError('主页积分标签缺失或不唯一。')
-    roi=SCORE_ROIS[kind]
+def _score_pair(scene, roi, confidence):
     # Keep suspicious low-confidence fragments too. Dropping one could turn
     # an ambiguous field into a plausible, but false, complete score.
     tokens=_field([t for t in scene.tokens if t.within(roi) and re.search(r'[0-9０-９/／]',t.text)],roi,confidence)
@@ -99,7 +91,50 @@ def read_points(scene, confidence=.85):
     current,limit=(int(p.replace(',','')) for p in pair)
     if limit!=LIMIT or not 0<=current<=limit:
         raise AutomationError('积分上限或当前值不在已核对范围内。')
-    return Points(current,limit,kind)
+    return current, limit
+
+
+def read_points(scene, confidence=.85):
+    confidence=max(.85,confidence)
+    kind=page_kind(scene,confidence)
+    if kind not in SCORE_ROIS:
+        raise AutomationError('当前不是完整货币战争主页或积分面板。')
+    if kind=='lobby':
+        labels=[t for t in scene.tokens if t.within(LOBBY_ANCHORS['积分']) and normalize(t.text)=='积分'
+                and math.isfinite(t.score) and confidence<=t.score<=1]
+        if len(labels)!=1:raise AutomationError('主页积分标签缺失或不唯一。')
+    current, limit = _score_pair(scene, SCORE_ROIS[kind], confidence)
+    return Points(current, limit, kind)
+
+
+def read_points_observation(scene, confidence=.85):
+    """Read the displayed total on the two calibrated read-only layouts."""
+    confidence = max(.85, confidence)
+    visible = trusted(scene, 0)
+    if visible.has(('常规挑战', '获得物品', '点击空白处关闭', '对局未完成',
+                    '对局失败', '对局胜利', '对局记录'), exact=True):
+        return None
+    kind = page_kind(scene, confidence)
+    if kind == 'points_rewards':
+        # The 4.6 panel's score sits immediately below the current-points
+        # label and slightly above the older panel's numeric field.
+        roi = (.06, .652, .25, .725)
+    elif kind in ('lobby', 'unknown') and not visible.has('积分奖励', exact=True):
+        # The source lobby has a slightly higher guide row. Its decorative
+        # start caption can leave an ASCII bracket in the OCR text.
+        anchors = {**LOBBY_ANCHORS, '攻略大全': (0, .35, .20, .45)}
+        for label, area in anchors.items():
+            matches = [t for t in visible.tokens if t.within(area) and anchor_text(t.text).strip('[]') == label]
+            if len(matches) != 1 or matches[0].score < confidence:
+                return None
+        kind, roi = 'lobby', SCORE_ROIS['lobby']
+    else:
+        return None
+    try:
+        current, limit = _score_pair(scene, roi, confidence)
+    except AutomationError:
+        return None
+    return Points(current, limit, kind)
 
 
 def period_evidence(scene, now, confidence=.85):

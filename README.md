@@ -375,6 +375,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 
 `--currency-wars-check`会将`strategy_snapshot`、`strategy_candidates`和`strategy_decision`写入报告，模式、余额或阵容不明时要求补充观察，不因此开启输入或调用API。
 
+同一入口的 `settlement_observation` 记录已校准的标准结果页直接显示的胜负、节点、剩余生命和本局积分，`points_progress` 单列大厅或普通积分奖励面板的本期总进度。桌面分行显示两类积分。普通领奖、游戏周和整局完成仍按各自的回执核验。[标准结算与积分原片](docs/currency-wars-development.md#2026-11-06-标准结算与普通积分只读观察)
+
 同一入口可只读核对遭遇双卡。`encounter` 分列卡名、难度、奖励预览、刷新余数、选中和确认控件状态。识别不完整时保留未知，接续与实际交付仍待验证。[遭遇证据与边界](docs/currency-wars-development.md#2026-11-06-遭遇双卡只读观察)
 
 货币战争页另有“启动准备：进入游戏（不开局）”，CLI为`python -m autohsr --currency-wars-prepare`。它先检查并按需启动游戏，只点击已核实的“点击进入”、已有免费登录补给和关闭提示；从已核实大世界打开手机菜单，已有货币战争页面则保留。密码、验证、协议、下载和未知转换停止，不创建对局、不消费局内金币或每日体力。准备完成以`game_ready=true`记录；整局仍未完成，所以报告保持partial、CLI退出码1。当前实机是分段进入、领奖与打开手机菜单，尚未一遍覆盖未启动至最终入口。

@@ -60,6 +60,23 @@ def observation(data: dict) -> str:
             if isinstance(deployment, (list, tuple)) and len(deployment) == 2 and all(type(v) is int and v >= 0 for v in deployment):
                 fields.append("出战 "+"/".join(map(str, deployment)))
             lines.append(" · ".join(fields))
+        settlement = data.get("settlement_observation")
+        if isinstance(settlement, dict):
+            fields = []
+            node = settlement.get("node")
+            if isinstance(node, str) and node:
+                fields.append("节点 " + node)
+            if type(settlement.get("remaining_hp")) is int:
+                fields.append(f"生命 {settlement['remaining_hp']}")
+            if type(settlement.get("earned_points")) is int:
+                fields.append(f"本局积分 {settlement['earned_points']}")
+            if fields:
+                lines.append(" · ".join(fields))
+        progress = data.get("points_progress")
+        if isinstance(progress, dict):
+            current, limit = progress.get("current"), progress.get("limit")
+            if type(current) is int and type(limit) is int:
+                lines.append(f"本期总积分 {current}/{limit}")
     if data.get("reason"):
         lines.append(str(data["reason"]))
     return "\n".join(dict.fromkeys(lines))

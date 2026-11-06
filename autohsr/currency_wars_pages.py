@@ -56,6 +56,7 @@ PAGE_LABELS = {
     "match_defeat": "整局挑战结束，失败结算待核实",
     "defeat_rating": "整局失败评价与零生命核验",
     "defeat_summary": "整局失败阵容总览",
+    "points_rewards": "普通积分奖励面板",
 }
 
 

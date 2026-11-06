@@ -47,6 +47,8 @@ def _ocr_job(input_path: str, output_path: str, confidence: float, configured_na
         scene = refine_battle_node(scene, reader)
         from .currency_wars_encounter import supplement_encounter_fields
         scene = supplement_encounter_fields(scene, reader)
+        from .currency_wars_settlement_observation import supplement_settlement_fields
+        scene = supplement_settlement_fields(scene, reader, confidence)
         result = dict(status="ok", tokens=[asdict(token) for token in scene.tokens],
                       field_reads=field_read_payload(scene))
     except Exception as error:
