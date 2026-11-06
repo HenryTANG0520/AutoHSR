@@ -179,7 +179,15 @@ Windows 发布回执时持有两张 PNG 的只读句柄，发布最终报告时�
 
 独立结果入口在当前已校准布局同屏核对星启标识、期名关卡、结果标题、三个节点字段及底部「重新挑战」和玩法返回文案。两个相邻新帧的数值和对应位置均一致时，独立写入 `stellar_result`。混沌十二层的剩余轮为 35，三节点耗轮分别为 2、1、7，核对合计 45。虚构四层为 104,960，三项为 39,560、40,000、25,400。末日难度 04 为 10,780，三项为 3,454、3,635、3,691。末日展开的伤害和剩余行动值属于节点分项的明细。普通结果沿用各自原有字段。[混沌终局](https://www.bilibili.com/video/BV1Ht4F6MEG5/?t=1187) · [虚构终局](https://www.bilibili.com/video/BV1uBx96ME2j/?t=548) · [末日终局](https://www.bilibili.com/video/BV1u8Hp6qE8f/?t=1054.1) · [脱敏字段、坐标与哈希](../autohsr/tests/fixtures/challenge_stellar_result_4_6.json)
 
-虚构单节点重打后也可显示三项累计分。末日有先完成第三节点而出现「前往节点一」的中间页，题头同样写「挑战结束」。该中间页、主页历史、少行、冲突与模式选择均保留未核实。三项数据只记当前页面显示的挑战记录，连续三队通关、棱彩星与领奖各需独立证据。[虚构单节点重打](https://www.bilibili.com/video/BV1uBx96ME2j/?t=239) · [末日节点去向](https://www.bilibili.com/video/BV1vDHt6tEEH/?p=3&t=191.2)
+虚构单节点重打后也可显示三项累计分。`stellar_result` 记录当前页面显示的挑战记录，遇到中间页、主页历史、少行、冲突与模式选择时留空。连续三队通关、棱彩星与领奖各需独立证据。[虚构单节点重打](https://www.bilibili.com/video/BV1uBx96ME2j/?t=239)
+
+### 4.6 星启节点去向
+
+同一对相邻新帧须核实星启标识、本期期名关卡、「挑战结束」、左侧三个节点标题，以及同排底部「退出」「重新挑战」「前往节点一／二／三」。回执在 `stellar_handoff.destination_node_in_caption` 记录右侧按钮文案所指节点，并保存各字段的画面位置。末日分项展开及混沌、虚构的中间页存在不同的滚动位置，按已校准布局核对。空帧、漏行、异模式、返回按钮、冲突文案及遮挡会使这一字段留空。常规的 `destination_node_in_caption` 和星启的 `stellar_result` 沿用各自的证据。[脱敏字段、坐标与哈希](../autohsr/tests/fixtures/challenge_stellar_handoff_4_6.json)
+
+末日第三节点的录像在结束页只显示第三行的 4,000 分，底部写「前往节点一」。另一场录像中的两次交接分别写「前往节点二」与「前往节点三」，展开的分项对应不同的节点。单独重打一、二节点的终局仍显示另外两节点的已有分数，底部改为「重新挑战」「返回末日幻影」。分项和展开行可承载历史分数，正式入口保留刚完成与实际抵达的节点为未知，运行状态仍为 `partial`。[末日去往节点一](https://www.bilibili.com/video/BV1vDHt6tEEH/?p=3&t=191.2) · [末日去往节点二](https://www.bilibili.com/video/BV19Bpx6QEKX/?t=287) · [末日去往节点三](https://www.bilibili.com/video/BV19Bpx6QEKX/?t=630.8) · [重打节点一](https://www.bilibili.com/video/BV1vDHt6tEEH/?p=1&t=225.4) · [重打节点二](https://www.bilibili.com/video/BV1vDHt6tEEH/?p=2&t=328.4)
+
+本期混沌十二层与虚构四层各有节点二和三的交接原片。上游共享流程从正在执行的节点序号指定预期按钮，并继续核实下一节点备战。此入口只观察当前结果页面，实际进场、出战、胜负、积分及领奖按各自门禁处理。[混沌去往节点二](https://www.bilibili.com/video/BV1Ht4F6MEG5/?t=265.4) · [混沌去往节点三](https://www.bilibili.com/video/BV1Ht4F6MEG5/?t=567.4) · [虚构去往节点二](https://www.bilibili.com/video/BV1g8nj6JEyi/?t=167.5) · [虚构去往节点三](https://www.bilibili.com/video/BV1g8nj6JEyi/?t=320.4) · [上游等待与交接](https://github.com/moesnow/March7thAssistant/blob/26bee153544db44a882313f361b5ddbcefb001fa/tasks/challenge/stellar.py#L210-L269)
 
 下一次原生画面校准需要下列证据，保留模式、层号、分项标题及原相对位置，导出时遮盖 UID 与无关个人信息。每个用于核实的状态留同账号连续两帧。
 

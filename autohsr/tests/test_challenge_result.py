@@ -35,6 +35,16 @@ FIXTURES = Path(__file__).parent / 'fixtures' / 'du_runtime'
 APOCALYPTIC_SCORE_FIXTURE = FIXTURES.parent / 'challenge_apocalyptic_result_4_6.json'
 CHAOS_RESULT_FIXTURE = FIXTURES.parent / 'challenge_chaos_result_4_6.json'
 STELLAR_RESULT_FIXTURE = FIXTURES.parent / 'challenge_stellar_result_4_6.json'
+STELLAR_HANDOFF_FIXTURE = FIXTURES.parent / 'challenge_stellar_handoff_4_6.json'
+STELLAR_HANDOFF_CASES = (
+    ('apocalyptic_next_one', pages.APOCALYPTIC, 1),
+    ('apocalyptic_next_two', pages.APOCALYPTIC, 2),
+    ('apocalyptic_next_three', pages.APOCALYPTIC, 3),
+    ('chaos_next_two', pages.MODE, 2),
+    ('chaos_next_three', pages.MODE, 3),
+    ('fiction_next_two', pages.FICTION, 2),
+    ('fiction_next_three', pages.FICTION, 3),
+)
 
 
 def token(text, xyxy, score=.99):
@@ -107,6 +117,10 @@ def chaos_result_frame(name='ordinary_eleven_a'):
 
 def stellar_result_frame(name):
     return public_result_frame(STELLAR_RESULT_FIXTURE, name)
+
+
+def stellar_handoff_frame(name):
+    return public_result_frame(STELLAR_HANDOFF_FIXTURE, name)
 
 
 def chaos_detail_frame(level, star_color=(95, 190, 255)):
@@ -352,9 +366,11 @@ class StellarResultObservationTests(unittest.TestCase):
                 self.assertIsNone(feedback.memory_rounds)
 
     def test_actual_handoff_history_setup_and_clipped_result_are_not_terminal(self):
-        for source in ('apocalyptic_next_one', 'apocalyptic_home', 'chaos_scroll_clips_row', 'chaos_setup'):
+        for source in ('apocalyptic_home', 'chaos_scroll_clips_row', 'chaos_setup'):
             with self.subTest(source=source):
                 self.assertIsNone(observe_feedback(stellar_result_frame(source)))
+        handoff = observe_feedback(stellar_result_frame('apocalyptic_next_one'))
+        self.assertIsNone(handoff.stellar)
 
     def test_missing_conflicting_or_malformed_fields_fail_closed(self):
         fixture = stellar_result_frame('fiction_final_a')
@@ -386,6 +402,56 @@ class StellarResultObservationTests(unittest.TestCase):
             with self.subTest(text=text):
                 altered = [replace(t, text=text) if t.text == '消耗轮次：7轮' else t for t in fixture.tokens]
                 self.assertIsNone(observe_feedback(replace(fixture, tokens=altered)))
+
+
+class StellarHandoffObservationTests(unittest.TestCase):
+    def test_public_layouts_read_the_footer_destination_separately_from_results(self):
+        for name, mode, destination in STELLAR_HANDOFF_CASES:
+            for part in ('a', 'b'):
+                with self.subTest(name=name, part=part):
+                    result = observe_feedback(stellar_handoff_frame(f'{name}_{part}'))
+                    self.assertEqual((result.mode, result.stellar_handoff.destination), (mode, destination))
+                    self.assertIsNone(result.stellar)
+                    self.assertIsNone(result.score)
+                    self.assertIsNone(result.memory_rounds)
+
+    def test_actual_animation_entry_replays_and_legacy_captions_do_not_prove_starward_destination(self):
+        negatives = ('apocalyptic_animating', 'apocalyptic_missing_row_read', 'apocalyptic_replay_one',
+                     'apocalyptic_replay_two', 'apocalyptic_after_onward', 'fiction_after_onward')
+        for name in negatives:
+            with self.subTest(name=name):
+                result = observe_feedback(stellar_handoff_frame(name))
+                self.assertIsNone(getattr(result, 'stellar_handoff', None))
+        for scene in (frame(NEXT), stellar_result_frame('apocalyptic_final_a'), stellar_result_frame('fiction_replay')):
+            self.assertIsNone(observe_feedback(scene).stellar_handoff)
+
+    def test_missing_conflicting_and_wrong_location_fields_block_handoff(self):
+        source = stellar_handoff_frame('apocalyptic_next_one_a')
+        fields = {'星启模式': '常规模式', '支配遗忘·难度04': '支配遗忘·难度03', '挑战结束': '挑战成功',
+                  '节点三': '节点二', '退出': '返回末日幻影', '重新挑战': '重试', '前往节点一': '已到节点一'}
+        for old, changed in fields.items():
+            with self.subTest(changed=changed):
+                tokens = [replace(item, text=changed) if item.text == old else item for item in source.tokens]
+                self.assertIsNone(observe_feedback(replace(source, tokens=tokens)))
+        for extra in (token('前往节点二', (580, 423, 656, 440)), token('混沌回忆', (560, 60, 623, 75)),
+                      token('历史积分', (600, 130, 665, 145)), token('确认', (440, 407, 476, 429))):
+            with self.subTest(extra=extra.text):
+                self.assertIsNone(observe_feedback(replace(source, tokens=[*source.tokens, extra])))
+        for part in (RETURN, NEXT, FAILURE):
+            with self.subTest(pinned=part[0]):
+                foreign = frame((part[0], None, *part[2:]), extra=source.tokens[1:])
+                self.assertIsNone(observe_feedback(foreign))
+
+    def test_destination_fragments_need_one_complete_local_footer_read(self):
+        source = stellar_handoff_frame('apocalyptic_next_one_a')
+        tokens = [item for item in source.tokens if item.text != '前往节点一']
+        first = token('前往', (596, 456, 619, 473))
+        second = token('节点一', (622, 456, 655, 473))
+        self.assertEqual(observe_feedback(replace(source, tokens=[*tokens, first, second])).stellar_handoff.destination, 1)
+        for changed in (replace(second, score=.82), replace(second, text='节点'),
+                        token('节点一', (642, 456, 675, 473)), token('节点一', (622, 466, 655, 481))):
+            with self.subTest(changed=changed):
+                self.assertIsNone(observe_feedback(replace(source, tokens=[*tokens, first, changed])))
 
 
 class ResultObservationTests(unittest.TestCase):
@@ -655,6 +721,7 @@ class ResultEntryTests(unittest.TestCase):
                 data = report['challenge_result']
                 self.assertEqual((report['status'], data['status']), ('partial', 'feedback_verified'))
                 self.assertEqual(data['stellar_result'], expected)
+                self.assertIsNone(data['stellar_handoff'])
                 for name in ('level', 'stars', 'remaining_rounds', 'node_one_score', 'node_two_score', 'total_score',
                              'destination_node_in_caption', 'node'):
                     self.assertIsNone(data[name])
@@ -679,6 +746,50 @@ class ResultEntryTests(unittest.TestCase):
                 data = report['challenge_result']
                 self.assertEqual(data['stellar_result']['total_score'], 104960)
                 self.assertEqual([row['capture_sequence'] for row in data['evidence']], [3, 4])
+
+    def test_cli_handoff_publishes_only_the_read_destination_and_bound_evidence(self):
+        for name, mode, destination in STELLAR_HANDOFF_CASES:
+            with self.subTest(name=name):
+                report = self.run_cli([stellar_handoff_frame(f'{name}_{part}') for part in ('a', 'b')])
+                data = report['challenge_result']
+                self.assertEqual((report['status'], data['status'], data['mode']), ('partial', 'feedback_verified', mode))
+                self.assertEqual(data['stellar_handoff'], {'destination_node_in_caption': destination})
+                caption = ('前往节点一', '前往节点二', '前往节点三')[destination - 1]
+                self.assertEqual(data['visible_controls'], ['退出', '重新挑战', caption])
+                for field in ('level', 'half', 'node', 'stars', 'total_score', 'remaining_rounds', 'stellar_result',
+                              'destination_node_in_caption', 'node_one_score', 'node_two_score'):
+                    self.assertIsNone(data[field])
+                self.assertEqual((data['outcome'], data['settlement_status']), ('unknown', 'unknown'))
+                self.assertFalse(data['completion_verified'])
+                self.assertFalse(data['rewards_verified'])
+                directory = Path(report['run_dir'])
+                self.assertEqual(json.loads((directory / 'challenge-result.json').read_bytes()), data)
+                self.assertEqual([row['capture_sequence'] for row in data['evidence']], [1, 2])
+                for row in data['evidence']:
+                    self.assertEqual(row['anchors'][-1]['text'], caption)
+                    self.assertEqual(row['anchors'][-1]['source'], 'ocr')
+                    self.assertEqual(set(row['stellar_handoff_fields']),
+                                     {'mode_badge', 'stage', 'result_heading', 'node_one', 'node_two', 'node_three'})
+                    self.assertEqual(row['sha256'], hashlib.sha256((directory / row['screenshot']).read_bytes()).hexdigest())
+
+    def test_cli_handoff_breaks_pair_on_changed_destination_empty_or_other_mode(self):
+        first, second = (stellar_handoff_frame(f'apocalyptic_next_one_{part}') for part in ('a', 'b'))
+        changed = replace(second, tokens=[replace(item, text='前往节点二') if item.text == '前往节点一' else item
+                                          for item in second.tokens])
+        self.assertEqual(observe_feedback(changed).stellar_handoff.destination, 2)
+        for gap in (changed, EmptyCapture(), stellar_handoff_frame('chaos_next_two_a'),
+                    stellar_handoff_frame('apocalyptic_after_onward')):
+            with self.subTest(gap=type(gap).__name__):
+                report = self.run_cli([first, gap])
+                self.assertIsNone(report['challenge_result']['stellar_handoff'])
+                self.assertEqual(report['challenge_result']['status'], 'unknown')
+                self.assertFalse((Path(report['run_dir']) / 'challenge-result.json').exists())
+                recovered = self.run_cli([first, gap, first, second])['challenge_result']
+                self.assertEqual(recovered['stellar_handoff'], {'destination_node_in_caption': 1})
+                self.assertEqual([row['capture_sequence'] for row in recovered['evidence']], [3, 4])
+        legacy = self.run_cli([frame(NEXT), frame(NEXT)])['challenge_result']
+        self.assertEqual((legacy['status'], legacy['destination_node_in_caption']), ('caption_verified', 2))
+        self.assertIsNone(legacy['stellar_handoff'])
 
     def test_cli_apocalyptic_score_requires_same_parts_in_consecutive_complete_frames(self):
         good = apocalyptic_score_frame('terminal_first')

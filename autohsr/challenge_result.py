@@ -84,11 +84,17 @@ _STELLAR_RETRY = 'stellar_retry_ocr'
 _STELLAR_RETURNS = {pages.MODE: ('stellar_chaos_return_ocr', _CHAOS_RETURN_CAPTION),
                     pages.FICTION: ('stellar_fiction_return_ocr', '返回虚构叙事'),
                     pages.APOCALYPTIC: ('stellar_apocalyptic_return_ocr', '返回末日幻影')}
-_STELLAR_OCR_CONTROLS = {_STELLAR_RETRY: '重新挑战'} | dict(_STELLAR_RETURNS.values())
+_STELLAR_EXIT = 'stellar_exit_ocr'
+_STELLAR_DESTINATIONS = {'前往节点一': (1, 'stellar_next_one_ocr'),
+                         '前往节点二': (2, 'stellar_next_two_ocr'),
+                         '前往节点三': (3, 'stellar_next_three_ocr')}
+_STELLAR_OCR_CONTROLS = ({_STELLAR_RETRY: '重新挑战', _STELLAR_EXIT: '退出'}
+                         | dict(_STELLAR_RETURNS.values())
+                         | {name: caption for caption, (_, name) in _STELLAR_DESTINATIONS.items()})
 _OCR_CONTROLS = _APOCALYPTIC_OCR_CONTROLS | {_CHAOS_RETURN_ANCHOR: _CHAOS_RETURN_CAPTION} | _STELLAR_OCR_CONTROLS
 _CONTROL_CAPTIONS = {name: caption for name, (_, caption) in _CONTROLS.items()} | _OCR_CONTROLS
 _STELLAR_NODES = ('节点一', '节点二', '节点三')
-_STELLAR_BLOCKERS = ('前往节点', '退出', '挑战失败', '角色编队', '尚未挑战', '常规模式', '通关详情',
+_STELLAR_BLOCKERS = ('挑战失败', '角色编队', '尚未挑战', '常规模式', '通关详情',
                      '最高积分', '历史积分', '历史最高', '快速通关', '返回主界面', '返回主页')
 _STELLAR_POINTS = re.compile(r'(?:0|[1-9][0-9]{0,5}|[1-9][0-9]{0,2},[0-9]{3})')
 _STELLAR_RETRY_BOX = (.317, .829, .427, .894)
@@ -128,6 +134,18 @@ _STELLAR_LAYOUTS = {
     ),
 }
 
+# 4.6 intermediate screens have three footer buttons. The scroll area can
+# shift, and the expanded Apocalyptic score breakdown separates two node rows.
+# Each layout stores the badge center followed by the three visible row centers.
+_STELLAR_HANDOFF_ROWS = {
+    pages.MODE: ((.197, (.479, .526, .573)),),
+    pages.FICTION: ((.197, (.479, .526, .573)), (.147, (.365, .412, .458))),
+    pages.APOCALYPTIC: ((.077, (.294, .342, .388)),
+                       (.106, (.324, .370, .499)),
+                       (.196, (.439, .569, .613))),
+}
+_STELLAR_HANDOFF_FOOTER = ((.293, .829, .371, .899), (.423, .829, .532, .899), (.591, .829, .711, .899))
+
 
 @dataclass(frozen=True)
 class _ResultScore:
@@ -165,6 +183,16 @@ class _StellarRead:
 
 
 @dataclass(frozen=True)
+class _StellarHandoff:
+    destination: int
+    boxes: tuple[ROI, ...]
+
+    def agrees_with(self, other):
+        return (other is not None and self.destination == other.destination
+                and all(pages._overlaps(a, b) for a, b in zip(self.boxes, other.boxes)))
+
+
+@dataclass(frozen=True)
 class Feedback:
     mode: str | None
     anchors: tuple[Token, ...]
@@ -172,6 +200,7 @@ class Feedback:
     memory_rounds: _MemoryRounds | None = None
     memory_detail: chaos_detail.Detail | None = None
     stellar: _StellarRead | None = None
+    stellar_handoff: _StellarHandoff | None = None
 
 
 def _same_score_row(parts):
@@ -310,8 +339,61 @@ def _read_apocalyptic_terminal(tokens, words, minimum):
     return score, anchors
 
 
+def _stellar_line(tokens, region, minimum):
+    # Adjacent header rows can overlap slightly. Assign tokens by their centers.
+    return _score_line(tuple(token for token in tokens if token.within(region)), region, minimum)
+
+
+def _read_stellar_handoff(scene, words, modes, minimum):
+    returns = tuple(caption for _, caption in _STELLAR_RETURNS.values())
+    if any(blocker in word for word in words for blocker in (*_STELLAR_BLOCKERS, *returns)):
+        return None
+    tokens = scene.tokens
+    badges = tuple(token for token in tokens if token.score >= minimum and normalize(token.text) == '星启模式'
+                   and pages._inside(token.box, (.443, .046, .566, .230)))
+    if len(badges) != 1:
+        return None
+    y = badges[0].center[1]
+    stage = _stellar_line(tokens, (.431, y + .021, .577, y + .067), minimum)
+    heading = _stellar_line(tokens, (.410, y + .051, .594, y + .130), minimum)
+    title, result = (normalize(_score_text(parts)) for parts in (stage, heading))
+    mode = next((key for key in _STELLAR_HANDOFF_ROWS if title == _STELLAR_LAYOUTS[key].stage), None)
+    if mode is None or result != '挑战结束' or modes - {mode}:
+        return None
+    positions = next((rows for center, rows in _STELLAR_HANDOFF_ROWS[mode] if abs(y - center) <= .011), None)
+    if positions is None:
+        return None
+    rows = tuple(_stellar_line(tokens, (.266, center - .024, .346, center + .024), minimum)
+                 for center in positions)
+    if tuple(normalize(_score_text(row)) for row in rows) != _STELLAR_NODES:
+        return None
+
+    leave, retry, onward = (_stellar_line(tokens, roi, minimum) for roi in _STELLAR_HANDOFF_FOOTER)
+    exit_label, retry_label, caption = (normalize(_score_text(parts)) for parts in (leave, retry, onward))
+    if (exit_label != '退出' or retry_label != '重新挑战' or caption not in _STELLAR_DESTINATIONS
+            or not _same_score_row((*leave, *retry, *onward))):
+        return None
+
+    groups = (badges, stage, heading, *rows)
+    known = (*groups, leave, retry, onward)
+    extras = [token for token in tokens if not any(token in group for group in known)]
+    extra_words = tuple(normalize(token.text) for token in extras) + pages._line_words(extras, gap=.012)
+    duplicate = ('星启', title, '挑战结束', '挑战成功', *_STELLAR_NODES, '退出', '重新挑战', '前往节点')
+    if any(label in word for word in extra_words for label in duplicate):
+        return None
+    if any(pages._hits(scene, name, FULL) for name in (*_CONTROLS, _FAILURE) if name != _NEXT_NODE):
+        return None
+    destination, next_name = _STELLAR_DESTINATIONS[caption]
+    old_next = pages._hits(scene, _NEXT_NODE, FULL)
+    if old_next and (destination != 2 or len(old_next) != 1 or not pages._overlaps(old_next[0].box, _score_box(onward))):
+        return None
+    controls = tuple(Token(name, min(token.score for token in parts), _score_box(parts))
+                     for name, parts in ((_STELLAR_EXIT, leave), (_STELLAR_RETRY, retry), (next_name, onward)))
+    return Feedback(mode, controls, stellar_handoff=_StellarHandoff(destination, tuple(map(_score_box, groups))))
+
+
 def _read_stellar_terminal(scene, words, modes, minimum):
-    if any(blocker in word for word in words for blocker in _STELLAR_BLOCKERS):
+    if any(blocker in word for word in words for blocker in ('前往节点', '退出', *_STELLAR_BLOCKERS)):
         return None
     returns = [mode for mode, (_, caption) in _STELLAR_RETURNS.items() if caption in words]
     if len(returns) != 1 or modes - set(returns):
@@ -321,12 +403,7 @@ def _read_stellar_terminal(scene, words, modes, minimum):
     return_name, return_caption = _STELLAR_RETURNS[mode]
     rounds = mode == pages.MODE
     tokens = scene.tokens
-    # Adjacent header rows may have slightly overlapping OCR boxes.
-    # Assign each token by its own center, then require the full local field.
-    def local(region):
-        return _score_line(tuple(token for token in tokens if token.within(region)), region, minimum)
-
-    badge, stage, heading, total, retry, leave = (local(region) for region in (
+    badge, stage, heading, total, retry, leave = (_stellar_line(tokens, region, minimum) for region in (
         layout.badge_box, layout.stage_box, layout.heading_box, layout.value_box,
         _STELLAR_RETRY_BOX, _STELLAR_RETURN_BOX,
     ))
@@ -334,7 +411,7 @@ def _read_stellar_terminal(scene, words, modes, minimum):
     if (tuple(normalize(_score_text(row)) for row in (badge, stage, heading, retry, leave)) != labels
             or not _same_score_row((*retry, *leave))):
         return None
-    rounds_label = local(_STELLAR_ROUNDS_LABEL) if rounds else ()
+    rounds_label = _stellar_line(tokens, _STELLAR_ROUNDS_LABEL, minimum) if rounds else ()
     if rounds and normalize(_score_text(rounds_label)) != '剩余轮':
         return None
     value = _score_value(total, '' if rounds else '积分', pattern=_STELLAR_POINTS)
@@ -408,9 +485,13 @@ def observe_feedback(scene, confidence=.65):
     if (any(word in ('确认', '取消', '确定') for word in words)
             or any(blocker in word for word in words for blocker in _BLOCKERS)):
         return None
+    modes = {mode for mode, title in pages._MODE_WORDS.items() if any(title in word for word in words)}
+    stellar_layout = any('星启' in word for word in words) or (
+        '节点三' in words and any(layout.stage in words for layout in _STELLAR_LAYOUTS.values()))
+    if stellar_layout and any('前往节点' in word or word == '退出' for word in words):
+        return _read_stellar_handoff(clean, words, modes, max(.85, confidence))
     controls = {name: caption for name, (_, caption) in _CONTROLS.items()
                 if any(caption in word for word in words)}
-    modes = {mode for mode, title in pages._MODE_WORDS.items() if any(title in word for word in words)}
     modes.update(_CONTROLS[name][0] for name in controls)
     if '星启模式' in words:
         stellar = _read_stellar_terminal(clean, words, modes, max(.85, confidence))
@@ -493,7 +574,10 @@ def _same_feedback(first, second):
     same_rounds = rounds is second.memory_rounds or (rounds is not None and rounds.agrees_with(second.memory_rounds))
     stellar = first.stellar
     same_stellar = stellar is second.stellar or (stellar is not None and stellar.agrees_with(second.stellar))
-    return (first.mode == second.mode and same_rounds and same_stellar and len(first.anchors) == len(second.anchors)
+    handoff = first.stellar_handoff
+    same_handoff = handoff is second.stellar_handoff or (handoff is not None and handoff.agrees_with(second.stellar_handoff))
+    return (first.mode == second.mode and same_rounds and same_stellar and same_handoff
+            and len(first.anchors) == len(second.anchors)
             and all(a.text == b.text and pages._overlaps(a.box, b.box)
                     for a, b in zip(first.anchors, second.anchors)))
 
@@ -521,7 +605,7 @@ class ResultReader:
         self.data = dict(schema=1, status='unknown', mode=None, level=None, half=None, node=None,
                          destination_node_in_caption=None, upper_half_score=None, lower_half_score=None,
                          node_one_score=None, node_two_score=None, total_score=None, remaining_rounds=None, stars=None,
-                         stellar_result=None,
+                         stellar_result=None, stellar_handoff=None,
                          settlement_status='unknown', outcome='unknown', visible_controls=[],
                          failure_marker_observed=None, completion_verified=False, rewards_verified=False,
                          evidence=[])
@@ -626,6 +710,12 @@ class ResultReader:
                 data['stellar_result'] = dict(remaining_rounds=stellar.value, node_rounds_spent=list(stellar.nodes))
             else:
                 data['stellar_result'] = dict(total_score=stellar.value, node_scores=list(stellar.nodes))
+        handoff = frames[-1].feedback.stellar_handoff
+        if handoff is not None:
+            data['stellar_handoff'] = dict(destination_node_in_caption=handoff.destination)
+            field_names = ('mode_badge', 'stage', 'result_heading', 'node_one', 'node_two', 'node_three')
+            for row, frame in zip(evidence, frames):
+                row['stellar_handoff_fields'] = dict(zip(field_names, map(list, frame.feedback.stellar_handoff.boxes)))
         path = self.directory / 'challenge-result.json'
         temporary = path.with_suffix('.tmp')
         payload = json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
@@ -663,6 +753,8 @@ class ResultReader:
                 self.data.update(json.loads(proof.payload))
                 if self.data['stellar_result'] is not None:
                     result.detail = '已核实星启结果页显示的三节点与汇总数值，实际通关与领奖状态待核实。'
+                elif self.data['stellar_handoff'] is not None:
+                    result.detail = '已核实星启中间页的节点去向文案，刚完成和实际抵达的节点待核实。'
                 elif self.data['node_one_score'] is not None:
                     result.detail = '已核实本次末日幻影两个节点得分与总分，星数与领奖状态待核实。'
                 elif self.data['total_score'] is not None:
