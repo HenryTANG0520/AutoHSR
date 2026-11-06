@@ -50,6 +50,14 @@ class RewardGuideViewportTests(unittest.TestCase):
                 self.assertTrue(reward_guide_page(scene, client_version='4.6.0', confidence=.85))
                 self.assertIsNone(self.viewport(scene))
 
+    def test_first_fade_frame_identifies_page_but_cannot_supply_a_crop(self):
+        vision = Vision(.65)
+        for width in (960, 1920):
+            with self.subTest(width=width):
+                scene = vision.read(guide_scene('viewport-fade-7041.png', width=width).image)
+                self.assertTrue(reward_guide_page(scene, client_version='4.6.0', confidence=.85))
+                self.assertIsNone(self.viewport(scene))
+
     def test_wrong_version_stale_fading_or_overlay_rejects_viewport(self):
         scene = guide_scene(_BEFORE)
         self.assertIsNone(self.viewport(scene, '4.7.0'))

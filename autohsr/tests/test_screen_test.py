@@ -193,11 +193,12 @@ class ScreenTestTests(TestCase):
         executable.touch()
         executable.with_name('config.ini').write_text('[General]\ngame_version=4.6.0\n', encoding='utf8')
         guide, viewport = guide_scene(), guide_scene('viewport-7014.png')
-        for frame in (guide, viewport):
+        first_fade = guide_scene('viewport-fade-7041.png')
+        for frame in (guide, viewport, first_fade):
             frame.tokens.append(ACCOUNT)
         legacy = dict(screen_test.initial_record(), page='reward_guide', page_verified=True, account_verified=True)
         for missing, frames in (('both', (guide, guide)), ('first', (guide, viewport)),
-                                ('second', (viewport, guide))):
+                                ('second', (viewport, guide)), ('first fade', (viewport, first_fade))):
             with self.subTest(missing=missing):
                 observer = self.observer(frames)
                 observer.context.window.current_executable = Mock(return_value=executable)

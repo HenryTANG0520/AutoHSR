@@ -192,7 +192,7 @@ class RewardGuideCaptureTests(unittest.TestCase):
 
     def test_missing_box_account_change_fade_and_wrong_version_leave_no_png(self):
         for second in (_frame('highlights-2346.png'), _frame('viewport-7026.png', OTHER),
-                       _frame('fade-2348.png')):
+                       _frame('viewport-fade-7041.png'), _frame('fade-2348.png')):
             result, _, _ = self.cli([_pair()[0], second], code=1)
             self.assertEqual(result['status'], 'unverified')
             self.assertFalse(self.target.exists())

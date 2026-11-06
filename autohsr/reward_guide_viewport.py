@@ -43,8 +43,9 @@ def reward_guide_viewport(scene, *, client_version, confidence) -> RewardGuideVi
     image = cv2.resize(scene.image, _SIZE, interpolation=cv2.INTER_AREA)
     if not _anchor(image, 'reward_guide_ongoing', _HEADING, .94):
         return None
+    # At the start of a fade the heading still matches, but both orange bands dim.
     for left, top, right, bottom in _HEADING_BANDS:
-        band = cv2.inRange(image[top:bottom, left:right], (20, 118, 200), (112, 200, 255))
+        band = cv2.inRange(image[top:bottom, left:right], (20, 118, 218), (112, 200, 255))
         if cv2.countNonZero(band) < .75 * band.size:
             return None
     height, width = scene.image.shape[:2]
