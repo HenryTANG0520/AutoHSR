@@ -14,6 +14,7 @@ import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
+from uuid import uuid4
 
 import cv2
 from autohsr.config import Settings
@@ -49,6 +50,8 @@ def condition(identity, field='status', value='success', op='eq'):
 
 class WorkflowTests(unittest.TestCase):
     def setUp(self):
+        self.lease_name = 'Local\\AutoHSR.TaskWorkflowQA.' + uuid4().hex
+        self.enterContext(patch('autohsr.workflow_lease.NAME', self.lease_name))
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
@@ -1029,16 +1032,19 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(outcome, ['blocked'])
 
     def test_lease_is_visible_to_an_independent_process(self):
-        code = ('from autohsr.workflow_lease import require_workflow_access\n'
+        code = ('import sys\n'
+                'from autohsr import workflow_lease\n'
                 'from autohsr.models import AutomationError\n'
-                'try: require_workflow_access()\n'
+                'workflow_lease.NAME = sys.argv[1]\n'
+                'try: workflow_lease.require_workflow_access()\n'
                 'except AutomationError: print("blocked")\n'
                 'else: print("available")\n')
+        command = [sys.executable, '-c', code, self.lease_name]
         with workflow_lease():
-            process = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, timeout=10)
+            process = subprocess.run(command, capture_output=True, text=True, timeout=10)
             self.assertEqual(process.returncode, 0, process.stderr)
             self.assertEqual(process.stdout.strip(), 'blocked')
-        process = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, timeout=10)
+        process = subprocess.run(command, capture_output=True, text=True, timeout=10)
         self.assertEqual(process.stdout.strip(), 'available')
 
     def test_real_daily_runner_works_inside_workflow_with_fake_context(self):

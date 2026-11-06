@@ -866,6 +866,10 @@ with HoYoverse and the footage with its respective rights holders.
 
 亮背景双栏回归另从两段 4.6 时期公开 PC 录像各取五帧。夹具缩至 480×270，仅保留静态标题和 HUD 图块、匿名亮度统计与图形特征。来源、时间、转换范围、原解码帧和脱敏 PNG 的 SHA-256 见清单。视频及游戏界面归原作者、HoYoverse 和相应权利人。[亮背景夹具清单](../autohsr/tests/fixtures/daily_message_bright/manifest.json)
 
+世界短信定位的 25×22 灰度透明气泡模板来自 4.6 时期公开 PC 录像，沿用上文来源表中的右上世界锚图标。定位夹具仅保留必要静态 HUD 和匿名统计；外来红标移入短信位置的测试为合成摆放。来源、裁剪范围、脱敏方式、哈希和权利说明见[世界短信夹具清单](../autohsr/tests/fixtures/daily_message_world/manifest.json)。
+
+回复条淡出样本来自同一公开 P179 录像，沿用短信状态样本的 480×270 匿名亮度和静态标题转换。来源、时间、原解码帧及脱敏 PNG 的 SHA-256 和权利说明见[回复条夹具清单](../autohsr/tests/fixtures/daily_message_reply_targets/manifest.json)。
+
 `upstream/March7thAssistant/team-calibration/configure_team.png` preserves a
 single original crop from moesnow and contributors at
 `7cf6c6bed474539485d3b1504077ac352866829f`. It supports read-only normal team

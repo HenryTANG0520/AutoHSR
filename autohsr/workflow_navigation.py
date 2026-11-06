@@ -15,13 +15,15 @@ from .currency_wars_prepare import trusted
 from .daily_event_navigation import odyssey_list_entry, reward_guide_entry
 from .daily_event_observe import read_event_installation
 from .daily_event_pages import _VERSION, phone_journey_event_entry, read_gift_of_odyssey
+from .daily_message_observe import message_panel, phone_message_entry
+from .daily_message_world import world_message_target
 from .daily_reward_observe import phone_achievement_target
 from .dungeons import CATEGORIES
 from .free_rewards import battlepass_modal, battlepass_page, mail_entry, mailbox
 from .models import FULL, AutomationError, EmptyCapture, InputInterrupted, Stopped, TaskResult, Token, normalize
 from .screenshot_tool import MAX_PIXELS
 from .storage import hold_read_sources
-from .task_workflow import ACTIVITY_WORKFLOW_PAGES, WORKFLOW_PAGES
+from .task_workflow import ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, WORKFLOW_PAGES
 from .team_calibration_pages import calibration_overlay
 from .vision import helper_overlay
 from .workflows import DailyWorkflow, TITLE
@@ -177,7 +179,7 @@ class WorkflowNavigation:
     def _guard(self):
         self._control()
         if self._event_installation is not None and read_event_installation(self.window) != self._event_installation:
-            raise AutomationError('活动页面导航的游戏安装来源或版本已变化。')
+            raise AutomationError('日常页面导航的游戏安装来源或版本已变化。')
         if (not self.key or self.window.current_window_key() != self.key
                 or self.window.guard(self.geometry) != self.geometry):
             raise AutomationError('日常页面导航的前台窗口来源已变化。')
@@ -222,6 +224,15 @@ class WorkflowNavigation:
 
     def _read_page(self, scene):
         page = self._page(scene)
+        if self.target == MESSAGE_WORKFLOW_PAGE:
+            panel = message_panel(scene)
+            if page not in (None, 'world'):
+                return None if panel else page
+            if phone_message_entry(scene, self.confidence) is not None:
+                return None if panel else 'phone'
+            if panel:
+                return MESSAGE_WORKFLOW_PAGE
+            return 'world' if world_message_target(scene) is not None else None
         if page is not None or self._event_installation is None:
             return page
         options = dict(client_version=self._event_installation.version, confidence=self.confidence)
@@ -239,8 +250,11 @@ class WorkflowNavigation:
 
     def _action(self, frame):
         page = frame.page
+        if self.target == MESSAGE_WORKFLOW_PAGE:
+            token = world_message_target(frame.scene) if page == 'world' else None
+            return _Action('open_messages', (MESSAGE_WORKFLOW_PAGE,), token) if token else None
         if page == 'world':
-            return _Action('open_phone', ('phone',))
+            return None if message_panel(frame.scene) else _Action('open_phone', ('phone',))
         if self._event_installation is not None and page in ('phone', 'activity_list', 'odyssey'):
             options = dict(client_version=self._event_installation.version, confidence=self.confidence)
             if page == 'phone':
@@ -361,9 +375,11 @@ class WorkflowNavigation:
         first, second = map(self._action, pair)
         if first is None or second is None or first.name != second.name or first.pages != second.pages:
             raise AutomationError('日常页面导航缺少双帧一致的唯一入口。')
+        tolerances = (2 / 852, 2 / 480) * 2 if self.target == MESSAGE_WORKFLOW_PAGE else (.006,) * 4
         if (first.token is None) != (second.token is None) or (first.token is not None and (
                 normalize(first.token.text) != normalize(second.token.text)
-                or any(abs(a-b) > .006 for a, b in zip(first.token.box, second.token.box)))):
+                or any(abs(a-b) > tolerance for a, b, tolerance in
+                       zip(first.token.box, second.token.box, tolerances)))):
             raise AutomationError('日常页面导航入口的位置在双帧间改变。')
         return second
 
@@ -423,10 +439,10 @@ class WorkflowNavigation:
         if self.geometry is None or not 0 < self.geometry.width * self.geometry.height <= MAX_PIXELS:
             raise AutomationError('日常页面导航缺少可核实的游戏客户区。')
         self._guard()
-        if self.target in ACTIVITY_WORKFLOW_PAGES:
+        if self.target in (*ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE):
             self._event_installation = read_event_installation(self.window)
             if self._event_installation.version != _VERSION:
-                raise AutomationError('当前客户端尚未校准所选活动页面导航。')
+                raise AutomationError('当前客户端尚未校准所选页面导航。')
             self.record['client_version'] = self._event_installation.version
         pair = self._pair()
         while not self._satisfies(pair[-1].page):

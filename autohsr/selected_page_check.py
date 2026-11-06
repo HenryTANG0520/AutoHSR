@@ -7,7 +7,8 @@ import re
 
 from .config import ROOT
 from .storage import hold_read_sources
-from .task_workflow import ACTIVITY_WORKFLOW_PAGES, PAGE_TASK, WORKFLOW_PAGES, Recipe, WorkflowError, _pairs, compile_recipe
+from .task_workflow import (ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, PAGE_TASK, WORKFLOW_PAGES,
+                            Recipe, WorkflowError, _pairs, compile_recipe)
 from .task_workflow_run import _bytes as _workflow_bytes
 from .workflow_navigation import _GUIDE_PAGES, _MAX_ACTIONS
 
@@ -26,6 +27,8 @@ def _document(targets):
             or any(type(target) is not str or target not in WORKFLOW_PAGES for target in targets)
             or len(set(targets)) != len(targets)):
         raise WorkflowError('请选择至少一个支持的日常页面，每页只选一次。')
+    if MESSAGE_WORKFLOW_PAGE in targets and len(targets) != 1:
+        raise WorkflowError('短信通知须单独核对，请从已有未读角标的大世界或已打开的通知面板开始。')
     activity = tuple(page for page in ACTIVITY_WORKFLOW_PAGES if page in targets)
     if activity and tuple(targets[-len(activity):]) != activity:
         raise WorkflowError('活动页面须放在末尾，并按巡星之礼、奖励指南的顺序排列。')

@@ -5,13 +5,14 @@ import tkinter as tk
 from tkinter import ttk
 
 from . import theme
-from .task_workflow import ACTIVITY_WORKFLOW_PAGES, WORKFLOW_PAGES, Recipe, WorkflowError
+from .task_workflow import ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, WORKFLOW_PAGES, Recipe, WorkflowError
 
 
 MODE = 'selected_pages'
 _PAGE_LABELS = {
     'phone': '手机', 'guide': '星际和平指南', 'daily_training': '每日实训', 'survival_index': '生存索引',
     'assignments': '委托', 'mail': '邮件', 'battlepass': '无名勋礼', 'odyssey': '巡星之礼', 'reward_guide': '奖励指南',
+    MESSAGE_WORKFLOW_PAGE: '短信通知',
 }
 _TITLES = {'success': '所选页面已核实', 'partial': '所选页面核对未完整结束',
            'failed': '核对未完成', 'stopped': '已停止', 'unknown': '结果待核对'}
@@ -98,13 +99,19 @@ class SelectedPageCheckFields(ttk.Frame):
 
     def refresh(self):
         editable = self.can_edit()
+        selected = self.draft.selected
+        message_selected = MESSAGE_WORKFLOW_PAGE in selected
         for target, control in self.checks.items():
-            self.variables[target].set(target in self.draft.selected)
-            control.state(('!disabled' if editable else 'disabled',))
+            self.variables[target].set(target in selected)
+            compatible = (target in selected or not selected
+                          or not message_selected and target != MESSAGE_WORKFLOW_PAGE)
+            control.state(('!disabled' if editable and compatible else 'disabled',))
         self.preview_button.state(('!disabled' if editable and self.draft.selected else 'disabled',))
         recipe = self.recipe
         if recipe is not None:
             text = '实际核对顺序 · ' + ' → '.join(_PAGE_LABELS[target] for target in _targets(recipe))
+        elif message_selected:
+            text = '请从有未读角标的大世界或已打开的短信通知面板开始。'
         else:
             text = '勾选后请预览实际顺序。'
         self.order.configure(text=text)
@@ -115,6 +122,10 @@ class SelectedPageCheckFields(ttk.Frame):
             return
         selected = self.draft.selected
         if self.variables[target].get():
+            if (target == MESSAGE_WORKFLOW_PAGE and selected
+                    or target != MESSAGE_WORKFLOW_PAGE and MESSAGE_WORKFLOW_PAGE in selected):
+                self.refresh()
+                return
             if target not in selected:
                 self.draft.selected = (*selected, target)
         else:

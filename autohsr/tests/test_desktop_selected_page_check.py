@@ -94,6 +94,18 @@ class DesktopSelectedPageCheckTests(TestCase):
         self.assertFalse(self.panel.start())
         self.assertEqual(targets(self.preview()), ('phone', 'odyssey', 'reward_guide'))
 
+    def test_messages_is_an_independent_desktop_selection(self):
+        self.select_pages('messages')
+        checks = self.panel.page_check.checks
+        self.assertTrue(checks['phone'].instate(('disabled',)))
+        self.assertIn('未读角标', self.panel.page_check.order['text'])
+        self.assertEqual(targets(self.preview()), ('messages',))
+        checks['messages'].invoke()
+        self.assertTrue(checks['phone'].instate(('!disabled',)))
+        checks['phone'].invoke()
+        self.assertTrue(checks['messages'].instate(('disabled',)))
+        self.assertEqual(targets(self.preview()), ('phone',))
+
     def test_running_disables_edits_and_only_projects_anonymous_pages(self):
         self.select_pages('phone', 'mail', 'odyssey')
         recipe = self.preview()
@@ -174,6 +186,7 @@ class DesktopSelectedPageCheckTests(TestCase):
             self.assertNotIn(_PRIVATE, self.panel.result_detail['text'])
 
     def test_maximum_selection_fits_the_minimum_guide_width_at_each_scale(self):
+        compatible = tuple(target for target in WORKFLOW_PAGES if target != 'messages')
         for scale in (1., 1.5, 2.):
             with self.subTest(scale=scale):
                 self.panel.destroy()
@@ -181,12 +194,12 @@ class DesktopSelectedPageCheckTests(TestCase):
                 theme.apply_theme(self.root, scale)
                 self.ui.ui_scale = scale
                 self.panel = self.make_panel()
-                self.select_pages(*WORKFLOW_PAGES)
+                self.select_pages(*compatible)
                 recipe = self.preview()
                 self.assertTrue(self.panel.start())
                 self.deliver(dict(status='success', pages=[page(target) for target in targets(recipe)]))
                 self.root.update_idletasks()
-                self.assertEqual(len(self.panel.result_detail['text'].splitlines()), len(WORKFLOW_PAGES))
+                self.assertEqual(len(self.panel.result_detail['text'].splitlines()), len(compatible))
                 available = round(1100 * scale) - 2 * round(18 * scale) - round(173 * scale) - round(14 * scale)
                 self.assertLessEqual(self.panel.winfo_reqwidth(), available)
                 self.assertEqual(self.root.state(), 'withdrawn')

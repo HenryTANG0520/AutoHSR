@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "version": "CN 4.6 content era",
+  "source": "https://www.bilibili.com/video/BV1Pj421X7r1/?p=179&t=50",
+  "source_representation_px": [
+    1280,
+    720
+  ],
+  "fixture_px": [
+    480,
+    270
+  ],
+  "transform": "The original daily_message_state fixture transform. INTER_AREA resize. Keep only static header strip. Fill four layout patches by medians, replace selected-row and reply-option strips with row medians, replace selected header glyphs with anonymous ink count, leave all other pixels neutral (BGR 27). No badge image copied for these samples.",
+  "verification": "Nearest expansion to 1920x1080. 50.933875 passes current panel gate, 50.967250 already fails its bottom median at 154. Both are selected at the low-level reader, existing _reply_options gives two, and the third slot is non-neutral under the proposed abs difference <=8 on both strips.",
+  "cases": [
+    {
+      "file": "false_two_50.933875.png",
+      "sha256": "7f771511bdc292ccc206ab1255989259dece2218cdbc4bfc2c8bf1f7dfed8e6d",
+      "part": 179,
+      "cid": "42575333640",
+      "index": 1528,
+      "time_seconds": 50.933875,
+      "source_sha256": "483809df318172e23e78bc8526e09d55ba1afc3884b6accf4d7140eddf913af9",
+      "source_decoded_frame_sha256": "b6ddd0bb88abdb026639207d99ab6bc1750f29bf093606715300cb21cbc9f91c",
+      "phase": "third_option_leaving",
+      "panel_gate_expected": true,
+      "legacy_expected": {
+        "conversation_status": "selected",
+        "unread_status": "unknown",
+        "reply_status": "options_visible",
+        "reply_options": 2
+      },
+      "third_slot": {
+        "inner": [
+          178.0,
+          176.0
+        ],
+        "outer": [
+          200.0,
+          200.0
+        ],
+        "gap": [
+          181.5,
+          174.5
+        ],
+        "neutral_at_8": false
+      },
+      "reply_target_boxes_expected": []
+    },
+    {
+      "file": "false_two_50.967250.png",
+      "sha256": "f255caf06d5860b72225c065a5d38f34096c58e6c7137c56008a2c840ba09601",
+      "part": 179,
+      "cid": "42575333640",
+      "index": 1529,
+      "time_seconds": 50.96725,
+      "source_sha256": "483809df318172e23e78bc8526e09d55ba1afc3884b6accf4d7140eddf913af9",
+      "source_decoded_frame_sha256": "9087d5bc65d3512dc7cbdcd7343866b3953cccae786de40a55269398b2bd27db",
+      "phase": "third_option_leaving",
+      "panel_gate_expected": false,
+      "legacy_expected": {
+        "conversation_status": "selected",
+        "unread_status": "unknown",
+        "reply_status": "options_visible",
+        "reply_options": 2
+      },
+      "third_slot": {
+        "inner": [
+          155.0,
+          152.0
+        ],
+        "outer": [
+          200.0,
+          200.0
+        ],
+        "gap": [
+          181.0,
+          176.0
+        ],
+        "neutral_at_8": false
+      },
+      "reply_target_boxes_expected": []
+    }
+  ],
+  "rights": "The public recording and static game UI belong to their respective rightsholders."
+}

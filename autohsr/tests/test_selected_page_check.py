@@ -13,12 +13,14 @@ from unittest import TestCase
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
+import cv2
+
 from autohsr import selected_page_check as pages
 from autohsr.__main__ import main
 from autohsr.app import Runner
 from autohsr.config import Settings
 from autohsr.models import FocusLost, Scene, Token
-from autohsr.task_workflow import ACTIVITY_WORKFLOW_PAGES, PAGE_TASK, WORKFLOW_PAGES, WorkflowError
+from autohsr.task_workflow import ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, PAGE_TASK, WORKFLOW_PAGES, WorkflowError
 from autohsr.task_workflow_run import TaskWorkflowRunner, _bytes
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, _Window, phone
 from autohsr.windows import INPUT
@@ -65,7 +67,7 @@ class PageCheckProjectionTests(TestCase):
         return pages.project_result(self.recipe, self.report if report is None else report, read_source=self.load)
 
     def test_preview_order_is_explicit_and_never_writes_or_starts(self):
-        ordinary = tuple(page for page in WORKFLOW_PAGES if page not in ACTIVITY_WORKFLOW_PAGES)
+        ordinary = tuple(page for page in WORKFLOW_PAGES if page not in (*ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE))
         targets = (*reversed(ordinary), *ACTIVITY_WORKFLOW_PAGES)
         with patch.object(TaskWorkflowRunner, 'run', side_effect=AssertionError('preview cannot run')) as run:
             recipe = pages.build_recipe(targets, base_dir=self.root)
@@ -76,7 +78,7 @@ class PageCheckProjectionTests(TestCase):
         self.assertEqual(list(self.root.iterdir()), [])
         run.assert_not_called()
         for bad in (None, [], 'mail', ('mail', 'mail'), ['world'], ['unknown'], ['mail', {}], ['odyssey', 'mail'],
-                    ['reward_guide', 'mail'], ['mail', 'reward_guide', 'odyssey']):
+                    ['reward_guide', 'mail'], ['mail', 'reward_guide', 'odyssey'], ['mail', 'messages']):
             with self.subTest(selection=bad), self.assertRaises(WorkflowError):
                 pages.build_recipe(bad, base_dir=self.root)
 
@@ -181,6 +183,13 @@ class PageCheckProjectionTests(TestCase):
             self.assertEqual(invalid.exception.code, 2)
         self.assertEqual(json.loads(output.getvalue())['pages'], ['mail', 'odyssey'])
 
+    def test_messages_preview_requires_a_separate_check(self):
+        for argv, expected in ((['messages'], 0), (['messages', 'phone'], 2)):
+            with self.subTest(argv=argv), redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()):
+                self.assertEqual(main(['--screen-check-plan', *argv]), expected)
+                if expected == 0:
+                    self.assertEqual(json.loads(output.getvalue())['pages'], argv)
+
     def test_cli_rejects_bad_settings_as_anonymous_json_before_runner_start(self):
         config = self.root / 'config-private-fixture.json'
         for raw in ('{"private-fixture":', 'null', '{"private-fixture":true}'):
@@ -207,7 +216,16 @@ class PageCheckRunnerTests(TestCase):
                 return Scene([account, Token('邮箱', .99, (.03, .027, .072, .054)),
                               Token('暂无邮件', .99, (.28, .45, .34, .49))], start.image)
 
+            if targets == ('messages',):
+                from autohsr.tests.test_daily_message_world import bright_sequence, world_pair
+
+                world, panel = (Scene(frame.tokens, cv2.resize(frame.image, (1920, 1080)))
+                                for frame in (world_pair()[-1], bright_sequence()[-1]))
+
             def frames():
+                if targets == ('messages',):
+                    while True:
+                        yield panel if packets else world
                 current, different = mailbox(ACCOUNT), mailbox(OTHER)
                 while True:
                     yield different if changed else current if packets else start
@@ -218,6 +236,11 @@ class PageCheckRunnerTests(TestCase):
                 return length - 1 if short_send and length == 3 else length
 
             window = _Window(frames())
+            if targets == ('messages',):
+                (root / 'config.ini').write_text('[General]\ngame_version=4.6.0\n', encoding='utf8')
+                executable = root / 'StarRail.exe'
+                executable.touch()
+                window.current_executable = Mock(return_value=str(executable))
             original = Runner._save_run_report
 
             def save(runner, *args, **kwargs):
@@ -276,6 +299,11 @@ class PageCheckRunnerTests(TestCase):
                 self.assertEqual(packets, [(0xC001, 0x0002, 0x0004)])
                 self.assertEqual(projection, dict(status='success', pages=[row('phone', 'verified', 0, 0),
                                                                           row('mail', 'verified', 1, 0)]))
+
+    def test_formal_message_diagnostic_projects_the_native_receipt(self):
+        projection, packets, _ = self.run_case(('messages',), cli=True)
+        self.assertEqual(packets, [(0xC001, 0x0002, 0x0004)])
+        self.assertEqual(projection, dict(status='success', pages=[row('messages', 'verified', 1, 0)]))
 
     def test_late_loss_or_short_send_retains_prior_proof_and_never_runs_third_page(self):
         targets = ('phone', 'mail', 'odyssey')

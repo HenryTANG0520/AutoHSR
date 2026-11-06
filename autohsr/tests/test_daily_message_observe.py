@@ -19,8 +19,8 @@ from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.currency_wars_identity import UID_COUNTEREVIDENCE
 from autohsr.daily_message_observe import (MAX_CAPTURES, OPERATION, _MESSAGE_HEADER, _message_panel_frame, message_panel,
-                                           observe_daily_messages, phone_message_entry)
-from autohsr.daily_message_state import read_panel_state, unknown_panel_state
+                                           observe_daily_messages, phone_message_entry, reply_target_boxes)
+from autohsr.daily_message_state import read_panel_state, read_reply_target_boxes, unknown_panel_state
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, RunReport, Scene, Token
 from autohsr.tests.test_daily_reward_observe import _Window
 from autohsr.tests.test_du_team import fixture
@@ -31,6 +31,7 @@ ACCOUNT = Token('UID:135792468', .99, (.018, .957, .106, .985))
 OTHER = replace(ACCOUNT, text='UID:246813579')
 STATE_FIXTURES = Path(__file__).parent / 'fixtures/daily_message_state'
 BRIGHT_FIXTURES = STATE_FIXTURES.with_name('daily_message_bright')
+REPLY_FIXTURES = STATE_FIXTURES.with_name('daily_message_reply_targets')
 
 
 def phone(*extras):
@@ -130,6 +131,41 @@ class MessagePageTests(unittest.TestCase):
                 # Interrupt the edge while preserving the title and all four page patches.
                 scene.image[352:bottom, 736:780] = 90
                 self.assertEqual(message_panel(scene), expected)
+
+    def test_reply_box_cores_follow_the_calibrated_two_and_three_strip_layouts(self):
+        native_strips = ((469, 501), (512, 544), (555, 587))
+        for name, count in (('options_two.png', 2), ('options_three.png', 3)):
+            with self.subTest(name=name):
+                boxes = reply_target_boxes(state_frame(name))
+                self.assertEqual(len(boxes), count)
+                for (x1, y1, x2, y2), (top, bottom) in zip(boxes, native_strips):
+                    self.assertTrue(534 / 1280 <= x1 < x2 <= 1066 / 1280)
+                    self.assertTrue(top / 720 <= y1 < y2 <= bottom / 720)
+
+    def test_reply_boxes_require_clear_panel_and_supported_strips(self):
+        for name in ('list_badge.png', 'image_overlay.png', 'reward_overlay.png', 'selected_fade.png',
+                     'first_option_leaving.png', 'third_option_fading.png', 'no_options_before_more.png'):
+            with self.subTest(name=name):
+                self.assertEqual(reply_target_boxes(state_frame(name)), ())
+        self.assertEqual(reply_target_boxes(phone()), ())
+        scene = state_frame('options_two.png')
+        scene.image[4 * 191:4 * 205, 4 * 372:4 * 389] = 200
+        self.assertEqual(reply_target_boxes(scene), ())
+
+    def test_darkening_third_strip_is_not_a_two_reply_target(self):
+        manifest = json.loads((REPLY_FIXTURES / 'manifest.json').read_text(encoding='utf8'))
+        for case in manifest['cases']:
+            with self.subTest(time=case['time_seconds']):
+                data = (REPLY_FIXTURES / case['file']).read_bytes()
+                self.assertEqual(sha256(data).hexdigest(), case['sha256'])
+                frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+                self.assertEqual(read_panel_state(frame),
+                                 dict(case['legacy_expected'], reply_status='unknown', reply_options=None))
+                expected = tuple(case['reply_target_boxes_expected'])
+                self.assertEqual(read_reply_target_boxes(frame), expected)
+                scene = state_frame(case['file'], directory=REPLY_FIXTURES)
+                self.assertEqual(message_panel(scene), case['panel_gate_expected'])
+                self.assertEqual(reply_target_boxes(scene), expected)
 
 
 class MessageObserverTests(unittest.TestCase):

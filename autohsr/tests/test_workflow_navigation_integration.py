@@ -30,7 +30,12 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
-        if target in ('odyssey', 'reward_guide'):
+        if target == 'messages':
+            from autohsr.tests.test_daily_message_world import bright_sequence, world_pair
+
+            pages = tuple(Scene(frame.tokens, cv2.resize(frame.image, (1920, 1080)))
+                          for frame in (world_pair()[-1], bright_sequence()[-1]))
+        elif target in ('odyssey', 'reward_guide'):
             banner = activity_frame()
             banner.tokens.append(ACCOUNT)
             event = _odyssey()
@@ -158,6 +163,28 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertEqual(sent, [])
         self.assertEqual(native['workflow_navigation']['actions'], [])
         self.assertTrue(steps[0]['facts']['page_verified'])
+
+    def test_messages_uses_one_world_input_and_no_input_when_already_open(self):
+        for already_open, actions in ((False, 1), (True, 0)):
+            with self.subTest(already_open=already_open):
+                sent, steps, native = self.run_navigation(
+                    target='messages', already_open=already_open, check_publication_lock=True)
+                self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * actions)
+                self.assertTrue(steps[0]['facts']['page_verified'])
+                record = native['workflow_navigation']
+                self.assertEqual((record['target'], record['client_version'], len(record['actions'])),
+                                 ('messages', '4.6.0', actions))
+                if actions:
+                    self.assertEqual(record['actions'][0]['action'], 'open_messages')
+                    self.assertEqual(record['actions'][0]['destination_page'], 'messages')
+
+    def test_messages_late_loss_keeps_the_sent_input_and_revokes_arrival(self):
+        sent, steps, native = self.run_navigation(target='messages', lose_focus_on_installation_read=True)
+        self.assertEqual(len(sent), 1)
+        self.assertNotIn('page_verified', steps[0]['facts'])
+        result = native['workflow_navigation']
+        self.assertFalse(result['page_verified'])
+        self.assertEqual(result['actions'][0]['input_status'], 'sent')
 
     def test_publication_focus_loss_preserves_sent_action_without_a_page_fact(self):
         sent, steps, native = self.run_navigation(late_loss=True)

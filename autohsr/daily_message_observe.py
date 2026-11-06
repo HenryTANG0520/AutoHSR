@@ -11,8 +11,8 @@ from .challenge_pages import _clean
 from .config import RESOURCE_ROOT
 from .currency_wars_identity import AccountNotObserved, checked_account_key
 from .daily_reward_observe import COLLECTION_FLOOR, MAX_AGE, MAX_CAPTURES, _blocked
-from .daily_message_state import read_panel_state, unknown_panel_state
-from .models import AutomationError, EmptyCapture, InputInterrupted, Scene, Stopped, TaskResult, Token, normalize
+from .daily_message_state import read_panel_state, read_reply_target_boxes, unknown_panel_state
+from .models import ROI, AutomationError, EmptyCapture, InputInterrupted, Scene, Stopped, TaskResult, Token, normalize
 from .storage import replace_file
 from .team_calibration_pages import _grid_label, calibration_overlay
 from .vision import Vision, helper_overlay
@@ -69,6 +69,12 @@ def phone_message_entry(scene: Scene, confidence: float = .85) -> Token | None:
 def message_panel(scene: Scene) -> bool:
     """Identify the two-column notification panel without reading its contents."""
     return _message_panel_frame(scene) is not None
+
+
+def reply_target_boxes(scene: Scene) -> tuple[ROI, ...]:
+    """Locate visible reply strip cores for observation only."""
+    frame = _message_panel_frame(scene)
+    return () if frame is None else read_reply_target_boxes(frame)
 
 
 def _has_column_divider(frame: np.ndarray) -> bool:

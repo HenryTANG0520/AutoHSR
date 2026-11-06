@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 
 from .config import RESOURCE_ROOT
-from .models import AutomationError, Scene
+from .models import AutomationError, ROI, Scene
 from .vision import Vision
 
 
@@ -39,19 +39,44 @@ def _conversation_selected(gray) -> bool:
 def _reply_options(gray) -> tuple[str, int | None]:
     visible = []
     for slot, y in enumerate(_REPLY_SLOT_CENTERS):
-        core = slice(y - 3, y + 4)
-        gap = slice(y + 7, y + 9)
-        inner = [float(np.median(gray[core, x])) for x in _INNER_STRIPS]
-        outer = [float(np.median(gray[core, x])) for x in _OUTER_STRIPS]
+        inner, outer, below = _reply_slot_levels(gray, y)
         contrast = min(a - b for a, b in zip(inner, outer))
-        separation = min(value - np.median(gray[gap, x]) for value, x in zip(inner, _INNER_STRIPS))
+        separation = min(a - b for a, b in zip(inner, below))
         if min(inner) >= 225 and contrast >= 23 and separation >= 15:
             visible.append(slot)
         elif min(inner) >= 211 and contrast >= 8 and separation >= 8:
             return 'unknown', None
     if visible in ([0, 1], [0, 1, 2]):
+        if len(visible) == 2:
+            # A departing third strip can be darker than its surroundings.
+            levels = _reply_slot_levels(gray, _REPLY_SLOT_CENTERS[2])
+            if any(max(side) - min(side) > 8 for side in zip(*levels)):
+                return 'unknown', None
         return 'options_visible', len(visible)
     return ('unknown', None) if visible else ('not_visible', None)
+
+
+def _reply_slot_levels(gray, y):
+    core = slice(y - 3, y + 4)
+    gap = slice(y + 7, y + 9)
+    return (
+        [float(np.median(gray[core, x])) for x in _INNER_STRIPS],
+        [float(np.median(gray[core, x])) for x in _OUTER_STRIPS],
+        [float(np.median(gray[gap, x])) for x in _INNER_STRIPS],
+    )
+
+
+def read_reply_target_boxes(frame) -> tuple[ROI, ...]:
+    """Read anonymous reply strip cores in an already verified 480×270 panel."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    if not _conversation_selected(gray):
+        return ()
+    status, count = _reply_options(gray)
+    if status != 'options_visible':
+        return ()
+    return tuple((_INNER_STRIPS[0].start / 480, (y - 3) / 270,
+                  _INNER_STRIPS[-1].stop / 480, (y + 4) / 270)
+                 for y in _REPLY_SLOT_CENTERS[:count])
 
 
 def _unread_badge_visible(frame, gray) -> bool:

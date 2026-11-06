@@ -1,0 +1,432 @@
+{
+  "version": "CN 4.6 content era; client build unobserved",
+  "sources": [
+    {
+      "part": 178,
+      "cid": 42575333958,
+      "source": "https://www.bilibili.com/video/BV1Pj421X7r1/?p=178",
+      "local_public_avc_sha256": "2bb16e5a9492d059328d8c72a520e499aa1ef78dd59a2a22c96d6d4b56290835",
+      "source_decoded_wh": [
+        640,
+        360
+      ]
+    },
+    {
+      "part": 179,
+      "cid": 42575333640,
+      "source": "https://www.bilibili.com/video/BV1Pj421X7r1/?p=179",
+      "local_public_avc_sha256": "98728a22f5910ec5c52eb4cd13bf9409de56fc9e0168c205ef3631720847db53",
+      "source_decoded_wh": [
+        640,
+        360
+      ]
+    }
+  ],
+  "source_timestamp_basis": "OpenCV FFmpeg CAP_PROP_POS_MSEC of saved public AVC, relative to part start",
+  "output_wh": [
+    852,
+    480
+  ],
+  "source_transform": "Decode 640x360 BGR, resize full in memory to 852x480 using INTER_LINEAR. Copy left HUD crop and actual source pixels under the localized white right-icon stencil only. All remaining BGR is neutral gray.",
+  "left_keep_xyxy": [
+    86,
+    84,
+    137,
+    123
+  ],
+  "right_search_xyxy": [
+    792,
+    0,
+    852,
+    43
+  ],
+  "right_stencil": "Resize canonical repository world_character.png to width/1920, select gray>8, dilate with a 3x3 square. Keep original decoded scene pixels only under that stencil at the validated match. Full right search remains within canvas.",
+  "right_stencil_selected_pixels": 492,
+  "fill_bgr": [
+    64,
+    64,
+    64
+  ],
+  "exact_double_replay": "cv2.resize to 1704x960, INTER_NEAREST; INTER_AREA back to 852x480 reproduces canonical pixel values",
+  "world_icon": "existing world_character.png, Vision.template (.93,0,1,.09) at .65; reports only sampled historical HUD",
+  "white_median_order": "Template-bright pixels in the left 16 columns, then restricted to rows [4,17), then additionally excluding rows 9 and 10. The locator uses the second statistic.",
+  "scope": "Offline 4.6 PC locator fixtures. Panel frames live in the existing state and bright-panel corpora. Account/window checks use synthetic data.",
+  "cases": [
+    {
+      "file": "p178-3.500938-world.png",
+      "time_seconds": 3.500938,
+      "part": 178,
+      "phase": "world",
+      "expected": true,
+      "sha256": "5206f046d058deb660a133222b0c2e7e044a76789662022f2f76d5233c636ec0",
+      "source_decoded_frame_sha256": "10640d69148ebfe07775767a11e289ff9374d4194f821db9ba5f6dbb7e86d94d",
+      "right_anchor_stencil_bounds": [
+        805,
+        6,
+        834,
+        35
+      ],
+      "shape_ncc": 0.9423,
+      "paired_badge": true,
+      "white_left16_rows4_17_exact_medians": [
+        250.0,
+        250.0,
+        251.0
+      ],
+      "world_character_ncc_canonical": 0.9418,
+      "world_character_ncc_at_exact_2x": 0.932,
+      "source_world_character_ncc": 0.947,
+      "world_anchor": true
+    },
+    {
+      "file": "p178-3.801000-world.png",
+      "time_seconds": 3.801,
+      "part": 178,
+      "phase": "world",
+      "expected": true,
+      "sha256": "6fc3a1a2a88cda02eebcccec4a4c0d0f1cf21222e37049e8d100cd588df292ab",
+      "source_decoded_frame_sha256": "19a86ee384aedef3275427f202cd804aa73bd9dd41e5d460d15f6d486a28388e",
+      "right_anchor_stencil_bounds": [
+        805,
+        6,
+        834,
+        35
+      ],
+      "shape_ncc": 0.9241,
+      "paired_badge": true,
+      "white_left16_rows4_17_exact_medians": [
+        250.0,
+        251.0,
+        251.0
+      ],
+      "world_character_ncc_canonical": 0.9418,
+      "world_character_ncc_at_exact_2x": 0.932,
+      "source_world_character_ncc": 0.947,
+      "world_anchor": true
+    },
+    {
+      "file": "p178-3.834375-first_fade.png",
+      "time_seconds": 3.834375,
+      "part": 178,
+      "phase": "first_fade",
+      "expected": false,
+      "sha256": "e9a06b345f3a9167b41b2d784e42dd2c937ac5ada90e83fe6c8a6cf020dfa71b",
+      "source_decoded_frame_sha256": "c650effc0ecd6d15ea3e4a4e085856630898d6e5794ecf90be78582d9e9dfd4c",
+      "right_anchor_stencil_bounds": [
+        806,
+        6,
+        835,
+        35
+      ],
+      "shape_ncc": 0.9275,
+      "paired_badge": true,
+      "white_left16_rows4_17_exact_medians": [
+        242.0,
+        243.0,
+        243.0
+      ],
+      "world_character_ncc_canonical": 0.911,
+      "world_character_ncc_at_exact_2x": 0.9263,
+      "source_world_character_ncc": 0.9217,
+      "world_anchor": true
+    },
+    {
+      "file": "p179-0.000000-world.png",
+      "time_seconds": 0.0,
+      "part": 179,
+      "phase": "world",
+      "expected": true,
+      "sha256": "fa09009e491882a69fa7c0cab0a1019c420d33b1a846b002159f2dc49d9cf5ad",
+      "source_decoded_frame_sha256": "85e7af805750006629e16df24e0ac5937620a463d82f406b9bc59898db569ed3",
+      "right_anchor_stencil_bounds": [
+        805,
+        6,
+        834,
+        35
+      ],
+      "shape_ncc": 0.9459,
+      "paired_badge": true,
+      "white_left16_rows4_17_exact_medians": [
+        251.0,
+        251.0,
+        251.0
+      ],
+      "world_character_ncc_canonical": 0.9344,
+      "world_character_ncc_at_exact_2x": 0.9275,
+      "source_world_character_ncc": 0.9468,
+      "world_anchor": true
+    },
+    {
+      "file": "p179-0.233313-world.png",
+      "time_seconds": 0.233313,
+      "part": 179,
+      "phase": "world",
+      "expected": true,
+      "sha256": "0dad71693f928a04f3bf8a198470a73c197d298516d1a557c3d07329f28300eb",
+      "source_decoded_frame_sha256": "60a23ce634ab2f25ac2de5b61ae35281399d9b8acb97ab2d974286ab161827c5",
+      "right_anchor_stencil_bounds": [
+        805,
+        6,
+        834,
+        35
+      ],
+      "shape_ncc": 0.9248,
+      "paired_badge": true,
+      "white_left16_rows4_17_exact_medians": [
+        250.0,
+        250.0,
+        251.0
+      ],
+      "world_character_ncc_canonical": 0.9344,
+      "world_character_ncc_at_exact_2x": 0.9275,
+      "source_world_character_ncc": 0.9468,
+      "world_anchor": true
+    },
+    {
+      "file": "p179-0.333313-world_dim_rejected.png",
+      "time_seconds": 0.333313,
+      "part": 179,
+      "phase": "world_dim_rejected",
+      "expected": false,
+      "sha256": "8dc2c3b95a07c9f191b51a636ddd7eb1ce8367827f2e8656c0c2ea84a682deee",
+      "source_decoded_frame_sha256": "e6e002d271039b17abcad8fefd8d36296b844a00e9e9d4f0127058ee42f833a3",
+      "right_anchor_stencil_bounds": [
+        805,
+        6,
+        834,
+        35
+      ],
+      "shape_ncc": 0.8979,
+      "paired_badge": true,
+      "white_left16_rows4_17_exact_medians": [
+        227.0,
+        229.0,
+        235.0
+      ],
+      "world_character_ncc_canonical": 0.9344,
+      "world_character_ncc_at_exact_2x": 0.9275,
+      "source_world_character_ncc": 0.9468,
+      "world_anchor": true
+    },
+    {
+      "file": "p179-0.666687-first_fade.png",
+      "time_seconds": 0.666687,
+      "part": 179,
+      "phase": "first_fade",
+      "expected": false,
+      "sha256": "b4107bee9ff46230a401ec3fb12a2126a69fc3231874d66530d32adc8c57bce0",
+      "source_decoded_frame_sha256": "e604cbac6e2c16fbd203a0adc4b6ee757ebec94b034fc318c4a10e05eb88ea9c",
+      "right_anchor_stencil_bounds": [
+        806,
+        6,
+        835,
+        35
+      ],
+      "shape_ncc": 0.8731,
+      "paired_badge": false,
+      "white_left16_rows4_17_exact_medians": [
+        240.0,
+        241.0,
+        243.0
+      ],
+      "world_character_ncc_canonical": 0.9076,
+      "world_character_ncc_at_exact_2x": 0.9212,
+      "source_world_character_ncc": 0.9249,
+      "world_anchor": true
+    },
+    {
+      "file": "p179-0.700000-fade.png",
+      "time_seconds": 0.7,
+      "part": 179,
+      "phase": "fade",
+      "expected": false,
+      "sha256": "4cd230b74107d323b6cbb4f39d5ce45452590f133c4743134f2d0350dd06bf52",
+      "source_decoded_frame_sha256": "68e78159932d3686127b29bb915fb6a534c546fe6508022013d82b5a65e8c836",
+      "right_anchor_stencil_bounds": [
+        806,
+        6,
+        835,
+        35
+      ],
+      "shape_ncc": 0.9105,
+      "paired_badge": true,
+      "white_left16_rows4_17_exact_medians": [
+        233.0,
+        235.0,
+        236.0
+      ],
+      "world_character_ncc_canonical": 0.9249,
+      "world_character_ncc_at_exact_2x": 0.9186,
+      "source_world_character_ncc": 0.9392,
+      "world_anchor": true
+    },
+    {
+      "bvid": "BV1ppxt6HEQd",
+      "part": 1,
+      "file": "BV1ppxt6HEQd_P1_0.244_stable_world.png",
+      "time_seconds": 0.243938,
+      "phase": "stable_world",
+      "sha256": "e47f84a680fe7671771452f2420c33f8e3b579af89d7c635e529cea6e7864daa",
+      "source_decoded_frame_sha256": "9a4251ec71bdc4b3eb98f9947be166a65eb4e722913974187d36aedca9336c69",
+      "source_world_character_ncc": 0.72089,
+      "shape_ncc": 0.926523,
+      "paired_badge": false,
+      "world_anchor": true,
+      "expected": false
+    },
+    {
+      "bvid": "BV1x44K6AE96",
+      "part": 1,
+      "file": "BV1x44K6AE96_P1_0.833_stable_world.png",
+      "time_seconds": 0.833313,
+      "phase": "stable_world",
+      "sha256": "b173b7c127e76cb8ff382e6855b828c74151de65c53ee7daf03060c8aae8489a",
+      "source_decoded_frame_sha256": "77c55c5371f4f323f9ca8824bf6a6b395e73d3a1605b362720f066695cc45ae8",
+      "source_world_character_ncc": 0.476332,
+      "shape_ncc": 0.916786,
+      "paired_badge": true,
+      "world_anchor": false,
+      "expected": false
+    },
+    {
+      "bvid": "BV1x44K6AE96",
+      "part": 1,
+      "file": "BV1x44K6AE96_P1_0.900_first_fade.png",
+      "time_seconds": 0.9,
+      "phase": "first_fade",
+      "sha256": "b3961452830066d451c72d3381f835bd8b3bc4d8a45b76820cc2f86ba5981711",
+      "source_decoded_frame_sha256": "b6e729e3b8cc34d3fbd75587795fbf2a6d4837830ae807fd633692148d6cf499",
+      "source_world_character_ncc": 0.227806,
+      "shape_ncc": 0.925611,
+      "paired_badge": true,
+      "world_anchor": false,
+      "expected": false
+    }
+  ],
+  "rights": "Public gameplay recordings and game UI art belong to their respective rightsholders.",
+  "bubble_reference": {
+    "watch_url": "https://www.bilibili.com/video/BV1x44K6AE96/?p=1",
+    "bvid": "BV1x44K6AE96",
+    "part": 1,
+    "cid": 43274600721,
+    "time_seconds": 0.466688,
+    "source_safe_crop_xyxy": [
+      88,
+      79,
+      207,
+      120
+    ],
+    "source_safe_file": "0.467.png",
+    "source_safe_sha256": "4996c8ee0bcc6d7519b513b9195d26e5827fde72b926497ef311fd812845499f",
+    "reference_png": "bubble-luma-alpha.png",
+    "sha256": "c13d567793b56c08d79bb39584c67ac345de69edbe9c79baaae9a48f4607c4b5",
+    "dimensions_wh": [
+      25,
+      22
+    ],
+    "representation": "Grayscale RGB and binary alpha mask. Alpha-zero RGB is zero. No full frames retained here.",
+    "opaque_pixels": 331,
+    "red_pixels_removed": 0,
+    "asset": "assets/templates/daily_message_world_bubble.png",
+    "canonical_wh": [
+      852,
+      480
+    ],
+    "canonical_xyxy": [
+      95,
+      95,
+      120,
+      117
+    ]
+  },
+  "variant_sources": [
+    {
+      "source": "https://www.bilibili.com/video/BV1ppxt6HEQd/?p=1",
+      "bvid": "BV1ppxt6HEQd",
+      "part": 1,
+      "cid": 43244914455,
+      "original_video_px": [
+        1920,
+        1080
+      ],
+      "decoded_public_avc_px": [
+        852,
+        480
+      ],
+      "left_whitelist_xyxy": [
+        86,
+        84,
+        137,
+        123
+      ],
+      "right_search_xyxy": [
+        792,
+        0,
+        852,
+        43
+      ],
+      "right_native_whitelist_xyxy": [
+        797,
+        2,
+        842,
+        19
+      ],
+      "transform": "Original pixel crops at canonical AVC size. All remaining canvas is neutral. The right search background is a single per-channel median. Lower right template pixels are synthetic redaction matching only each channel mean, variance and the public world template projection; original lower pixels and watermark are never retained. Upper right original pixel strip stops before the watermark. The full left search strip is original, including cursor where present. Panel title retained only in explicit panel examples.",
+      "time_basis": "SIDX fragment start plus relative decoded PTS; no raw frames persisted"
+    },
+    {
+      "source": "https://www.bilibili.com/video/BV1x44K6AE96/?p=1",
+      "bvid": "BV1x44K6AE96",
+      "part": 1,
+      "cid": 43274600721,
+      "original_video_px": [
+        1920,
+        1080
+      ],
+      "decoded_public_avc_px": [
+        852,
+        480
+      ],
+      "left_whitelist_xyxy": [
+        86,
+        84,
+        137,
+        123
+      ],
+      "right_search_xyxy": [
+        792,
+        0,
+        852,
+        43
+      ],
+      "right_native_whitelist_xyxy": [
+        797,
+        2,
+        842,
+        19
+      ],
+      "transform": "Original pixel crops at canonical AVC size. All remaining canvas is neutral. The right search background is a single per-channel median. Lower right template pixels are synthetic redaction matching only each channel mean, variance and the public world template projection; original lower pixels and watermark are never retained. Upper right original pixel strip stops before the watermark. The full left search strip is original, including cursor where present. Panel title retained only in explicit panel examples.",
+      "time_basis": "SIDX fragment start plus relative decoded PTS; no raw frames persisted"
+    }
+  ],
+  "other_red_icon": {
+    "file": "p178-other-red-hud-000.png",
+    "sha256": "6dae2940786e9862c318a9cef38ec7dc884e994399ba79f960e30ceaf6c050c4",
+    "part": 178,
+    "time_seconds": 0.0,
+    "source_decoded_frame_sha256": "e36cfaa57b7036d1ac78589aee09c3269e537f4817feff8f0b038e3096cba46e",
+    "source_avc_sha256": "ac981e1154d6978da2b4cff632040605097ee4777fc052c3c4711d8e94f79c72",
+    "transform": "INTER_AREA from 1280x720 to 852x480. Retain only the static HUD icon and its red badge.",
+    "canonical_xyxy": [
+      9,
+      15,
+      35,
+      44
+    ],
+    "relocated_xy": [
+      99,
+      90
+    ],
+    "relocation": "Synthetic placement at the SMS position to ensure the red mark alone cannot select a target."
+  }
+}
