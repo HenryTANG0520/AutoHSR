@@ -1,4 +1,4 @@
-"""Read the DU periodic score from its guide and home panels."""
+"""Read DU weekly progress and independent periodic result fields."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import math
 import re
 import time
+import unicodedata
 
 from .currency_wars_identity import account_key
 from .currency_wars_initial import evidence_ref
@@ -27,6 +28,18 @@ PANEL = (.128,.763,.356,.860)
 HOME_SCORE = (.065,.892,.262,.958)
 HOME_TIME = (.0,.848,.213,.891)
 HOME_PANEL = (.0,.848,.262,.958)
+# The 16:9 and wide analysis layouts keep the same columns but shift rows vertically.
+SETTLEMENT_ANCHORS = (
+    ('分析报告', (.774, .073, .875, .175)),
+    ('差分宇宙构筑内容', (.337, .249, .478, .336)),
+    ('返回主界面', (.34, .831, .56, .943)),
+)
+SETTLEMENT_OUTCOME = (.154, .328, .309, .418)
+SETTLEMENT_OUTCOMES = ('探索成功', '探索中断')
+SETTLEMENT_PROGRESS = (.158, .404, .298, .456)
+SETTLEMENT_LIMIT = (.165, .668, .293, .716)
+SETTLEMENT_AMOUNT_REGION = (.118, .653, .216, .808)
+SETTLEMENT_AMOUNT_LABELS = ('获得积分', '获得解锁材料', '获得拟合值')
 SETUP_HEADING = (0,0,.24,.13)
 SETUP_RANK = (.54,.10,.86,.155)
 SETUP_MODE = (.55,.23,.90,.30)
@@ -40,6 +53,9 @@ ROMAN_RANKS = ('i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x')
 NUMBER = r'(?:0|[1-9][0-9]{0,8}|[1-9][0-9]{0,2}(?:,[0-9]{3}){1,2})'
 RATIO = re.compile(rf'({NUMBER})/({NUMBER})')
 COUNTDOWN = re.compile(r'(?:(\d{1,2})天)?(?:(\d{1,3})小时)?(?:(\d{1,2})分钟)?')
+PERIODIC_PROGRESS = re.compile(r'周期演算\((0|[1-9][0-9]?)/(13|20)\)')
+SETTLEMENT_NUMBER = re.compile(rf'({NUMBER})')
+FITTING_EXPRESSION = re.compile(rf'({NUMBER})(?:\s*\+\s*({NUMBER}))?')
 
 
 class GuidePointsUnverified(ValueError):
@@ -168,6 +184,94 @@ def read_home_points(scene, captured_at, week, confidence=.85):
         raise GuidePointsUnverified('home_countdown_unverified')
     _require_countdown(time_text.removeprefix(prefix).removeprefix(':'),captured_at,week)
     return GuidePoints(current,cap,(*timer,*score))
+
+
+def _settlement_amount(scene, name, expression, confidence):
+    reason = 'settlement_amount_unverified'
+    label = _label(scene, name, SETTLEMENT_AMOUNT_REGION, confidence, reason)
+    # Reject labels that could share the same amount under the row alignment tolerance.
+    if any(token is not label and token.within(SETTLEMENT_AMOUNT_REGION)
+           and compact(token.text) in SETTLEMENT_AMOUNT_LABELS
+           and abs(token.center[1] - label.center[1]) <= .028 for token in scene.tokens):
+        raise GuidePointsUnverified(reason)
+    lane = (.219, label.box[1] - .014, .334, label.box[3] + .014)
+    parts = _horizontal_row(scene, lane, confidence, reason)
+    texts = [unicodedata.normalize('NFKC', token.text).strip() for token in parts]
+    match = expression.fullmatch(''.join(texts))
+    if (match is None or any(abs(token.center[1] - label.center[1]) > .014 for token in parts)
+            or any(not (left.endswith('+') or right.startswith('+'))
+                   for left, right in zip(texts, texts[1:]))):
+        raise GuidePointsUnverified(reason)
+    return [int(value.replace(',', '')) for value in match.groups() if value is not None]
+
+
+def periodic_settlement_observation(scene, confidence=.85):
+    """Read a settled periodic report without using its values to advance play."""
+    confidence = max(.85, confidence)
+    reason = 'periodic_settlement_unverified'
+    try:
+        for text, region in SETTLEMENT_ANCHORS:
+            _label(scene, text, region, confidence, reason)
+        progress = _horizontal_row(scene, SETTLEMENT_PROGRESS, confidence, reason)
+    except GuidePointsUnverified:
+        return None
+    outcomes = [token for token in scene.tokens if token.within(SETTLEMENT_OUTCOME)
+                and compact(token.text) in SETTLEMENT_OUTCOMES]
+    if len(outcomes) != 1 or not _inside(outcomes[0], SETTLEMENT_OUTCOME, confidence):
+        return None
+    outcome = compact(outcomes[0].text)
+    stage = PERIODIC_PROGRESS.fullmatch(''.join(compact(token.text) for token in progress))
+    if stage is None:
+        return None
+    area, total = map(int, stage.groups())
+    if area > total or outcome == '探索成功' and area != total:
+        return None
+    observation = dict(outcome=outcome, area_index=area, area_total=total,
+                       weekly_points_gained=None, unlock_materials_gained=None,
+                       fitting_value_gained=None, fitting_value_terms=None)
+    try:
+        _label(scene, '奖励已到达上限', SETTLEMENT_LIMIT, confidence, reason)
+    except GuidePointsUnverified:
+        pass
+    else:
+        observation['reward_limit_message'] = True
+        return observation
+    for label, field in (('获得积分', 'weekly_points_gained'), ('获得解锁材料', 'unlock_materials_gained')):
+        try:
+            observation[field], = _settlement_amount(scene, label, SETTLEMENT_NUMBER, confidence)
+        except GuidePointsUnverified:
+            pass
+    try:
+        terms = _settlement_amount(scene, '获得拟合值', FITTING_EXPRESSION, confidence)
+    except GuidePointsUnverified:
+        pass
+    else:
+        observation.update(fitting_value_gained=sum(terms), fitting_value_terms=terms)
+    return observation
+
+
+def shared_periodic_rewards_observation(scene, confidence=.85):
+    """Read the shared panel without inferring its entry or a claim receipt."""
+    from .currency_wars_points import read_points
+    from .currency_wars_weekly_rewards import kind, panel_control
+
+    confidence = max(.85, confidence)
+    if kind(scene, confidence) != 'points_rewards':
+        return None
+    try:
+        points = read_points(scene, confidence)
+    except AutomationError:
+        return None
+    observation = dict(current=points.current, cap=points.limit, claim_control='unverified')
+    try:
+        state, _ = panel_control(scene, confidence)
+    except AutomationError:
+        return observation
+    if state == 'available' and points.current > 0:
+        observation['claim_control'] = 'available'
+    elif state == 'settled':
+        observation['claim_control'] = 'unavailable'
+    return observation
 
 
 def _launch_label(text):

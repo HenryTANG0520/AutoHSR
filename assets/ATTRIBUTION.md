@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-11-06 差分周期结算 OCR 字段
+
+本地历史原图与国服 4.6 日期范围内的公开周期演算录像用于结算字段及相邻页面回归。仓库保存筛选后的 OCR 文字、归一化坐标与原件或解码帧 SHA-256。游戏界面权利归 HoYoverse 及相应权利人，录像权利归各上传者及相应权利人。[字段与来源](../autohsr/tests/fixtures/du_runtime/periodic_settlement_fields.json) · [原片对照](../docs/du-validation.md#2026-11-06-周期积分实增与差分领奖原片)
+
 ## 2026-11-06 普通末日终局 OCR 字段
 
 4.6 常规末日及星启的公开原片用作布局正反例。仓库保存 RapidOCR 文字、原画面归一化坐标、原件时间和最小去 UID 裁片 SHA-256。游戏美术归 HoYoverse 及相应权利人，原片归各上传者及相应权利人。[字段与来源清单](../autohsr/tests/fixtures/challenge_apocalyptic_result_4_6.json)

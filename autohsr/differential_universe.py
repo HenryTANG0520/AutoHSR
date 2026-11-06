@@ -394,6 +394,16 @@ class DifferentialUniverseWorkflow:
             preview = station_preview_observation(scene, confidence)
             if preview is not None:
                 observation["station_preview"] = preview
+        elif kind in ("victory", "defeat", "unknown"):
+            from .du_periodic_points import periodic_settlement_observation, shared_periodic_rewards_observation
+
+            settlement = periodic_settlement_observation(scene, self.settings.ocr_confidence)
+            if settlement is not None:
+                observation["periodic_settlement"] = settlement
+            elif kind == "unknown":
+                rewards = shared_periodic_rewards_observation(scene, self.settings.ocr_confidence)
+                if rewards is not None:
+                    observation["shared_periodic_rewards"] = rewards
         self.report["page_history"].append(observation)
         self._persist_ledger()
         return kind
