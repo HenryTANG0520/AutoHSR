@@ -1103,6 +1103,20 @@ class AutoHSRWindow:
 
         return self._start_scoped_runner('核对所选页面', 'task_workflow', factory, on_report)
 
+    def _start_achievement_bulk_claim(self, on_report) -> bool:
+        from .desktop_daily_observe import ACHIEVEMENT_CLAIM
+
+        settings = self._read_settings(operation='check')
+        if settings is None:
+            return False
+
+        def factory(emit):
+            from .app import Runner
+
+            return Runner(settings, emit, operation=ACHIEVEMENT_CLAIM, observation_wait_for_foreground=True)
+
+        return self._start_scoped_runner('本次成就一键领取', ACHIEVEMENT_CLAIM, factory, on_report)
+
     def _start_daily_attachment(self, operation, on_report=None) -> bool:
         item = ATTACHMENT_SECTIONS[operation]
         settings = self._read_settings(operation=operation)

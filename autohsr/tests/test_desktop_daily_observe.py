@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from autohsr import theme
-from autohsr.desktop_daily_observe import build_daily_observation_panel, observation_result
+from autohsr.desktop_daily_observe import ACHIEVEMENT_CLAIM, build_daily_observation_panel, observation_result
 from autohsr.desktop_tools import ToolsShelf
 
 
@@ -44,6 +44,13 @@ def screen(*, status='success', saved=True, **overrides):
     value = dict(page='guide', page_verified=True, account_verified=True, input_sent=False)
     value.update(overrides)
     return report('screen_test', value, status=status, saved=saved)
+
+
+def achievement_claim(*, status='success', saved=True, **overrides):
+    value = dict(bulk_input='sent', confirm_input='sent', account_verified=True, receipt_total=20,
+                 overlay_quantity=20, overview_return_verified=True, overview_controls_cleared=True,
+                 jade_balance_before=100, jade_balance_after=120, jade_balance_delta=20, jade_attributed=None)
+    return report(ACHIEVEMENT_CLAIM, value | overrides, status=status, saved=saved)
 
 
 class DailyObservationReceiptTests(unittest.TestCase):
@@ -91,7 +98,8 @@ class DailyObservationReceiptTests(unittest.TestCase):
         destination = 'support_collection_overview'
         sources = [dict(capture_sequence=4), dict(capture_sequence=5)]
         more = dict(entry_input='sent', destination_status='more_menu_verified', after_frames=sources)
-        visa = dict(entry_input='sent', destination_status=destination, before_frames=sources)
+        after = [dict(capture_sequence=7, hint=destination), dict(capture_sequence=8, hint=destination)]
+        visa = dict(entry_input='sent', destination_status=destination, before_frames=sources, after_frames=after)
         verified = reward('support', page_verified=True, entry_input='sent', destination_status=destination,
                           steps=dict(open_more=more, open_support=visa))
         self.assertEqual(observation_result('support', verified), ('漫游签证收集展示已核实', '支援奖励状态待核对。'))
@@ -100,6 +108,27 @@ class DailyObservationReceiptTests(unittest.TestCase):
         visa['before_frames'] = sources
         visa['entry_input'] = 'unconfirmed'
         self.assertEqual(observation_result('support', verified)[0], '结果待核对')
+
+    def test_open_support_receipt_keeps_visibility_claimability_and_credit_separate(self):
+        destination = 'support_character_overview'
+        idle = dict(entry_input='not_sent', destination_status='unknown', before_frames=[], after_frames=[])
+        after = [dict(capture_sequence=1, hint=destination), dict(capture_sequence=2, hint=destination)]
+        values = dict(page_verified=True, entry_input='not_sent', destination_status=destination,
+                      steps=dict(open_more=dict(idle), open_support=dict(idle)), after_frames=after,
+                      support_section='visible', claimable_state='unknown', claim_receipt_status='not_observed')
+        verified = reward('support', **values)
+        self.assertEqual(observation_result('support', verified),
+                         ('漫游签证支援区已核实', '可领取状态待核对。到账状态待核对。'))
+        for invalid in (dict(after_frames=after[:1]), dict(after_frames=after[::-1]),
+                        dict(after_frames=[after[0], dict(after[1], hint='support_title_only')]),
+                        dict(steps=dict(open_more=dict(idle, entry_input='sent'), open_support=idle)),
+                        dict(steps=dict(open_more=dict(idle, intent=_MARKER), open_support=idle)),
+                        dict(support_section='unknown'), dict(claimable_state='none'),
+                        dict(claimable_state='available'), dict(claim_receipt_status='claimed')):
+            with self.subTest(invalid=invalid):
+                result = observation_result('support', reward('support', **(values | invalid)))
+                self.assertEqual(result[0], '结果待核对')
+                self.assertNotIn(_MARKER, repr(result))
 
     def test_message_receipt_shows_only_consistent_anonymous_panel_fields(self):
         state = dict(phone_entry='unknown', message_page='observed', unread_status='badge_visible',
@@ -147,6 +176,48 @@ class DailyObservationReceiptTests(unittest.TestCase):
             self.assertEqual(observation_result('screen', invalid)[0], '结果待核对')
         self.assertEqual(observation_result('screen', screen(status='stopped'))[0], '已停止')
 
+    def test_achievement_sends_return_reward_and_balance_are_separate(self):
+        title, detail = observation_result(ACHIEVEMENT_CLAIM, achievement_claim())
+        self.assertEqual(title, '成就领取回页已核实')
+        self.assertEqual(detail.splitlines(), ['一键领取 · 已发送', '明细确认 · 已发送', '成就总览 · 已回页',
+            '原领取控件 · 已清除', '星琼展示 · 明细 20 星琼，物品 20 星琼',
+            '星琼余额 · 100 → 120，差额 +20', '余额归因 · 待核对'])
+        self.assertNotIn(_MARKER, detail)
+        returned = achievement_claim(overview_controls_cleared=False, jade_attributed=20)
+        title, detail = observation_result(ACHIEVEMENT_CLAIM, returned)
+        self.assertEqual(title, '成就领取待核对')
+        self.assertIn('成就总览 · 已回页', detail)
+        self.assertIn('原领取控件 · 待核对', detail)
+        self.assertIn('余额归因 · 待核对', detail)
+
+    def test_achievement_partial_and_stopped_preserve_sends_without_inventing_return(self):
+        for status, title in (('partial', '成就领取待核对'), ('stopped', '成就领取已停止')):
+            with self.subTest(status=status):
+                actual, detail = observation_result(ACHIEVEMENT_CLAIM, achievement_claim(
+                    status=status, confirm_input='unknown', overlay_quantity=None,
+                    overview_return_verified=False, overview_controls_cleared=False,
+                    jade_balance_after=None, jade_balance_delta=None))
+                self.assertEqual(actual, title)
+                self.assertIn('一键领取 · 已发送', detail)
+                self.assertIn('明细确认 · 发送待核对', detail)
+                self.assertIn('成就总览 · 待核对', detail)
+                self.assertIn('星琼余额 · 领前 100，领后待核对', detail)
+        unverified = achievement_claim(status='partial', account_verified=False)
+        _, detail = observation_result(ACHIEVEMENT_CLAIM, unverified)
+        self.assertIn('有回页记录，来源待核对', detail)
+        self.assertIn('星琼余额 · 待核对', detail)
+
+    def test_achievement_rejects_wrong_receipt_and_inconsistent_balance_attribution(self):
+        for invalid in (achievement_claim(saved=False), achievement_claim(schema=True), reward()):
+            self.assertEqual(observation_result(ACHIEVEMENT_CLAIM, invalid),
+                             ('成就领取待核对', '本次领取回执待核对。'))
+        for invalid in (achievement_claim(jade_balance_delta=True, jade_attributed=20),
+                        achievement_claim(jade_attributed=21), achievement_claim(overlay_quantity=21)):
+            _, detail = observation_result(ACHIEVEMENT_CLAIM, invalid)
+            self.assertIn('余额归因 · 待核对', detail)
+        _, detail = observation_result(ACHIEVEMENT_CLAIM, achievement_claim(jade_attributed=20))
+        self.assertIn('余额归因 · 已归因 20 星琼', detail)
+
 
 class DailyObservationPanelTests(unittest.TestCase):
     def setUp(self):
@@ -158,7 +229,8 @@ class DailyObservationPanelTests(unittest.TestCase):
         self.callbacks = []
         self.ui = SimpleNamespace(root=self.root, ui_scale=1., busy=False, closing=False, active=True,
                                   _selected_tool='daily_observation', _in_tools=lambda: self.ui.active,
-                                  _tool_action_changed=Mock(), _start_daily_observation=Mock(side_effect=self.start))
+                                  _tool_action_changed=Mock(), _start_daily_observation=Mock(side_effect=self.start),
+                                  _start_achievement_bulk_claim=Mock(side_effect=self.start_claim))
         self.panel = self.ui.daily_observation_panel = build_daily_observation_panel(self.root, self.ui)
         self.panel.pack(fill='x')
 
@@ -170,6 +242,9 @@ class DailyObservationPanelTests(unittest.TestCase):
         self.ui.busy = True
         self.callbacks.append((mode, complete))
         return True
+
+    def start_claim(self, complete):
+        return self.start(ACHIEVEMENT_CLAIM, complete)
 
     def select(self, label, panel=None):
         panel = self.panel if panel is None else panel
@@ -183,11 +258,12 @@ class DailyObservationPanelTests(unittest.TestCase):
     def test_select_five_ranges_and_submit_only_current_explicit_mode(self):
         expected = (('成就总览', 'achievements'), ('漫游签证', 'support'), ('短信', 'messages'),
                     ('巡星之礼', 'odyssey'), ('当前页面', 'screen'))
-        self.assertEqual(tuple(self.panel.scope['values']), (*[label for label, _ in expected], '核对所选页面'))
+        self.assertEqual(tuple(self.panel.scope['values']),
+                         (*[label for label, _ in expected], '核对所选页面', '本次成就一键领取'))
         for label, mode in expected:
             self.select(label)
             self.assertIn('切回游戏', self.panel.hint['text'])
-            if mode in ('messages', 'odyssey', 'screen'):
+            if mode in ('support', 'messages', 'odyssey', 'screen'):
                 self.assertIn('只读当前页面', self.panel.hint['text'])
             if mode == 'screen':
                 self.assertIn('手动切回游戏', self.panel.hint['text'])
@@ -206,7 +282,32 @@ class DailyObservationPanelTests(unittest.TestCase):
         self.select('当前页面')
         self.assertEqual(self.panel.result_title['text'], '当前页面已核实 · 星际和平指南')
         self.assertEqual(self.ui._start_daily_observation.call_count, 5)
+        self.ui._start_achievement_bulk_claim.assert_not_called()
         self.assertEqual(self.root.state(), 'withdrawn')
+
+    def test_achievement_claim_requires_explicit_scope_and_footer_then_preserves_read_only_result(self):
+        self.assertEqual(self.panel.scope.get(), '成就总览')
+        self.assertTrue(self.panel.start())
+        self.deliver(reward(page_verified=True, entry_input='sent', destination_status='achievement_overview'))
+        self.select('本次成就一键领取')
+        self.ui._start_achievement_bulk_claim.assert_not_called()
+        self.assertIn('手动关闭', self.panel.note['text'])
+        self.assertEqual(self.panel.primary_action()[0], '本次成就一键领取')
+        self.assertEqual(self.panel.result_title['text'], '等待领取')
+        self.assertTrue(self.panel.primary_action()[1]())
+        self.ui._start_achievement_bulk_claim.assert_called_once()
+        self.assertTrue(self.panel.scope.instate(('disabled',)))
+        self.assertFalse(self.panel.start())
+        self.select('成就总览')
+        self.assertEqual(self.panel.scope.get(), '本次成就一键领取')
+        self.deliver(achievement_claim())
+        self.deliver(achievement_claim(status='stopped'))  # Old ticket cannot replace the result.
+        self.assertEqual(self.panel.result_title['text'], '成就领取回页已核实')
+        self.assertIn('余额归因 · 待核对', self.panel.result_detail['text'])
+        self.select('成就总览')
+        self.assertEqual(self.panel.result_title['text'], '成就总览已核实')
+        self.assertEqual(self.panel.primary_action()[0], '核对页面')
+        self.assertNotIn(_MARKER, repr(self.ui._daily_observation_state))
 
     def test_rebuilt_panel_keeps_selection_and_only_current_anonymous_callback(self):
         self.select('巡星之礼')
@@ -284,6 +385,13 @@ class DailyObservationPanelTests(unittest.TestCase):
                         # Minimum desktop width minus the book margins, guide and settings scrollbar.
                         available = round(1100 * scale) - 2 * round(18 * scale) - round(173 * scale) - round(14 * scale)
                         self.assertLessEqual(max(button.master.winfo_reqwidth(), panel.winfo_reqwidth()), available)
+                        self.select('本次成就一键领取', panel)
+                        self.assertTrue(shelf.primary_action()[1]())
+                        self.deliver(achievement_claim())
+                        self.root.update_idletasks()
+                        self.assertEqual(shelf.primary_action()[0], '本次成就一键领取')
+                        self.assertLessEqual(panel.winfo_reqwidth(), available)
+                        self.assertEqual(len(panel.result_detail['text'].splitlines()), 7)
                         self.ui.settings_shell.canvas.yview_moveto.assert_called_with(0)
                         self.assertEqual(self.root.state(), 'withdrawn')
                     finally:

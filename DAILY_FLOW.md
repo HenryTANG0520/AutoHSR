@@ -60,7 +60,9 @@
 .\.venv\Scripts\python.exe -m autohsr --daily-reward-observe support
 ```
 
-成就总览以同账号连续双帧核对标题、横向分类卡和底部「达成成就」。只识别到标题时记为 `achievement_title_only`。漫游签证按「更多」和「漫游签证」两个阶段分别落盘，前一阶段已发送且展开菜单双帧通过才允许下一步。收集展示核对左上标题与副标题、规则入口和三枚页签的选中状态。仅标题或其他页签保持待核对。公开 4.6 静态截图用于布局校准，正式 CLI 的连续到页和晚停止用假窗口核验，当前账号实际到页及支援奖励仍待验收。原图与 OCR 留在本地运行目录。[版式来源](autohsr/tests/fixtures/daily_visa/sources.json)
+成就总览以同账号连续双帧核对标题、横向分类卡和底部「达成成就」。只识别到标题时记为 `achievement_title_only`。从手机菜单进入漫游签证时，「更多」和「漫游签证」分别落盘，前一阶段已发送且展开菜单双帧通过才允许下一步。
+
+已打开漫游签证时，支援观察仅核对当前页。收集展示核对标题、副标题、规则入口及三枚页签。角色展示还需两帧均看到右侧「支援角色」和「星海同行」，才记录 `support_section=visible`。可领取和到账各自保留 `claimable_state=unknown`、`claim_receipt_status=not_observed`。公开 4.6 静态图用于版式校准，CLI 与桌面收据使用假窗口回归。实际支援领取按钮、来源回执与回到同页后的状态待实机校准。原图与 OCR 留在本地运行目录。[版式来源](autohsr/tests/fixtures/daily_visa/sources.json)
 
 #### 成就领奖布局核对
 

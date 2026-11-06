@@ -1,6 +1,6 @@
 """Bounded phone navigation and local calibration of daily reward pages."""
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 import json
 import os
@@ -11,7 +11,7 @@ import time
 import numpy as np
 
 from .achievement_pages import achievement_bulk_claim_visible, observe_achievement_screen
-from .daily_visa_pages import visa_overview
+from .daily_visa_pages import visa_overview, visa_support_section
 from .build_target_read import _has_split_label
 from .currency_wars_identity import AccountNotObserved, checked_account_key
 from .currency_wars_prepare import trusted
@@ -25,7 +25,7 @@ from .workflows import DailyWorkflow, TITLE
 OPERATION = 'daily_reward_observe'
 MODES = ('achievements', 'support')
 SAFE_NEXT = '请核对本次成就导航与到页证据；有未核实的输入时先查看当前画面。'
-SUPPORT_SAFE_NEXT = '请核对本次更多与漫游签证的分步回执；有未核实的输入时先查看当前画面。'
+SUPPORT_SAFE_NEXT = '请核对当前漫游签证的页面结果或本次分步回执。有未核实的输入时先查看当前画面。'
 COLLECTION_FLOOR = .65
 MAX_AGE = 8
 MAX_CAPTURES = 6
@@ -40,6 +40,9 @@ _MENU_LABELS = ('漫游签证', '兑换码')
 _BLOCKING = ('提示', '温馨提示', '确认', '确定', '取消', '知道了', '获得物品',
              '切换账号', '退出登录', '列车补给', '新消息通知', '点击空白处关闭', '前往成就',
              '支付', '付款', '购买', '续订', '续购', '重新连接', '加载中')
+_SUPPORT_SECTION = 'support_character_overview'
+_SUPPORT_UNOBSERVED = dict(support_section='unknown', claimable_state='unknown',
+                           claim_receipt_status='not_observed')
 
 
 def _step_record():
@@ -49,7 +52,8 @@ def _step_record():
 def initial_record(mode='achievements'):
     common = dict(schema=1, mode=mode, page_verified=False)
     if mode == 'support':
-        return dict(**common, entry_input='not_sent', destination_status='unknown',
+        return dict(**common, **_SUPPORT_UNOBSERVED, entry_input='not_sent', destination_status='unknown',
+                    after_frames=[],
                     steps=dict(open_more=_step_record(), open_support=_step_record()))
     return dict(**common, **_step_record())
 
@@ -114,8 +118,9 @@ def _support_visa_target(scene, confidence):
 
 _TARGETS = dict(open_achievements=phone_achievement_target, open_more=_support_more_target,
                 open_support=_support_visa_target)
-_OVERVIEWS = dict(achievements=('achievement_overview', '成就总览'),
-                  support=('support_collection_overview', '漫游签证收集展示'))
+_OVERVIEWS = dict(achievements={'achievement_overview': '成就总览'},
+                  support={'support_collection_overview': '漫游签证收集展示', _SUPPORT_SECTION: '漫游签证支援区'})
+_TITLE_ONLY = ('achievement_title_only', 'support_title_only')
 
 
 def _destination_hint(scene, confidence, mode):
@@ -126,6 +131,8 @@ def _destination_hint(scene, confidence, mode):
             return 'achievement_overview'
     if mode == 'support' and visa_overview(scene, confidence):
         return 'support_collection_overview'
+    if mode == 'support' and visa_support_section(scene, confidence):
+        return _SUPPORT_SECTION
     if mode == 'support' and _support_visa_target(scene, confidence) is not None:
         return 'more_menu_still_visible'
     phone_target = _support_more_target if mode == 'support' else phone_achievement_target
@@ -176,15 +183,19 @@ class DailyRewardObserver:
         self.step = None
         self.arrival = ()
 
-    def guard_window(self):
+    def _guard_control(self):
         if self.c.runner.stop_requested:
             raise Stopped('日常奖励入口校准已停止。')
         if self.c.runner.input_epoch != self.epoch or self.c.scene_epoch != self.epoch:
             raise InputInterrupted('日常奖励入口校准的输入代次已改变。')
+
+    def guard_window(self):
+        self._guard_control()
         if (self.c.window is not self.window or self.window_key is None
                 or self.window.current_window_key() != self.window_key):
             raise AutomationError('日常奖励入口校准的窗口来源已改变。')
         self.window.guard(self.geometry)
+        self._guard_control()
 
     def _current(self, scene, sequence):
         self.guard_window()
@@ -239,6 +250,13 @@ class DailyRewardObserver:
             except (EmptyCapture, AccountNotObserved):
                 previous, pair = None, ()
                 continue
+            if action == 'open_more' and frame.target is None:
+                hint = _destination_hint(frame.scene, self.confidence, self.mode)
+                if hint in _OVERVIEWS['support'] or hint == 'support_title_only':
+                    # Once a profile is seen, finish this run as a read of the current page.
+                    # Moving back to the phone during that read cannot start navigation.
+                    action = None
+                    frame = replace(frame, hint=hint, action=None)
             if (action is not None and frame.target is None or after is not None and frame.captured_at <= after):
                 previous, pair = None, ()
                 continue
@@ -247,7 +265,7 @@ class DailyRewardObserver:
                     return previous, frame
                 if action is None and previous.hint == frame.hint:
                     pair = previous, frame
-                    if frame.hint in (_OVERVIEWS[self.mode][0], 'achievement_title_only', 'support_title_only'):
+                    if frame.hint in _OVERVIEWS[self.mode] or frame.hint in _TITLE_ONLY:
                         return pair
                 else:
                     pair = ()
@@ -378,18 +396,26 @@ class DailyRewardObserver:
         return self.mode == 'achievements' and len(self.arrival) == 2 and all(
             achievement_bulk_claim_visible(frame.scene, self.confidence) for frame in self.arrival)
 
+    @staticmethod
+    def _support_state(hint):
+        return dict(_SUPPORT_UNOBSERVED, support_section='visible' if hint == _SUPPORT_SECTION else 'unknown')
+
     def save_verified_report(self, temporary, write_report):
         report = self.c.report
         destination = self.directory / 'report.json'
         result = report.results[-1]
-        hint, label = _OVERVIEWS[self.mode]
+        hint = self.record['destination_status']
+        label = _OVERVIEWS[self.mode].get(hint, '日常奖励页面')
 
         @contextmanager
         def stable_arrival():
             rows = self.step['after_frames']
             paths = [self._path(self.directory / row['screenshot']) for row in rows]
             with hold_read_sources(paths):
-                if (len(self.arrival) != 2 or len(paths) != 2 or not self._adjacent(*self.arrival)
+                if (hint not in _OVERVIEWS[self.mode] or report.daily_reward_observe is not self.record
+                        or self.record['page_verified'] is not True
+                        or self.record['destination_status'] != hint or self.step['destination_status'] != hint
+                        or len(self.arrival) != 2 or len(paths) != 2 or not self._adjacent(*self.arrival)
                         or any(frame.hint != hint for frame in self.arrival)):
                     raise AutomationError(f'{label}缺少本次连续到页证据。')
                 last = self.arrival[-1]
@@ -400,11 +426,14 @@ class DailyRewardObserver:
                         raise AutomationError(f'{label}到页证据在报告提交前已变化。')
                 if self.record.get('bulk_claim_visible', False) is not self._bulk_claim_visible():
                     raise AutomationError('成就一键领取控件的双帧状态在报告提交前已变化。')
+                if self.mode == 'support' and any(self.record.get(key) != value
+                                                  for key, value in self._support_state(hint).items()):
+                    raise AutomationError('漫游签证支援区状态在报告提交前已变化。')
                 if temporary.read_text(encoding='utf8') != payload:
                     raise AutomationError(f'{label}报告临时文件在提交前已变化。')
                 if self.window.emergency_pressed():
                     raise Stopped('F10 紧急停止。')
-                self.guard_window()
+                self._current(last.scene, last.sequence)
                 yield
 
         try:
@@ -413,6 +442,8 @@ class DailyRewardObserver:
         except (OSError, AutomationError) as error:
             self.record.update(page_verified=False, destination_status='unknown')
             self.record.pop('bulk_claim_visible', None)
+            if self.mode == 'support':
+                self.record.update(_SUPPORT_UNOBSERVED)
             self.step['destination_status'] = 'unknown'
             stopped = isinstance(error, Stopped)
             if stopped:
@@ -420,9 +451,35 @@ class DailyRewardObserver:
             report.status = 'stopped' if stopped else 'partial'
             report.failure_task, report.error = OPERATION, str(error)
             result.status = report.status
-            result.detail = f'{label}入口已发送，报告提交时的到页证据待核实。'
+            result.detail = (f'{label}入口已发送，报告提交时的到页证据待核实。'
+                             if self.record['entry_input'] == 'sent' else f'报告提交时的{label}画面待核实。')
             write_report()
             replace_file(temporary, destination)
+
+    def _finish_arrival(self, after, label):
+        if after:
+            self.step['after_frames'] = self._save_pair(after, 'after')
+            hint = after[-1].hint
+            self.step['destination_status'] = self.record['destination_status'] = hint
+            overview_label = _OVERVIEWS[self.mode].get(hint)
+            if overview_label:
+                self.arrival = after
+                self.record['page_verified'] = True
+                if self._bulk_claim_visible():
+                    self.record['bulk_claim_visible'] = True
+                if self.mode == 'support':
+                    self.record.update(self._support_state(hint))
+                if hint == _SUPPORT_SECTION:
+                    detail = f'已双帧核实{overview_label}。可领取状态与到账状态待核对。'
+                else:
+                    detail = f'已双帧核实当前账号的{overview_label}。'
+                return TaskResult(OPERATION, 'ok', detail)
+            detail = (f'{label}入口已发送，已保留随后双帧，{label}页待核实。'
+                      if self.record['entry_input'] == 'sent' else f'已保留当前双帧，{label}页待核实。')
+        else:
+            self._diagnostic()
+            detail = f'{label}入口已发送，尚未核实同账号的后续双帧。'
+        return TaskResult(OPERATION, 'partial', detail)
 
     def run(self):
         if (self.c.report.operation != OPERATION or self.mode != self.c.runner.daily_reward_mode
@@ -436,7 +493,11 @@ class DailyRewardObserver:
         label = '更多' if self.mode == 'support' else '成就'
         before = self._pair(action)
         if len(before) != 2:
-            raise AutomationError(f'未从连续新画面核实当前账号的手机{label}入口。')
+            scope = '漫游签证或手机更多入口' if self.mode == 'support' else '手机成就入口'
+            raise AutomationError(f'未从连续新画面核实当前账号的{scope}。')
+        if before[-1].action is None:
+            self.step = self.record
+            return self._finish_arrival(before, '漫游签证')
         sent_at = self._open(action, before)
         if self.mode == 'support':
             more = self._pair('open_support', after=sent_at)
@@ -447,19 +508,4 @@ class DailyRewardObserver:
             self.step.update(after_frames=rows, destination_status='more_menu_verified')
             sent_at = self._open('open_support', more, rows=rows)
             label = '漫游签证'
-        after = self._pair(after=sent_at)
-        if after:
-            self.step['after_frames'] = self._save_pair(after, 'after')
-            self.step['destination_status'] = self.record['destination_status'] = after[-1].hint
-            overview_hint, overview_label = _OVERVIEWS[self.mode]
-            if after[-1].hint == overview_hint:
-                self.arrival = after
-                self.record['page_verified'] = True
-                if self._bulk_claim_visible():
-                    self.record['bulk_claim_visible'] = True
-                return TaskResult(OPERATION, 'ok', f'已双帧核实当前账号的{overview_label}。')
-            detail = f'{label}入口已发送，已保留随后双帧，{label}页待核实。'
-        else:
-            self._diagnostic()
-            detail = f'{label}入口已发送，尚未核实同账号的后续双帧。'
-        return TaskResult(OPERATION, 'partial', detail)
+        return self._finish_arrival(self._pair(after=sent_at), label)

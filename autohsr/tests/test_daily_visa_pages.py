@@ -8,7 +8,7 @@ import unittest
 import cv2
 import numpy as np
 
-from autohsr.daily_visa_pages import visa_overview
+from autohsr.daily_visa_pages import visa_overview, visa_support_section
 from autohsr.models import Scene, Token
 
 
@@ -51,15 +51,46 @@ class VisaOverviewTests(unittest.TestCase):
         stale_sections = [token for token in self.characters.tokens if token.text in ('支援角色', '星海同行')]
         self.assertFalse(visa_overview(replace(self.collection, tokens=self.collection.tokens + stale_sections)))
 
+    def test_support_section_matches_only_the_selected_character_showcase(self):
+        self.assertTrue(visa_support_section(self.characters))
+        for other in (self.collection, self.battle_record):
+            self.assertFalse(visa_support_section(other))
+            self.assertFalse(visa_support_section(replace(other, tokens=self.characters.tokens)))
+            self.assertFalse(visa_support_section(replace(other, image=self.characters.image)))
+
     def test_layout_at_resized_fixture_and_without_the_top_capture_border(self):
-        image = cv2.resize(self.collection.image, (1920, 1080))
-        self.assertTrue(visa_overview(replace(self.collection, image=image)))
-        tokens = []
-        for token in self.collection.tokens:
-            x1, y1, x2, y2 = token.box
-            box = (x1, (y1 * 807 - 37) / 770, x2, (y2 * 807 - 37) / 770)
-            tokens.append(replace(token, box=box))
-        self.assertTrue(visa_overview(Scene(tokens, self.collection.image[37:])))
+        for classify, scene in ((visa_overview, self.collection), (visa_support_section, self.characters)):
+            with self.subTest(classify=classify.__name__):
+                image = cv2.resize(scene.image, (1920, 1080))
+                self.assertTrue(classify(replace(scene, image=image)))
+                tokens = []
+                for token in scene.tokens:
+                    x1, y1, x2, y2 = token.box
+                    box = (x1, (y1 * 807 - 37) / 770, x2, (y2 * 807 - 37) / 770)
+                    tokens.append(replace(token, box=box))
+                self.assertTrue(classify(Scene(tokens, scene.image[37:])))
+
+    def test_support_section_requires_both_exact_unique_heading_boxes(self):
+        tokens = self.characters.tokens
+        support = next(token for token in tokens if token.text == '支援角色')
+        companion = next(token for token in tokens if token.text == '星海同行')
+        for heading, other in ((support, companion), (companion, support)):
+            with self.subTest(heading=heading.text):
+                remaining = [token for token in tokens if token is not heading]
+                self.assertFalse(visa_support_section(replace(self.characters, tokens=remaining)))
+                for substitute in (replace(heading, score=.849), replace(heading, text=heading.text[:-1]),
+                                   replace(heading, box=other.box)):
+                    self.assertFalse(visa_support_section(replace(self.characters, tokens=[*remaining, substitute])))
+                conflict = replace(heading, score=.66, box=(.90, .74, .97, .79))
+                self.assertFalse(visa_support_section(replace(self.characters, tokens=[*tokens, conflict])))
+
+    def test_support_section_rejects_overlapping_or_partly_active_tabs(self):
+        double_active = self.characters.image.copy()
+        double_active[83:124, 754:890] = self.collection.image[83:124, 754:890]
+        half_active = self.characters.image.copy()
+        half_active[90:115, 620:649] = 37
+        for image in (double_active, half_active, np.rint(self.characters.image * .90).astype(np.uint8)):
+            self.assertFalse(visa_support_section(replace(self.characters, image=image)))
 
     def test_title_or_gift_without_complete_landmarks_cannot_confirm_the_page(self):
         tokens = self.collection.tokens
@@ -126,6 +157,8 @@ class VisaOverviewTests(unittest.TestCase):
         for overlay in overlays:
             with self.subTest(overlay=[token.text for token in overlay]):
                 self.assertFalse(visa_overview(replace(self.collection, tokens=self.collection.tokens + overlay)))
+                self.assertFalse(visa_support_section(replace(
+                    self.characters, tokens=self.characters.tokens + overlay)))
 
 
 if __name__ == '__main__':

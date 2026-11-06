@@ -280,6 +280,24 @@ class Lifecycle(unittest.TestCase):
                 self.assertIsNone(runner.battle_budget)
         self.assertTrue(all(call.kwargs == {'operation': 'check'} for call in host._read_settings.call_args_list))
 
+    def test_achievement_claim_runs_only_its_native_operation_with_manual_handoff(self):
+        settings, callback, emit = Settings(auto_launch=True), Mock(), Mock()
+        host = SimpleNamespace(_read_settings=Mock(return_value=settings), _start_scoped_runner=Mock(return_value=True))
+        with patch('autohsr.app.Runner') as runner:
+            self.assertTrue(AutoHSRWindow._start_achievement_bulk_claim(host, callback))
+            title, operation, factory, present = host._start_scoped_runner.call_args.args
+            self.assertEqual((title, operation), ('本次成就一键领取', 'achievement_bulk_claim'))
+            self.assertIs(present, callback)
+            host._read_settings.assert_called_once_with(operation='check')
+            runner.assert_not_called()
+            self.assertIs(factory(emit), runner.return_value)
+            runner.assert_called_once_with(settings, emit, operation='achievement_bulk_claim',
+                                           observation_wait_for_foreground=True)
+        host._read_settings.return_value = None
+        host._start_scoped_runner.reset_mock()
+        self.assertFalse(AutoHSRWindow._start_achievement_bulk_claim(host, callback))
+        host._start_scoped_runner.assert_not_called()
+
     def test_schedule_activation_rejects_saved_revision_source_and_budget_drift(self):
         with TemporaryDirectory(prefix='autohsr-schedule-desktop-qa-') as directory:
             root = Path(directory)

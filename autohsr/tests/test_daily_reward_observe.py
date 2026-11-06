@@ -19,6 +19,7 @@ from autohsr.__main__ import main
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.daily_reward_observe import OPERATION, phone_achievement_target
+from autohsr.desktop_daily_observe import observation_result
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, RunReport, Scene, Token
 from autohsr.policy import guard_click
 from autohsr.storage import hold_read_sources
@@ -413,11 +414,123 @@ class DailyRewardObserveTests(unittest.TestCase):
         self.assertEqual([row['capture_sequence'] for row in final_step['after_frames']], [7, 8])
         self.assertEqual(len(self.events), 2)
 
-        for ending in ([collection, visa_collection(account=OTHER)], [visa_collection('characters')] * 2):
+        for ending in ([collection, visa_collection(account=OTHER)],
+                       [collection, visa_collection('characters')],
+                       [visa_collection('battle-record')] * 2):
             with self.subTest(ending=ending[1].tokens):
                 report = self.run_cli([*before, *ending], mode='support')
                 self.assertEqual(report['status'], 'partial')
                 self.assertEqual(len(self.events), 2)
+
+    def test_open_visa_read_keeps_the_two_navigation_steps_idle(self):
+        for name, hint, section in (
+                ('collection', 'support_collection_overview', 'unknown'),
+                ('characters', 'support_character_overview', 'visible')):
+            with self.subTest(name=name):
+                report = self.run_cli([visa_collection(name)] * 2, mode='support', exit_code=0)
+                result = report['daily_reward_observe']
+                self.assertEqual(result['destination_status'], hint)
+                self.assertEqual((result['entry_input'], result['support_section'], result['claimable_state'],
+                                  result['claim_receipt_status']), ('not_sent', section, 'unknown', 'not_observed'))
+                after = result['after_frames']
+                self.assertEqual([(row['capture_sequence'], row['hint']) for row in after], [(1, hint), (2, hint)])
+                self.assertNotEqual(after[0]['screenshot'], after[1]['screenshot'])
+                for step in result['steps'].values():
+                    self.assertEqual(step, dict(entry_input='not_sent', destination_status='unknown',
+                                                before_frames=[], after_frames=[]))
+                self.assertFalse(list(Path(report['run_dir']).glob('*intent.json')))
+                self.assertEqual(self.events, [])
+                title, detail = observation_result('support', report)
+                if name == 'characters':
+                    self.assertEqual((title, detail), ('漫游签证支援区已核实', '可领取状态待核对。到账状态待核对。'))
+                else:
+                    self.assertEqual(title, '漫游签证收集展示已核实')
+
+    def test_phone_route_can_verify_the_support_section_without_changing_tabs(self):
+        before = [support_phone() for _ in range(3)] + [support_phone(menu=True) for _ in range(3)]
+        roles = [visa_collection('characters')] * 2
+        report = self.run_cli(before + roles, mode='support', exit_code=0)
+        result = report['daily_reward_observe']
+        self.assertEqual(result['support_section'], 'visible')
+        self.assertEqual(result['claimable_state'], 'unknown')
+        self.assertEqual(result['claim_receipt_status'], 'not_observed')
+        self.assertEqual(result['after_frames'], [])
+        more, visa = (result['steps'][step] for step in ('open_more', 'open_support'))
+        self.assertEqual(more['after_frames'], visa['before_frames'])
+        self.assertEqual([row['capture_sequence'] for row in visa['after_frames']], [7, 8])
+        self.assertEqual(len(self.events), 2)
+        self.assertEqual(observation_result('support', report)[0], '漫游签证支援区已核实')
+
+    def test_open_support_needs_adjacent_clean_same_account_frames_without_falling_back_to_navigation(self):
+        role = visa_collection('characters')
+        modal = visa_collection('characters')
+        modal.tokens.append(Token('获得物品', .99, (.44, .28, .54, .33)))
+        cases = ([role, visa_collection('characters', account=OTHER)],
+                 [role, EmptyCapture('transition'), role],
+                 [role, visa_collection('battle-record')],
+                 [role] + [support_phone()] * 5,
+                 [modal, modal])
+        for frames in cases:
+            with self.subTest(frames=[type(frame).__name__ for frame in frames]):
+                report = self.run_cli(frames, mode='support')
+                result = report['daily_reward_observe']
+                self.assertEqual((result['entry_input'], result['support_section'], result['claimable_state'],
+                                  result['claim_receipt_status']), ('not_sent', 'unknown', 'unknown', 'not_observed'))
+                self.assertEqual(self.events, [])
+
+    def test_open_support_publication_withdraws_on_stop_focus_or_changed_evidence(self):
+        def lose_focus(_runner, _directory, save):
+            self.window.guard.side_effect = FocusLost('synthetic focus loss at publication')
+            return save()
+
+        def change_evidence(runner, directory, save):
+            first = runner.report.daily_reward_observe['after_frames'][0]
+            path = directory / first['screenshot']
+            path.write_bytes(path.read_bytes() + b'changed')
+            return save()
+
+        def change_fields(runner, _directory, save):
+            runner.report.daily_reward_observe['claimable_state'] = 'available'
+            return save()
+
+        def stop_at_final_guard(runner, _directory, save):
+            checks = count(1)
+
+            def guard(_geometry):
+                if next(checks) == 2:
+                    runner.stop()
+                return self.window.geometry
+
+            self.window.guard.side_effect = guard
+            return save()
+
+        def change_epoch_at_final_guard(runner, _directory, save):
+            checks = count(1)
+
+            def guard(_geometry):
+                if next(checks) == 2:
+                    runner.input_epoch += 1
+                return self.window.geometry
+
+            self.window.guard.side_effect = guard
+            return save()
+
+        checks = (('stopped', dict(before_native=lambda count: count == 1)),
+                  ('partial', dict(publication_hook=lose_focus)),
+                  ('partial', dict(publication_hook=change_evidence)),
+                  ('partial', dict(publication_hook=change_fields)),
+                  ('stopped', dict(publication_hook=stop_at_final_guard)),
+                  ('partial', dict(publication_hook=change_epoch_at_final_guard)))
+        for status, options in checks:
+            with self.subTest(options=options):
+                report = self.run_cli([visa_collection('characters')] * 2, mode='support', **options)
+                self.assertEqual(report['status'], status)
+                result = report['daily_reward_observe']
+                self.assertEqual((result['entry_input'], result['destination_status'], result['support_section'],
+                                  result['claimable_state'], result['claim_receipt_status']),
+                                 ('not_sent', 'unknown', 'unknown', 'unknown', 'not_observed'))
+                self.assertEqual(self.events, [])
+                self.assertNotIn('入口已发送', report['results'][-1]['detail'])
 
     def test_stop_at_visa_collection_publication_preserves_both_inputs(self):
         before = [support_phone() for _ in range(3)] + [support_phone(menu=True) for _ in range(3)]

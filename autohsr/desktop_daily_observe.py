@@ -4,8 +4,12 @@ from dataclasses import dataclass, field
 from tkinter import ttk
 
 from . import theme
+from .daily_observe import ACHIEVEMENT_CLAIM_OPERATION as ACHIEVEMENT_CLAIM
 from .desktop_selected_page_check import MODE as SELECTED_PAGES
 from .desktop_selected_page_check import PageCheckDraft, SelectedPageCheckFields, result_text as selected_page_result
+
+
+_CLAIM_LABEL = '本次成就一键领取'
 
 
 @dataclass(frozen=True)
@@ -19,7 +23,8 @@ _SCOPES = {
     'achievements': _Scope('成就总览', 'daily_reward_observe',
                            '先打开游戏手机菜单。开始核对后切回游戏，将核对并尝试打开成就入口一次。'),
     'support': _Scope('漫游签证', 'daily_reward_observe',
-                      '先打开游戏手机菜单。开始核对后切回游戏，可依次核对并打开「更多」和「漫游签证」。'),
+                      '先打开漫游签证的角色展示或手机菜单。开始核对后切回游戏。已打开签证时只读当前页面。'
+                      '从手机菜单开始会依次核对并尝试打开「更多」和「漫游签证」。'),
     'messages': _Scope('短信', 'daily_message_observe',
                        '先打开游戏手机菜单或新消息通知面板。开始核对后切回游戏，只读当前页面。'),
     'odyssey': _Scope('巡星之礼', 'daily_event_observe',
@@ -28,6 +33,8 @@ _SCOPES = {
                      '先在游戏中打开日常页面。开始核对后手动切回游戏，让已登录的窗口保持前台。只读当前页面。'),
     SELECTED_PAGES: _Scope('核对所选页面', 'task_workflow',
                            '按预览顺序切换并核对，活动页面排在末尾。开始后请手动切回已登录的游戏前台。'),
+    ACHIEVEMENT_CLAIM: _Scope(_CLAIM_LABEL, ACHIEVEMENT_CLAIM,
+                              '先在游戏打开有金色一键按钮的成就总览。开始后手动切回游戏并保持前台。'),
 }
 _BY_LABEL = {scope.label: mode for mode, scope in _SCOPES.items()}
 _UNKNOWN = ('结果待核对', '请核对游戏前台和所选范围。')
@@ -37,7 +44,56 @@ _STOPPED = ('已停止', '本次核对已停止。')
 _FAILED = ('核对未完成', '请核对游戏前台和所选范围。')
 
 
+def _support_arrival_frames(value, more, support, sent):
+    if sent and value.get('entry_input') == 'sent':
+        sources = more.get('after_frames')
+        if isinstance(sources, list) and len(sources) == 2 and sources == support.get('before_frames'):
+            return support.get('after_frames')
+    if value.get('entry_input') == 'not_sent' and all(
+            isinstance(step, dict) and step.get('entry_input') == 'not_sent'
+            and step.get('destination_status') == 'unknown' and 'intent' not in step
+            and step.get('before_frames') == step.get('after_frames') == [] for step in (more, support)):
+        return value.get('after_frames')
+    return None
+
+
+def _support_result(value, status):
+    destination = value.get('destination_status')
+    steps = value.get('steps')
+    more = steps.get('open_more') if isinstance(steps, dict) else None
+    support = steps.get('open_support') if isinstance(steps, dict) else None
+    more_verified = (isinstance(more, dict) and more.get('entry_input') == 'sent'
+                     and more.get('destination_status') == 'more_menu_verified')
+    sent = (more_verified and isinstance(support, dict) and support.get('entry_input') == 'sent'
+            and support.get('destination_status') == destination)
+    frames = _support_arrival_frames(value, more, support, sent)
+    pair = (isinstance(frames, list) and len(frames) == 2
+            and all(isinstance(frame, dict) and frame.get('hint') == destination
+                    and type(frame.get('capture_sequence')) is int for frame in frames)
+            and frames[0]['capture_sequence'] > 0
+            and frames[1]['capture_sequence'] == frames[0]['capture_sequence'] + 1)
+    if value.get('page_verified') is True and status == 'success' and pair:
+        if destination == 'support_collection_overview':
+            return '漫游签证收集展示已核实', '支援奖励状态待核对。'
+        if (destination == 'support_character_overview' and value.get('support_section') == 'visible'
+                and value.get('claimable_state') == 'unknown' and value.get('claim_receipt_status') == 'not_observed'):
+            return '漫游签证支援区已核实', '可领取状态待核对。到账状态待核对。'
+    if value.get('page_verified') is not False:
+        return _UNKNOWN
+    if sent and destination == 'support_title_only':
+        return '漫游签证待核对', '已核实更多菜单，并记录漫游签证标题。页面与奖励状态待核对。'
+    if more_verified:
+        return '漫游签证待核对', '更多菜单已核实，签证页面与奖励状态待核对。'
+    if pair and destination == 'support_title_only':
+        return '漫游签证待核对', '已记录当前漫游签证标题。页面与奖励状态待核对。'
+    if value.get('entry_input') in ('sent', 'unconfirmed'):
+        return '漫游签证待核对', '入口提交已有记录，页面与奖励状态待核对。'
+    return _UNKNOWN
+
+
 def _navigation_result(mode, value, status):
+    if mode == 'support':
+        return _support_result(value, status)
     title = _SCOPES[mode].label
     destination = value.get('destination_status')
     if (mode == 'achievements' and status == 'success' and value.get('page_verified') is True
@@ -45,24 +101,6 @@ def _navigation_result(mode, value, status):
         if value.get('bulk_claim_visible') is True:
             return title + '已核实', '两帧均看到「一键领取奖励」。'
         return title + '已核实', '奖励状态待核对。'
-    if mode == 'support':
-        steps = value.get('steps')
-        more = steps.get('open_more') if isinstance(steps, dict) else None
-        support = steps.get('open_support') if isinstance(steps, dict) else None
-        if (isinstance(more, dict) and more.get('entry_input') == 'sent'
-                and more.get('destination_status') == 'more_menu_verified'):
-            sent = (isinstance(support, dict) and support.get('entry_input') == 'sent'
-                    and support.get('destination_status') == destination)
-            if (sent and status == 'success' and value.get('page_verified') is True
-                    and value.get('entry_input') == 'sent' and destination == 'support_collection_overview'):
-                sources = more.get('after_frames')
-                if isinstance(sources, list) and len(sources) == 2 and sources == support.get('before_frames'):
-                    return '漫游签证收集展示已核实', '支援奖励状态待核对。'
-            if value.get('page_verified') is not False:
-                return _UNKNOWN
-            if sent and destination == 'support_title_only':
-                return '漫游签证待核对', '已核实更多菜单，并记录漫游签证标题。页面与奖励状态待核对。'
-            return '漫游签证待核对', '更多菜单已核实，签证页面与奖励状态待核对。'
     if value.get('page_verified') is not False:
         return _UNKNOWN
     if mode == 'achievements' and destination == 'achievement_title_only' and value.get('entry_input') == 'sent':
@@ -137,8 +175,61 @@ def _odyssey_result(value):
     return title, '\n'.join(details) or '签到卡片状态待核对。'
 
 
+def _claim_amount(value):
+    return value if type(value) is int and 0 <= value <= 999_999_999 else None
+
+
+def _achievement_claim_result(report):
+    if (not isinstance(report, dict) or report.get('operation') != ACHIEVEMENT_CLAIM
+            or report.get('report_saved') is not True):
+        return '成就领取待核对', '本次领取回执待核对。'
+    value, status = report.get(ACHIEVEMENT_CLAIM), report.get('status')
+    if (not isinstance(value, dict) or type(value.get('schema')) is not int or value['schema'] != 1
+            or status not in ('success', 'partial', 'failed', 'stopped')):
+        return '成就领取待核对', '本次领取回执待核对。'
+
+    actions = {'not_sent': '未发送', 'sent': '已发送', 'unknown': '发送待核对'}
+    bulk, confirm = value.get('bulk_input'), value.get('confirm_input')
+    bulk_text = actions.get(bulk, '待核对') if isinstance(bulk, str) else '待核对'
+    confirm_text = actions.get(confirm, '待核对') if isinstance(confirm, str) else '待核对'
+    account = value.get('account_verified') is True
+    receipt = _claim_amount(value.get('receipt_total'))
+    overlay = _claim_amount(value.get('overlay_quantity'))
+    observed_return = (bulk == confirm == 'sent' and bool(receipt) and receipt == overlay
+                       and value.get('overview_return_verified') is True)
+    returned = observed_return and account
+    cleared = returned and value.get('overview_controls_cleared') is True
+    return_text = '已回页' if returned else '有回页记录，来源待核对' if observed_return else '待核对'
+    reward = '待核对'
+    if account and bulk == 'sent' and receipt:
+        reward = f'明细 {receipt} 星琼'
+        if confirm == 'sent' and overlay == receipt:
+            reward += f'，物品 {overlay} 星琼'
+
+    before = _claim_amount(value.get('jade_balance_before'))
+    after = _claim_amount(value.get('jade_balance_after'))
+    delta, attributed = value.get('jade_balance_delta'), _claim_amount(value.get('jade_attributed'))
+    balance = '待核对'
+    comparable = (returned and before is not None and after is not None
+                  and type(delta) is int and delta == after - before)
+    if comparable:
+        balance = f'{before} → {after}，差额 {delta:+d}'
+    elif account and before is not None:
+        balance = f'领前 {before}，领后待核对'
+    attribution = '待核对'
+    if comparable and cleared and attributed == delta == overlay:
+        attribution = f'已归因 {attributed} 星琼'
+    title = ('成就领取已停止' if status == 'stopped' else
+             '成就领取回页已核实' if status == 'success' and cleared else '成就领取待核对')
+    return title, '\n'.join((f'一键领取 · {bulk_text}', f'明细确认 · {confirm_text}',
+                             f'成就总览 · {return_text}', f'原领取控件 · {"已清除" if cleared else "待核对"}',
+                             f'星琼展示 · {reward}', f'星琼余额 · {balance}', f'余额归因 · {attribution}'))
+
+
 def observation_result(mode, report):
     """Read only known scoped facts. Never retain the original report text or paths."""
+    if mode == ACHIEVEMENT_CLAIM:
+        return _achievement_claim_result(report)
     scope = _SCOPES.get(mode) if isinstance(mode, str) else None
     if (scope is None or not isinstance(report, dict) or report.get('operation') != scope.operation
             or report.get('report_saved') is not True):
@@ -181,15 +272,15 @@ class DailyObservationPanel(ttk.Frame):
         self.columnconfigure(1, weight=1)
         ttk.Label(self, text='日常页面核对', style='CardTitle.TLabel').grid(
             row=0, column=0, columnspan=2, sticky='w')
-        ttk.Label(self, text='核对范围', style='Card.TLabel').grid(
+        ttk.Label(self, text='本次操作', style='Card.TLabel').grid(
             row=1, column=0, sticky='w', padx=(0, pad), pady=(pad, 0))
         self.scope = ttk.Combobox(self, values=tuple(_BY_LABEL), state='readonly', width=14)
         self.scope.grid(row=1, column=1, sticky='w', pady=(pad, 0))
         self.scope.bind('<<ComboboxSelected>>', self._selected)
         self.hint = theme.wrapped_label(self, style='CardHint.TLabel')
         self.hint.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(pad, 0))
-        theme.wrapped_label(self, text='领取操作由你在游戏内完成。', style='CardHint.TLabel').grid(
-            row=3, column=0, columnspan=2, sticky='ew', pady=(round(pad / 2), 0))
+        self.note = theme.wrapped_label(self, style='CardHint.TLabel')
+        self.note.grid(row=3, column=0, columnspan=2, sticky='ew', pady=(round(pad / 2), 0))
         self.page_check = SelectedPageCheckFields(self, model.page_check, scale=ui.ui_scale,
             can_edit=self._can_edit_page_check, changed=self._page_check_changed)
         self.page_check.grid(row=4, column=0, columnspan=2, sticky='ew', pady=(pad, 0))
@@ -212,7 +303,8 @@ class DailyObservationPanel(ttk.Frame):
     def primary_action(self):
         if self.model.mode == SELECTED_PAGES:
             return '核对所选页面', self.start, self._can_edit_page_check() and self.page_check.recipe is not None
-        return '核对页面', self.start, self._idle and self._active
+        title = _CLAIM_LABEL if self.model.mode == ACHIEVEMENT_CLAIM else '核对页面'
+        return title, self.start, self._idle and self._active
 
     def focus_entry(self):
         if self._idle:
@@ -225,12 +317,17 @@ class DailyObservationPanel(ttk.Frame):
             self.scope.set(scope.label)
         self.scope.configure(state='readonly' if self._idle else 'disabled')
         self.hint.configure(text=scope.hint)
+        claim = model.mode == ACHIEVEMENT_CLAIM
+        self.note.configure(text=('本次只提交一键领取和专属明细确认。出现星琼物品提示后，请手动关闭并留在总览。'
+                                  if claim else '领取操作由你在游戏内完成。'))
         if model.mode == SELECTED_PAGES:
             self.page_check.grid()
             self.page_check.refresh()
         else:
             self.page_check.grid_remove()
-        title, detail = _RUNNING if model.job is not None else model.results.get(model.mode, _WAITING)
+        waiting = ('等待领取', '') if claim else _WAITING
+        running = ('正在执行本次成就领取', _RUNNING[1]) if claim else _RUNNING
+        title, detail = running if model.job is not None else model.results.get(model.mode, waiting)
         self.result_title.configure(text=title)
         self.result_detail.configure(text=detail)
 
@@ -276,12 +373,16 @@ class DailyObservationPanel(ttk.Frame):
                 update()
 
         try:
-            accepted = (ui._start_selected_page_check(recipe, complete) if recipe is not None
-                        else ui._start_daily_observation(mode, complete))
+            if mode == ACHIEVEMENT_CLAIM:
+                accepted = ui._start_achievement_bulk_claim(complete)
+            elif recipe is not None:
+                accepted = ui._start_selected_page_check(recipe, complete)
+            else:
+                accepted = ui._start_daily_observation(mode, complete)
         except Exception:
             if model.job is ticket:
                 model.job = None
-                model.results[mode] = _FAILED
+                model.results[mode] = observation_result(mode, None) if mode == ACHIEVEMENT_CLAIM else _FAILED
             update()
             return False
         if not accepted and model.job is ticket:
