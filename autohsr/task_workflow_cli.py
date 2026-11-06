@@ -109,7 +109,10 @@ def _screen_check(args, parser, raw_args):
             from .config import Settings
             from .task_workflow_run import TaskWorkflowRunner
 
-            settings = Settings.load(args.config)
+            try:
+                settings = Settings.load(args.config)
+            except (OSError, TypeError, ValueError):
+                raise WorkflowError('所选页面核对无法读取有效的设置文件。') from None
             runner = TaskWorkflowRunner(settings, recipe.document, base_dir=recipe.base_dir)
             data = saved_result(recipe, runner.run().to_dict())
     except KeyboardInterrupt:

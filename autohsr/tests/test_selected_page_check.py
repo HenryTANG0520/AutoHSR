@@ -179,6 +179,18 @@ class PageCheckProjectionTests(TestCase):
             self.assertEqual(invalid.exception.code, 2)
         self.assertEqual(json.loads(output.getvalue())['pages'], ['mail', 'odyssey'])
 
+    def test_cli_rejects_bad_settings_as_anonymous_json_before_runner_start(self):
+        config = self.root / 'config-private-fixture.json'
+        for raw in ('{"private-fixture":', 'null', '{"private-fixture":true}'):
+            with self.subTest(raw=raw):
+                config.write_text(raw, encoding='utf8')
+                errors = io.StringIO()
+                with patch('autohsr.task_workflow_run.TaskWorkflowRunner', side_effect=AssertionError('invalid config ran game')), \
+                        redirect_stderr(errors):
+                    self.assertEqual(main(['--screen-check-pages', 'mail', '--config', str(config)]), 2)
+                self.assertEqual(json.loads(errors.getvalue()),
+                                 dict(status='failed', error='所选页面核对无法读取有效的设置文件。'))
+
 
 class PageCheckRunnerTests(TestCase):
     def run_case(self, targets, *, late_loss=False, short_send=False, account_drift=False, cli=False):
