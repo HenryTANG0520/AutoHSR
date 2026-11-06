@@ -100,9 +100,9 @@ def _dependency_paths(configured):
 
 def _execution_busy():
     """Read both existing named markers without creating or stealing either."""
-    from .workflow_lease import NAME, _kernel
+    from .workflow_lease import NAME, NATIVE_NAME, _kernel
     kernel = _kernel()
-    for name in (NAME, 'Local\\AutoHSR.DailyRunner'):
+    for name in (NAME, NATIVE_NAME):
         C.set_last_error(0)
         handle = kernel.OpenMutexW(0x00100000, False, name)
         error = C.get_last_error()

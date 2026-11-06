@@ -26,7 +26,7 @@
 
 ## 纯文本通知
 
-在 Python API 中给 `load_march7th_yaml` 或 `convert_march7th_yaml` 传入 `notify_profile='my-profile'`，或者使用转换专用 CLI 参数。该名称写入各通知步骤的 `params.profile`。默认导入仍拒绝未绑定的通知，普通桌面打开 YAML 沿用这一规则。转换和 `--task-workflow-check` 只校验名称格式、正文和任务树，均离线且不读取已保存的方案。手动运行时由原入口核实方案及其版本，CLI 仍要求另外明确给出 `--workflow-allow-notify`。[原生任务流](task-workflows.md) · [通知方案](notifications.md)
+桌面从「设置 → 工具 → 任务流」选择「导入 YAML 图文…」。选定 YAML 后，可为其中的纯文本通知明确选一个已有方案，默认不绑定。普通「打开任务流」保留严格导入。也可在 Python API 中传入 `notify_profile='my-profile'`，或使用转换专用 CLI 参数。方案名称写入通知步骤的 `params.profile`。桌面选择和 CLI 转换都只生成草稿或新 JSON。手动运行时由原入口核实方案及其版本，CLI 需要另外明确给出 `--workflow-allow-notify`。[原生任务流](task-workflows.md) · [通知方案](notifications.md)
 
 ```powershell
 .\.venv\Scripts\python.exe -m autohsr --task-workflow-convert-yaml workflow.yaml --workflow-json-destination migrated.json --workflow-yaml-notify-profile my-profile

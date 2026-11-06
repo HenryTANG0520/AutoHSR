@@ -345,12 +345,19 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     if args.self_test:
         import unittest
+        from unittest.mock import patch
+        from uuid import uuid4
+
+        from . import workflow_lease
+
         test_path = Path(__file__).resolve().parent / "tests"
         if getattr(sys, "frozen", False) or not test_path.is_dir():
             print(_json({"error": "请在源码目录使用 --self-test；打包版不包含单元测试。"}), file=sys.stderr)
             return 2
-        tests = unittest.defaultTestLoader.discover(str(test_path))
-        result = unittest.TextTestRunner(verbosity=2).run(tests)
+        namespace = f'Local\\AutoHSR.SelfTest.{uuid4().hex}'
+        with patch.multiple(workflow_lease, NAME=namespace + '.Workflow', NATIVE_NAME=namespace + '.Runner'):
+            tests = unittest.defaultTestLoader.discover(str(test_path))
+            result = unittest.TextTestRunner(verbosity=2).run(tests)
         return 0 if result.wasSuccessful() else 1
     if not args.daily_attachment_only and not any((args.check, args.scan_dungeons, build_target, args.daily_reward_observe, args.launch, args.run, args.plan,
                 args.redeem_codes, args.challenge_prepare, args.challenge_result, args.team_preset_calibration,

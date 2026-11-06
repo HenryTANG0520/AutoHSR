@@ -577,7 +577,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 ### 离线检查
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s autohsr/tests -v
+.\.venv\Scripts\python.exe -m autohsr --self-test
 .\.venv\Scripts\python.exe tools/gui_smoke.py
 .\.venv\Scripts\python.exe tools/ui_layout_smoke.py
 .\.venv\Scripts\python.exe tools/overlay_smoke.py

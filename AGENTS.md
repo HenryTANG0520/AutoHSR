@@ -106,13 +106,14 @@
 按改动选检查，纯文档不操作游戏：
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s autohsr/tests -v
+.\.venv\Scripts\python.exe -m autohsr --self-test
 .\.venv\Scripts\python.exe tools/gui_smoke.py
 .\.venv\Scripts\python.exe tools/overlay_smoke.py
 git diff --check
 ```
 
 - 文档查代码事实、相对链接、CLI帮助、默认配置，不重刷本。流程先相关回归，再按影响面全量；GUI用假后端，字幕用独立模拟窗。
+- 全量自检为每次运行分配独立的任务流锁和原生运行锁。并发专项也应在各自测试进程内隔离命名锁，跨进程锁协议的测试须显式共享自己的测试名称。
 - 实机仅已授权范围，优先小批量。卡住先读日志/报告/失败证据，原报告保留。
 - 记录客户端、日期、请求、完成、资源、人工介入、未验证；十次累计独立成功不等于十次尝试全成功，接续不算独立。
 - 检查通过后仅有新修改、失败、未解问题才扩大或重复。

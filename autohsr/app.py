@@ -2959,6 +2959,7 @@ class Runner:
     def run(self) -> RunReport:
         from .currency_wars_overclock import OPERATION as OVERCLOCK_CONFIGURE
         from .currency_wars_overclock_session import FLOW_OPERATION, PREP_OPERATION, START_OPERATION, OverclockSession
+        from .workflow_lease import NATIVE_NAME
         from .workflows import DailyWorkflow
         from .windows import kernel32
         directory = ROOT / "runs" / datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -2973,7 +2974,7 @@ class Runner:
         self._logger.addHandler(handler)
         kernel32.CreateMutexW.argtypes = [C.c_void_p, C.c_int, C.c_wchar_p]
         kernel32.CreateMutexW.restype = C.c_void_p
-        mutex = kernel32.CreateMutexW(None, False, "Local\\AutoHSR.DailyRunner")
+        mutex = kernel32.CreateMutexW(None, False, NATIVE_NAME)
         already_running = C.get_last_error() == 183
         context = None
         points_workflow = None

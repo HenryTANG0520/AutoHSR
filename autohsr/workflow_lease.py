@@ -7,6 +7,7 @@ import threading
 from .models import AutomationError
 
 NAME = 'Local\\AutoHSR.TaskWorkflow'
+NATIVE_NAME = 'Local\\AutoHSR.DailyRunner'
 _owner = ContextVar('autohsr_workflow_owner', default=None)
 
 

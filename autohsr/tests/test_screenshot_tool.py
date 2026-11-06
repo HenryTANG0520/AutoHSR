@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 from PIL import Image
 
+from autohsr import workflow_lease
 from autohsr.config import Settings
 from autohsr.models import AutomationError, Stopped
 from autohsr.screenshot_tool import (ScreenshotError, capture_game, open_image, read_selection, save_selection,
@@ -72,7 +73,7 @@ class ScreenshotToolTests(TestCase):
               patch('autohsr.windows.find_game', return_value=window) as find):
             image = capture_game(Settings(), lambda: False)
         sequence.assert_called_once_with()
-        kernel.CreateMutexW.assert_called_once_with(None, False, 'Local\\AutoHSR.DailyRunner')
+        kernel.CreateMutexW.assert_called_once_with(None, False, workflow_lease.NATIVE_NAME)
         kernel.CloseHandle.assert_called_once_with(17)
         find.assert_called_once()
         self.assertEqual([call[0] for call in window.mock_calls if call[0] != 'emergency_pressed'],

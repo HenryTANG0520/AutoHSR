@@ -114,14 +114,14 @@ def _foreground_geometry(window, checkpoint):
 def capture_game(settings, cancel, *, foreground_only=False):
     """Reserve the native foreground capture slot and capture only the game client."""
     from .windows import find_game
-    from .workflow_lease import _kernel, workflow_lease
+    from .workflow_lease import NATIVE_NAME, _kernel, workflow_lease
 
     _checkpoint(cancel)
     settings.validate('check')
     with workflow_lease():
         kernel = _kernel()
         C.set_last_error(0)
-        slot = kernel.CreateMutexW(None, False, 'Local\\AutoHSR.DailyRunner')
+        slot = kernel.CreateMutexW(None, False, NATIVE_NAME)
         if not slot or C.get_last_error() == 183:
             if slot:
                 kernel.CloseHandle(slot)
