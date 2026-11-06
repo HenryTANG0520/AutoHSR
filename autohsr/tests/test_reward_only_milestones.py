@@ -1,0 +1,198 @@
+"""The reward-only CLI through Context and the native sender with simulated frames."""
+
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
+import ctypes
+import io
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+import unittest
+from unittest.mock import Mock, patch
+from uuid import uuid4
+
+import cv2
+import numpy as np
+
+from autohsr.__main__ import main
+from autohsr.app import Context
+from autohsr.config import RESOURCE_ROOT, Settings
+from autohsr.models import EmptyCapture, InputInterrupted, Scene
+from autohsr.tests.test_core import token
+from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, _Window
+from autohsr.tests.test_redemption_pages import phone_scene
+from autohsr.vision import Vision
+from autohsr.windows import INPUT
+from autohsr.workflows import DailyWorkflow
+
+
+CENTERS = {100: .333, 200: .459, 300: .586, 400: .713, 500: .840}
+
+
+def stamp(image, template, x, y):
+    path = RESOURCE_ROOT / 'assets' / 'templates' / (template + '.png')
+    pixels = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+    h, w = pixels.shape[:2]
+    left, top = round(x * image.shape[1] - w / 2), round(y * image.shape[0] - h / 2)
+    patch = image[top:top+h, left:left+w]
+    if pixels.shape[2] == 4:
+        alpha = pixels[:, :, 3:4] / 255
+        patch[:] = pixels[:, :, :3] * alpha + patch * (1 - alpha)
+    else:
+        patch[:] = pixels
+
+
+def training(activity, *, gifts=(), claimed=(), labels=(), account=ACCOUNT, tab='每日实训'):
+    image = np.full((1080, 1920, 3), 70, dtype=np.uint8)
+    stamp(image, 'daily_activity_badge', .178, .285)
+    for points in gifts:
+        stamp(image, 'daily_reward', CENTERS[points], .287)
+    for points in claimed:
+        stamp(image, 'daily_completed', CENTERS[points], .288)
+    fields = [account, token('星际和平指南', .082, .05), token(tab, .082, .076),
+              token(str(activity), .178, .329)]
+    fields.extend(token(str(points), x, .33) for points, x in CENTERS.items())
+    return Scene([*fields, *labels], image)
+
+
+def item_overlay(*, account=ACCOUNT):
+    image = np.full((1080, 1920, 3), 40, dtype=np.uint8)
+    return Scene([account, token('获得物品', .50, .29), token('点击空白处关闭', .50, .79)], image)
+
+
+class RewardOnlyMilestonesTests(unittest.TestCase):
+    def invoke(self, *phases):
+        clicks = []
+        phone = phone_scene()
+        phone.tokens.append(ACCOUNT)
+        phases = ((phone,), *phases)
+
+        def frames():
+            phase, index = None, 0
+            while True:
+                selected = min(len(clicks), len(phases) - 1)
+                if selected != phase:
+                    phase, index = selected, 0
+                available = phases[phase]
+                yield available[min(index, len(available) - 1)]
+                index += 1
+
+        def submit(length, raw, _size):
+            events = ctypes.cast(raw, ctypes.POINTER(INPUT))
+            self.assertEqual([events[i].mi.dwFlags for i in range(length)], [0xC001, 2, 4])
+            clicks.append((events[0].mi.dx / 65535, events[0].mi.dy / 65535))
+            return length
+
+        window = _Window(frames())
+        window.focus = Mock()
+        native = SimpleNamespace(GetAsyncKeyState=Mock(return_value=0),
+                                 GetSystemMetrics=Mock(side_effect={76: 0, 77: 0, 78: 1920, 79: 1080}.__getitem__),
+                                 SendInput=Mock(side_effect=submit))
+        kernel = SimpleNamespace(CreateMutexW=Mock(return_value=1), CloseHandle=Mock())
+        template = Vision.__new__(Vision).template
+
+        def vision(confidence):
+            return SimpleNamespace(read=window.vision(confidence).read, template=template)
+
+        with TemporaryDirectory() as temporary, ExitStack() as stack:
+            root = Path(temporary).resolve()
+            config = root / 'config.json'
+            Settings(assignments=True, battle=True, daily_synthesis=True, mail=True, battlepass=True,
+                     overlay_logs=False).save(config)
+            saved = config.read_bytes()
+            for name, value in (('autohsr.app.ROOT', root), ('autohsr.windows.user32', native),
+                                ('autohsr.windows.kernel32', kernel),
+                                ('autohsr.workflow_lease.NAME', 'Local\\AutoHSR.RewardOnlyQA.' + uuid4().hex)):
+                stack.enter_context(patch(name, value))
+            for name, options in (
+                ('autohsr.app.C.get_last_error', dict(return_value=0)),
+                ('autohsr.app.find_game', dict(return_value=window)),
+                ('autohsr.app.Vision', dict(side_effect=vision)),
+                ('autohsr.app.Runner._arm_hotkeys', {}), ('autohsr.app.Runner._hotkeys', {}),
+                ('autohsr.app.launch_game', dict(side_effect=AssertionError('no game launch'))),
+                ('autohsr.app.is_elevated', dict(return_value=False)),
+                ('autohsr.daily_synthesis.complete_once', dict(side_effect=AssertionError('no synthesis'))),
+            ):
+                stack.enter_context(patch(name, **options))
+            for name in ('assignments', 'battle', 'mail', 'battlepass', 'redemption'):
+                stack.enter_context(patch.object(DailyWorkflow, name, side_effect=AssertionError('extra task')))
+            stack.enter_context(patch.object(Context, 'sleep', lambda context, _duration: context.checkpoint()))
+            output = io.StringIO()
+            with redirect_stdout(output), redirect_stderr(io.StringIO()):
+                code = main(['--run', '--reward-only', '--config', str(config)])
+            report = json.loads(output.getvalue())
+            self.assertEqual(report['operation'], 'reward_only')
+            self.assertEqual(config.read_bytes(), saved)
+            self.assertTrue(report['report_saved'])
+            self.assertEqual([item['task'] for item in report['results']], ['daily'])
+            self.assertEqual([report[name] for name in ('stamina_spent', 'stamina_pending',
+                                                       'immersifiers_spent', 'immersifiers_pending',
+                                                       'battle_completed')], [0] * 5)
+            with (Path(report['run_dir']) / 'report.json').open(encoding='utf8') as stream:
+                self.assertEqual(json.load(stream), report)
+        return code, report, clicks
+
+    def test_partial_activity_claims_the_visible_reached_gift_and_requires_return(self):
+        old = training(400, gifts=(100, 200, 300, 400))
+        settled = training(400, claimed=(100, 200, 300, 400))
+        code, report, clicks = self.invoke((old,), (item_overlay(),), (settled,))
+        self.assertEqual((code, report['status'], report['engagement'], report['daily_verified']),
+                         (1, 'partial', 400, False))
+        self.assertEqual(len(clicks), 3)
+        self.assertAlmostEqual(clicks[1][0], CENTERS[400], places=2)
+        self.assertAlmostEqual(clicks[2][0], .50, places=2)
+        self.assertIn('400档已领', report['results'][0]['detail'])
+
+    def test_five_claimed_milestones_still_complete_without_reward_input(self):
+        full = training(500, claimed=tuple(CENTERS))
+        code, report, clicks = self.invoke((full,))
+        self.assertEqual((code, report['status'], report['engagement'], report['daily_verified']),
+                         (0, 'success', 500, True))
+        self.assertEqual(len(clicks), 1)
+
+    def test_only_the_visible_reached_control_is_selected(self):
+        old = training(300, gifts=(200,), claimed=(100,), labels=(token('领取奖励', CENTERS[400], .29),))
+        settled = training(300, claimed=(100, 200))
+        _, report, clicks = self.invoke((old,), (settled,))
+        self.assertEqual(len(clicks), 2)
+        self.assertAlmostEqual(clicks[1][0], CENTERS[200], places=2)
+        self.assertIn('200档已领', report['results'][0]['detail'])
+        self.assertFalse(report['daily_verified'])
+        for frame in (training(0), training(300, gifts=(200, 400)),
+                      training(300, gifts=(200,), labels=(token('300', .179, .33, .72),)),
+                      training(300, gifts=(200,), account=token('UID', .06, .97))):
+            with self.subTest(frame=frame.tokens):
+                _, report, clicks = self.invoke((frame,))
+                self.assertEqual(len(clicks), 1)
+                self.assertFalse(report['daily_verified'])
+
+    def test_next_visible_reward_waits_for_two_same_slot_return_frames(self):
+        old = training(400, gifts=(300, 400), claimed=(100, 200))
+        returned = training(400, gifts=(300,), claimed=(100, 200, 400))
+        settled = training(400, claimed=(100, 200, 300, 400))
+        _, report, clicks = self.invoke((old,), (EmptyCapture('fade'), item_overlay()), (returned,), (settled,))
+        self.assertEqual(len(clicks), 4)
+        for index, x in enumerate((CENTERS[400], .50, CENTERS[300]), 1):
+            self.assertAlmostEqual(clicks[index][0], x, places=2)
+        self.assertIn('300、400档已领', report['results'][0]['detail'])
+
+    def test_stale_wrong_page_or_one_mark_never_repeats_the_click(self):
+        old = training(400, gifts=(300, 400), claimed=(100, 200))
+        stale = training(400, gifts=(300, 400), claimed=(100, 200), labels=(token('动画变化', .51, .58),))
+        one_mark = training(400, gifts=(300,), claimed=(100, 200, 400))
+        other_page = training(400, gifts=(300,), claimed=(100, 200, 400), tab='生存索引')
+        for feedback in ((stale,), (one_mark, stale), (other_page,), (item_overlay(account=OTHER),),
+                         (InputInterrupted('input epoch changed'), old)):
+            with self.subTest(feedback_type=type(feedback[0]).__name__):
+                _, report, clicks = self.invoke((old,), feedback)
+                self.assertEqual(len(clicks), 2)
+                self.assertIn('400档本次领取反馈待核对', report['results'][0]['detail'])
+                self.assertFalse(report['daily_verified'])
+
+    def test_open_overlay_does_not_confirm_a_reward_or_repeat_its_close(self):
+        old = training(400, gifts=(400,))
+        _, report, clicks = self.invoke((old,), (item_overlay(),))
+        self.assertEqual(len(clicks), 3)
+        self.assertAlmostEqual(clicks[-1][0], .50, places=2)
+        self.assertIn('400档本次领取反馈待核对', report['results'][0]['detail'])
+        self.assertFalse(report['daily_verified'])

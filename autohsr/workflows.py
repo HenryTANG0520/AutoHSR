@@ -1375,6 +1375,10 @@ class DailyWorkflow:
         activity = self._activity(scene)
         self.ctx.report.engagement = activity
         if activity != 500:
+            if self.ctx.report.operation == 'reward_only' and type(activity) is int and 100 <= activity < 500:
+                from .daily_training_rewards import claim_reached_milestones
+
+                return claim_reached_milestones(self, scene, activity)
             if (self.settings.daily_synthesis and self.ctx.report.operation == 'daily'
                     and type(activity) is int and activity < 500 and not self._daily_synthesis_attempted):
                 from .daily_synthesis import task_target, complete_once
