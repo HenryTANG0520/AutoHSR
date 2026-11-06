@@ -224,6 +224,36 @@ class AssignmentOnlyTests(unittest.TestCase):
         self.assertEqual(result.sent, ['委托', '领取奖励'])
         self.assertEqual(result.report['status'], 'partial')
 
+    def test_same_four_slots_and_unavailable_button_without_timer_reset_stay_pending(self):
+        clean = fixture('assignments_after_claim')
+        stale = replace(clean, tokens=[
+            replace(field, text='已进行：28/30小时') if field.text.startswith('已进行') else field
+            for field in clean.tokens
+        ])
+        for first_return in (stale, clean):
+            with self.subTest(first_return_is_stale=first_return is stale):
+                first = iter((first_return,))
+                result = self.invoke(overrides={'disabled': lambda: next(first, stale)})
+                self.assertEqual(result.sent, ['委托', '领取奖励', '点击空白处关闭'])
+                self.assertEqual(result.report['status'], 'partial')
+                entry, = result.report['workflow']['steps']
+                original = json.loads(Path(entry['source']['path']).read_text('utf8'))
+                self.assertEqual([(row['task'], row['status']) for row in original['results']],
+                                 [('assignments', 'partial')])
+                self.assertEqual((original['stamina_spent'], original['immersifiers_spent']), (0, 0))
+
+    def test_gold_button_requires_an_unambiguous_positive_accrual(self):
+        active = assignments_scene(claim='enabled')
+        for timer in ('已进行0/30h', '已进行：28/30小', '已进行：31/30小时'):
+            with self.subTest(timer=timer):
+                invalid = replace(active, tokens=[
+                    replace(field, text=timer) if field.text.startswith('已进行') else field
+                    for field in active.tokens
+                ])
+                result = self.invoke(overrides={'active': lambda: invalid})
+                self.assertEqual(result.sent, ['委托'])
+                self.assertEqual(result.report['status'], 'partial')
+
     def test_opened_current_settled_page_and_legacy_page_need_no_input(self):
         settled = self.invoke('disabled')
         self.assertEqual(settled.sent, [])

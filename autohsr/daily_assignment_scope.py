@@ -1,5 +1,6 @@
 """Native scope for the task tree's explicit assignments-only selection."""
 from dataclasses import dataclass, replace
+import re
 from time import monotonic
 
 from .currency_wars_identity import UID_COUNTEREVIDENCE, checked_account_key
@@ -13,6 +14,7 @@ CLAIM = 'assignment_claim'
 CLOSE = 'assignment_reward_close'
 CLAIM_AREA = (.65, .78, .97, .96)
 CLOSE_AREA = (.25, .65, .75, .97)
+ELAPSED_AREA = (.65, .45, .96, .70)
 CLOSE_LABELS = ('点击空白处关闭', '点击任意位置关闭', '点击空白处继续')
 PAYMENT = ('购买', '续购', '续费', '订购', '支付', '付款')
 
@@ -45,10 +47,22 @@ def _unique(scene, labels, region, confidence):
     return tokens[0] if len(tokens) == 1 and confidence <= tokens[0].score <= 1 else None
 
 
+def _elapsed_hours(scene, confidence):
+    fields = [token for token in scene.tokens if token.within(ELAPSED_AREA)
+              and normalize(token.text).startswith('已进行')]
+    if len(fields) != 1 or not confidence <= fields[0].score <= 1:
+        return None
+    match = re.fullmatch(r'已进行([0-9]{1,2})/30(?:小时|h)', normalize(fields[0].text))
+    hours = int(match[1]) if match else None
+    return hours if hours is not None and hours <= 30 else None
+
+
 def _target(scene, intent, confidence):
     if intent == CLAIM and _page(scene):
         claim = _unique(scene, ('领取奖励',), CLAIM_AREA, confidence)
-        if claim is not None and DailyWorkflow._assignment_claim_enabled(scene, claim) is True:
+        hours = _elapsed_hours(scene, confidence)
+        if (claim is not None and hours is not None and hours > 0
+                and DailyWorkflow._assignment_claim_enabled(scene, claim) is True):
             return claim
     if (intent == CLOSE and DailyWorkflow._login_reward_overlay(scene)
             and not DailyWorkflow._supply_overlay(scene) and not scene.has(PAYMENT)):
@@ -57,7 +71,8 @@ def _target(scene, intent, confidence):
 
 
 def _settled(flow, scene, confidence):
-    if not _page(scene) or not flow._assignment_settled(scene):
+    if (not _page(scene) or _elapsed_hours(scene, confidence) != 0
+            or not flow._assignment_settled(scene)):
         return False
     if not scene.has('领取奖励', CLAIM_AREA, exact=True):
         return True
@@ -140,7 +155,7 @@ def run(flow):
         return flow._result('assignments', 'ok', '持续委托暂无可收取奖励，已核对原委托进行中。', scene)
     claim = _target(scene, CLAIM, confidence)
     if claim is None:
-        raise AutomationError('未核实唯一可用的持续委托领取按钮。')
+        raise AutomationError('未同时核实唯一可用的持续委托领取按钮和正数累积时长。')
 
     epoch, sequence = ctx.runner.input_epoch, ctx.capture_sequence
     ctx.evidence(scene, 'assignments_before_claim')
@@ -173,5 +188,5 @@ def run(flow):
     ctx.evidence(first, 'assignments_first_settled')
     second = flow._wait(lambda page: page is not first and ctx.capture_sequence > first_sequence and settled(page),
                         timeout=8, description='复核两张委托回页画面')
-    return flow._result('assignments', 'ok', f'已提交一次领取，两张画面确认原有 {count[0]}/{count[1]} 项委托持续进行。',
-                        second)
+    return flow._result('assignments', 'ok',
+                        f'已提交一次领取，两张画面确认累积时长归零，原有 {count[0]}/{count[1]} 项委托持续进行。', second)
