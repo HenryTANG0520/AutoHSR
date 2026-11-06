@@ -1,7 +1,9 @@
-"""Local workflow observations that expose only the selected match flag."""
-from contextlib import ExitStack
+"""Workflow observations that expose only the selected match flag."""
+from contextlib import ExitStack, contextmanager
 import math
+import os
 from pathlib import Path
+import stat
 from struct import error as StructError
 from warnings import catch_warnings, simplefilter
 
@@ -37,6 +39,35 @@ def _local_file(value):
         return path
     except (OSError, ValueError, TypeError, RuntimeError):
         raise WorkflowVisionError('请明确选择本地 PNG 或 JPEG 图片。') from None
+
+
+def game_template_path(value, base):
+    """Check the volume and path components before reading a game template."""
+    try:
+        from .workflow_audio import _local_drive
+
+        path = Path(value)
+        if (str(value).replace('\\', '/').startswith('//')
+                or (path.drive and not path.is_absolute())
+                or (os.name == 'nt' and path.root and not path.drive)
+                or path.suffix.lower() not in _SUFFIXES):
+            raise ValueError
+        path = Path(os.path.abspath(Path(base) / path))
+        if os.name == 'nt' and (len(path.drive) != 2 or not _local_drive(path.anchor)):
+            raise ValueError
+        current = Path(path.anchor)
+        for index, part in enumerate(path.parts[1:], 1):
+            if ':' in part or part.endswith(('.', ' ')) or Path(part).is_reserved():
+                raise ValueError
+            current /= part
+            info = current.lstat()
+            expected = stat.S_ISREG if index == len(path.parts) - 1 else stat.S_ISDIR
+            if not expected(info.st_mode) or getattr(info, 'st_file_attributes', 0) & (
+                    stat.FILE_ATTRIBUTE_REPARSE_POINT | stat.FILE_ATTRIBUTE_OFFLINE):
+                raise ValueError
+        return current
+    except (OSError, ValueError, TypeError, RuntimeError):
+        raise WorkflowVisionError('游戏画面模板须为普通本地 PNG 或 JPEG 文件。') from None
 
 
 def _read(path, checkpoint):
@@ -88,7 +119,7 @@ def _pixels(image):
     return np.asarray(image)
 
 
-def _template_found(patch, template, minimum, checkpoint):
+def _prepare_template(template):
     width, height = template.size
     if min(width, height) < 8 or width * height > _MAX_TEMPLATE_PIXELS:
         raise WorkflowVisionError('模板须至少 8×8 像素，且总像素不超过 1048576。')
@@ -98,9 +129,14 @@ def _template_found(patch, template, minimum, checkpoint):
     if (np.count_nonzero(marks) < max(8, math.ceil(width * height * .015))
             or np.count_nonzero(marks.any(axis=0)) < 2 or np.count_nonzero(marks.any(axis=1)) < 2):
         raise WorkflowVisionError('模板缺少可区分的图像细节。')
-    if width > patch.width or height > patch.height:
+    spread = cv2.meanStdDev(needle)[1]
+    tolerance = min(28., .72 * float(np.sqrt(np.mean(spread ** 2))))
+    return needle, tolerance
+
+
+def _template_found(source, needle, tolerance, minimum, checkpoint):
+    if any(required > available for required, available in zip(needle.shape[:2], source.shape[:2])):
         return False
-    source = _pixels(patch)
     checkpoint()
     scores = cv2.matchTemplate(source, needle, cv2.TM_CCOEFF_NORMED)
     candidates = np.isfinite(scores) & (scores >= minimum - 1e-6)
@@ -110,24 +146,11 @@ def _template_found(patch, template, minimum, checkpoint):
     checkpoint()
     # A normalized correlation alone also accepts the same shape in faint noise.
     distances = cv2.matchTemplate(source, needle, cv2.TM_SQDIFF)
-    spread = cv2.meanStdDev(needle)[1]
-    tolerance = min(28., .72 * float(np.sqrt(np.mean(spread ** 2))))
     closest = np.min(distances, where=candidates, initial=np.inf)
     return bool(np.isfinite(closest) and closest <= needle.size * tolerance ** 2)
 
 
-def _text_found(patch, wanted, minimum, contains, checkpoint):
-    if min(patch.size) < 16:
-        raise WorkflowVisionError('文字识别选区须至少 16×16 像素。')
-    checkpoint()
-    try:
-        vision = Vision(minimum)
-        pixels = np.ascontiguousarray(_pixels(patch)[:, :, ::-1])
-    except Stopped:
-        raise
-    except Exception:
-        raise WorkflowVisionError('文字识别初始化失败。') from None
-    checkpoint()
+def _text_found(vision, pixels, wanted, minimum, contains):
     try:
         tokens = vision.read(pixels).tokens
         for token in tokens:
@@ -144,9 +167,23 @@ def _text_found(patch, wanted, minimum, contains, checkpoint):
         raise WorkflowVisionError('文字识别未能返回有效结果。') from None
 
 
-def observe(image, *, template=None, text=None, region=None, threshold=None, contains=False, checkpoint):
-    """Return a success receipt and one boolean for a valid local observation."""
-    checkpoint()
+@contextmanager
+def _stable_sources(paths):
+    with ExitStack() as sources:
+        try:
+            sources.enter_context(hold_read_sources(paths))
+            revisions = {path: file_revision(path) for path in paths}
+        except OSError:
+            raise WorkflowVisionError('无法稳定读取所选图片。') from None
+        yield
+        try:
+            if any(file_revision(path) != revision for path, revision in revisions.items()):
+                raise OSError
+        except OSError:
+            raise WorkflowVisionError('所选图片在观察期间发生变化。') from None
+
+
+def _prepare_query(template, text, region, threshold, contains):
     image_match = template is not None
     if image_match == (text is not None) or type(contains) is not bool or image_match and contains:
         raise WorkflowVisionError('请选择一种图片模板或文字判断。')
@@ -159,36 +196,63 @@ def observe(image, *, template=None, text=None, region=None, threshold=None, con
         threshold = .88 if image_match else .65
     if type(threshold) not in (int, float) or not .50 <= threshold <= 1:
         raise WorkflowVisionError('识别阈值须为 0.50 到 1 之间的数值。')
-    region = _normalized_region(region)
-    image_path = _local_file(image)
+    return image_match, None if image_match else wanted, _normalized_region(region), threshold
+
+
+@contextmanager
+def prepare_observation(*, template=None, text=None, region=None, threshold=None, contains=False, checkpoint):
+    """Lock a template once and yield its boolean matcher for file or native BGR frames."""
+    checkpoint()
+    image_match, wanted, region, minimum = _prepare_query(template, text, region, threshold, contains)
     template_path = _local_file(template) if image_match else None
-    with ExitStack() as sources:
-        try:
-            paths = (image_path, template_path) if image_match else (image_path,)
-            sources.enter_context(hold_read_sources(paths))
-            revisions = {path: file_revision(path) for path in paths}
-        except OSError:
-            raise WorkflowVisionError('无法稳定读取所选图片。') from None
-        picture = _read(image_path, checkpoint)
-        width, height = picture.size
-        box = tuple(round(value * size) for value, size in zip(region, (width, height, width, height)))
-        if box[0] >= box[2] or box[1] >= box[3]:
-            raise WorkflowVisionError('图片选区小于一个像素。')
-        patch = picture.crop(box)
-        if image_match:
-            needle = _read(template_path, checkpoint)
+    with _stable_sources((template_path,) if image_match else ()):
+        prepared = _prepare_template(_read(template_path, checkpoint)) if image_match else None
+        vision = None
+
+        def match(picture, *, native_bgr=False):
+            nonlocal vision
+            if native_bgr:
+                height, width = picture.shape[:2]
+            else:
+                width, height = picture.size
+            box = tuple(round(value * size) for value, size in zip(region, (width, height, width, height)))
+            left, top, right, bottom = box
+            if left >= right or top >= bottom:
+                raise WorkflowVisionError('图片选区小于一个像素。')
+            if not image_match and min(right - left, bottom - top) < 16:
+                raise WorkflowVisionError('文字识别选区须至少 16×16 像素。')
+            pixels = picture[top:bottom, left:right] if native_bgr else _pixels(picture.crop(box))
+            # The template is RGB; RapidOCR expects BGR.
+            if native_bgr == image_match:
+                pixels = pixels[:, :, ::-1]
+            pixels = np.ascontiguousarray(pixels)
+            checkpoint()
+            if image_match:
+                try:
+                    return _template_found(pixels, *prepared, minimum, checkpoint)
+                except cv2.error:
+                    raise WorkflowVisionError('图像模板识别失败。') from None
             try:
-                found = _template_found(patch, needle, threshold, checkpoint)
-            except cv2.error:
-                raise WorkflowVisionError('图像模板识别失败。') from None
-            field = 'image_found'
-        else:
-            found = _text_found(patch, wanted, threshold, contains, checkpoint)
-            field = 'text_found'
-        try:
-            if any(file_revision(path) != revision for path, revision in revisions.items()):
-                raise OSError
-        except OSError:
-            raise WorkflowVisionError('所选图片在观察期间发生变化。') from None
+                if vision is None:
+                    vision = Vision(minimum)
+            except Stopped:
+                raise
+            except Exception:
+                raise WorkflowVisionError('文字识别初始化失败。') from None
+            checkpoint()
+            return _text_found(vision, pixels, wanted, minimum, contains)
+
+        yield ('image_found' if image_match else 'text_found'), match
         checkpoint()
+
+
+def observe(image, *, template=None, text=None, region=None, threshold=None, contains=False, checkpoint):
+    """Return a success receipt and one boolean for a valid local observation."""
+    checkpoint()
+    image_path = _local_file(image)
+    with (_stable_sources((image_path,)),
+          prepare_observation(template=template, text=text, region=region, threshold=threshold,
+                              contains=contains, checkpoint=checkpoint) as (field, match)):
+        found = match(_read(image_path, checkpoint))
+    checkpoint()
     return {'status': 'success', field: found}

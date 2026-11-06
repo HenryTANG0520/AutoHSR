@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from . import theme as t
+from .models import Stopped
 from .schedule_dispatch import validate_target
 from .schedule_plan import (CHINA, ScheduleError, loads as load_schedule_json, preview as schedule_preview,
                             validate as validate_schedule)
@@ -18,6 +19,7 @@ from .task_workflow_draft import WorkflowDraft, WorkflowSaveConflict
 
 
 _JSON_FILES = (("JSON 文件", "*.json"),)
+_ZIP_FILES = (("任务流素材包", "*.zip"),)
 _WORKFLOW_SCOPE = "整棵流程"
 _STEP_SCOPE = "指定步骤"
 _RUN_STATES = {"success": "已完成", "ok": "已完成", "partial": "部分完成", "stopped": "已停止",
@@ -29,6 +31,7 @@ _TASK_NAMES = {"daily": "每日任务", "plan": "日常与到期周常", "differ
                "currency_wars_loop": "货币战争循环", "currency_wars_points": "货币战争积分",
                "currency_wars_rewards": "货币战争积分领奖", "workflow_audio": "播放本地音频",
                "workflow_image": "从图片查找模板", "workflow_text": "从图片查找文字",
+               "workflow_game_image": "从游戏画面查找模板", "workflow_game_text": "从游戏画面查找文字",
                "workflow_notify": "发送主动通知"}
 
 
@@ -70,14 +73,17 @@ class _Panel(ttk.Frame):
         button.grid(row=0, column=column, sticky="w", padx=(0, self._size(7)))
         return button
 
-    def _choose_file(self, title, *, save=False, initialdir=None):
+    def _choose_file(self, title, *, save=False, initialdir=None, filetypes=_JSON_FILES,
+                     extension=".json", initialfile=None):
         owner = self.winfo_toplevel()
         focused = self.focus_get()
-        options = dict(parent=owner, title=title, filetypes=_JSON_FILES)
+        options = dict(parent=owner, title=title, filetypes=filetypes)
         if initialdir is not None:
             options["initialdir"] = str(initialdir)
         if save:
-            result = filedialog.asksaveasfilename(defaultextension=".json", confirmoverwrite=False, **options)
+            if initialfile is not None:
+                options["initialfile"] = initialfile
+            result = filedialog.asksaveasfilename(defaultextension=extension, confirmoverwrite=False, **options)
         else:
             result = filedialog.askopenfilename(**options)
         if not result and focused is not None and focused.winfo_exists():
@@ -122,6 +128,7 @@ class _WorkflowPanel(_Panel):
         self.saved_target = None
         self.loading = False
         self.reviewed_step = None
+        self.bundle_job = None
         self.assignment_available = False
         self.assignment_enabled = tk.BooleanVar(self, value=False)
         self.assignment_status = tk.StringVar(self, value="仅单独持续委托步骤可用")
@@ -153,9 +160,15 @@ class _WorkflowPanel(_Panel):
             if row == 2:
                 self.target_button = self._button(line, "选择位置", self.select_destination, 2)
 
+        bundle_line = ttk.Frame(self)
+        bundle_line.grid(row=3, column=0, sticky="ew", pady=(0, self._size(5)))
+        ttk.Label(bundle_line, text="素材包", style="Settings.Note.TLabel", width=9).grid(row=0, column=0, sticky="w")
+        self.import_bundle_button = self._button(bundle_line, "导入素材包…", self.import_bundle, 1)
+        self.export_bundle_button = self._button(bundle_line, "导出素材包…", self.export_bundle, 2)
+
         scope_line = ttk.Frame(self)
         scope_line.columnconfigure(3, weight=1)
-        scope_line.grid(row=3, column=0, sticky="ew", pady=(0, self._size(5)))
+        scope_line.grid(row=4, column=0, sticky="ew", pady=(0, self._size(5)))
         ttk.Label(scope_line, text="执行范围", style="Settings.Note.TLabel", width=9).grid(row=0, column=0, sticky="w")
         self.scope_field = ttk.Combobox(scope_line, textvariable=self.scope, values=(_WORKFLOW_SCOPE, _STEP_SCOPE),
                                         state="readonly", style="Settings.TCombobox", width=11)
@@ -165,7 +178,7 @@ class _WorkflowPanel(_Panel):
         self.step_field.grid(row=0, column=3, sticky="ew", padx=(self._size(5), 0))
 
         assignment_line = ttk.Frame(self)
-        assignment_line.grid(row=4, column=0, sticky="ew", pady=(0, self._size(5)))
+        assignment_line.grid(row=5, column=0, sticky="ew", pady=(0, self._size(5)))
         assignment_line.columnconfigure(1, weight=1)
         self.assignment_toggle = ttk.Checkbutton(assignment_line, text="启用持续委托",
                                                   variable=self.assignment_enabled, command=self._toggle_assignment)
@@ -177,12 +190,12 @@ class _WorkflowPanel(_Panel):
         self.visual_button.grid(row=0, column=2, sticky="e", padx=(self._size(8), 0))
 
         holder, self.editor = self._editor(self, height=11)
-        holder.grid(row=5, column=0, sticky="nsew")
-        self.rowconfigure(5, weight=1)
+        holder.grid(row=6, column=0, sticky="nsew")
+        self.rowconfigure(6, weight=1)
         self.editor.bind("<<Modified>>", self._edit)
-        self._hint(self.status, 6)
-        self._hint(self.budget, 7)
-        self._hint(self.source_status, 8)
+        self._hint(self.status, 7)
+        self._hint(self.budget, 8)
+        self._hint(self.source_status, 9)
         self.scope.trace_add("write", self._scope_changed)
         self.step_path.trace_add("write", self._scope_changed)
         self.refresh()
@@ -197,6 +210,14 @@ class _WorkflowPanel(_Panel):
     @property
     def _source_file(self):
         return self.draft.source if self.draft is not None else None
+
+    @property
+    def _busy(self):
+        return super()._busy or self.bundle_job is not None
+
+    @property
+    def _bundle_idle(self):
+        return not self._busy and not getattr(self.ui, "closing", False)
 
     def primary_action(self):
         return "另存为", self.save_as, self.draft is not None and not self._busy
@@ -213,6 +234,8 @@ class _WorkflowPanel(_Panel):
         saved = self._source_file is not None
         _set_enabled(self.new_button, idle)
         _set_enabled(self.open_button, idle)
+        _set_enabled(self.import_bundle_button, self._bundle_idle)
+        _set_enabled(self.export_bundle_button, self._bundle_idle and saved and not self.dirty)
         for button in (self.validate_button, self.target_button, self.visual_button):
             _set_enabled(button, idle and has_draft)
         _set_enabled(self.reload_button, idle and saved)
@@ -406,6 +429,122 @@ class _WorkflowPanel(_Panel):
         if not self._busy and source is not None:
             self._load(source)
 
+    def export_bundle(self):
+        draft, source = self.draft, self._source_file
+        if not self._bundle_idle or source is None or self.dirty:
+            return
+        target = self._choose_file("导出整个已保存流程的素材包", save=True, initialdir=source.parent,
+                                   filetypes=_ZIP_FILES, extension=".zip", initialfile=source.stem + ".zip")
+        panel = getattr(self.ui, "workflow_panel", self)
+        if target is None or not panel._bundle_idle or panel.draft is not draft or panel.dirty:
+            return
+
+        def work(checkpoint):
+            from .workflow_bundle import export_bundle
+
+            with hold_read_sources((source,)):
+                if not draft.source_is_current():
+                    raise WorkflowError("已保存的流程已变化，请重新打开后导出。")
+                return export_bundle(source, target, checkpoint=checkpoint)
+
+        def present(current, path):
+            current.status.set(f"已导出素材包 · {path}")
+
+        panel._start_bundle_job("导出素材包", work, present)
+
+    def import_bundle(self):
+        if not self._bundle_idle:
+            return
+        source = self._source_file
+        bundle = self._choose_file("选择任务流素材包", filetypes=_ZIP_FILES,
+                                   initialdir=source.parent if source is not None else None)
+        panel = getattr(self.ui, "workflow_panel", self)
+        if bundle is None or not panel._bundle_idle:
+            return
+        target = panel._choose_file("选择导入位置并输入新的目录名", save=True, initialdir=bundle.parent,
+                                    filetypes=(("新目录", "*"),), extension="", initialfile=bundle.stem)
+        panel = getattr(self.ui, "workflow_panel", self)
+        if target is None or not panel._bundle_idle:
+            return
+        draft, text = panel.draft, panel._text()
+        if not panel._can_replace_form("导入素材包", "当前编辑尚未另存。导入成功后替换当前草稿？"):
+            return
+        panel = getattr(self.ui, "workflow_panel", self)
+        if not panel._bundle_idle or panel.draft is not draft or panel._text() != text:
+            return
+
+        def work(checkpoint):
+            from .workflow_bundle import import_bundle
+
+            path = import_bundle(bundle, target, checkpoint=checkpoint)
+            imported = None
+            try:
+                checkpoint()
+                if path.name == "workflow.json" and path.parent.resolve(strict=True) == target.resolve(strict=True):
+                    imported = WorkflowDraft.load(path)
+            except (Stopped, WorkflowError, OSError):
+                pass
+            return path, imported
+
+        def present(current, result):
+            path, imported = result
+            stop = current.ui.stop_requested
+            current_source = not stop.is_set() and imported is not None and imported.source_is_current()
+            if stop.is_set():
+                current.status.set(f"素材包已解包，草稿加载已停止 · {path.parent}")
+            elif not current_source:
+                current.status.set(f"素材包已解包，草稿待核对 · {path}")
+            elif current.draft is not draft or current._text() != text:
+                current.status.set(f"素材包已解包，保留当前草稿 · {path}")
+            else:
+                current._install(imported)
+                current.status.set("已导入素材包 · 已打开任务流草稿")
+                if current.winfo_ismapped():
+                    current.editor.focus_set()
+
+        panel._start_bundle_job("导入素材包", work, present)
+
+    def _start_bundle_job(self, title, work, present):
+        if not self._bundle_idle:
+            return
+        ui = self.ui
+        job, previous = object(), self.status.get()
+        self.bundle_job = job
+        self.status.set(f"正在{title}…")
+        self._changed()
+
+        def run(cancel):
+            def checkpoint():
+                if cancel.is_set():
+                    raise Stopped("素材包操作已停止。")
+
+            checkpoint()
+            return work(checkpoint)
+
+        def finish(value=None, *, error=None, declined=False):
+            panel = getattr(ui, "workflow_panel", self)
+            if getattr(ui, "closing", False) or panel.bundle_job is not job:
+                return
+            panel.bundle_job = None
+            if declined:
+                panel.status.set(previous)
+            elif isinstance(error, Stopped):
+                panel.status.set(f"{title}已停止")
+            elif error is not None:
+                detail = str(error) if isinstance(error, ValueError) else "请检查所选文件、目录及权限。"
+                panel.status.set(f"{title}失败 · {detail}")
+            else:
+                present(panel, value)
+            panel._changed()
+
+        try:
+            accepted = ui._submit_tool_job(title, run, finish, lambda error: finish(error=error))
+        except Exception as error:
+            finish(error=error)
+            return
+        if not accepted:
+            finish(declined=True)
+
     def select_destination(self):
         if self._busy or self.draft is None:
             return
@@ -544,11 +683,11 @@ class _WorkflowPanel(_Panel):
 
     def snapshot_draft(self):
         scope = self.scope.get(), self.step_path.get(), self.reviewed_step
-        return (self.draft, self.clean_text, self.saved_target, self._text(), scope,
+        return (self.draft, self.clean_text, self.saved_target, self._text(), scope, self.bundle_job,
                 tuple(variable.get() for variable in self._draft_variables()))
 
     def restore_draft(self, snapshot):
-        self.draft, self.clean_text, self.saved_target, text, scope, labels = snapshot
+        self.draft, self.clean_text, self.saved_target, text, scope, self.bundle_job, labels = snapshot
         self.loading = True
         self.editor_text = text
         self._replace_editor(self.editor, text)

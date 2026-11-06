@@ -101,6 +101,8 @@ def _dependency_paths(configured):
             yield options['image'], 64 * 1024 * 1024
             if 'template' in options:
                 yield options['template'], 64 * 1024 * 1024
+        if node['task'] == 'workflow_game_image':
+            yield options['workflow_screen_query']['template'], 64 * 1024 * 1024
         if node['task'] in ('daily', 'plan') and current.redemption_enabled and current.redemption_source == 'file':
             yield current.redemption_catalog, 256 * 1024
 

@@ -19,7 +19,8 @@ from .config import ROOT
 from .du_points_followup import FollowupWeek, followup_week_scope
 from .models import RunReport, Stopped, TaskResult
 from .storage import replace_file
-from .task_workflow import GAME_TASKS, FIELDS, MAX_EXECUTIONS, VISION_TASKS, WorkflowError, compile_recipe, task_spec
+from .task_workflow import (FIELDS, GAME_TASKS, GAME_VISION_TASKS, MAX_EXECUTIONS, TEMPLATE_TASKS,
+                            VISION_TASKS, WorkflowError, compile_recipe, task_spec)
 from .workflow_lease import workflow_lease
 
 
@@ -216,6 +217,7 @@ class TaskWorkflowRunner:
             os.fsync(stream.fileno())
 
     def _condition(self, condition):
+        self.checkpoint()
         self._check_du_points_week()
         previous = self._latest.get(condition['step'])
         field = condition['field']
@@ -262,10 +264,12 @@ class TaskWorkflowRunner:
 
     def _facts(self, result):
         facts = dict(status=result.get('status', 'failed'))
-        if result.get('operation') in VISION_TASKS:
-            field = 'image_found' if result['operation'] == 'workflow_image' else 'text_found'
-            if result.get('status') == 'success' and type(result.get(field)) is bool:
-                facts[field] = result[field]
+        operation = result.get('operation')
+        if operation in VISION_TASKS:
+            field = 'image_found' if operation in TEMPLATE_TASKS else 'text_found'
+            observation = result.get('workflow_screen') if operation in GAME_VISION_TASKS else result
+            if facts['status'] == 'success' and isinstance(observation, dict) and type(observation.get(field)) is bool:
+                facts[field] = observation[field]
             return facts
         if result.get('operation') == 'du_rewards':
             value = result.get('du_rewards', {}).get('rewards_verified')
@@ -454,6 +458,12 @@ class TaskWorkflowRunner:
             native_points = options.get('du_until_points') is True
             if native_points and not self._identity.has_step_proof(identity_mark, run_dir=result.get('run_dir') or ''):
                 raise WorkflowError('差分积分的原始报告未绑定本次子任务的账号观察。')
+            if node['task'] in GAME_VISION_TASKS and result['status'] == 'success':
+                run_dir = result.get('run_dir')
+                if not run_dir or not self._identity.has_step_proof(identity_mark, run_dir=run_dir):
+                    raise WorkflowError('游戏画面结果未绑定本次子任务的账号观察。')
+                if len(self._facts(result)) != 2:
+                    raise WorkflowError('游戏画面报告缺少已核实的布尔结果。')
             entry['source'] = self._source(result, expected, native_points=native_points)
             if node['task'] == 'du_rewards':
                 self._du_rewards(result, entry, node)

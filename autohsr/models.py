@@ -146,6 +146,7 @@ class RunReport:
     challenge_result: dict = field(default_factory=dict)
     team_preset_calibration: dict = field(default_factory=dict)
     daily_reward_observe: dict = field(default_factory=dict)
+    workflow_screen: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         from dataclasses import asdict
@@ -156,4 +157,7 @@ class RunReport:
             del data['team_preset_calibration']
         if self.operation != 'daily_reward_observe':
             del data['daily_reward_observe']
+        from .task_workflow import GAME_VISION_TASKS
+        if self.operation not in GAME_VISION_TASKS:
+            del data['workflow_screen']
         return data

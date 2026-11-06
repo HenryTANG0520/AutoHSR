@@ -51,6 +51,8 @@ def _default_params(task):
         "daily": {"tasks": ["assignments"]},
         "workflow_audio": {"path": "提示.wav"},
         "workflow_image": {"image": "截图.png", "template": "模板.png"},
+        "workflow_game_image": {"template": "模板.png"},
+        "workflow_game_text": {"text": "要查找的文字"},
         "workflow_text": {"image": "截图.png", "text": "要查找的文字"},
         "workflow_notify": {"profile": "default", "message": "本步骤已到达。"},
     }.get(task, {})

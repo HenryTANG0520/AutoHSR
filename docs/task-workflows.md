@@ -1,12 +1,12 @@
 # 可编辑任务流程
 
-2026-11-06 开发版的「设置 → 工具 → 任务流」支持可视编辑和本地 JSON 草稿，可校验、另存和运行已保存流程。正式任务级树形编排也可通过独立 CLI 使用，并支持独立差分红点领奖。真实跨玩法组合及三月七的底层图文／鼠标／键盘流程仍待验收或适配。[独立差分红点领奖](du-rewards-only.md)
+开发版的「设置 → 工具 → 任务流」支持可视编辑、本地 JSON 草稿与 ZIP 素材包。正式任务级树形编排也可通过独立 CLI 使用，并支持独立差分红点领奖。真实跨玩法组合、游戏画面识别及鼠标／键盘底层步骤分别验收。[独立差分红点领奖](du-rewards-only.md)
 
 ## 与三月七的关系
 
 参考固定March7thAssistant提交`7cf6c6bed474539485d3b1504077ac352866829f`的[流程教程](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/docs/Workflow.md)及[执行模块](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/module/workflow/__init__.py)。借鉴步骤树、条件、循环、循环控制及选中步骤执行，采用AutoHSR自己的JSON与正式Runner。
 
-可视编辑覆盖 AutoHSR 的正式步骤类型。已接本地图片中的图文判断、音频及主动通知。游戏实时画面的图文步骤、坐标点击、拖动、按键、界面切换、模板关联及 YAML 导入仍须分别适配。固定来源、函数与 SHA-256 见[来源清单](../assets/upstream/March7thAssistant/source.json)，原 GPL v3 保留。
+可视编辑覆盖 AutoHSR 的正式步骤类型。图文判断可选本地图片或当前游戏画面。AutoHSR 素材包关联本流程使用的图像与音频。坐标点击、拖动、按键、通用界面切换及上游 YAML 导入仍待适配。固定来源、函数与 SHA-256 见[来源清单](../assets/upstream/March7thAssistant/source.json)，原 GPL v3 保留。
 
 ## 当前任务与设置
 
@@ -26,11 +26,15 @@
 | `workflow_audio` | Windows 本地音频 | 必填 `path`，支持明确选定的 PCM WAV。暂停后从当前位置继续，停止时清空本步骤队列 |
 | `workflow_image` | 本地模板判断 | 必填 `image`、`template`，使用明确的 PNG／JPEG。可选 `region`、`threshold`，默认阈值 0.88 |
 | `workflow_text` | 本地 OCR 判断 | 必填 `image`、`text`，可选 `region`、`threshold`、`contains`。默认精确匹配，阈值 0.65 |
+| `workflow_game_image` | 当前游戏画面模板判断 | 必填 `template`，可选 `region`、`threshold`。默认阈值 0.88 |
+| `workflow_game_text` | 当前游戏画面 OCR 判断 | 必填 `text`，可选 `region`、`threshold`、`contains`。默认精确匹配，阈值 0.65 |
 | `workflow_notify` | 已保存通知方案 | 必填 `profile`、`message`。只在明确授权的手动运行中发送文本，同一运行出现待核对的提交后停止后续主动通知 |
 
 记录任务目前只接显式本地JSON；真实缓存／链接获取继续使用[独立工具入口](warp-records.md)，没有在流程中隐式扫描。XLSX仍使用已固定的可选加载引擎，见[统计与Excel](warp-statistics-xlsx.md)。
 
 图文判断的 `region` 是相对整张图片的 `[左, 上, 右, 下]`，缺省为整张图。已完成分析但未匹配时，回执明确给出 `image_found=false` 或 `text_found=false`，可以用于后续条件。文件、范围或识别失败时没有匹配事实。音频及图片路径相对流程文件，应用内定时冻结这些来源的文件指纹。
+
+游戏图文步骤读取已经登录且处于前台的游戏客户区。两张连续新画面都必须核实同一窗口、账号、输入代次及一致的识别结果。登录、遮挡、失焦、账号变化或两次识别不一致时，匹配字段留空。步骤占用正式执行权，只观察画面，回执只写布尔结果，账号证据仍按原规则留在本机。定时触发时也需要游戏已在前台，并受含游戏任务的单次重复限制。
 
 音频支持 1 或 2 声道、8 或 16 位、8～48 kHz，文件最多 32 MiB、时长最多 120 秒。播放完成来自 Windows 驱动反馈。主动通知在桌面运行时显示本次最多步骤数和方案别名，授权后沿用冻结的方案版本。CLI 显式使用 `--workflow-allow-notify`。每次流程最多 20 个主动通知步骤。应用内定时暂未开放这项授权。通知正文留在流程文件及明确发往的渠道，运行回执只记结果及必要的匿名事实。[通知设置](notifications.md)
 
@@ -62,7 +66,7 @@ UTF-8 JSON顶层为`version:1`、`name`、`steps`；不接受重复JSON键、NaN
 
 条件形如`{"step":"daily","field":"daily_verified","op":"eq","value":true}`。只能引用树中前面出现的步骤结果；所引用分支本次没执行、步骤被禁用而字段未知、类型不一致时停止，不将缺值视作false。`step:"@last"`表示最近一次实际执行的task结果，可用于有界观察循环；普通控制步骤不会替换它。
 
-字段为`status`、`daily_verified`、`completed_runs`、`victories`、`defeats`、`points_verified`、`rewards_verified`及独立差分的`du_rewards_verified`。后者只表示明确请求的红点奖励核实，不表示全部红点清空或周积分领奖。只有对应子报告确实存在且含该字段时才可比较；其他玩法报告的默认实训false，以及未执行实训的日常默认false，都不是实训条件事实。计数支持`eq/ne/lt/le/gt/ge`，状态和布尔值只支持`eq/ne`。`completed_runs`分别指差分已完成数或CW已结束数，CW失败另见`defeats`，不等于胜利。
+条件字段包括 `status`、`daily_verified`、`completed_runs`、`victories`、`defeats`、`points_verified`、`rewards_verified`、`du_rewards_verified`、`image_found` 和 `text_found`。`du_rewards_verified` 对应本次明确请求的红点。`image_found` 和 `text_found` 对应已成功核实的图文步骤。只有对应子报告确实存在且含该字段时才可比较，日常实训也须有执行证据。计数支持 `eq/ne/lt/le/gt/ge`，状态和布尔值支持 `eq/ne`。`completed_runs` 对应差分已完成数或货币战争已结束数，货币战争胜负另有 `victories` 和 `defeats`。
 
 上限为1 MiB定义、256个节点、12层、最多10000次展开执行；禁用节点也计执行数量。每个可能路径最多一份日常预算、一个差分批次、一个CW批次；循环乘算，互斥分支取最大值。不能用两个daily步骤或for循环重复创建240预算。`plan`保守预留日常、差分与CW各一个所有者，不能再叠加独立同类任务；其10局预留值仅为静态最大值，不是实际请求或完成数。
 
@@ -79,6 +83,12 @@ UTF-8 JSON顶层为`version:1`、`name`、`steps`；不接受重复JSON键、NaN
 打开时默认范围为「整棵流程」。切换为「指定步骤」，填写从 0 开始的路径（例如 `1/0`），再点「校验草稿」查看步骤名称和该范围的预算。条件节点的子序号先列 `steps`，再列 `else_steps`。修改路径、范围或草稿后需要重新校验单步。范围切回「整棵流程」即可使用原来的整树入口。
 
 「运行已保存单步」要求当前草稿与保存版本一致，沿用下述 CLI 的 `--workflow-step-path` 语义。运行前重新核实文件版本、步骤路径和解析目录。选择其他目录作为另存位置时，显示该目录的预算预览，保存后须按新来源重新校验所选步骤。另存始终校验整棵树。定时的任务流目标也可填写步骤路径。
+
+## 素材包
+
+「导出素材包…」从已保存且与当前草稿一致的流程生成新的 ZIP。导出会遍历整棵任务树，包括禁用节点及条件的两侧，只收录节点明确引用的 PNG、JPEG 和 PCM WAV。包内用相对路径关联素材，并记录文件长度与 SHA-256。包含私有记录、通知配置依赖或其他非便携设置的流程会被拒绝。分享前可检查流程名称、文字条件和素材内容。
+
+「导入素材包…」需要明确选择 ZIP 和一个新目录。导入校验归档成员、摘要与整棵任务树后发布目录，并打开其中的 `workflow.json` 草稿。运行仍由单独的操作触发。导入导出均保留已有目录和文件。
 
 ## 本地草稿接口
 
@@ -121,6 +131,10 @@ UTF-8 JSON顶层为`version:1`、`name`、`steps`；不接受重复JSON键、NaN
 .\.venv\Scripts\python.exe -m autohsr --task-workflow my-workflow.json
 # 仅执行第二个顶层节点里的第一个子步骤，不补做日常或父条件
 .\.venv\Scripts\python.exe -m autohsr --task-workflow my-workflow.json --workflow-step-path 1/0
+# 将已保存的流程和明确引用的素材打成新 ZIP
+.\.venv\Scripts\python.exe -m autohsr --task-workflow-export my-workflow.json --workflow-bundle-destination my-workflow.zip
+# 核实并解包到一个新目录
+.\.venv\Scripts\python.exe -m autohsr --task-workflow-import my-workflow.zip --workflow-bundle-destination imported-workflow
 ```
 
 序号从0开始，`/`与`\`等价；控制节点的子序号先为`steps`，再为`else_steps`。选中控制节点仍需本次前序结果，缺少时在输入前停止；选中叶子则按上游单步语义跳过父控制。整个文件仍做结构检查，但最大预算按选中子树计算。单独选中的break／continue无效，会在执行前拒绝。

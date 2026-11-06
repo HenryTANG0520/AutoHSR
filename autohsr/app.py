@@ -19,6 +19,7 @@ from .vision import Vision, save_scene,helper_overlay
 from .ocr_isolation import IsolatedVision
 from .windows import find_game, is_admin, is_elevated, launch
 from .storage import file_revision, hold_read_sources, replace_file
+from .task_workflow import GAME_VISION_TASKS, TEMPLATE_TASKS
 
 
 def launch_game(settings: Settings) -> str:
@@ -119,7 +120,8 @@ class Context:
                     self.capture_occlusion_count += 1
                     occluded_frames+=1
                     if occluded_frames==1:
-                        self.evidence(scene,'helper_occlusion_discarded')
+                        if self.report.operation not in GAME_VISION_TASKS:
+                            self.evidence(scene,'helper_occlusion_discarded')
                         self.log('截图仍有助手界面遮挡，丢弃此帧并重新识别。')
                     if occluded_frames>=8:
                         raise AutomationError('连续截图被助手界面遮挡，未按游戏画面发送输入。')
@@ -146,6 +148,7 @@ class Context:
                 self.last_scene = None
                 if (self.report.operation in ('challenge_result', 'challenge_lobby', 'team_preset_calibration',
                                               'challenge_preset_observe', 'daily_reward_observe')
+                        or self.report.operation in GAME_VISION_TASKS
                         or getattr(self.runner, '_challenge_read_only', False) is True):
                     raise
                 self.runner.wait_for_focus(self.window)
@@ -175,6 +178,8 @@ class Context:
         raise InputInterrupted("焦点恢复后须重新识别，旧输入目标已丢弃。")
 
     def _require_gameplay_input(self):
+        if self.report.operation in GAME_VISION_TASKS:
+            raise AutomationError('任务流的游戏图文条件只允许观察当前画面。')
         archive = getattr(self, 'du_archive_workflow', None)
         if archive is not None and (getattr(archive, 'c', None) is not self or getattr(archive, 'finished', False) is not True):
             raise AutomationError('差分存档流程尚未核实返回，仅允许本次持久保存意图输入。')
@@ -1654,8 +1659,9 @@ class Context:
         self._scroll_anchor = (point, scene.geometry, self.scene_epoch)
 
     def drag(self, scene: Scene, start: tuple[float, float], end: tuple[float, float], *, du_intent=None):
-        if self.report.operation in ('du_rewards', 'build_target_read', 'build_target_preview', 'build_target_plan',
-                                     'team_preset_calibration', 'challenge_preset_observe', 'daily_reward_observe'):
+        if (self.report.operation in GAME_VISION_TASKS
+                or self.report.operation in ('du_rewards', 'build_target_read', 'build_target_preview', 'build_target_plan',
+                                             'team_preset_calibration', 'challenge_preset_observe', 'daily_reward_observe')):
             self._require_gameplay_input()
         if self.report.operation == "differential_universe":
             if du_intent!='du_reward_gallery_pan' or not self.settings.differential_universe_rewards:
@@ -2227,8 +2233,16 @@ class Runner:
                  currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None,currency_rewards_resume=False,currency_weekly_guard=None,
                  use_power_plan=False,new_power_plan=False,currency_overclock_open_a0=False,build_target_selection=None,
                  challenge_lobby_mode=None, assignments_only=False, daily_reward_mode=None,
-                 daily_attachment_only=None):
+                 daily_attachment_only=None, workflow_screen_query=None):
         from dataclasses import replace
+        if operation in GAME_VISION_TASKS:
+            from .task_workflow import _params
+            if new_battle_run or use_power_plan or new_power_plan or weekly_plan is not None:
+                raise ValueError('游戏图文条件不能建立刷本或周常预算。')
+            _params(operation, workflow_screen_query)
+        elif workflow_screen_query is not None:
+            raise ValueError('游戏画面查询只适用于任务流的专用观察入口。')
+        self.workflow_screen_query = deepcopy(workflow_screen_query)
         if daily_attachment_only is not None:
             from .daily_attachments import attachment_settings
             if operation != 'daily' or new_battle_run or use_power_plan or new_power_plan or assignments_only:
@@ -2309,8 +2323,8 @@ class Runner:
                                         and isinstance(settings.challenge_plan, dict) else None)
         self._challenge_read_only = (operation in ('challenge_result', 'challenge_preset_observe')
                                      or self._challenge_prepare_mode == 'apocalyptic_shadow')
-        self._foreground_only = self._challenge_read_only or operation in (
-            'challenge_lobby', 'team_preset_calibration', 'daily_reward_observe')
+        self._foreground_only = (self._challenge_read_only or operation in GAME_VISION_TASKS
+                                 or operation in ('challenge_lobby', 'team_preset_calibration', 'daily_reward_observe'))
         self._emit = emit or (lambda event: None)
         self._overlay = None
         self.report = RunReport()
@@ -2710,7 +2724,7 @@ class Runner:
             self._control_checkpoint()
 
     def _save_run_report(self, directory, points_workflow=None, *, challenge_reader=None, preview_source=None,
-                         daily_reward_reader=None):
+                         daily_reward_reader=None, workflow_screen_source=None):
         temporary = directory / 'report.tmp'
 
         def write_report():
@@ -2725,6 +2739,35 @@ class Runner:
             daily_reward_reader.save_verified_report(temporary, write_report)
             return
         write_report()
+        if workflow_screen_source is not None and self.report.status == 'success':
+            context, scene, epoch, window_key = workflow_screen_source
+
+            def verify_observation():
+                if self.report.status != 'success':
+                    return
+                try:
+                    context.checkpoint()
+                    if (scene is None or self.input_epoch != epoch
+                            or context.last_scene is not scene
+                            or context.window.current_window_key() != window_key
+                            or not 0 <= time.monotonic() - scene.captured_at <= 8):
+                        raise AutomationError('游戏画面结果已过期，或窗口与输入代次已改变。')
+                    context.window.guard(scene.geometry)
+                    if self.stop_requested or context.window.emergency_pressed():
+                        self.stop()
+                        raise Stopped('游戏画面判断已停止。')
+                    if self.input_epoch != epoch:
+                        raise AutomationError('游戏画面的输入代次已改变。')
+                except AutomationError as error:
+                    self.report.workflow_screen.clear()
+                    self.report.status = 'stopped' if isinstance(error, Stopped) else 'failed'
+                    self.report.failure_task = self.report.operation
+                    self.report.error = str(error)
+                    self.report.results[-1] = TaskResult(self.report.operation, self.report.status, str(error))
+                    write_report()
+
+            replace_file(temporary, directory / 'report.json', before_replace=verify_observation)
+            return
         if preview_source is not None:
             def verify_preview():
                 preview_source.check_evidence()
@@ -2775,6 +2818,7 @@ class Runner:
         points_workflow = None
         challenge_reader = None
         daily_reward_reader = None
+        workflow_screen_source = None
         overclock_session = None
         overclock_preparation = None
         monitor = None
@@ -2791,7 +2835,8 @@ class Runner:
         team_calibration = self.report.operation == 'team_preset_calibration'
         challenge_navigation = challenge_lobby or team_calibration
         daily_reward = self.report.operation == 'daily_reward_observe'
-        foreground_scope = challenge_observer or challenge_navigation or daily_reward
+        workflow_screen = self.report.operation in GAME_VISION_TASKS
+        foreground_scope = challenge_observer or challenge_navigation or daily_reward or workflow_screen
         guard_publication = self._foreground_only or build_target_preview
         build_target_safe_next = ('请核对当前培养目标或打开同一材料的获得途径。'
                                   if build_target_preview else '请在当前账号的生存索引核对培养目标页。材料详情与副本来源待校准。')
@@ -2816,6 +2861,11 @@ class Runner:
                 from .daily_reward_observe import SAFE_NEXT, SUPPORT_SAFE_NEXT, initial_record
                 self.report.safe_next = SUPPORT_SAFE_NEXT if self.daily_reward_mode == 'support' else SAFE_NEXT
                 self.report.daily_reward_observe = initial_record(self.daily_reward_mode)
+            elif workflow_screen:
+                from .workflow_identity import active
+                self.report.safe_next = '请将已登录的游戏窗口置于前台，再运行同一步骤。'
+                if not active():
+                    raise AutomationError('游戏图文条件需要在正式任务流中运行。')
             if not mutex or already_running:
                 raise AutomationError("另一个 AutoHSR 任务正在运行，请先停止后重试。")
             from .workflow_lease import require_workflow_access
@@ -2933,12 +2983,14 @@ class Runner:
             elif challenge_preset:
                 from .challenge_preset_page import COLLECTION_FLOOR
                 ocr_confidence = min(ocr_confidence, COLLECTION_FLOOR)
+            elif workflow_screen:
+                ocr_confidence = min(ocr_confidence, .65)
             vision = (IsolatedVision(ocr_confidence, checkpoint=self._control_checkpoint,
                                       inactive=lambda: self.inactive_duration,
                                       configured_name=configured_name,
                                       timeout=.05 if self.currency_timeout_probe else 30.) if currency_wars else
                       Vision(ocr_confidence))
-            if self.assignments_only or self.daily_attachment_only:
+            if self.assignments_only or self.daily_attachment_only or workflow_screen:
                 from .currency_wars_identity import UID_VETO_FLOOR
                 vision.uid_counterevidence_floor = UID_VETO_FLOOR
             context = Context(self, self._window, vision)
@@ -2990,6 +3042,20 @@ class Runner:
                 self.report.failure_task = '' if result.status == 'ok' else self.report.operation
                 if result.status != 'ok':
                     self.emit(dict(type='task', **result.__dict__))
+            elif workflow_screen:
+                from .workflow_screen import observe_game
+                operation = self.report.operation
+                self.emit(dict(type='task', task=operation, status='running', detail='观察当前游戏画面'))
+                window_key = context.window.current_window_key()
+                observation = observe_game(context, self.workflow_screen_query)
+                field = 'image_found' if operation in TEMPLATE_TASKS else 'text_found'
+                if set(observation) != {field} or type(observation[field]) is not bool:
+                    raise AutomationError('游戏图文结果未核实。')
+                self.report.workflow_screen = observation
+                workflow_screen_source = (context, context.last_scene, context.scene_epoch, window_key)
+                self.report.results.append(TaskResult(operation, 'ok', '已核实当前游戏画面的判断结果。'))
+                self.report.status = 'success'
+                self.report.failure_task = ''
             elif build_target_preview:
                 from .build_target_preview import run_preview
                 self.emit(dict(type='task', task=self.report.operation, status='running', detail='观察材料与副本候选'))
@@ -3154,7 +3220,7 @@ class Runner:
             elif self.report.failure_task == 'startup':
                 self.report.safe_next = "请手动进入游戏主界面后重试当前任务。"
             self.log(str(error), "error")
-            if context and context.last_scene:
+            if context and context.last_scene and not workflow_screen:
                 try:
                     context.evidence(context.last_scene, "failure")
                 except Exception as evidence_error:
@@ -3192,6 +3258,9 @@ class Runner:
                     self.report.report_saved = True
                     self._save_run_report(directory, daily_reward_reader=daily_reward_reader)
                     self.emit(dict(type='task', **self.report.results[-1].__dict__))
+                elif workflow_screen:
+                    self.report.report_saved = True
+                    self._save_run_report(directory, workflow_screen_source=workflow_screen_source)
                 elif challenge_reader is None:
                     self.report.report_saved = True
                     self._save_run_report(directory, points_workflow)
@@ -3199,6 +3268,8 @@ class Runner:
                     self.report.report_saved = True
                     self._save_run_report(directory, challenge_reader=challenge_reader)
             except OSError as error:
+                if workflow_screen:
+                    self.report.workflow_screen.clear()
                 self.report.report_saved = False
                 self.report.report_write_error = str(error)
                 attempted_team_entry = (team_calibration and

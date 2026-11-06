@@ -18,9 +18,11 @@ MAX_NODES = 256
 MAX_DEPTH = 12
 MAX_EXECUTIONS = 10000
 MAX_STEP_NOTIFICATIONS = 20
+GAME_VISION_TASKS = {'workflow_game_image', 'workflow_game_text'}
 GAME_TASKS = {'daily', 'plan', 'differential_universe', 'currency_wars_loop',
-              'currency_wars_points', 'currency_wars_rewards', 'du_rewards'}
-VISION_TASKS = {'workflow_image', 'workflow_text'}
+              'currency_wars_points', 'currency_wars_rewards', 'du_rewards'} | GAME_VISION_TASKS
+VISION_TASKS = {'workflow_image', 'workflow_text'} | GAME_VISION_TASKS
+TEMPLATE_TASKS = {'workflow_image', 'workflow_game_image'}
 TASKS = GAME_TASKS | VISION_TASKS | {'warp_analysis', 'warp_export', 'workflow_audio', 'workflow_notify'}
 DAILY_TASKS = ('assignments', 'battle', 'daily', 'redemption', 'mail', 'battlepass')
 FIELDS = {'status': str, 'daily_verified': bool, 'completed_runs': int,
@@ -138,6 +140,8 @@ def _params(task, params):
         'workflow_audio': {'path'},
         'workflow_image': {'image', 'template', 'region', 'threshold'},
         'workflow_text': {'image', 'text', 'region', 'threshold', 'contains'},
+        'workflow_game_image': {'template', 'region', 'threshold'},
+        'workflow_game_text': {'text', 'region', 'threshold', 'contains'},
         'workflow_notify': {'profile', 'message'},
     }[task]
     _keys(params, allowed)
@@ -200,8 +204,9 @@ def _params(task, params):
         if Path(path).suffix.lower() != '.wav':
             raise WorkflowError('播放音频需要明确的 WAV 文件。')
     elif task in VISION_TASKS:
-        _text(params.get('image'), 4096)
-        if task == 'workflow_image':
+        if task not in GAME_VISION_TASKS:
+            _text(params.get('image'), 4096)
+        if task in TEMPLATE_TASKS:
             _text(params.get('template'), 4096)
         else:
             _text(params.get('text'), 120)
@@ -461,6 +466,12 @@ def task_spec(settings: Settings, node, base_dir):
         if task == 'currency_wars_rewards':
             options['currency_rewards_resume'] = params.get('resume', False)
         current.validate('currency_wars')
+    elif task in GAME_VISION_TASKS:
+        if 'template' in params:
+            from .workflow_vision import game_template_path
+            params['template'] = str(game_template_path(params['template'], base_dir))
+        options = dict(operation=task, workflow_screen_query=params)
+        current.validate('check')
     elif task.startswith('warp_'):
         options = params
         options['imports'] = [str((base_dir / path).resolve()) for path in params['imports']]
