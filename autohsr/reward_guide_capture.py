@@ -35,14 +35,16 @@ class RewardGuideCapture:
             self.receipt = _receipt('publish_unverified')
             raise
 
+    def result(self, report):
+        if self.receipt is not None:
+            return self.receipt
+        if report.status == 'stopped':
+            return _receipt('stopped')
+        return _receipt('report_unverified' if report.report_saved is not True else 'unverified')
+
 
 def capture_reward_guide(settings, capture):
     from .app import Runner
 
     runner = Runner(settings, operation=SCREEN_OPERATION, reward_guide_capture=capture)
-    report = runner.run()
-    if capture.receipt is not None:
-        return capture.receipt
-    if report.status == 'stopped':
-        return _receipt('stopped')
-    return _receipt('report_unverified' if report.report_saved is not True else 'unverified')
+    return capture.result(runner.run())

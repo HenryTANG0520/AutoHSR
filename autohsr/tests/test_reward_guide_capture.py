@@ -18,6 +18,7 @@ from autohsr import reward_guide_capture
 from autohsr.__main__ import main
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
+from autohsr.daily_observe import SCREEN_OPERATION
 from autohsr.models import FocusLost
 from autohsr.tests.test_daily_reward_guide_pages import guide_scene
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, _Window
@@ -49,7 +50,7 @@ class RewardGuideCaptureTests(unittest.TestCase):
     def args(self, *extra):
         return ['--reward-guide-capture', str(self.target), '--config', str(self.config), *extra]
 
-    def cli(self, frames, *, code=0, foreground=True, busy=False, before_crop=None, final=None):
+    def cli(self, frames, *, code=0, foreground=True, busy=False, before_crop=None, final=None, desktop_wait=None):
         window = _Window(frames)
         window.current_executable = Mock(return_value=self.exe)
         window.capture = Mock(wraps=window.capture)
@@ -113,7 +114,17 @@ class RewardGuideCaptureTests(unittest.TestCase):
             stack.enter_context(patch.object(reward_guide_capture, '_publish', side_effect=publish))
             stack.enter_context(redirect_stdout(output))
             stack.enter_context(redirect_stderr(logs))
-            self.assertEqual(main(self.args()), code, output.getvalue() + logs.getvalue())
+            if desktop_wait is None:
+                self.assertEqual(main(self.args()), code, output.getvalue() + logs.getvalue())
+            else:
+                wait = Mock(side_effect=lambda _: desktop_wait(window, user32))
+                stack.enter_context(patch('autohsr.screenshot_tool.time',
+                                          SimpleNamespace(monotonic=clock.monotonic, sleep=wait)))
+                capture = reward_guide_capture.RewardGuideCapture(self.target)
+                runner = Runner(Settings.load(self.config), operation=SCREEN_OPERATION,
+                                reward_guide_capture=capture, observation_wait_for_foreground=True)
+                print(json.dumps(capture.result(runner.run())))
+                wait.assert_called_once()
 
         result = json.loads(output.getvalue())
         if final is not None:
@@ -155,6 +166,29 @@ class RewardGuideCaptureTests(unittest.TestCase):
             self.assertEqual(result['status'], 'unverified')
             window.capture.assert_not_called()
             self.assertFalse(self.target.exists())
+
+    def test_desktop_wait_requires_manual_foreground_before_capture(self):
+        def handoff(window, native):
+            window.capture.assert_not_called()
+            native.SendInput.assert_not_called()
+            self.assertFalse(self.target.exists())
+            window.guard.side_effect = None
+
+        result, window, _ = self.cli(_pair(), foreground=False, desktop_wait=handoff)
+        self.assertEqual(result, dict(status='ok', input_sent=False, visible_section='ongoing', width=1026, height=603))
+        self.assertEqual(window.capture.call_count, 2)
+        self.assertTrue(self.target.is_file())
+
+    def test_desktop_wait_f10_stops_without_capture_or_publication(self):
+        def stop(window, native):
+            window.capture.assert_not_called()
+            native.SendInput.assert_not_called()
+            native.GetAsyncKeyState.return_value = 1
+
+        result, window, _ = self.cli(_pair(), foreground=False, desktop_wait=stop)
+        self.assertEqual(result['status'], 'stopped')
+        window.capture.assert_not_called()
+        self.assertFalse(self.target.exists())
 
     def test_missing_box_account_change_fade_and_wrong_version_leave_no_png(self):
         for second in (_frame('highlights-2346.png'), _frame('viewport-7026.png', OTHER),

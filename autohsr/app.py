@@ -2313,8 +2313,7 @@ class Runner:
         if reward_guide_capture is not None:
             from .reward_guide_capture import RewardGuideCapture
 
-            if (type(reward_guide_capture) is not RewardGuideCapture or operation != SCREEN_OPERATION
-                    or observation_wait_for_foreground):
+            if type(reward_guide_capture) is not RewardGuideCapture or operation != SCREEN_OPERATION:
                 raise ValueError('奖励指南单屏导出需要独立的当前前台核对入口。')
         self.reward_guide_capture = reward_guide_capture
         if operation in WORKFLOW_FOREGROUND_TASKS and (new_battle_run or use_power_plan or new_power_plan or weekly_plan is not None):

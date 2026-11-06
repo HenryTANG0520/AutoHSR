@@ -1,9 +1,11 @@
 """Hidden Tk and local temporary screenshots for the tools shelf."""
 from pathlib import Path
+from queue import Queue
 import sys
 from tempfile import TemporaryDirectory
 from threading import Event
 import tkinter as tk
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
@@ -13,7 +15,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from autohsr import theme
 from autohsr.config import Settings
-from autohsr.desktop_screenshot import _image_box, build_screenshot_panel
+from autohsr.daily_observe import SCREEN_OPERATION
+from autohsr.desktop_jobs import NativeRunSlot
+from autohsr.desktop_screenshot import _guide_feedback, _image_box, build_screenshot_panel
 
 
 class Host:
@@ -21,6 +25,8 @@ class Host:
         self.root, self.ui_scale = root, 1
         self.busy = self.closing = False
         self.stop_requested = Event()
+        self.events = Queue()
+        self._native_run = NativeRunSlot(self.events, self.stop_requested)
         self._selected_tool = 'screenshot'
         self._in_tools = lambda: True
         self.pending = None
@@ -106,6 +112,90 @@ class ScreenshotSmoke(unittest.TestCase):
         self.host._selected_tool = 'warp'
         self.host.screenshot_panel.capture()
         self.assertIsNone(self.host.pending)
+
+    def test_reward_guide_uses_explicit_output_and_keeps_anonymous_receipt_after_late_stop(self):
+        before = Image.new('RGB', (90, 40))
+        self.panel._set_image(before, '本地图片')
+        self.panel.select_all()
+        self.assertEqual(self.panel.primary_action()[0], '截取游戏窗口')
+        self.panel.mode.set('奖励指南单屏导出')
+        self.panel._mode_selected()
+        self.assertEqual(self.panel.primary_action()[0], '导出奖励指南单屏')
+        self.assertFalse(self.panel.primary_action()[2])
+        self.panel.capture()
+        self.assertIsNone(self.host.pending)
+        with TemporaryDirectory() as temporary, patch('autohsr.app.Runner') as runner, patch(
+                'autohsr.reward_guide_notify.send_reward_guide', side_effect=AssertionError('no notification')) as send:
+            target = Path(temporary) / 'private-name.png'
+            with patch('autohsr.desktop_screenshot.filedialog.asksaveasfilename') as picker:
+                picker.return_value = ''
+                self.assertFalse(self.panel.pick_guide_destination())
+                for invalid in ('relative.png', r'\\server\share\capture.png', str(target.with_suffix('.jpeg'))):
+                    picker.return_value = invalid
+                    self.assertFalse(self.panel.pick_guide_destination())
+                    self.assertFalse(self.panel.primary_action()[2])
+                picker.return_value = str(target)
+                self.assertTrue(self.panel.pick_guide_destination())
+                self.assertIs(picker.call_args.kwargs['confirmoverwrite'], False)
+            self.assertIsNone(self.host.pending)
+            self.assertFalse(target.exists())
+            runner.assert_not_called()
+            self.host._read_settings.assert_not_called()
+            self.assertTrue(self.panel.primary_action()[1]())
+            self.assertTrue(self.host.pending[3])
+            self.assertTrue(self.panel.guide_picker.instate(('disabled',)))
+            self.assertTrue(self.panel.mode.instate(('disabled',)))
+            self.assertFalse(self.panel.export_guide())
+
+            def make(_settings, emit, **kwargs):
+                self.assertEqual(kwargs['operation'], SCREEN_OPERATION)
+                self.assertTrue(kwargs['observation_wait_for_foreground'])
+                capture = kwargs['reward_guide_capture']
+                self.assertEqual(capture._target[0], target)
+                emit(dict(type='paused', paused=True))
+                emit(dict(type='finished', private='private-name'))
+                capture.receipt = dict(status='ok', input_sent=False, visible_section='ongoing', width=90, height=40,
+                                       path='private-name')
+                return SimpleNamespace(run=lambda: SimpleNamespace(status='stopped', report_saved=True))
+
+            runner.side_effect = make
+            current = self.host.screenshot_panel = build_screenshot_panel(self.host.root, self.host)
+            self.host.complete(late_stop=True)
+            runner.assert_called_once()
+            self.assertEqual(self.host.events.get_nowait(), dict(type='paused', paused=True))
+            self.assertEqual(self.host.events.get_nowait()['type'], 'runner_ready')
+            self.assertTrue(self.host.events.empty())
+            self.assertEqual(current.guide_feedback.cget('text'), '已导出「进行中」内容 · 90 × 40 · 游戏输入 0 次。')
+            self.assertIsNone(current.model.guide_destination)
+            self.assertFalse(current.primary_action()[2])
+            send.assert_not_called()
+        current.mode.set('截图与识别')
+        current._mode_selected()
+        self.assertIs(current.model.image, before)
+        self.assertEqual(current.model.box, (0, 0, 90, 40))
+
+    def test_reward_guide_rejects_existing_output_before_job_or_settings_read(self):
+        self.panel.mode.set('奖励指南单屏导出')
+        self.panel._mode_selected()
+        with TemporaryDirectory() as temporary, patch('autohsr.app.Runner') as runner:
+            target = Path(temporary) / 'original.png'
+            target.write_bytes(b'original')
+            with patch('autohsr.desktop_screenshot.filedialog.asksaveasfilename', return_value=str(target)):
+                self.assertTrue(self.panel.pick_guide_destination())
+            self.assertFalse(self.panel.export_guide())
+            self.assertIn('已有文件保留', self.panel.guide_feedback.cget('text'))
+            self.assertEqual(target.read_bytes(), b'original')
+            self.assertIsNone(self.host.pending)
+            self.assertFalse(self.panel.primary_action()[2])
+            self.host._read_settings.assert_not_called()
+            runner.assert_not_called()
+
+    def test_reward_guide_only_renders_verified_zero_input_receipts(self):
+        ready = dict(status='ok', input_sent=False, visible_section='ongoing', width=10, height=20)
+        for receipt in (dict(ready, input_sent=True), dict(ready, width=True), dict(ready, visible_section='private')):
+            self.assertEqual(_guide_feedback(receipt), '奖励指南单屏导出结果待核对。')
+        self.assertIn('已停止', _guide_feedback(dict(status='stopped', input_sent=False)))
+        self.assertIn('报告未发布', _guide_feedback(dict(status='report_unverified', input_sent=False)))
 
 
 if __name__ == '__main__':

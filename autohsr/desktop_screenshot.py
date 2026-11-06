@@ -11,6 +11,33 @@ from . import screenshot_tool, theme
 from .models import AutomationError, Stopped
 
 
+_SCREEN_MODE = '截图与识别'
+_GUIDE_MODE = '奖励指南单屏导出'
+_GUIDE_ACTION = '导出奖励指南单屏'
+_GUIDE_UNKNOWN = '奖励指南单屏导出结果待核对。'
+_GUIDE_STATUS = {
+    'invalid_target': '请选择新的本地 PNG 位置，已有文件保留。',
+    'unverified': '当前奖励指南或内容框待核对。',
+    'report_unverified': '匿名核对报告未发布，未导出图片。',
+    'publish_failed': '无法发布 PNG，请核对输出位置。',
+    'publish_unverified': 'PNG 发布结果待核对，请查看所选位置。',
+    'limit': '当前裁片超过导出上限。',
+    'stopped': '奖励指南单屏导出已停止。',
+}
+
+
+def _guide_feedback(receipt):
+    if not isinstance(receipt, dict) or receipt.get('input_sent') is not False:
+        return _GUIDE_UNKNOWN
+    status = receipt.get('status')
+    if status == 'ok':
+        width, height = receipt.get('width'), receipt.get('height')
+        if (receipt.get('visible_section') == 'ongoing' and type(width) is int and type(height) is int
+                and width > 0 and height > 0):
+            return f'已导出「进行中」内容 · {width} × {height} · 游戏输入 0 次。'
+    return _GUIDE_STATUS.get(status, _GUIDE_UNKNOWN) if isinstance(status, str) else _GUIDE_UNKNOWN
+
+
 @dataclass
 class _State:
     image: Image.Image | None = field(default=None, repr=False)
@@ -19,6 +46,9 @@ class _State:
     message: str = '截取当前游戏窗口，或打开本地图片。拖动鼠标框选区域。'
     source: str = ''
     job: object | None = None
+    mode: str = _SCREEN_MODE
+    guide_destination: Path | None = None
+    guide_message: str = '尚无奖励指南导出回执。'
 
 
 def _image_box(start, end, preview, image_size):
@@ -98,7 +128,17 @@ class ScreenshotPanel(ttk.Frame):
         self.ui, self.model = ui, state
         pad = round(7 * ui.ui_scale)
         self.columnconfigure(0, weight=1)
-        actions = ttk.Frame(self)
+        mode_row = ttk.Frame(self)
+        mode_row.grid(row=0, column=0, sticky='ew', pady=(0, pad))
+        ttk.Label(mode_row, text='本次操作', style='Card.TLabel').pack(side='left', padx=(0, pad))
+        self.mode = ttk.Combobox(mode_row, values=(_SCREEN_MODE, _GUIDE_MODE), width=18, state='readonly')
+        self.mode.pack(side='left')
+        self.mode.bind('<<ComboboxSelected>>', self._mode_selected)
+
+        self.screenshot_fields = ttk.Frame(self)
+        self.screenshot_fields.columnconfigure(0, weight=1)
+        self.screenshot_fields.grid(row=1, column=0, sticky='ew')
+        actions = ttk.Frame(self.screenshot_fields)
         actions.grid(row=0, column=0, sticky='ew', pady=(0, pad))
         self.buttons = []
         for label, command in (('打开图片…', self.open_image), ('选中全图', self.select_all),
@@ -106,14 +146,14 @@ class ScreenshotPanel(ttk.Frame):
             button = ttk.Button(actions, text=label, style='Compact.TButton', command=command)
             button.pack(side='left', padx=(0, pad))
             self.buttons.append(button)
-        self.canvas = SelectionCanvas(self, height=round(292 * ui.ui_scale),
-                                      can_select=lambda: self._idle and self._active, on_select=self._select)
+        self.canvas = SelectionCanvas(self.screenshot_fields, height=round(292 * ui.ui_scale),
+                                      can_select=lambda: self._can_screenshot, on_select=self._select)
         self.canvas.grid(row=1, column=0, sticky='ew')
-        self.coordinates = theme.wrapped_label(self, style='Hint.TLabel')
+        self.coordinates = theme.wrapped_label(self.screenshot_fields, style='Hint.TLabel')
         self.coordinates.grid(row=2, column=0, sticky='ew', pady=(pad, 0))
-        self.feedback = theme.wrapped_label(self, style='Hint.TLabel')
+        self.feedback = theme.wrapped_label(self.screenshot_fields, style='Hint.TLabel')
         self.feedback.grid(row=3, column=0, sticky='ew', pady=(pad, 0))
-        result = ttk.Frame(self)
+        result = ttk.Frame(self.screenshot_fields)
         result.grid(row=4, column=0, sticky='ew', pady=(pad, 0))
         result.columnconfigure(0, weight=1)
         self.result = tk.Text(result, height=4, width=1, wrap='word', state='disabled', relief='flat',
@@ -122,6 +162,20 @@ class ScreenshotPanel(ttk.Frame):
         scroll = ttk.Scrollbar(result, orient='vertical', command=self.result.yview)
         scroll.grid(row=0, column=1, sticky='ns')
         self.result.configure(yscrollcommand=scroll.set)
+
+        self.guide_fields = ttk.Frame(self)
+        self.guide_fields.columnconfigure(1, weight=1)
+        self.guide_fields.grid(row=1, column=0, sticky='ew')
+        hint = theme.wrapped_label(self.guide_fields, style='Hint.TLabel',
+            text='请先在游戏手动打开奖励指南的「旅程热点」。选定新 PNG 位置并开始后，手动切回游戏前台。')
+        hint.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, pad))
+        self.guide_picker = ttk.Button(self.guide_fields, text='选择 PNG 位置…', style='Compact.TButton',
+                                       command=self.pick_guide_destination)
+        self.guide_picker.grid(row=1, column=0, sticky='nw', padx=(0, pad))
+        self.guide_path = theme.wrapped_label(self.guide_fields, style='Hint.TLabel')
+        self.guide_path.grid(row=1, column=1, sticky='ew')
+        self.guide_feedback = theme.wrapped_label(self.guide_fields, style='Hint.TLabel')
+        self.guide_feedback.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(pad, 0))
         self.refresh()
 
     @property
@@ -133,15 +187,44 @@ class ScreenshotPanel(ttk.Frame):
         return (self.ui.screenshot_panel is self and self.ui._in_tools()
                 and self.ui._selected_tool == 'screenshot')
 
+    @property
+    def _can_screenshot(self):
+        return self.model.mode == _SCREEN_MODE and self._idle and self._active
+
+    @property
+    def _can_guide(self):
+        return self.model.mode == _GUIDE_MODE and self._idle and self._active
+
     def primary_action(self):
-        return '截取游戏窗口', self.capture, self._idle and self._active
+        if self.model.mode == _GUIDE_MODE:
+            return _GUIDE_ACTION, self.export_guide, self._can_guide and self.model.guide_destination is not None
+        return '截取游戏窗口', self.capture, self._can_screenshot
 
     def focus_entry(self):
-        self.buttons[0].focus_set()
+        self.mode.focus_set()
+
+    def _mode_selected(self, _event=None):
+        selected = self.mode.get()
+        if self._idle and self._active and selected in (_SCREEN_MODE, _GUIDE_MODE):
+            self.model.mode = selected
+        self.refresh()
+        self.ui._tool_action_changed()
 
     def refresh(self):
         model = self.model
         idle = self._idle
+        if self.mode.get() != model.mode:
+            self.mode.set(model.mode)
+        self.mode.configure(state='readonly' if idle else 'disabled')
+        if model.mode == _GUIDE_MODE:
+            self.screenshot_fields.grid_remove()
+            self.guide_fields.grid()
+        else:
+            self.guide_fields.grid_remove()
+            self.screenshot_fields.grid()
+        self.guide_picker.state(('!disabled' if idle else 'disabled',))
+        self.guide_path.configure(text=str(model.guide_destination) if model.guide_destination else '尚未选择输出位置。')
+        self.guide_feedback.configure(text=model.guide_message)
         have_image = model.image is not None
         for button, enabled in zip(self.buttons, (idle, idle and have_image, idle and model.box is not None,
                                                   idle and model.box is not None)):
@@ -171,20 +254,20 @@ class ScreenshotPanel(ttk.Frame):
         self.refresh()
 
     def select_all(self):
-        if self._idle and self._active and self.model.image is not None:
+        if self._can_screenshot and self.model.image is not None:
             self._select((0, 0, *self.model.image.size))
 
     def open_image(self):
-        if not self._idle or not self._active:
+        if not self._can_screenshot:
             return
         path = filedialog.askopenfilename(parent=self.ui.root, title='打开本地截图',
                                           filetypes=[('PNG 或 JPEG', '*.png *.jpg *.jpeg')])
-        if path and self._idle and self._active:
+        if path and self._can_screenshot:
             self._start('读取本地图片', lambda cancel: screenshot_tool.open_image(path, cancel),
                         lambda image: self._set_image(image, '本地图片'))
 
     def capture(self):
-        if not self._idle or not self._active:
+        if not self._can_screenshot:
             return
         settings = self.ui._read_settings(operation='check')
         if settings is not None:
@@ -198,7 +281,7 @@ class ScreenshotPanel(ttk.Frame):
 
     def read(self):
         model = self.model
-        if not self._idle or not self._active or model.box is None:
+        if not self._can_screenshot or model.box is None:
             return
         settings = self.ui._read_settings(operation='check')
         if settings is None:
@@ -215,21 +298,81 @@ class ScreenshotPanel(ttk.Frame):
 
     def save(self):
         model = self.model
-        if not self._idle or not self._active or model.box is None:
+        if not self._can_screenshot or model.box is None:
             return
         image, box = model.image, model.box
         path = filedialog.asksaveasfilename(parent=self.ui.root, title='另存截图选区', defaultextension='.png',
                                             filetypes=[('PNG', '*.png')], confirmoverwrite=False)
-        if path and self._idle and self._active and model.image is image and model.box == box:
+        if path and self._can_screenshot and model.image is image and model.box == box:
             self._start('导出截图选区', lambda cancel: screenshot_tool.save_selection(image, box, path, cancel),
                         lambda _digest: setattr(model, 'message', f'已导出 · {Path(path).name}'), published=True)
 
-    def _start(self, title, work, present, *, published=False):
+    def pick_guide_destination(self):
+        if not self._can_guide:
+            return False
+        value = filedialog.asksaveasfilename(parent=self.ui.root, title='保存奖励指南单屏', defaultextension='.png',
+                                             filetypes=[('PNG', '*.png')], confirmoverwrite=False)
+        if not value or not self._can_guide:
+            return False
+        path = Path(value)
+        valid = path.is_absolute() and not path.anchor.startswith('\\') and path.suffix.casefold() == '.png'
+        self.model.guide_destination = path if valid else None
+        if not valid:
+            self.model.guide_message = _GUIDE_STATUS['invalid_target']
+        self.refresh()
+        self.ui._tool_action_changed()
+        return valid
+
+    def export_guide(self):
+        from .daily_observe import SCREEN_OPERATION
+        from .reward_guide_capture import RewardGuideCapture, _receipt
+        from .reward_guide_export import _Rejected
+
+        model, ui = self.model, self.ui
+        if not self._can_guide or model.guide_destination is None:
+            return False
+        try:
+            capture = RewardGuideCapture(model.guide_destination)
+        except _Rejected as error:
+            model.guide_destination = None
+            model.guide_message = _guide_feedback(_receipt(str(error)))
+            self.refresh()
+            ui._tool_action_changed()
+            return False
+        settings = ui._read_settings(operation='check')
+        if settings is None:
+            return False
+
+        def work(_cancel):
+            from .app import Runner
+
+            def emit(event):
+                if event.get('type') == 'paused':
+                    ui.events.put(event)
+
+            try:
+                runner = Runner(settings, emit, operation=SCREEN_OPERATION, reward_guide_capture=capture,
+                                observation_wait_for_foreground=True)
+                return capture.result(ui._native_run.run(runner))
+            except (Stopped, KeyboardInterrupt):
+                return capture.receipt or _receipt('stopped')
+            except (OSError, RuntimeError, ValueError):
+                return capture.receipt or _receipt('unverified')
+
+        def present(receipt):
+            model.guide_message = _guide_feedback(receipt)
+            model.guide_destination = None
+
+        return self._start(_GUIDE_ACTION, work, present, published=True, guide_export=True)
+
+    def _start(self, title, work, present, *, published=False, guide_export=False):
         if not self._idle or not self._active:
-            return
+            return False
         ui, model = self.ui, self.model
-        job, previous = object(), model.message
-        model.job, model.message = job, f'正在{title}…'
+        message = 'guide_message' if guide_export else 'message'
+        job, previous = object(), getattr(model, message)
+        model.job = job
+        setattr(model, message, f'正在{title}…')
         self.canvas.drag = None
 
         def update():
@@ -250,18 +393,25 @@ class ScreenshotPanel(ttk.Frame):
         def failed(error):
             if model.job is job:
                 model.job = None
-                model.message = (str(error) if isinstance(error, (AutomationError, Stopped, screenshot_tool.ScreenshotError))
-                                 else '未能读取或写入图片，请检查本地文件和窗口。')
+                if guide_export:
+                    model.guide_destination = None
+                    model.guide_message = _GUIDE_STATUS['stopped'] if isinstance(error, Stopped) else _GUIDE_UNKNOWN
+                else:
+                    model.message = (str(error) if isinstance(error, (AutomationError, Stopped, screenshot_tool.ScreenshotError))
+                                     else '未能读取或写入图片，请检查本地文件和窗口。')
                 update()
 
         try:
-            accepted = ui._submit_tool_job(title, lambda stop: work(stop.is_set), done, failed)
+            args = (title, lambda stop: work(stop.is_set), done, failed)
+            accepted = ui._start_desktop_job(*args, game=True) if guide_export else ui._submit_tool_job(*args)
         except Exception as error:
             failed(error)
-            return
+            return False
         if not accepted:
-            model.job, model.message = None, previous
+            model.job = None
+            setattr(model, message, previous)
         update()
+        return bool(accepted)
 
 
 def build_screenshot_panel(parent, ui):
