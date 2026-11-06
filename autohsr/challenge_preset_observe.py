@@ -58,7 +58,7 @@ class PresetObserver:
         return verified_account(scene, self.confidence, expected=self.account, veto_floor=UID_VETO_FLOOR)
 
     def _current(self, scene, sequence):
-        if self.c.runner.stop_requested or self.window.emergency_pressed():
+        if self.window.emergency_pressed() or self.c.runner.stop_requested:
             raise Stopped('高难预设观察已停止。')
         if self.c.runner.input_epoch != self.epoch or self.c.scene_epoch != self.epoch:
             raise InputInterrupted('高难预设观察的输入代次已改变。')

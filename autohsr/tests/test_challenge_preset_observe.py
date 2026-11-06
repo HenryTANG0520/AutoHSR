@@ -294,10 +294,18 @@ class ChallengePresetObserveTests(unittest.TestCase):
         def press_f10(state, _clock, _max_age, _sources):
             state.window.emergency_pressed.return_value = True
 
+        def release_f10_before_last_query_returns(state, _clock, _max_age, _sources):
+            def pressed():
+                state.runner.stop()
+                return False
+
+            state.window.emergency_pressed.side_effect = pressed
+
         def change_epoch(state, _clock, _max_age, _sources):
             state.runner.input_epoch += 1
 
-        for interrupt, status in ((stop, 'stopped'), (press_f10, 'stopped'), (change_epoch, 'partial')):
+        for interrupt, status in ((stop, 'stopped'), (press_f10, 'stopped'),
+                                  (release_f10_before_last_query_returns, 'stopped'), (change_epoch, 'partial')):
             with self.subTest(interrupt=interrupt.__name__):
                 report, state = self.run_cli([frame(), frame()], on_report_retry=interrupt)
                 self.assertGreaterEqual(state.report_attempts, 2)
