@@ -12,7 +12,8 @@ import numpy as np
 from .currency_wars_prepare import trusted
 from .du_station_policy import CARD_LABELS, LABELS
 from .du_station_preview import (
-    _reroll_button, station_cards, station_reroll_observation, three_card_station_row,
+    FOUR_CARD_FOOTERS, _reroll_button, four_card_station_row, station_cards,
+    station_reroll_observation, three_card_station_row,
 )
 from .models import AutomationError, EmptyCapture, InputInterrupted, Stopped, Token, normalize
 
@@ -52,7 +53,7 @@ def retention_prompt_visible(scene, confidence=.85):
 
 
 def station_round(scene, confidence=.85):
-    """Require all three unselected cards and a visible left-side control."""
+    """Require an entire unselected card row and the left-side control."""
     image = _visible_image(scene)
     if image is None or retention_prompt_visible(scene, min(.65, confidence)):
         return None
@@ -71,16 +72,20 @@ def station_round(scene, confidence=.85):
     if observed['status'] != 'observed':
         return None
     cards = station_cards(scene)
-    if not three_card_station_row(cards) or any(card.selected for card in cards):
+    four = four_card_station_row(cards)
+    if not (four or three_card_station_row(cards)) or any(card.selected for card in cards):
         return None
-    labels = [token for token in trusted(scene, min(.65, confidence)).tokens
-              if token.within(CARD_LABELS) and normalize(token.text) in LABELS]
+    tokens = trusted(scene, min(.65, confidence)).tokens
+    if four:
+        labels = [token for token in tokens if token.within(FOUR_CARD_FOOTERS)]
+    else:
+        labels = [token for token in tokens if token.within(CARD_LABELS) and normalize(token.text) in LABELS]
     if len(labels) != len(cards):
         return None
     names = []
     for card in cards:
         matches = [token for token in labels if card.holds_label(token)]
-        if len(matches) != 1 or matches[0].score < confidence:
+        if len(matches) != 1 or matches[0].score < confidence or normalize(matches[0].text) not in LABELS:
             return None
         names.append(normalize(matches[0].text))
     count = observed['displayed_count']
@@ -338,7 +343,8 @@ class StationReroll:
         observed = self._station_facts(scene)
         if (observed is None or observed[0] <= 0
                 or any(self.workflow.station_preferences.allowed(name) for name in observed[1])):
-            raise AutomationError('选站重抽缺少完整三张禁用卡、未选中页面或可用次数。')
+            raise AutomationError('选站重抽缺少完整且均已禁用的卡片、未选中页面或可用次数。')
+        direct_four = len(observed[1]) == 4
 
         def original(current):
             facts = self._station_facts(current)
@@ -348,17 +354,25 @@ class StationReroll:
             return PROMPT_BODY if retention_confirmation(current, self.confidence) is not None else None
 
         def changed(current):
+            if direct_four and retention_prompt_visible(current, min(.65, self.confidence)):
+                raise AutomationError('四卡重抽遇到尚未核实的确认提示，保留原请求。')
             facts = self._station_facts(current)
-            return facts if facts is not None and facts[0] == observed[0]-1 and Counter(facts[1]) != Counter(observed[1]) else None
+            if (facts is not None and len(facts[1]) == len(observed[1]) and facts[0] == observed[0]-1
+                    and Counter(facts[1]) != Counter(observed[1])):
+                return facts
+            return None
 
         before = self._pair(original, first=(scene, observed, context.capture_occlusion_count))
         target = station_round(before[1], self.confidence).target
         self.deadline = self._active_time() + 15
         try:
             self.request = self._send(REQUEST, before, target)
-            modal = self._pair(prompt, after=before[1].captured_at)
-            self.confirm = self._send(CONFIRM, modal, retention_confirmation(modal[1], self.confidence))
-            after = self._pair(changed, after=modal[1].captured_at)
+            boundary = before[1].captured_at
+            if not direct_four:
+                modal = self._pair(prompt, after=boundary)
+                self.confirm = self._send(CONFIRM, modal, retention_confirmation(modal[1], self.confidence))
+                boundary = modal[1].captured_at
+            after = self._pair(changed, after=boundary)
             self._publish_receipt(after)
             return after[1], self.workflow._observe(after[1], 'station_reroll_verified')
         except InputInterrupted as error:
@@ -370,7 +384,9 @@ class StationReroll:
 
         first, scene, facts = pair
         feedback = self._save_pair('feedback', first, scene)
-        sources = [*self.start['images'], *self.request['source_frames'], *self.confirm['source_frames'], *feedback]
+        actions = [self.request, self.confirm] if self.confirm is not None else [self.request]
+        receipt = actions[-1]
+        sources = [*self.start['images'], *(ref for action in actions for ref in action['source_frames']), *feedback]
         image, tokens, fields = scene.image, tuple(scene.tokens), scene.field_reads.copy()
         stamp, occlusions = scene.captured_at, self.context.capture_occlusion_count
         with ExitStack() as held:
@@ -379,7 +395,7 @@ class StationReroll:
                 image.setflags(write=False)
                 held.callback(image.setflags, write=True)
             revision = file_revision(self.ledger)
-            if (self._journal()['actions'][-2:] != [self.request, self.confirm]
+            if (self._journal()['actions'][-len(actions):] != actions
                     or any(source_file_ref(ref['path'], self.directory) != ref for ref in sources)):
                 raise AutomationError('选站重抽的反馈原图或已发送记录改变，保留待核对。')
             require_evidence_pixels(scene, feedback[-1])
@@ -397,15 +413,17 @@ class StationReroll:
                         or self.context.capture_occlusion_count != occlusions):
                     raise InputInterrupted('选站重抽的反馈证据已改变，保留待核对。')
 
-            previous = self.confirm.copy()
-            self.confirm.update(feedback_status='verified', feedback_frames=feedback,
-                                feedback_times=[first.captured_at, scene.captured_at],
-                                station_count_after=facts[0], station_cards_after=list(facts[1]))
+            previous = receipt.copy()
+            receipt.update(feedback_status='verified', feedback_frames=feedback,
+                           feedback_times=[first.captured_at, scene.captured_at],
+                           station_count_after=facts[0], station_cards_after=list(facts[1]))
+            if self.confirm is None:
+                receipt['feedback_mode'] = 'direct_four'
             self.request['feedback_status'] = 'verified'
             try:
                 self.workflow._persist_ledger(before_replace=before_replace)
             except (AutomationError, OSError):
-                self.confirm.clear()
-                self.confirm.update(previous)
+                receipt.clear()
+                receipt.update(previous)
                 self.request['feedback_status'] = 'unverified'
                 raise

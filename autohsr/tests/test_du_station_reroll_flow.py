@@ -28,6 +28,9 @@ GEO = windows.Geometry(0, 0, 960, 540)
 WEEK = datetime(2026, 11, 2, 4, 30, tzinfo=CHINA)
 OLD = ('事件', '铸造', '空白')
 NEW = ('精英', '事件', '铸造')
+FOUR_OLD = ('战斗', '战斗', '铸造', '事件')
+FOUR_NEW = ('战斗', '战斗', '事件', '异常')
+FOUR_DISABLED = ('战斗', '铸造', '事件')
 UID = Token('UID:100000000', .99, (.012, .960, .142, .986))
 
 
@@ -41,7 +44,8 @@ def station(count=2, names=OLD, *, gray=False, selected=False):
               Token('选择一张站点卡', .99, (.427, .232, .580, .266)),
               Token('确定', .99, (.585, .881, .616, .913)),
               Token(f'重抽{count}', .99, (.361, .881, .410, .913))]
-    for left, name in zip((292, 421, 556), names):
+    columns = (223, 357, 489, 620) if len(names) == 4 else (292, 421, 556)
+    for left, name in zip(columns, names):
         image[218:403, left:left+116] = 240
         tokens.append(Token(name, .99, (left/960+.082, .681, left/960+.113, .716)))
     return Scene(tokens, image, GEO)
@@ -122,6 +126,89 @@ class StationRerollFlowTests(unittest.TestCase):
 
     def records(self, directory):
         return json.loads((Path(directory)/LEDGER).read_text(encoding='utf-8'))['actions'][1:]
+
+    def test_four_card_direct_receipt_waits_for_new_cards_and_selects_the_rightmost_label(self):
+        old, early, changed = station(78, FOUR_OLD), station(77, FOUR_OLD), station(77, FOUR_NEW)
+        pages = [old,old,early,early,changed,changed]
+        with tempfile.TemporaryDirectory() as directory, harness(directory,pages,disabled=FOUR_DISABLED) as (flow,native,_):
+            def next_station(scene, target, *, intent, **_kwargs):
+                self.assertEqual((intent, target.text), ('station_select', '异常'))
+                self.assertGreater(target.center[0], .73)
+                guard_differential_universe_click(scene,target,intent=intent)
+                raise ReachedStation
+            with patch.object(flow,'_click',side_effect=next_station), self.assertRaises(ReachedStation):
+                self.run_flow(flow)
+            native.SendInput.assert_called_once()
+            receipt, = self.records(directory)
+            self.assertEqual((receipt['intent'],receipt['status'],receipt['feedback_status'],receipt['feedback_mode']),
+                             (REQUEST,'sent','verified','direct_four'))
+            self.assertEqual((receipt['station_count'],receipt['station_count_after']),(78,77))
+            self.assertEqual(receipt['station_cards_after'],list(FOUR_NEW))
+            self.assertEqual(len(receipt['feedback_frames']),2)
+
+    def test_four_card_retains_one_request_when_new_cards_are_disabled_or_publication_stops(self):
+        old, changed = station(78, FOUR_OLD), station(77, FOUR_NEW)
+        disabled = FOUR_DISABLED + ('异常',)
+        for stop in (False, True):
+            with self.subTest(stop=stop), tempfile.TemporaryDirectory() as directory:
+                pages = [old,old,changed,changed,changed]
+                with harness(directory,pages,disabled=disabled) as (flow,native,_):
+                    if stop:
+                        native.GetAsyncKeyState.side_effect = lambda _: 0x8000 if native.SendInput.call_count else 0
+                    with self.assertRaisesRegex(AutomationError,'发布前停止' if stop else '至多尝试一次'):
+                        self.run_flow(flow)
+                    native.GetAsyncKeyState.side_effect = None
+                    with self.assertRaisesRegex(AutomationError,'至多尝试一次'):
+                        self.run_flow(flow)
+                native.SendInput.assert_called_once()
+                request, = self.records(directory)
+                self.assertEqual(request['status'],'sent')
+                self.assertEqual(request['feedback_status'],'unverified' if stop else 'verified')
+
+    def test_four_card_direct_requires_one_less_and_a_complete_changed_four_card_row(self):
+        old = station(78, FOUR_OLD)
+        for wrong in (station(77,FOUR_OLD), station(78,FOUR_NEW), station(77,NEW),
+                      station(77,('事件','战斗','战斗','铸造'))):
+            with self.subTest(wrong=wrong.tokens), tempfile.TemporaryDirectory() as directory:
+                pages = [old,old] + [wrong]*16
+                with harness(directory,pages,disabled=FOUR_DISABLED) as (flow,native,_), self.assertRaisesRegex(AutomationError,'双帧'):
+                    self.run_flow(flow)
+                native.SendInput.assert_called_once()
+                request, = self.records(directory)
+                self.assertEqual(request['feedback_status'],'unverified')
+                self.assertNotIn('feedback_mode',request)
+
+    def test_four_card_unverified_confirmation_remains_pending_after_the_single_request(self):
+        pages = [station(78,FOUR_OLD), station(78,FOUR_OLD), dialog()]
+        with tempfile.TemporaryDirectory() as directory, harness(directory,pages,disabled=FOUR_DISABLED) as (flow,native,_):
+            with self.assertRaisesRegex(AutomationError,'四卡重抽遇到尚未核实的确认提示'):
+                self.run_flow(flow)
+            native.SendInput.assert_called_once()
+            request, = self.records(directory)
+            self.assertEqual(request['feedback_status'],'unverified')
+
+    def test_four_card_policy_does_not_skip_an_allowed_fourth_slot(self):
+        with tempfile.TemporaryDirectory() as directory, harness(directory,[station(78,FOUR_OLD)],disabled=('战斗','铸造')) as (flow,native,_):
+            with patch.object(flow,'_click',side_effect=ReachedStation) as next_click, self.assertRaises(ReachedStation):
+                self.run_flow(flow)
+            self.assertEqual(next_click.call_args.args[1].text,'事件')
+            native.SendInput.assert_not_called()
+
+    def test_false_fourth_card_and_true_two_card_never_authorize_input(self):
+        source = station(78,FOUR_OLD)
+        cut = replace(source,image=source.image.copy())
+        cut.image[217:404,620:736] = (72,75,78)
+        conflict = replace(source,tokens=source.tokens + [Token('奇遇-祝福',.74,(.726,.680,.755,.714))])
+        for page in (cut, conflict, station(78,('战斗','事件')),
+                     station(78,('战斗','战斗','铸造','奇遇-祝福'))):
+            with self.subTest(page=page.tokens), tempfile.TemporaryDirectory() as directory:
+                with harness(directory,[page],disabled=FOUR_DISABLED) as (flow,native,_):
+                    with self.assertRaises(AutomationError):
+                        self.run_flow(flow)
+                native.SendInput.assert_not_called()
+                self.assertEqual(self.records(directory),[])
+        with self.assertRaises(AutomationError):
+            guard_differential_universe_click(conflict,source.tokens[-1],intent='station_select')
 
     def test_scope_and_receipt_return_to_normal_allowed_selection(self):
         pages = [station(), station(), dialog(), dialog(), station(1, NEW), station(1, NEW)]

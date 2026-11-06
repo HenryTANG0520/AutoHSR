@@ -128,6 +128,8 @@ Excel采用延迟加载的openpyxl 3.1.5与et_xmlfile 2.0.0，均按包声明保
 
 2026-11-06 周期三卡重抽以公开简中 4.6 原片核对实际弹窗、暗态零次和同局候选变化，按该证据独立实现一次请求与一次确认。公开画面仅在本地去 UID 后用于离线复放，15 张必要裁片的清单记录时间、范围与 SHA-256。图像版权归相应权利人。[公开原片](https://www.bilibili.com/video/BV1nPSoBDEZn/?p=26&t=1918) · [验证记录](../docs/du-validation.md#2026-11-06-周期三卡重抽回放)
 
+2026-11-06 周期四卡重抽采用同一公开系列两集的简中 4.6 画面。只保留去 UID 的关键帧及来源清单用于本地离线复放，记录卡名、数字、相邻时点及 SHA-256。图像版权归相应权利人。[四卡直接翻牌](https://www.bilibili.com/video/BV1nPSoBDEZn/?p=28&t=120) · [次数先扣对照](https://www.bilibili.com/video/BV1nPSoBDEZn/?p=27&t=2747) · [验证记录](../docs/du-validation.md#2026-11-06-周期四卡直接重抽回放)
+
 同日新增三张简中 4.6 周期选站裁片，依次保留未选、左侧战斗和右侧铸造。各清单记录原报告页号、原图与输出 SHA-256、缩放与保留区。仅保留页标题、预览、卡身和确认控件的像素及相关 OCR。游戏图像归 HoYoverse 和相应权利人，原图保存在本地忽略目录。[未选](../autohsr/tests/fixtures/du_runtime/station_preview_three_447.json) · [战斗](../autohsr/tests/fixtures/du_runtime/station_preview_three_450.json) · [铸造](../autohsr/tests/fixtures/du_runtime/station_preview_three_451.json)
 
 三卡改选的「暂无信标」模板取自同局第 84 页，仅保留 71 × 27 的二值字形。回放夹具保留同一报告两段连续选站与进场标题，原图、变换、遮罩与输出 SHA-256 均随清单记录。游戏图像归 HoYoverse 和相应权利人。[模板](templates/du_station_empty_beacon_ink.png) · [回放来源清单](../autohsr/tests/fixtures/du_runtime/station_empty_beacon_replay.json)

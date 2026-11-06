@@ -54,8 +54,14 @@ class StationPreferences:
 
     def candidates(self,scene):
         labels=LABELS if self.enabled else LEGACY_LABELS
-        return [t for t in scene.tokens if normalize(t.text) in labels and t.within(CARD_LABELS)
-                and (not self.enabled or t.score>=self.confidence)]
+        candidates = [t for t in scene.tokens if normalize(t.text) in labels and t.within(CARD_LABELS)
+                      and (not self.enabled or t.score>=self.confidence)]
+        if self.enabled:
+            from .du_station_preview import fourth_station_label
+            fourth = fourth_station_label(scene, max(.85, self.confidence))
+            if fourth is not None:
+                candidates.append(fourth)
+        return candidates
 
     def ordered(self,candidates):
         if not self.enabled:

@@ -19,6 +19,7 @@ _CONFIRM_SEARCH = (465, 458, 695, 514)
 _REROLL_SEARCH = (263, 458, 492, 513)  # 960 × 540 view of the next-station control row.
 _REROLL_FIELD = re.compile(r'重[ 　]*抽[ 　]*([0-9０-９]+)?')
 _REROLL_NUMBER = re.compile(r'[0-9０-９]+')
+FOUR_CARD_FOOTERS = (.20, .672, .78, .736)
 
 
 def _reroll_button(image, *, exhausted=False):
@@ -171,12 +172,17 @@ def _selection_marker(hsv,x,y,width):
 def card_for_label(scene,cards,target):
     """Use the exact observed title in the card footer, never a nearby label."""
     matches=[]
+    extended = not target.within(CARD_LABELS) and four_card_station_row(cards)
     for card in cards:
         if not card.holds_label(target):
             continue
-        titles=[token for token in scene.tokens if token.within(CARD_LABELS) and card.holds_label(token)
-                and normalize(token.text) in LABELS]
-        if titles==[target]:
+        if extended:
+            titles = [token for token in scene.tokens if token.within(FOUR_CARD_FOOTERS)
+                      and .65 <= token.score <= 1 and card.holds_label(token)]
+        else:
+            titles = [token for token in scene.tokens if token.within(CARD_LABELS)
+                      and normalize(token.text) in LABELS and card.holds_label(token)]
+        if titles==[target] and normalize(target.text) in LABELS:
             matches.append(card)
     return matches[0] if len(matches)==1 else None
 
@@ -246,6 +252,25 @@ def three_card_station_row(cards):
     """Distinguish the observed centered row from an incomplete four-card row."""
     return len(cards) == 3 and all(abs(card.center_x-center) <= .03
                                    for card, center in zip(cards, (.36, .50, .64)))
+
+
+def four_card_station_row(cards):
+    """Bind the four columns of the calibrated wider station row."""
+    return len(cards) == 4 and all(abs(card.center_x-center) <= .024 and abs(card.bounds[1]-.403) <= .03
+                                   for card, center in zip(cards, (.295, .434, .570, .709)))
+
+
+def fourth_station_label(scene, confidence=.85):
+    """Extend the legacy target range only for a known fourth card footer."""
+    candidates = [t for t in scene.tokens if t.within(FOUR_CARD_FOOTERS) and not t.within(CARD_LABELS)
+                  and confidence <= t.score <= 1 and normalize(t.text) in LABELS]
+    header = scene.find('选择下一站', _STATION_HEADER, exact=True)
+    if len(candidates) != 1 or header is None or not confidence <= header.score <= 1:
+        return None
+    cards = station_cards(scene)
+    if four_card_station_row(cards) and card_for_label(scene, cards, candidates[0]) == cards[-1]:
+        return candidates[0]
+    return None
 
 
 def _inside(token, region):
@@ -337,7 +362,8 @@ def station_preview_observation(scene, confidence=.85):
     if len(marked) != 1 or choosing:
         return None
     (column, selected), = marked
-    titles = [token for token in trusted if token.within(CARD_LABELS)
+    four = four_card_station_row(cards)
+    titles = [token for token in trusted if (token.within(CARD_LABELS) or four and token.within(FOUR_CARD_FOOTERS))
               and normalize(token.text) in LABELS and card_for_label(scene, cards, token) == selected]
     if len(titles) != 1:
         return None

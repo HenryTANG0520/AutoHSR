@@ -331,7 +331,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 
 站点按区域偏好选，确认前读稳定效果预览，避开已识别的死亡伤害全队等危险信标。事件以右侧小星星定位选项，检查碎片花费、负面奇物与损失，倾向已知风险低的选项；花碎片须有可读、足够余额。继续箭头独立识别，不点标题或描述。实现：[du_events.py](autohsr/du_events.py)。
 
-新开的周期演算可显式开启 `--du-station-reroll`。完整三卡都被当前偏好禁用时，每局最多重抽一次。新牌和次数减一均需双帧核实，已用公开原片和假窗口复放。[选站重抽](docs/differential-universe.md#周期选站重抽)
+新开的周期演算可显式开启 `--du-station-reroll`。已校准的三卡或四卡全部被当前偏好禁用时，每局最多重抽一次。新牌和次数减一均需双帧核实，两种布局已用公开原片和假窗口复放。[选站重抽](docs/differential-universe.md#周期选站重抽)
 
 站点卡按**完整指令**解析，把目标张数、等级增量、信标数、奖励数分开。因此`+1/+2/+3`不是三种写死页面，支持的升级语法接受正整数，奖励数不变成点击数。支持升级、转换、复制、删卡、信标及部分进入区域/触发次数条件，未知动词、费用或组合仍停止。实现：[du_card_effects.py](autohsr/du_card_effects.py)。
 

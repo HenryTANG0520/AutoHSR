@@ -512,7 +512,8 @@ def guard_differential_universe_click(scene: Scene, target: Token | tuple[float,
         if "选择下一站" not in context:
             raise AutomationError("未核实差分宇宙下一站选择页，未点击。")
         if intent=="station_select":
-            valid=text in labels and target.within((.20,.54,.73,.82))
+            from .du_station_preview import fourth_station_label
+            valid=text in labels and (target.within((.20,.54,.73,.82)) or target == fourth_station_label(scene))
         else:
             valid=(any(label in context for label in labels)
                    and text in ("确认","确定","进入区域","进入下一站")
