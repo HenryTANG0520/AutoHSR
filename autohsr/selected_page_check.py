@@ -16,6 +16,7 @@ from .workflow_navigation import _GUIDE_PAGES, _MAX_ACTIONS
 NAME = '核对所选页面'
 MAX_SOURCE_BYTES = 64 * 1024 * 1024
 _TERMINAL = ('success', 'partial', 'failed', 'stopped')
+_STEP_SETUP_FIELDS = frozenset(('sequence', 'step', 'type', 'task', 'trail', 'status', 'started_at'))
 _SHA256 = re.compile(r'[a-f0-9]{64}')
 _LOCAL_DRIVE = re.compile(r'[A-Za-z]:')
 _NAVIGATION_PAGES = frozenset((*WORKFLOW_PAGES, 'world', 'activity_list'))
@@ -150,8 +151,17 @@ def project_result(recipe, report, *, read_source):
     for index, (entry, node) in enumerate(zip(entries, nodes), 1):
         if (not isinstance(entry, dict) or type(entry.get('sequence')) is not int or entry['sequence'] != index
                 or (entry.get('step'), entry.get('type'), entry.get('task'), entry.get('trail'))
-                != (node['id'], 'task', PAGE_TASK, []) or entry.get('status') not in _TERMINAL
-                or (index < len(entries) and entry['status'] != 'success')):
+                != (node['id'], 'task', PAGE_TASK, [])):
+            return result
+        status = entry.get('status')
+        last = index == len(entries)
+        # Intent setup appends the row before writing it. A later successful
+        # final save can retain this row even though no child was started.
+        if (last and status == 'running' and report['status'] in ('partial', 'stopped')
+                and entry.keys() == _STEP_SETUP_FIELDS
+                and isinstance(entry['started_at'], str) and entry['started_at']):
+            continue
+        if status not in _TERMINAL or (not last and status != 'success'):
             return result
     try:
         parent_dir = _absolute(report.get('run_dir'))

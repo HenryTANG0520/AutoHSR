@@ -19,7 +19,7 @@ from autohsr import selected_page_check as pages
 from autohsr.__main__ import main
 from autohsr.app import Runner
 from autohsr.config import Settings
-from autohsr.models import FocusLost, Scene, Token
+from autohsr.models import FocusLost, Scene, Stopped, Token
 from autohsr.task_workflow import ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, PAGE_TASK, WORKFLOW_PAGES, WorkflowError
 from autohsr.task_workflow_run import TaskWorkflowRunner, _bytes
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, _Window, phone
@@ -92,6 +92,34 @@ class PageCheckProjectionTests(TestCase):
         raw = json.dumps(projection, ensure_ascii=False)
         for private in ('synthetic-private-message', 'report.json', 'sha256', 'run_dir', str(self.root)):
             self.assertNotIn(private, raw)
+
+    def test_incomplete_tail_requires_a_saved_final_report_and_only_the_original_setup_fields(self):
+        self.record('phone', 'success', [])
+        tail = dict(sequence=2, step='page_mail', type='task', task=PAGE_TASK, trail=[],
+                    status='running', started_at='2026-11-07T00:00:01+08:00')
+        self.report['workflow']['steps'].append(tail)
+        self.assertEqual(self.project(), dict(status='partial', pages=[
+            row('phone', 'verified', 0, 0), row('mail', 'unknown'), row('odyssey', 'not_run'),
+        ]))
+        self.load.reset_mock()
+        invalid = [dict(self.report, status='running'), dict(self.report, finished_at=''),
+                   dict(self.report, report_saved=False), dict(self.report, status='failed')]
+        extra_source = dict(path=str(self.root / 'child-2' / 'report.json'), sha256='a' * 64)
+        for change in (dict(sequence=3), dict(step='page_odyssey'), dict(source=extra_source),
+                       dict(account_verified=True), dict(facts={'page_verified': True}),
+                       dict(actions_sent=1), dict(finished_at=self.report['finished_at'])):
+            report = deepcopy(self.report)
+            report['workflow']['steps'][-1].update(change)
+            invalid.append(report)
+        double = deepcopy(self.report)
+        double['workflow']['steps'].append(dict(tail, sequence=3, step='page_odyssey'))
+        invalid.append(double)
+        for report in invalid:
+            with self.subTest(report=report):
+                self.assertEqual(self.project(report), dict(status='unknown', pages=[
+                    row('phone', 'unknown'), row('mail', 'unknown'), row('odyssey', 'unknown'),
+                ]))
+        self.load.assert_not_called()
 
     def test_short_send_and_changed_source_are_distinct_from_zero_actions(self):
         self.record('phone', 'success', [])
@@ -287,6 +315,8 @@ class PageCheckRunnerTests(TestCase):
                 return json.loads(out.getvalue()), packets, None
             runner = TaskWorkflowRunner(settings, recipe.document, root=root / 'runs', base_dir=recipe.base_dir)
             report = runner.run().to_dict()
+            with (Path(report['run_dir']) / 'report.json').open(encoding='utf8') as source:
+                self.assertEqual(json.load(source), report)
             projection = pages.saved_result(recipe, report, runs_root=root / 'runs')
             self.assertEqual((report['stamina_spent'], report['stamina_pending']), (0, 0))
             window.focus.assert_not_called()
@@ -316,6 +346,24 @@ class PageCheckRunnerTests(TestCase):
                 self.assertEqual([step['step'] for step in workflow['steps']], ['page_phone', 'page_mail'])
                 self.assertEqual(projection, dict(status='partial', pages=[row('phone', 'verified', 0, 0),
                     row('mail', 'unknown', sent, unconfirmed), row('odyssey', 'not_run')]))
+
+    def test_interrupted_step_setup_keeps_saved_prefix_and_never_starts_the_tail(self):
+        targets = ('phone', 'mail', 'odyssey', 'reward_guide')
+        original = TaskWorkflowRunner._record
+        for outcome, error in (('partial', OSError), ('stopped', Stopped)):
+            def record(runner, entry):
+                if entry['event'] == 'intent' and entry['step'] == 'page_odyssey':
+                    raise error('synthetic interruption before child startup')
+                return original(runner, entry)
+
+            with self.subTest(outcome=outcome), patch.object(TaskWorkflowRunner, '_record', new=record):
+                projection, packets, workflow = self.run_case(targets)
+                self.assertEqual(packets, [(0xC001, 0x0002, 0x0004)])
+                self.assertEqual([step['status'] for step in workflow['steps']], ['success', 'success', 'running'])
+                self.assertEqual(projection, dict(status=outcome, pages=[
+                    row('phone', 'verified', 0, 0), row('mail', 'verified', 1, 0),
+                    row('odyssey', 'unknown'), row('reward_guide', 'not_run'),
+                ]))
 
     def test_account_change_blocks_the_second_page_and_preserves_the_first(self):
         projection, packets, workflow = self.run_case(('mail', 'assignments', 'phone'), account_drift=True)
