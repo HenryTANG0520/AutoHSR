@@ -11,6 +11,7 @@ from .warp_fetch import checkpoint
 from .warp_statistics import POOL_NAMES,analyze,positions
 
 SCOPE='仅当前记录窗口；不代表完整历史或实时保底'
+MAX_WORKBOOK_BYTES=128*1024*1024
 INVALID_XML=re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]')
 RECORD_HEADERS=('时间','名称','类别','星级','卡池','物品数量','账号窗口序号','本池窗口序号',
                 '已知五星后记录数','计数范围','记录ID','物品ID','卡池ID')
@@ -111,4 +112,4 @@ def write_new(path,accounts,*,cancel=None):
     if path.suffix.lower()!='.xlsx':raise WarpError('Excel导出文件应使用.xlsx扩展名。')
     checkpoint(cancel);values=merge(accounts)
     if not values:raise WarpError('没有可导出的账号记录。')
-    return publish_new(path,lambda stream:_write(stream,values,cancel=cancel),cancel=cancel,limit=128*1024*1024)
+    return publish_new(path,lambda stream:_write(stream,values,cancel=cancel),cancel=cancel,limit=MAX_WORKBOOK_BYTES)

@@ -475,6 +475,68 @@ class DesktopToolTests(unittest.TestCase):
         self.assertIn("计时已停止", panel.runtime_status.get())
         self.assertFalse(self.ui.scheduler.snapshot()["running"])
 
+    def test_schedule_shows_five_beijing_points_across_year_and_skips_current_minute(self):
+        from datetime import timezone
+
+        panel = self.new_schedule()
+        panel.values["time"].set("00:05")
+        for day, variable in enumerate(panel.days, 1):
+            variable.set(day in (1, 5))
+        self.ui.now = datetime(2026, 12, 31, 16, 4, 59, tzinfo=timezone.utc)
+        panel.preview()
+        summary, title, dates = panel.preview_status.get().splitlines()
+        self.assertEqual(title, "未来五次计划点（北京时间）")
+        self.assertIn("01-01 00:05", summary)
+        self.assertEqual(dates.split(" · "), ["2027-01-01 00:05", "2027-01-04 00:05", "2027-01-08 00:05",
+                                            "2027-01-11 00:05", "2027-01-15 00:05"])
+        self.assertIn("执行步数 30 步", panel.budget.get())
+        for elapsed in (1, 38):
+            self.ui.now += timedelta(seconds=elapsed)
+            panel.preview()
+            summary, _, dates = panel.preview_status.get().splitlines()
+            self.assertIn("01-04 00:05", summary)
+            self.assertEqual(dates.split(" · "), ["2027-01-04 00:05", "2027-01-08 00:05", "2027-01-11 00:05",
+                                                "2027-01-15 00:05", "2027-01-18 00:05"])
+        self.assertEqual(self.ui.schedule_store.list_public(), [])
+        self.assertEqual(self.ui.scheduler.snapshot()["enabled_ids"], [])
+        self.assertFalse(self.ui.scheduler.snapshot()["running"])
+        self.assertFalse((self.ui.schedule_store.root / "slots").exists())
+
+    def test_schedule_calendar_and_budget_clear_when_frozen_dependency_changes(self):
+        from autohsr.desktop_schedule import DesktopSchedule
+        from autohsr.tests.test_warp_records import group
+        from autohsr.warp_records import export
+
+        records = self.root / "records.json"
+        records.write_text(json.dumps(export([group()])), "utf8")
+        document = dict(version=1, name="记录样本", steps=[dict(id="records", type="task", task="warp_analysis",
+                        params=dict(imports=[records.name]))])
+        self.source.write_text(json.dumps(document), "utf8")
+        self.ui.config_path = self.root / "settings.json"
+        self.ui.emit = Mock()
+        self.ui.closing = False
+        self.ui._read_settings = Mock(return_value=self.ui.settings)
+        desktop = DesktopSchedule(self.ui)
+        desktop.executor = self.ui.executor
+        desktop.runtime = self.ui.scheduler
+        panel = self.new_schedule()
+        with (patch.object(self.ui, "_schedule_preview_budget", side_effect=desktop.preview),
+              patch.object(self.ui, "_schedule_enable", side_effect=desktop.enable)):
+            panel.preview()
+            panel.save()
+            self.assertIn("未来五次", panel.preview_status.get())
+            self.assertTrue(panel.primary_action()[2])
+            records.write_bytes(records.read_bytes() + b"\n")
+            panel.enable()
+        self.assertIn("计划输入或设置已改变", panel.status.get())
+        self.assertIn("重新预览", panel.preview_status.get())
+        self.assertNotIn("未来五次", panel.preview_status.get())
+        self.assertEqual(panel.budget.get(), "")
+        self.assertFalse(panel.primary_action()[2])
+        self.assertFalse(self.ui.scheduler.snapshot()["running"])
+        self.assertEqual(self.ui.scheduler.snapshot()["enabled_ids"], [])
+        self.assertFalse((self.ui.schedule_store.root / "slots").exists())
+
     def test_schedule_settings_edit_and_incomplete_budget_require_a_new_preview(self):
         panel = self.new_schedule()
         panel.preview()
@@ -483,17 +545,20 @@ class DesktopToolTests(unittest.TestCase):
         self.ui.settings_revision += 1
         panel.refresh()
         self.assertIn("设置已变化", panel.preview_status.get())
+        self.assertNotIn("未来五次", panel.preview_status.get())
         self.assertFalse(panel.primary_action()[2])
         good = self.ui._schedule_preview_budget(panel._plan())
         del good["whole_batch"]["du_runs_max"]
         with patch.object(self.ui, "_schedule_preview_budget", return_value=good):
             panel.preview()
         self.assertIn("差分局数 待核对", panel.budget.get())
+        self.assertNotIn("未来五次", panel.preview_status.get())
         self.assertFalse(panel.primary_action()[2])
         panel.preview()
         panel.values["time"].set("08:35")
         self.assertTrue(panel.dirty)
         self.assertIn("重新预览", panel.preview_status.get())
+        self.assertNotIn("未来五次", panel.preview_status.get())
         panel.save()
         panel.enable()
         self.assertEqual(self.ui.enabled, [])
@@ -586,6 +651,8 @@ class DesktopToolTests(unittest.TestCase):
         previewed.restore_draft(schedule.snapshot_draft())
         previewed.params.user_text(previewed.params.content)
         self.assertIn("执行步数 30 步", previewed.budget.get())
+        self.assertEqual(previewed.preview_status.get(), schedule.preview_status.get())
+        self.assertIn("未来五次", previewed.preview_status.get())
         self.assertTrue(previewed.primary_action()[2])
         previewed.params.user_text(previewed.params.content + " ")
         self.assertIn("重新预览", previewed.preview_status.get())

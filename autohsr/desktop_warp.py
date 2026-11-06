@@ -12,6 +12,7 @@ from .storage import hold_read_sources
 from .warp_fetch import WarpStopped, checkpoint
 from .warp_records import MAX_BYTES, POOLS, WarpError
 from .warp_statistics import POOL_NAMES
+from .warp_xlsx import MAX_WORKBOOK_BYTES
 
 ALL_ACCOUNTS = "全部账号"
 LOCAL_RECORDS, GAME_CACHE, LINK_FILE = "本地记录", "游戏缓存", "链接文件"
@@ -31,6 +32,7 @@ class _State:
     digests: tuple[str, ...] = ()
     snapshot: warp_service.WarpSnapshot | None = field(default=None, repr=False)
     snapshot_source: str = ""
+    snapshot_imports: int = 0
     reader: str = LOCAL_RECORDS
     accounts: tuple[dict, ...] = ()
     choice: str = ""
@@ -43,7 +45,7 @@ class _State:
     revision: int = 0
 
 
-def _digests(paths, cancel):
+def _digests(paths, cancel, *, limit=MAX_BYTES):
     hashes = []
     for path in paths:
         digest = sha256()
@@ -53,8 +55,8 @@ def _digests(paths, cancel):
             while block := stream.read(1024 * 1024):
                 checkpoint(cancel)
                 size += len(block)
-                if size > MAX_BYTES:
-                    raise WarpError("记录文件超过32 MiB上限。")
+                if size > limit:
+                    raise WarpError("记录文件超过本次格式的大小上限。")
                 digest.update(block)
         hashes.append(digest.hexdigest())
     return tuple(hashes)
@@ -105,6 +107,8 @@ class WarpPanel(ttk.Frame):
         self.format.bind("<<ComboboxSelected>>", self._choose_format)
         self.export_button = ttk.Button(controls, text="导出记录…", style="Panel.TButton", command=self.export)
         self.export_button.pack(side="left")
+        self.merge_button = ttk.Button(controls, text="合并本地记录…", style="Panel.TButton", command=self.merge_files)
+        self.merge_button.pack(side="left", padx=(self.px(8), 0))
 
         self.feedback = theme.wrapped_label(self, style="Hint.TLabel")
         self.feedback.grid(row=3, column=0, sticky="ew", pady=(self.px(5), self.px(6)))
@@ -160,6 +164,10 @@ class WarpPanel(ttk.Frame):
                 and (model.choice != ALL_ACCOUNTS or FORMATS[model.format][0] != "srgf"))
 
     @property
+    def can_merge(self):
+        return self.can_import and self.model.snapshot is not None
+
+    @property
     def last_result(self):
         """Metadata for this tool's most recent result, kept in the local view."""
         return self.model.result.copy()
@@ -187,6 +195,7 @@ class WarpPanel(ttk.Frame):
         self.account.configure(state="readonly" if enabled else "disabled")
         self.format.configure(state="readonly" if enabled else "disabled")
         self.export_button.configure(state="normal" if self.can_export else "disabled")
+        self.merge_button.configure(state="normal" if self.can_merge else "disabled")
         last = max(0, (len(self._pool().get("five_star_history", ())) - 1) // PAGE_SIZE)
         self.prev_page.configure(state="normal" if model.page else "disabled")
         self.next_page.configure(state="normal" if model.page < last else "disabled")
@@ -251,6 +260,8 @@ class WarpPanel(ttk.Frame):
         self.reader.set(model.reader)
         records = sum(sum(pool["records"] for pool in a["pools"].values()) for a in model.accounts)
         source = model.snapshot_source or (f"{len(model.sources)} 份文件" if model.sources else "")
+        if model.snapshot_imports:
+            source += f" ＋ {model.snapshot_imports} 份本地文件"
         source_text = f"记录窗口 · {source} · {len(model.accounts)} 个账号 · {records} 条记录" if source else "尚未读取。"
         self.sources_label.configure(text=source_text)
         message = model.message
@@ -305,11 +316,25 @@ class WarpPanel(ttk.Frame):
     def import_files(self):
         if not self.can_import:
             return
-        selected = filedialog.askopenfilenames(parent=self.ui.root, title="选择本地跃迁记录",
+        paths = self._choose_local_records("选择本地跃迁记录")
+        if paths and self.can_import:
+            self._start("analysis", paths)
+
+    def _choose_local_records(self, title):
+        selected = filedialog.askopenfilenames(parent=self.ui.root, title=title,
                                                filetypes=[("UIGF / SRGF JSON", "*.json")])
-        if selected and self.can_import:
-            paths = selected if isinstance(selected, (list, tuple)) else self.tk.splitlist(selected)
-            self._start("analysis", tuple(Path(path) for path in paths))
+        if not selected:
+            return ()
+        paths = selected if isinstance(selected, (list, tuple)) else self.tk.splitlist(selected)
+        return tuple(Path(path) for path in paths)
+
+    def merge_files(self):
+        if not self.can_merge:
+            return
+        snapshot = self.model.snapshot
+        paths = self._choose_local_records("选择要合并的本地跃迁记录")
+        if paths and self.can_merge and self.model.snapshot is snapshot:
+            self._start("analysis", paths, merge_snapshot=snapshot, snapshot_source=self.model.snapshot_source)
 
     def fetch_cache(self):
         if not self.can_import:
@@ -345,7 +370,7 @@ class WarpPanel(ttk.Frame):
             self.ui.stop_requested.set()
 
     def _start(self, mode, paths, *, output=None, kind="uigf", selected_uid=None, result_format=None,
-               url_file=None, cache_dir=None, snapshot_source=""):
+               url_file=None, cache_dir=None, snapshot_source="", merge_snapshot=None):
         model, ui = self.model, self.ui
         expected = model.digests if output is not None else None
         existing_snapshot = model.snapshot if output is not None else None
@@ -354,15 +379,20 @@ class WarpPanel(ttk.Frame):
         def work(cancel_event):
             cancel = cancel_event.is_set
             checkpoint(cancel)
+            if len(paths) > 1000:
+                raise WarpError("最多一次导入1000份记录文件。")
             snapshot, sources, digests = None, (), ()
-            if snapshot_source:
+            if merge_snapshot is not None:
+                imports = tuple(path.resolve(strict=True) for path in paths)
+                with hold_read_sources(imports):
+                    snapshot = merge_snapshot.merge_imports(imports, cancel=cancel)
+                result = snapshot.analyze(cancel=cancel)
+            elif snapshot_source:
                 snapshot = warp_service.fetch_snapshot(url_file=url_file, cache_dir=cache_dir, cancel=cancel)
                 result = snapshot.analyze(cancel=cancel)
             elif existing_snapshot is not None:
                 result = existing_snapshot.export(output, format=kind, selected_uid=selected_uid, cancel=cancel)
             else:
-                if len(paths) > 1000:
-                    raise WarpError("最多一次导入1000份记录文件。")
                 sources = tuple(path.resolve(strict=True) for path in paths)
                 with hold_read_sources(sources):
                     digests = _digests(sources, cancel)
@@ -382,12 +412,22 @@ class WarpPanel(ttk.Frame):
                         or any(type(account) is not dict or type(account.get("uid")) is not str
                                or type(account.get("pools")) is not dict for account in accounts)):
                     raise WarpError("本次账号与分池结果待核对。")
-            elif (result.get("format") != result_format or not output.is_file()
-                  or not re.fullmatch(r"[0-9a-f]{64}", result.get("output_sha256") or "")):
-                raise WarpError("本次导出文件或回执待核对。")
+            else:
+                receipt = result.get("output_sha256") or ""
+                if (result.get("format") != result_format or not output.is_file()
+                        or not re.fullmatch(r"[0-9a-f]{64}", receipt)):
+                    raise WarpError("本次导出文件或回执待核对。")
+                limit = MAX_WORKBOOK_BYTES if kind == "xlsx" else MAX_BYTES
+                # Publication already succeeded. A late stop cannot undo it.
+                with hold_read_sources((output,)):
+                    if _digests((output,), None, limit=limit) != (receipt,):
+                        raise WarpError("本次导出文件或回执待核对。")
             return result, sources, digests, snapshot
 
         def done(value):
+            if output is None and ui.stop_requested.is_set():
+                failed(WarpStopped("本次操作已停止。"))
+                return
             result, sources, digests, snapshot = value
             self._finish(job, result, sources, digests, output, snapshot=snapshot, snapshot_source=snapshot_source)
 
@@ -398,8 +438,11 @@ class WarpPanel(ttk.Frame):
             self._finish(job, dict(status="stopped" if stopped else "failed", mode=mode, message=message),
                          (), (), output)
 
-        title = ("联网读取跃迁记录" if snapshot_source else
-                 "分析跃迁记录" if output is None else "导出跃迁记录")
+        title = "导出跃迁记录" if output is not None else "分析跃迁记录"
+        if merge_snapshot is not None:
+            title = "合并跃迁记录"
+        elif snapshot_source:
+            title = "联网读取跃迁记录"
         model.job = job
         model.message = f"正在{title}…"
         self._change()
@@ -423,6 +466,7 @@ class WarpPanel(ttk.Frame):
         if status == "success" and output is None:
             model.sources, model.digests = paths, digests
             model.snapshot, model.snapshot_source = snapshot, snapshot_source
+            model.snapshot_imports = len(result.get("sources", ())) if snapshot is not None else 0
             model.accounts = tuple(result["details"]["accounts"])
             model.choice, model.pool, model.page = "", "", 0
             model.message = "分析完成。请选择账号。" if model.accounts else "分析完成。暂无账号记录。"

@@ -46,7 +46,7 @@ class ToolHost:
     def _tool_action_changed(self):
         self.warp_panel.refresh_actions()
 
-    def complete(self):
+    def complete(self, before_delivery=None):
         work, on_done, on_error = self.pending
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(run_file_job, work, self.stop_requested)
@@ -56,6 +56,8 @@ class ToolHost:
                 callback, value = on_error, error
             else:
                 callback = on_done
+        if before_delivery is not None:
+            before_delivery()
         self.pending = None
         self.busy = False
         callback(value)
@@ -239,6 +241,16 @@ class WarpPanelSmoke(unittest.TestCase):
         self.assertNotIn("synthetic private path", self.panel.feedback.cget("text"))
         self.assertFalse(path.exists())
 
+        def mismatched_receipt(**_options):
+            path.write_bytes(b"other bytes")
+            return claimed
+
+        with patch("autohsr.desktop_warp.warp_service.run", side_effect=mismatched_receipt):
+            self.save_to(path)
+        self.assertEqual(self.panel.last_result["status"], "failed")
+        self.assertIn("回执待核对", self.panel.feedback.cget("text"))
+        self.assertEqual(path.read_bytes(), b"other bytes")
+
     def test_pending_result_and_selection_survive_rebuild_and_cancel(self):
         self.start_import()
         self.replace_panel()
@@ -295,17 +307,57 @@ class WarpPanelSmoke(unittest.TestCase):
             self.assertEqual(self.panel.last_result['status'], 'success')
             self.assertIn(LINK_FILE, self.panel.sources_label.cget('text'))
             self.assertFalse(self.panel.can_export)
+            self.assertTrue(self.panel.can_merge)
             self.assertEqual(link.read_text('utf8'), LINK)
             link.unlink()  # Export is based on the completed fetch, not on a fresh link read.
             self.choose_account('UID 100000000')
             target = self.folder / 'fetched.json'
             self.save_to(target)
+            with patch('autohsr.desktop_warp.filedialog.askopenfilenames', return_value=()):
+                self.panel.merge_button.invoke()
+            self.assertIsNone(self.host.pending)
+            with patch('autohsr.desktop_warp.filedialog.askopenfilenames', return_value=(str(self.source),)):
+                self.panel.merge_button.invoke()
+                self.replace_panel()
+                self.assertFalse(self.panel.can_merge)
+                self.host.complete(before_delivery=self.panel.cancel)
+            self.assertEqual(self.panel.last_result['status'], 'stopped')
+            self.assertEqual(self.panel.account.get(), 'UID 100000000')
+            self.assertNotIn('本地文件', self.panel.sources_label.cget('text'))
+            with patch('autohsr.desktop_warp.filedialog.askopenfilenames', return_value=(str(self.source),)):
+                self.panel.merge_button.invoke()
+                self.assertTrue(self.panel.merge_button.instate(('disabled',)))
+                self.host.complete()
+            self.assertIn('1 份本地文件', self.panel.sources_label.cget('text'))
+            self.assertEqual(self.panel.last_result['status'], 'success')
+            self.assertFalse(self.panel.can_export)
+            self.choose_account(ALL_ACCOUNTS)
+            merged_path = self.folder / 'merged.json'
+            self.save_to(merged_path)
+            self.assertEqual(self.panel.last_result['status'], 'success')
+            conflict = self.folder / 'conflict.json'
+            bad_record = dict(record(1), name='冲突样本')
+            conflict.write_text(json.dumps(export([dict(uid='100000000', timezone=8, lang='zh-cn', list=[bad_record])])),
+                                encoding='utf8')
+            with patch('autohsr.desktop_warp.filedialog.askopenfilenames', return_value=(str(conflict),)):
+                self.panel.merge_button.invoke()
+                self.host.complete()
+            self.assertEqual(self.panel.last_result['status'], 'failed')
+            self.assertIn('冲突', self.panel.feedback.cget('text'))
+            self.assertIn('1 份本地文件', self.panel.sources_label.cget('text'))
+            self.assertEqual(self.panel.account.get(), ALL_ACCOUNTS)
+            self.assertTrue(self.panel.can_export)
         self.assertEqual(len(calls), 7)
-        self.assertEqual(self.panel.last_result['status'], 'success')
+        self.assertEqual(self.source.read_bytes(), self.original)
         raw = target.read_text('utf8')
         self.assertNotIn('synthetic-private-token', raw)
         accounts, _ = parse(json.loads(raw))
         self.assertEqual([row['id'] for row in accounts[0]['list']], [record(1)['id']])
+        merged_raw = merged_path.read_text('utf8')
+        self.assertNotIn('synthetic-private-token', merged_raw)
+        merged, _ = parse(json.loads(merged_raw))
+        self.assertEqual([(row['uid'], len(row['list'])) for row in merged],
+                         [('100000000', PAGE_SIZE + 5), ('200000000', 0)])
 
     def test_cache_cancel_and_failed_online_read_leave_prior_local_result_available(self):
         self.load_source()

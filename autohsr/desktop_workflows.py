@@ -10,8 +10,8 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import theme as t
 from .schedule_dispatch import validate_target
-from .schedule_plan import (CHINA, ScheduleError, loads as load_schedule_json, next_due,
-                            revision as schedule_revision, validate as validate_schedule)
+from .schedule_plan import (CHINA, ScheduleError, loads as load_schedule_json, preview as schedule_preview,
+                            validate as validate_schedule)
 from .storage import hold_read_sources
 from .task_workflow import MAX_BYTES, TASKS, WorkflowError, loads as load_workflow_json
 from .task_workflow_draft import WorkflowDraft, WorkflowSaveConflict
@@ -120,6 +120,9 @@ class _WorkflowPanel(_Panel):
         self.saved_target = None
         self.loading = False
         self.reviewed_step = None
+        self.assignment_available = False
+        self.assignment_enabled = tk.BooleanVar(self, value=False)
+        self.assignment_status = tk.StringVar(self, value="仅单独持续委托步骤可用")
         self.scope = tk.StringVar(self, value=_WORKFLOW_SCOPE)
         self.step_path = tk.StringVar(self)
         self.source = tk.StringVar(self, value="请选择新建草稿或打开任务流")
@@ -159,13 +162,21 @@ class _WorkflowPanel(_Panel):
         self.step_field = ttk.Entry(scope_line, textvariable=self.step_path, style="Settings.TEntry", width=10)
         self.step_field.grid(row=0, column=3, sticky="ew", padx=(self._size(5), 0))
 
+        assignment_line = ttk.Frame(self)
+        assignment_line.grid(row=4, column=0, sticky="ew", pady=(0, self._size(5)))
+        self.assignment_toggle = ttk.Checkbutton(assignment_line, text="启用持续委托",
+                                                  variable=self.assignment_enabled, command=self._toggle_assignment)
+        self.assignment_toggle.grid(row=0, column=0, sticky="w", padx=(0, self._size(8)))
+        ttk.Label(assignment_line, textvariable=self.assignment_status, style="Settings.Note.TLabel").grid(
+            row=0, column=1, sticky="w")
+
         holder, self.editor = self._editor(self, height=11)
-        holder.grid(row=4, column=0, sticky="nsew")
-        self.rowconfigure(4, weight=1)
+        holder.grid(row=5, column=0, sticky="nsew")
+        self.rowconfigure(5, weight=1)
         self.editor.bind("<<Modified>>", self._edit)
-        self._hint(self.status, 5)
-        self._hint(self.budget, 6)
-        self._hint(self.source_status, 7)
+        self._hint(self.status, 6)
+        self._hint(self.budget, 7)
+        self._hint(self.source_status, 8)
         self.scope.trace_add("write", self._scope_changed)
         self.step_path.trace_add("write", self._scope_changed)
         self.refresh()
@@ -201,6 +212,7 @@ class _WorkflowPanel(_Panel):
         _set_enabled(self.reload_button, idle and saved)
         _set_enabled(self.scope_field, idle and has_draft)
         _set_enabled(self.step_field, idle and has_draft and self.scope.get() == _STEP_SCOPE)
+        _set_enabled(self.assignment_toggle, idle and self.assignment_available)
         self.run_button.configure(text="运行已保存流程" if self.scope.get() == _WORKFLOW_SCOPE else "运行已保存单步")
         _set_enabled(self.run_button, self._can_run_saved())
         self.editor.configure(state="normal" if idle and has_draft else "disabled")
@@ -218,6 +230,56 @@ class _WorkflowPanel(_Panel):
     def _clear_profile(self):
         self.reviewed_step = None
         self.budget.set("")
+
+    def _assignment_document(self, text):
+        if self.draft is None:
+            return None
+        from .task_workflow import compile_recipe
+
+        try:
+            document = load_workflow_json(text)
+            steps = document.get("steps") if isinstance(document, dict) else None
+            if not isinstance(steps, list) or len(steps) != 1 or not isinstance(steps[0], dict):
+                return None
+            step = steps[0]
+            if (step.get("type") != "task" or step.get("task") != "daily"
+                    or step.get("params") != {"tasks": ["assignments"]}):
+                return None
+            return compile_recipe(document).document
+        except WorkflowError:
+            return None
+
+    def _sync_assignment(self, text):
+        document = self._assignment_document(text)
+        self.assignment_available = document is not None
+        self.assignment_enabled.set(document is not None and document["steps"][0].get("enabled", True))
+        self.assignment_status.set("仅持续委托 · 0 开拓力" if document is not None else "仅单独持续委托步骤可用")
+
+    def _toggle_assignment(self):
+        text = self._text()
+        if self._busy or self.loading:
+            self._sync_assignment(text)
+            self.refresh()
+            return
+        if text != self.editor_text:
+            # A queued Text edit must settle before the displayed checkbox can edit it.
+            self.editor.edit_modified(True)
+            self._edit()
+            return
+        document = self._assignment_document(text)
+        if document is None:
+            self._sync_assignment(text)
+            self.refresh()
+            return
+        enabled = self.assignment_enabled.get()
+        step = document["steps"][0]
+        if enabled != step.get("enabled", True):
+            step["enabled"] = enabled
+            self.editor.edit_separator()
+            self.editor.replace("1.0", "end-1c", _json(document))
+            self.editor.edit_separator()
+            self.editor.edit_modified(True)
+            self._edit()
 
     def _scope_changed(self, *_):
         if self.loading or self.draft is None:
@@ -239,6 +301,7 @@ class _WorkflowPanel(_Panel):
         self.editor_text = text
         self.status.set("草稿有编辑 · 请重新校验" if text != self.clean_text else "内容已恢复 · 可重新校验")
         self._clear_profile()
+        self._sync_assignment(text)
         self._changed()
 
     def _install(self, draft, *, text=None, keep_scope=False):
@@ -258,14 +321,15 @@ class _WorkflowPanel(_Panel):
         self.destination.set("保存时选择新文件")
         self.source_status.set("")
         self._clear_profile()
+        self._sync_assignment(self.clean_text)
 
     def new(self):
         if not self._can_replace_form("新建草稿", "当前编辑尚未另存。放弃这些编辑？"):
             return
         self._install(WorkflowDraft.new())
-        self.status.set('持续委托步骤初始禁用。将 "enabled" 改为 true 可启用。')
-        self.editor.focus_set()
+        self.status.set("持续委托默认关闭。勾选后可校验并另存。")
         self._changed()
+        self.assignment_toggle.focus_set()
 
     def _load(self, path):
         if not self._can_replace_form("替换草稿", "当前编辑尚未另存。放弃这些编辑？"):
@@ -447,6 +511,7 @@ class _WorkflowPanel(_Panel):
         for variable, value in zip(self._draft_variables(), labels):
             variable.set(value)
         self.loading = False
+        self._sync_assignment(text)
         self.refresh()
 
     def _draft_variables(self):
@@ -742,7 +807,10 @@ class _SchedulePanel(_Panel):
             plan = self._plan()
             settings_key = self.ui._schedule_settings_key()
             result = self.ui._schedule_preview_budget(plan)
-            if not isinstance(result, dict) or result.get("revision") != schedule_revision(plan):
+            now = getattr(self.ui, "_schedule_now", lambda: datetime.now(CHINA))()
+            calendar = schedule_preview(plan, now, count=5)
+            if (not isinstance(result, dict) or result.get("id") != calendar["id"]
+                    or result.get("revision") != calendar["revision"]):
                 raise ScheduleError("预算与当前计划版本不符，请重新预览。")
             maximum = result.get("whole_batch")
             if not isinstance(maximum, dict):
@@ -756,14 +824,17 @@ class _SchedulePanel(_Panel):
                     fields.append(f"{label} 待核对")
                 else:
                     fields.append(f"{label} {value} {unit}")
-            now = getattr(self.ui, "_schedule_now", lambda: datetime.now(CHINA))()
-            upcoming = _time_label(next_due(plan, now).isoformat())
+            times = calendar["next_times"]
+            status = f"预算预览 · 下一个计划点 {_time_label(times[0])}（北京时间）"
+            if complete:
+                dates = " · ".join(datetime.fromisoformat(value).strftime("%Y-%m-%d %H:%M") for value in times)
+                status += f"\n未来五次计划点（北京时间）\n{dates}"
         except (OSError, ValueError, TypeError) as error:
             self._forget_preview()
             self._error("预算预览失败", error)
         else:
             self.budget.set("单次触发整批上限 · " + " · ".join(fields))
-            self.preview_status.set(f"预算预览 · 下一个计划点 {upcoming}（北京时间）")
+            self.preview_status.set(status)
             self.preview_stamp = (result["revision"], settings_key) if complete else None
             self.status.set("" if complete else "预算字段待核对")
         self._changed()

@@ -159,6 +159,27 @@ class BuildTargetReadTests(unittest.TestCase):
         self.assertEqual(report.build_target['entry_input'], 'not_sent')
         self.assertEqual(clicks, [])
 
+    def test_level_and_trace_complete_layout_verifies_current_panel_and_entry_feedback(self):
+        # Calibrated positions from the 4.6.0 completed-cultivation panel.
+        complete = [*HEADERS, ACCOUNT, self.entry, token('角色培养', .407, .292),
+                    token('已完成等级、行迹的提升', .474, .340), token('遗器评级', .407, .405),
+                    token('隧洞遗器推荐', .448, .452), token('位面饰品推荐', .446, .751),
+                    token('更换培养目标', .241, .857), token('培养设置', .815, .854)]
+        for frames, expected_clicks in (([complete, complete], []),
+                                        ([self.catalogue, self.catalogue, complete, complete], [self.entry.center])):
+            with self.subTest(expected_clicks=expected_clicks):
+                report, clicks = self.native(frames)
+                self.assertEqual((report.status, clicks), ('success', expected_clicks), report.error)
+                self.assertTrue(report.build_target['page_verified'])
+
+        contradictory = [*complete, token('已获得足够的等级和行迹材料', .46, .37)]
+        obscured = [*complete, token('获得途径', .46, .46)]
+        mixed = [*self.catalogue, *complete[4:]]
+        for frame in (contradictory, obscured, mixed):
+            with self.subTest(frame=frame):
+                report, clicks = self.native([frame])
+                self.assertEqual((report.status, clicks), ('failed', []))
+
     def test_unverified_source_and_obscured_guide_never_send_input(self):
         cases = {
             'sidebar alone': [*HEADERS, ACCOUNT, self.entry],

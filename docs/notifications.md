@@ -60,6 +60,10 @@
 
 普通设置只保存非敏感偏好；仅显式保存设置时持久化，运行覆盖不写回。
 
+桌面「工具 → 通知 → 新建通知配置」可直接填写名称、渠道和参数。表单按所选渠道展开，标明固定必填项。令牌、密码、网址及请求内容以掩码显示。布尔值选择 `true` 或 `false`，整数填数字，`headers`、`body`、`data` 等复杂值填写单行 JSON。SMTP 的 `To` 支持地址文字或 JSON 数组。切换渠道会清空上一个渠道的参数。
+
+「加密保存配置」校验后用当前 Windows 用户的 DPAPI 新建配置，成功后在已保存列表中选中该条目。重名时可改用新名称，或走明确允许替换的旧导入入口。取消会关闭当前表单。运行结束通知仍通过「加入通知名单」「启用」和底栏「保存设置」分别设置，测试则点底栏「发送测试通知」。
+
 | 设置字段 | 默认值 | 约束 |
 | --- | --- | --- |
 | `notification_enabled` | `false` | 布尔；启用时须明确选择配置 |
@@ -160,11 +164,13 @@ summary只有全部已处理配置均为accepted且未停止才为accepted，其
 
 ## 验证记录与剩余事项
 
+2026-11-06 桌面新建通知配置的 76 项相关测试和 11 项隐藏 Tk 检查通过。全部 23 个渠道的合成参数通过现有校验，并由当前 Windows 用户的 DPAPI 加密后读回。隐藏窗口检查了掩码、切换渠道、取消、重名拒绝、缩放和保存后的名单隔离。桌面前台交互与真实渠道交付仍待验收。
+
 2026-11-06 兑换摘要及通知、任务树和定时邻接共 123 项通过。正式 CLI 的 10 组假窗口和假传输回放覆盖四种新结果、四种旧回执复用、错页首次反馈和待核对接续。临时通知配置用真实 Windows DPAPI 保存虚构凭据。实机兑换和真实通知交付仍待核对。
 
 2026-10-30通知专项31项及渠道合同12项，共43项；与CLI、任务树、账号连续性、计划及记录工具相关合计148项通过（`runs/notifications-reviewed-related.log`，7.661秒）。检查覆盖23渠道的构造／回执、严格参数、受保护凭据／备份／冻结、未知不重发、损坏旧回执不重建、最外层事件、F9前台边沿与F10监听交接，以及GoCQ目标选择、KOOK端点、OneBot异步未知和Content-Type大小写等离线机制，远端传输与本机通知均由替身隔离。此前133项`runs/notifications-related-final.log`（6.654秒）及132项`runs/notifications-related.log`（6.988秒）保留。
 
-假后端GUI84项通过（`runs/notifications-gui.log`）；独立真实CLI进程的6项核对通过（`runs/notifications-cli-verification.json`），范围为注册表、DPAPI导入／检查／列表、拒绝隐式覆盖、显式备份及帮助文本，不实际发送。这些检查不表示GUI已经有通知配置页。
+早期假后端GUI84项通过（`runs/notifications-gui.log`）。独立真实CLI进程的6项核对通过（`runs/notifications-cli-verification.json`），范围为注册表、DPAPI导入／检查／列表、拒绝隐式覆盖、显式备份及帮助文本。
 
 本轮冻结源码后的全量1788项通过，单测耗时812.908秒，日志为`runs/notifications-all.log`；驱动总耗时813.797秒、退出码0，见`runs/notifications-full-result.json`。`runs/notifications-full-snapshot.json`保存296份Python／requirements文件的SHA-256，检查前后哈希一致，`snapshot_unchanged=true`。这些本地验证记录继续忽略，不随文档提交。
 

@@ -463,9 +463,12 @@ class _NotificationsPanel(_PaperPanel):
         self.profile_detail = tk.StringVar(master=ui.root)
         self._note(2, variable=self.profile_detail)
         row = self._row(3, '凭据管理')
+        self.new_button = self._control(ttk.Button(row, text='新建通知配置', style='Compact.TButton',
+                                                   command=self.new_profile))
+        self.new_button.pack(side='left')
         self._control(ttk.Button(row, text='导入并保存配置', style='Compact.TButton',
-                                 command=self.import_profile)).pack(side='left')
-        self._control(ttk.Checkbutton(row, text='本次允许替换同名配置', variable=self.replace_existing)).pack(
+                                 command=self.import_profile)).pack(side='left', padx=(self.pad, 0))
+        self._control(ttk.Checkbutton(row, text='导入时允许替换同名', variable=self.replace_existing)).pack(
             side='left', padx=(self.pad, 0))
         row = self._row(4, '运行结束通知')
         self._control(ttk.Checkbutton(row, text='启用', variable=fields['enabled'])).pack(side='left')
@@ -550,6 +553,20 @@ class _NotificationsPanel(_PaperPanel):
             else _TEST_STATUS['profile_changed']
         )
 
+    def new_profile(self):
+        if self.ui.busy or self.ui.closing:
+            return False
+        from .desktop_notification_profile import ask_new_profile
+
+        identity = ask_new_profile(self.ui, ProfileStore())
+        if self.ui.closing:
+            return False
+        panel = getattr(self.ui, 'notifications_panel', self)
+        if identity is not None:
+            panel._profile_saved(identity)
+        panel.new_button.focus_set()
+        return identity is not None
+
     def import_profile(self):
         if self.ui.busy:
             return
@@ -569,8 +586,11 @@ class _NotificationsPanel(_PaperPanel):
         except OSError:
             self.draft['result'].set('通知配置导入失败，请核对文件和本地存储。')
             return
+        self._profile_saved(saved['id'])
+
+    def _profile_saved(self, identity):
         if self._read_catalog():
-            self.draft['selected'].set(saved['id'])
+            self.draft['selected'].set(identity)
             self.draft['result'].set('凭据已由当前 Windows 用户加密保存。')
         else:
             self.draft['selected'].set('')

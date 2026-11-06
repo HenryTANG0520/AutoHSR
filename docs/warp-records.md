@@ -4,6 +4,8 @@
 
 读取完成后选择账号和卡池查看统计与五星明细。用「导出记录…」选择新文件，支持 UIGF、SRGF 和 XLSX。SRGF 须明确选单个账号。联网记录在本次工具会话中保留，导出使用已显示的记录快照。链接及鉴权留在读取过程，保存结果和设置由各自的明确操作触发。指定部分卡池或每池页数上限可用下述 CLI。[窗口统计与 Excel](warp-statistics-xlsx.md)
 
+联网读取完成后，可用「合并本地记录…」把选定的 UIGF／SRGF 文件并入该快照。记录按账号和记录 ID 去重。合并完成后重新选择账号，取消或发现冲突时保留上次结果及选择。合并与导出都使用已有联网快照，导出时也无需重读本次合并选定的文件。单独导入本地文件时，导出前仍会复核原件。
+
 ## 格式与合并
 
 参考固定三月七启动器提交`7cf6c6bed474539485d3b1504077ac352866829f`的[记录读取及转换](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/app/tools/warp_export.py)与[导入导出界面](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/app/warp_interface.py)，适配为[记录协议](../autohsr/warp_records.py)、[只读获取](../autohsr/warp_fetch.py)、[独立服务](../autohsr/warp_service.py)和[CLI桥接](../autohsr/warp_cli.py)。没有迁入Qt界面、遥测、自动扫描用户目录或覆盖式修复。
@@ -59,7 +61,7 @@
 
 完成摘要含`status`、输出格式、账号数、记录数、各卡池的总记录／四星记录／五星记录／未知星级记录数、来源格式提示、获取范围与输出哈希；不把记录数当作物品`count`总和。`history_complete=false`始终保留，不能将观察窗口统计称为完整保底或终身抽数。标准导出文件按格式含UID；公共摘要和事件不带UID、角色名称、鉴权或本地输入路径。没有将记录传给决策模型。
 
-事件分别为`warp_import_progress`（已读文件数与匿名摘要）、`warp_fetch_progress`（当前卡池、页码、已读数量）和`warp_finished`（导出完成摘要）。只有导出发布成功才发warp_finished；只分析使用单独的`warp_analysis_finished`，不能显示已保存文件。公共结果新增匿名`statistics`，既有数量字段保留。桌面显示导入来源、所选账号及卡池、冲突原因与导出反馈。已有目标拒绝覆盖，导出前会核对导入原件是否变化。
+事件分别为`warp_import_progress`（已读文件数与匿名摘要）、`warp_fetch_progress`（当前卡池、页码、已读数量）和`warp_finished`（导出完成摘要）。只有导出发布成功才发warp_finished；只分析使用单独的`warp_analysis_finished`，不能显示已保存文件。公共结果新增匿名`statistics`，既有数量字段保留。桌面显示导入来源、所选账号及卡池、冲突原因与导出反馈。已有目标拒绝覆盖。单独导入本地记录时，导出前核对导入原件，联网及合并记录使用已读快照。桌面核对已发布文件和摘要哈希后显示完成。
 
 JSON和只分析不加载Excel引擎；Excel依赖固定openpyxl及et_xmlfile，由setup安装并保留许可，见[依赖与导出边界](warp-statistics-xlsx.md)。JSON输入／输出最多32 MiB、每账号最多500000条、一次最多1000文件，Excel为128 MiB；缓存总读取最多64 MiB、最多100个缓存文件及每文件10000个URL候选。桌面使用统计表和分页明细。覆盖式纠错与更多语言兼容仍待适配，真实客户端缓存／账号接口仍待验证。
 

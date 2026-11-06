@@ -9,9 +9,9 @@ from urllib.parse import parse_qs, urlsplit
 import unittest
 from unittest.mock import Mock, patch
 
-from autohsr.tests.test_warp_records import LINK, page, row
+from autohsr.tests.test_warp_records import LINK, group, page, row
 from autohsr.warp_fetch import WarpStopped
-from autohsr.warp_records import POOLS, WarpError, loads, parse
+from autohsr.warp_records import POOLS, WarpError, export, loads, parse
 from autohsr.warp_service import fetch_snapshot, run
 
 
@@ -173,6 +173,109 @@ class WarpSnapshotTests(unittest.TestCase):
         payload = json.dumps(events, ensure_ascii=False)
         for private in ('100000000', '9007199254740993001', '仅本地角色', 'synthetic-secret', str(self.link)):
             self.assertNotIn(private, payload)
+
+    def local_history(self, name, *accounts, format='uigf'):
+        path = self.root / name
+        path.write_text(json.dumps(export(accounts, format=format)), 'utf8')
+        return path
+
+    def test_merge_history_returns_detached_snapshot_and_preserves_existing_time_zone(self):
+        online, request = self.snapshot(row('10', request_metadata=dict(url=LINK)))
+        before = online.analyze()
+        earlier = dict(row('9'), time='2026-10-29 03:00:00')
+        duplicate = dict(row('10'), time='2026-10-29 04:34:56', annotation='local-only')
+        legacy = self.local_history('private-history.json', dict(group([earlier, duplicate]), timezone=0), format='srgf')
+        different_account = self.local_history('other-account.json', dict(group([row('12')]), uid='200000000'))
+        originals = {source: source.read_bytes() for source in (legacy, different_account)}
+        with patch('autohsr.warp_service.fetch', side_effect=AssertionError('already fetched')):
+            added = online.merge_imports([legacy])
+            combined = added.merge_imports((different_account,))
+            self.assertIsNot(added, online)
+            self.assertIsNot(combined, added)
+            self.assertEqual(online.analyze(), before)
+            self.assertEqual(len(added.analyze()['sources']), 1)
+            result = combined.analyze()
+            self.assertEqual((result['accounts'], result['records']), (2, 3))
+            self.assertEqual(result['fetch'], before['fetch'])
+            expected_sources = [dict(format='srgf-v1.0', notes=[]), dict(format='uigf-v4.2', notes=[])]
+            self.assertEqual(result['sources'], expected_sources)
+            first, second = result.pop('details')['accounts']
+            self.assertEqual((first['uid'], first['timezone'], second['uid']), ('100000000', 8, '200000000'))
+            history = first['pools']['11']['five_star_history']
+            self.assertEqual([(entry['id'], entry['time']) for entry in history],
+                             [('9', '2026-10-29 11:00:00'), ('10', '2026-10-29 12:34:56')])
+            public = json.dumps(result)
+            for value in (legacy.name, different_account.name, '100000000', '200000000', 'synthetic-secret'):
+                self.assertNotIn(value, public)
+            result['sources'][0]['notes'].append('mutable copy')
+            result['fetch']['pools'].clear()
+            with self.assertRaises(WarpError):
+                combined.export(legacy)
+            self.assertEqual({source: source.read_bytes() for source in originals}, originals)
+            legacy.write_bytes(b'source edited after merge')
+            with patch('autohsr.warp_service._read_imports', side_effect=AssertionError('already merged')):
+                output = self.root / 'combined.json'
+                receipt = combined.export(output)
+            self.assertEqual(receipt['sources'], expected_sources)
+            self.assertEqual(receipt['fetch'], before['fetch'])
+            values, _ = parse(loads(output.read_bytes()))
+            self.assertEqual([value['uid'] for value in values], ['100000000', '200000000'])
+            self.assertEqual(values[0]['list'][1]['annotation'], 'local-only')
+            self.assertNotIn('request_metadata', values[0]['list'][1])
+            self.assertNotIn('synthetic-secret', output.read_text('utf8'))
+        self.assertEqual(request.call_count, len(POOLS) + 1)
+
+    def test_conflict_and_bad_format_leave_original_snapshot_and_entire_batch_untouched(self):
+        snapshot, request = self.snapshot(row('10'))
+        before = snapshot.analyze()
+        good = self.local_history('valid.json', group([row('9')]))
+        conflict = self.local_history('conflicting.json', group([dict(row('10'), item_id='2000')]))
+        wrong_language = self.local_history('wrong-language.json', dict(group([row('10')]), lang='en-us'))
+        malformed = self.root / 'malformed.json'
+        malformed.write_bytes(b'{}')
+        originals = {path: path.read_bytes() for path in self.root.iterdir()}
+        for bad, explanation in ((conflict, '记录ID存在冲突'), (wrong_language, '语言不同'), (malformed, '未识别记录格式')):
+            with self.subTest(bad=bad.name), self.assertRaisesRegex(WarpError, explanation):
+                snapshot.merge_imports([good, bad])
+            self.assertEqual(snapshot.analyze(), before)
+            self.assertEqual({path: path.read_bytes() for path in self.root.iterdir()}, originals)
+        self.assertEqual(request.call_count, len(POOLS) + 1)
+
+    def test_cancel_mid_merge_discards_partial_batch_and_does_not_read_next_file(self):
+        snapshot, request = self.snapshot(row('10'))
+        first = self.local_history('first.json', group([row('9')]))
+        missing = self.root / 'never-read.json'
+        with self.assertRaises(WarpStopped):
+            snapshot.merge_imports([missing], cancel=lambda: True)
+        stopped = Event()
+
+        def parse_then_stop(data):
+            result = parse(data)
+            stopped.set()
+            return result
+
+        for imports in ([first], [first, missing]):
+            stopped.clear()
+            with (patch('autohsr.warp_service.parse', side_effect=parse_then_stop) as parsed,
+                  self.assertRaises(WarpStopped)):
+                snapshot.merge_imports(imports, cancel=stopped.is_set)
+            parsed.assert_called_once()
+            self.assertEqual(snapshot.analyze()['records'], 1)
+            self.assertEqual(snapshot.analyze()['sources'], [])
+        self.assertEqual(set(self.root.iterdir()), {self.link, first})
+        self.assertEqual(request.call_count, len(POOLS) + 1)
+
+    def test_local_file_limit_is_cumulative_even_when_records_deduplicate(self):
+        snapshot, _ = self.snapshot(row('10'))
+        source = self.local_history('same-record.json', group([row('10')]))
+        at_limit = snapshot.merge_imports([source] * 999).merge_imports([source])
+        self.assertEqual(len(at_limit.analyze()['sources']), 1000)
+        self.assertEqual(at_limit.analyze()['records'], 1)
+        with patch.object(Path, 'open', side_effect=AssertionError('scope checked before reading')):
+            for target, paths in ((at_limit, [source]), (snapshot, [source] * 1001), (snapshot, [])):
+                with self.subTest(count=len(paths)), self.assertRaises(WarpError):
+                    target.merge_imports(paths)
+        self.assertEqual(snapshot.analyze()['sources'], [])
 
 
 if __name__ == '__main__':

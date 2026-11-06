@@ -429,6 +429,44 @@ class DesktopServiceTests(TestCase):
         self.ui._submit_tool_job.assert_not_called()
         self.save_settings.assert_not_called()
 
+    def test_new_notification_profile_selects_saved_alias_without_enabling_or_sending(self):
+        panel = services.build_notifications_panel(None, self.ui)
+        signature = tuple(var.get() for var in self.ui.form_variables)
+        panel.draft['selected'].set('alpha')
+        panel.draft['run_result'].set('已有运行结果')
+        panel.replace_existing.set(True)
+        with patch('autohsr.desktop_notification_profile.ask_new_profile') as dialog:
+            self.ui.busy = True
+            panel.refresh_controls()
+            self.assertEqual(panel.new_button.options['state'], 'disabled')
+            self.assertFalse(panel.new_profile())
+            dialog.assert_not_called()
+            self.ui.busy = False
+            dialog.return_value = None
+            self.assertFalse(panel.new_profile())
+            self.assertEqual(panel.draft['selected'].get(), 'alpha')
+
+            def saved(ui, store):
+                self.assertIs(store, self.profile_store)
+                ui.notifications_panel = services.build_notifications_panel(None, ui)
+                store.list_public.return_value = [dict(id='new-hook', provider='webhook', readable=True)]
+                return 'new-hook'
+
+            dialog.side_effect = saved
+            self.assertTrue(panel.new_button.options['command']())
+        current = self.ui.notifications_panel
+        self.assertIsNot(current, panel)
+        self.assertEqual(current.profiles.options['values'], ('new-hook',))
+        self.assertEqual(current.draft['selected'].get(), 'new-hook')
+        self.assertTrue(current.new_button.focused)
+        self.assertTrue(current.replace_existing.get())
+        self.assertEqual(current.draft['run_result'].get(), '已有运行结果')
+        self.assertEqual(tuple(var.get() for var in self.ui.form_variables), signature)
+        self.assertIn('加密保存', current.draft['result'].get())
+        self.notification_service.assert_not_called()
+        self.ui._submit_tool_job.assert_not_called()
+        self.save_settings.assert_not_called()
+
     def test_notification_test_is_explicit_and_uses_saved_target_after_view_changes(self):
         panel = services.build_notifications_panel(None, self.ui)
         panel.draft['selected'].set('alpha')
