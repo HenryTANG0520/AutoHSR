@@ -10,7 +10,7 @@ from .currency_wars_identity import account_key, installed_client
 from .currency_wars_navigation import locate
 from .currency_wars_points import game_week, local_now, period_evidence, proof_tokens, read_points
 from .currency_wars_points_run import _hash
-from .currency_wars_weekly_rewards import BUTTON, CLOSE, EMPTY, OPERATION, kind, next_action, panel_control, quantities
+from .currency_wars_weekly_rewards import CLOSE, OPERATION, kind, next_action, panel_control, panel_proof_token, quantities
 from .currency_wars_weekly_reward_store import RewardStore
 from .models import AutomationError, EmptyCapture, TaskResult, normalize
 
@@ -50,8 +50,7 @@ def evidence(c,scene,label):
     tokens=proof_tokens(scene,page) if page in ('lobby','points_rewards') else []
     for token in scene.tokens:
         text=normalize(token.text)
-        allowed=(page=='points_rewards' and (text=='一键领取' and token.within(BUTTON)
-                      or text in EMPTY and token.within(BUTTON))
+        allowed=(page=='points_rewards' and panel_proof_token(token)
                  or page=='reward_overlay' and (text=='获得物品' and token.within((.25,.04,.75,.25))
                       or text=='点击空白处关闭' and token.within(CLOSE)
                       or token.within((.10,.24,.90,.64)) and re.fullmatch(r'[x×]?\d[\d,，]{0,9}',text))

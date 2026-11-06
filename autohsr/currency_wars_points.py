@@ -11,18 +11,20 @@ import re
 import unicodedata
 
 from .currency_wars_navigation import page_kind
+from .currency_wars_pages import LOBBY_GUIDE_ROI, LOBBY_START_CAPTIONS, LOBBY_START_ROI
 from .currency_wars_prepare import trusted
 from .models import AutomationError, normalize
 from .weekly_plan import CHINA
 
 LIMIT = 18000
 NUMBER = r'(?:0|[1-9][0-9]{0,4}|[1-9][0-9]{0,2},[0-9]{3})'
-SCORE_ROIS = dict(lobby=(.025,.895,.25,.945), points_rewards=(.06,.67,.25,.725))
+# The 4.6 score is directly below the label and above the legacy score row.
+SCORE_ROIS = dict(lobby=(.025,.895,.25,.945), points_rewards=(.06,.648,.25,.725))
 TIMER_ROI = (.02,.825,.35,.875)
 LOBBY_ANCHORS = {
     '货币战争':(0,.04,.15,.12), '零和博弈':(0,.10,.20,.18),
     '创业指南':(0,.22,.20,.30), '优势布局':(0,.30,.20,.38),
-    '攻略大全':(0,.38,.20,.45), '开始货币战争':(.65,.84,.99,.96), '积分':(.16,.86,.25,.91),
+    '攻略大全':LOBBY_GUIDE_ROI, '开始货币战争':LOBBY_START_ROI, '积分':(.16,.86,.25,.91),
 }
 PANEL_ANCHORS = {'积分奖励':(.02,.28,.15,.35), '规则说明':(.78,.28,.90,.35), '当前积分':(.05,.63,.20,.67)}
 
@@ -44,6 +46,28 @@ def compact(text):
 
 def anchor_text(text):
     return normalize(text).translate(str.maketrans('', '', '「」『』'))
+
+
+def _matches_anchor(token, label, roi):
+    captions = LOBBY_START_CAPTIONS if label == '开始货币战争' else (label,)
+    return token.within(roi) and anchor_text(token.text) in captions
+
+
+def _lobby_anchors(scene, confidence, skip=None):
+    for label, area in LOBBY_ANCHORS.items():
+        if label == skip:
+            continue
+        matches = [t for t in scene.tokens if _matches_anchor(t, label, area)]
+        if len(matches) != 1 or matches[0].score < confidence:
+            return False
+    return True
+
+
+def lobby_mode_needs_crop(scene, confidence):
+    mode = '零和博弈'
+    return (not scene.has(('积分奖励', '获得物品', '常规挑战', '对局记录'), exact=True)
+            and not any(_matches_anchor(t, mode, LOBBY_ANCHORS[mode]) for t in scene.tokens)
+            and _lobby_anchors(trusted(scene, 0), confidence, skip=mode))
 
 
 def _field(tokens, roi, confidence, max_parts=3):
@@ -116,17 +140,10 @@ def read_points_observation(scene, confidence=.85):
         return None
     kind = page_kind(scene, confidence)
     if kind == 'points_rewards':
-        # The 4.6 panel's score sits immediately below the current-points
-        # label and slightly above the older panel's numeric field.
-        roi = (.06, .652, .25, .725)
+        roi = SCORE_ROIS[kind]
     elif kind in ('lobby', 'unknown') and not visible.has('积分奖励', exact=True):
-        # The source lobby has a slightly higher guide row. Its decorative
-        # start caption can leave an ASCII bracket in the OCR text.
-        anchors = {**LOBBY_ANCHORS, '攻略大全': (0, .35, .20, .45)}
-        for label, area in anchors.items():
-            matches = [t for t in visible.tokens if t.within(area) and anchor_text(t.text).strip('[]') == label]
-            if len(matches) != 1 or matches[0].score < confidence:
-                return None
+        if not _lobby_anchors(visible, confidence):
+            return None
         kind, roi = 'lobby', SCORE_ROIS['lobby']
     else:
         return None
@@ -137,15 +154,21 @@ def read_points_observation(scene, confidence=.85):
     return Points(current, limit, kind)
 
 
+def _timer_text(row):
+    # The leading clock icon can be read as a circled digit on this lobby.
+    text = ''.join(t.text for t in sorted(row, key=lambda t: t.box[0]))
+    return normalize(compact(text.lstrip().removeprefix('①')))
+
+
 def period_evidence(scene, now, confidence=.85):
     """Compare the visible countdown with the local Monday-04:00 boundary."""
     row=[t for t in scene.tokens if t.within(TIMER_ROI)]
-    text=normalize(''.join(compact(t.text) for t in sorted(row,key=lambda t:t.box[0])))
+    text=_timer_text(row)
     if not text.startswith('本期剩余时间') or text.count('本期剩余时间')!=1:
         return dict(verified=False,reason='period_countdown_missing_or_ambiguous')
     try:row=_field(row,TIMER_ROI,max(.85,confidence),max_parts=6)
     except AutomationError:return dict(verified=False,reason='period_countdown_unreadable')
-    text=normalize(''.join(compact(t.text) for t in row))
+    text=_timer_text(row)
     match=re.fullmatch(r'本期剩余时间(?:(\d{1,2})天)?(?:(\d{1,3})小时)?(?:(\d{1,2})分钟)?',text)
     if not match or not any(v is not None for v in match.groups()):
         return dict(verified=False,reason='period_countdown_unreadable')
@@ -167,6 +190,6 @@ def proof_tokens(scene, page):
     anchors=LOBBY_ANCHORS if page=='lobby' else PANEL_ANCHORS
     roi=SCORE_ROIS[page]
     return [dict(text=t.text,score=t.score,box=list(t.box)) for t in scene.tokens if 'uid' not in t.text.casefold() and (
-            any(anchor_text(t.text)==label and t.within(box) for label,box in anchors.items())
+            any(_matches_anchor(t,label,box) for label,box in anchors.items())
             or t.within(roi) and re.search(r'[0-9０-９/／]',t.text)
             or page=='lobby' and t.within(TIMER_ROI))]

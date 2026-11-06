@@ -13,6 +13,11 @@ from dataclasses import dataclass
 from .models import ROI, Token, normalize
 
 
+LOBBY_GUIDE_ROI = (0, .35, .20, .45)
+LOBBY_START_ROI = (.65, .84, .99, .96)
+LOBBY_START_CAPTIONS = ('开始货币战争', '[开始货币战争', '开始货币战争]', '[开始货币战争]')
+
+
 PAGE_LABELS = {
     "world_entry": "朝露公馆交互入口，尚未打开玩法",
     "lobby": "货币战争主页",
@@ -287,8 +292,8 @@ _PAGES = {
         _Anchor("零和博弈", (0, .1, .2, .18)),
         _Anchor("创业指南", (0, .22, .2, .3)),
         _Anchor("优势布局", (0, .3, .2, .38)),
-        _Anchor("攻略大全", (0, .38, .2, .45)),
-        _Anchor("开始货币战争", (.65, .84, .99, .96)),
+        _Anchor("攻略大全", LOBBY_GUIDE_ROI),
+        _Anchor(re.compile('|'.join(map(re.escape, LOBBY_START_CAPTIONS))), LOBBY_START_ROI),
     ),
     "guide_list": (
         _Anchor("货币战争", (0, 0, .15, .08)),

@@ -12,7 +12,8 @@ from unittest.mock import Mock, patch
 
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
-from autohsr.currency_wars_weekly_rewards import OPERATION, RewardAction, fuel_limit, kind, next_action, panel_control
+from autohsr.currency_wars_weekly_rewards import (OPERATION, RewardAction, fuel_limit, kind, next_action,
+                                                panel_control, supplement_reward_controls)
 from autohsr.currency_wars_weekly_reward_store import RewardStore
 from autohsr.models import AutomationError, Scene, Stopped, Token
 from autohsr.tests import test_currency_wars_loop as loops
@@ -43,6 +44,32 @@ def paint(state):
 def overlay():
     return Scene([Token('获得物品',.99,(.40,.10,.60,.15)),Token('100',.99,(.43,.48,.49,.51)),
                   Token('点击空白处关闭',.99,(.40,.78,.60,.82))])
+
+
+def compact_panel():
+    state = panel(16800)
+    state.image[:] = 40
+    state.tokens = [t for t in state.tokens if t.text not in ('当前积分', '16800/18000', '一键领取')]
+    state.tokens.extend((Token('当前积分', .99, (.077,.629,.124,.655)),
+                         Token('16800/18000', .99, (.078,.652,.208,.686)),
+                         Token('18000', .99, (.879,.530,.916,.553))))
+    return state
+
+
+def mark_earned_tiers(state):
+    import cv2
+    import numpy as np
+
+    height, width = state.image.shape[:2]
+    mark = np.full((25, 27, 3), 40, dtype=np.uint8)
+    cv2.ellipse(mark, (13,12), (9,9), 0, 0, 315, (180,180,180), 1, cv2.LINE_AA)
+    cv2.line(mark, (8,11), (12,15), (192,192,192), 2, cv2.LINE_AA)
+    cv2.line(mark, (12,15), (21,6), (192,192,192), 2, cv2.LINE_AA)
+    top, bottom = round(.451*height), round(.505*height)
+    for index in range(10):
+        center = .081 + .0906*index
+        left, right = round((center-.0182)*width), round((center+.0182)*width)
+        state.image[top:bottom,left:right] = cv2.resize(mark, (right-left,bottom-top)) if index < 9 else 125
 
 
 def limit():
@@ -115,6 +142,44 @@ class WeeklyRewardTests(unittest.TestCase):
             if valid:self.assertEqual(panel_control(state)[0],'settled')
             else:
                 with self.assertRaises(AutomationError):panel_control(state)
+
+    def test_compact_panel_hidden_button_requires_each_earned_mark_and_locked_label(self):
+        for fault in (None, 'missing_mark', 'missing_locked_label', 'bad_locked_value',
+                      'remaining_claim', 'different_score', 'covered_by_overlay'):
+            with self.subTest(fault=fault):
+                state = compact_panel()
+                mark_earned_tiers(state)
+                if fault == 'missing_mark':
+                    state.image[485:547, 292:367] = 40
+                elif fault in ('missing_locked_label', 'bad_locked_value'):
+                    state.tokens = [t for t in state.tokens if t.text != '18000']
+                    if fault == 'bad_locked_value':
+                        state.tokens.append(Token('18,0,00', .99, (.879,.530,.916,.553)))
+                elif fault == 'remaining_claim':
+                    state.tokens.append(Token('键领取', .99, (.846,.641,.890,.668)))
+                elif fault == 'different_score':
+                    state.tokens.append(Token('18000/18000', .99, (.079,.685,.211,.714)))
+                elif fault == 'covered_by_overlay':
+                    state.tokens.append(Token('获得物品', .99, (.47,.13,.53,.17)))
+                if fault is None:
+                    self.assertEqual(panel_control(state), ('settled', None))
+                else:
+                    with self.assertRaises(AutomationError):
+                        panel_control(state)
+
+    def test_compact_caption_requires_two_exact_local_reads_and_gold(self):
+        state = compact_panel()
+        state.tokens.append(Token('键领取', .99, (.846,.641,.890,.668)))
+        reader = Mock()
+        exact = Token('一键领取', .96, (0,0,1,1))
+        reader._read_field.return_value = exact
+        self.assertIs(supplement_reward_controls(state, reader), state)
+        reader._read_field.assert_not_called()
+        state.image[672:745,1455:1824] = (35,190,235)
+        reader._read_field.side_effect = (exact, None)
+        self.assertIs(supplement_reward_controls(state, reader), state)
+        reader._read_field.side_effect = (exact, exact)
+        self.assertEqual(panel_control(supplement_reward_controls(state, reader))[0], 'available')
 
     def test_real_runner_claims_once_closes_once_returns_and_commits_receipt(self):
         with tempfile.TemporaryDirectory() as folder:

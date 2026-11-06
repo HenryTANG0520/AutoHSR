@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .currency_wars import CurrencyWarsWorkflow, TASK, observe
 from .currency_wars_identity import AccountNotObserved, account_key
+from .currency_wars_pages import LOBBY_START_CAPTIONS, LOBBY_START_ROI
 from .currency_wars_prepare import PREPARATION_OPERATIONS, prepare, trusted
 from .currency_wars_standard import (DEFAULT_WEALTH, MAX_WEALTH, MIN_WEALTH, NAVIGATION_BLOCKERS,
                                     difficulty_page, selected_rank)
@@ -183,7 +184,7 @@ def next_action(scene, context):
         return NavigationAction('interact_currency', ('lobby',), key='f')
     if kind == 'lobby':
         return NavigationAction('open_mode', ('mode_select', 'points_rewards'),
-                                unique(clean, '开始货币战争', (.65, .84, .99, .96)))
+                                unique(clean, LOBBY_START_CAPTIONS, LOBBY_START_ROI))
     if kind == 'mode_select':
         if standard_selected(scene, confidence):
             if getattr(context.runner, 'currency_configure', False):
