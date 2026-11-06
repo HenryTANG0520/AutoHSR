@@ -492,6 +492,75 @@ class _WorkflowPanel(_Panel):
             panel = getattr(self.ui, "workflow_panel", self)
             panel._import_yaml(source, use_native_vision=True)
 
+    def _choose_yaml_notify_profile(self):
+        """Return an alias, an empty binding, or None when the import is cancelled."""
+        from .desktop_dialogs import place_dialog
+
+        owner = self.winfo_toplevel()
+        if owner.tk.call("grab", "current", str(owner)):
+            return None
+        catalog = getattr(self.ui, "_desktop_notify_catalog", {})
+        aliases = tuple(sorted(identity for identity, provider in catalog.items() if provider is not None))
+        focused = t.focus_widget(owner)
+        dialog = tk.Toplevel(owner)
+        dialog.withdraw()
+        dialog.transient(owner)
+        dialog.title("导入三月七 YAML")
+        dialog.columnconfigure(0, weight=1)
+        dialog.rowconfigure(0, weight=1)
+        pad = self._size(8)
+        body = ttk.Frame(dialog, style="Card.TFrame", padding=2 * pad)
+        body.grid(row=0, column=0, sticky="nsew")
+        body.columnconfigure(0, weight=1)
+        ttk.Label(body, text="通知方案（可选）", style="CardTitle.TLabel").grid(row=0, sticky="w")
+        choice = ttk.Combobox(body, values=("不绑定通知方案", *aliases), state="readonly", width=1)
+        choice.grid(row=1, sticky="ew", pady=(pad, 0))
+        choice.current(0)
+        choice.bind("<MouseWheel>", lambda _: "break")
+        hint = "含通知的流程需选方案。导入只生成草稿，发送须另行授权。"
+        if not aliases:
+            choice.state(("disabled",))
+            hint = "暂无可选方案。可继续导入不含通知的流程，或在通知工具刷新列表。"
+        t.wrapped_label(body, text=hint, style="CardHint.TLabel").grid(row=2, sticky="ew", pady=(pad, 0))
+
+        result = None
+
+        def finish(importing=False):
+            nonlocal result
+            if importing:
+                index = choice.current()
+                if not 0 <= index <= len(aliases):
+                    return "break"
+                result = aliases[index - 1] if index else ""
+            dialog.destroy()
+            return "break"
+
+        footer = ttk.Frame(dialog, style="Footer.TFrame", padding=pad)
+        footer.grid(row=1, column=0, sticky="ew")
+        cancel = ttk.Button(footer, text="取消", style="Footer.TButton", command=finish)
+        cancel.pack(side="left")
+        submit = ttk.Button(footer, text="导入草稿", style="Primary.TButton", command=lambda: finish(True))
+        submit.pack(side="right")
+        cancel.bind("<Return>", lambda _: finish())
+        submit.bind("<Return>", lambda _: finish(True))
+        dialog.protocol("WM_DELETE_WINDOW", finish)
+        dialog.bind("<Escape>", lambda _: finish())
+        place_dialog(dialog, owner, (self._size(520), self._size(200)), (self._size(400), self._size(180)))
+        try:
+            dialog.deiconify()
+            dialog.wait_visibility()
+            dialog.grab_set()
+            (choice if aliases else submit).focus_set()
+            owner.wait_window(dialog)
+        except tk.TclError:
+            if not getattr(self.ui, "closing", False) and dialog.winfo_exists():
+                raise
+        finally:
+            if (not getattr(self.ui, "closing", False) and focused is not None
+                    and focused.winfo_exists() and focused.winfo_ismapped()):
+                focused.focus_set()
+        return result
+
     def _import_yaml(self, source, *, use_native_vision=False):
         if not self._bundle_idle:
             return
@@ -501,11 +570,17 @@ class _WorkflowPanel(_Panel):
         panel = getattr(self.ui, "workflow_panel", self)
         if not panel._bundle_idle or panel.draft is not draft or panel._text() != text:
             return
+        notify_profile = ""
+        if use_native_vision:
+            notify_profile = panel._choose_yaml_notify_profile()
+            panel = getattr(self.ui, "workflow_panel", self)
+            if notify_profile is None or not panel._bundle_idle or panel.draft is not draft or panel._text() != text:
+                return
 
         def work(checkpoint):
             from .workflow_yaml import load_march7th_yaml
 
-            imported = load_march7th_yaml(source, use_native_vision=use_native_vision)
+            imported = load_march7th_yaml(source, use_native_vision=use_native_vision, notify_profile=notify_profile or None)
             checkpoint()
             return imported
 

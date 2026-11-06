@@ -1,5 +1,6 @@
 """Hidden Tk workflow bundle checks with explicit dialogs and a fake backend."""
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 import json
 from pathlib import Path
 import sys
@@ -151,7 +152,9 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
         self.assertIn("失败", self.panel.status.get())
         self.assertIsNone(self.panel.draft)
 
-        self.panel.import_native_yaml_button.invoke()
+        with patch.object(self.panel, "_choose_yaml_notify_profile", return_value="") as choose:
+            self.panel.import_native_yaml_button.invoke()
+        choose.assert_called_once_with()
         self.assertEqual(self.open_dialog.call_args.kwargs["filetypes"], tools._YAML_FILES)
         self.assertTrue(self.panel.import_native_yaml_button.instate(("disabled",)))
         self.deliver(self.execute(threaded=True))
@@ -159,6 +162,129 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
         self.assertEqual(self.panel.draft.document["steps"][0]["task"], "workflow_game_text")
         self.assertIsNone(self.panel.draft.source)
         self.assertTrue(self.panel.run_button.instate(("disabled",)))
+
+    def test_yaml_notification_choice_starts_unbound_and_lists_only_readable_aliases(self):
+        catalog = dict(second="smtp", first="telegram", unreadable=None)
+        for action, result in (("default", ""), ("select", "second"), ("escape", None), ("empty catalog", "")):
+            with self.subTest(action=action), ExitStack() as stack:
+                self.ui._desktop_notify_catalog = {} if action == "empty catalog" else catalog
+                owner, dialog, choice, focused = Mock(), Mock(), Mock(), Mock()
+                owner.tk.call.return_value = ""
+                chosen = None
+                commands = {}
+
+                def current(index=None):
+                    nonlocal chosen
+                    if index is not None:
+                        chosen = index
+                    return chosen
+
+                def button(_parent, *, text, command, **_):
+                    commands[text] = command
+                    return Mock()
+
+                def interact(_dialog):
+                    dialog.grab_set.assert_called_once_with()
+                    self.assertEqual(choice.current(), 0)
+                    if action == "escape":
+                        choice.current(1)
+                        event, escape = dialog.bind.call_args.args
+                        self.assertEqual(event, "<Escape>")
+                        self.assertEqual(escape(None), "break")
+                    else:
+                        if action == "select":
+                            choice.current(2)
+                        commands["导入草稿"]()
+
+                owner.wait_window.side_effect = interact
+                choice.current.side_effect = current
+                focused.winfo_exists.return_value = focused.winfo_ismapped.return_value = True
+                stack.enter_context(patch.object(self.panel, "winfo_toplevel", return_value=owner))
+                stack.enter_context(patch.object(tools.tk, "Toplevel", return_value=dialog))
+                stack.enter_context(patch.object(tools.t, "focus_widget", return_value=focused))
+                stack.enter_context(patch.object(tools.t, "wrapped_label", return_value=Mock()))
+                stack.enter_context(patch.object(tools.ttk, "Frame", return_value=Mock()))
+                stack.enter_context(patch.object(tools.ttk, "Label", return_value=Mock()))
+                stack.enter_context(patch.object(tools.ttk, "Button", side_effect=button))
+                field = stack.enter_context(patch.object(tools.ttk, "Combobox", return_value=choice))
+                stack.enter_context(patch("autohsr.desktop_dialogs.place_dialog"))
+                listing = stack.enter_context(patch("autohsr.notify_profiles.ProfileStore.list_public",
+                                                    side_effect=AssertionError("use the cached alias catalog")))
+
+                self.assertEqual(self.panel._choose_yaml_notify_profile(), result)
+                expected_aliases = () if action == "empty catalog" else ("first", "second")
+                self.assertEqual(field.call_args.kwargs["values"], ("不绑定通知方案", *expected_aliases))
+                self.assertEqual(field.call_args.kwargs["state"], "readonly")
+                listing.assert_not_called()
+                if action == "empty catalog":
+                    choice.state.assert_called_once_with(("disabled",))
+                dialog.destroy.assert_called_once_with()
+                focused.focus_set.assert_called_once_with()
+
+    def test_yaml_notification_import_is_draft_only_and_strict_open_never_binds(self):
+        self.load_original()
+        original = self.panel.draft
+        path = self.directory / "notify.yml"
+        raw = "name: 通知\nsteps:\n- type: send_message\n  text: |-\n    第一  行\n    第二行\n".encode("utf8")
+        path.write_bytes(raw)
+        files = set(self.directory.iterdir())
+        self.open_dialog.return_value = str(path)
+
+        with ExitStack() as stack:
+            for name in ("autohsr.config.Settings.save", "autohsr.notify_profiles.ProfileStore.save",
+                         "autohsr.notify_profiles.ProfileStore.load_version", "autohsr.notify_http.request",
+                         "autohsr.workflow_notify.send_step", "autohsr.notify_runtime.NotificationService.deliver"):
+                stack.enter_context(patch(name, side_effect=AssertionError(f"unexpected side effect: {name}")))
+            choose = stack.enter_context(patch.object(self.panel, "_choose_yaml_notify_profile", return_value=""))
+            self.panel.open()
+            self.deliver(self.execute(threaded=True))
+            choose.assert_not_called()
+            self.assertIs(self.panel.draft, original)
+            self.assertIn("显式方案绑定", self.panel.status.get())
+
+            self.panel.import_native_yaml_button.invoke()
+            self.deliver(self.execute(threaded=True))
+            choose.assert_called_once_with()
+            self.assertIs(self.panel.draft, original)
+            self.assertIn("显式方案绑定", self.panel.status.get())
+
+            choose.return_value = "alerts"
+            self.panel.import_native_yaml_button.invoke()
+            self.deliver(self.execute(threaded=True))
+            self.panel.validate()
+            draft = self.panel.draft
+            self.assertIsNone(draft.source)
+            self.assertEqual(draft.original_source, path)
+            self.assertEqual(draft.document["steps"][0]["params"], dict(profile="alerts", message="第一  行\n第二行"))
+            self.assertIn("校验通过", self.panel.status.get())
+            self.assertTrue(self.panel.run_button.instate(("disabled",)))
+
+        self.assertEqual(set(self.directory.iterdir()), files)
+        self.assertEqual(path.read_bytes(), raw)
+        self.assertEqual(self.source.read_bytes(), workflow("当前流程"))
+        self.save_dialog.assert_not_called()
+
+    def test_yaml_notification_cancel_or_edit_during_choice_preserves_current_draft(self):
+        self.load_original()
+        draft = self.panel.draft
+        path = self.directory / "notify.yml"
+        path.write_text("name: 通知\nsteps: [{type: send_message, text: 完成}]\n", encoding="utf8")
+        self.open_dialog.return_value = str(path)
+
+        def edit():
+            self.panel.editor.insert("end", "\n")
+            self.panel._edit()
+            return "alerts"
+
+        with patch.object(self.panel, "_choose_yaml_notify_profile", return_value=None) as choose:
+            self.panel.import_native_yaml_button.invoke()
+            self.assertIs(self.panel.draft, draft)
+            self.assertFalse(self.panel.dirty)
+            choose.side_effect = edit
+            self.panel.import_native_yaml_button.invoke()
+            self.assertIs(self.panel.draft, draft)
+            self.assertTrue(self.panel.dirty)
+        self.ui._submit_tool_job.assert_not_called()
 
     def test_unsupported_yaml_keeps_the_current_draft(self):
         self.load_original()
