@@ -6,10 +6,10 @@ import numpy as np
 
 from .challenge_pages import _inside, _overlaps
 from .currency_wars_prepare import trusted
-from .free_rewards import claim_enabled, reward_overlay
+from .free_rewards import claim_enabled, gold_fraction, reward_overlay
 from .models import normalize
 from .team_calibration_pages import calibration_overlay
-from .workflows import TITLE
+from .workflows import DailyWorkflow, TITLE
 
 
 ACHIEVEMENT_CATEGORIES = frozenset({
@@ -32,9 +32,12 @@ _RECEIPT_TITLE = (.38, .07, .62, .17)
 _RECEIPT_CATEGORIES = (.05, .16, .30, .79)
 _RECEIPT_ROWS = (.13, .18, .38, .78)
 _RECEIPT_TOTAL = (.37, .79, .56, .88)
+_RECEIPT_AMOUNT = (.52, .80, .59, .88)
 _RECEIPT_CONFIRM = (.40, .89, .62, .97)
 _RECEIPT_RIM = ((0, -.023), (-.013, 0), (.013, 0), (0, .023))
 _RECEIPT_TICK = ((-.006, -.001), (-.001, .009), (.007, -.009))
+_SUMMARY_COUNT = (.34, .885, .42, .947)
+_BULK_LABELS = ('一键领取奖励', '键领取奖励')
 
 
 @dataclass(frozen=True)
@@ -79,13 +82,34 @@ def achievement_overview(scene, confidence=.85):
 
 def achievement_bulk_claim_visible(scene, confidence=.85) -> bool:
     """Read a gold bulk-claim control on the independently recognized overview."""
+    return achievement_bulk_claim_target(scene, confidence) is not None
+
+
+def achievement_bulk_claim_target(scene, confidence=.85):
     if not achievement_overview(scene, confidence):
-        return False
+        return None
     visible = trusted(scene, .65)
     # The leading 一 was dropped by RapidOCR on the public 4.6 pre-claim frame.
-    buttons = _labels(visible, ('一键领取奖励', '键领取奖励'), _BULK_CLAIM)
-    button = _unique(buttons, _BULK_CLAIM, max(.85, confidence))
-    return button is not None and claim_enabled(visible, button) is True
+    button = _unique(_labels(visible, _BULK_LABELS, _BULK_CLAIM), _BULK_CLAIM, max(.85, confidence))
+    return button if button is not None and claim_enabled(visible, button) is True else None
+
+
+def achievement_overview_signature(scene, confidence=.85):
+    if not achievement_overview(scene, confidence):
+        return None
+    strong = trusted(scene, max(.85, confidence))
+    count = _unique_amount(strong, _SUMMARY_COUNT)
+    cards = sorted((t for t in strong.tokens if t.within(_CAROUSEL) and normalize(t.text) in ACHIEVEMENT_CATEGORIES),
+                   key=lambda t: t.center[0])
+    return (count, tuple(normalize(t.text) for t in cards)) if count is not None else None
+
+
+def achievement_bulk_slot_empty(scene):
+    visible = trusted(scene, .65)
+    if visible.has(_BULK_LABELS, _BULK_CLAIM, exact=True):
+        return False
+    fill = gold_fraction(visible, (.733, .867, .889, .930))
+    return fill is not None and fill < .01
 
 
 def _unambiguous_row_claim(scene, token):
@@ -220,3 +244,44 @@ def observe_achievement_screen(scene, confidence):
     if category is not None:
         return 'achievement_list', normalize(category.category), 'single' if category.visible_claim else None
     return 'achievement_receipt', None, None
+
+
+def _unique_amount(scene, region, pattern=r'[0-9]{1,9}', *, minimum=.85):
+    matches = [(match, token.score) for token in scene.tokens if token.within(region)
+               and (match := re.fullmatch(pattern, normalize(token.text)))]
+    if len(matches) != 1 or matches[0][1] < minimum:
+        return None
+    match, _ = matches[0]
+    return int(match[0].lstrip('x×'))
+
+
+def achievement_receipt_fields(scene, confidence=.85, *, established_total=None):
+    """Return a positive total and unique confirm, keeping the first-entry proof separate."""
+    if not achievement_bulk_receipt_visible(scene, confidence):
+        return None
+    visible = trusted(scene, .65)
+    minimum = max(.85, confidence)
+    # RapidOCR read the joined multiplier and digits at .84 and .786 on the
+    # two recorded receipts. Other page landmarks keep their original floor.
+    total = _unique_amount(visible, _RECEIPT_AMOUNT, r'[x×]?[0-9]{1,9}', minimum=max(.75, confidence - .10))
+    confirm = _unique(_labels(visible, ('确认', '确定', '取消'), _RECEIPT_CONFIRM), _RECEIPT_CONFIRM, minimum)
+    if not total or confirm is None or normalize(confirm.text) != '确认':
+        return None
+    headings = _labels(visible, ACHIEVEMENT_CATEGORIES, _RECEIPT_CATEGORIES)
+    has_category = any(token.score >= minimum and _inside(token.box, _RECEIPT_CATEGORIES) for token in headings)
+    # The category may scroll above the viewport after the same receipt was identified.
+    return (total, confirm, has_category) if has_category or total == established_total else None
+
+
+def achievement_jade_overlay_amount(scene, confidence=.85):
+    """Read the observed single Stellar Jade card. The page itself has no claim provenance."""
+    visible = trusted(scene, .65)
+    if DailyWorkflow._login_blocked(visible) or DailyWorkflow._supply_overlay(visible):
+        return None
+    strong = trusted(visible, max(.85, confidence))
+    if not (reward_overlay(strong)
+            and strong.has('星琼', (.47, .55, .53, .62), exact=True)
+            and strong.has('点击空白处关闭', (.42, .70, .58, .78), exact=True)):
+        return None
+    total = _unique_amount(strong, (.47, .51, .53, .56))
+    return total if total else None

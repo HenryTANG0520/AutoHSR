@@ -146,6 +146,7 @@ class RunReport:
     challenge_result: dict = field(default_factory=dict)
     team_preset_calibration: dict = field(default_factory=dict)
     daily_reward_observe: dict = field(default_factory=dict)
+    achievement_bulk_claim: dict = field(default_factory=dict)
     daily_message_observe: dict = field(default_factory=dict)
     daily_event_observe: dict = field(default_factory=dict)
     daily_event_claim: dict = field(default_factory=dict)
@@ -162,6 +163,8 @@ class RunReport:
             del data['team_preset_calibration']
         if self.operation != 'daily_reward_observe':
             del data['daily_reward_observe']
+        if self.operation != 'achievement_bulk_claim':
+            del data['achievement_bulk_claim']
         if self.operation != 'daily_message_observe':
             del data['daily_message_observe']
         if self.operation != 'daily_event_observe':

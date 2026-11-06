@@ -67,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reward-guide-output", type=Path, metavar='NEW_PNG',
                         help="拼接结果的本地新文件，配合 --reward-guide-stitch")
     mode.add_argument("--screen-test", action="store_true", help="只读核对当前前台日常页面，输出匿名双帧回执")
+    mode.add_argument('--achievement-bulk-claim', action='store_true',
+                      help='从当前前台的成就总览提交一次一键领取及专属确认')
     mode.add_argument("--preview-build-target", action="store_true", help="只读核对培养目标、材料详情与配方、花萼预览及结算提示")
     mode.add_argument('--build-target', action='store_true', help='核实用户指定的培养材料来源并生成单项体力草稿；只读')
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
@@ -153,6 +155,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.daily_event_claim is not None:
         from .daily_event_claim_cli import run as run_daily_event_claim
         return run_daily_event_claim(args, raw_args, parser)
+    if args.achievement_bulk_claim:
+        from .achievement_bulk_claim_cli import run as run_achievement_claim
+        return run_achievement_claim(args, raw_args, parser)
     if args.daily_attachment_only:
         attachment_flags = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
         if attachment_flags.count('--daily-attachment-only') != 1 or set(attachment_flags) - {
