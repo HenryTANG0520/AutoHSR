@@ -8,7 +8,9 @@ from .build_target_read import (
     FRAGMENT_CONFIDENCE, MODAL, MODAL_AREA, SECTIONS, SHORTFALL,
     BuildTargetRead, _has_split_label, guide_blocked, guide_entry,
 )
-from .build_target_shortfall import GALAXY_SANDBOX, ROLE, ResultShortfall, TargetPanel, result_shortfall, target_panel
+from .build_target_shortfall import (
+    GALAXY_SANDBOX, ROLE, ResultShortfall, TargetPanel, result_shortfall, target_panel, target_status_conflicts,
+)
 from .build_target_synthesis import SynthesisPreview, synthesis_preview
 from .currency_wars_prepare import trusted
 from .dungeon_workflow import guide_row_fields
@@ -268,7 +270,8 @@ def _classify(reader, scene, *, read_quantities=False):
     target_titles = [token for token in scene.tokens if token.within(SECTIONS)
                      and normalize(token.text) == SHORTFALL]
     target_visible = (len(target_titles) == 1 and target_titles[0] in page.tokens
-                      and target_titles[0].box[3] <= title.box[1] and not catalogue_rows)
+                      and target_titles[0].box[3] <= title.box[1] and not catalogue_rows
+                      and not target_status_conflicts(fragments))
     return MaterialDetail(title.text.strip(), locations, unreadable, locked, target_visible, repeated, held), entry
 
 

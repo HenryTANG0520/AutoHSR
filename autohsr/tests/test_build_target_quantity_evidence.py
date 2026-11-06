@@ -215,6 +215,41 @@ class QuantityEvidenceCliTests(unittest.TestCase):
         mixed = self.assert_observations_only(self.cli([target, self.frame('result-b')] * 4))
         self.assertEqual(mixed['state'], 'unverified')
 
+    def test_read_entry_does_not_verify_conflicting_cultivation_headings(self):
+        complete = self.frame('target-complete-local')
+        heading = next(t for t in self.frame('need-b') if t.text.endswith('培养还需获取资源'))
+        overlap = [*complete, replace(heading, text='培养还需获取资源')]
+        report = self.cli([overlap, overlap], args=('--read-build-target',), operation='build_target_read')
+        self.assertEqual(report['status'], 'failed')
+        self.assertFalse(report['build_target']['page_verified'])
+
+    def test_conflicting_cultivation_behind_detail_keeps_only_inventory_and_routes(self):
+        complete = next(t for t in self.frame('target-complete-local') if t.text.startswith('已完成等级'))
+        status = replace(complete, box=(complete.box[0], .357, complete.box[2], .382))
+        frame = [*self.material(), self.route('城郊雪原', .50), status,
+                 fixtures.token('当前持有：2', .315, .682, width=.072)]
+        report = self.cli([frame, frame])
+        preview = report['build_target']['preview']
+        self.assertEqual((preview['state'], preview['material'], preview['held']), ('material_observed', '漫游指南', 2))
+        self.assertEqual(preview['source_locations'], ['城郊雪原'])
+        self.assertFalse(preview['target_section_visible'])
+        self.assertEqual(preview['candidates'], [])
+        self.assertIsNone(preview['shortfall'])
+
+    def test_cultivation_conflict_cannot_publish_a_manual_draft(self):
+        complete = next(t for t in self.frame('target-complete-local') if t.text.startswith('已完成等级'))
+        for statuses in (
+            [replace(complete, box=(complete.box[0], .357, complete.box[2], .382))],
+            [fixtures.token('已完成等级、', .55, .39, width=.094),
+             fixtures.token('行迹的提升', .6465, .39, width=.09)],
+        ):
+            with self.subTest(statuses=statuses):
+                frame = [*self.material(), self.route('城郊雪原', .50), *statuses]
+                report = self.draft_cli([frame, frame], code=1)
+                self.assertNotIn('draft', report['build_target'])
+                self.assertEqual(report['build_target']['preview']['candidates'], [])
+                self.assertFalse(any((self.root / 'runs').glob('*/power-plan.json')))
+
     def test_prior_panel_can_be_observed_when_new_status_layout_is_incomplete(self):
         frame = [*fixtures.fixtures.HEADERS, *[
             replace(t, text='培养还需获取资源') if '培养还需获取资源' in t.text else t

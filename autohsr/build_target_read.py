@@ -131,15 +131,15 @@ class BuildTargetRead:
         entry = guide_entry(scene, page)
         if entry is None:
             return None, None
+        from .build_target_shortfall import target_panel
+        current, _, conflict = target_panel(scene, page, entry)
+        if conflict:
+            return None, None
         headings = (SHORTFALL, *RECOMMENDATIONS, '角色培养')
         panel = page.has(SHORTFALL, SECTIONS, exact=True)
         catalogue_row = self._has_catalogue_row(page)
         if not catalogue_row:
-            if panel:
-                return 'panel', entry
-            from .build_target_shortfall import target_panel
-            current, _, _ = target_panel(scene, page, entry)
-            if current is not None:
+            if panel or current is not None:
                 return 'panel', entry
         elif (not scene.has(headings, SECTIONS, exact=True)
                 and not _has_split_label(trusted(scene, 0.), headings, SECTIONS)):

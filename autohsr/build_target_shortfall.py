@@ -65,6 +65,11 @@ def _label(fields, page, words, region):
     return matches[0] if len(matches) == 1 and matches[0] in page.tokens else None
 
 
+def target_status_conflicts(fields):
+    states = [t for t in fields.tokens if t.within(SECTIONS) and _label_text(t) in STATUS_LABELS]
+    return len(states) > 1 or _has_split_label(fields, SPLIT_STATUS_LABELS, SECTIONS)
+
+
 def _number_text(token):
     return re.sub(r'\s+', '', unicode_normalize('NFKC', token.text))
 
@@ -156,8 +161,7 @@ def _need_rows(fields, page, heading, bottom, image):
 def target_panel(scene, page, guide_entry, *, read_materials=False):
     """Return a current panel, its anchor, and whether conflicting roles veto fallback."""
     fields = trusted(scene, 0.)
-    states = [t for t in fields.tokens if t.within(SECTIONS) and _label_text(t) in STATUS_LABELS]
-    if (len(states) > 1 or _has_split_label(fields, SPLIT_STATUS_LABELS, SECTIONS)
+    if (target_status_conflicts(fields)
             or fields.has(('挑战成功', '战斗失败', '挑战失败'), exact=True)
             or fields.has('获得途径', MODAL_AREA, exact=True)
             or _has_split_label(fields, ('获得途径',), MODAL_AREA)):

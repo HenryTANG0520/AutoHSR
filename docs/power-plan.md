@@ -151,6 +151,8 @@
 
 账号和详情字段的正向核验取 `0.85` 与配置 OCR 阈值中的较高值。排查第二个完整账号标识、第二个精确材料名及完整普通目录行时，用采集阈值和相应字段位置核对。计划候选要求独立可见的培养缺口区标题。若有普通目录行或缺少培养区锚点，只保留已核实的材料和来源。若「获得途径」标题落入普通目录行的字段范围，详情标为 `unverified`。
 
+培养区的缺口、等级行迹完成和材料充足状态应能唯一核实。多个状态同屏或状态文字被 OCR 拆成相邻片段时，到页保留未核实，草稿无法发布。独立核实的材料名称、持有量及来源仍可预览。
+
 `report.json` 的 `build_target.preview` 分开记录培养区、材料、可见来源和候选。候选单次费用取原副本分类规则。`max_challenges_by_config` 是配置体力可覆盖的理论次数，`max_draft_challenges_by_config` 是单份草稿能手填的上限，两者在配置 240 时分别为 24 和 6。来源行不完整或地点重复时，`manual_draft_blocker` 分别记录 `incomplete_source` 或 `repeated_location`，该候选只供观察。实际可用体力留空。观察结果为 `partial`，CLI 返回 `1`。预览记录原 PNG 的 `evidence_sha256`。报告替换期间持有截图读锁，每次尝试都复核文件身份、哈希及当前画面。原件变化或同字节换入时，仅保留 `unverified` 审计，清除已观察数量和候选。正式体力计划继续使用既有 `PowerItem`、资源冻结和逐批支付账本。
 
 旧实机记录展示了省略金赤分类的花萼来源行。漫游指南的三个来源中，城郊雪原同时有金花回忆之蕾和赤花巡猎之蕾。赤花材料的名称、地点与关卡关系另由游戏官方新增关卡说明和固定掉落索引支持。现有材料名与来源行出自分段采样，预览测试中的同屏布局为合成。[旧实机 OCR 记录](https://github.com/moesnow/March7thAssistant/issues/886) [固定掉落索引](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/instance_drops.json) [4.0 官方关卡](https://www.miyoushe.com/sr/article/73078555) [4.2 官方关卡](https://www.miyoushe.com/sr/article/74594359)
