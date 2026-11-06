@@ -3,7 +3,9 @@ from dataclasses import dataclass
 import re
 
 from .build_target_read import _has_split_label, guide_blocked
-from .build_target_shortfall import AMOUNT, _amount, _inside, _label, _number_text
+from .build_target_shortfall import (
+    AMOUNT, SPLIT_STATUS_LABELS, STATUS, STATUS_LABELS, _amount, _inside, _label, _label_text, _number_text,
+)
 from .currency_wars_prepare import trusted
 from .policy import FORBIDDEN
 
@@ -70,7 +72,9 @@ def synthesis_preview(reader, scene, page):
     if header is None or _label(fields, page, '材料合成', (.075, .052, .173, .099)) is None:
         return None, None
     if (guide_blocked(scene, forbidden=RECIPE_BLOCKED_TITLES)
-            or fields.has(('挑战成功', '挑战失败', '角色培养'), exact=True)):
+            or fields.has(('挑战成功', '挑战失败', '角色培养'), exact=True)
+            or any(t.within(STATUS) and _label_text(t) in STATUS_LABELS for t in fields.tokens)
+            or _has_split_label(fields, SPLIT_STATUS_LABELS, STATUS)):
         return None, None
     if (_label(fields, page, '所需材料', (.59, .485, .71, .568)) is None
             or _label(fields, page, '合成', (.60, .879, .68, .945)) is None):

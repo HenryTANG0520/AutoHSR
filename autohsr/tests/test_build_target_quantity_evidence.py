@@ -160,6 +160,24 @@ class QuantityEvidenceCliTests(unittest.TestCase):
         self.assertEqual(preview['synthesis_preview'], dict(
             material='梦现管锥', held=0, selected_output=6, slider_limit=765))
 
+    def test_recipe_pair_restarts_when_an_early_cultivation_status_is_visible(self):
+        recipe = self.recipe()
+        crop = tuple(map(evidence_token, SYNTHESIS['recipe']['quantity_crop_tokens']))
+        completed = next(t for t in self.frame('target-complete-local') if t.text == '已完成等级、行迹的提升')
+        enough = replace(completed, text='已获得足够的等级和行迹材料')
+        split = (replace(completed, text='已完成等级、', box=(.4062, .3269, .466, .3519)),
+                 replace(completed, text='行迹的提升', box=(.473, .3269, .5411, .3519)))
+        wrong = [replace(t, text='童真蜡笔') if t.text == '梦现管锥' else t for t in recipe]
+        with self.recipe_crop(crop):
+            for status in ((completed,), (enough,), split):
+                with self.subTest(status=[t.text for t in status]):
+                    transition = [*recipe, *status]
+                    for frames in ([transition] * 8, [transition, recipe, *([wrong, recipe] * 3)]):
+                        preview = self.assert_observations_only(self.cli(frames))
+                        self.assertEqual(preview['state'], 'unverified')
+                        self.assertEqual(preview['suggestion_reason'], 'no_current_evidence')
+                        self.assertNotIn('synthesis_preview', preview)
+
     def test_recipe_accepts_a_larger_merged_quantity_but_rejects_conflicts(self):
         frame = self.recipe()
         selected = [replace(t, text='合成数量：123') if t.text == '合成数量：' else t for t in frame]
