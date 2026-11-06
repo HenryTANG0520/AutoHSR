@@ -1,6 +1,6 @@
 # 可编辑任务流程后端
 
-更新：2026-11-05。此项接通正式任务级的树形编排、独立CLI和结果协议，供现有AutoHSR界面接入。本次另接[独立差分红点领奖](du-rewards-only.md)，不为领奖请求新局。GUI编辑器、实机组合及三月七的底层图文／鼠标／键盘流程尚未交付。没有操作游戏、读取真实账号记录或消耗资源。
+正式任务级的树形编排、独立 CLI 和结果协议已可用，也可调用独立差分红点领奖。2026-11-06 增加本地 JSON 草稿、校验和显式另存接口。GUI 编辑器、实机组合及三月七的底层图文／鼠标／键盘流程尚未交付。[独立差分红点领奖](du-rewards-only.md)
 
 ## 与三月七的关系
 
@@ -55,6 +55,16 @@ UTF-8 JSON顶层为`version:1`、`name`、`steps`；不接受重复JSON键、NaN
 字段为`status`、`daily_verified`、`completed_runs`、`victories`、`defeats`、`points_verified`、`rewards_verified`及独立差分的`du_rewards_verified`。后者只表示明确请求的红点奖励核实，不表示全部红点清空或周积分领奖。只有对应子报告确实存在且含该字段时才可比较；其他玩法报告的默认实训false，以及未执行实训的日常默认false，都不是实训条件事实。计数支持`eq/ne/lt/le/gt/ge`，状态和布尔值只支持`eq/ne`。`completed_runs`分别指差分已完成数或CW已结束数，CW失败另见`defeats`，不等于胜利。
 
 上限为1 MiB定义、256个节点、12层、最多10000次展开执行；禁用节点也计执行数量。每个可能路径最多一份日常预算、一个差分批次、一个CW批次；循环乘算，互斥分支取最大值。不能用两个daily步骤或for循环重复创建240预算。`plan`保守预留日常、差分与CW各一个所有者，不能再叠加独立同类任务；其10局预留值仅为静态最大值，不是实际请求或完成数。
+
+## 本地草稿接口
+
+`WorkflowDraft.load(path)` 只打开用户明确选中的普通流程文件，用现有解析器和整树预算校验建立草稿。界面可修改 `draft.document`，再调用 `draft.validate()` 取得独立的 `Recipe` 和预算预留。选中步骤预览使用原 `selected_path` 语法。读取和校验只涉及定义及指定路径。[草稿后端](../autohsr/task_workflow_draft.py)
+
+`draft.save_as(path)` 要求明确的新文件名和已存在的父目录。它重新校验完整树，沿用独占发布，确认磁盘回读字节后返回 `SavedWorkflow(path, sha256, recipe)`。保存结果与现有 `--task-workflow-check`、`--task-workflow` 使用相同的 JSON 格式。相对路径字符串保留，之后以新流程文件所在目录解析。界面可用 `draft.validate(destination=path)` 预览该目录下的解析基准。
+
+`draft.source` 记录首次加载位置，`draft.dirty` 表示相对首次加载内容已有编辑。成功另存后，界面如需切换当前文件，可按返回路径显式加载。来源发生外部变化时，可保留当前编辑并另选新文件。`source_is_current()` 同时比较原始字节与文件修订。
+
+保存冲突由 `WorkflowSaveConflict.reason` 区分。原路径 `source_path` 提示另选名称，原路径已修改或丢失 `source_changed` 可引导重新加载或另存。已有目标及并发抢占为 `target_exists`。发布后回读无法核实为 `readback_changed`，此时保留草稿与目标现有内容。其他校验问题沿用 `WorkflowError`，磁盘故障按 `OSError` 提示。测试覆盖双进程竞争、外部晚创建、回读前变更及损坏原文件。[草稿验证](../autohsr/tests/test_task_workflow_draft.py)
 
 ## 用法示例
 
