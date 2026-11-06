@@ -110,15 +110,88 @@ class ScheduleDispatchTests(unittest.TestCase):
         self.factory.assert_not_called()
 
     def test_game_repeat_and_automatic_resume_cannot_add_or_reuse_budget(self):
-        target = dict(type='task', task='daily')
+        for check in (self.executor.freeze, self.executor.preview_budget):
+            for task in ('daily', 'du_rewards'):
+                with self.subTest(check=check.__name__, task=task), self.assertRaises(ScheduleError):
+                    check(self.plan(dict(type='task', task=task), repeat=dict(count=2)))
+            for task, params in [('currency_wars_loop', dict(resume=True)),
+                                 ('differential_universe', dict(resume_active=True)),
+                                 ('plan', dict(resume_weekly_currency=True)),
+                                 ('currency_wars_rewards', dict(resume=True))]:
+                with self.subTest(check=check.__name__, task=task), self.assertRaises(ScheduleError):
+                    check(self.plan(dict(type='task', task=task, params=params)))
+        self.factory.assert_not_called()
+
+    def test_preview_counts_the_whole_local_repeat_and_reads_no_dependencies(self):
+        self.write_workflow(steps=[
+            dict(id='loop', type='for', count=4, steps=[
+                dict(id='wait', type='wait', seconds=0),
+                dict(id='disabledDaily', type='task', task='daily', enabled=False),
+            ]),
+            dict(id='records', type='task', task='warp_analysis', params=dict(imports=['missing.json'])),
+        ])
+        store = ScheduleStore(self.root / 'test-schedules')
+        plan = self.plan(repeat=dict(count=3))
+        expected = store.save(plan)['revision']
+        saved, _ = store.load(plan['id'])
+        self.executor.settings.notification_enabled = True
+        self.executor.busy_probe = Mock(side_effect=AssertionError('no execution marker'))
+        with patch('autohsr.notify_runtime.NotificationService', side_effect=AssertionError('no credentials')):
+            budget = self.executor.preview_budget(saved)
+        self.assertEqual(budget, dict(id=plan['id'], revision=expected, repeat_count=3,
+                                      contains_game_tasks=False, whole_batch=dict(
+                                          workflow_steps=30, daily_stamina_max=0, du_runs_max=0)))
+        self.assertFalse((store.root / 'slots').exists())
+        self.assertFalse((self.root / 'runs').exists())
+        self.executor.busy_probe.assert_not_called()
+        self.factory.assert_not_called()
+
+    def test_preview_applies_the_selected_tree_and_maximum_of_alternative_budgets(self):
+        def branch(prefix, stamina, runs):
+            return [
+                dict(id=prefix+'daily', type='task', task='daily',
+                     params=dict(tasks=['battle'], stamina_limit=stamina, challenge_count=1)),
+                dict(id=prefix+'du', type='task', task='differential_universe',
+                     params=dict(runs=runs, until_points=True)),
+            ]
+
+        self.write_workflow(steps=[
+            dict(id='records', type='task', task='warp_analysis', params=dict(imports=['missing.json'])),
+            dict(id='choose', type='if', condition=dict(step='records', field='status', op='eq', value='success'),
+                 steps=branch('first', 80, 2), else_steps=branch('second', 140, 5)),
+        ])
+        budget = self.executor.preview_budget(self.plan())
+        self.assertEqual(budget['whole_batch'], dict(workflow_steps=4, daily_stamina_max=140, du_runs_max=5))
+        self.assertTrue(budget['contains_game_tasks'])
+        self.assertEqual(budget['repeat_count'], 1)
+        target = dict(type='workflow', path='workflow.json', step_path='1/0')
+        selected = self.executor.preview_budget(self.plan(target))
+        self.assertEqual(selected['whole_batch'], dict(workflow_steps=1, daily_stamina_max=80, du_runs_max=0))
+        local = self.executor.preview_budget(self.plan(dict(target, step_path='0'), repeat=dict(count=3)))
+        self.assertFalse(local['contains_game_tasks'])
+        self.assertEqual(local['whole_batch'], dict(workflow_steps=3, daily_stamina_max=0, du_runs_max=0))
+        self.factory.assert_not_called()
+
+    def test_preview_weekly_plan_uses_configured_whole_du_batch_and_daily_cap(self):
+        settings = self.executor.settings
+        settings.battle = settings.weekly_enabled = True
+        settings.stamina_limit, settings.weekly_runs = 120, 7
+        plan = self.plan(dict(type='task', task='plan'))
+        budget = self.executor.preview_budget(plan)
+        self.assertEqual(budget['whole_batch'], dict(workflow_steps=1, daily_stamina_max=120, du_runs_max=7))
+        self.assertEqual(self.executor.freeze(plan)['profile']['du_runs'], 10)
+        settings.weekly_enabled = settings.allow_stamina_spend = False
+        budget = self.executor.preview_budget(plan)
+        self.assertEqual(budget['whole_batch'], dict(workflow_steps=1, daily_stamina_max=0, du_runs_max=0))
+        self.factory.assert_not_called()
+
+    def test_preview_refuses_a_saved_definition_with_a_now_invalid_target(self):
+        plan = self.plan()
+        self.assertEqual(self.executor.preview_budget(plan)['whole_batch']['workflow_steps'], 1)
+        self.workflow.write_bytes(b'{ damaged workflow')
         with self.assertRaises(ScheduleError):
-            self.executor.freeze(self.plan(target, repeat=dict(count=2)))
-        for task, params in [('currency_wars_loop', dict(resume=True)),
-                             ('differential_universe', dict(resume_active=True)),
-                             ('plan', dict(resume_weekly_currency=True)),
-                             ('currency_wars_rewards', dict(resume=True))]:
-            with self.subTest(task=task), self.assertRaises(ScheduleError):
-                self.executor.freeze(self.plan(dict(type='task', task=task, params=params)))
+            self.executor.preview_budget(plan)
+        self.assertEqual(self.workflow.read_bytes(), b'{ damaged workflow')
         self.factory.assert_not_called()
 
     def test_native_task_uses_frozen_settings_and_existing_workflow_adapter(self):

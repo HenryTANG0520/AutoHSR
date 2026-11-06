@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 
 from .config import ROOT, Settings
-from .schedule_plan import ScheduleError
+from .schedule_plan import ScheduleError, revision, validate as validate_plan
 from .task_workflow import GAME_TASKS, MAX_BYTES, compile_recipe, loads, step_path, task_spec
 
 
@@ -141,14 +141,14 @@ class NativeScheduleExecutor:
             raise ScheduleError('计划工作流结构或资源预留无效。') from None
         return recipe, source
 
-    def freeze(self, plan):
+    def _checked_target(self, plan):
         target = validate_target(plan.get('target'))
         recipe, source = self._recipe(target)
         tasks = [node for node in _nodes(recipe.steps) if node['type'] == 'task']
         game = any(node['task'] in GAME_TASKS for node in tasks)
         if game and plan['repeat']['count'] != 1:
             raise ScheduleError('游戏计划重复须由同一任务树核对整批预算，不能分次建立新预算。')
-        dependencies = {}
+        configured = []
         for node in tasks:
             params = node.get('params', {})
             if node['task'] in GAME_TASKS and any(params.get(name) is True for name in
@@ -158,6 +158,33 @@ class NativeScheduleExecutor:
                 current, options = task_spec(self.settings, node, recipe.base_dir)
             except Exception:
                 raise ScheduleError('计划任务与冻结设置不兼容。') from None
+            configured.append((node, current, options))
+        return target, recipe, source, game, configured
+
+    def preview_budget(self, plan):
+        """Project one full trigger from an explicit saved definition or draft."""
+        plan = validate_plan(plan)
+        _, recipe, _, game, configured = self._checked_target(plan)
+        stamina = du_runs = 0
+        # The compiled subtree reserves at most one daily and one DU owner
+        # per possible path. Distinct enabled owners can only be alternatives.
+        for node, current, options in configured:
+            task = node['task']
+            if task in ('daily', 'plan') and current.battle and current.allow_stamina_spend:
+                stamina = max(stamina, current.stamina_limit)
+            if task == 'differential_universe':
+                du_runs = max(du_runs, options['du_runs'])
+            elif task == 'plan' and current.weekly_enabled and current.weekly_mode == 'differential_universe':
+                du_runs = max(du_runs, current.weekly_runs)
+        count = plan['repeat']['count']
+        return dict(id=plan['id'], revision=revision(plan), repeat_count=count, contains_game_tasks=game,
+                    whole_batch=dict(workflow_steps=recipe.profile['executions'] * count,
+                                     daily_stamina_max=stamina * count, du_runs_max=du_runs * count))
+
+    def freeze(self, plan):
+        target, recipe, source, game, configured = self._checked_target(plan)
+        dependencies = {}
+        for node, current, options in configured:
             if node['task'] not in GAME_TASKS:
                 for path in options.get('imports', []):
                     entry = _fingerprint(path)
