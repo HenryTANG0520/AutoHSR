@@ -51,6 +51,7 @@ _UPSTREAM_TIMESTAMP = re.compile(
     r'(?:\.[0-9]*)?(?:[ \t]*(?:Z|[+-][0-9]{1,2}(?::[0-9]{2})?))?)'
 )
 _PAGE_TARGETS = {
+    'main': 'world',
     'menu': 'phone', 'guide2': 'daily_training', 'guide3': 'survival_index',
     'dispatch': 'assignments', 'mail': 'mail', 'reward_guide': 'reward_guide',
     'pass1': 'battlepass_rewards', 'pass2': 'battlepass_tasks',

@@ -10,7 +10,7 @@
 | `for` | 1～1000 次、非空 `children`，子步骤全部可转换。缺省 1 次 |
 | `break`、`continue` | 在可转换的循环体中 |
 | `stop_workflow` | 转为原生 `stop` |
-| `switch_screen` | `menu`、`guide2`、`guide3`、`dispatch`、`mail`、`reward_guide` 转为对应的手机、每日实训、生存索引、委托、邮件和奖励指南。`pass1`、`pass2` 分别转为 `battlepass_rewards`、`battlepass_tasks` |
+| `switch_screen` | `main` 转为 `world`，`menu` 转为手机，`guide2`、`guide3`、`dispatch`、`mail`、`reward_guide` 转为每日实训、生存索引、委托、邮件和奖励指南。`pass1`、`pass2` 分别转为 `battlepass_rewards`、`battlepass_tasks` |
 | `play_audio` | 显式填写普通相对路径或本地绝对路径，扩展名为 `.wav`。转为原生 `workflow_audio` |
 | `send_message` | 调用方显式绑定一个原生方案名称。纯文本转为 `workflow_notify` |
 
@@ -19,6 +19,8 @@
 普通相对音频路径（例如 `clips/beep.wav`）以原 YAML 所在目录为基准。本地绝对路径沿用指定位置。两者均以绝对引用写入草稿及另存文件，目标目录的同名 WAV 不会改变引用。以 `./` 或 `../` 开头的路径在三月七里取决于其进程工作目录，因此拒绝。省略路径、默认 MP3、其他扩展名、UNC、网络映射盘和设备路径也会拒绝。导入阶段只检查路径，文件是否存在和能否按 PCM WAV 播放由正式音频步骤核验。播放失败会记录在任务流报告中，后续步骤沿用上游行为继续。
 
 上游的 `pass1` 与 `pass2` 分别指向勋礼奖励页和任务页。转换后使用对应的正式到页目标，从已核实的手机或勋礼页开始，在前台连续核对同账号和实际到页。导航待核对时挡住后续游戏输入。[固定上游页面定义](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L801-L837) · [勋礼到页边界](task-workflows.md#无名勋礼页签)
+
+上游的 `main` 指大世界主界面，手机菜单经 Esc 返回该页。转换后的 `world` 只使用现有安全返回路径，每一步均核对实际落页。[固定上游主界面与手机定义](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L1-L45) · [大世界到页边界](task-workflows.md#返回大世界)
 
 坐标、图文点击、滑动、按键、其余页面和无限循环均会拒绝。模板查找、文字查找及条件的默认转换会检查选区和上游语义差异，并给出节点路径。桌面「导入 YAML 图文…」可为受支持的步骤显式采用原生实时识别。上游官方示例索引只用于定位具体示例，不会触发目录扫描或自动选取。该接口接收单份 YAML。素材包格式与导入另有入口。[原生图文适配](march7th-workflow-native-vision.md) · [图文条件与迁移边界](march7th-workflow-conditions.md)
 

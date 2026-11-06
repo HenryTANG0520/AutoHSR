@@ -1,0 +1,46 @@
+{
+  "client_version": "4.6.0",
+  "baseline_wh": [
+    1920,
+    1080
+  ],
+  "transformation": "Resize BGR with INTER_AREA. Keep only the two UI glyph search areas on neutral gray. Omit the UID and other HUD regions.",
+  "retained_xyxy": [
+    [
+      8,
+      38,
+      84,
+      116
+    ],
+    [
+      1782,
+      0,
+      1920,
+      102
+    ]
+  ],
+  "fixtures": [
+    {
+      "file": "normal_hud.png",
+      "scene": "ordinary world",
+      "source": "runs/20261106_150945_463790/150956_851747_calibration_before_world_phone.png",
+      "source_wh": [
+        3840,
+        2160
+      ],
+      "source_sha256": "fc6320482e087e19bf39f88070fb125c82877f2d01e1dfcdb95edf064ef45fd7",
+      "fixture_sha256": "1fb5cdbf95e0c1731b01a67a5ba447456cb5700dbd75f09461d5bcd469519662"
+    },
+    {
+      "file": "du_hud.png",
+      "scene": "Differential Universe field",
+      "source": "runs/20261022_154609_493098/continuous-navigation/155003_496066_attack_range.png",
+      "source_wh": [
+        960,
+        540
+      ],
+      "source_sha256": "1709d899018e88722a99c66d8522b77a0e9af996839e39f89b9953a55e395137",
+      "fixture_sha256": "2bf959bbad17a4e89ae10b6d1aa4a5211c4dba5894d3f87a6516028a3c131603"
+    }
+  ]
+}

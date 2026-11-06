@@ -33,7 +33,7 @@ _SCREEN_VALUES = {True: "已匹配", False: "未匹配"}
 _SCREEN_PARAMS = {"workflow_game_image": "条件 JSON · template", "workflow_game_text": "条件 JSON · text"}
 _FAILURE = {"stop": "停止流程", "continue": "继续后续步骤"}
 _PAGES = {
-    "phone": "手机", "guide": "星际和平指南", "daily_training": "每日实训", "survival_index": "生存索引",
+    "world": "大世界", "phone": "手机", "guide": "星际和平指南", "daily_training": "每日实训", "survival_index": "生存索引",
     "assignments": "委托", "mail": "邮件", "battlepass": "无名勋礼", "odyssey": "巡星之礼", "reward_guide": "奖励指南",
     "battlepass_rewards": "无名勋礼 · 奖励", "battlepass_tasks": "无名勋礼 · 任务",
     "messages": "短信通知", "visa_characters": "漫游签证角色展示",

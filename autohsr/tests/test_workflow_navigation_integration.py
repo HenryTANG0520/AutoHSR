@@ -1,5 +1,6 @@
 """Exercise the task-tree page adapter with a simulated Win32 foreground."""
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
+import ctypes
 import io
 import json
 import os
@@ -24,9 +25,9 @@ from autohsr.tests.test_daily_event_pages import _odyssey
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, _Window, phone, visa_collection
 from autohsr.tests.test_du_team import fixture
 from autohsr.tests.test_task_workflow import condition, recipe, task
-from autohsr.tests.test_workflow_navigation import identified
+from autohsr.tests.test_workflow_navigation import identified, world_hud
 from autohsr.vision import Vision
-from autohsr.windows import Geometry
+from autohsr.windows import GameWindow, Geometry, INPUT
 from autohsr.workflow_navigation import WorkflowNavigation
 
 
@@ -45,6 +46,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                           for frame in (world_pair()[-1], bright_sequence()[-1]))
         elif target == 'visa_characters':
             pages = (visa_collection(), visa_collection('characters'))
+        elif target == 'world':
+            pages = (identified(fixture('mail_claimable')), identified(fixture('phone_mail_icon')), world_hud())
         elif target in ('battlepass_rewards', 'battlepass_tasks'):
             rewards = identified(fixture('bp_rewards_claimable'))
             tasks = identified(fixture('bp_tasks_claimable'))
@@ -73,13 +76,17 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         else:
             pages = (source, mailbox)
         sent = []
+        completed_inputs = 0
         self.clicks = []
+        self.key_scans = []
 
         def frames():
             while True:
-                yield pages[-1] if already_open else pages[min(len(sent) + start_in_list, len(pages) - 1)]
+                yield pages[-1] if already_open else pages[min(completed_inputs + start_in_list, len(pages) - 1)]
 
         window = _Window(frames())
+        if target == 'world':
+            window.key = GameWindow.key.__get__(window)
         if battlepass_size is not None:
             window.geometry = Geometry(0, 0, *battlepass_size)
             window.guard.return_value = window.geometry
@@ -134,9 +141,26 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             return previous(runner, *args, **kwargs)
 
         def native_send(length, events, _size):
-            sent.append(tuple(events[index].mi.dwFlags for index in range(length)))
-            self.clicks.append((events[0].mi.dx / 65535, events[0].mi.dy / 65535))
+            nonlocal completed_inputs
+            events = ctypes.cast(events, ctypes.POINTER(INPUT))
+            if events[0].type == 1:
+                self.assertEqual(length, 1)
+                key = events[0].ki
+                sent.append((key.dwFlags,))
+                self.key_scans.append(key.wScan)
+                if key.dwFlags == 0x08:
+                    completed_inputs += 1
+            else:
+                sent.append(tuple(events[index].mi.dwFlags for index in range(length)))
+                self.clicks.append((events[0].mi.dx / 65535, events[0].mi.dy / 65535))
+                completed_inputs += 1
             return length
+
+        def vision(confidence):
+            engine = window.vision(confidence)
+            if target == 'world':
+                engine.template = Vision.__new__(Vision).template
+            return engine
 
         out, err = io.StringIO(), io.StringIO()
         with TemporaryDirectory() as tmp, ExitStack() as stack:
@@ -158,6 +182,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             user32 = SimpleNamespace(IsWindow=Mock(return_value=True), IsIconic=Mock(return_value=False),
                                      GetForegroundWindow=Mock(side_effect=lambda: foreground),
                                      GetAsyncKeyState=Mock(return_value=0), SendInput=Mock(side_effect=native_send),
+                                     MapVirtualKeyW=Mock(side_effect=lambda key, _: key),
                                      GetSystemMetrics=Mock(side_effect={76: 0, 77: 0, 78: window.geometry.width,
                                                                         79: window.geometry.height}.__getitem__))
             for name, value in (
@@ -168,12 +193,13 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 ('autohsr.workflow_lease.NAME', 'Local\\AutoHSR.WorkflowNavigationQA.' + uuid4().hex),
             ):
                 stack.enter_context(patch(name, value))
+            if target != 'world':
+                stack.enter_context(patch('autohsr.app.Context.template', return_value=None))
             for name, kwargs in (
                 ('autohsr.app.C.get_last_error', dict(return_value=0)),
                 ('autohsr.app.find_game', dict(return_value=window)),
                 ('autohsr.app.is_elevated', dict(return_value=False)),
-                ('autohsr.app.Vision', dict(side_effect=window.vision)),
-                ('autohsr.app.Context.template', dict(return_value=None)),
+                ('autohsr.app.Vision', dict(side_effect=vision)),
                 ('autohsr.app.Runner._arm_hotkeys', {}),
                 ('autohsr.app.Runner._hotkeys', {}),
                 ('autohsr.task_workflow_run.TaskWorkflowRunner._hotkeys', {}),
@@ -216,6 +242,29 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertEqual(sent, [])
         self.assertEqual(native['workflow_navigation']['actions'], [])
         self.assertTrue(steps[0]['facts']['page_verified'])
+
+    def test_world_native_workflow_uses_only_existing_escape_from_verified_sources(self):
+        for start, already_open, count in ((0, False, 2), (1, False, 1), (0, True, 0)):
+            with self.subTest(start=start, already_open=already_open):
+                sent, steps, native = self.run_navigation(target='world', start_in_list=start,
+                                                          already_open=already_open, check_publication_lock=True)
+                self.assertEqual(sent, [(0x08,), (0x0A,)] * count)
+                self.assertEqual(self.key_scans, [0x1B] * 2 * count)
+                self.assertEqual(self.clicks, [])
+                self.assertTrue(steps[0]['facts']['page_verified'])
+                record = native['workflow_navigation']
+                self.assertEqual(record['target'], 'world')
+                self.assertTrue(record['page_verified'])
+                self.assertEqual([row['destination_page'] for row in record['actions']], ['phone', 'world'][2-count:])
+
+    def test_world_native_late_focus_loss_preserves_the_escape_receipt(self):
+        sent, steps, native = self.run_navigation(target='world', start_in_list=True, late_loss=True)
+        self.assertEqual(sent, [(0x08,), (0x0A,)])
+        self.assertNotIn('page_verified', steps[0]['facts'])
+        record = native['workflow_navigation']
+        self.assertFalse(record['page_verified'])
+        [row] = record['actions']
+        self.assertEqual((row['input_status'], row['destination_page']), ('sent', 'world'))
 
     def test_battlepass_exact_targets_click_only_opposite_tab_and_verify_current_page(self):
         for source, target, center_x in (('battlepass_tasks', 'battlepass_rewards', .45),

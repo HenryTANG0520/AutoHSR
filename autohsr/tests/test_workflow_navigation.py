@@ -54,6 +54,11 @@ def world():
     return Scene([ACCOUNT], image)
 
 
+def world_hud(name='normal_hud', *tokens):
+    source = Path(__file__).parent / 'fixtures' / 'workflow_world' / (name + '.png')
+    return Scene([ACCOUNT, *tokens], cv2.imdecode(np.fromfile(source, np.uint8), 1))
+
+
 class Window:
     click = windows.GameWindow.click
     key = windows.GameWindow.key
@@ -349,6 +354,49 @@ class WorkflowNavigationTests(unittest.TestCase):
         self.assertEqual([row['action'] for row in rows],
                          ['return_to_hub', 'open_phone', 'open_guide', 'open_survival_index'])
         self.assertTrue(all(row['destination_status'] == 'verified' for row in rows))
+
+    def test_world_target_returns_from_verified_daily_panels_and_never_reopens_phone(self):
+        menu = identified(fixture('phone_mail_icon'))
+        for name, source in (('daily_training', self.daily), ('survival_index', self.survival),
+                             ('assignments', self.assignments), ('mail', self.mail),
+                             ('battlepass', identified(fixture('bp_rewards_claimable')))):
+            with self.subTest(name=name):
+                self.sent.clear()
+                frames = (source, source, menu, menu, world_hud(), world_hud())
+                context = self._installed_context(frames, target='world')
+                self.assertEqual(context.workflow_navigation.run().status, 'ok')
+                self.assertEqual(self.sent, [_DOWN, _UP, _DOWN, _UP])
+                rows = context.report.workflow_navigation['actions']
+                self.assertEqual([(row['action'], row['source_page'], row['destination_page']) for row in rows],
+                                 [('return_to_hub', name, 'phone'), ('return_to_hub', 'phone', 'world')])
+
+    def test_world_target_vetoes_overlay_and_rejects_du_hud_without_ocr(self):
+        examples = [world(), world_hud('du_hud')]
+        for label in ('跳过剧情', '扫码登录', '确认付款', '获得物品', '战斗失败'):
+            examples.append(world_hud('normal_hud', badge(label, .5, .45)))
+            examples.append(phone(badge(label, .5, .45)))
+        examples.append(world_hud('normal_hud', badge('奖励指南', .11, .05)))
+        examples.append(world_hud('normal_hud', badge('（13/13）第三位面-首领', .11, .028)))
+        for index, frame in enumerate(examples):
+            with self.subTest(index=index):
+                context = self._installed_context([frame] * 2, target='world')
+                with self.assertRaises(AutomationError):
+                    context.workflow_navigation.run()
+                self.assertFalse(context.report.workflow_navigation['page_verified'])
+                self.assertEqual(context.report.workflow_navigation['actions'], [])
+        self.assertEqual(self.sent, [])
+
+    def test_world_target_preserves_first_escape_without_replaying_unknown_feedback(self):
+        menu = identified(fixture('phone_mail_icon'))
+        for after in (menu, world_hud('du_hud'), world_hud('normal_hud', badge('跳过剧情', .5, .48))):
+            with self.subTest(after=after.text):
+                self.sent.clear()
+                context = self._installed_context([menu, menu, *([after] * 6)], target='world')
+                with self.assertRaises(AutomationError):
+                    context.workflow_navigation.run()
+                self.assertEqual(self.sent, [_DOWN, _UP])
+                [row] = context.report.workflow_navigation['actions']
+                self.assertEqual((row['input_status'], row['destination_status']), ('sent', 'unknown'))
 
     def test_survival_to_daily_uses_same_slot_4_6_template(self):
         c = Context('daily_training', [self.survival, self.survival, self.daily, self.daily])

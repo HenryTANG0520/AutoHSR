@@ -849,6 +849,14 @@ masked; sidecars retain hashes and non-identifier OCR. These are local
 regression samples, not independent automation-success evidence. Game artwork
 remains the property of HoYoverse.
 
+`templates/workflow_world_phone.png` preserves the unchanged 32×29 RGBA
+main-screen phone glyph from the pinned March7thAssistant source. Its SHA-256
+is `39a79cc4318447516ee504e6ebb49cd335481cf6ad64ea644826fae4bb00b80e`.
+The two `workflow_world` regression fixtures retain only the two HUD search
+regions from historical local frames on a neutral canvas. Their manifest
+records the source, transform and hashes. Game artwork belongs to HoYoverse
+and its respective rights holders. [Fixed upstream glyph](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/images/screen/main.png) · [Masked fixtures](../autohsr/tests/fixtures/workflow_world/sources.json)
+
 `upstream/March7thAssistant/daily-message/incoming_message.png` preserves the
 original 154×40 title crop from moesnow and contributors at
 `7cf6c6bed474539485d3b1504077ac352866829f`, upstream path
