@@ -118,6 +118,8 @@ Excel采用延迟加载的openpyxl 3.1.5与et_xmlfile 2.0.0，均按包声明保
 
 2026-11-06选站只读观察复用同一固定源码的控件分区和已有[脱敏四卡图](../autohsr/tests/fixtures/du_runtime/station_explosion_beacon.png)。[重抽字段夹具](../autohsr/tests/fixtures/du_runtime/station_reroll_fields.json)记录三张简中 4.6 历史画面的原图哈希、局部 OCR 变换和控件文字框。只保留「重抽」及其同行数字。游戏图像归 HoYoverse 和相应权利人，原图保存在本地忽略目录。
 
+同日新增三张简中 4.6 周期选站裁片，依次保留未选、左侧战斗和右侧铸造。各清单记录原报告页号、原图与输出 SHA-256、缩放与保留区。仅保留页标题、预览、卡身和确认控件的像素及相关 OCR。游戏图像归 HoYoverse 和相应权利人，原图保存在本地忽略目录。[未选](../autohsr/tests/fixtures/du_runtime/station_preview_three_447.json) · [战斗](../autohsr/tests/fixtures/du_runtime/station_preview_three_450.json) · [铸造](../autohsr/tests/fixtures/du_runtime/station_preview_three_451.json)
+
 ## 2026-10-29 货币战争周常编排
 
 参考固定March7thAssistant的日常`Daily.start`与`CurrencyWars.start`／`check_currency_wars_score`，将积分、原生有限循环及独立领奖接入[周常归属](../autohsr/currency_wars_weekly.py)与[顺序Runner](../autohsr/currency_wars_weekly_run.py)。每账号／游戏周索引、固定对局上限、原日常报告复用、逐局来源审计和只读恢复为AutoHSR适配；没有迁入上游定时器、全局时间戳、遥测或输入框架。源文件blob与GPL v3见[source.json](upstream/March7thAssistant/source.json)。本次没有新增素材或真实采集，检查使用假窗口与合成最终节点。

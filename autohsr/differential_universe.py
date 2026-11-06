@@ -387,9 +387,13 @@ class DifferentialUniverseWorkflow:
         observation = {"index": self._pages, "run": self.report["current_run"],
                        "page_kind": kind, "evidence": str(evidence), "ocr_text": scene.text}
         if kind == "station_choice":
-            from .du_station_preview import station_reroll_observation
+            from .du_station_preview import station_preview_observation, station_reroll_observation
 
-            observation["station_reroll"] = station_reroll_observation(scene, max(.85, self.settings.ocr_confidence))
+            confidence = max(.85, self.settings.ocr_confidence)
+            observation["station_reroll"] = station_reroll_observation(scene, confidence)
+            preview = station_preview_observation(scene, confidence)
+            if preview is not None:
+                observation["station_preview"] = preview
         self.report["page_history"].append(observation)
         self._persist_ledger()
         return kind

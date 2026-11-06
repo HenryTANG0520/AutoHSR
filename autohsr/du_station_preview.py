@@ -1,6 +1,6 @@
 """Bind a station preview to the live card body and its selection marker."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import re
 
 from .du_station_policy import CARD_LABELS, LABELS
@@ -9,6 +9,8 @@ from .models import normalize
 EFFECT_REGION=(.08,.14,.92,.33)
 _STATION_HEADER = (0, 0, .32, .13)
 _STATION_CONFIRM = (.51, .86, .71, .94)
+_STATION_BODY = (.10, .14, .38, .33)
+_STATION_BEACON_CAPTION = (.58, .21, .69, .28)
 _REROLL_SEARCH = (263, 458, 492, 513)  # 960 × 540 view of the next-station control row.
 _REROLL_FIELD = re.compile(r'重[ 　]*抽[ 　]*([0-9０-９]+)?')
 _REROLL_NUMBER = re.compile(r'[0-9０-９]+')
@@ -220,3 +222,50 @@ def station_effect_covered(source,target):
     import numpy as np
     near=cv2.dilate(target.astype(np.uint8),np.ones((3,3),np.uint8))>0
     return np.count_nonzero(source&near)>=.93*np.count_nonzero(source)
+
+
+def station_preview_observation(scene, confidence=.85):
+    """Describe the observed card and description for page history."""
+    import numpy as np
+
+    image = scene.image
+    if (not isinstance(image, np.ndarray) or image.dtype != np.uint8
+            or image.ndim != 3 or image.shape[2] != 3 or not image.size):
+        return None
+    trusted = [token for token in scene.tokens if confidence <= token.score <= 1]
+    headings = {token.text.strip() for token in trusted if token.within(_STATION_HEADER)}
+    confirms = [token for token in trusted if token.text.strip() == '确定' and token.within(_STATION_CONFIRM)]
+    if not {'差分宇宙', '选择下一站'} <= headings or len(confirms) != 1:
+        return None
+    cards = station_cards(scene)
+    if len(cards) not in (3, 4):
+        return None
+    marked = [(column, card) for column, card in enumerate(cards, 1) if card.selected]
+    choosing = any(token.text.strip() == '选择一张站点卡' and token.within(EFFECT_REGION) for token in trusted)
+    if not marked and choosing:
+        return dict(status='awaiting_selection', visible_card_count=len(cards))
+    if len(marked) != 1 or choosing:
+        return None
+    (column, selected), = marked
+    titles = [token for token in trusted if token.within(CARD_LABELS)
+              and normalize(token.text) in LABELS and card_for_label(scene, cards, token) == selected]
+    if len(titles) != 1:
+        return None
+
+    def panel_tokens(region):
+        left, top, right, bottom = region
+        return [token for token in trusted if left <= token.box[0] < token.box[2] <= right
+                and top <= token.box[1] < token.box[3] <= bottom]
+
+    # The left description has white glyphs. The right panel can show a
+    # dim “暂无信标” caption which is a separate OCR observation.
+    body = panel_tokens(_STATION_BODY)
+    observation = dict(status='selected', visible_card_count=len(cards),
+                       selected_column=column, selected_label=titles[0].text.strip(),
+                       body_text=None, beacon_caption=None)
+    if station_effect_ink(replace(scene, tokens=body)) is not None:
+        observation['body_text'] = [token.text.strip() for token in body]
+    captions = panel_tokens(_STATION_BEACON_CAPTION)
+    if len(captions) == 1 and captions[0].text.strip() == '暂无信标':
+        observation['beacon_caption'] = captions[0].text.strip()
+    return observation
