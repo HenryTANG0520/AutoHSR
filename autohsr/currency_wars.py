@@ -87,7 +87,7 @@ class CurrencyWarsWorkflow:
         encounter = None
         if observation.page_kind == 'unknown':
             from .currency_wars_encounter import read_encounter
-            encounter = read_encounter(scene, self.c.settings.ocr_confidence)
+            encounter = read_encounter(scene, self.c.settings.ocr_confidence, include_experience=True)
             if encounter is not None and encounter.layout_verified:
                 observation = replace(observation, page_kind='encounter_selection', page_verified=True)
         screenshot = self.c.evidence(scene, "currency_wars_observation")

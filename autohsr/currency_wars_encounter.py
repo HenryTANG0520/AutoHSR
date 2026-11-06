@@ -20,7 +20,9 @@ _CONFIRM = (.49, .75, .64, .88)
 _DETAILS = (.455, .17, .548, .29)
 _REFRESH = (.30, .75, .45, .88)
 _QUANTITY = r'(?:0|[1-9][0-9]{0,2})'
-_REWARD = re.compile(rf'(金币|随机简易装备|随机([1-5])费角色)(?:[×x]?({_QUANTITY}))?')
+_REWARD_KINDS = r'金币|随机简易装备|随机([1-5])费角色'
+_REWARD = re.compile(rf'({_REWARD_KINDS})(?:[×x]?({_QUANTITY}))?')
+_OBSERVED_REWARD = re.compile(rf'({_REWARD_KINDS}|经验)(?:[×x]?({_QUANTITY}))?')
 _REWARD_NUMBERS = ((.283, .582, .325, .65), (.586, .582, .633, .65))
 _EDGES = (((.242, .271), (.425, .455)), ((.538, .572), (.722, .771)))
 _NODE_HUD = (.10, .036, .29, .135)
@@ -40,22 +42,23 @@ _OTHER_PAGE_FIELDS = (
 _FIELD_PREFIX = 'currency_encounter.'
 _FIELD_CROPS = {
     'title': (
-        (((.3125, .356, .379, .396), 'contrast'), ((.314, .356, .378, .398), 'gray_large')),
-        (((.617, .356, .685, .396), 'contrast'), ((.618, .356, .684, .398), 'gray_large')),
+        (((.3125, .356, .379, .396), 'contrast', 3), ((.314, .356, .378, .398), 'gray', 3)),
+        (((.617, .356, .685, .396), 'contrast', 3), ((.618, .356, .684, .398), 'gray', 3)),
     ),
     'difficulty': (
-        (((.333, .396, .365, .423), 'contrast'), ((.332, .398, .366, .425), 'contrast')),
-        (((.633, .400, .667, .423), 'raw_large'), ((.633, .400, .667, .423), 'gray_large')),
+        (((.333, .396, .365, .423), 'contrast', 3), ((.332, .398, .366, .425), 'contrast', 3)),
+        (((.633, .400, .667, .423), 'raw', 3), ((.633, .400, .667, .423), 'gray', 3)),
     ),
     'heading': (
-        (((.324, .519, .372, .554), 'contrast'), ((.324, .519, .372, .554), 'sharp')),
-        (((.628, .521, .674, .552), 'contrast'), ((.628, .521, .674, .552), 'gray_large')),
+        (((.324, .519, .372, .554), 'contrast', 3), ((.324, .519, .372, .554), 'sharp', 3)),
+        (((.628, .521, .674, .552), 'contrast', 3), ((.628, .521, .674, .552), 'gray', 3)),
     ),
     'quantity': (
-        (((.293, .600, .320, .627), 'raw'), ((.293, .600, .320, .627), 'gray')),
-        (((.596, .600, .625, .627), 'raw'), ((.596, .600, .625, .627), 'gray')),
+        (((.293, .600, .320, .627), 'raw', 1), ((.293, .600, .320, .627), 'gray', 1)),
+        (((.596, .600, .625, .627), 'raw', 1), ((.596, .600, .625, .627), 'gray', 1)),
     ),
 }
+_EXPERIENCE_QUANTITY = (((.596, .604, .622, .629), 'raw', 2), ((.596, .604, .622, .629), 'gray', 2))
 
 
 @dataclass(frozen=True)
@@ -132,10 +135,17 @@ def _difficulty(image, tokens, column, name_token, title):
     return None
 
 
-def _reward_preview(tokens, column, number_roi):
+def _reward_labels(tokens, column, include_experience):
+    left, right = column
+    pattern = _OBSERVED_REWARD if include_experience else _REWARD
+    return [(token, match) for token, match in _read(tokens, (left, .553, right, .628), pattern)
+            if match[1] != '经验' or (token.text.strip() == '经验' and token.score >= .85)]
+
+
+def _reward_preview(tokens, column, number_roi, include_experience=False):
     left, right = column
     headings = _read(tokens, (left, .496, right, .573), '奖励预览')
-    labels = _read(tokens, (left, .553, right, .628), _REWARD)
+    labels = _reward_labels(tokens, column, include_experience)
     if len(headings) != 1 or len(labels) != 1:
         return None
     label, match = labels[0]
@@ -155,7 +165,7 @@ def _reward_preview(tokens, column, number_roi):
         quantity = number if not counter_value and inline in (None, number) else None
     elif numbers:
         quantity = None
-    kind = {'金币': 'gold', '随机简易装备': 'random_basic_equipment'}.get(match[1], 'random_character')
+    kind = {'金币': 'gold', '随机简易装备': 'random_basic_equipment', '经验': 'experience'}.get(match[1], 'random_character')
     return dict(kind=kind,
                 quantity=int(quantity) if quantity not in (None, '0') else None,
                 character_cost=int(cost) if cost else None)
@@ -294,10 +304,10 @@ def _controls(image, tokens, button):
     return confirm, 'unknown', None
 
 
-def _missing_fields(current):
+def _refinement_panel(current):
     image, tokens = current.image, current.tokens
     if not _visible_image(image) or _other_page(current):
-        return
+        return None
     headers = _read(tokens, _HEADER, r'[遭遗]遇节点')
     confirms = _read(tokens, _CONFIRM, '选择')
     returns = _read(tokens, _RETURN, '返回备战界面')
@@ -306,10 +316,16 @@ def _missing_fields(current):
             or any(len(column) != 1 for column in names)
             or not any(column[0][1][0].startswith('遭') for column in names) or _match_hud_present(current)
             or not all(_card_silhouettes(image))):
-        return
+        return None
     _, selection, _ = _controls(image, tokens, confirms[0][0])
-    if selection == 'unknown':
+    return names if selection != 'unknown' else None
+
+
+def _missing_fields(current, include_experience):
+    names = _refinement_panel(current)
+    if names is None:
         return
+    tokens = current.tokens
     for index, (column, name_reads, number_roi) in enumerate(zip(_COLUMNS, names, _REWARD_NUMBERS)):
         left, right = column
         name, title = name_reads[0]
@@ -318,54 +334,61 @@ def _missing_fields(current):
             yield prefix + 'title', _FIELD_CROPS['title'][index], '遭遇其' + title[1], name
         if not _read(tokens, (left, .391, right, .438), '难度'):
             yield prefix + 'difficulty', _FIELD_CROPS['difficulty'][index], '难度', None
-        rewards = _read(tokens, (left, .553, right, .628), _REWARD)
+        rewards = _reward_labels(tokens, column, include_experience and index == 1)
         if len(rewards) != 1:
             continue
-        if not _read(tokens, (left, .496, right, .573), '奖励预览'):
+        experience = rewards[0][1][1] == '经验'
+        headings = _read(tokens, (left, .496, right, .573), '奖励预览')
+        if experience and len(headings) != 1:
+            continue
+        if not headings:
             yield prefix + 'heading', _FIELD_CROPS['heading'][index], '奖励预览', None
         if rewards[0][1][3] is None and not any(token.within(number_roi) and
                                                re.fullmatch(r'[×x]?[0-9]+', normalize(token.text)) for token in tokens):
-            yield prefix + 'quantity', _FIELD_CROPS['quantity'][index], _QUANTITY, None
+            if experience:
+                yield prefix + 'experience_quantity', _EXPERIENCE_QUANTITY, _QUANTITY, None
+            else:
+                yield prefix + 'quantity', _FIELD_CROPS['quantity'][index], _QUANTITY, None
 
 
-def _field_pixels(image, roi, mode):
+def _field_pixels(image, roi, mode, scale):
     import cv2
 
     patch = _crop(image, roi)
-    if mode not in ('raw', 'raw_large'):
+    if mode != 'raw':
         gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
         if mode in ('contrast', 'sharp'):
             gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
         if mode == 'sharp':
             gray = cv2.addWeighted(gray, 1.6, cv2.GaussianBlur(gray, (3, 3), 0), -.6, 0)
         patch = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-    if mode in ('raw', 'gray'):
+    if scale == 1:
         return patch
-    return cv2.resize(patch, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+    return cv2.resize(patch, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
 
 
 def supplement_encounter_fields(scene, reader):
     """Retain scoped OCR variants separately from the full-frame evidence."""
     current = trusted(scene, reader.confidence)
     reads = dict(scene.field_reads)
-    for key, crops, pattern, _ in _missing_fields(current):
+    for key, crops, pattern, _ in _missing_fields(current, include_experience=True):
         variants = []
-        for roi, mode in crops:
-            token = reader._read_field(_field_pixels(current.image, roi, mode), pattern)
+        for roi, mode, scale in crops:
+            token = reader._read_field(_field_pixels(current.image, roi, mode, scale), pattern)
             variants.append(None if token is None else Token(token.text, token.score, roi))
         reads[key] = tuple(variants)
     return replace(scene, field_reads=reads) if reads != scene.field_reads else scene
 
 
-def _encounter_tokens(current, confidence):
+def _encounter_tokens(current, confidence, include_experience):
     if not any(key.startswith(_FIELD_PREFIX) for key in current.field_reads):
         return current.tokens
     tokens = list(current.tokens)
-    for key, crops, pattern, partial in _missing_fields(current):
+    for key, crops, pattern, partial in _missing_fields(current, include_experience):
         variants = current.field_reads.get(key, ())
         if len(variants) != len(crops) or not all(
                 token is not None and token.box == roi and max(.85, confidence) <= token.score <= 1
-                and re.fullmatch(pattern, token.text) for token, (roi, _) in zip(variants, crops)):
+                and re.fullmatch(pattern, token.text) for token, (roi, _, _) in zip(variants, crops)):
             continue
         first, second = variants
         if first.text != second.text:
@@ -378,11 +401,11 @@ def _encounter_tokens(current, confidence):
     return tokens
 
 
-def _read_encounter(scene, confidence):
+def _read_encounter(scene, confidence, *, include_experience=False):
     current = trusted(scene, confidence)
     if _other_page(current):
         return None, (), None
-    tokens = _encounter_tokens(current, confidence)
+    tokens = _encounter_tokens(current, confidence, include_experience)
     headers = _read(tokens, _HEADER, r'[遭遗]遇节点')
     names = [_read(tokens, (left, .32, right, .415), _TITLE) for left, right in _COLUMNS]
     confirms = _read(tokens, _CONFIRM, '选择')
@@ -398,12 +421,14 @@ def _read_encounter(scene, confidence):
     visible_pixels = _visible_image(image)
     if _match_hud_present(current):
         return EncounterObservation(False), (), None
+    experience_panel = include_experience and _refinement_panel(current) is not None
     cards = []
     for slot, (column, name_reads, number_roi) in enumerate(zip(_COLUMNS, names, _REWARD_NUMBERS), 1):
         name, match = name_reads[0]
         title = match[0]
         difficulty = _difficulty(image, tokens, column, name, title) if visible_pixels else None
-        cards.append(EncounterCard(slot, title, difficulty, _reward_preview(tokens, column, number_roi)))
+        reward = _reward_preview(tokens, column, number_roi, include_experience=experience_panel and slot == 2)
+        cards.append(EncounterCard(slot, title, difficulty, reward))
 
     confirm, selection, selected_slot = _controls(image, tokens, confirms[0][0])
     if selection == 'unselected' and any(card.difficulty is None for card in cards):
@@ -413,9 +438,9 @@ def _read_encounter(scene, confidence):
     return observation, (names[0][0][0], names[1][0][0]), confirms[0][0]
 
 
-def read_encounter(scene, confidence=.65):
-    """Read a candidate modal in the dedicated check, including unknown fields."""
-    observation, _, _ = _read_encounter(scene, confidence)
+def read_encounter(scene, confidence=.65, *, include_experience=False):
+    """Read a candidate modal. The read-only CLI opts into experience previews."""
+    observation, _, _ = _read_encounter(scene, confidence, include_experience=include_experience)
     return observation
 
 

@@ -64,6 +64,13 @@ def with_missing_fields(*, selected=None, badge_counts=None):
     return frame
 
 
+def experience_frame():
+    frame = with_missing_fields(selected=2)
+    frame.tokens = [token('经验', .640, .594, half_width=.013) if t.text == '随机4费角色' else t
+                    for t in frame.tokens]
+    return frame
+
+
 def supplement(frame, *, quantities=('12', '2')):
     reader = Mock(confidence=.65)
     replies = [text for text in ('难度', '奖励预览', *quantities) for _ in range(2)]
@@ -406,6 +413,51 @@ class EncounterTests(unittest.TestCase):
         frame.tokens.append(token('8', .312, .623, half_width=.006))
         self.assertIsNone(read_encounter(frame).cards[0].reward_preview['quantity'])
         self.assertIsNone(read_encounter_targets(frame))
+
+    def test_right_experience_preview_uses_its_own_amount_only_in_readonly_check(self):
+        frame = supplement(experience_frame(), quantities=('3', '8'))
+        observed = read_encounter(frame, include_experience=True)
+        self.assertEqual(observed.selected_slot, 2)
+        self.assertEqual(observed.cards[0].reward_preview, dict(kind='gold', quantity=3, character_cost=None))
+        self.assertEqual(observed.cards[1].reward_preview, dict(kind='experience', quantity=8, character_cost=None))
+        self.assertIsNone(read_encounter(frame).cards[1].reward_preview)
+        self.assertIsNone(read_encounter_targets(frame).observation.cards[1].reward_preview)
+        report = self.cli_report(frame)
+        self.assertEqual(report['encounter']['cards'][1]['reward_preview'], observed.cards[1].reward_preview)
+        self.assertEqual(report['decision'], 'stop_without_input')
+        self.assertFalse(report['strategy_decision']['executable'])
+
+    def test_experience_requires_current_exact_right_label_and_stable_panel(self):
+        for problem in ('wrong_label', 'weak_label', 'left_label', 'white_transition', 'prep_bleed'):
+            with self.subTest(problem=problem):
+                frame = supplement(experience_frame(), quantities=('3', '8'))
+                if problem == 'wrong_label':
+                    replacement = token('经韵', .640, .594, half_width=.013)
+                elif problem == 'weak_label':
+                    replacement = token('经验', .640, .594, score=.84, half_width=.013)
+                elif problem == 'left_label':
+                    replacement = token('经验', .345, .594, half_width=.013)
+                else:
+                    replacement = next(t for t in frame.tokens if t.text == '经验')
+                frame.tokens = [replacement if t.text == '经验' else t for t in frame.tokens]
+                if problem == 'white_transition':
+                    frame.tokens = [t for t in frame.tokens if t.text != '查看详情']
+                if problem == 'prep_bleed':
+                    frame.tokens.append(token('出战', .951, .699))
+                cards = read_encounter(frame, include_experience=True).cards
+                self.assertTrue(all(not c.reward_preview or c.reward_preview['kind'] != 'experience' for c in cards))
+
+    def test_right_experience_quantity_remains_unknown_with_conflicts_or_other_column(self):
+        frame = supplement(experience_frame(), quantities=('3', '8'))
+        key = 'currency_encounter.2.experience_quantity'
+        original = frame.field_reads[key]
+        frame.field_reads[key] = frame.field_reads['currency_encounter.1.quantity']
+        self.assertIsNone(read_encounter(frame, include_experience=True).cards[1].reward_preview['quantity'])
+        frame.field_reads[key] = original
+        frame.tokens.extend([token('8', .619, .619, half_width=.004), token('9', .622, .621, half_width=.004)])
+        self.assertIsNone(read_encounter(frame, include_experience=True).cards[1].reward_preview['quantity'])
+        frame.tokens.append(token('随机简易装备', .670, .594))
+        self.assertIsNone(read_encounter(frame, include_experience=True).cards[1].reward_preview)
 
     def test_focus_loss_after_local_ocr_discards_the_completed_frame(self):
         frame = supplement(with_missing_fields(selected=1))
