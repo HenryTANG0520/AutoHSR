@@ -18,7 +18,8 @@ from yaml.events import AliasEvent
 from yaml.nodes import ScalarNode
 
 from .models import normalize
-from .task_workflow import MAX_BYTES, MAX_DEPTH, MAX_NODES, PAGE_TASK, WorkflowError, compile_recipe
+from .notify_profiles import NotifyError, alias
+from .task_workflow import MAX_BYTES, MAX_DEPTH, MAX_NODES, PAGE_TASK, WorkflowError, _params, compile_recipe
 from .task_workflow_draft import SavedWorkflow, WorkflowDraft, _snapshot
 from .workflow_yaml_crop import parse_march7th_crop
 
@@ -53,7 +54,6 @@ _UNSUPPORTED = {
     'find_text': '上游画面取样和文字匹配语义尚无等价的 AutoHSR 步骤',
     'if': '上游即时画面或上一动作的布尔条件尚无等价的 AutoHSR 步骤',
     'while': '上游循环条件和达到上限的行为尚无等价的 AutoHSR 步骤',
-    'send_message': '上游通知缺少 AutoHSR 所需的显式方案绑定',
 }
 
 
@@ -95,7 +95,14 @@ class _Loader(yaml.SafeLoader):
                     or key.value == '<<' or key.value in keys):
                 raise WorkflowError('三月七 YAML 不允许非文字键、合并键或重复字段。')
             keys.add(key.value)
-        return super().construct_mapping(node, deep=deep)
+        result = super().construct_mapping(node, deep=deep)
+        message = result.get('text')
+        if result.get('type') == 'send_message' and isinstance(message, str) and re.match(r'[+-]?[0-9.]', message):
+            # Upstream can implicitly type more plain scalars (e.g. 0x10 or a date).
+            for key, value in node.value:
+                if key.value == 'text' and isinstance(value, ScalarNode) and value.style is None:
+                    raise WorkflowError(f'第 {value.start_mark.line + 1} 行的通知正文须加引号或使用文本块。')
+        return result
 
 
 def _numeric(value, grammar):
@@ -292,7 +299,23 @@ def _vision_node(step, source_dir, where, *, use_native_vision):
     return native
 
 
-def _steps(values, source_dir, *, use_native_vision, prefix=(), total=None, in_loop=False):
+def _notification_params(step, notify_profile, where):
+    if notify_profile is None:
+        raise WorkflowError(f'{where}无法迁移。上游通知缺少 AutoHSR 所需的显式方案绑定。')
+    if step.get('with_screenshot', False) is not False:
+        raise WorkflowError(f'{where}只支持纯文本通知，with_screenshot 须省略或明确为 false。')
+    message = step.get('text')
+    if isinstance(message, str) and message != message.strip():
+        raise WorkflowError(f'{where}的正文含首尾空白，三月七发送前会裁剪，无法无损迁移。')
+    params = dict(profile=notify_profile, message=message)
+    try:
+        _params('workflow_notify', params)
+    except WorkflowError as error:
+        raise WorkflowError(f'{where}无法迁移。{error}') from None
+    return params
+
+
+def _steps(values, source_dir, *, use_native_vision, notify_profile, prefix=(), total=None, in_loop=False):
     if total is None:
         total = [0]
     if not isinstance(values, list) or not values or len(prefix) >= MAX_DEPTH:
@@ -336,6 +359,9 @@ def _steps(values, source_dir, *, use_native_vision, prefix=(), total=None, in_l
             node.update(type='task', task='workflow_audio',
                         params={'path': _audio_path(value.get('audio_path'), source_dir, where)},
                         on_failure='continue')
+        elif kind == 'send_message':
+            node.update(type='task', task='workflow_notify', on_failure='continue',
+                        params=_notification_params(value, notify_profile, f'{where}（{kind}）'))
         elif kind == 'switch_screen':
             screen = value.get('target_screen')
             target = _PAGE_TARGETS.get(screen.strip()) if isinstance(screen, str) else None
@@ -350,13 +376,14 @@ def _steps(values, source_dir, *, use_native_vision, prefix=(), total=None, in_l
         elif kind not in _VISION_STEPS:
             raise WorkflowError(f'{where}的步骤类型未获支持。')
         if control:
-            node['steps'] = _steps(children, source_dir, use_native_vision=use_native_vision, prefix=path, total=total,
+            node['steps'] = _steps(children, source_dir, use_native_vision=use_native_vision,
+                                   notify_profile=notify_profile, prefix=path, total=total,
                                    in_loop=in_loop or kind in ('for', 'while'))
         result.append(node)
     return result
 
 
-def _decode(raw, source_dir, *, use_native_vision):
+def _decode(raw, source_dir, *, use_native_vision, notify_profile):
     if len(raw) > MAX_BYTES:
         raise WorkflowError('三月七 YAML 超过 1 MiB。')
     try:
@@ -381,7 +408,7 @@ def _decode(raw, source_dir, *, use_native_vision):
         if any(char == '\0' or 0xD800 <= ord(char) <= 0xDFFF for char in display):
             raise WorkflowError('三月七 YAML 的作者、版本或描述字段无效。')
         metadata[key] = display
-    steps = _steps(value['steps'], source_dir, use_native_vision=use_native_vision)
+    steps = _steps(value['steps'], source_dir, use_native_vision=use_native_vision, notify_profile=notify_profile)
     return dict(version=1, name=value['name'], steps=steps), metadata
 
 
@@ -401,20 +428,26 @@ class March7thYamlDraft(WorkflowDraft):
         return super().destination_path(destination)
 
 
-def load_march7th_yaml(path, *, use_native_vision: bool = False) -> March7thYamlDraft:
-    """Read one YAML draft, with an explicit opt-in to native dual-frame vision."""
+def load_march7th_yaml(path, *, use_native_vision: bool = False, notify_profile: str | None = None) -> March7thYamlDraft:
+    """Read one YAML draft. A notification alias binds the draft without authorizing sends."""
     if type(use_native_vision) is not bool:
         raise WorkflowError('实时图文适配开关必须为布尔值。')
+    if notify_profile is not None:
+        try:
+            alias(notify_profile)
+        except NotifyError as error:
+            raise WorkflowError(str(error)) from None
     try:
         source = _local_path(path, _YAML_SUFFIXES, source=True)
         raw, _ = _snapshot(source)
     except (TypeError, OSError) as error:
         raise WorkflowError('无法读取所选三月七 YAML 文件。') from error
-    document, metadata = _decode(raw, source.parent, use_native_vision=use_native_vision)
+    document, metadata = _decode(raw, source.parent, use_native_vision=use_native_vision, notify_profile=notify_profile)
     recipe = compile_recipe(document, base_dir=source.parent)
     return March7thYamlDraft(None, None, None, recipe.document, original_source=source, metadata=metadata)
 
 
-def convert_march7th_yaml(source, destination, *, use_native_vision: bool = False) -> SavedWorkflow:
+def convert_march7th_yaml(source, destination, *, use_native_vision: bool = False,
+                         notify_profile: str | None = None) -> SavedWorkflow:
     """Validate then exclusively publish a separate native JSON definition."""
-    return load_march7th_yaml(source, use_native_vision=use_native_vision).save_as(destination)
+    return load_march7th_yaml(source, use_native_vision=use_native_vision, notify_profile=notify_profile).save_as(destination)

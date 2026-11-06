@@ -144,6 +144,70 @@ class WorkflowYamlTests(unittest.TestCase):
                     convert_march7th_yaml(self.source, self.target)
                 self.assertFalse(self.target.exists())
 
+    def test_bound_notification_keeps_multiline_text_and_native_reservation(self):
+        original = self.write(
+            'name: 通知流程\nsteps:\n'
+            '- type: for\n  count: 2\n  children:\n'
+            '  - type: send_message\n    text: |-\n      第一  行\n      继续\t提示 🔔\n'
+            '  - type: send_message\n    text: on\n    with_screenshot: false\n'
+        )
+        with self.assertRaisesRegex(WorkflowError, '步骤 0/0.*显式方案绑定'):
+            load_march7th_yaml(self.source, use_native_vision=True)
+        draft = load_march7th_yaml(self.source, notify_profile='manual-test')
+        self.assertIsNone(draft.source)
+        self.assertFalse(self.target.exists())
+        self.assertEqual(draft.validate().profile['notification_calls'], 4)
+        saved = draft.save_as(self.target)
+        steps = read(saved.path)['steps'][0]['steps']
+        for index, message in enumerate(('第一  行\n继续\t提示 🔔', 'on')):
+            self.assertEqual(steps[index], dict(id=f'm7-0-{index}', type='task', task='workflow_notify',
+                                                on_failure='continue', params=dict(profile='manual-test', message=message)))
+        self.assertEqual(self.source.read_bytes(), original)
+
+    def test_notification_refuses_attachment_loss_text_coercion_and_yaml_binding(self):
+        cases = (
+            ('type: notify, text: 消息', '步骤类型'),
+            ('type: send_message, text: 消息, profile: chosen', '未知字段'),
+            ('type: send_message, text: 消息, allow_notify: true', '未知字段'),
+            ('type: send_message, text: 消息, with_screenshot: true', 'with_screenshot'),
+            ('type: send_message, text: 消息, with_screenshot: "false"', 'with_screenshot'),
+            ('type: send_message, text: 消息, with_screenshot: null', 'with_screenshot'),
+            ('type: send_message, text: " 消息"', '首尾空白'),
+            (r'type: send_message, text: "消息\n"', '首尾空白'),
+            (r'type: send_message, text: "消\0息"', '无效字符'),
+            ('type: send_message, text: 123', '通知字段'),
+            ('type: send_message, text: false', '通知字段'),
+            ('type: send_message', '通知字段'),
+            ('type: send_message, text: "' + '长' * 1801 + '"', '通知字段'),
+        )
+        for step, reason in cases:
+            with self.subTest(reason=reason):
+                original = self.write('name: 测试\nsteps: [{' + step + '}]\n')
+                with self.assertRaisesRegex(WorkflowError, '步骤 0.*' + reason):
+                    convert_march7th_yaml(self.source, self.target, notify_profile='manual-test')
+                self.assertFalse(self.target.exists())
+                self.assertEqual(self.source.read_bytes(), original)
+
+    def test_notification_alias_syntax_and_native_budget_remain_required(self):
+        self.write('name: 通知上限\nsteps: [{type: for, count: 21, children: [{type: send_message, text: 提示}]}]\n')
+        for invalid in ('', 'not a profile', True):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(WorkflowError, '通知配置名称'):
+                load_march7th_yaml(self.source, notify_profile=invalid)
+        with self.assertRaisesRegex(WorkflowError, '最多执行 20'):
+            convert_march7th_yaml(self.source, self.target, notify_profile='manual-test')
+        self.assertFalse(self.target.exists())
+
+    def test_notification_requires_explicit_text_for_ambiguous_plain_scalars(self):
+        for literal in ('0x10', '0o17', '.nan', '2026-11-07'):
+            with self.subTest(literal=literal):
+                source = 'name: 通知\nsteps: [{type: send_message, text: %s}]\n'
+                self.write(source % literal)
+                with self.assertRaisesRegex(WorkflowError, '第 2 行.*须加引号'):
+                    load_march7th_yaml(self.source, notify_profile='manual-test')
+                self.write(source % json.dumps(literal))
+                draft = load_march7th_yaml(self.source, notify_profile='manual-test')
+                self.assertEqual(draft.document['steps'][0]['params']['message'], literal)
+
     def test_known_switch_screen_targets_preserve_daily_page_identity(self):
         names = ('menu', 'guide2', 'guide3', 'dispatch', 'mail', 'reward_guide', 'pass1', 'pass2')
         steps = ''.join(f'  - type: switch_screen\n    target_screen: {name}\n' for name in names)

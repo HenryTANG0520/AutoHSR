@@ -14,6 +14,7 @@ from autohsr.task_workflow import read
 
 
 _OPT_IN = '--workflow-yaml-native-vision'
+_NOTIFY_PROFILE = '--workflow-yaml-notify-profile'
 _IMPORT = '--task-workflow-convert-yaml'
 _DESTINATION = '--workflow-json-destination'
 
@@ -63,6 +64,8 @@ class WorkflowYamlCliTests(unittest.TestCase):
         self.assertIn(_OPT_IN, help_text)
         self.assertIn('仅用于 ' + _IMPORT, help_text)
         self.assertIn('双帧图文规则，默认关闭', help_text)
+        self.assertIn(_NOTIFY_PROFILE, help_text)
+        self.assertIn('不授权发送', help_text)
 
     def test_default_rejects_and_opt_in_exclusively_publishes_a_native_definition(self):
         with ExitStack() as stack:
@@ -116,10 +119,11 @@ class WorkflowYamlCliTests(unittest.TestCase):
                 stack.enter_context(patch(f'autohsr.{module}.dispatch',
                                           side_effect=AssertionError(f'unexpected dispatch: {module}')))
             for args in modes:
-                with self.subTest(args=args):
-                    code, out, error = self.invoke(*args, _OPT_IN)
-                    self.assertEqual((code, out), (2, ''))
-                    self.assertIn(f'{_OPT_IN} 仅用于 {_IMPORT}', error.splitlines()[-1])
+                for flag in ((_OPT_IN,), (_NOTIFY_PROFILE, 'manual-test')):
+                    with self.subTest(args=args, flag=flag[0]):
+                        code, out, error = self.invoke(*args, *flag)
+                        self.assertEqual((code, out), (2, ''))
+                        self.assertIn(f'{flag[0]} 仅用于 {_IMPORT}', error.splitlines()[-1])
 
     def test_invalid_yaml_combinations_do_not_reach_either_file(self):
         other = self.root / 'settings.json'
@@ -131,6 +135,9 @@ class WorkflowYamlCliTests(unittest.TestCase):
             ((*base, _OPT_IN, '--workflow-allow-notify'), '不能与其他运行参数混用'),
             ((*base, _OPT_IN, '--workflow-bundle-destination', str(other)), '不能与其他运行参数混用'),
             ((*base, f'{_OPT_IN}=true'), _OPT_IN),
+            ((*base, _NOTIFY_PROFILE, 'one', f'{_NOTIFY_PROFILE}=two'), '只能绑定一个通知方案'),
+            ((*base, _NOTIFY_PROFILE, 'manual-test', '--workflow-allow-notify'), '不能与其他运行参数混用'),
+            ((*base, _NOTIFY_PROFILE, 'manual-test', '--notify-profile', 'other'), '不能与其他运行参数混用'),
         )
         with ExitStack() as stack:
             self.forbid_io(stack, {self.source, self.destination, other})
@@ -141,6 +148,40 @@ class WorkflowYamlCliTests(unittest.TestCase):
                     self.assertIn(message, error.splitlines()[-1])
         self.assertEqual(self.source.read_bytes(), self.raw)
         self.assertFalse(self.destination.exists())
+
+    def test_notification_conversion_and_check_are_offline_and_binding_cannot_authorize_run(self):
+        message = 'ONLY_IN_DRAFT\n下一行  正文'
+        raw = ('name: 通知流程\nsteps: [{type: send_message, text: '
+               + json.dumps(message, ensure_ascii=False) + '}]\n').encode('utf-8')
+        self.source.write_bytes(raw)
+        args = (_IMPORT, str(self.source), _DESTINATION, str(self.destination))
+        with ExitStack() as stack:
+            self.forbid_io(stack, set())
+            for target in ('autohsr.notify_profiles.ProfileStore.load_version', 'autohsr.notify_http.request',
+                           'autohsr.workflow_notify.send_step', 'autohsr.task_workflow_run.freeze_step_notifications'):
+                stack.enter_context(patch(target, side_effect=AssertionError(f'unexpected notification access: {target}')))
+            code, out, error = self.invoke(*args)
+            self.assertEqual((code, out), (2, ''))
+            self.assertIn('步骤 0（send_message）', json.loads(error)['error'])
+            self.assertNotIn('ONLY_IN_DRAFT', error)
+            self.assertFalse(self.destination.exists())
+
+            code, out, error = self.invoke(*args, _OPT_IN, f'{_NOTIFY_PROFILE}=manual-test')
+            self.assertEqual((code, error), (0, ''))
+            self.assertEqual(json.loads(out)['mode'], 'convert_yaml')
+            self.assertNotIn('ONLY_IN_DRAFT', out)
+            self.assertEqual(read(self.destination)['steps'][0]['params'], dict(profile='manual-test', message=message))
+
+            code, out, error = self.invoke('--task-workflow-check', str(self.destination))
+            self.assertEqual((code, error), (0, ''))
+            self.assertEqual(json.loads(out)['reservations']['notification_calls'], 1)
+            self.assertIs(json.loads(out)['configuration_loaded'], False)
+            self.assertNotIn('ONLY_IN_DRAFT', out)
+
+            code, out, error = self.invoke('--task-workflow', str(self.destination))
+            self.assertEqual((code, out), (2, ''))
+            self.assertIn('--workflow-allow-notify', error.splitlines()[-1])
+        self.assertEqual(self.source.read_bytes(), raw)
 
 
 if __name__ == '__main__':
