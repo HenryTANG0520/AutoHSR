@@ -17,13 +17,15 @@ MAX_BYTES = 1024 * 1024
 MAX_NODES = 256
 MAX_DEPTH = 12
 MAX_EXECUTIONS = 10000
+MAX_STEP_NOTIFICATIONS = 20
 GAME_TASKS = {'daily', 'plan', 'differential_universe', 'currency_wars_loop',
               'currency_wars_points', 'currency_wars_rewards', 'du_rewards'}
-TASKS = GAME_TASKS | {'warp_analysis', 'warp_export'}
+VISION_TASKS = {'workflow_image', 'workflow_text'}
+TASKS = GAME_TASKS | VISION_TASKS | {'warp_analysis', 'warp_export', 'workflow_audio', 'workflow_notify'}
 DAILY_TASKS = ('assignments', 'battle', 'daily', 'redemption', 'mail', 'battlepass')
 FIELDS = {'status': str, 'daily_verified': bool, 'completed_runs': int,
           'victories': int, 'defeats': int, 'points_verified': bool, 'rewards_verified': bool,
-          'du_rewards_verified': bool}
+          'du_rewards_verified': bool, 'image_found': bool, 'text_found': bool}
 
 
 class WorkflowError(ValueError):
@@ -133,6 +135,10 @@ def _params(task, params):
         'du_rewards': {'use_cassettes'},
         'warp_analysis': {'imports'},
         'warp_export': {'imports', 'output', 'format', 'selected_uid'},
+        'workflow_audio': {'path'},
+        'workflow_image': {'image', 'template', 'region', 'threshold'},
+        'workflow_text': {'image', 'text', 'region', 'threshold', 'contains'},
+        'workflow_notify': {'profile', 'message'},
     }[task]
     _keys(params, allowed)
     for key in ('use_power_plan', 'use_support', 'support_daily_only', 'resume_weekly_currency', 'save', 'rewards',
@@ -189,12 +195,42 @@ def _params(task, params):
             if 'selected_uid' in params:
                 from .warp_records import uid
                 uid(params['selected_uid'])
+    elif task == 'workflow_audio':
+        path = _text(params.get('path'), 4096)
+        if Path(path).suffix.lower() != '.wav':
+            raise WorkflowError('播放音频需要明确的 WAV 文件。')
+    elif task in VISION_TASKS:
+        _text(params.get('image'), 4096)
+        if task == 'workflow_image':
+            _text(params.get('template'), 4096)
+        else:
+            _text(params.get('text'), 120)
+            if 'contains' in params:
+                _boolean(params['contains'])
+        if 'region' in params:
+            region = params['region']
+            if (not isinstance(region, list) or len(region) != 4
+                    or any(type(value) not in (int, float) or not 0 <= value <= 1 for value in region)
+                    or not (region[0] < region[2] and region[1] < region[3])):
+                raise WorkflowError('识别区域须为有效的四个归一化坐标。')
+        if 'threshold' in params:
+            value = params['threshold']
+            if type(value) not in (int, float) or not .5 <= value <= 1:
+                raise WorkflowError('识别阈值须在 0.5～1 之间。')
+    elif task == 'workflow_notify':
+        from .notify_profiles import NotifyError, alias, text
+
+        try:
+            alias(params.get('profile'))
+            text(params.get('message'), maximum=1800)
+        except NotifyError as error:
+            raise WorkflowError(str(error)) from error
 
 
 def _profile(nodes):
     """Worst-case reservations: mutually exclusive branches use max, loops multiply."""
     total = dict(daily_calls=0, du_calls=0, currency_calls=0, du_runs=0, currency_games=0,
-                 du_rewards_calls=0, executions=0)
+                 du_rewards_calls=0, notification_calls=0, executions=0)
     for node in nodes:
         kind = node['type']
         current = dict.fromkeys(total, 0)
@@ -213,6 +249,8 @@ def _profile(nodes):
                 current.update(currency_calls=1, currency_games=params.get('runs', 1) if task != 'plan' else 10)
             if task == 'du_rewards':
                 current['du_rewards_calls'] = 1
+            if task == 'workflow_notify':
+                current['notification_calls'] = 1
         if kind in ('if', 'for', 'while'):
             nested = _profile(node['steps'])
             if kind == 'if':
@@ -346,10 +384,14 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
         raise WorkflowError('一个流程路径最多一份日常预算、一个差分批次和一个货币战争批次；不能用重复步骤新增预算。')
     if profile['executions'] > MAX_EXECUTIONS:
         raise WorkflowError('流程展开超过10000步。')
+    if profile['notification_calls'] > MAX_STEP_NOTIFICATIONS:
+        raise WorkflowError(f'每次任务流程最多执行 {MAX_STEP_NOTIFICATIONS} 个主动通知步骤。')
     # Existing frozen scheduler manifests compare this exact public mapping.
     # Keep the old key set when the selected scope has no new reward owner.
     if profile['du_rewards_calls'] == 0:
         profile.pop('du_rewards_calls')
+    if profile['notification_calls'] == 0:
+        profile.pop('notification_calls')
     return Recipe(document, selected, path, profile, Path(base_dir or ROOT).resolve())
 
 
@@ -419,12 +461,17 @@ def task_spec(settings: Settings, node, base_dir):
         if task == 'currency_wars_rewards':
             options['currency_rewards_resume'] = params.get('resume', False)
         current.validate('currency_wars')
-    else:
+    elif task.startswith('warp_'):
         options = params
         options['imports'] = [str((base_dir / path).resolve()) for path in params['imports']]
         if 'output' in options:
             options['output'] = str((base_dir / options['output']).resolve())
         options['analysis_only'] = task == 'warp_analysis'
+    else:
+        options = params
+        for key in ('path', 'image', 'template'):
+            if key in options:
+                options[key] = str((base_dir / options[key]).resolve())
     if support_daily_only and (not current.battle or not current.allow_stamina_spend
                                or options.get('resume_weekly_currency')):
         raise WorkflowError('仅实训需要时借用需要本次启用刷本及已有资源消耗，不能用于只接续周常。')

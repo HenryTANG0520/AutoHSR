@@ -27,7 +27,9 @@ _SAVE_ERRORS = {"target_exists": "目标已存在", "source_path": "请选择新
 _TASK_NAMES = {"daily": "每日任务", "plan": "日常与到期周常", "differential_universe": "差分宇宙",
                "du_rewards": "差分红点领奖", "warp_analysis": "跃迁记录分析", "warp_export": "跃迁记录导出",
                "currency_wars_loop": "货币战争循环", "currency_wars_points": "货币战争积分",
-               "currency_wars_rewards": "货币战争积分领奖"}
+               "currency_wars_rewards": "货币战争积分领奖", "workflow_audio": "播放本地音频",
+               "workflow_image": "从图片查找模板", "workflow_text": "从图片查找文字",
+               "workflow_notify": "发送主动通知"}
 
 
 def _json(value):
@@ -435,7 +437,8 @@ class _WorkflowPanel(_Panel):
                 scope += "（已禁用）"
         self.budget.set(f"{scope}\n最多 {fields['executions']} 步 · 日常预算 {fields['daily_calls']} 份 · "
                         f"差分预留 {fields['du_runs']} 局 · 货币预留 {fields['currency_games']} 局\n"
-                        f"相对路径按 {recipe.base_dir} 解析")
+                        f"相对路径按 {recipe.base_dir} 解析"
+                        + (f"\n主动通知最多 {fields['notification_calls']} 个步骤" if 'notification_calls' in fields else ""))
 
     def _error(self, label, error):
         self._clear_profile()

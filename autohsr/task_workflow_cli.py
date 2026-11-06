@@ -10,6 +10,8 @@ def add_arguments(mode, parser):
     mode.add_argument('--task-workflow', type=Path, help='执行明确选择的任务流程JSON；原生任务门禁和预算继续生效')
     mode.add_argument('--task-workflow-check', type=Path, help='离线检查任务树和最大预算；不读取游戏配置或记录源文件')
     parser.add_argument('--workflow-step-path', help='仅执行指定步骤子树，例如1/0；序号从0开始，不补执行前序步骤')
+    parser.add_argument('--workflow-allow-notify', action='store_true',
+                        help='授权本次明确选择的任务流程向已保存方案发送主动通知')
 
 
 def dispatch(args, parser, raw_args):
@@ -17,10 +19,12 @@ def dispatch(args, parser, raw_args):
     if selected is None:
         if args.workflow_step_path is not None:
             parser.error('--workflow-step-path 需要 --task-workflow 或 --task-workflow-check。')
+        if args.workflow_allow_notify:
+            parser.error('--workflow-allow-notify 需要 --task-workflow。')
         return None
     allowed = {'--task-workflow', '--task-workflow-check', '--workflow-step-path'}
     if args.task_workflow is not None:
-        allowed.update(('--config', '--notify', '--no-notify', '--notify-profile'))
+        allowed.update(('--config', '--notify', '--no-notify', '--notify-profile', '--workflow-allow-notify'))
     if any(arg.split('=', 1)[0] not in allowed for arg in raw_args if arg.startswith('--')):
         parser.error('任务流程不能混用其他运行或资源覆盖参数；每步参数在流程JSON中明确配置。')
     runner = None
@@ -33,7 +37,11 @@ def dispatch(args, parser, raw_args):
                         configuration_loaded=False, source_files_read=False)
         else:
             from .config import Settings
-            from .task_workflow_run import TaskWorkflowRunner
+            from .task_workflow_run import TaskWorkflowRunner, freeze_step_notifications, step_notification_aliases
+            aliases = step_notification_aliases(recipe)
+            if aliases and not args.workflow_allow_notify:
+                parser.error('任务流程含主动通知。请核对已保存方案后明确使用 --workflow-allow-notify。')
+            authorization = ({'notification_versions': freeze_step_notifications(recipe)} if aliases else {})
             settings = Settings.load(args.config)
             from .notify_cli import override as override_notify
             override_notify(args, settings)
@@ -43,7 +51,7 @@ def dispatch(args, parser, raw_args):
             from .notify_runtime import hooks
             emit, wrap_notifications = hooks(settings, emit)
             runner = TaskWorkflowRunner(settings, document, emit, selected_path=args.workflow_step_path,
-                                        base_dir=selected.resolve().parent)
+                                        base_dir=recipe.base_dir, **authorization)
             runner = wrap_notifications(runner)
             data = runner.run().to_dict()
         print(json.dumps(data, ensure_ascii=False, indent=2))

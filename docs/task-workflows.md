@@ -6,7 +6,7 @@
 
 参考固定March7thAssistant提交`7cf6c6bed474539485d3b1504077ac352866829f`的[流程教程](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/docs/Workflow.md)及[执行模块](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/module/workflow/__init__.py)。借鉴步骤树、条件、循环、循环控制及选中步骤执行，采用AutoHSR自己的JSON与正式Runner。
 
-可视编辑覆盖 AutoHSR 的正式步骤类型。上游的图片／文字查找、坐标点击、拖动、按键、界面切换、音频、消息推送、模板采集及 YAML 导入仍须分别适配。固定来源、函数与 SHA-256 见[来源清单](../assets/upstream/March7thAssistant/source.json)，原 GPL v3 保留。
+可视编辑覆盖 AutoHSR 的正式步骤类型。已接本地图片中的图文判断、音频及主动通知。游戏实时画面的图文步骤、坐标点击、拖动、按键、界面切换、模板关联及 YAML 导入仍须分别适配。固定来源、函数与 SHA-256 见[来源清单](../assets/upstream/March7thAssistant/source.json)，原 GPL v3 保留。
 
 ## 当前任务与设置
 
@@ -23,8 +23,16 @@
 | `currency_wars_rewards` | 原生积分领奖Runner | `resume`默认false；不开始对局，不清理满额资源，未知领取不重放 |
 | `warp_analysis` | `warp_service.run(analysis_only=True)` | 必填`imports`，1～32份明确的本地SRGF／UIGF文件；只分析不创建导出 |
 | `warp_export` | 原记录导出服务 | 必填`imports/output`，`format`默认uigf，可选srgf/xlsx；可选`selected_uid`，原件及已有输出不覆盖 |
+| `workflow_audio` | Windows 本地音频 | 必填 `path`，支持明确选定的 PCM WAV。暂停后从当前位置继续，停止时清空本步骤队列 |
+| `workflow_image` | 本地模板判断 | 必填 `image`、`template`，使用明确的 PNG／JPEG。可选 `region`、`threshold`，默认阈值 0.88 |
+| `workflow_text` | 本地 OCR 判断 | 必填 `image`、`text`，可选 `region`、`threshold`、`contains`。默认精确匹配，阈值 0.65 |
+| `workflow_notify` | 已保存通知方案 | 必填 `profile`、`message`。只在明确授权的手动运行中发送文本，同一运行出现待核对的提交后停止后续主动通知 |
 
 记录任务目前只接显式本地JSON；真实缓存／链接获取继续使用[独立工具入口](warp-records.md)，没有在流程中隐式扫描。XLSX仍使用已固定的可选加载引擎，见[统计与Excel](warp-statistics-xlsx.md)。
+
+图文判断的 `region` 是相对整张图片的 `[左, 上, 右, 下]`，缺省为整张图。已完成分析但未匹配时，回执明确给出 `image_found=false` 或 `text_found=false`，可以用于后续条件。文件、范围或识别失败时没有匹配事实。音频及图片路径相对流程文件，应用内定时冻结这些来源的文件指纹。
+
+音频支持 1 或 2 声道、8 或 16 位、8～48 kHz，文件最多 32 MiB、时长最多 120 秒。播放完成来自 Windows 驱动反馈。主动通知在桌面运行时显示本次最多步骤数和方案别名，授权后沿用冻结的方案版本。CLI 显式使用 `--workflow-allow-notify`。每次流程最多 20 个主动通知步骤。应用内定时暂未开放这项授权。通知正文留在流程文件及明确发往的渠道，运行回执只记结果及必要的匿名事实。[通知设置](notifications.md)
 
 `daily` 节点显式填写 `"params": {"tasks": ["assignments"]}` 时，只处理已有的持续委托奖励。列车补给和登录附加奖励会阻止本步继续。核实当前账号和可用按钮后，最多尝试一次领取。领取反馈中断或账号改变时，保留原证据待核对。回到委托页后，在两张新画面上复核同账号的原委托状态。详见[每日流程](../DAILY_FLOW.md#执行顺序)。
 

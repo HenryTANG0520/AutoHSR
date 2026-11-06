@@ -8,6 +8,7 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import time
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit, parse_qsl
 
@@ -146,7 +147,8 @@ def _replace(value, title, content, depth=0):
     if isinstance(value, str):
         if '{image}' in value:
             raise NotifyError('图片通知尚未接入，未发送空图片冒充完成。')
-        return value.replace('{title}', title).replace('{content}', content).replace('{message}', title + '\n' + content)
+        values = {'title': title, 'content': content, 'message': title + '\n' + content}
+        return re.sub(r'\{(title|content|message)\}', lambda match: values[match[1]], value)
     return value
 
 

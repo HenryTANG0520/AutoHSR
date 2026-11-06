@@ -95,6 +95,12 @@ def _dependency_paths(configured):
         if node['task'] not in GAME_TASKS:
             for path in options.get('imports', []):
                 yield path, 128 * 1024 * 1024
+        if node['task'] == 'workflow_audio':
+            yield options['path'], 32 * 1024 * 1024
+        if node['task'] in ('workflow_image', 'workflow_text'):
+            yield options['image'], 64 * 1024 * 1024
+            if 'template' in options:
+                yield options['template'], 64 * 1024 * 1024
         if node['task'] in ('daily', 'plan') and current.redemption_enabled and current.redemption_source == 'file':
             yield current.redemption_catalog, 256 * 1024
 
@@ -161,6 +167,8 @@ class NativeScheduleExecutor:
             raise ScheduleError('游戏计划重复须由同一任务树核对整批预算，不能分次建立新预算。')
         configured = []
         for node in tasks:
+            if node['task'] == 'workflow_notify':
+                raise ScheduleError('主动通知步骤须手动授权运行，应用内定时尚无该授权入口。')
             params = node.get('params', {})
             if node['task'] in GAME_TASKS and any(params.get(name) is True for name in
                     ('resume', 'resume_active', 'resume_weekly_currency')):

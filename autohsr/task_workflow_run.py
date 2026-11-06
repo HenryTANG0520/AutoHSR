@@ -10,6 +10,7 @@ import json
 import operator
 from pathlib import Path
 import os
+import re
 import threading
 import time
 import uuid
@@ -18,7 +19,7 @@ from .config import ROOT
 from .du_points_followup import FollowupWeek, followup_week_scope
 from .models import RunReport, Stopped, TaskResult
 from .storage import replace_file
-from .task_workflow import GAME_TASKS, FIELDS, MAX_EXECUTIONS, WorkflowError, compile_recipe, task_spec
+from .task_workflow import GAME_TASKS, FIELDS, MAX_EXECUTIONS, VISION_TASKS, WorkflowError, compile_recipe, task_spec
 from .workflow_lease import workflow_lease
 
 
@@ -73,9 +74,18 @@ class _Control(Exception):
 
 class TaskWorkflowRunner:
     def __init__(self, settings, document, emit=None, *, selected_path=None, base_dir=None,
-                 root=None, runner_factory=None, plan_factory=None, currency_factory=None, warp_service=None):
+                 root=None, runner_factory=None, plan_factory=None, currency_factory=None, warp_service=None,
+                 notification_versions=None, notification_service=None):
         self.settings = replace(settings)
         self.recipe = compile_recipe(document, selected_path=selected_path, base_dir=base_dir)
+        aliases = step_notification_aliases(self.recipe)
+        versions = {} if notification_versions is None else notification_versions
+        if (type(versions) is not dict or set(versions) != set(aliases)
+                or any(not isinstance(value, str) or not re.fullmatch('[0-9a-f]{64}', value)
+                       for value in versions.values())):
+            raise WorkflowError('任务流程含主动通知，须先明确授权并核实通知方案。')
+        self.notification_versions = dict(versions)
+        self.notification_service = notification_service
         self.emit = emit or (lambda event: None)
         self.root = Path(root) if root is not None else ROOT / 'runs'
         self.factories = dict(runner=runner_factory, plan=plan_factory, currency=currency_factory)
@@ -101,6 +111,7 @@ class TaskWorkflowRunner:
         self._started = False
         self._latest = {}
         self._input_blocked = False
+        self._notification_blocked = False
         self._has_failure = False
         self._directory = None
         self._identity = None
@@ -251,6 +262,11 @@ class TaskWorkflowRunner:
 
     def _facts(self, result):
         facts = dict(status=result.get('status', 'failed'))
+        if result.get('operation') in VISION_TASKS:
+            field = 'image_found' if result['operation'] == 'workflow_image' else 'text_found'
+            if result.get('status') == 'success' and type(result.get(field)) is bool:
+                facts[field] = result[field]
+            return facts
         if result.get('operation') == 'du_rewards':
             value = result.get('du_rewards', {}).get('rewards_verified')
             if type(value) is bool:
@@ -369,6 +385,38 @@ class TaskWorkflowRunner:
         if on_failure == 'stop':
             raise _Halt(entry['error'])
 
+    def _local_task(self, node, sequence):
+        task = node['task']
+        options = deepcopy(self.specs[node['id']][1])
+        if task == 'workflow_notify':
+            if self._notification_blocked:
+                raise WorkflowError('此前主动通知的提交待核对，未发送后续主动通知。')
+            from .workflow_notify import send_step
+
+            profile = options['profile']
+            return send_step(profile, options['message'], directory=self._directory, checkpoint=self.checkpoint,
+                             run_key=self._directory.name, sequence=sequence,
+                             expected_version=self.notification_versions[profile], service=self.notification_service)
+        if task == 'workflow_audio':
+            from .workflow_audio import play
+
+            result = play(options['path'], checkpoint=self.checkpoint, stopped=self._stop.is_set,
+                          paused=lambda: self._paused)
+        elif task in VISION_TASKS:
+            from .workflow_vision import observe
+
+            result = observe(**options, checkpoint=self.checkpoint)
+        else:
+            from .warp_service import run
+
+            result = (self.warp_service or run)(**options, cancel=self.checkpoint,
+                                               emit=lambda event: self._send(event, node))
+        directory = self._directory / f'tool-{sequence}'
+        result = dict(result, operation=task, report_saved=True, run_dir=str(directory))
+        directory.mkdir()
+        _write(directory / 'report.json', result)
+        return result
+
     def _task(self, node, entry):
         game = node['task'] in GAME_TASKS
         self.checkpoint()
@@ -394,17 +442,14 @@ class TaskWorkflowRunner:
                 self._notice_stopped(result)
                 result = result.to_dict() if hasattr(result, 'to_dict') else result
             else:
-                from .warp_service import run
-                _, options = self.specs[node['id']]
-                result = (self.warp_service or run)(**deepcopy(options), cancel=lambda: self.checkpoint(),
-                                                   emit=lambda event: self._send(event, node))
+                result = self._local_task(node, entry['sequence'])
                 self._notice_stopped(result)
-                result = dict(result, operation=node['task'], report_saved=True,
-                              run_dir=str(self._directory / ('tool-' + str(entry['sequence']))))
-                Path(result['run_dir']).mkdir()
-                _write(Path(result['run_dir']) / 'report.json', result)
             if not isinstance(result, dict) or result.get('status') not in ('success', 'partial', 'failed', 'stopped'):
                 raise WorkflowError('任务返回了未知结果。')
+            if node['task'] == 'workflow_notify':
+                self._notification_blocked |= result['status'] == 'partial'
+                if isinstance(result.get('notification'), dict):
+                    entry['notification'] = deepcopy(result['notification'])
             options = self.specs[node['id']][1]
             native_points = options.get('du_until_points') is True
             if native_points and not self._identity.has_step_proof(identity_mark, run_dir=result.get('run_dir') or ''):
@@ -429,6 +474,7 @@ class TaskWorkflowRunner:
             self.stop()
             raise Stopped('当前任务已停止；流程未重试或继续下一项。')
         except Exception as error:
+            self._notification_blocked |= node['task'] == 'workflow_notify'
             entry.update(status='partial' if game else 'failed', error=str(error))
             entry['facts'] = {'status': entry['status']}
         finally:
@@ -597,3 +643,14 @@ def _tasks(nodes):
         if node.get('enabled', True):
             yield from _tasks(node.get('steps', []))
             yield from _tasks(node.get('else_steps', []))
+
+
+def step_notification_aliases(recipe):
+    return tuple(dict.fromkeys(node['params']['profile'] for node in _tasks(recipe.steps)
+                               if node['task'] == 'workflow_notify'))
+
+
+def freeze_step_notifications(recipe, *, service=None):
+    from .workflow_notify import freeze_profile
+
+    return {identity: freeze_profile(identity, service=service) for identity in step_notification_aliases(recipe)}

@@ -121,6 +121,12 @@ class HttpNotificationContractTests(unittest.TestCase):
                 self.assertEqual(request.get_header('Content-type'), 'application/vnd.example+json')
                 self.assertEqual(sum(key.lower() == 'content-type' for key in call.headers), 1)
 
+    def test_webhook_template_does_not_expand_placeholders_in_inserted_message(self):
+        title, content = '原样 {content}', '原样 {message}、{image}'
+        call = calls('webhook', dict(url='https://example.test/notify',
+                     body=dict(text='{content}', combined=['{title}', '{message}'])), title, content, 'id')[0]
+        self.assertEqual(json.loads(call.data), dict(text=content, combined=[title, title + '\n' + content]))
+
     def test_form_explicit_media_type_survives_header_case_normalization(self):
         for name in ('content-type', 'Content-Type', 'CoNtEnT-tYpE'):
             call = _call('https://example.test/notify', {}, form=dict(text='body'),

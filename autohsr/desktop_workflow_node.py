@@ -16,6 +16,7 @@ _FIELDS = {
     "status": "运行状态", "daily_verified": "日常已核实", "completed_runs": "完成局数",
     "victories": "胜利局数", "defeats": "失败局数", "points_verified": "积分已核实",
     "rewards_verified": "奖励已核实", "du_rewards_verified": "差分奖励已核实",
+    "image_found": "图片已匹配", "text_found": "文字已匹配",
 }
 _OPERATORS = {"eq": "等于", "ne": "不等于", "lt": "小于", "le": "小于或等于", "gt": "大于", "ge": "大于或等于"}
 _VALUE_LABELS = {
@@ -46,7 +47,13 @@ def _number(raw, low, high):
 
 
 def _default_params(task):
-    return {"tasks": ["assignments"]} if task == "daily" else {}
+    return {
+        "daily": {"tasks": ["assignments"]},
+        "workflow_audio": {"path": "提示.wav"},
+        "workflow_image": {"image": "截图.png", "template": "模板.png"},
+        "workflow_text": {"image": "截图.png", "text": "要查找的文字"},
+        "workflow_notify": {"profile": "default", "message": "本步骤已到达。"},
+    }.get(task, {})
 
 
 class WorkflowNodeForm(ttk.Frame):

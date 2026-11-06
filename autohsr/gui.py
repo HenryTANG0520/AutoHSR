@@ -1126,15 +1126,29 @@ class AutoHSRWindow:
         if settings is None:
             return False
 
+        from .task_workflow_run import TaskWorkflowRunner, _tasks, freeze_step_notifications, step_notification_aliases
+        aliases = step_notification_aliases(recipe)
+        authorization = {}
+        if aliases:
+            try:
+                authorization['notification_versions'] = freeze_step_notifications(recipe)
+            except (OSError, ValueError):
+                self.result_alert.set('通知方案无法核实，请在通知页核对后重试。')
+                return False
+            count = recipe.profile['notification_calls']
+            prompt = f'本次流程最多执行 {count} 个主动通知步骤，使用以下已保存方案。\n\n' + '\n'.join(aliases)
+            if not messagebox.askyesno('授权本次流程的主动通知', prompt, parent=self.root, default='no'):
+                return False
+            if self.busy or self.closing:
+                return False
+
         def factory(emit):
             from .notify_runtime import hooks
-            from .task_workflow_run import TaskWorkflowRunner
             send, wrap = hooks(settings, emit)
             return wrap(TaskWorkflowRunner(settings, recipe.document, send, base_dir=recipe.base_dir,
-                                           selected_path='/'.join(map(str, recipe.path)) or None))
+                                           selected_path='/'.join(map(str, recipe.path)) or None, **authorization))
 
         from .task_workflow import GAME_TASKS
-        from .task_workflow_run import _tasks
         game = any(node['task'] in GAME_TASKS for node in _tasks(recipe.steps))
         return self._start_scoped_runner('运行已保存流程', 'task_workflow', factory, on_report, game=game)
 
