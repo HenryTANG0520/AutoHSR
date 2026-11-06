@@ -401,8 +401,9 @@ class WorkflowNavigationTests(unittest.TestCase):
                                  [('return_to_hub', name, 'phone'), ('return_to_hub', 'phone', 'world')])
 
     def test_world_target_vetoes_overlay_and_rejects_du_hud_without_ocr(self):
-        examples = [world(), world_hud('du_hud')]
-        for label in ('跳过剧情', '扫码登录', '确认付款', '获得物品', '战斗失败'):
+        examples = [world(), world_hud('du_hud'), identified(fixture('guide_du_capped'))]
+        for label in ('跳过剧情', '跳过当前剧情', '扫码登录', '确认付款', '确认购买并支付',
+                      '请支付100星琼', '获得物品', '战斗失败'):
             examples.append(world_hud('normal_hud', badge(label, .5, .45)))
             examples.append(phone(badge(label, .5, .45)))
         examples.append(world_hud('normal_hud', badge('奖励指南', .11, .05)))

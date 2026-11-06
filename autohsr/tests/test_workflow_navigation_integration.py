@@ -270,6 +270,16 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         [row] = record['actions']
         self.assertEqual((row['input_status'], row['destination_page']), ('sent', 'world'))
 
+    def test_world_native_losing_focus_at_either_final_geometry_sends_no_new_escape(self):
+        for plan_count, completed in ((2, 0), (4, 1)):
+            with self.subTest(plan_count=plan_count):
+                sent, steps, native = self.run_navigation(target='world', lose_focus_after_geometry=plan_count)
+                self.assertEqual(sent, [(0x08,), (0x0A,)] * completed)
+                self.assertNotIn('page_verified', steps[0]['facts'])
+                record = native['workflow_navigation']
+                self.assertFalse(record['page_verified'])
+                self.assertEqual([row['destination_page'] for row in record['actions']], ['phone'][:completed])
+
     def test_battlepass_exact_targets_click_only_opposite_tab_and_verify_current_page(self):
         for source, target, center_x in (('battlepass_tasks', 'battlepass_rewards', .45),
                                          ('battlepass_rewards', 'battlepass_tasks', .50)):

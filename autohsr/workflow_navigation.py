@@ -23,7 +23,7 @@ from .daily_visa_pages import (VISA_LAYOUT_VERSION, refine_small_visa_title, vis
 from .dungeons import CATEGORIES
 from .free_rewards import battlepass_modal, battlepass_page, mail_entry, mailbox
 from .models import FULL, AutomationError, EmptyCapture, InputInterrupted, Stopped, TaskResult, Token, normalize
-from .policy import has_du_field_plane_marker
+from .policy import du_guide_details, has_du_field_plane_marker
 from .screenshot_tool import MAX_PIXELS
 from .storage import hold_read_sources
 from .task_workflow import (ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE,
@@ -50,9 +50,10 @@ _WORLD_LAYOUT_VERSION = '4.6.0'
 _WORLD_RETURN_PANELS = (*_GUIDE_PAGES, 'assignments', 'mail', 'battlepass')
 _WORLD_PHONE_ROI = (.005, .041, .042, .105)
 _WORLD_PHONE_CENTER = (.018, .067, .028, .083)
-_WORLD_STOP = ('跳过剧情', '退出剧情', '自动播放', '对话记录', '跳过对话', '确认跳过',
+_WORLD_STOP = ('跳过剧情', '跳过当前剧情', '退出剧情', '自动播放', '对话记录', '跳过对话', '确认跳过',
                '挑战失败', '战斗胜利', '点击进入', '开始游戏', '账号登录', '扫码登录', '验证码',
                '购买确认', '确认付款', '确认领取', '领取成功', '奖励详情', '开启无名勋礼')
+_WORLD_MODAL_PHRASES = ('确认购买', '是否购买', '确认支付', '请支付', '确认付款', '确认领取', '跳过当前剧情')
 _WORLD_ACTIVITY = ('旅情事记', '巡星之礼', '奖励指南')
 _PHONE_CAPTIONS = {
     'guide': (('指南', '星际和平指南'), (.655, .713, .742, .763)),
@@ -214,8 +215,10 @@ class WorkflowNavigation:
         low = trusted(scene, COLLECTION_FLOOR)
         header = ''.join(token.text for token in low.tokens if token.within(TITLE))
         if (low.has(_WORLD_STOP, exact=True) or _has_split_label(low, _WORLD_STOP, FULL)
+                or low.has(_WORLD_MODAL_PHRASES, _DIALOG_AREA)
+                or _has_split_label(low, _WORLD_MODAL_PHRASES, _DIALOG_AREA, exact=False)
                 or low.has(_WORLD_ACTIVITY, TITLE, exact=True) or _has_split_label(low, _WORLD_ACTIVITY, TITLE)
-                or has_du_field_plane_marker(header) or message_panel(low)):
+                or has_du_field_plane_marker(header) or du_guide_details(low) or message_panel(low)):
             raise AutomationError('当前有剧情、玩法或未核实的遮挡，返回大世界已停止。')
         if page != WORLD_WORKFLOW_PAGE:
             return page
