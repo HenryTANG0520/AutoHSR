@@ -521,15 +521,15 @@ class _WorkflowPanel(_Panel):
         body = ttk.Frame(dialog, style="Card.TFrame", padding=2 * pad)
         body.grid(row=0, column=0, sticky="nsew")
         body.columnconfigure(0, weight=1)
-        ttk.Label(body, text="通知方案（可选）", style="CardTitle.TLabel").grid(row=0, sticky="w")
+        ttk.Label(body, text="绑定通知方案", style="CardTitle.TLabel").grid(row=0, sticky="w")
         choice = ttk.Combobox(body, values=(unbound, *aliases), state="readonly", width=1)
         choice.grid(row=1, sticky="ew", pady=(pad, 0))
         choice.current(0)
         choice.bind("<MouseWheel>", lambda _: "break")
-        hint = "含通知的流程需选方案。导入只生成草稿，发送须另行授权。"
+        hint = "本流程含通知步骤，需选择方案后生成草稿。发送须另行授权。"
         if not aliases:
             choice.state(("disabled",))
-            hint = "暂无可读的已保存方案。可继续导入不含通知的流程。"
+            hint = "暂无可读的已保存方案。请到通知工具保存方案后重试。"
         guidance = t.wrapped_label(body, text=hint, style="CardHint.TLabel")
         guidance.grid(row=2, sticky="ew", pady=(pad, 0))
 
@@ -550,7 +550,7 @@ class _WorkflowPanel(_Panel):
                         choice.current(0)
                         if not aliases:
                             choice.state(("disabled",))
-                        guidance.configure(text="所选方案已不可用。请重新选择，或确认不绑定。")
+                        guidance.configure(text="所选方案已不可用。请重新选择，或取消导入。")
                         (choice if aliases else submit).focus_set()
                         return "break"
                 result = selected
@@ -586,32 +586,58 @@ class _WorkflowPanel(_Panel):
     def _import_yaml(self, source, *, use_native_vision=False):
         if not self._bundle_idle:
             return
+        from .workflow_yaml import PendingYamlNotificationBinding, load_march7th_yaml, prepare_native_yaml_import
+
+        title = "导入三月七 YAML"
         draft, text = self.draft, self._text()
-        if not self._can_replace_form("导入三月七 YAML", "当前编辑尚未另存。转换成功后替换当前草稿？"):
+        if not self._can_replace_form(title, "当前编辑尚未另存。转换成功后替换当前草稿？"):
             return
         panel = getattr(self.ui, "workflow_panel", self)
         if not panel._bundle_idle or panel.draft is not draft or panel._text() != text:
             return
-        notify_profile = ""
-        if use_native_vision:
-            notify_profile = panel._choose_yaml_notify_profile()
-            panel = getattr(self.ui, "workflow_panel", self)
-            if notify_profile is None or not panel._bundle_idle or panel.draft is not draft or panel._text() != text:
-                return
+        previous_status = panel.status.get()
 
         def work(checkpoint):
-            from .workflow_yaml import load_march7th_yaml
-
-            imported = load_march7th_yaml(source, use_native_vision=use_native_vision, notify_profile=notify_profile or None)
+            imported = prepare_native_yaml_import(source) if use_native_vision else load_march7th_yaml(source)
             checkpoint()
             return imported
 
-        def present(current, imported):
+        def present(current, imported, *, binding=None):
             if current.ui.stop_requested.is_set():
-                current.status.set("导入三月七 YAML 已停止")
+                current.status.set(f"{title}已停止")
                 return
             if current.draft is not draft or current._text() != text:
                 current.status.set("YAML 已转换 · 保留当前草稿")
+                return
+            pending = isinstance(imported, PendingYamlNotificationBinding)
+            source_binding = imported if pending else binding
+            if source_binding is not None:
+                try:
+                    source_binding.require_current_source()
+                except WorkflowError as error:
+                    current.status.set(f"{title}失败 · {error}")
+                    return
+            if pending:
+                if not current._bundle_idle:
+                    return
+                current.refresh()
+                notify_profile = current._choose_yaml_notify_profile()
+                current = getattr(self.ui, "workflow_panel", current)
+                if not current._bundle_idle or current.draft is not draft or current._text() != text:
+                    return
+                if current.ui.stop_requested.is_set():
+                    current.status.set(f"{title}已停止")
+                elif notify_profile is None:
+                    current.status.set(previous_status)
+                elif not notify_profile:
+                    current.status.set(f"{title}未完成 · 含通知步骤，需显式方案绑定")
+                else:
+                    def bind(checkpoint):
+                        bound = imported.bind(notify_profile)
+                        checkpoint()
+                        return bound
+
+                    current._start_bundle_job(title, bind, lambda panel, bound: present(panel, bound, binding=imported))
                 return
             current._install(imported)
             current.status.set("已按 AutoHSR 图文规则转换 · 另存 JSON 并校验后可运行" if use_native_vision
@@ -619,7 +645,7 @@ class _WorkflowPanel(_Panel):
             if current.winfo_ismapped():
                 current.editor.focus_set()
 
-        panel._start_bundle_job("导入三月七 YAML", work, present)
+        panel._start_bundle_job(title, work, present)
 
     def reload(self):
         source = self._source_file
@@ -732,7 +758,8 @@ class _WorkflowPanel(_Panel):
                 panel.status.set(f"{title}失败 · {detail}")
             else:
                 present(panel, value)
-            panel._changed()
+            if not getattr(ui, "closing", False):
+                getattr(ui, "workflow_panel", panel)._changed()
 
         try:
             accepted = ui._submit_tool_job(title, run, finish, lambda error: finish(error=error))

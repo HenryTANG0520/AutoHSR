@@ -6,6 +6,7 @@ and exclusive JSON publication as a native AutoHSR workflow.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal, DecimalException
 import os
 from pathlib import Path, PureWindowsPath
@@ -19,7 +20,8 @@ from yaml.nodes import ScalarNode
 
 from .models import normalize
 from .notify_profiles import NotifyError, alias
-from .task_workflow import MAX_BYTES, MAX_DEPTH, MAX_NODES, PAGE_TASK, WorkflowError, _params, compile_recipe
+from .task_workflow import (MAX_BYTES, MAX_DEPTH, MAX_NODES, PAGE_TASK, WorkflowError, _params, compile_recipe,
+                            execution_tasks)
 from .task_workflow_draft import SavedWorkflow, WorkflowDraft, _snapshot
 from .workflow_yaml_crop import parse_march7th_crop
 
@@ -440,23 +442,68 @@ class March7thYamlDraft(WorkflowDraft):
         return super().destination_path(destination)
 
 
+def _validate_notify_profile(notify_profile):
+    try:
+        alias(notify_profile)
+    except NotifyError as error:
+        raise WorkflowError(str(error)) from None
+
+
+def _read_yaml_snapshot(path):
+    try:
+        source = _local_path(path, _YAML_SUFFIXES, source=True)
+        return source, _snapshot(source)
+    except (TypeError, OSError) as error:
+        raise WorkflowError('无法读取所选三月七 YAML 文件。') from error
+
+
+def _draft_from_yaml(source, raw, *, use_native_vision, notify_profile):
+    document, metadata = _decode(raw, source.parent, use_native_vision=use_native_vision, notify_profile=notify_profile)
+    recipe = compile_recipe(document, base_dir=source.parent)
+    return March7thYamlDraft(None, None, None, recipe.document, original_source=source, metadata=metadata)
+
+
+@dataclass(frozen=True, repr=False)
+class PendingYamlNotificationBinding:
+    """Validated source that still needs an explicit notification alias."""
+
+    source: Path
+    _source_snapshot: tuple[bytes, tuple[int, ...]]
+
+    def require_current_source(self):
+        try:
+            current = _read_yaml_snapshot(self.source)
+        except WorkflowError:
+            current = None
+        if current != (self.source, self._source_snapshot):
+            raise WorkflowError('所选 YAML 已变化或无法核实，请重新导入并确认通知方案。')
+
+    def bind(self, notify_profile: str) -> March7thYamlDraft:
+        _validate_notify_profile(notify_profile)
+        self.require_current_source()
+        return _draft_from_yaml(self.source, self._source_snapshot[0], use_native_vision=True,
+                                notify_profile=notify_profile)
+
+
+def prepare_native_yaml_import(path) -> March7thYamlDraft | PendingYamlNotificationBinding:
+    """Validate the full tree before a desktop import may ask to bind notifications."""
+    source, snapshot = _read_yaml_snapshot(path)
+    # Use a shortest valid alias solely to run native validation. A draft with
+    # any such step stays private until binding from the original bytes.
+    draft = _draft_from_yaml(source, snapshot[0], use_native_vision=True, notify_profile='a')
+    if any(task['task'] == 'workflow_notify' for task in execution_tasks(draft.document['steps'])):
+        return PendingYamlNotificationBinding(source, snapshot)
+    return draft
+
+
 def load_march7th_yaml(path, *, use_native_vision: bool = False, notify_profile: str | None = None) -> March7thYamlDraft:
     """Read one YAML draft. A notification alias binds the draft without authorizing sends."""
     if type(use_native_vision) is not bool:
         raise WorkflowError('实时图文适配开关必须为布尔值。')
     if notify_profile is not None:
-        try:
-            alias(notify_profile)
-        except NotifyError as error:
-            raise WorkflowError(str(error)) from None
-    try:
-        source = _local_path(path, _YAML_SUFFIXES, source=True)
-        raw, _ = _snapshot(source)
-    except (TypeError, OSError) as error:
-        raise WorkflowError('无法读取所选三月七 YAML 文件。') from error
-    document, metadata = _decode(raw, source.parent, use_native_vision=use_native_vision, notify_profile=notify_profile)
-    recipe = compile_recipe(document, base_dir=source.parent)
-    return March7thYamlDraft(None, None, None, recipe.document, original_source=source, metadata=metadata)
+        _validate_notify_profile(notify_profile)
+    source, (raw, _) = _read_yaml_snapshot(path)
+    return _draft_from_yaml(source, raw, use_native_vision=use_native_vision, notify_profile=notify_profile)
 
 
 def convert_march7th_yaml(source, destination, *, use_native_vision: bool = False,

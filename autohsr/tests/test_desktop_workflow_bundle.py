@@ -154,12 +154,13 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
         self.assertIn("失败", self.panel.status.get())
         self.assertIsNone(self.panel.draft)
 
-        with patch.object(self.panel, "_choose_yaml_notify_profile", return_value="") as choose:
+        with patch.object(self.panel, "_choose_yaml_notify_profile",
+                          side_effect=AssertionError("image/text imports need no profile dialog")) as choose:
             self.panel.import_native_yaml_button.invoke()
-        choose.assert_called_once_with()
+            self.assertTrue(self.panel.import_native_yaml_button.instate(("disabled",)))
+            self.deliver(self.execute(threaded=True))
+        choose.assert_not_called()
         self.assertEqual(self.open_dialog.call_args.kwargs["filetypes"], tools._YAML_FILES)
-        self.assertTrue(self.panel.import_native_yaml_button.instate(("disabled",)))
-        self.deliver(self.execute(threaded=True))
         self.assertIn("AutoHSR 图文规则", self.panel.status.get())
         self.assertEqual(self.panel.draft.document["steps"][0]["task"], "workflow_game_text")
         self.assertIsNone(self.panel.draft.source)
@@ -170,10 +171,7 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
         second = dict(id="second", provider="smtp", readable=True)
         rows = [second, first, dict(id="unreadable", readable=False), dict(id="INVALID", readable=True)]
         cases = (("default", ""), ("first open", "second"), ("escape", None), ("empty catalog", ""), ("read error", ""),
-                 ("deleted during choice", ""), ("unreadable during choice", ""), ("non-notification", ""))
-        source = self.directory / "plain.yml"
-        source.write_text("name: 仅等待\nsteps: [{type: wait, seconds: 2}]\n", encoding="utf8")
-        self.open_dialog.return_value = str(source)
+                 ("deleted during choice", ""), ("unreadable during choice", ""))
         for scale, (action, result) in product((1, 1.5, 2), cases):
             with self.subTest(scale=scale, action=action), ExitStack() as stack:
                 self.ui.ui_scale = scale
@@ -185,7 +183,7 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
                 owner.tk.call.return_value = ""
                 chosen = None
                 commands = {}
-                readable = [] if action in ("empty catalog", "read error", "non-notification") else rows
+                readable = [] if action in ("empty catalog", "read error") else rows
                 latest = {"deleted during choice": [first],
                           "unreadable during choice": [first, dict(id="second", readable=False)]}.get(action, readable)
                 changed = latest is not readable
@@ -234,13 +232,7 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
                 listing = stack.enter_context(patch("autohsr.notify_profiles.ProfileStore.list_public",
                                                     side_effect=results))
 
-                if action == "non-notification":
-                    self.panel.import_native_yaml_button.invoke()
-                    self.deliver(self.execute(threaded=True))
-                    self.assertIsNone(self.panel.draft.source)
-                    self.assertEqual(self.panel.draft.document["steps"][0]["seconds"], 2)
-                else:
-                    self.assertEqual(self.panel._choose_yaml_notify_profile(), result)
+                self.assertEqual(self.panel._choose_yaml_notify_profile(), result)
                 expected_aliases = ("first", "second") if readable else ()
                 self.assertEqual(field.call_args.kwargs["values"], ("不绑定通知方案", *expected_aliases))
                 self.assertEqual(field.call_args.kwargs["state"], "readonly")
@@ -278,11 +270,14 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
             self.panel.import_native_yaml_button.invoke()
             self.deliver(self.execute(threaded=True))
             choose.assert_called_once_with()
+            self.assertIsNone(self.pending)
             self.assertIs(self.panel.draft, original)
             self.assertIn("显式方案绑定", self.panel.status.get())
 
             choose.return_value = "alerts"
             self.panel.import_native_yaml_button.invoke()
+            self.deliver(self.execute(threaded=True))
+            self.assertIs(self.panel.draft, original)
             self.deliver(self.execute(threaded=True))
             self.panel.validate()
             draft = self.panel.draft
@@ -300,6 +295,7 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
     def test_yaml_notification_cancel_or_edit_during_choice_preserves_current_draft(self):
         self.load_original()
         draft = self.panel.draft
+        status = self.panel.status.get()
         path = self.directory / "notify.yml"
         path.write_text("name: 通知\nsteps: [{type: send_message, text: 完成}]\n", encoding="utf8")
         self.open_dialog.return_value = str(path)
@@ -311,13 +307,136 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
 
         with patch.object(self.panel, "_choose_yaml_notify_profile", return_value=None) as choose:
             self.panel.import_native_yaml_button.invoke()
+            self.deliver(self.execute(threaded=True))
             self.assertIs(self.panel.draft, draft)
             self.assertFalse(self.panel.dirty)
+            self.assertIsNone(self.pending)
+            self.assertEqual(self.panel.status.get(), status)
             choose.side_effect = edit
             self.panel.import_native_yaml_button.invoke()
+            self.deliver(self.execute(threaded=True))
             self.assertIs(self.panel.draft, draft)
             self.assertTrue(self.panel.dirty)
-        self.ui._submit_tool_job.assert_not_called()
+            self.assertIsNone(self.pending)
+        self.assertEqual(self.ui._submit_tool_job.call_count, 2)
+
+    def test_native_yaml_uses_validated_steps_to_decide_when_to_prompt(self):
+        self.load_original()
+        original = self.panel.draft
+        path = self.directory / "source.yml"
+        self.open_dialog.return_value = str(path)
+        cases = (
+            ("steps: [{type: send_message, text: 完成, with_screenshot: true}]\n", "with_screenshot"),
+            ("steps: [{type: send_message, text: 完成}, {type: click_text}]\n", "步骤 1"),
+            ("steps: [{type: for, count: 21, children: [{type: send_message, text: 完成}]}]\n", "最多执行 20"),
+            ("steps: [{type: wait, text: send_message}] # send_message\n", None),
+        )
+        with (patch.object(self.panel, "_choose_yaml_notify_profile") as choose,
+              patch("autohsr.desktop_services._profile_catalog") as catalog):
+            for definition, error in cases:
+                with self.subTest(error=error):
+                    path.write_text("name: 预检\n" + definition, encoding="utf8")
+                    self.panel.import_native_yaml_button.invoke()
+                    self.deliver(self.execute(threaded=True))
+                    self.assertIsNone(self.pending)
+                    if error is None:
+                        self.assertEqual(self.panel.draft.document["steps"][0]["type"], "wait")
+                        self.assertIsNone(self.panel.draft.source)
+                    else:
+                        self.assertIs(self.panel.draft, original)
+                        self.assertIn(error, self.panel.status.get())
+        choose.assert_not_called()
+        catalog.assert_not_called()
+
+    def test_yaml_binding_never_follows_a_source_replacement(self):
+        self.load_original()
+        original = self.panel.draft
+        path = self.directory / "notice.yml"
+        replacement = self.directory / "replacement.yml"
+        self.open_dialog.return_value = str(path)
+
+        def swap():
+            replacement.write_text("name: 新文件\nsteps: [{type: send_message, text: 新正文}]\n", encoding="utf8")
+            replacement.replace(path)
+
+        for phase in ("before dialog", "in dialog", "same bytes", "before install"):
+            with self.subTest(phase=phase):
+                path.write_text("name: 原文件\nsteps: [{type: send_message, text: 原正文}]\n", encoding="utf8")
+                self.panel.import_native_yaml_button.invoke()
+                prepared = self.execute(threaded=True)
+                if phase == "before dialog":
+                    swap()
+
+                def choose():
+                    if phase == "in dialog":
+                        swap()
+                    elif phase == "same bytes":
+                        replacement.write_bytes(path.read_bytes())
+                        replacement.replace(path)
+                    return "alerts"
+
+                with patch.object(self.panel, "_choose_yaml_notify_profile", side_effect=choose) as picker:
+                    self.deliver(prepared)
+                    if phase == "before dialog":
+                        picker.assert_not_called()
+                    else:
+                        picker.assert_called_once_with()
+                        bound = self.execute(threaded=True)
+                        if phase == "before install":
+                            swap()
+                        self.deliver(bound)
+                self.assertIsNone(self.pending)
+                self.assertIs(self.panel.draft, original)
+                self.assertIn("重新导入并确认通知方案", self.panel.status.get())
+
+        with patch.object(self.panel, "_choose_yaml_notify_profile", return_value="new-alerts") as picker:
+            self.panel.import_native_yaml_button.invoke()
+            self.deliver(self.execute(threaded=True))
+            self.deliver(self.execute(threaded=True))
+        picker.assert_called_once_with()
+        self.assertEqual(self.panel.draft.document["steps"][0]["params"], dict(profile="new-alerts", message="新正文"))
+
+    def test_yaml_notification_stop_in_dialog_does_not_start_binding(self):
+        self.load_original()
+        original = self.panel.draft
+        path = self.directory / "stop.yml"
+        path.write_text("name: 通知\nsteps: [{type: send_message, text: 完成}]\n", encoding="utf8")
+        self.open_dialog.return_value = str(path)
+
+        def stop():
+            self.ui.stop_requested.set()
+            return "alerts"
+
+        with patch.object(self.panel, "_choose_yaml_notify_profile", side_effect=stop):
+            self.panel.import_native_yaml_button.invoke()
+            self.deliver(self.execute(threaded=True))
+        self.ui._submit_tool_job.assert_called_once()
+        self.assertIsNone(self.pending)
+        self.assertIs(self.panel.draft, original)
+        self.assertIn("已停止", self.panel.status.get())
+
+    def test_yaml_binding_resumes_on_the_current_panel_after_rebuild(self):
+        self.load_original()
+        old = self.panel
+        path = self.directory / "rebuild.yml"
+        path.write_text("name: 通知\nsteps: [{type: send_message, text: 完成}]\n", encoding="utf8")
+        self.open_dialog.return_value = str(path)
+
+        def rebuild():
+            snapshot = old.snapshot_draft()
+            self.ui.ui_scale = 1.5
+            self.panel = self.ui.workflow_panel = tools.build_workflow_panel(self.root, self.ui)
+            self.panel.restore_draft(snapshot)
+            old.destroy()
+            return "alerts"
+
+        with patch.object(old, "_choose_yaml_notify_profile", side_effect=rebuild):
+            old.import_native_yaml_button.invoke()
+            self.deliver(self.execute(threaded=True))
+            self.deliver(self.execute(threaded=True))
+        self.assertEqual(self.panel.draft.document["steps"][0]["params"], dict(profile="alerts", message="完成"))
+        self.assertIsNone(self.panel.draft.source)
+        self.assertTrue(self.panel.import_native_yaml_button.instate(("!disabled",)))
 
     def test_unsupported_yaml_keeps_the_current_draft(self):
         self.load_original()
