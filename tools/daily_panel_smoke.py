@@ -9,8 +9,10 @@ from unittest.mock import Mock, patch
 
 from ux_smoke import Settings, Window, module
 from autohsr.desktop_daily import ASSIGNMENT_FLOW, ASSIGNMENTS, DRAFT, OPEN_TARGET, PREVIEW, DailyPanel, assignment_runner
+from autohsr.desktop_dialogs import _work_area
 from autohsr.dungeon_ui import show_advanced
 from autohsr.power_plan_ui import result_text, rows, show as show_power_plan
+from tools.gui_layout import check_layout
 
 
 def replace_panel(panel):
@@ -23,11 +25,87 @@ def replace_panel(panel):
     return rebuilt
 
 
+def check_cultivation_preview(root, ui, default_geometry):
+    prior = ui.power_rows.get()
+    long_rows = [dict(observed_needed=[999_999_999] * 4, shown_stamina=10) for _ in range(5)]
+    long_rows[0]['identified_materials'] = [dict(material='银河沙盘', amount=999_999_999, slot=0)]
+    route = dict(category='calyx_crimson', target='虚无之蕾', location='「辉痕圣林」神悟树庭',
+                 stamina_cost=10, max_challenges_by_config=24, max_draft_challenges_by_config=6)
+
+    with patch.object(ui, '_start_build_target', return_value=True) as start:
+        def preview(fields, status='partial'):
+            ui.start_button.invoke()
+            operation, selection, present = start.call_args.args
+            assert operation == PREVIEW and selection is None
+            present(dict(status=status, report_saved=True, build_target=dict(preview=fields)))
+            root.update()
+
+        for geometry in (default_geometry, '%dx%d' % root.minsize()):
+            root.geometry(geometry)
+            root.update()
+            ui.responsive_layout.fit()
+            root.update()
+            ui._show_daily_panel(PREVIEW, focus=False)
+            panel = ui.daily_panel
+            preview(dict(state='target_resources_needed', shortfall_rows=long_rows,
+                         suggestion_reason='material_shortfall_unbound'))
+            detail = panel.build.grid_slaves(row=2, column=0)[0]
+            assert '银河沙盘 缺口 999999999 件' in panel.build_detail.get()
+            assert panel.build_detail.get().count('999999999') == 21
+            assert detail.winfo_height() >= detail.winfo_reqheight() > panel.count_hint.winfo_height()
+            check_layout(root, work_area=_work_area)
+
+            candidate_preview = dict(state='catalogue_candidates', material='法吉娜之心', held=999_999_999,
+                                     candidates=[route], suggestion_reason='material_shortfall_unbound')
+            for blocker in ('incomplete_source', 'repeated_location'):
+                preview(dict(candidate_preview, candidates=[dict(route, manual_draft_blocker=blocker)]))
+                assert panel.source.get() == '来源待核实' and '草稿待核对' in panel.draft_detail.get()
+                assert all(widget.instate(('disabled',)) for widget in
+                           (panel.source, panel.times, panel.generate, panel.add_draft))
+                assert not ui.start_button.instate(('disabled',))
+                next_focus = panel.open_target.tk_focusNext()
+                assert next_focus not in (panel.source, panel.times, panel.generate, panel.add_draft)
+
+            preview(candidate_preview)
+            panel.source.current(0)
+            panel.source.event_generate('<<ComboboxSelected>>')
+            root.update()
+            assert '「辉痕圣林」神悟树庭' in panel.source.get() and panel.source.xview() == (0.0, 1.0)
+            assert panel.source.tk_focusNext() is panel.times and panel.times.tk_focusNext() is panel.generate
+            assert panel.count_hint.cget('text') == '手填 1～6 次' and float(panel.times.cget('to')) == 6
+            panel.count.set('6')
+            check_layout(root, work_area=_work_area)
+
+            lowered = dict(route, max_challenges_by_config=2, max_draft_challenges_by_config=2)
+            preview(dict(candidate_preview, candidates=[lowered]))
+            assert panel.count.get() == '' and panel.source.current() == -1 and panel.generate.instate(('disabled',))
+            panel.source.current(0)
+            panel.source.event_generate('<<ComboboxSelected>>')
+            root.update()
+            assert panel.count_hint.cget('text') == '手填 1～2 次' and float(panel.times.cget('to')) == 2
+            calls = start.call_count
+            panel.count.set('3')
+            panel.generate.invoke()
+            assert start.call_count == calls and '最多 2 次' in panel.draft_detail.get()
+            panel.count.set('2')
+            panel.generate.invoke()
+            operation, selection, _ = start.call_args.args
+            assert operation == DRAFT and selection.count == 2 and selection.location == route['location']
+            assert ui.power_rows.get() == prior
+
+            preview(candidate_preview, status='stopped')
+            assert panel.build_title.get() == '已停止'
+            assert all(widget.instate(('disabled',)) for widget in
+                       (panel.source, panel.times, panel.generate, panel.add_draft))
+
+
 def main():
-    with tempfile.TemporaryDirectory() as folder, patch.object(module, 'ROOT', Path(folder)):
+    with (tempfile.TemporaryDirectory() as folder, patch.object(module, 'ROOT', Path(folder)),
+          patch('autohsr.app.find_game', side_effect=AssertionError('Offline smoke accessed game lookup')) as find_game):
         directory = Path(folder)
         config = directory / 'config.json'
-        Settings().save(config)
+        saved = dict(category='calyx_crimson', target='智识之蕾', location='海原电视塔', count=3)
+        Settings(power_plan=[saved]).save(config)
         original = config.read_bytes()
         runner = assignment_runner(Settings(), Mock(), root=directory)
         frozen, options = runner.specs['assignments']
@@ -41,6 +119,10 @@ def main():
             ui = Window(root, config)
             try:
                 root.update()
+                default_geometry = root.geometry()
+                existing = [saved, dict(category='calyx_crimson', target='智识之蕾', location='铆钉镇', count=2)]
+                assert rows(ui) == [saved]
+                ui.power_rows.set(json.dumps(existing, ensure_ascii=False))
                 ui._show_page('home')
                 start = Mock()
                 panel = DailyPanel(ui.guide.content, ui, start=start)
@@ -143,27 +225,27 @@ def main():
                     state='prepared', file=plan.name, sha256=hashlib.sha256(raw).hexdigest(), items=[item],
                 )))
                 panel.present(DRAFT, draft)
-                assert '草稿已生成' in panel.draft_detail.get() and rows(ui) == []
+                assert '草稿已生成' in panel.draft_detail.get() and rows(ui) == existing
                 panel = replace_panel(panel)
                 assert not panel.add_draft.instate(('disabled',)) and panel.source.current() == 1
                 plan.write_bytes(b'[]')
                 panel.add_draft.invoke()
-                assert '待核对' in panel.draft_detail.get() and rows(ui) == []
+                assert '待核对' in panel.draft_detail.get() and rows(ui) == existing
                 plan.write_bytes(raw)
                 before = ui.tasks['battle'].get(), ui.power_mode.get()
                 panel.add_draft.invoke()
-                assert rows(ui) == [item] and (ui.tasks['battle'].get(), ui.power_mode.get()) == before
+                assert rows(ui) == [*existing, item] and (ui.tasks['battle'].get(), ui.power_mode.get()) == before
                 assert panel.add_draft.instate(('disabled',)) and config.read_bytes() == original
                 panel = replace_panel(panel)
                 panel.present(DRAFT, draft)
                 assert panel.add_draft.instate(('disabled',)) and '已加入' in panel.draft_detail.get()
-                assert rows(ui) == [item]
+                assert rows(ui) == [*existing, item]
                 show_power_plan(ui, return_page='tasks')
                 panel.grid_remove()
                 root.update()
                 ui.settings_shell.see(ui.power_support_button)
                 assert ui.power_support_button.winfo_ismapped()
-                assert ui.power_plan_list.item('0', 'values')[1] == item['target']
+                assert ui.power_plan_list.item(str(len(existing)), 'values')[1] == item['target']
                 with patch('autohsr.support_ui.SupportDialog') as dialog:
                     ui.power_support_button.invoke()
                     dialog.assert_called_once_with(ui)
@@ -179,6 +261,8 @@ def main():
                 with patch('autohsr.support_ui.SupportDialog') as dialog:
                     ui.dungeon_support_button.invoke()
                     dialog.assert_called_once_with(ui)
+                check_cultivation_preview(root, ui, default_geometry)
+                assert config.read_bytes() == original
             finally:
                 ui.closing = True
                 root.update_idletasks()
@@ -186,6 +270,7 @@ def main():
                     if str(root.tk.call('after', 'info', job)[0]).endswith('_drain'):
                         root.after_cancel(job)
                 root.destroy()
+        find_game.assert_not_called()
     print('Daily guide checks passed at 100%, 150% and 200%.')
 
 
