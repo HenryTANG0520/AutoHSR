@@ -2,7 +2,7 @@
 import json
 import tempfile
 import unittest
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -16,7 +16,8 @@ class RunnerRecoveryTests(unittest.TestCase):
     def fixture(self, root, workflow):
         stack = ExitStack()
         self.addCleanup(stack.close)
-        context = SimpleNamespace(last_scene=Scene([]), snapshot=Mock(return_value=Scene([])), evidence=Mock())
+        context = SimpleNamespace(last_scene=Scene([]), snapshot=Mock(return_value=Scene([])), evidence=Mock(),
+                                  daily_startup=lambda *_: nullcontext())
         window = Mock()
         stack.enter_context(patch('autohsr.app.ROOT', root))
         stack.enter_context(patch('autohsr.app.C.get_last_error', return_value=0))

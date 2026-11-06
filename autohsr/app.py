@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager, nullcontext
 import ctypes as C
 import hashlib
 import json
@@ -66,6 +66,7 @@ class Context:
         self._currency_equipment_request = None
         self._currency_position_request = None
         self._du_actions = []
+        self._daily_startup = None
         from .workflow_identity import wrap_window
         self.window = wrap_window(self, window)
 
@@ -90,6 +91,16 @@ class Context:
             time.sleep(interval)
             remaining -= time.monotonic() - start
         self.checkpoint()
+
+    @contextmanager
+    def daily_startup(self, workflow, cold_start):
+        from .workflows import DailyStartupObservation
+        previous = self._daily_startup
+        self._daily_startup = DailyStartupObservation(workflow, cold_start)
+        try:
+            yield
+        finally:
+            self._daily_startup = previous
 
     def snapshot(self) -> Scene:
         occluded_frames=0
@@ -136,8 +147,17 @@ class Context:
                     raise
                 self.runner.wait_for_focus(self.window)
                 continue
+            except EmptyCapture:
+                if self._daily_startup is None:
+                    raise
+                self._daily_startup.retry(None)
+                continue
             self.scene_epoch = capture_epoch
             self.last_scene = scene  # Keep a failing identity frame for local evidence.
+            if self._daily_startup is not None and not self._daily_startup.accept(scene):
+                self.last_scene = None
+                self._daily_startup.retry(scene)
+                continue
             from .workflow_identity import observe
             if not observe(self, scene):
                 self.last_scene = None
@@ -1900,7 +1920,11 @@ class Runner:
                  currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None,currency_rewards_resume=False,currency_weekly_guard=None,
                  use_power_plan=False,new_power_plan=False,currency_overclock_open_a0=False,build_target_selection=None):
         from dataclasses import replace
-        settings=replace(settings)
+        if operation == 'reward_only':
+            from .recovery import reward_only_settings
+            settings = reward_only_settings(settings)
+        else:
+            settings = replace(settings)
         if operation in ('build_target_read', 'build_target_preview', 'build_target_plan') and new_battle_run:
             raise ValueError('培养目标读取不能建立刷本预算。')
         if operation == 'build_target_plan' or build_target_selection is not None:
@@ -2243,7 +2267,7 @@ class Runner:
         try:
             self._window = find_game(self.settings.game_path)
             self.log('游戏已运行，准备置于前台并返回主界面。')
-            return
+            return False
         except AutomationError:
             pass
         self.log(launch_game(self.settings))
@@ -2252,7 +2276,7 @@ class Runner:
             self.checkpoint()
             try:
                 self._window = find_game(self.settings.game_path)
-                return
+                return True
             except AutomationError:
                 if self._stop.wait(1):
                     raise Stopped('任务已停止。')
@@ -2435,8 +2459,9 @@ class Runner:
             monitor = threading.Thread(target=self._hotkeys, name="AutoHSR-hotkeys", daemon=True)
             monitor.start()
             monitor_started = True
+            cold_start = False
             if not challenge_result and ((not guide_only and not currency_wars and not differential_universe and not challenge_prepare and not du_rewards) or self.weekly_plan is not None or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard', 'currency_wars_points', 'currency_wars_rewards')):
-                self._prepare_daily_game()
+                cold_start = self._prepare_daily_game() is True
             self._window = self._window or find_game(self.settings.game_path)
             if self.report.operation != "currency_wars" and is_elevated(self._window.hwnd) is True and not is_admin():
                 raise AutomationError("游戏以管理员运行，请在设置启用管理员免重复确认启动后重开助手，或使用 Start-AutoHSR-Admin.cmd。")
@@ -2461,11 +2486,16 @@ class Runner:
             context.overclock_session = overclock_session
             context.battle_budget = self.battle_budget
             from .workflow_identity import prepare as prepare_workflow_identity
-            if not (build_target or self._challenge_read_only):
-                prepare_workflow_identity(context)
-            if defer_battle_budget:
-                self.battle_budget.begin(new_run=self.new_battle_run,
-                    **(dict(protect_pending=True) if self.use_power_plan else {}))
+            daily_workflow = DailyWorkflow(context) if self.report.operation in ('daily', 'reward_only') else None
+            if daily_workflow is not None:
+                self.report.failure_task = 'startup'
+            with context.daily_startup(daily_workflow, cold_start) if daily_workflow is not None else nullcontext():
+                if not (build_target or self._challenge_read_only):
+                    prepare_workflow_identity(context)
+                if defer_battle_budget:
+                    self.battle_budget.begin(new_run=self.new_battle_run,
+                        **(dict(protect_pending=True) if self.use_power_plan else {}))
+                initial = context.snapshot() if daily_workflow is not None else None
             if catalogue:
                 from .dungeon_workflow import scan_catalogue
                 result = scan_catalogue(DailyWorkflow(context))
@@ -2548,8 +2578,7 @@ class Runner:
                 self.report.failure_task = "" if result.status == "ok" else "differential_universe"
                 self.emit(dict(type="task", **result.__dict__))
             else:
-                workflow = DailyWorkflow(context)
-                initial = context.snapshot()
+                workflow = daily_workflow
                 context.evidence(initial, "start")
                 if self.report.operation == 'daily' and self.settings.daily and self.settings.daily_synthesis:
                     from .daily_synthesis import resume_pending
@@ -2568,7 +2597,9 @@ class Runner:
                                 and not self.settings.assignments and workflow._calyx_target(initial)
                                 and workflow._team_page(initial))
                 if not ready_planar:
-                    workflow.ensure_main()
+                    with context.daily_startup(workflow, cold_start):
+                        workflow.ensure_main()
+                self.report.failure_task = ""
                 self._run_tasks(context, workflow)
             self.log("任务已结束；请查看报告中的验证状态与证据。")
         except KeyboardInterrupt:
@@ -2612,6 +2643,8 @@ class Runner:
             if isinstance(error, SettingsError):
                 self.report.input_error_field = error.field
                 self.report.safe_next = "请修改对应设置，再次开始。"
+            elif self.report.failure_task == 'startup':
+                self.report.safe_next = "请手动进入游戏主界面后重试当前任务。"
             self.log(str(error), "error")
             if context and context.last_scene:
                 try:

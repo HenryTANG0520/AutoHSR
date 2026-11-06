@@ -22,6 +22,58 @@ STAMINA_INCOMPLETE = re.compile(r"[^/]{0,8}/\s*[\dOoＯ?？]{3}[\s|丨+＋]*")
 STAMINA_FRAGMENT = re.compile(r"(?:[\dOoＯ?？]{1,3}|[\dOoＯ?？]{0,3}\s*/\s*[\dOoＯ?？]{0,3})[\s|丨+＋]*")
 
 
+class DailyStartupObservation:
+    """Observe the first usable page without authorizing any game input."""
+
+    timeout = 45
+    interval = .5
+
+    def __init__(self, workflow, cold_start):
+        self.workflow = workflow
+        self.ctx = workflow.ctx
+        self.wait_for_page = cold_start
+        self.started = time.monotonic()
+        self.inactive = self.ctx.runner.inactive_duration
+        self.epoch = self.ctx.runner.input_epoch
+        self.blank_frames = 0
+        self.unknown_frames = 0
+        self.last_unknown = None
+
+    def _require_time(self):
+        if self.epoch != self.ctx.runner.input_epoch:
+            self.last_unknown = None
+            self.epoch = self.ctx.runner.input_epoch
+        elapsed = time.monotonic() - self.started - (self.ctx.runner.inactive_duration - self.inactive)
+        if elapsed >= self.timeout or self.blank_frames + self.unknown_frames >= self.timeout / self.interval:
+            if self.last_unknown is not None:
+                self.ctx.evidence(self.last_unknown, 'daily_startup_timeout')
+            raise AutomationError(
+                f'日常启动观察超时（{self.timeout} 秒），黑帧 {self.blank_frames} 张，'
+                f'未识别过场 {self.unknown_frames} 张。请手动进入游戏主界面后重试。')
+
+    def accept(self, scene):
+        self.workflow._require_reward_only_clear(scene)
+        if self.workflow._login_blocked(scene):
+            raise AutomationError('游戏需要手动完成账号登录、验证或更新。')
+        if not self.wait_for_page:
+            return True
+        self._require_time()
+        return self.workflow._known_startup_page(scene)
+
+    def retry(self, scene):
+        self.wait_for_page = True
+        self._require_time()
+        if self.blank_frames + self.unknown_frames == 0:
+            self.ctx.log('启动画面仍在加载，等待读取登录或游戏界面。')
+        if scene is None:
+            self.blank_frames += 1
+        else:
+            self.unknown_frames += 1
+            self.last_unknown = scene
+        self._require_time()
+        self.ctx.sleep(self.interval)
+
+
 class DailyWorkflow:
     """Observed UI transitions; no process memory access or unconditional clicks.
 
@@ -109,6 +161,20 @@ class DailyWorkflow:
             return False
         return scene.has(("点击进入", "开始游戏", "账号登录", "扫码登录", "验证码", "用户协议", "资源下载"))
 
+    @staticmethod
+    def _login_blocked(scene: Scene) -> bool:
+        return scene.has(("密码", "验证码", "扫码登录", "用户协议", "资源下载", "更新游戏", "游戏更新", "下载更新"))
+
+    def _known_startup_page(self, scene):
+        return (self._phone(scene) or self._login(scene) or self._supply_overlay(scene)
+                or self._login_reward_overlay(scene) or self._navigation_page(scene)
+                or self._in_battle(scene) or self._world(scene))
+
+    def _require_reward_only_clear(self, scene):
+        if (getattr(getattr(self.ctx, 'report', None), 'operation', None) == 'reward_only'
+                and (self._supply_overlay(scene) or self._login_reward_overlay(scene))):
+            raise AutomationError('仅补领奖遇到列车补给或登录附加奖励，请手动进入游戏主界面后重试。')
+
     def _in_battle(self, scene: Scene) -> bool:
         if scene.has(("战斗失败", "挑战成功", "退出关卡", "再来一次", "撤退", "战斗设置")):
             return True
@@ -162,6 +228,7 @@ class DailyWorkflow:
 
     def _settle_login_overlays(self, scene: Scene) -> Scene:
         for _ in range(4):
+            self._require_reward_only_clear(scene)
             if self._supply_overlay(scene):
                 claim = self._supply_claim(scene)
                 if self._supply_revealed(scene):
@@ -211,7 +278,7 @@ class DailyWorkflow:
                 return scene
             if self._login(scene):
                 enter = scene.find(("点击进入", "点击进入游戏", "开始游戏"), exact=True)
-                if enter is None or scene.has(("密码", "验证码", "用户协议", "资源下载")):
+                if enter is None or self._login_blocked(scene):
                     raise AutomationError("游戏需要手动完成账号登录、验证或更新。")
                 self._click(scene, enter)
                 scene = self._wait(lambda s: self._supply_overlay(s) or self._login_reward_overlay(s)
