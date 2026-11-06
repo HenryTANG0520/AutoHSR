@@ -1,0 +1,12 @@
+{
+  "file": "high_guide_tab.png",
+  "repository": "https://github.com/moesnow/March7thAssistant",
+  "revision": "26bee153544db44a882313f361b5ddbcefb001fa",
+  "path": "assets/images/screen/guide/enter_guide4.png",
+  "git_blob": "9f3485a3d735336997a08d845561df9126d4622e",
+  "sha256": "dc26cd0f6255157b84e5dd9c107e92346460036e3518ea469fa8a06cfe619e65",
+  "dimensions": [23, 27],
+  "transform": "original bytes",
+  "license": "GPL-3.0; game artwork belongs to the respective rights holders",
+  "source": "https://github.com/moesnow/March7thAssistant/blob/26bee153544db44a882313f361b5ddbcefb001fa/assets/images/screen/guide/enter_guide4.png"
+}

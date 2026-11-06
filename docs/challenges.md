@@ -47,15 +47,20 @@
 
 ## CLI与原生范围
 
-[独立 CLI](../autohsr/challenge_cli.py)提供计划预览、有限备战和结算观察三个入口。
+[独立 CLI](../autohsr/challenge_cli.py)提供计划预览、主页导航、有限备战和结算观察。
 
 ```powershell
 python -m autohsr --challenge-check .\my-challenge.json
+python -m autohsr --challenge-lobby apocalyptic_shadow
 python -m autohsr --challenge-prepare --challenge-plan .\my-challenge.json
 python -m autohsr --challenge-result
 ```
 
 `--challenge-check PATH`只读取所选UTF-8 JSON，最多64 KiB，拒绝重复键与非有限数；先于运行配置加载和Runner创建分流，不联网、不访问游戏、不保存配置。不能与`--config`、通知或运行选项混用。它输出规范计划与摘要，不证明账号角色或页面可识别。
+
+`--challenge-lobby MODE` 接受 `memory_of_chaos`、`pure_fiction` 和 `apocalyptic_shadow`。从已经在前台的生存索引、逐光捡金或同模式主页起步。生存索引使用局部图标，逐光捡金使用左侧模式项、右侧详情名和同区域的唯一传送。每步最多提交一次，必须在同账号、同窗口、同代次的相邻新帧核实到达。到页及最终报告均复核已保存的原证据；证据改变、错模式、遮挡或超时保留原记录。此入口的完成条件为指定主页。选层、备战、战斗与领奖各有独立边界。[实现](../autohsr/challenge_lobby.py) · [校准与验证](../VALIDATION.md#2026-11-06-高难指南与主页导航)
+
+4.6.0 当前账号的末日幻影传送后进入「支配遗忘」星启主页。该布局用星启模式、更换编队及三个独立节点同时确认。主页上的历史击败标记仅属于页面观察。
 
 `--challenge-prepare`要求游戏已打开在计划对应的高难页面。混沌回忆和虚构叙事可以从主页核实首个目标层，也可直接核对已打开的同层备战。末日幻影只观察已在前台的页面，沿用 F9／F10 控制。`--challenge-plan PATH`只覆盖本次，也可使用已明确保存的非空计划。独立备战排斥刷本、资源、新预算、其他玩法和接续参数，继续检查未完成的货币战争周常与领奖记录。[独立 CLI](../autohsr/challenge_cli.py)
 

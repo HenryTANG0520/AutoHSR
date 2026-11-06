@@ -15,9 +15,12 @@ def read_plan(path):
 
 
 def add_arguments(mode, parser):
+    from .challenge_plan import MODE_LIMITS
+
     mode.add_argument('--challenge-check', type=Path, help='离线核对高难双队与层数计划；不访问游戏或保存配置')
     mode.add_argument('--challenge-prepare', action='store_true', help='核实高难首个目标层备战，末日幻影只读观察当前前台页面')
     mode.add_argument('--challenge-result', action='store_true', help='只读核对前台高难结算反馈，保存本次独立证据')
+    mode.add_argument('--challenge-lobby', choices=tuple(MODE_LIMITS), help='从当前指南导航到指定高难主页')
     parser.add_argument('--challenge-plan', type=Path, help='仅用于本次高难备战的明确双队JSON计划；不保存配置')
 
 
@@ -35,6 +38,10 @@ def dispatch(args, parser, raw_args):
             return 2
     if args.challenge_plan is not None and not args.challenge_prepare:
         parser.error('--challenge-plan仅用于明确的--challenge-prepare入口。')
+    if args.challenge_lobby:
+        allowed = {'--challenge-lobby', '--config', '--game-path'}
+        if any(token.startswith('--') and token.split('=')[0] not in allowed for token in raw_args):
+            parser.error('高难主页导航仅接受模式、配置与游戏路径。')
     if args.challenge_result:
         allowed = {'--challenge-result', '--config', '--game-path'}
         if any(token.startswith('--') and token.split('=')[0] not in allowed for token in raw_args):

@@ -144,7 +144,7 @@ class Context:
                 self.window.guard(geometry)
             except FocusLost:
                 self.last_scene = None
-                if self.report.operation == 'challenge_result' or getattr(self.runner, '_challenge_read_only', False) is True:
+                if self.report.operation in ('challenge_result', 'challenge_lobby') or getattr(self.runner, '_challenge_read_only', False) is True:
                     raise
                 self.runner.wait_for_focus(self.window)
                 continue
@@ -180,6 +180,8 @@ class Context:
             raise AutomationError('差分独立领奖仅允许专用意图入口，不能使用通用点击、按键或移动。')
         if self.report.operation == 'challenge_prepare':
             raise AutomationError('高难备战只允许专用层数核验入口，不能使用通用点击或按键。')
+        if self.report.operation == 'challenge_lobby':
+            raise AutomationError('高难主页导航只允许本次已核实的专用操作。')
         if self.report.operation == 'challenge_result':
             raise AutomationError('高难结果只允许观察当前画面。')
         if self.report.operation == 'build_target_read':
@@ -273,6 +275,22 @@ class Context:
         except FocusLost:
             self._focus_interrupted()
         self.sleep(self.settings.action_delay)
+
+    def challenge_lobby_input(self, scene, action):
+        from .challenge_lobby import ChallengeLobbyNavigation
+
+        navigation = getattr(self, 'challenge_lobby_navigation', None)
+        if (self.report.operation != 'challenge_lobby' or not isinstance(navigation, ChallengeLobbyNavigation)
+                or navigation.c is not self or navigation.data is not self.report.challenge):
+            raise AutomationError('缺少本次高难主页导航与动作记录。')
+        with hold_read_sources(navigation.input_sources()):
+            navigation.authorize(scene, action)
+
+            def before_submit():
+                navigation.authorize(scene, action)
+                self.last_scene, self._scroll_anchor = None, None
+
+            self.window.click(*action.target.center, scene.geometry, before_submit=before_submit)
 
     def challenge_prepare_input(self, scene, action) -> float:
         if self.report.operation != 'challenge_prepare':
@@ -2047,7 +2065,8 @@ class Runner:
                  currency_control_probe=False, currency_timeout_probe=False, currency_locate=False,
                  currency_configure=False, currency_wealth=None, currency_resume=False, weekly_plan=None, currency_strategy=None,
                  currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None,currency_rewards_resume=False,currency_weekly_guard=None,
-                 use_power_plan=False,new_power_plan=False,currency_overclock_open_a0=False,build_target_selection=None):
+                 use_power_plan=False,new_power_plan=False,currency_overclock_open_a0=False,build_target_selection=None,
+                 challenge_lobby_mode=None):
         from dataclasses import replace
         if operation == 'reward_only':
             from .recovery import reward_only_settings
@@ -2089,6 +2108,12 @@ class Runner:
                 (operation != 'currency_wars_overclock_configure' or new_battle_run)):
             raise ValueError('打开超频 A0 难度页需要独立超频入口。')
         self.currency_overclock_open_a0 = currency_overclock_open_a0
+        if operation == 'challenge_lobby' or challenge_lobby_mode is not None:
+            from .challenge_plan import MODE_LIMITS
+            if (operation != 'challenge_lobby' or type(challenge_lobby_mode) is not str
+                    or challenge_lobby_mode not in MODE_LIMITS or new_battle_run):
+                raise ValueError('高难主页导航需要独立入口和明确模式。')
+        self.challenge_lobby_mode = challenge_lobby_mode
         self.settings = settings
         self._challenge_prepare_mode = (settings.challenge_plan.get('mode') if operation == 'challenge_prepare'
                                         and isinstance(settings.challenge_plan, dict) else None)
@@ -2534,14 +2559,18 @@ class Runner:
         build_target_preview = self.report.operation == 'build_target_preview' or build_target_plan
         build_target = build_target_read or build_target_preview
         challenge_result = self.report.operation == 'challenge_result'
-        guard_publication = self._challenge_read_only or build_target_plan
+        challenge_lobby = self.report.operation == 'challenge_lobby'
+        guard_publication = self._challenge_read_only or build_target_plan or challenge_lobby
         build_target_safe_next = ('请核对当前培养目标或打开同一材料的获得途径。'
                                   if build_target_preview else '请在当前账号的生存索引核对培养目标页。材料详情与副本来源待校准。')
-        if build_target or challenge_result:
+        if build_target or challenge_result or challenge_lobby:
             self.report.failure_task = self.report.operation
         try:
             if challenge_result:
                 from .challenge_result import SAFE_NEXT
+                self.report.safe_next = SAFE_NEXT
+            elif challenge_lobby:
+                from .challenge_lobby import SAFE_NEXT
                 self.report.safe_next = SAFE_NEXT
             if not mutex or already_running:
                 raise AutomationError("另一个 AutoHSR 任务正在运行，请先停止后重试。")
@@ -2550,7 +2579,7 @@ class Runner:
             currency_wars = self.report.operation in ("currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", OVERCLOCK_CONFIGURE, START_OPERATION, PREP_OPERATION, "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", FLOW_OPERATION)
             differential_universe = self.report.operation == "differential_universe"
             catalogue = self.report.operation == "dungeon_catalogue"
-            guide_only = catalogue or build_target or challenge_result
+            guide_only = catalogue or build_target or challenge_result or challenge_lobby
             redemption = self.report.operation == 'redemption'
             challenge_prepare = self.report.operation == 'challenge_prepare'
             du_rewards = self.report.operation == 'du_rewards'
@@ -2630,11 +2659,11 @@ class Runner:
             self._window = self._window or find_game(self.settings.game_path)
             if self.report.operation != "currency_wars" and is_elevated(self._window.hwnd) is True and not is_admin():
                 raise AutomationError("游戏以管理员运行，请在设置启用管理员免重复确认启动后重开助手，或使用 Start-AutoHSR-Admin.cmd。")
-            if self._challenge_read_only:
+            if self._challenge_read_only or challenge_lobby:
                 self._window.guard()
             else:
                 self._window.focus()
-            if self.settings.overlay_logs and not self._challenge_read_only:
+            if self.settings.overlay_logs and not (self._challenge_read_only or challenge_lobby):
                 from .overlay import OverlayService
                 self._overlay = OverlayService()
                 try:
@@ -2705,6 +2734,14 @@ class Runner:
                 self.report.failure_task = '' if result.status == 'ok' else 'challenge_prepare'
                 if not self._challenge_read_only:
                     self.emit(dict(type='task', **result.__dict__))
+            elif challenge_lobby:
+                from .challenge_lobby import ChallengeLobbyNavigation
+                challenge_reader = ChallengeLobbyNavigation(context, self.challenge_lobby_mode)
+                result = challenge_reader.run()
+                self.report.results.append(result)
+                self.report.status = 'success'
+                self.report.failure_task = ''
+                self.emit(dict(type='task', **result.__dict__))
             elif challenge_result:
                 from .challenge_result import ResultReader
                 self.emit(dict(type='task', task='challenge_result', status='running', detail='只读核对当前高难结算反馈'))
@@ -2781,7 +2818,7 @@ class Runner:
             self.report.error = str(error)
             self.report.safe_next = ("货币战争操作已停止；核对画面和本次动作记录后重新识别。" if self.report.operation.startswith("currency_wars") else
                                      build_target_safe_next if build_target else
-                                     self.report.safe_next if challenge_result else
+                                     self.report.safe_next if challenge_result or challenge_lobby else
                                      '差分领奖已停止；保留原意图及已核实领取，不重放未知动作；本次未开始演算。' if self.report.operation == 'du_rewards' else
                                      '高难备战已停止；保留层数选择记录，重新核对当前页面；本次未开战。' if self.report.operation == 'challenge_prepare' else
                                      '兑换已停止；已核实逐码结果保留，先核对未知提交，不重复确认。' if self.report.operation == 'redemption' else
@@ -2799,7 +2836,7 @@ class Runner:
             self.report.error = str(error)
             self.report.safe_next = ("积分领奖未完成；保留原报告和领奖记录，未知领取不重发；仅已核实步骤可明确接续。" if self.report.operation=='currency_wars_rewards' else
                                      build_target_safe_next if build_target else
-                                     self.report.safe_next if challenge_result else
+                                     self.report.safe_next if challenge_result or challenge_lobby else
                                      '差分领奖未完整核实；保留原意图和已核实领取，未知动作不重放；本次未开始演算。' if self.report.operation == 'du_rewards' else
                                      '高难备战未完整核实；查看原层数选择和页面证据，不自动重发；本次未开战。' if self.report.operation == 'challenge_prepare' else
                                      '兑换批次未完成；先核对逐码结果和未知提交，已保存成功不重试。' if self.report.operation == 'redemption' else
@@ -2856,7 +2893,7 @@ class Runner:
                 self.report.error = (self.report.error + "；" if self.report.error else "") + f"报告保存失败：{error}"
                 self.report.safe_next = ("报告未保存；保留动作记录和截图，人工核对后重新识别。" if self.report.operation.startswith("currency_wars") else
                                          build_target_safe_next if build_target else
-                                         self.report.safe_next if challenge_result else
+                                         self.report.safe_next if challenge_result or challenge_lobby else
                                          '高难备战报告未保存；保留原选择与页面证据，核对当前层数；本次未开战。' if self.report.operation == 'challenge_prepare' else
                                          "差分宇宙报告保存失败；保留当前目录，人工核对当前存档和动作。" if self.report.operation == "differential_universe" else
                                          "报告未保存；保留当前证据与刷本记录，人工核对消耗，不要直接重跑刷本。")
