@@ -33,6 +33,44 @@ _TEST_STATUS = {
     'cancelled': '测试通知已停止。',
     'profile_changed': '所选配置已改变，请刷新后重新核对。',
 }
+_TEST_ACTION = '发送测试通知'
+_IMAGE_ACTION = '发送奖励指南图片'
+_IMAGE_STATUS = {
+    'accepted': 'SMTP 已受理，送达待核对。',
+    'partial': 'SMTP 部分受理，请核对接收状态。',
+    'rejected': '图片发送未受理。',
+    'unknown': '图片发送结果待核对。',
+    'cancelled': '提交前已停止。',
+}
+_IMAGE_REASON = {
+    'invalid_profile': '所选配置无法核实。',
+    'unsupported_provider': '请选择已保存的 SMTP 配置。',
+    'tls_required': '此 SMTP 配置需要 SSL 或 STARTTLS。',
+    'invalid_attachment': '请选择可读取的本地 PNG。',
+    'attachment_limit': 'PNG 超过附件大小或像素上限。',
+    'attachment_changed': '所选图片已变化，请重新核对。',
+    'profile_changed': '所选配置已变化，请重新核对。',
+    'receipt_write_failed': '发送回执保存失败。',
+}
+
+
+def _image_path(value):
+    path = Path(value)
+    # The picker supplies an absolute path. The native sender checks the drive,
+    # file identity and PNG contents at execution time.
+    if not path.is_absolute() or path.anchor.startswith('\\') or path.suffix.casefold() != '.png':
+        return None
+    return path
+
+
+def _image_feedback(receipt):
+    receipt = receipt if isinstance(receipt, dict) else {}
+    status, reason = receipt.get('status'), receipt.get('reason')
+    status = status if isinstance(status, str) else 'unknown'
+    label = _IMAGE_STATUS.get(status, _IMAGE_STATUS['unknown'])
+    detail = _IMAGE_REASON.get(reason, '') if status in ('rejected', 'unknown') and isinstance(reason, str) else ''
+    reused = '沿用原回执 · ' if receipt.get('reused') is True else ''
+    return '最近一次图片发送 · ' + reused + label + detail
 
 
 def _split(value):
@@ -443,7 +481,8 @@ class _NotificationsPanel(_PaperPanel):
             title=saved.notification_title, body=saved.notification_body,
             **{status: status in saved.notification_statuses for status in STATUSES},
         ), view=dict(selected='', result='尚无通知测试结果。',
-                     run_result='尚无运行结束通知记录。', replace_existing=False))
+                     run_result='尚无运行结束通知记录。', replace_existing=False,
+                     action=_TEST_ACTION, image_path='', image_result='尚无图片发送回执。'))
         if not hasattr(ui, '_desktop_notify_catalog'):
             ui._desktop_notify_catalog = {}
             self._read_catalog()
@@ -462,7 +501,22 @@ class _NotificationsPanel(_PaperPanel):
         self.add_button.pack(side='left', padx=(self.pad, 0))
         self.profile_detail = tk.StringVar(master=ui.root)
         self._note(2, variable=self.profile_detail)
-        row = self._row(3, '凭据管理')
+        row = self._row(3, '本次操作')
+        self.action = self._control(ttk.Combobox(row, textvariable=fields['action'],
+                                                values=(_TEST_ACTION, _IMAGE_ACTION), width=18,
+                                                state='readonly'), state='readonly')
+        self.action.pack(side='left')
+        self.image_fields = ttk.Frame(self, style='Card.TFrame')
+        self.image_fields.columnconfigure(1, weight=1)
+        self.image_fields.grid(row=4, column=0, columnspan=2, sticky='ew', pady=(self.pad, 0))
+        self.image_picker = self._control(ttk.Button(self.image_fields, text='选择本地 PNG',
+                                                     style='Compact.TButton', command=self._pick_image))
+        self.image_picker.grid(row=0, column=0, sticky='nw', padx=(0, self.pad))
+        theme.wrapped_label(self.image_fields, textvariable=fields['image_path'], style='CardHint.TLabel').grid(
+            row=0, column=1, sticky='ew')
+        theme.wrapped_label(self.image_fields, textvariable=fields['image_result'], style='CardHint.TLabel').grid(
+            row=1, column=0, columnspan=2, sticky='ew', pady=(self.pad, 0))
+        row = self._row(5, '凭据管理')
         self.new_button = self._control(ttk.Button(row, text='新建通知配置', style='Compact.TButton',
                                                    command=self.new_profile))
         self.new_button.pack(side='left')
@@ -470,18 +524,19 @@ class _NotificationsPanel(_PaperPanel):
                                  command=self.import_profile)).pack(side='left', padx=(self.pad, 0))
         self._control(ttk.Checkbutton(row, text='导入时允许替换同名', variable=self.replace_existing)).pack(
             side='left', padx=(self.pad, 0))
-        row = self._row(4, '运行结束通知')
+        row = self._row(6, '运行结束通知')
         self._control(ttk.Checkbutton(row, text='启用', variable=fields['enabled'])).pack(side='left')
         for status in STATUSES:
             self._control(ttk.Checkbutton(row, text=STATUS_LABELS[status], variable=fields[status])).pack(
                 side='left', padx=(self.pad, 0))
-        for index, label, field in ((5, '通知名单', 'profiles'), (6, '标题模板', 'title'), (7, '正文模板', 'body')):
+        for index, label, field in ((7, '通知名单', 'profiles'), (8, '标题模板', 'title'), (9, '正文模板', 'body')):
             row = self._row(index, label)
             self._control(ttk.Entry(row, textvariable=fields[field], width=18)).pack(fill='x', expand=True)
-        self._note(8, text='通知名单用逗号分隔。模板可用 {operation}、{status}、{summary}。')
-        self._note(9, variable=fields['result'])
-        self._note(10, variable=fields['run_result'])
-        self._watch(fields['selected'])
+        self._note(10, text='通知名单用逗号分隔。模板可用 {operation}、{status}、{summary}。')
+        self._note(11, variable=fields['result'])
+        self._note(12, variable=fields['run_result'])
+        for key in ('selected', 'action', 'image_path'):
+            self._watch(fields[key])
         self.refresh_controls()
 
     def _read_catalog(self):
@@ -515,6 +570,12 @@ class _NotificationsPanel(_PaperPanel):
         state = 'normal' if provider and not self.ui.busy else 'disabled'
         for button in (self.check_button, self.add_button):
             button.configure(state=state)
+        if self.draft['action'].get() == _IMAGE_ACTION:
+            self.image_fields.grid()
+            self.profile_detail.set('图片发送使用上方选中的 SMTP 配置。' if provider == 'smtp'
+                                    else '请选择已保存且可读取的 SMTP 配置。')
+            return
+        self.image_fields.grid_remove()
         self.profile_detail.set(
             f'所选渠道 · {provider}' if provider else
             '所选配置无法由当前 Windows 用户读取。' if identity in catalog else
@@ -606,7 +667,50 @@ class _NotificationsPanel(_PaperPanel):
 
     def primary_action(self):
         _, provider = self._selected()
-        return '发送测试通知', self.test, bool(provider) and not self.ui.busy
+        if self.draft['action'].get() == _IMAGE_ACTION:
+            ready = (provider == 'smtp' and _image_path(self.draft['image_path'].get()) is not None
+                     and not (self.ui.busy or self.ui.closing))
+            return _IMAGE_ACTION, self.send_image, ready
+        return _TEST_ACTION, self.test, bool(provider) and not self.ui.busy
+
+    def _pick_image(self):
+        if self.ui.busy or self.ui.closing or self.draft['action'].get() != _IMAGE_ACTION:
+            return False
+        value = filedialog.askopenfilename(parent=self.ui.root, title='选择本地奖励指南 PNG',
+                                           filetypes=(('PNG 图片', '*.png'),))
+        if not value or self.ui.busy or self.ui.closing or self.draft['action'].get() != _IMAGE_ACTION:
+            return False
+        path = _image_path(value)
+        self.draft['image_path'].set(str(path) if path is not None else '')
+        return path is not None
+
+    def send_image(self):
+        identity, provider = self._selected()
+        path = _image_path(self.draft['image_path'].get())
+        if (self.ui.busy or self.ui.closing or self.draft['action'].get() != _IMAGE_ACTION
+                or provider != 'smtp' or path is None):
+            return False
+
+        def work(cancel_event):
+            from .reward_guide_notify import send_reward_guide
+
+            def checkpoint():
+                if cancel_event.is_set():
+                    raise NotifyCancelled('奖励指南图片发送已停止。')
+
+            return send_reward_guide(path, identity, checkpoint=checkpoint)
+
+        status = self.draft['image_result']
+
+        def done(receipt):
+            status.set(_image_feedback(receipt))
+
+        previous = status.get()
+        status.set('正在发送所选奖励指南图片。')
+        if not self.ui._submit_tool_job(_IMAGE_ACTION, work, done, on_error=lambda _: done(None)):
+            status.set(previous)
+            return False
+        return True
 
     def test(self):
         if self.ui.busy:

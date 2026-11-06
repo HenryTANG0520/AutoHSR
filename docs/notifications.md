@@ -140,6 +140,8 @@ python -m autohsr --reward-guide-notify calendar.png --reward-guide-notify-profi
 
 发送复用现有通知意图和版本检查。输入原件与配置在提交时保持 Windows 读取锁。相同 RGB 像素、尺寸与配置名称复用原回执，未知结果保留待核对。公开回执仅含 `status`、`reason`、`reused`。`accepted` 表示 SMTP 调用受理，退出码为 0。`partial`、`rejected` 与 `unknown` 返回 1，用法错误返回 2，停止返回 130。专项使用合成凭据和假传输，实际送达待验证。[离线专项](../autohsr/tests/test_reward_guide_notify.py)
 
+桌面「设置 → 工具 → 通知」在「本次操作」选「发送奖励指南图片」，再选择已保存的 SMTP 配置和一份本地 PNG。选择只更新本次界面草稿，按底栏同名按钮才提交。图片回执单独显示受理、部分受理、停止、待核对及原回执复用。提交前可用底栏停止，已进入提交时以原生回执为准。测试通知和运行结束通知各自保留原结果。[桌面回归](../autohsr/tests/test_desktop_services.py)
+
 ## 一次提交、意图与回执
 
 每份原报告按本地来源标识生成键，再与配置名称组合成通知键；原始run路径只参与本地哈希，不进入发送文本。`notifications.local/attempts/<键>.json`记录版本、消息哈希、动作及结果，`.lock`保护同键并发。此目录与凭据一起忽略，不改写原游戏报告。

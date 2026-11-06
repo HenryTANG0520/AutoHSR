@@ -492,6 +492,108 @@ class DesktopServiceTests(TestCase):
         self.assertFalse(rebuilt.settings_values()['notification_enabled'])
         self.save_settings.assert_not_called()
 
+    def test_reward_guide_selections_never_send_and_require_local_png_and_saved_smtp(self):
+        panel = services.build_notifications_panel(None, self.ui)
+        signature = tuple(var.get() for var in self.ui.form_variables)
+        self.assertEqual(panel.primary_action()[0], '发送测试通知')
+        self.assertFalse(panel.image_fields.visible)
+        panel.draft['action'].set('发送奖励指南图片')
+        panel.draft['selected'].set('beta')
+        self.assertTrue(panel.image_fields.visible)
+        self.assertFalse(panel.primary_action()[2])
+        with TemporaryDirectory() as folder, patch.object(services.filedialog, 'askopenfilename') as picker:
+            local = Path(folder) / 'guide.PNG'
+            picker.return_value = str(local)
+            self.assertTrue(panel.image_picker.options['command']())
+            self.assertEqual(picker.call_args.kwargs['filetypes'], (('PNG 图片', '*.png'),))
+            self.assertTrue(panel.primary_action()[2])
+            panel.draft['selected'].set('alpha')
+            self.assertFalse(panel.primary_action()[2])
+            self.assertFalse(panel.send_image())
+            panel.draft['selected'].set('beta')
+            picker.return_value = ''
+            self.assertFalse(panel._pick_image())
+            self.assertEqual(panel.draft['image_path'].get(), str(local))
+            for invalid in ('relative.png', r'\\server\share\calendar.png', str(local.with_suffix('.jpg'))):
+                picker.return_value = invalid
+                self.assertFalse(panel._pick_image())
+                self.assertFalse(panel.primary_action()[2])
+            self.ui.busy = True
+            panel.refresh_controls()
+            self.assertEqual(panel.image_picker.options['state'], 'disabled')
+            picker.reset_mock()
+            self.assertFalse(panel._pick_image())
+            picker.assert_not_called()
+        self.assertEqual(tuple(var.get() for var in self.ui.form_variables), signature)
+        self.ui._submit_tool_job.assert_not_called()
+        self.profile_store.load_version.assert_not_called()
+        self.profile_store.load_private.assert_not_called()
+        self.notification_service.assert_not_called()
+
+    def test_reward_guide_footer_freezes_inputs_and_keeps_sanitized_receipt_across_rebuild(self):
+        panel = services.build_notifications_panel(None, self.ui)
+        panel.draft['action'].set('发送奖励指南图片')
+        panel.draft['selected'].set('beta')
+        panel.draft['result'].set('已有测试通知结果')
+        panel.draft['run_result'].set('已有运行通知结果')
+        with TemporaryDirectory() as folder, patch('autohsr.reward_guide_notify.send_reward_guide') as sender:
+            selected = Path(folder) / 'picked.png'
+            panel.draft['image_path'].set(str(selected))
+            title, action, enabled = panel.primary_action()
+            self.assertEqual((title, enabled), ('发送奖励指南图片', True))
+            self.assertTrue(action())
+            sender.assert_not_called()
+            job, work, done = self.ui._submit_tool_job.call_args.args
+            self.assertEqual(job, title)
+            rebuilt = services.build_notifications_panel(None, self.ui)
+            rebuilt.draft['image_path'].set(str(Path(folder) / 'changed.png'))
+            rebuilt.draft['selected'].set('alpha')
+            sender.return_value = dict(status='accepted', reason='provider_accepted', reused=True, raw='private')
+            done(work(Event()))
+            self.assertEqual(sender.call_args.args, (selected, 'beta'))
+            self.assertEqual(rebuilt.draft['image_result'].get(),
+                             '最近一次图片发送 · 沿用原回执 · SMTP 已受理，送达待核对。')
+            self.assertEqual(rebuilt.draft['result'].get(), '已有测试通知结果')
+            self.assertEqual(rebuilt.draft['run_result'].get(), '已有运行通知结果')
+            rebuilt.draft['action'].set('发送测试通知')
+            self.assertFalse(rebuilt.image_fields.visible)
+            self.assertEqual(rebuilt.primary_action()[0], '发送测试通知')
+        self.profile_store.load_version.assert_not_called()
+        self.notification_service.assert_not_called()
+        self.save_settings.assert_not_called()
+
+    def test_reward_guide_uses_stop_checkpoint_and_preserves_unknown_receipt(self):
+        panel = services.build_notifications_panel(None, self.ui)
+        panel.draft['action'].set('发送奖励指南图片')
+        panel.draft['selected'].set('beta')
+        with TemporaryDirectory() as folder, patch('autohsr.reward_guide_notify.send_reward_guide') as sender:
+            panel.draft['image_path'].set(str(Path(folder) / 'calendar.png'))
+            self.assertTrue(panel.send_image())
+            _, work, done = self.ui._submit_tool_job.call_args.args
+            stopped = Event()
+            stopped.set()
+
+            def before_submit(_path, _profile, *, checkpoint):
+                with self.assertRaises(services.NotifyCancelled):
+                    checkpoint()
+                return dict(status='cancelled', reason='stopped_before_send', reused=False)
+
+            sender.side_effect = before_submit
+            done(work(stopped))
+            self.assertIn('提交前已停止', panel.draft['image_result'].get())
+            sender.side_effect = None
+            sender.return_value = dict(status='unknown', reason='receipt_write_failed', reused=False)
+            done(work(stopped))
+            self.assertIn('待核对', panel.draft['image_result'].get())
+            self.assertIn('回执保存失败', panel.draft['image_result'].get())
+            self.assertNotIn('已停止', panel.draft['image_result'].get())
+            self.ui._submit_tool_job.call_args.kwargs['on_error'](OSError('private path'))
+            self.assertNotIn('private', panel.draft['image_result'].get())
+            self.ui._submit_tool_job.return_value = False
+            previous = panel.draft['image_result'].get()
+            self.assertFalse(panel.send_image())
+            self.assertEqual(panel.draft['image_result'].get(), previous)
+
     def test_runtime_notification_summaries_are_separate_and_allowlisted(self):
         panel = services.build_notifications_panel(None, self.ui)
         panel.draft['result'].set('现有测试结果')
