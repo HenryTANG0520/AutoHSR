@@ -26,6 +26,10 @@ def _json(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False)
 
 
+def _pixel_digest(image):
+    return hashlib.sha256(str(tuple(image.shape)).encode('ascii') + image[:, :, ::-1].tobytes()).hexdigest()
+
+
 class RedemptionWorkflow:
     def __init__(self, context, *, batch=None, store=None):
         self.c = context
@@ -213,10 +217,45 @@ class RedemptionWorkflow:
                 raise AutomationError('本次兑换确认与落盘收据不一致。')
             reference = entry['claim']['evidence']
             if (list(scene.image.shape) != reference['shape'] or
-                    hashlib.sha256(str(tuple(scene.image.shape)).encode('ascii') + scene.image[:, :, ::-1].tobytes()).hexdigest()
-                    != reference['pixel_sha256'] or
+                    _pixel_digest(scene.image) != reference['pixel_sha256'] or
                     entry['claim']['basis'].get('form_digest') != self._form(scene).source_digest):
                 raise AutomationError('本次兑换提交证据与当前表单像素或字段来源不符。')
+
+    def confirmation_sources(self):
+        if self.entry is None:
+            raise AutomationError('兑换确认缺少本次待核对收据。')
+        return self.path, self.store.path, self.entry['claim']['evidence']['path']
+
+    def confirmation_guard(self, scene, action):
+        """After the native window guard, recheck the same frame and intent."""
+        from .currency_wars_identity import checked_account_key
+
+        c = self.c
+        window, geometry = c.window, scene.geometry
+        epoch, captured_at, image = self.epoch, scene.captured_at, scene.image
+        confidence, account = c.settings.ocr_confidence, self.account
+        tokens, fields = tuple(scene.tokens), deepcopy(scene.field_reads)
+        record, entry = deepcopy(self.data['actions'][-1]), deepcopy(self.entry)
+        reference = entry['claim']['evidence']
+
+        def require_current():
+            self.require_server_binding()
+            if (c.window is not window or getattr(c, 'redemption_workflow', None) is not self
+                    or c.last_scene is not scene or scene.geometry != geometry or scene.image is not image
+                    or scene.captured_at != captured_at or not 0 <= time.monotonic() - captured_at <= 8
+                    or tuple(scene.tokens) != tokens or scene.field_reads != fields
+                    or c.settings.ocr_confidence != confidence or self.account != account or self.request != action
+                    or self.entry != entry or self.data['actions'][-1:] != [record]
+                    or self.data.get('pending_entry_id') != entry['id']
+                    or list(image.shape) != reference['shape'] or _pixel_digest(image) != reference['pixel_sha256']
+                    or checked_account_key(scene, confidence) != account):
+                raise AutomationError('兑换确认前的本次表单、账号或提交意图已改变。')
+            if getattr(c.runner, 'stop_requested', False) or window.emergency_pressed():
+                raise Stopped('兑换确认前已停止。')
+            if self.epoch != epoch or c.scene_epoch != epoch or c.runner.input_epoch != epoch:
+                raise InputInterrupted('兑换确认前输入代次已改变，原提交待核对。')
+
+        return require_current
 
     def _act(self, scene, intent, *, before=None):
         self._fresh(scene)

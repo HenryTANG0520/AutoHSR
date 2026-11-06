@@ -338,25 +338,34 @@ class Context:
         if workflow is None or workflow.c is not self:
             raise AutomationError('缺少本次兑换流程与落盘意图。')
         self.checkpoint()
-        workflow.authorize(scene, action)
-        self.window.guard(scene.geometry)
-        workflow._fresh(scene)
-        self.last_scene, self._scroll_anchor = None, None
+        confirming = action.intent == 'submit_code'
         try:
-            if action.text:
-                typing_epoch = self.runner.input_epoch
-                def typing_checkpoint():
-                    self.checkpoint()
-                    if self.runner.input_epoch != typing_epoch or self.scene_epoch != typing_epoch:
-                        raise InputInterrupted('兑换码输入代次已改变，未继续输入剩余字符。')
-                    workflow.require_server_binding()
-                self.window.type_redemption_code(action.text, scene.geometry, checkpoint=typing_checkpoint)
-            elif action.key == 'esc':
-                self.window.key('esc')
-            elif action.target is not None:
-                self.window.click(*action.target.center, scene.geometry)
-            else:
-                raise AutomationError('兑换动作没有已核实的输入目标。')
+            with hold_read_sources(workflow.confirmation_sources()) if confirming else nullcontext():
+                workflow.authorize(scene, action)
+                self.window.guard(scene.geometry)
+                workflow._fresh(scene)
+                if confirming:
+                    before_submit = workflow.confirmation_guard(scene, action)
+                    try:
+                        self.window.click(*action.target.center, scene.geometry, before_submit=before_submit)
+                    finally:
+                        self.last_scene, self._scroll_anchor = None, None
+                else:
+                    self.last_scene, self._scroll_anchor = None, None
+                    if action.text:
+                        typing_epoch = self.runner.input_epoch
+                        def typing_checkpoint():
+                            self.checkpoint()
+                            if self.runner.input_epoch != typing_epoch or self.scene_epoch != typing_epoch:
+                                raise InputInterrupted('兑换码输入代次已改变，未继续输入剩余字符。')
+                            workflow.require_server_binding()
+                        self.window.type_redemption_code(action.text, scene.geometry, checkpoint=typing_checkpoint)
+                    elif action.key == 'esc':
+                        self.window.key('esc')
+                    elif action.target is not None:
+                        self.window.click(*action.target.center, scene.geometry)
+                    else:
+                        raise AutomationError('兑换动作没有已核实的输入目标。')
         except FocusLost:
             self._focus_interrupted()
         self.sleep(self.settings.action_delay)

@@ -16,7 +16,8 @@ from autohsr.models import AutomationError, InputInterrupted, RunReport, TaskRes
 from autohsr.redemption_codes import from_values
 from autohsr.redemption_run import RedemptionWorkflow, run_redemption
 from autohsr.redemption_store import RedemptionStore
-from autohsr.windows import Geometry
+from autohsr import windows
+from autohsr.windows import GameWindow, Geometry
 from autohsr.tests import test_redemption_pages as pages
 
 CODE = 'AbC2026中文'
@@ -176,6 +177,82 @@ class RedemptionRunTests(unittest.TestCase):
                 self.assertEqual(c.window.click.call_count, 3)
                 self.assertNotIn('submit_code', [a['intent'] for a in c.report.redemption['actions']])
 
+    def test_final_windows_guard_cannot_send_stale_redemption_confirmation(self):
+        for change in ('epoch', 'uid', 'evidence', None):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as folder:
+                c = context(folder, sequence())
+                store = RedemptionStore(Path(folder) / 'ledger.json')
+                window = GameWindow.__new__(GameWindow)
+                window.hwnd = 55670
+                window.type_redemption_code = Mock()
+                c.window = window
+                c.runner.stop_requested = False
+                native = Mock()
+                native.IsWindow.return_value = 1
+                native.IsIconic.return_value = 0
+                native.GetAsyncKeyState.return_value = 0
+                native.GetSystemMetrics.side_effect = {76: 0, 77: 0, 78: 1920, 79: 1080}.__getitem__
+                guards, attempted, submit_scene, original = 0, [], None, None
+
+                def foreground():
+                    nonlocal guards, submit_scene, original
+                    workflow = c.redemption_workflow
+                    if workflow.request is not None and workflow.request.intent == 'submit_code':
+                        guards += 1
+                        if guards == 1:
+                            submit_scene = c.last_scene
+                        if guards == 3:
+                            if change == 'epoch':
+                                c.runner.input_epoch += 1
+                            elif change == 'uid':
+                                submit_scene.tokens[-1] = Token('UID:200000000', .99, (.01, .96, .10, .99))
+                            elif change == 'evidence':
+                                path = Path(workflow.entry['claim']['evidence']['path'])
+                                original = path.read_bytes()
+                                path.write_bytes(original + b'changed during the last window guard')
+                    return window.hwnd
+
+                def send(count, _events, _size):
+                    workflow = c.redemption_workflow
+                    attempted.append(workflow.request.intent)
+                    if change is None and workflow.request.intent == 'submit_code':
+                        for path in workflow.confirmation_sources():
+                            self.assertTrue(Path(path).read_bytes())
+                            with self.assertRaises(PermissionError):
+                                with Path(path).open('r+b'):
+                                    pass
+                    return count
+
+                native.GetForegroundWindow.side_effect = foreground
+                native.SendInput.side_effect = send
+                with patch.object(windows, 'user32', native), \
+                     patch.object(windows, 'geometry', return_value=Geometry(0, 0, 1920, 1080)):
+                    if change is None:
+                        self.assertEqual(self.execute(c, store).status, 'ok')
+                    else:
+                        with self.assertRaises((AutomationError, OSError)):
+                            self.execute(c, store)
+                self.assertEqual(guards, 3)
+                account = c.report.redemption['account_key']
+                receipt = store.lookup(account, 'cn', CODE)
+                expected = ['open_more', 'open_form', 'focus_code']
+                if change is None:
+                    self.assertEqual(attempted, expected + ['submit_code', 'close_result'])
+                    self.assertEqual(receipt['status'], 'redeemed')
+                else:
+                    self.assertEqual(attempted, expected)
+                    self.assertEqual(receipt['status'], 'pending')
+                    self.assertEqual(c.report.redemption['actions'][-1]['status'], 'unknown')
+                    later = context(folder, [pages.phone_scene()] * 3)
+                    with self.assertRaises(AutomationError):
+                        self.execute(later, store)
+                    later.window.click.assert_not_called()
+                evidence = Path(receipt['claim']['evidence']['path'])
+                if original is not None:
+                    self.assertEqual(evidence.read_bytes(), original)
+                with evidence.open('r+b'):
+                    pass
+
     def test_typing_checkpoint_discards_remaining_characters_after_pause(self):
         with tempfile.TemporaryDirectory() as folder:
             c = context(folder, sequence())
@@ -197,7 +274,7 @@ class RedemptionRunTests(unittest.TestCase):
     def test_saved_result_survives_close_failure_and_next_run_deduplicates(self):
         with tempfile.TemporaryDirectory() as folder:
             c = context(folder, sequence())
-            def click(*args):
+            def click(*args, **kwargs):
                 if c.redemption_workflow.request.intent == 'close_result':
                     raise InputInterrupted('synthetic close interruption')
             c.window.click.side_effect = click
@@ -216,7 +293,7 @@ class RedemptionRunTests(unittest.TestCase):
     def test_unverified_submit_stays_pending_and_is_not_repeated_next_run(self):
         with tempfile.TemporaryDirectory() as folder:
             c = context(folder, sequence()[:9] + [pages.form_scene(CODE)])
-            def after_submit(*args):
+            def after_submit(*args, **kwargs):
                 if c.redemption_workflow.request.intent == 'submit_code':
                     c.sleep = lambda seconds: setattr(c.clock, 'value', c.clock.value + 31)
             c.window.click.side_effect = after_submit
