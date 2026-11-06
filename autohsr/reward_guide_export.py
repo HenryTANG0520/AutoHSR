@@ -55,25 +55,31 @@ def _verify_sources(sources):
         raise _Rejected('source_changed') from None
 
 
-def _read_png(path, pages):
-    with path.open('rb') as stream:
-        stream.seek(-len(_PNG_END), os.SEEK_END)
-        if stream.read(len(_PNG_END)) != _PNG_END:
+def _read_png_image(stream, *, max_height, max_pixels):
+    stream.seek(-len(_PNG_END), os.SEEK_END)
+    if stream.read(len(_PNG_END)) != _PNG_END:
+        raise _Rejected('invalid_source')
+    stream.seek(0)
+    with Image.open(stream, formats=('PNG',)) as header:
+        width, height = header.size
+        if min(width, height) < 64 or getattr(header, 'n_frames', 1) != 1:
             raise _Rejected('invalid_source')
-        stream.seek(0)
-        with Image.open(stream, formats=('PNG',)) as header:
-            width, height = header.size
-            if min(width, height) < 64 or getattr(header, 'n_frames', 1) != 1:
-                raise _Rejected('invalid_source')
-            if max(width, height) > _MAX_INPUT_EDGE or width * height * pages > _MAX_INPUT_PIXELS:
-                raise _Rejected('limit')
-            header.verify()
-    with path.open('rb') as stream, Image.open(stream, formats=('PNG',)) as image:
+        if width > _MAX_INPUT_EDGE or height > max_height or width * height > max_pixels:
+            raise _Rejected('limit')
+        header.verify()
+    stream.seek(0)
+    with Image.open(stream, formats=('PNG',)) as image:
         if 'A' in image.getbands() or 'transparency' in image.info:
             image = image.convert('RGBA')
             if image.getchannel('A').getextrema() != (255, 255):
                 raise _Rejected('invalid_source')
-        return np.asarray(image.convert('RGB'))[:, :, ::-1].copy()
+        return image.convert('RGB')
+
+
+def _read_png(path, pages):
+    with path.open('rb') as stream:
+        image = _read_png_image(stream, max_height=_MAX_INPUT_EDGE, max_pixels=_MAX_INPUT_PIXELS // pages)
+    return np.asarray(image)[:, :, ::-1].copy()
 
 
 def _publish(target, sources, image, checkpoint):

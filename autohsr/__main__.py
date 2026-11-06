@@ -36,6 +36,8 @@ def main(argv: list[str] | None = None) -> int:
     add_workflow_arguments(mode, parser)
     from .notify_cli import add_arguments as add_notify_arguments
     add_notify_arguments(mode, parser)
+    from .reward_guide_cli import add_notification_arguments, run_notification
+    add_notification_arguments(mode, parser)
     from .schedule_cli import add_arguments as add_schedule_arguments
     add_schedule_arguments(mode, parser)
     mode.add_argument("--currency-wars-replay", type=Path, help="离线回放 .sample.json；不访问游戏或加载每日配置")
@@ -148,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    if args.reward_guide_notify is not None or args.reward_guide_notify_profile is not None:
+        return run_notification(args, raw_args, parser)
     validate_workflow_arguments(args, parser)
     if args.reward_guide_stitch is not None or args.reward_guide_output is not None:
         from .reward_guide_cli import run as run_reward_guide

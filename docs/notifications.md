@@ -126,7 +126,19 @@
 
 数字型接收ID只在`userid / user_id / group_id / agentid / appid / qq / target_id`字段接受JSON整数并转成文字。其余连接参数为单行字符串；布尔字段不能用`"true"`替代。整数校验及最终请求以[当前适配源码](../autohsr/notify_providers.py)为准，SMTP端口额外限制1～65535。
 
-尚未实现：截图／图片发送与上传、Bark密文、Matrix E2EE和设备会话、QQ机器人事件／接收ID发现、上游PAC与代理高级项、上游通知等级／图片开关和整套自动合并机制、任务树内任意通知步骤。部分文本可采用Markdown／HTML承载，不表示图片或富媒体功能已完成。
+常规任务通知的截图及图片上传、Bark 密文、Matrix E2EE 和设备会话、QQ 机器人事件／接收 ID 发现、上游 PAC 与代理高级项、上游通知等级／图片开关和整套自动合并机制、任务树内任意通知步骤仍待接入。部分文本可采用 Markdown 或 HTML 承载。
+
+### 活动日历 SMTP 附件
+
+显式执行以下独立命令，向指定已保存的 SMTP 配置提交一份本地 PNG。两项参数各出现一次，其他运行选项不能混用。
+
+```powershell
+python -m autohsr --reward-guide-notify calendar.png --reward-guide-notify-profile smtp-calendar
+```
+
+要求 SSL 或 STARTTLS，拒绝其他渠道及明文配置。单张不透明 PNG 的编码大小最多 8 MiB，像素最多 1200 万。拼图可保留长图尺寸，发送前按原像素无损编码为不带源元数据的 `reward-guide.png`。游戏内采集另行接入。[后端](../autohsr/reward_guide_notify.py) · [固定上游活动任务](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/activity/journey_highlights_notification.py) · [固定上游 SMTP 附件](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/module/notification/smtp.py)
+
+发送复用现有通知意图和版本检查。输入原件与配置在提交时保持 Windows 读取锁。相同 RGB 像素、尺寸与配置名称复用原回执，未知结果保留待核对。公开回执仅含 `status`、`reason`、`reused`。`accepted` 表示 SMTP 调用受理，退出码为 0。`partial`、`rejected` 与 `unknown` 返回 1，用法错误返回 2，停止返回 130。专项使用合成凭据和假传输，实际送达待验证。[离线专项](../autohsr/tests/test_reward_guide_notify.py)
 
 ## 一次提交、意图与回执
 

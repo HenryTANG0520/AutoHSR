@@ -8,7 +8,10 @@ import smtplib
 import ssl
 import subprocess
 
-from .notify_profiles import NotifyError, text
+from .notify_profiles import NotifyCancelled, NotifyError, text
+
+
+MAX_PNG_ATTACHMENT_BYTES = 8 * 1024 * 1024
 
 
 def _addresses(value):
@@ -73,6 +76,20 @@ def send(provider, p, title, content):
             return 'accepted' if process.returncode == 0 else 'rejected'
         except Exception:
             raise NotifyError('本机通知未取得可核实结果；不自动重试。') from None
+    return _send_smtp(p, title, content)
+
+
+def send_smtp_png(p, title, content, png, *, before_submit):
+    """Submit one already verified, bounded PNG through encrypted SMTP."""
+    if (type(png) is not bytes or len(png) > MAX_PNG_ATTACHMENT_BYTES
+            or not png.startswith(b'\x89PNG\r\n\x1a\n')):
+        raise NotifyError('SMTP 附件需要已核实且未超限的 PNG。')
+    if p.get('starttls', False) is not True and p.get('ssl', True) is not True:
+        raise NotifyError('SMTP 图片通知要求 SSL 或 STARTTLS。')
+    return _send_smtp(p, title, content, png=png, before_submit=before_submit)
+
+
+def _send_smtp(p, title, content, *, png=None, before_submit=None):
     validate_smtp(p)
     sender = p.get('From') or p.get('user')
     recipients = p.get('To') or p.get('user')
@@ -80,6 +97,8 @@ def send(provider, p, title, content):
     message['Subject'], message['From'] = title, sender
     message['To'] = ', '.join(recipients) if isinstance(recipients, list) else recipients
     message.set_content(content, charset='utf8')
+    if png is not None:
+        message.add_attachment(png, maintype='image', subtype='png', filename='reward-guide.png')
     connection = None
     try:
         context = ssl.create_default_context()
@@ -91,8 +110,14 @@ def send(provider, p, title, content):
                          smtplib.SMTP(p['host'], p.get('port', 25), timeout=15)
         if p.get('user'):
             connection.login(p['user'], p['password'])
+        if before_submit is not None:
+            before_submit()
         refused = connection.send_message(message, from_addr=_addresses(sender)[0], to_addrs=_addresses(recipients))
+        if png is not None and not isinstance(refused, dict):
+            raise NotifyError('SMTP 图片通知缺少可核实的受理结果。')
         return 'partial' if refused else 'accepted'
+    except NotifyCancelled:
+        raise
     except (smtplib.SMTPAuthenticationError, smtplib.SMTPRecipientsRefused):
         return 'rejected'
     except Exception:
