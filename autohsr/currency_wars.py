@@ -118,6 +118,11 @@ class CurrencyWarsWorkflow:
             data['investment_badge_declarations'] = badge_declarations(scene, self.c.settings.ocr_confidence)
         if encounter is not None:
             data['encounter'] = asdict(encounter)
+        if observation.page_kind == 'supply_selection':
+            from .currency_wars_supply_observation import read_double_supply
+            supply = read_double_supply(scene, self.c.settings.ocr_confidence)
+            if supply is not None:
+                data['double_supply'] = supply
         from .currency_wars_match import read_match
         match = read_match(scene, self.c.settings.ocr_confidence)
         data["match"] = asdict(match) if match is not None else None
