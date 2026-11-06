@@ -1,0 +1,192 @@
+{
+  "schema": 1,
+  "origin": "Public 4.6 Simplified Chinese gameplay. Node provenance is from the continuous recording.",
+  "playback_pixels": [1280, 720],
+  "center_crop_xyxy": [312, 24, 958, 696],
+  "right_hud_crop_xyxy": [900, 0, 1280, 260],
+  "frames": {
+    "fiction_first_a": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=12.5",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 12.5,
+      "node_in_recording": 1,
+      "sha256": {"center": "352e5139205ce070866746eb38da0f6a3902b384ca4a5208f83f8137ad7f1e09", "hud": "d058cabc9632fb6c1cc90a12ed9d556717060fcc7c68b5adf12a3dffaa52d990"},
+      "expected_observation": {"wave": 1, "total": 3, "hud": "通关目标"},
+      "health_bars": [{"slot": 2, "box": [0.24375, 0.898611, 0.290625, 0.905556]}, {"slot": 3, "box": [0.325, 0.898611, 0.407031, 0.905556]}, {"slot": 4, "box": [0.44375, 0.898611, 0.525, 0.905556]}],
+      "tokens": [
+        {"text": "战斗开始1/3", "confidence": 0.9943, "box": [0.4242, 0.1375, 0.5781, 0.1875]},
+        {"text": "通关目标", "confidence": 0.9965, "box": [0.7281, 0.1361, 0.7789, 0.1639]},
+        {"text": "特殊机制生效中", "confidence": 0.9941, "box": [0.4664, 0.2208, 0.5633, 0.2528]}
+      ]
+    },
+    "fiction_first_b": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=12.9",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 12.9,
+      "node_in_recording": 1,
+      "sha256": {"center": "2f310d66ac7b55c44826230969bdfa1fd391a4319ef5ec4dfc929ea89989615e", "hud": "521d43141a21aee8cbf7bb129c18cf2fcea6e248c87aeab6674e4547f020aede"},
+      "expected_observation": {"wave": 1, "total": 3, "hud": "通关目标"},
+      "health_bars": [{"slot": 2, "box": [0.24375, 0.895833, 0.289844, 0.904167]}, {"slot": 3, "box": [0.325, 0.895833, 0.407031, 0.904167]}, {"slot": 4, "box": [0.44375, 0.895833, 0.525, 0.904167]}],
+      "tokens": [
+        {"text": "战斗开始1/3", "confidence": 0.99, "box": [0.4242, 0.1375, 0.5781, 0.1875]},
+        {"text": "通关目标", "confidence": 0.9954, "box": [0.7289, 0.1361, 0.7789, 0.1639]},
+        {"text": "特殊机制生效中", "confidence": 0.9951, "box": [0.4664, 0.2208, 0.5625, 0.2528]}
+      ]
+    },
+    "fiction_second_a": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=361",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 361.0,
+      "node_in_recording": 2,
+      "sha256": {"center": "46a6facd465db0f61c21d349fb895a1385651225f2c62c9c6a6adb53d1b13f0e", "hud": "3720e93a7b092f70975522bbffea0800e846e1be754340f35c8f9b9a51bc7153"},
+      "expected_observation": {"wave": 1, "total": 3, "hud": "通关目标"},
+      "health_bars": [{"slot": 2, "box": [0.24375, 0.895833, 0.290625, 0.904167]}, {"slot": 3, "box": [0.325, 0.895833, 0.407031, 0.904167]}, {"slot": 4, "box": [0.442188, 0.895833, 0.525, 0.904167]}],
+      "tokens": [
+        {"text": "战斗开始1/3", "confidence": 0.9898, "box": [0.4234, 0.1403, 0.5773, 0.1861]},
+        {"text": "通关目标", "confidence": 0.9961, "box": [0.7289, 0.1361, 0.7789, 0.1639]},
+        {"text": "特殊机制生效中", "confidence": 0.9979, "box": [0.4703, 0.2194, 0.5625, 0.2528]}
+      ]
+    },
+    "fiction_second_b": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=361.3",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 361.3,
+      "node_in_recording": 2,
+      "sha256": {"center": "54ad76cc3705b4fa4cbb1abb52941172f2dbba0750ffc2fb47f86807df177f56", "hud": "66a17b58b160def55658c291a8cb2b3accff92b143273303038c71c32c29d9d1"},
+      "expected_observation": {"wave": 1, "total": 3, "hud": "通关目标"},
+      "health_bars": [{"slot": 2, "box": [0.24375, 0.895833, 0.289844, 0.904167]}, {"slot": 3, "box": [0.325, 0.895833, 0.407031, 0.904167]}],
+      "tokens": [
+        {"text": "战斗开始1/3", "confidence": 0.9834, "box": [0.4242, 0.1403, 0.5781, 0.1861]},
+        {"text": "通关目标", "confidence": 0.996, "box": [0.7281, 0.1347, 0.7797, 0.1667]},
+        {"text": "特殊机制生效中", "confidence": 0.9962, "box": [0.4695, 0.2194, 0.5633, 0.2528]}
+      ]
+    },
+    "chaos_second_a": {
+      "source": "https://www.bilibili.com/video/BV1oG4h6UEVo/?p=1&t=161.4",
+      "cid": 43359866313,
+      "part": 1,
+      "seek_seconds": 161.4,
+      "node_in_recording": 2,
+      "sha256": {"center": "cdccaa6ee2ebbcbe8d1676f505832266552d074d21afbed4d8a08794ab673f7f", "hud": "2dedc33e6879b0cf9948651306d90c12f7b1c6112acadb8a58a7ad1ad6027dc5"},
+      "expected_observation": {"wave": 1, "total": 2, "hud": "特殊机制生效中"},
+      "health_bars": [{"slot": 2, "box": [0.24375, 0.895833, 0.289844, 0.904167]}, {"slot": 3, "box": [0.323437, 0.895833, 0.407813, 0.904167]}, {"slot": 4, "box": [0.439063, 0.895833, 0.525, 0.904167]}],
+      "tokens": [
+        {"text": "战斗开始1/2", "confidence": 0.95, "box": [0.425, 0.1403, 0.5773, 0.1861]},
+        {"text": "特殊机制生效中", "confidence": 0.999, "box": [0.4695, 0.2194, 0.5609, 0.25]}
+      ]
+    },
+    "chaos_second_b": {
+      "source": "https://www.bilibili.com/video/BV1oG4h6UEVo/?p=1&t=161.9",
+      "cid": 43359866313,
+      "part": 1,
+      "seek_seconds": 161.9,
+      "node_in_recording": 2,
+      "sha256": {"center": "2e002d0adcbc0e8591bc28c62bc4c1acdf3349928e860f02c1064c7a22eeabd3", "hud": "aba7345d62925b7d93e98c29bc41e6d560c0886154dd0014720dea2756ff8238"},
+      "expected_observation": {"wave": 1, "total": 2, "hud": "特殊机制生效中"},
+      "health_bars": [{"slot": 2, "box": [0.24375, 0.895833, 0.289844, 0.904167]}, {"slot": 3, "box": [0.323437, 0.895833, 0.407813, 0.905556]}],
+      "tokens": [
+        {"text": "战斗开始1/2", "confidence": 0.9757, "box": [0.425, 0.1403, 0.5781, 0.1861]},
+        {"text": "特殊机制生效中", "confidence": 0.9987, "box": [0.4703, 0.2194, 0.5641, 0.2514]}
+      ]
+    },
+    "fiction_transition_glare": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=12.2",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 12.2,
+      "node_in_recording": 1,
+      "sha256": {"center": "66c34fe8bd019e05e83117ff78c94b447c1052a00461cce70c93f461ccdad94a", "hud": "bee8cdc0f44ae799cc1389437eebb9300c83f4aa7999d94adae7eab910619949"},
+      "expected_observation": null,
+      "health_bars": [],
+      "tokens": [
+        {"text": "战斗开始1/3", "confidence": 0.9957, "box": [0.4234, 0.1403, 0.5781, 0.1889]},
+        {"text": "通关目标", "confidence": 0.9956, "box": [0.7344, 0.1361, 0.7844, 0.1639]}
+      ]
+    },
+    "fiction_technique": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=353",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 353.0,
+      "node_in_recording": 2,
+      "sha256": {"center": "929d5d68ca9020023469a8f2ae3e7c9c04fd21073636b56ae79211e0a82827c3", "hud": "57c083bc2fe41204ed62238d21a9a59c60bfd41b73688c2bfeecb5341696108f"},
+      "expected_observation": null,
+      "health_bars": [],
+      "tokens": [
+
+      ]
+    },
+    "fiction_weakness_transition": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=355",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 355.0,
+      "node_in_recording": 2,
+      "sha256": {"center": "422f094aff95d6e62367cabdf11881b83feea20aea3d01185e260c5c85f0ea52", "hud": "e029daca3b1f979d1da94b4bd534924c7f32a5377bef5e97cf2d6f3c786de14f"},
+      "expected_observation": null,
+      "health_bars": [],
+      "tokens": [
+        {"text": "弱点", "confidence": 0.9985, "box": [0.4688, 0.4694, 0.5297, 0.5264]}
+      ]
+    },
+    "fiction_fraction_ocr_lost": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=360.6",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 360.6,
+      "node_in_recording": 2,
+      "sha256": {"center": "c81f5ee45e280be81a4652b3b500379e1033215b600d407233232b4fd7c9a7fa", "hud": "159914b2650d3c978436fa9d50d18479fe39331e362ec1bd0886a1e69274b355"},
+      "expected_observation": null,
+      "health_bars": [{"slot": 2, "box": [0.24375, 0.895833, 0.290625, 0.904167]}, {"slot": 3, "box": [0.334375, 0.895833, 0.407031, 0.904167]}, {"slot": 4, "box": [0.445312, 0.895833, 0.525, 0.904167]}],
+      "tokens": [
+        {"text": "战斗开始173", "confidence": 0.9692, "box": [0.425, 0.1403, 0.5766, 0.1861]},
+        {"text": "通关目标", "confidence": 0.9942, "box": [0.7289, 0.1375, 0.7789, 0.1653]}
+      ]
+    },
+    "fiction_health_hud_covered": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=361.4",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 361.4,
+      "node_in_recording": 2,
+      "sha256": {"center": "437b83c6bfad2cecb153f0f9fca4a4eb9c7b95431b4256f65e9ccfa66c83934f", "hud": "c3cdc71c043edb5ae7110ce3dfb86cd0b67347b2632f4fc6373f7306f0d94c73"},
+      "expected_observation": null,
+      "health_bars": [],
+      "tokens": [
+        {"text": "战斗开始1/3", "confidence": 0.959, "box": [0.4227, 0.1347, 0.5773, 0.1875]},
+        {"text": "通关目标", "confidence": 0.9946, "box": [0.7422, 0.1347, 0.7945, 0.1667]}
+      ]
+    },
+    "fiction_after_banner": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=361.8",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 361.8,
+      "node_in_recording": 2,
+      "sha256": {"center": "5541e3a00b2ec16462bf5fe13662953536b8615be48178e65fc5e7223b7bed56", "hud": "1c63d82086bffcbb8efbe4ea007e0735fdae936ab25c4a3aa2d5336dd33829d9"},
+      "expected_observation": null,
+      "health_bars": [{"slot": 2, "box": [0.24375, 0.895833, 0.290625, 0.904167]}, {"slot": 3, "box": [0.325, 0.895833, 0.407031, 0.904167]}, {"slot": 4, "box": [0.438281, 0.895833, 0.525, 0.904167]}],
+      "tokens": [
+
+      ]
+    },
+    "chaos_health_hud_covered": {
+      "source": "https://www.bilibili.com/video/BV1oG4h6UEVo/?p=1&t=161.8",
+      "cid": 43359866313,
+      "part": 1,
+      "seek_seconds": 161.8,
+      "node_in_recording": 2,
+      "sha256": {"center": "663767978cf8a5174fb679c04f619aceb5da16d30323145f845b2d8bb4ec51f6", "hud": "699291b390aa464959536c83a39a725516944c9bce499dc06cfa2699c0d6ecb2"},
+      "expected_observation": null,
+      "health_bars": [],
+      "tokens": [
+        {"text": "战斗开始1/2", "confidence": 0.9922, "box": [0.4234, 0.1361, 0.5781, 0.1889]},
+        {"text": "特殊机制生效中", "confidence": 0.9977, "box": [0.4703, 0.2194, 0.5609, 0.2514]}
+      ]
+    }
+  }
+}

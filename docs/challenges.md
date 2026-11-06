@@ -166,6 +166,12 @@ Windows 发布回执时持有两张 PNG 的只读句柄，发布最终报告时�
 
 星启同名节点二也用此横幅及场内 HUD。公开对照分别读到虚构 40,000 分、混沌 43 轮。当前回执核实现场的玩法、横幅和读数，常规或星启、前一侧胜负、实际出战、结算与领奖继续分别待核实。上游普通流程同样在前一间等待下一间准备画面，最后一间等独立返回反馈。[星启虚构节点二](https://www.bilibili.com/video/BV1g8nj6JEyi/?t=171) · [星启混沌节点二](https://www.bilibili.com/video/BV1Ht4F6MEG5/?t=272) · [上游普通虚构](https://github.com/moesnow/March7thAssistant/blob/26bee153544db44a882313f361b5ddbcefb001fa/tasks/challenge/purefiction.py#L202-L227) · [上游普通混沌](https://github.com/moesnow/March7thAssistant/blob/26bee153544db44a882313f361b5ddbcefb001fa/tasks/challenge/memoryofchaos.py#L207-L226)
 
+### 战斗波次观察
+
+4.6 已校准的画面同时显示上中「战斗开始」与形如 `1/3` 的完整波次、同屏「通关目标」或「特殊机制生效中」，以及底部同排至少两个队伍血条。相邻两张同账号新帧的波次和 HUD 文案须相同，且至少两个对应血条位置重叠。回执为 `wave_observed`，把 `current_wave` 和 `total_waves` 写入 `battle_wave`。缺少斜线、血条被特效遮挡、只有战斗 HUD、转场或终局均不能单独生成波次字段。[原片字段、HUD 裁片和哈希](../autohsr/tests/fixtures/challenge_battle_wave_4_6.json)
+
+同一普通虚构录像的节点一和节点二均显示 1/3。普通混沌节点二显示 1/2。各自的节点归属可由录像中的先前入场画面回看，当前两张战斗帧只核实波次。玩法、节点、出战来源、秘技实际生效与最终战果分别保持待核实。出战归因需在同一运行中绑定账号、已核实节点、本次动作及动作后的新画面。[虚构节点一战斗](https://www.bilibili.com/video/BV1Qxnz6nEUB/?t=12.5) · [虚构节点二战斗](https://www.bilibili.com/video/BV1Qxnz6nEUB/?t=361) · [混沌节点二战斗](https://www.bilibili.com/video/BV1oG4h6UEVo/?t=161.4) · [虚构秘技画面](https://www.bilibili.com/video/BV1Qxnz6nEUB/?t=353) · [弱点转场](https://www.bilibili.com/video/BV1Qxnz6nEUB/?t=355)
+
 ### 本期常规混沌剩余轮
 
 4.6 本期「物竞天择」的已校准 16:9 版式须同屏出现居中关卡标题、独立「挑战成功」、单列轮数和「剩余轮」、左侧三行普通星级目标、底部居中「返回忘却之庭」。相邻两张新帧须读到相同轮数和相互重叠的对应字段框。核实后回执记录 `remaining_rounds` 与返回控件。普通终局的奖励栏属于独立内容。识别到「节点二」交接、星启、历史详情、确认弹窗或冲突字段时保留未核实。[4.6 官方排期](https://www.taptap.cn/moment/853326330178046059)

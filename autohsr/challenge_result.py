@@ -92,6 +92,15 @@ _ENTRY_BLOCKERS = ('挑战结束', '挑战成功', '挑战失败', '前往节点
 _ENTRY_METRICS = {pages.FICTION: ('当前积分', 'displayed_current_score', _FICTION_NODE_CAP),
                   pages.MODE: ('剩余轮', 'displayed_remaining_rounds', 45)}
 
+# The first-wave title shares its layout across challenge nodes. The battle
+# HUD stays independent of the number and of any previously observed entry.
+_WAVE_TITLE = (.406, .128, .594, .196)
+_WAVE_NUMBER = re.compile(r'战斗开始([1-3])/([23])')
+_WAVE_HUD_CAPTIONS = (('通关目标', (.710, .126, .813, .176)), ('特殊机制生效中', (.447, .209, .581, .262)))
+_WAVE_HEALTH_SLOTS = ((2, 312, 393), (3, 399, 535), (4, 547, 681))
+_WAVE_BLOCKERS = (*_ENTRY_BLOCKERS, '战斗结束', '战斗失败', '战斗暂停', '战斗设置', '退出战斗',
+                  '节点一', '节点二', '节点三')
+
 _STELLAR_RETRY = 'stellar_retry_ocr'
 _STELLAR_RETURNS = {pages.MODE: ('stellar_chaos_return_ocr', _CHAOS_RETURN_CAPTION),
                     pages.FICTION: ('stellar_fiction_return_ocr', '返回虚构叙事'),
@@ -196,6 +205,23 @@ class _NodeEntry:
 
 
 @dataclass(frozen=True)
+class _BattleWave:
+    current: int
+    total: int
+    banner: ROI
+    hud_caption: str
+    hud_box: ROI
+    health_bars: tuple[tuple[int, ROI], ...]
+
+    def agrees_with(self, other):
+        if (other is None or (self.current, self.total, self.hud_caption) != (other.current, other.total, other.hud_caption)
+                or not pages._overlaps(self.banner, other.banner) or not pages._overlaps(self.hud_box, other.hud_box)):
+            return False
+        other_bars = dict(other.health_bars)
+        return sum(slot in other_bars and pages._overlaps(box, other_bars[slot]) for slot, box in self.health_bars) >= 2
+
+
+@dataclass(frozen=True)
 class _StellarRead:
     value: int
     nodes: tuple[int, int, int]
@@ -226,6 +252,7 @@ class Feedback:
     stellar: _StellarRead | None = None
     stellar_handoff: _StellarHandoff | None = None
     node_entry: _NodeEntry | None = None
+    battle_wave: _BattleWave | None = None
 
 
 def _same_score_row(parts):
@@ -382,7 +409,7 @@ def _entry_banner_visible(image):
 
 
 def _read_node_entry(scene, words, modes, minimum):
-    if '节点二' not in words or any(blocker in word for word in words for blocker in _ENTRY_BLOCKERS):
+    if '节点二' not in words or any(blocker in word for word in words for blocker in (*_ENTRY_BLOCKERS, '战斗开始')):
         return None
     tokens = scene.tokens
     stage, node, hud = (_stellar_line(tokens, region, minimum) for region in (_ENTRY_STAGE, _ENTRY_NODE, _ENTRY_HUD))
@@ -416,6 +443,56 @@ def _read_node_entry(scene, words, modes, minimum):
         return None
     reading = _NodeEntry(title, metric, value[0], tuple(map(_score_box, (stage, node, hud))))
     return Feedback(mode, (), node_entry=reading)
+
+
+def _party_health_bars(image):
+    height, width = image.shape[:2]
+    top, bottom, first, last, end = (round(y * height / 720) for y in (633, 664, 642, 650, 655))
+    min_width = round(32 * width / 1280)
+    max_height = round(8 * height / 720)
+    bars = []
+    for slot, left, right in _WAVE_HEALTH_SLOTS:
+        x1, x2 = round(left * width / 1280), round(right * width / 1280)
+        blue, green, red = np.moveaxis(image[top:bottom, x1:x2].astype(np.int16), -1, 0)
+        mask = ((green >= 115) & (blue >= 115) & (green - red >= 27) & (blue - red >= 25)
+                & (np.abs(blue - green) <= 65))
+        _, _, stats, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=8)
+        candidates = [(x, y, w, h) for x, y, w, h, area in stats[1:]
+                      if w >= min_width and 2 <= h <= max_height and area >= .70 * w * h
+                      and first <= top + y <= last and top + y + h <= end]
+        if len(candidates) == 1:
+            x, y, w, h = map(int, candidates[0])
+            bars.append((slot, ((x1 + x) / width, (top + y) / height, (x1 + x + w) / width, (top + y + h) / height)))
+    return tuple((slot, box) for slot, box in bars
+                 if any(slot != other and max(box[1], other_box[1]) < min(box[3], other_box[3])
+                        for other, other_box in bars))
+
+
+def _read_battle_wave(scene, words, minimum):
+    if (not any('战斗' in word for word in words)
+            or any(blocker in word for word in words for blocker in _WAVE_BLOCKERS)):
+        return None
+    tokens = scene.tokens
+    banner = _stellar_line(tokens, _WAVE_TITLE, minimum)
+    match = _WAVE_NUMBER.fullmatch(_score_text(banner).replace(' ', '').replace('／', '/'))
+    if match is None:
+        return None
+    current, total = map(int, match.groups())
+    if current > total:
+        return None
+    hud = next(((caption, parts) for caption, region in _WAVE_HUD_CAPTIONS
+                if normalize(_score_text(parts := _stellar_line(tokens, region, minimum))) == caption), None)
+    if hud is None:
+        return None
+    caption, parts = hud
+    extras = [token for token in tokens if token not in (*banner, *parts)]
+    extra_words = tuple(normalize(token.text) for token in extras) + pages._line_words(extras, gap=.022)
+    if any('战斗开始' in word or caption == word for word in extra_words):
+        return None
+    bars = _party_health_bars(scene.image)
+    if len(bars) < 2 or any(pages._hits(scene, name, FULL) for name in (*_CONTROLS, _FAILURE)):
+        return None
+    return Feedback(None, (), battle_wave=_BattleWave(current, total, _score_box(banner), caption, _score_box(parts), bars))
 
 
 def _read_stellar_handoff(scene, words, modes, minimum):
@@ -559,6 +636,9 @@ def observe_feedback(scene, confidence=.65):
     if (any(word in ('确认', '取消', '确定') for word in words)
             or any(blocker in word for word in words for blocker in _BLOCKERS)):
         return None
+    wave = _read_battle_wave(clean, words, max(.85, confidence))
+    if wave is not None:
+        return wave
     modes = {mode for mode, title in pages._MODE_WORDS.items() if any(title in word for word in words)}
     entry = _read_node_entry(clean, words, modes, max(.85, confidence))
     if entry is not None:
@@ -655,7 +735,9 @@ def _same_feedback(first, second):
     same_handoff = handoff is second.stellar_handoff or (handoff is not None and handoff.agrees_with(second.stellar_handoff))
     entry = first.node_entry
     same_entry = entry is second.node_entry or (entry is not None and entry.agrees_with(second.node_entry))
-    return (first.mode == second.mode and same_rounds and same_stellar and same_handoff and same_entry
+    wave = first.battle_wave
+    same_wave = wave is second.battle_wave or (wave is not None and wave.agrees_with(second.battle_wave))
+    return (first.mode == second.mode and same_rounds and same_stellar and same_handoff and same_entry and same_wave
             and len(first.anchors) == len(second.anchors)
             and all(a.text == b.text and pages._overlaps(a.box, b.box)
                     for a, b in zip(first.anchors, second.anchors)))
@@ -684,7 +766,7 @@ class ResultReader:
         self.data = dict(schema=1, status='unknown', mode=None, level=None, half=None, node=None,
                          destination_node_in_caption=None, upper_half_score=None, lower_half_score=None,
                          node_one_score=None, node_two_score=None, total_score=None, remaining_rounds=None, stars=None,
-                         stellar_result=None, stellar_handoff=None, node_entry=None,
+                         stellar_result=None, stellar_handoff=None, node_entry=None, battle_wave=None,
                          settlement_status='unknown', outcome='unknown', visible_controls=[],
                          failure_marker_observed=None, completion_verified=False, rewards_verified=False,
                          evidence=[])
@@ -803,6 +885,15 @@ class ResultReader:
             field_names = ('stage_hud', 'node_banner', 'metric_hud')
             for row, frame in zip(evidence, frames):
                 row['node_entry_fields'] = dict(zip(field_names, map(list, frame.feedback.node_entry.boxes)))
+        wave = frames[-1].feedback.battle_wave
+        if wave is not None:
+            data['status'] = 'wave_observed'
+            data['battle_wave'] = dict(current_wave=wave.current, total_waves=wave.total)
+            for row, frame in zip(evidence, frames):
+                proof = frame.feedback.battle_wave
+                row['battle_wave_fields'] = dict(banner=list(proof.banner), hud_caption=proof.hud_caption,
+                                                  hud_box=list(proof.hud_box),
+                                                  health_bars=[dict(slot=slot, box=list(box)) for slot, box in proof.health_bars])
         path = self.directory / 'challenge-result.json'
         temporary = path.with_suffix('.tmp')
         payload = json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
@@ -844,6 +935,8 @@ class ResultReader:
                     result.detail = '已核实星启中间页的节点去向文案，刚完成和实际抵达的节点待核实。'
                 elif self.data['node_entry'] is not None:
                     result.detail = '已核实节点二入场横幅和场内读数，前一节点胜负与实际出战状态待核实。'
+                elif self.data['battle_wave'] is not None:
+                    result.detail = '已观察战斗波次与场内队伍状态，所属节点、出战来源和结果待核实。'
                 elif self.data['node_one_score'] is not None:
                     result.detail = '已核实本次末日幻影两个节点得分与总分，星数与领奖状态待核实。'
                 elif self.data['total_score'] is not None:

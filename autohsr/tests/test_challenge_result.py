@@ -37,6 +37,10 @@ CHAOS_RESULT_FIXTURE = FIXTURES.parent / 'challenge_chaos_result_4_6.json'
 STELLAR_RESULT_FIXTURE = FIXTURES.parent / 'challenge_stellar_result_4_6.json'
 STELLAR_HANDOFF_FIXTURE = FIXTURES.parent / 'challenge_stellar_handoff_4_6.json'
 NODE_ENTRY_FIXTURE = FIXTURES.parent / 'challenge_node_entry_4_6.json'
+BATTLE_WAVE_FIXTURE = FIXTURES.parent / 'challenge_battle_wave_4_6.json'
+BATTLE_WAVE_CASES = (
+    ('fiction_first', 3, '通关目标'), ('fiction_second', 3, '通关目标'), ('chaos_second', 2, '特殊机制生效中'),
+)
 NODE_ENTRY_CASES = (
     ('fiction_second', pages.FICTION, 'displayed_current_score', 25840, 4),
     ('chaos_second', pages.MODE, 'displayed_remaining_rounds', 30, None),
@@ -134,6 +138,16 @@ def node_entry_frame(name):
     source = public_result_frame(NODE_ENTRY_FIXTURE, name)
     source.image[:] = 110
     source.image[78:103, 256:700] = 29
+    return source
+
+
+def battle_wave_frame(name, *, slots=(2, 3, 4)):
+    row = json.loads(BATTLE_WAVE_FIXTURE.read_bytes())['frames'][name]
+    source = frame(extra=[Token(item['text'], item['confidence'], tuple(item['box'])) for item in row['tokens']])
+    for bar in row['health_bars']:
+        if bar['slot'] in slots:
+            left, top, right, bottom = (round(v * size) for v, size in zip(bar['box'], (960, 540, 960, 540)))
+            source.image[top:bottom, left:right] = (201, 219, 143)
     return source
 
 
@@ -525,6 +539,61 @@ class NodeEntryObservationTests(unittest.TestCase):
                 self.assertIsNone(observe_feedback(replace(source, tokens=[*tokens, label, changed])))
 
 
+class BattleWaveObservationTests(unittest.TestCase):
+    def test_public_battle_start_needs_a_complete_wave_and_hud(self):
+        for name, total, caption in BATTLE_WAVE_CASES:
+            for part in ('a', 'b'):
+                with self.subTest(name=name, part=part):
+                    feedback = observe_feedback(battle_wave_frame(f'{name}_{part}'))
+                    wave = feedback.battle_wave
+                    self.assertEqual((wave.current, wave.total, wave.hud_caption), (1, total, caption))
+                    self.assertGreaterEqual(len(wave.health_bars), 2)
+                    self.assertIsNone(feedback.mode)
+                    self.assertIsNone(feedback.node_entry)
+                    self.assertIsNone(feedback.score)
+
+    def test_actual_glare_technique_partial_wave_and_later_hud_are_separate(self):
+        for name in ('fiction_transition_glare', 'fiction_technique', 'fiction_weakness_transition',
+                     'fiction_fraction_ocr_lost', 'fiction_health_hud_covered', 'fiction_after_banner',
+                     'chaos_health_hud_covered'):
+            with self.subTest(name=name):
+                self.assertIsNone(observe_feedback(battle_wave_frame(name)))
+        for scene in (node_entry_frame('fiction_second_a'), stellar_handoff_frame('fiction_next_two_a'),
+                      chaos_result_frame(), fiction_final(), frame(NEXT)):
+            self.assertIsNone(observe_feedback(scene).battle_wave)
+
+    def test_wave_fraction_uses_contiguous_local_fields_and_rejects_conflicting_phases(self):
+        source = battle_wave_frame('fiction_second_a')
+        tokens = [item for item in source.tokens if item.text != '战斗开始1/3']
+        prefix = token('战斗开始', (409, 75, 493, 100))
+        fraction = token('２／３', (497, 75, 556, 100))
+        wave = observe_feedback(replace(source, tokens=[*tokens, prefix, fraction])).battle_wave
+        self.assertEqual((wave.current, wave.total), (2, 3))
+        split = [token('战斗', (409, 75, 445, 100)), token('开始', (460, 75, 493, 100)), fraction]
+        self.assertEqual(observe_feedback(replace(source, tokens=[*tokens, *split])).battle_wave.current, 2)
+        for altered in (replace(fraction, text='1'), replace(fraction, text='173'), replace(fraction, text='1/,3'),
+                        replace(fraction, text='3/2'),
+                        replace(fraction, text='1/5'), replace(fraction, score=.82),
+                        token('1/3', (515, 75, 556, 100))):
+            with self.subTest(altered=altered):
+                self.assertIsNone(observe_feedback(replace(source, tokens=[*tokens, prefix, altered])))
+        for extra in (token('战斗开始1/2', (670, 190, 809, 218)), token('挑战结束', (441, 255, 520, 290)),
+                      token('节点二', (545, 178, 609, 193)), token('战斗设置', (766, 209, 831, 226))):
+            with self.subTest(extra=extra.text):
+                self.assertIsNone(observe_feedback(replace(source, tokens=[*source.tokens, extra])))
+
+    def test_hud_needs_corresponding_thin_health_bars_on_one_row(self):
+        first = battle_wave_frame('fiction_second_a', slots=(3, 4))
+        self.assertEqual(len(observe_feedback(first).battle_wave.health_bars), 2)
+        self.assertIsNone(observe_feedback(battle_wave_frame('fiction_second_a', slots=(3,))))
+        for shade in (24, (201, 219, 143)):
+            with self.subTest(shade=shade):
+                image = np.full_like(first.image, shade)
+                self.assertIsNone(observe_feedback(replace(first, image=image)))
+        without_hud = [t for t in first.tokens if t.text not in ('通关目标', '特殊机制生效中')]
+        self.assertIsNone(observe_feedback(replace(first, tokens=without_hud)))
+
+
 class ResultObservationTests(unittest.TestCase):
     def test_pinned_caption_and_glyph_need_same_frame_and_mode(self):
         observed = observe_feedback(frame(FICTION, FAILURE))
@@ -900,6 +969,58 @@ class ResultEntryTests(unittest.TestCase):
         terminal = self.run_cli([first, chaos_result_frame(), chaos_result_frame()])['challenge_result']
         self.assertEqual((terminal['status'], terminal['remaining_rounds'], terminal['node_entry']),
                          ('feedback_verified', 30, None))
+
+    def test_cli_battle_wave_keeps_stage_node_action_and_outcome_unverified(self):
+        for name, total, caption in BATTLE_WAVE_CASES:
+            with self.subTest(name=name):
+                report = self.run_cli([battle_wave_frame(f'{name}_{part}') for part in ('a', 'b')])
+                data = report['challenge_result']
+                self.assertEqual((report['status'], data['status']), ('partial', 'wave_observed'))
+                self.assertEqual(data['battle_wave'], {'current_wave': 1, 'total_waves': total})
+                for field in ('mode', 'level', 'half', 'node', 'node_entry', 'destination_node_in_caption',
+                              'stellar_result', 'stellar_handoff', 'stars', 'remaining_rounds', 'total_score'):
+                    self.assertIsNone(data[field])
+                self.assertEqual(data['visible_controls'], [])
+                self.assertEqual((data['outcome'], data['settlement_status']), ('unknown', 'unknown'))
+                self.assertFalse(data['completion_verified'])
+                self.assertFalse(data['rewards_verified'])
+                folder = Path(report['run_dir'])
+                self.assertEqual(json.loads((folder / 'challenge-result.json').read_bytes()), data)
+                self.assertEqual([row['capture_sequence'] for row in data['evidence']], [1, 2])
+                for row in data['evidence']:
+                    self.assertEqual(row['battle_wave_fields']['hud_caption'], caption)
+                    self.assertGreaterEqual(len(row['battle_wave_fields']['health_bars']), 2)
+                    self.assertEqual(row['sha256'], hashlib.sha256((folder / row['screenshot']).read_bytes()).hexdigest())
+
+    def test_cli_battle_wave_pair_needs_same_fraction_and_matching_health_rows(self):
+        first, second = (battle_wave_frame(f'fiction_second_{part}') for part in ('a', 'b'))
+        for gap in (EmptyCapture(), battle_wave_frame('chaos_second_a'), battle_wave_frame('fiction_after_banner')):
+            with self.subTest(gap=type(gap).__name__):
+                unknown = self.run_cli([first, gap, second])['challenge_result']
+                self.assertIsNone(unknown['battle_wave'])
+                self.assertEqual(unknown['status'], 'unknown')
+                found = self.run_cli([first, gap, first, second])['challenge_result']
+                self.assertEqual(found['battle_wave'], {'current_wave': 1, 'total_waves': 3})
+                self.assertEqual([row['capture_sequence'] for row in found['evidence']], [3, 4])
+        different = [battle_wave_frame('fiction_second_a', slots=slots) for slots in ((2, 3), (3, 4))]
+        self.assertIsNone(self.run_cli(different)['challenge_result']['battle_wave'])
+        no_account = replace(first, tokens=[item for item in first.tokens if item is not ACCOUNT])
+        self.assertIsNone(self.run_cli([no_account, no_account])['challenge_result']['battle_wave'])
+
+    def test_cli_prior_entry_and_old_action_file_cannot_bind_an_observed_wave(self):
+        history = self.root / 'runs' / 'prior' / 'challenge-result.json'
+        history.parent.mkdir(parents=True)
+        payload = b'{"mode":"pure_fiction","node":2,"deployment_verified":true}'
+        history.write_bytes(payload)
+        first = battle_wave_frame('fiction_first_a')
+        second = battle_wave_frame('fiction_second_a')
+        report = self.run_cli([node_entry_frame('fiction_second_a'), first, second])
+        data = report['challenge_result']
+        self.assertEqual(data['battle_wave'], {'current_wave': 1, 'total_waves': 3})
+        self.assertIsNone(data['node_entry'])
+        self.assertIsNone(data['node'])
+        self.assertIsNone(data['mode'])
+        self.assertEqual(history.read_bytes(), payload)
 
     def test_cli_apocalyptic_score_requires_same_parts_in_consecutive_complete_frames(self):
         good = apocalyptic_score_frame('terminal_first')
