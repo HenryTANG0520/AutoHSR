@@ -32,14 +32,14 @@ def read(path):
     return strict_json(raw.decode('utf-8'))
 
 
-def _write(path, data):
+def _write(path, data, *, before_replace=None):
     raw = encoded(data)
     if len(raw) > MAX_BYTES:
         raise AutomationError('差分领奖记录过大，未提交输入。')
     temporary = path.with_suffix('.tmp')
     with temporary.open('wb') as stream:
         stream.write(raw); stream.flush(); os.fsync(stream.fileno())
-    replace_file(temporary, path)
+    replace_file(temporary, path, before_replace=before_replace)
 
 
 def _checked(root, data, *, sources=False):
@@ -259,12 +259,15 @@ class RewardStore:
         self.data = data
         data.update(journal=str(self.path), run_dir=str(self.directory))
 
-    def persist(self):
+    def persist(self, *, before_replace=None):
         self.data['digest'] = digest({key: value for key, value in self.data.items() if key != 'digest'})
         # Every input requires both writes. A crash after the first write can
         # only leave an unsent intent or block admission, never replay a claim.
-        _write(self.path, self.data)
-        _write(self.root / NAME, self.data)
+        for path in (self.path, self.root / NAME):
+            if before_replace is None:
+                _write(path, self.data)
+            else:
+                _write(path, self.data, before_replace=before_replace)
 
     def require_durable(self):
         if (encoded(read(self.path)) != encoded(self.data) or encoded(read(self.root / NAME)) != encoded(self.data)

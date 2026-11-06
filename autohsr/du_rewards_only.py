@@ -578,7 +578,12 @@ class RewardWorkflow:
         self.data.update(status='complete' if success else 'partial', safe_to_restart=True,
                          rewards_verified=success, remaining_categories=[] if success else [periodic.CATEGORY],
                          final_home_frames=deepcopy(self.data['actions'][-1]['after']))
-        self.store.persist()
+
+        def require_same_week():
+            if periodic.current_week() != self.week:
+                raise AutomationError('差分周期领奖回执落盘前已跨周，保留原周领取与返回证据，结果待核对。')
+
+        self.store.persist(before_replace=require_same_week)
         return TaskResult('du_rewards', 'ok' if success else 'partial',
                           '已核实周期积分物品、原十档和差分主页返回。' if success
                           else '积分面板可领取状态未核实，已回到差分主页。')
@@ -607,12 +612,22 @@ class RewardWorkflow:
                     if any(normalize(t.text)=='月下奇谭' for t in targets):self.data['remaining_categories'].append('月下奇谭')
                 if not candidates:
                     known=pages.red_dots(clean,(.66,.23,.995,.70))
-                    if len(known)>len(targets) or any(not dot.within((.66,.23,.995,.70)) for dot in pages.red_dots(clean)):
+                    outside = [dot for dot in pages.red_dots(clean) if not dot.within((.66,.23,.995,.70))]
+                    if any(dot.within(periodic.BADGE) for dot in outside):
+                        try:
+                            observed = periodic.home_control(scene, periodic.current_week(), self.confidence)
+                        except AutomationError:
+                            observed = None
+                        if observed is not None and observed[1] is not None:
+                            self.data['skipped_optional_categories'].append(periodic.CATEGORY)
+                            outside = [dot for dot in outside if not dot.within(periodic.BADGE)]
+                    if len(known)>len(targets) or outside:
                         self.data['remaining_categories'].append('未绑定红点')
                     self.data['remaining_categories']=sorted(set(self.data['remaining_categories']))
                     self.data.update(status='partial' if self.data['remaining_categories'] else 'complete',
                         rewards_verified=not self.data['remaining_categories'],safe_to_restart=True,
-                        all_notifications_cleared=not targets and not self.data['remaining_categories'],
+                        all_notifications_cleared=not (targets or self.data['remaining_categories']
+                                                       or self.data['skipped_optional_categories']),
                         final_home_frames=frames)
                     self.store.persist()
                     return TaskResult('du_rewards','partial' if self.data['remaining_categories'] else 'ok',

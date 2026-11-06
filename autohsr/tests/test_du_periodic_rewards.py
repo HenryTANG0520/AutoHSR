@@ -10,10 +10,11 @@ from unittest.mock import Mock, patch
 
 import cv2
 
-from autohsr import du_periodic_rewards as periodic, windows
+from autohsr import du_periodic_rewards as periodic, du_reward_store as store, windows
 from autohsr.app import Context
 from autohsr.config import Settings
 from autohsr.du_reward_store import NAME, digest, encoded, preflight
+from autohsr.du_rewards_feedback import rewards_result
 from autohsr.du_rewards_only import run_rewards
 from autohsr.models import AutomationError, RunReport, Stopped
 from autohsr.storage import hold_read_sources
@@ -194,3 +195,85 @@ class PeriodicRewardTests(unittest.TestCase):
                 else:
                     with self.assertRaises(AutomationError):
                         preflight(root)
+
+    def test_free_scope_skips_the_bound_periodic_badge_and_reports_other_unbound_dots(self):
+        for other_dot in (False, True):
+            with self.subTest(other_dot=other_dot):
+                scene = points_home(True)
+                if other_dot:
+                    dot(scene, .35, .75)
+                root, context, native, simulated = self.play(twice(scene))
+                with simulated, patch.object(periodic, 'local_now', return_value=NOW):
+                    result = run_rewards(context)
+                self.assertEqual(result.status, 'partial' if other_dot else 'ok')
+                receipt = preflight(root)
+                self.assertEqual(receipt['skipped_optional_categories'], [periodic.CATEGORY])
+                self.assertEqual(receipt['remaining_categories'], ['未绑定红点'] if other_dot else [])
+                self.assertFalse(receipt['all_notifications_cleared'])
+                self.assertNotIn('periodic_rewards_verified', receipt)
+                if not other_dot:
+                    title, detail = rewards_result(dict(operation='du_rewards', status='success', report_saved=True,
+                                                       du_rewards=receipt))
+                    self.assertEqual(title, '差分领奖已核实')
+                    self.assertIn('未请求，已跳过：周期积分', detail)
+                native.SendInput.assert_not_called()
+
+    def test_last_foreground_f10_and_last_clock_read_prevent_the_periodic_claim_packet(self):
+        for fault, error in (('f10', Stopped), ('week', AutomationError)):
+            with self.subTest(fault=fault):
+                frames = [*twice(points_home(True)), *twice(points_panel()), *twice(overlay())]
+                root, context, native, simulated = self.play(frames)
+                clock, guard_calls = [NOW], 0
+                geometry = context.window.guard.return_value
+
+                def guard(*_):
+                    nonlocal guard_calls
+                    request = context.du_rewards_workflow.request
+                    if request is not None and request.intent == periodic.CLAIM:
+                        guard_calls += 1
+                    return geometry
+
+                def emergency(_):
+                    if guard_calls < 3:
+                        return 0
+                    if fault == 'f10':
+                        return 0x8000
+                    clock[0] = datetime(2026, 11, 2, 4, 0, tzinfo=CHINA)
+                    return 0
+
+                context.window.guard.side_effect = guard
+                native.GetAsyncKeyState = emergency
+                with simulated, patch.object(periodic, 'local_now', side_effect=lambda: clock[0]), self.assertRaises(error):
+                    run_rewards(context, periodic_only=True)
+                self.assertEqual(guard_calls, 3)
+                self.assertEqual([call.args[0] for call in native.SendInput.call_args_list], [3])
+                self.assertEqual(store.read(root / NAME)['actions'][-1]['status'], 'unknown')
+                with self.assertRaises(AutomationError):
+                    preflight(root)
+
+    def test_rollover_during_final_receipt_publication_preserves_the_original_claim(self):
+        frames = [*twice(points_home(True)), *twice(points_panel()), *twice(overlay()),
+                  *twice(points_panel(claimed=True)), *twice(points_home(False))]
+        root, context, native, simulated = self.play(frames)
+        clock = [NOW]
+        replace = store.replace_file
+
+        def rollover(source, destination, **kwargs):
+            if destination.name == NAME and store.read(source)['status'] == 'complete':
+                clock[0] = datetime(2026, 11, 2, 4, 0, tzinfo=CHINA)
+            return replace(source, destination, **kwargs)
+
+        with (simulated, patch.object(periodic, 'local_now', side_effect=lambda: clock[0]),
+              patch.object(store, 'replace_file', side_effect=rollover),
+              self.assertRaisesRegex(AutomationError, '回执落盘前已跨周')):
+            run_rewards(context, periodic_only=True)
+        self.assertEqual([call.args[0] for call in native.SendInput.call_args_list], [3, 3, 3, 1, 1])
+        receipt = store.read(root / NAME)
+        self.assertEqual(store.read(receipt['journal']), receipt)
+        self.assertEqual((receipt['status'], receipt['game_week']), ('unknown', '2026-10-26'))
+        self.assertTrue(receipt['periodic_rewards_verified'])
+        self.assertEqual(receipt['claims'][0]['status'], 'verified')
+        self.assertEqual(len(receipt['final_home_frames']), 2)
+        self.assertFalse(receipt['rewards_verified'])
+        with self.assertRaises(AutomationError):
+            preflight(root)

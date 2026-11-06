@@ -6,6 +6,7 @@ typed scope/results, and never includes its private evidence or error strings.
 
 FREE_CATEGORIES = ('拟合等级', '稳态数组', '可能性画廊')
 MOON = '月下奇谭'
+PERIODIC = '周期积分'
 CATEGORIES = (*FREE_CATEGORIES, MOON)
 _UNKNOWN_DOT = '未绑定红点'
 _CLAIM_INTENTS = {'du_reward_dot': '拟合等级', 'du_reward_claim': '稳态数组',
@@ -38,7 +39,7 @@ def _summary(data):
     if requested != wanted:
         raise ValueError('inconsistent request')
     remaining = _categories(data.get('remaining_categories'), (*wanted, _UNKNOWN_DOT))
-    skipped = _categories(data.get('skipped_optional_categories'), () if use else (MOON,))
+    skipped = _categories(data.get('skipped_optional_categories'), (PERIODIC,) if use else (MOON, PERIODIC))
     actions, claims = data.get('actions'), data.get('claims')
     if (type(actions) is not list or len(actions) > 240 or type(claims) is not list or len(claims) > 240):
         raise ValueError('invalid actions')

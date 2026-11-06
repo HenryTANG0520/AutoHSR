@@ -279,7 +279,11 @@ class Context:
         self.sleep(self.settings.action_delay)
 
     def _du_periodic_reward_input(self, workflow, scene, action):
+        from .du_periodic_rewards import capture_time
+
         window, geometry = self.window, scene.geometry
+        image, tokens, fields = scene.image, tuple(scene.tokens), scene.field_reads.copy()
+        epoch, sequence, stamp, hwnd = self.scene_epoch, self.capture_sequence, scene.captured_at, window.hwnd
         submitted = False
 
         def before_submit():
@@ -287,10 +291,19 @@ class Context:
             if submitted or self.window is not window or scene.geometry != geometry:
                 raise InputInterrupted('周期领奖发送前的窗口来源已改变。')
             workflow.authorize(scene, action)
-            if window.emergency_pressed() is True or getattr(self.runner, 'stop_requested', False) is True:
-                raise Stopped('周期领奖已停止，未发送当前动作。')
             window.guard(geometry)
-            workflow._fresh(scene)
+            if window.emergency_pressed() is True:
+                raise Stopped('周期领奖已停止，未发送当前动作。')
+            capture_time(scene, workflow.week)
+            if getattr(self.runner, 'stop_requested', False) is True:
+                raise Stopped('周期领奖已停止，未发送当前动作。')
+            if (self.window is not window or window.hwnd != hwnd or scene.geometry != geometry
+                    or self.last_scene is not scene or self.capture_sequence != sequence
+                    or self.scene_epoch != epoch or self.runner.input_epoch != epoch
+                    or scene.captured_at != stamp or not 0 <= time.monotonic() - stamp <= 8
+                    or scene.image is not image or image.flags.writeable or tuple(scene.tokens) != tokens
+                    or scene.field_reads != fields):
+                raise InputInterrupted('周期领奖最后核对的画面或输入代次已改变。')
             submitted = True
             self.last_scene, self._scroll_anchor = None, None
 
@@ -298,7 +311,11 @@ class Context:
             raise AutomationError('周期领奖缺少当前窗口几何。')
         workflow.authorize(scene, action)
         try:
-            with hold_read_sources(workflow.input_sources(action)):
+            with ExitStack() as held:
+                held.enter_context(hold_read_sources(workflow.input_sources(action)))
+                if image.flags.writeable:
+                    image.setflags(write=False)
+                    held.callback(image.setflags, write=True)
                 if action.target is not None:
                     window.click(*action.target.center, geometry, before_submit=before_submit)
                 elif action.key == 'esc':
