@@ -80,6 +80,18 @@ _CHAOS_RETURN_CAPTION = '返回忘却之庭'
 _CHAOS_BLOCKERS = ('星启', '节点一', '节点二', '节点三', '节点3', '节点３', '前往节点',
                    '挑战失败', '挑战结束', '退出', '重新挑战', '角色编队', '通关详情',
                    '历史积分', '历史最高', '快速通关', '返回主界面', '返回主页')
+
+# The 4.6 node-two entry banner and the separate top-left in-field HUD.
+_ENTRY_STAGE = (.009, .008, .130, .046)
+_ENTRY_NODE = (.450, .139, .552, .194)
+_ENTRY_HUD = (.009, .298, .177, .350)
+_ENTRY_BANNER_METRIC = (.445, .190, .555, .231)
+_ENTRY_BLOCKERS = ('挑战结束', '挑战成功', '挑战失败', '前往节点', '重新挑战', '退出挑战', '角色编队',
+                   '返回虚构叙事', '返回末日幻影', _CHAOS_RETURN_CAPTION, '首领特性', '点击空白处关闭',
+                   '通关详情', '历史积分', '历史最高', '返回主界面', '返回主页', '选择模式', '切换模式')
+_ENTRY_METRICS = {pages.FICTION: ('当前积分', 'displayed_current_score', _FICTION_NODE_CAP),
+                  pages.MODE: ('剩余轮', 'displayed_remaining_rounds', 45)}
+
 _STELLAR_RETRY = 'stellar_retry_ocr'
 _STELLAR_RETURNS = {pages.MODE: ('stellar_chaos_return_ocr', _CHAOS_RETURN_CAPTION),
                     pages.FICTION: ('stellar_fiction_return_ocr', '返回虚构叙事'),
@@ -172,6 +184,18 @@ class _MemoryRounds:
 
 
 @dataclass(frozen=True)
+class _NodeEntry:
+    title: str
+    metric: str
+    value: int
+    boxes: tuple[ROI, ...]
+
+    def agrees_with(self, other):
+        return (other is not None and (self.title, self.metric, self.value) == (other.title, other.metric, other.value)
+                and all(pages._overlaps(a, b) for a, b in zip(self.boxes, other.boxes)))
+
+
+@dataclass(frozen=True)
 class _StellarRead:
     value: int
     nodes: tuple[int, int, int]
@@ -201,6 +225,7 @@ class Feedback:
     memory_detail: chaos_detail.Detail | None = None
     stellar: _StellarRead | None = None
     stellar_handoff: _StellarHandoff | None = None
+    node_entry: _NodeEntry | None = None
 
 
 def _same_score_row(parts):
@@ -342,6 +367,55 @@ def _read_apocalyptic_terminal(tokens, words, minimum):
 def _stellar_line(tokens, region, minimum):
     # Adjacent header rows can overlap slightly. Assign tokens by their centers.
     return _score_line(tuple(token for token in tokens if token.within(region)), region, minimum)
+
+
+def _entry_banner_visible(image):
+    height, width = image.shape[:2]
+    y0, y1, y2, y3, y4, y5 = (round(y * height / 720) for y in (91, 103, 114, 132, 140, 154))
+    for left, right in ((460, 568), (710, 820)):
+        x1, x2 = round(left * width / 1280), round(right * width / 1280)
+        gray = cv2.cvtColor(image[y0:y5, x1:x2], cv2.COLOR_BGR2GRAY)
+        dark = np.median(gray[y2-y0:y3-y0])
+        if dark > 58 or min(np.median(gray[:y1-y0]), np.median(gray[y4-y0:])) < dark + 20:
+            return False
+    return True
+
+
+def _read_node_entry(scene, words, modes, minimum):
+    if '节点二' not in words or any(blocker in word for word in words for blocker in _ENTRY_BLOCKERS):
+        return None
+    tokens = scene.tokens
+    stage, node, hud = (_stellar_line(tokens, region, minimum) for region in (_ENTRY_STAGE, _ENTRY_NODE, _ENTRY_HUD))
+    if normalize(_score_text(node)) != '节点二':
+        return None
+    title = normalize(_score_text(stage))
+    if title == _FICTION_STAGE_NAMES[0]:
+        mode = pages.FICTION
+    elif _CHAOS_TITLE_PATTERN.fullmatch(title):
+        mode = pages.MODE
+    else:
+        return None
+    label, metric, maximum = _ENTRY_METRICS[mode]
+    value = _score_value(hud, label)
+    if modes - {mode} or value is None or value[0] > maximum or not _entry_banner_visible(scene.image):
+        return None
+
+    # A complete contradictory center read vetoes the HUD. The small white
+    # animation sometimes yields a bare suffix, which carries no value by itself.
+    center = _stellar_line(tokens, _ENTRY_BANNER_METRIC, minimum)
+    for other, _, _ in _ENTRY_METRICS.values():
+        display = _score_value(center, other)
+        if display is not None and (other != label or display[0] != value[0]):
+            return None
+    extras = [token for token in tokens if token not in (*stage, *node, *hud, *center)]
+    extra_words = tuple(normalize(token.text) for token in extras) + pages._line_words(extras, gap=.012)
+    competing = ('取象为文', '物竞天择', '支配遗忘', '当前积分', '剩余轮')
+    if any(word in _STELLAR_NODES or word.startswith(competing) for word in extra_words):
+        return None
+    if any(pages._hits(scene, name, FULL) for name in (*_CONTROLS, _FAILURE)):
+        return None
+    reading = _NodeEntry(title, metric, value[0], tuple(map(_score_box, (stage, node, hud))))
+    return Feedback(mode, (), node_entry=reading)
 
 
 def _read_stellar_handoff(scene, words, modes, minimum):
@@ -486,6 +560,9 @@ def observe_feedback(scene, confidence=.65):
             or any(blocker in word for word in words for blocker in _BLOCKERS)):
         return None
     modes = {mode for mode, title in pages._MODE_WORDS.items() if any(title in word for word in words)}
+    entry = _read_node_entry(clean, words, modes, max(.85, confidence))
+    if entry is not None:
+        return entry
     stellar_layout = any('星启' in word for word in words) or (
         '节点三' in words and any(layout.stage in words for layout in _STELLAR_LAYOUTS.values()))
     if stellar_layout and any('前往节点' in word or word == '退出' for word in words):
@@ -576,7 +653,9 @@ def _same_feedback(first, second):
     same_stellar = stellar is second.stellar or (stellar is not None and stellar.agrees_with(second.stellar))
     handoff = first.stellar_handoff
     same_handoff = handoff is second.stellar_handoff or (handoff is not None and handoff.agrees_with(second.stellar_handoff))
-    return (first.mode == second.mode and same_rounds and same_stellar and same_handoff
+    entry = first.node_entry
+    same_entry = entry is second.node_entry or (entry is not None and entry.agrees_with(second.node_entry))
+    return (first.mode == second.mode and same_rounds and same_stellar and same_handoff and same_entry
             and len(first.anchors) == len(second.anchors)
             and all(a.text == b.text and pages._overlaps(a.box, b.box)
                     for a, b in zip(first.anchors, second.anchors)))
@@ -605,7 +684,7 @@ class ResultReader:
         self.data = dict(schema=1, status='unknown', mode=None, level=None, half=None, node=None,
                          destination_node_in_caption=None, upper_half_score=None, lower_half_score=None,
                          node_one_score=None, node_two_score=None, total_score=None, remaining_rounds=None, stars=None,
-                         stellar_result=None, stellar_handoff=None,
+                         stellar_result=None, stellar_handoff=None, node_entry=None,
                          settlement_status='unknown', outcome='unknown', visible_controls=[],
                          failure_marker_observed=None, completion_verified=False, rewards_verified=False,
                          evidence=[])
@@ -716,6 +795,14 @@ class ResultReader:
             field_names = ('mode_badge', 'stage', 'result_heading', 'node_one', 'node_two', 'node_three')
             for row, frame in zip(evidence, frames):
                 row['stellar_handoff_fields'] = dict(zip(field_names, map(list, frame.feedback.stellar_handoff.boxes)))
+        entry = frames[-1].feedback.node_entry
+        if entry is not None:
+            data['status'] = 'entry_verified'
+            data['node_entry'] = dict(node_in_caption=2, level=4 if mode == pages.FICTION else None,
+                                      **{entry.metric: entry.value})
+            field_names = ('stage_hud', 'node_banner', 'metric_hud')
+            for row, frame in zip(evidence, frames):
+                row['node_entry_fields'] = dict(zip(field_names, map(list, frame.feedback.node_entry.boxes)))
         path = self.directory / 'challenge-result.json'
         temporary = path.with_suffix('.tmp')
         payload = json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
@@ -755,6 +842,8 @@ class ResultReader:
                     result.detail = '已核实星启结果页显示的三节点与汇总数值，实际通关与领奖状态待核实。'
                 elif self.data['stellar_handoff'] is not None:
                     result.detail = '已核实星启中间页的节点去向文案，刚完成和实际抵达的节点待核实。'
+                elif self.data['node_entry'] is not None:
+                    result.detail = '已核实节点二入场横幅和场内读数，前一节点胜负与实际出战状态待核实。'
                 elif self.data['node_one_score'] is not None:
                     result.detail = '已核实本次末日幻影两个节点得分与总分，星数与领奖状态待核实。'
                 elif self.data['total_score'] is not None:

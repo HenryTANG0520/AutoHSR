@@ -153,6 +153,14 @@ Windows 发布回执时持有两张 PNG 的只读句柄，发布最终报告时�
 
 双帧核实模式反馈后 `challenge_result.status=feedback_verified`，只有去向文案时为 `caption_verified`，证据不足时为 `unknown`。成绩按下述已校准布局发布。实际半场、已到节点、胜负与最终结算分别留空或为 `unknown`，`completion_verified` 和 `rewards_verified` 为 `false`。运行状态为 `partial`，CLI 退出 1。已有主页星数仍属于主页历史观察，备战回执仍由 `--challenge-prepare` 独立记录。[反馈入口验证](../VALIDATION.md#2026-11-06-高难结算只读反馈)
 
+### 本期虚构与混沌节点二入场
+
+4.6 已校准的 16:9 入场画面有上中深色横幅「节点二」，以及左上场内 HUD 的当期期名和完整读数。横幅两翼须符合画面中的明暗边界，两个同账号相邻新帧须读到相同字段与对应位置。上中小字有完整的冲突读数时，场内 HUD 也保持未核实。核实后回执为 `entry_verified`，将横幅节点与 `displayed_current_score` 或 `displayed_remaining_rounds` 写入 `node_entry`。虚构可凭本期「取象为文其四」核实该字段内的第四层。混沌左上 OCR 会把十一层或十二层读成十，当前只核实「物竞天择」期名，层号留空。[脱敏字段、裁片位置与哈希](../autohsr/tests/fixtures/challenge_node_entry_4_6.json)
+
+常规虚构原片上半末尾只有战场内的「剩余0轮」提示，随后直接切场。05:47.000 和 05:47.300 的节点二入场读到当前积分 25,840，横幅消失后同一积分仍留在 HUD。其真正终局另显示两个节点和总分 65,840。常规混沌 02:19.800 和 02:20.200 的节点二入场读到剩余 30 轮，终局也有 30 轮。两种读数分别属于入场 HUD 和终局结果。[虚构上半末尾](https://www.bilibili.com/video/BV1Qxnz6nEUB/?t=345) · [虚构节点二](https://www.bilibili.com/video/BV1Qxnz6nEUB/?t=347.3) · [虚构终局](https://www.bilibili.com/video/BV1Qxnz6nEUB/?t=912.2) · [混沌节点二](https://www.bilibili.com/video/BV1oG4h6UEVo/?t=139.8) · [混沌终局](https://www.bilibili.com/video/BV1oG4h6UEVo/?t=280)
+
+星启同名节点二也用此横幅及场内 HUD。公开对照分别读到虚构 40,000 分、混沌 43 轮。当前回执核实现场的玩法、横幅和读数，常规或星启、前一侧胜负、实际出战、结算与领奖继续分别待核实。上游普通流程同样在前一间等待下一间准备画面，最后一间等独立返回反馈。[星启虚构节点二](https://www.bilibili.com/video/BV1g8nj6JEyi/?t=171) · [星启混沌节点二](https://www.bilibili.com/video/BV1Ht4F6MEG5/?t=272) · [上游普通虚构](https://github.com/moesnow/March7thAssistant/blob/26bee153544db44a882313f361b5ddbcefb001fa/tasks/challenge/purefiction.py#L202-L227) · [上游普通混沌](https://github.com/moesnow/March7thAssistant/blob/26bee153544db44a882313f361b5ddbcefb001fa/tasks/challenge/memoryofchaos.py#L207-L226)
+
 ### 本期常规混沌剩余轮
 
 4.6 本期「物竞天择」的已校准 16:9 版式须同屏出现居中关卡标题、独立「挑战成功」、单列轮数和「剩余轮」、左侧三行普通星级目标、底部居中「返回忘却之庭」。相邻两张新帧须读到相同轮数和相互重叠的对应字段框。核实后回执记录 `remaining_rounds` 与返回控件。普通终局的奖励栏属于独立内容。识别到「节点二」交接、星启、历史详情、确认弹窗或冲突字段时保留未核实。[4.6 官方排期](https://www.taptap.cn/moment/853326330178046059)

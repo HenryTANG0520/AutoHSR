@@ -1,0 +1,175 @@
+{
+  "schema": 1,
+  "origin": "Public 4.6 Simplified Chinese footage, with fields read from two regions on each frame.",
+  "playback_pixels": [1280, 720],
+  "center_crop_xyxy": [312, 24, 958, 696],
+  "left_hud_source_crop_xyxy": [0, 0, 312, 278],
+  "left_hud_retained_xyxy": [[0, 0, 218, 32], [0, 209, 246, 275]],
+  "frames": {
+    "fiction_second_a": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=347",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 347.0,
+      "variant_in_recording": "ordinary",
+      "center_sha256": "1db85edd2953231a08c0b7389a60ee92a275533d4902356f7e555a9b87b6622e",
+      "left_hud_sha256": "6cb05fe7311afbcfa2a867bfef6a91fc341a2f8dac7b0c9044b74188255ba33d",
+      "tokens": [
+        {"text": "取象为文其四", "confidence": 0.9989, "box": [0.0297, 0.0139, 0.0984, 0.0361]},
+        {"text": "节点二", "confidence": 0.9985, "box": [0.4781, 0.1514, 0.5219, 0.1847]},
+        {"text": "840", "confidence": 0.9989, "box": [0.5164, 0.2, 0.5398, 0.2194]},
+        {"text": "当前积分：25840", "confidence": 0.9912, "box": [0.0133, 0.3083, 0.1578, 0.3486]},
+        {"text": "获得30000分", "confidence": 0.9961, "box": [0.0156, 0.3514, 0.1125, 0.3833]}
+      ]
+    },
+    "fiction_second_b": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=347.3",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 347.3,
+      "variant_in_recording": "ordinary",
+      "center_sha256": "67da7de0ea29e0e294d6d58a184d716704b0edf961af2b04961ea4d008e56fe9",
+      "left_hud_sha256": "25f1d4f6fc637b619554144b33b576e19f363c70f704e2f7014796d623a16a41",
+      "tokens": [
+        {"text": "取象为文其四", "confidence": 0.9988, "box": [0.025, 0.0139, 0.0977, 0.0361]},
+        {"text": "节点二", "confidence": 0.9984, "box": [0.4773, 0.15, 0.5219, 0.1875]},
+        {"text": "当前积分：25840", "confidence": 0.9914, "box": [0.0148, 0.3097, 0.1578, 0.3458]},
+        {"text": "获得30000分", "confidence": 0.9958, "box": [0.0156, 0.3514, 0.1109, 0.3833]}
+      ]
+    },
+    "chaos_second_a": {
+      "source": "https://www.bilibili.com/video/BV1oG4h6UEVo/?p=1&t=139.8",
+      "cid": 43359866313,
+      "part": 1,
+      "seek_seconds": 139.8,
+      "variant_in_recording": "ordinary",
+      "center_sha256": "20b760ada1ee4bc16d151de8d40a3e33edffe22de274f05aea5c12c16e1cdc3b",
+      "left_hud_sha256": "3b1a01c96ed0585acd568557f6d946ecc2f64ea36c0d6173d2457d8ae1cfa07c",
+      "tokens": [
+        {"text": "物竞天择其十", "confidence": 0.9604, "box": [0.0219, 0.0125, 0.0938, 0.0389]},
+        {"text": "节点二", "confidence": 0.9972, "box": [0.4766, 0.15, 0.5227, 0.1875]},
+        {"text": "剩余轮：30", "confidence": 0.9899, "box": [0.0125, 0.3069, 0.1133, 0.3472]},
+        {"text": "取得胜利时，剩余10轮以上", "confidence": 0.99, "box": [0.0312, 0.35, 0.1883, 0.3819]}
+      ]
+    },
+    "chaos_second_b": {
+      "source": "https://www.bilibili.com/video/BV1oG4h6UEVo/?p=1&t=140.2",
+      "cid": 43359866313,
+      "part": 1,
+      "seek_seconds": 140.2,
+      "variant_in_recording": "ordinary",
+      "center_sha256": "13381aabc8185d491f2e40d0c689c55696fad7efaef5130b5ef1f28f68cbba83",
+      "left_hud_sha256": "ea94ce35472d7eac418a37feb8a9debbc20b1d754892be92613aa95b88eb4707",
+      "tokens": [
+        {"text": "·物竞天择其十", "confidence": 0.9542, "box": [0.0203, 0.0111, 0.0961, 0.0417]},
+        {"text": "节点二", "confidence": 0.9995, "box": [0.4773, 0.1514, 0.5219, 0.1847]},
+        {"text": "剩余轮：30", "confidence": 0.9858, "box": [0.0125, 0.3069, 0.1133, 0.3472]},
+        {"text": "取得胜利时，剩余10轮以上", "confidence": 0.9922, "box": [0.0312, 0.35, 0.1859, 0.3819]}
+      ]
+    },
+    "fiction_stellar_second_a": {
+      "source": "https://www.bilibili.com/video/BV1g8nj6JEyi/?p=1&t=171",
+      "cid": 42858973992,
+      "part": 1,
+      "seek_seconds": 171.0,
+      "variant_in_recording": "stellar",
+      "center_sha256": "45d68a901125828e8eb3fba55f1f0d2297daf4f38a350a9cedcf44b1d2922b72",
+      "left_hud_sha256": "0eb9f4af1d99afa0f7b03ea341efef08b520070da6f8e6374707dcfd5ec097fe",
+      "tokens": [
+        {"text": "取象为文其四", "confidence": 0.9179, "box": [0.0281, 0.0111, 0.0969, 0.0417]},
+        {"text": "节点二", "confidence": 0.9991, "box": [0.4773, 0.15, 0.5227, 0.1875]},
+        {"text": "0000", "confidence": 0.9925, "box": [0.5133, 0.2, 0.5391, 0.2194]},
+        {"text": "当前积分：40000", "confidence": 0.9879, "box": [0.0148, 0.3097, 0.1594, 0.3458]},
+        {"text": "获得45000分", "confidence": 0.9975, "box": [0.0133, 0.3472, 0.1109, 0.3833]}
+      ]
+    },
+    "fiction_stellar_second_b": {
+      "source": "https://www.bilibili.com/video/BV1g8nj6JEyi/?p=1&t=171.3",
+      "cid": 42858973992,
+      "part": 1,
+      "seek_seconds": 171.3,
+      "variant_in_recording": "stellar",
+      "center_sha256": "c9c7d3f61eb0ff01f176eaaaa5a568bf448674ea6470babb735208947934d0a0",
+      "left_hud_sha256": "e2ff2b88e3a74189d02cb2720ffacb8e0356dd84c05bc1dc2d7b767fd6e0abc6",
+      "tokens": [
+        {"text": "取象为文其四", "confidence": 0.9342, "box": [0.0281, 0.0125, 0.1008, 0.0389]},
+        {"text": "节点二", "confidence": 0.9994, "box": [0.4773, 0.1514, 0.5219, 0.1847]},
+        {"text": "积分40000", "confidence": 0.9706, "box": [0.4758, 0.1931, 0.5422, 0.2236]},
+        {"text": "当前积分：40000", "confidence": 0.9932, "box": [0.0156, 0.3111, 0.1578, 0.3458]},
+        {"text": "获得45000分", "confidence": 0.9743, "box": [0.0156, 0.3514, 0.1133, 0.3833]}
+      ]
+    },
+    "chaos_stellar_second_a": {
+      "source": "https://www.bilibili.com/video/BV1Ht4F6MEG5/?p=1&t=272",
+      "cid": 43257037632,
+      "part": 1,
+      "seek_seconds": 272.0,
+      "variant_in_recording": "stellar",
+      "center_sha256": "93f1b07c4db4c26e52ae7dbe157beed72fe88e797d2d97890c50f1657a284225",
+      "left_hud_sha256": "75909619b43d6d4211175cae467c816cf1ddd9e1f63efdc3a027a4339909db9c",
+      "tokens": [
+        {"text": "物竞天择其十", "confidence": 0.9889, "box": [0.0328, 0.0097, 0.1023, 0.0417]},
+        {"text": "节点二", "confidence": 0.9993, "box": [0.4836, 0.1528, 0.5266, 0.1861]},
+        {"text": "剩余轮：43", "confidence": 0.9845, "box": [0.0211, 0.3125, 0.118, 0.3444]},
+        {"text": "取得胜利时，剩余15轮以上", "confidence": 0.9907, "box": [0.0367, 0.35, 0.1938, 0.3819]}
+      ]
+    },
+    "chaos_stellar_second_b": {
+      "source": "https://www.bilibili.com/video/BV1Ht4F6MEG5/?p=1&t=272.4",
+      "cid": 43257037632,
+      "part": 1,
+      "seek_seconds": 272.4,
+      "variant_in_recording": "stellar",
+      "center_sha256": "7b851a84106c60f675b3286394aaa0996ac6ce5421519c1c13b4f07c5bc1f7e4",
+      "left_hud_sha256": "d788039adccbeb3018969726e8d3236e7f4bbe168123e356d2fd8f51b758218f",
+      "tokens": [
+        {"text": "·物竞天择其十", "confidence": 0.9604, "box": [0.0273, 0.0125, 0.1023, 0.0389]},
+        {"text": "节点二", "confidence": 0.9992, "box": [0.4828, 0.1528, 0.5266, 0.1861]},
+        {"text": "剩余轮：43", "confidence": 0.9903, "box": [0.0195, 0.3125, 0.118, 0.3444]},
+        {"text": "取得胜利时，剩余15轮以上", "confidence": 0.9948, "box": [0.0375, 0.3528, 0.193, 0.3806]}
+      ]
+    },
+    "fiction_first": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=1.5",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 1.5,
+      "variant_in_recording": "ordinary",
+      "center_sha256": "35bde0081d2d014740cfe3565c7682e32f41f70c91584f59145024668af246ca",
+      "left_hud_sha256": "0700e84f91774193b328ef34885e2893818f7f135fc8f95c25cb9381621108e0",
+      "tokens": [
+        {"text": "取象为文其四", "confidence": 0.9989, "box": [0.0266, 0.0125, 0.0992, 0.0389]},
+        {"text": "节点一", "confidence": 0.9963, "box": [0.4781, 0.1514, 0.5219, 0.1847]},
+        {"text": "当前积分：", "confidence": 0.9911, "box": [0.0125, 0.3083, 0.107, 0.3472]},
+        {"text": "0", "confidence": 0.9971, "box": [0.1039, 0.3194, 0.1125, 0.3403]},
+        {"text": "获得30000分", "confidence": 0.9975, "box": [0.0156, 0.3528, 0.1109, 0.3806]}
+      ]
+    },
+    "fiction_first_side_zero_rounds": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=345",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 345.0,
+      "variant_in_recording": "ordinary",
+      "center_sha256": "358fd571b4bb9eae9742eb608d7774f2e28d27c1b2cb78e81c96b3190a762830",
+      "left_hud_sha256": "b4f13cd0756d188f87f9a79bc21262e1d38ce52f1c827995f8e17e81cf6982d4",
+      "tokens": [
+        {"text": "剩余0轮", "confidence": 0.9922, "box": [0.4711, 0.1917, 0.5281, 0.225]}
+      ]
+    },
+    "fiction_after_banner": {
+      "source": "https://www.bilibili.com/video/BV1Qxnz6nEUB/?p=1&t=348.4",
+      "cid": 42925294535,
+      "part": 1,
+      "seek_seconds": 348.4,
+      "variant_in_recording": "ordinary",
+      "center_sha256": "6f748642abd350fc995512452ecbd4f294d51982add21b78fa3e13f8b2db3cd1",
+      "left_hud_sha256": "88861e70290e68c1aa951086cedc0ee911846f378cc42fecfa97eba211019928",
+      "tokens": [
+        {"text": "取象为文其四", "confidence": 0.9837, "box": [0.0266, 0.0125, 0.0992, 0.0389]},
+        {"text": "当前积分：25840", "confidence": 0.9932, "box": [0.0305, 0.3083, 0.1578, 0.3486]},
+        {"text": "获得30000分", "confidence": 0.9958, "box": [0.0156, 0.3514, 0.1125, 0.3833]}
+      ]
+    }
+  }
+}

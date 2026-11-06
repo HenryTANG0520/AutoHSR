@@ -36,6 +36,13 @@ APOCALYPTIC_SCORE_FIXTURE = FIXTURES.parent / 'challenge_apocalyptic_result_4_6.
 CHAOS_RESULT_FIXTURE = FIXTURES.parent / 'challenge_chaos_result_4_6.json'
 STELLAR_RESULT_FIXTURE = FIXTURES.parent / 'challenge_stellar_result_4_6.json'
 STELLAR_HANDOFF_FIXTURE = FIXTURES.parent / 'challenge_stellar_handoff_4_6.json'
+NODE_ENTRY_FIXTURE = FIXTURES.parent / 'challenge_node_entry_4_6.json'
+NODE_ENTRY_CASES = (
+    ('fiction_second', pages.FICTION, 'displayed_current_score', 25840, 4),
+    ('chaos_second', pages.MODE, 'displayed_remaining_rounds', 30, None),
+    ('fiction_stellar_second', pages.FICTION, 'displayed_current_score', 40000, 4),
+    ('chaos_stellar_second', pages.MODE, 'displayed_remaining_rounds', 43, None),
+)
 STELLAR_HANDOFF_CASES = (
     ('apocalyptic_next_one', pages.APOCALYPTIC, 1),
     ('apocalyptic_next_two', pages.APOCALYPTIC, 2),
@@ -121,6 +128,13 @@ def stellar_result_frame(name):
 
 def stellar_handoff_frame(name):
     return public_result_frame(STELLAR_HANDOFF_FIXTURE, name)
+
+
+def node_entry_frame(name):
+    source = public_result_frame(NODE_ENTRY_FIXTURE, name)
+    source.image[:] = 110
+    source.image[78:103, 256:700] = 29
+    return source
 
 
 def chaos_detail_frame(level, star_color=(95, 190, 255)):
@@ -452,6 +466,63 @@ class StellarHandoffObservationTests(unittest.TestCase):
                         token('节点一', (642, 456, 675, 473)), token('节点一', (622, 466, 655, 481))):
             with self.subTest(changed=changed):
                 self.assertIsNone(observe_feedback(replace(source, tokens=[*tokens, first, changed])))
+
+
+class NodeEntryObservationTests(unittest.TestCase):
+    def test_public_node_two_reads_hud_and_banner_without_claiming_a_result(self):
+        for name, mode, metric, value, _ in NODE_ENTRY_CASES:
+            for part in ('a', 'b'):
+                with self.subTest(name=name, part=part):
+                    feedback = observe_feedback(node_entry_frame(f'{name}_{part}'))
+                    self.assertEqual(feedback.mode, mode)
+                    self.assertEqual((feedback.node_entry.metric, feedback.node_entry.value), (metric, value))
+                    self.assertEqual(feedback.anchors, ())
+                    for key in ('score', 'memory_rounds', 'stellar', 'stellar_handoff'):
+                        self.assertIsNone(getattr(feedback, key))
+
+    def test_first_node_clock_warning_post_banner_and_terminal_do_not_become_entry(self):
+        for name in ('fiction_first', 'fiction_first_side_zero_rounds', 'fiction_after_banner'):
+            with self.subTest(name=name):
+                self.assertIsNone(observe_feedback(node_entry_frame(name)))
+        for name, scene in (
+            ('ordinary_fiction_final', fiction_final()), ('ordinary_chaos_final', chaos_result_frame()),
+            ('stellar_final', stellar_result_frame('fiction_final_a')),
+            ('stellar_onward', stellar_handoff_frame('fiction_next_two_a')), ('ordinary_onward', frame(NEXT)),
+        ):
+            with self.subTest(name=name):
+                self.assertIsNone(observe_feedback(scene).node_entry)
+
+    def test_stage_node_hud_pixels_and_complete_center_counterevidence_are_independent(self):
+        source = node_entry_frame('fiction_second_b')
+        for field in ('取象为文其四', '节点二', '当前积分：25840'):
+            with self.subTest(missing=field):
+                missing = [item for item in source.tokens if item.text != field]
+                self.assertIsNone(observe_feedback(replace(source, tokens=missing)))
+        for field, changed in (('取象为文其四', '取象为文其三'), ('节点二', '节点一'),
+                               ('节点二', '前往节点二'), ('当前积分：25840', '积分25840'),
+                               ('当前积分：25840', '当前积分40001')):
+            with self.subTest(changed=changed):
+                tokens = [replace(item, text=changed) if item.text == field else item for item in source.tokens]
+                self.assertIsNone(observe_feedback(replace(source, tokens=tokens)))
+        for extra in (token('当前积分25841', (435, 107, 520, 122)), token('剩余轮30', (449, 106, 510, 123)),
+                      token('挑战结束', (434, 260, 520, 290)), token('取象为文其三', (500, 32, 615, 50)),
+                      token('节点一', (699, 292, 760, 312)), token('选择模式', (470, 280, 520, 296))):
+            with self.subTest(extra=extra.text):
+                self.assertIsNone(observe_feedback(replace(source, tokens=[*source.tokens, extra])))
+        self.assertIsNone(observe_feedback(replace(source, image=np.full_like(source.image, 29))))
+        self.assertIsNone(observe_feedback(replace(source, image=np.full_like(source.image, 110))))
+
+    def test_hud_amount_accepts_contiguous_parts_and_fullwidth_grouping(self):
+        source = node_entry_frame('fiction_second_b')
+        tokens = [item for item in source.tokens if item.text != '当前积分：25840']
+        label = token('当前积分：', (13, 168, 88, 184))
+        amount = token('２５，８４０', (92, 167, 158, 184))
+        feedback = observe_feedback(replace(source, tokens=[*tokens, label, amount]))
+        self.assertEqual(feedback.node_entry.value, 25840)
+        for changed in (replace(amount, score=.82), replace(amount, text='２，５８４０'),
+                        token('２５，８４０', (111, 167, 160, 184))):
+            with self.subTest(amount=changed):
+                self.assertIsNone(observe_feedback(replace(source, tokens=[*tokens, label, changed])))
 
 
 class ResultObservationTests(unittest.TestCase):
@@ -790,6 +861,45 @@ class ResultEntryTests(unittest.TestCase):
         legacy = self.run_cli([frame(NEXT), frame(NEXT)])['challenge_result']
         self.assertEqual((legacy['status'], legacy['destination_node_in_caption']), ('caption_verified', 2))
         self.assertIsNone(legacy['stellar_handoff'])
+
+    def test_cli_node_entry_has_a_separate_read_only_status_and_evidence(self):
+        for name, mode, metric, value, level in NODE_ENTRY_CASES:
+            with self.subTest(name=name):
+                report = self.run_cli([node_entry_frame(f'{name}_{part}') for part in ('a', 'b')])
+                data = report['challenge_result']
+                self.assertEqual((report['status'], data['status'], data['mode']), ('partial', 'entry_verified', mode))
+                self.assertEqual(data['node_entry'], dict(node_in_caption=2, level=level, **{metric: value}))
+                self.assertEqual(data['visible_controls'], [])
+                for field in ('node', 'half', 'level', 'destination_node_in_caption', 'stars', 'stellar_result',
+                              'stellar_handoff', 'node_one_score', 'node_two_score', 'total_score', 'remaining_rounds',
+                              'upper_half_score', 'lower_half_score'):
+                    self.assertIsNone(data[field])
+                self.assertEqual((data['outcome'], data['settlement_status']), ('unknown', 'unknown'))
+                self.assertFalse(data['completion_verified'])
+                self.assertFalse(data['rewards_verified'])
+                path = Path(report['run_dir']) / 'challenge-result.json'
+                self.assertEqual(json.loads(path.read_bytes()), data)
+                self.assertEqual([row['capture_sequence'] for row in data['evidence']], [1, 2])
+                for row in data['evidence']:
+                    self.assertEqual(set(row['node_entry_fields']), {'stage_hud', 'node_banner', 'metric_hud'})
+                    self.assertEqual(row['sha256'], hashlib.sha256((path.parent / row['screenshot']).read_bytes()).hexdigest())
+
+    def test_cli_node_entry_pair_cannot_mix_terminal_empty_changed_score_or_other_mode(self):
+        first, second = (node_entry_frame(f'fiction_second_{part}') for part in ('a', 'b'))
+        changed = replace(second, tokens=[replace(item, text='当前积分：25841') if item.text == '当前积分：25840' else item
+                                          for item in second.tokens])
+        self.assertEqual(observe_feedback(changed).node_entry.value, 25841)
+        for gap in (changed, EmptyCapture(), fiction_final(), node_entry_frame('chaos_second_a')):
+            with self.subTest(gap=type(gap).__name__):
+                unknown = self.run_cli([first, gap])['challenge_result']
+                self.assertEqual((unknown['status'], unknown['node_entry']), ('unknown', None))
+                data = self.run_cli([first, gap, first, second])['challenge_result']
+                self.assertEqual((data['status'], data['node_entry']['displayed_current_score']), ('entry_verified', 25840))
+                self.assertEqual([row['capture_sequence'] for row in data['evidence']], [3, 4])
+        first = node_entry_frame('chaos_second_a')
+        terminal = self.run_cli([first, chaos_result_frame(), chaos_result_frame()])['challenge_result']
+        self.assertEqual((terminal['status'], terminal['remaining_rounds'], terminal['node_entry']),
+                         ('feedback_verified', 30, None))
 
     def test_cli_apocalyptic_score_requires_same_parts_in_consecutive_complete_frames(self):
         good = apocalyptic_score_frame('terminal_first')
