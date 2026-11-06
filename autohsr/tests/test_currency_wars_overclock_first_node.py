@@ -1,4 +1,4 @@
-"""A0 first-node evidence and bounded legacy Runner inputs with a fake window."""
+"""A0 first-node receipts through the ordinary legacy Runner and fake Win32."""
 
 from dataclasses import replace
 import hashlib
@@ -11,7 +11,7 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 
-from autohsr import windows
+from autohsr import storage, windows
 from autohsr.currency_wars_equipment import equipment_template
 from autohsr.currency_wars_overclock_first_node import LegacyFirstNode
 from autohsr.currency_wars_overclock_first_node_pages import drop_delivery, read_first_node_board
@@ -162,6 +162,40 @@ class FirstNodePageTests(unittest.TestCase):
         self.assertIsNone(drop_delivery(already, empty_ground(batteries=(6,)), blue, CONFIDENCE))
 
 
+def synthetic_battle(node="1-1"):
+    # Keep the public 127 battle layout. Its bounded 1-1 reads are synthetic.
+    tokens = [replace(token, text=f"{node}50%") if token.text == "1-250%" else token
+              for token in opening.page_tokens("battle")]
+    bounds = (.358, .008, .386, .040)
+    return Scene(tokens, field_reads={
+        "currency_battle_node.normal": (Token(node, .99, bounds), Token(node, .98, bounds)),
+    })
+
+
+def victory(node="1-1", *, conflicting=False):
+    # Keep 109's merged OCR and supply an independent bounded number.
+    tokens = [replace(token, text=f"{node}M奖励") if token.text == "1-1M奖励" else token
+              for token in opening.page_tokens("node_result")]
+    tokens.append(Token(node, .99, (.462, .245, .485, .286)))
+    if conflicting:
+        tokens.append(Token("1-2", .99, (.405, .245, .438, .286)))
+    return Scene(tokens)
+
+
+class _RepeatedCaptureTime(Scene):
+    """Inject duplicate OCR timestamps while retaining distinct native captures."""
+
+    def __init__(self, tokens, image, geometry, field_reads, timestamps):
+        self.timestamps = timestamps
+        super().__init__(tokens, image, geometry, field_reads=field_reads)
+
+    def __setattr__(self, name, value):
+        if name == "captured_at" and value > 0:
+            self.timestamps.append(value)
+            value = self.timestamps[0]
+        super().__setattr__(name, value)
+
+
 class LegacyFirstNodeNativeTests(unittest.TestCase):
     def setUp(self):
         self.fixture = preparation.OverclockPreparationNativeTests()
@@ -173,7 +207,7 @@ class LegacyFirstNodeNativeTests(unittest.TestCase):
         geometry = self.fixture.geometry
         image = (None if scene.image is None else cv2.resize(
             scene.image, (geometry.width, geometry.height), interpolation=cv2.INTER_AREA))
-        return preparation.with_account(scene.tokens, image=image)
+        return replace(preparation.with_account(scene.tokens, image=image), field_reads=scene.field_reads)
 
     def arrive_then_observe(self, final_scene):
         fixture = self.fixture
@@ -213,7 +247,7 @@ class LegacyFirstNodeNativeTests(unittest.TestCase):
         self.assertEqual(data["page_kind"], "node_result")
         self.assertIn("结算", data["reason"])
 
-    def replay_current_deployments_and_drops(self, *, stop_at_start=False):
+    def run_started_node(self, *feedback, verify_lock=False, repeat_timestamps=(), on_feedback=None, stop_at_start=False):
         fixture = self.fixture
         fixture.geometry = Geometry(31, 27, 2560, 1440)
         fixture.metrics.update({78: 3200, 79: 1800})
@@ -225,12 +259,25 @@ class LegacyFirstNodeNativeTests(unittest.TestCase):
         full = self.with_native_pixels(two_crystals())
         gray_delivered = self.with_native_pixels(one_blue())
         blue_delivered = self.with_native_pixels(empty_ground(batteries=(6,)))
-        scenes = (
+        prefix = (
             preview, plane, plane, insurance, insurance, no_units, no_units,
             first_unit, first_unit, second_unit, second_unit, full, full,
             gray_delivered, gray_delivered, gray_delivered,
             blue_delivered, blue_delivered, blue_delivered, blue_delivered,
         )
+        if feedback:
+            # The fake clock has no tick between acknowledging SendInput and
+            # the first capture. Use that frame as a loading transition.
+            prefix += (self.with_native_pixels(Scene([])),)
+        scenes = (*prefix, *(self.with_native_pixels(scene) for scene in feedback))
+        scripted = iter(enumerate(scenes))
+        real_times = []
+
+        def fake_scene(*, tokens, image, geometry):
+            index, source = next(scripted)
+            if index - len(prefix) in repeat_timestamps:
+                return _RepeatedCaptureTime(tokens, image, geometry, source.field_reads, real_times)
+            return Scene(tokens=tokens, image=image, geometry=geometry, field_reads=source.field_reads)
         roster = (("front", 1, "前台一"), ("front", 2, "前台二"), ("back", 1, "后台一"))
 
         def candidate(_scene, _confidence, excluded):
@@ -258,7 +305,8 @@ class LegacyFirstNodeNativeTests(unittest.TestCase):
             context._legacy_first_node.record_deployment(before, after, action, plan, profile)
             return True
 
-        sent, start_at_send = [], []
+        sent, start_at_send, after_send = [], [], []
+        locked_proofs = []
 
         def inspect_send():
             flow, = (fixture.root / "runs").glob("*/currency-flow.json")
@@ -272,19 +320,28 @@ class LegacyFirstNodeNativeTests(unittest.TestCase):
             self.assertEqual((pending["action"], pending["action_status"], pending["origin_node"]),
                              ("start_node", "pending", "1-1"))
             self.assertFalse(pending.get("start_dispatched", False))
+            self.assertNotIn("dispatched_at", pending)
             preflight = data["first_node_preflight"]
             self.assertEqual((preflight["status"], preflight["node"]), ("verified", "1-1"))
             first, second = preflight["feedback"]
             self.assertLess(first["captured_at"], second["captured_at"])
-            proof = Path(first["screenshot"])
-            replacement = fixture.alternate("changed-first-node-preflight.png", b"synthetic replacement")
-            original = fixture.assert_ntfs_denies_replace(replacement, proof)
-            self.assertEqual(hashlib.sha256(original).hexdigest(), first["sha256"])
-            start_at_send.append((flow, node, proof, replacement, original))
+            if verify_lock:
+                proof = Path(first["screenshot"])
+                replacement = fixture.alternate("changed-first-node-preflight.png", b"synthetic replacement")
+                original = fixture.assert_ntfs_denies_replace(replacement, proof)
+                self.assertEqual(hashlib.sha256(original).hexdigest(), first["sha256"])
+                locked_proofs.append((replacement, proof, original))
+            start_at_send.append((flow, node))
 
-        def stop_after_start(_number):
-            if start_at_send:
-                raise Stopped("synthetic stop after the native 1-1 start")
+        def inspect_capture(number):
+            if start_at_send and number > len(prefix):
+                if len(after_send) == len(feedback):
+                    raise Stopped("synthetic stop at the end of the first-node observations")
+                _, node = start_at_send[0]
+                record = json.loads(node.read_bytes())
+                after_send.append(record)
+                if on_feedback is not None:
+                    on_feedback(record)
 
         finish = LegacyFirstNode._finish_native_check
 
@@ -297,13 +354,14 @@ class LegacyFirstNodeNativeTests(unittest.TestCase):
             return finish(workflow, scene, check_then_stop, *args, **kwargs)
 
         with (
+            patch.object(preparation, "Scene", fake_scene),
             patch("autohsr.currency_wars_roster.next_candidate", side_effect=candidate),
             patch("autohsr.currency_wars_roster.deploy_candidate", side_effect=deploy),
             patch("autohsr.currency_wars_equipment.equipment_fields", return_value=()),
             patch.object(LegacyFirstNode, '_finish_native_check', final_history_check),
         ):
             result = opening.OverclockStartNativeTests.legacy_runner(
-                fixture, False, *scenes, flag=opening.START, on_send=inspect_send, on_capture=stop_after_start)
+                fixture, False, *scenes, flag=opening.START, on_send=inspect_send, on_capture=inspect_capture)
         if stop_at_start:
             self.assertEqual((result.report['status'], len(result.packets), start_at_send), ('stopped', 5, []))
             self.assertIn('本次操作已停止', result.report['error'])
@@ -315,12 +373,10 @@ class LegacyFirstNodeNativeTests(unittest.TestCase):
             self.assertFalse(pending.get('start_dispatched', False))
             self.assertEqual(fixture.session.read_bytes(), opening_bytes)
             return
-        self.assertEqual((result.code, result.report["status"], result.captures),
-                         (1, "stopped", len(scenes) + 1), result.report["error"])
         self.assertEqual(sent, [(name, "pending") for name in (
             "advance_boss_preview", "advance_plane", "confirm_environment",
             "collect_loot", "collect_loot", "run_current_node",
-        )])
+        )], result.report["error"])
         boss_click, plane_click, confirm_click, gray_click, blue_click, start_click = result.packets
         fixture.assert_packet_target(boss_click, preview, "下一步")
         fixture.assert_packet_target(plane_click, plane, "点击空白处继续")
@@ -331,7 +387,7 @@ class LegacyFirstNodeNativeTests(unittest.TestCase):
             fixture.assert_packet_target(packet, point, "晶矿")
         fixture.assert_packet_target(start_click, blue_delivered, "出战")
 
-        (flow, node, proof, replacement, original), = start_at_send
+        (flow, node), = start_at_send
         data = json.loads(flow.read_bytes())
         preflight = data["first_node_preflight"]
         self.assertEqual({(entry["zone"], entry["slot"], entry["name"]) for entry in preflight["team"]}, set(roster))
@@ -342,16 +398,244 @@ class LegacyFirstNodeNativeTests(unittest.TestCase):
             first, second = receipt["feedback"]
             self.assertLess(first["captured_at"], second["captured_at"])
             self.assertNotEqual(first["screenshot"], second["screenshot"])
-        final_node = json.loads(node.read_bytes())
-        self.assertTrue(final_node["start_dispatched"])
-        self.assertEqual(final_node["action_status"], "pending")
-        self.assertFalse(final_node["node_verified"])
         self.assertFalse(data["completion_verified"])
         self.assertEqual(fixture.session.read_bytes(), opening_bytes)
-        fixture.assert_released(replacement, proof, original)
+        if verify_lock:
+            (replacement, proof, original), = locked_proofs
+            fixture.assert_released(replacement, proof, original)
+        return SimpleNamespace(result=result, node=json.loads(node.read_bytes()), flow=data,
+                               run_dir=node.parent, after_send=after_send, actual_times=real_times,
+                               prefix_count=len(prefix))
 
     def test_verified_current_deployments_and_drops_authorize_one_native_start(self):
-        self.replay_current_deployments_and_drops()
+        run = self.run_started_node(verify_lock=True)
+        self.assertEqual((run.result.code, run.result.report["status"], run.result.captures),
+                         (1, "stopped", run.prefix_count + 1), run.result.report["error"])
+        self.assertTrue(run.node["start_dispatched"])
+        self.assertEqual(run.node["action_status"], "pending")
+        self.assertFalse(run.node["node_verified"])
 
     def test_f10_after_the_last_history_check_preserves_both_pending_intents(self):
-        self.replay_current_deployments_and_drops(stop_at_start=True)
+        self.run_started_node(stop_at_start=True)
+
+    def assert_dispatched(self, run):
+        first = run.after_send[0]
+        self.assertIs(first["start_dispatched"], True)
+        self.assertEqual(first["action_status"], "pending")
+        stamp = first["dispatched_at"]
+        self.assertLess(first["first_node_preflight"]["feedback"][-1]["captured_at"], stamp)
+        self.assertEqual(run.node["dispatched_at"], stamp)
+        self.assertIs(run.node["completion_verified"], False)
+        self.assertIs(run.node["next_node_verified"], False)
+        return stamp
+
+    def assert_feedback_pair(self, run, key, state, after):
+        first, second = run.node[key]
+        self.assertEqual((first["state"], second["state"]), (state, state))
+        self.assertLess(after, first["captured_at"])
+        self.assertLess(first["captured_at"], second["captured_at"])
+        self.assertNotEqual(first["screenshot"], second["screenshot"])
+        for proof in (first, second):
+            path = Path(proof["screenshot"]).resolve(strict=True)
+            self.assertTrue(path.is_relative_to(run.run_dir))
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), proof["sha256"])
+        return second["captured_at"]
+
+    def test_native_start_observes_stable_battle_and_victory_without_continuing(self):
+        second = changed_token(victory(), "继续挑战", "继续挑战", score=.86)
+        run = self.run_started_node(synthetic_battle(), synthetic_battle(), victory(), second)
+        sent_at = self.assert_dispatched(run)
+        self.assertEqual((run.result.code, run.result.report["status"], run.result.captures),
+                         (1, "partial", run.prefix_count + 4), run.result.report["error"])
+        persisted_battle = run.after_send[2]
+        self.assertEqual(persisted_battle["action_status"], "battle_observed")
+        self.assertIs(persisted_battle["battle_observed"], True)
+        self.assertIs(persisted_battle["result_observed"], False)
+        self.assertEqual(persisted_battle["battle_feedback"], run.node["battle_feedback"])
+        battle_at = self.assert_feedback_pair(run, "battle_feedback", "battle", sent_at)
+        self.assert_feedback_pair(run, "result_feedback", "victory", battle_at)
+        self.assertEqual(run.node["action_status"], "verified")
+        self.assertIs(run.node["result_observed"], True)
+        self.assertIs(run.node["node_verified"], True)
+        self.assertEqual(run.node["auto_state"], "unknown")
+        self.assertEqual(run.node["remaining_hp"], 100)
+        self.assertEqual(run.flow["action_status"], "node_verified")
+        self.assertIs(run.flow["actions"][-1]["node_verified"], True)
+
+    def test_two_victory_frames_without_stable_battle_only_observe_result(self):
+        run = self.run_started_node(victory(), victory())
+        sent_at = self.assert_dispatched(run)
+        self.assertEqual(run.result.captures, run.prefix_count + 2)
+        self.assert_feedback_pair(run, "result_feedback", "victory", sent_at)
+        self.assertIs(run.node["result_observed"], True)
+        self.assertIs(run.node["battle_observed"], False)
+        self.assertIs(run.node["node_verified"], False)
+        self.assertEqual(run.node["action_status"], "unknown")
+
+    def test_f10_after_the_last_history_check_keeps_the_existing_battle_receipt(self):
+        hold = LegacyFirstNode._hold_input_sources
+
+        def sources(workflow, stack, *proofs, frame=None):
+            reader, unchanged = hold(workflow, stack, *proofs, frame=frame)
+            if frame is not None or len(proofs) != 4:
+                return reader, unchanged
+
+            def check_then_stop():
+                unchanged()
+                windows.user32.GetAsyncKeyState.side_effect = [1] + [0] * 120
+
+            return reader, check_then_stop
+
+        with patch.object(LegacyFirstNode, '_hold_input_sources', sources):
+            run = self.run_started_node(synthetic_battle(), synthetic_battle(), victory(), victory())
+        self.assertEqual((run.result.report['status'], run.node['action_status']), ('stopped', 'battle_observed'))
+        self.assertTrue(run.node['battle_observed'])
+        self.assertFalse(run.node['result_observed'])
+        self.assertEqual(len(run.result.packets), 6)
+
+    def test_other_node_battle_stops_before_a_later_matching_result(self):
+        run = self.run_started_node(synthetic_battle("1-2"), victory(), victory())
+        self.assert_dispatched(run)
+        self.assertEqual(run.result.captures, run.prefix_count + 1)
+        self.assertEqual(run.node["action_status"], "unknown")
+        self.assertIn("异节点", run.node["reason"])
+        self.assertIs(run.node["battle_observed"], False)
+        self.assertIs(run.node["result_observed"], False)
+        self.assertIs(run.node["node_verified"], False)
+
+    def test_conflicting_victory_node_keeps_battle_only_and_stops(self):
+        run = self.run_started_node(synthetic_battle(), synthetic_battle(),
+                                    victory(conflicting=True), victory(), victory())
+        sent_at = self.assert_dispatched(run)
+        self.assertEqual(run.result.captures, run.prefix_count + 3)
+        self.assert_feedback_pair(run, "battle_feedback", "battle", sent_at)
+        self.assertEqual(run.node["action_status"], "unknown")
+        self.assertIn("冲突", run.node["reason"])
+        self.assertIs(run.node["battle_observed"], True)
+        self.assertIs(run.node["result_observed"], False)
+        self.assertIs(run.node["node_verified"], False)
+
+    def test_repeated_timestamp_never_creates_a_stable_battle_pair(self):
+        run = self.run_started_node(synthetic_battle(), synthetic_battle(), victory(), victory(),
+                                    repeat_timestamps=(0, 1))
+        sent_at = self.assert_dispatched(run)
+        first, second = run.actual_times
+        self.assertLess(sent_at, first)
+        self.assertLess(first, second)
+        self.assertEqual(run.result.captures, run.prefix_count + 4)
+        self.assertIs(run.node["battle_observed"], False)
+        self.assertFalse(run.node.get("battle_feedback"))
+        self.assertIs(run.node["result_observed"], True)
+        self.assert_feedback_pair(run, "result_feedback", "victory", sent_at)
+        self.assertIs(run.node["node_verified"], False)
+        self.assertEqual(run.node["action_status"], "unknown")
+
+    def test_victory_retry_rechecks_locked_result_pngs_and_preserves_battle_receipt(self):
+        fixture = self.fixture
+        runs = fixture.root / "runs"
+        attempts, conflicts, changed = [], [], []
+
+        def replace_victory(source, destination):
+            destination = Path(destination)
+            if destination.parent.parent != runs or not destination.name.startswith("currency-node-"):
+                return opening.REPLACE(source, destination)
+            proposal = json.loads(source.read_bytes())
+            if not proposal.get("result_observed"):
+                return opening.REPLACE(source, destination)
+
+            attempts.append(destination)
+            self.assertEqual(len(attempts), 1, "changed result evidence must stop before another replace")
+            before = destination.read_bytes()
+            published = json.loads(before)
+            self.assertEqual(published["action_status"], "battle_observed")
+            self.assertTrue(published["battle_observed"])
+            self.assertFalse(published["result_observed"])
+
+            first, second = (Path(proof["screenshot"]) for proof in proposal["result_feedback"])
+            first_edit = fixture.alternate("victory-first-replacement.png", second.read_bytes())
+            second_edit = fixture.alternate("victory-second-replacement.png", first.read_bytes())
+            first_original = fixture.assert_ntfs_denies_replace(first_edit, first)
+            second_original = fixture.assert_ntfs_denies_replace(second_edit, second)
+            with storage.hold_read_sources((destination,)):
+                try:
+                    opening.REPLACE(source, destination)
+                except OSError as error:
+                    self.assertIn(error.winerror, opening.SHARING_ERRORS)
+                    self.assertEqual(destination.read_bytes(), before)
+                    self.assertTrue(source.is_file())
+                    conflicts.append((destination, before, first, first_edit, first_original, second, second_original))
+                    raise
+            self.fail("NTFS allowed replacement of a node ledger held for shared read")
+
+        def replace_png_between_attempts(delay):
+            self.assertEqual(delay, storage.REPLACE_RETRY_DELAYS[0])
+            self.assertFalse(changed)
+            (destination, before, first, first_edit, first_original, _, _), = conflicts
+            self.assertTrue(first.resolve(strict=True).is_relative_to(runs))
+            self.assertEqual(first.read_bytes(), first_original)
+            alternate = first_edit.read_bytes()
+            opening.REPLACE(first_edit, first)
+            self.assertEqual(first.read_bytes(), alternate)
+            self.assertEqual(destination.read_bytes(), before)
+            changed.append(alternate)
+            fixture.advance(delay)
+
+        with (
+            patch.object(Path, "replace", replace_victory),
+            patch.object(storage, "time", SimpleNamespace(sleep=replace_png_between_attempts)),
+        ):
+            run = self.run_started_node(synthetic_battle(), synthetic_battle(), victory(), victory())
+        sent_at = self.assert_dispatched(run)
+        (destination, before, first, _, _, second, second_original), = conflicts
+        alternate, = changed
+        self.assertEqual(attempts, [destination])
+        self.assertEqual(destination.read_bytes(), before)
+        self.assertEqual(first.read_bytes(), alternate)
+        self.assertEqual(second.read_bytes(), second_original)
+        self.assertEqual(run.result.code, 1)
+        self.assertRegex(run.result.report["error"], "证据|截图")
+        self.assert_feedback_pair(run, "battle_feedback", "battle", sent_at)
+        self.assertTrue(run.node["battle_observed"])
+        self.assertFalse(run.node["result_observed"])
+        self.assertFalse(run.node["node_verified"])
+        self.assertNotIn("result_feedback", run.node)
+
+    def test_f10_during_result_observation_preserves_the_published_battle_pair(self):
+        queried = []
+
+        def held_f10(key):
+            if key == 0x79:
+                queried.append(key)
+                return 0x8000
+            return 0
+
+        def press_after_battle(record):
+            if record["battle_observed"]:
+                windows.user32.GetAsyncKeyState.side_effect = held_f10
+
+        run = self.run_started_node(synthetic_battle(), synthetic_battle(), victory(), victory(),
+                                    on_feedback=press_after_battle)
+        sent_at = self.assert_dispatched(run)
+        self.assertTrue(queried)
+        self.assertEqual(run.result.report["status"], "stopped", run.result.report["error"])
+        self.assertLessEqual(run.result.captures, run.prefix_count + 4)
+        self.assert_feedback_pair(run, "battle_feedback", "battle", sent_at)
+        self.assertEqual(run.node["action_status"], "battle_observed")
+        self.assertIs(run.node["battle_observed"], True)
+        self.assertIs(run.node["result_observed"], False)
+        self.assertIs(run.node["node_verified"], False)
+
+    def test_unresolved_older_node_child_blocks_before_window_access(self):
+        fixture = self.fixture
+        root = fixture.open_match()
+        previous = fixture.runs / "historical-node" / "currency-node-4.json"
+        previous.parent.mkdir()
+        original = json.dumps(dict(mode="single_node_test", action="start_node", origin_node="1-1",
+                                   start_dispatched=True, node_verified=False, action_status="pending",
+                                   completion_verified=False, gameplay_enabled=False)).encode("utf-8")
+        previous.write_bytes(original)
+        outcome = opening.OverclockStartNativeTests.legacy_runner(fixture, False, opening.boss(), flag=opening.START)
+        fixture.assert_preflight_veto(outcome)
+        self.assertIn("出战记录待核对", outcome.report["error"])
+        self.assertEqual(previous.read_bytes(), original)
+        self.assertEqual(fixture.session.read_bytes(), root)

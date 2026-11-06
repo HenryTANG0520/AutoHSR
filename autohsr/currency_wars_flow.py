@@ -116,6 +116,7 @@ def run_flow(c):
     excluded_candidates={}
     equipment_checked={}
     shop_nodes=set()
+    result_scope = False
     for index in range(180 if data['start_from_lobby_requested'] else 36):
         c.checkpoint()
         scene,kind = flow_snapshot(c,guard)
@@ -452,8 +453,11 @@ def run_flow(c):
                 data['actions'].append(node_data)
             data.update(action_status='node_verified' if node_data['node_verified'] else 'unknown',
                         screenshot=node_data['screenshot'])
+            result_scope = first_node is not None and node_data.get('origin_node') == '1-1'
+            if result_scope:
+                data['reason'] = node_data.get('reason') or '已核实本次 1-1 结果，下一节点接续待核对。'
             persist()
-            if not node_data['node_verified']:
+            if result_scope or not node_data['node_verified']:
                 break
             continue
         before = str(c.evidence(scene,'currency_flow_'+kind))
@@ -509,6 +513,9 @@ def run_flow(c):
         data['action_status']='step_limit'
         persist()
     c.runner.emit(dict(type='currency_wars',data=data))
+    if result_scope:
+        c.report.safe_next = '保留本次出战和结果证据，下一节点接续待核对。'
+        return TaskResult(TASK, 'partial', data['reason'])
     detail = '流程推进已停在待处理界面；'+(data['reason'] if data.get('reason') else '已保存逐步记录。')+'整局尚未完成。'
     if data.get('settlement_verified'):
         detail='已验证终局返回货币战争主页；完整自动开局至结算仍待验证。'

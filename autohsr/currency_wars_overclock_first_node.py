@@ -271,7 +271,7 @@ class LegacyFirstNode:
         return _NativeFrame(self.c.window, geometry, image, tuple(scene.tokens), scene.captured_at,
                             self.c.capture_occlusion_count, _pixels(image, geometry))
 
-    def _hold_input_sources(self, stack, frame, *additional):
+    def _hold_input_sources(self, stack, *additional, frame=None):
         from .currency_wars_identity import installed_client
 
         revisions = {}
@@ -290,7 +290,8 @@ class LegacyFirstNode:
         self._check_journal(self.session.run_dir / 'currency-flow.json', self.flow, hold)
         proofs = (*self.sources, *additional)
         for proof in proofs:
-            expected = (frame.geometry, frame.pixels) if proof.captured_at == frame.captured_at else None
+            expected = ((frame.geometry, frame.pixels)
+                        if frame is not None and proof.captured_at == frame.captured_at else None)
             _check_evidence(proof, self.session.run_dir, check_source=hold, expected_pixels=expected)
         if len({revisions[Path(proof.screenshot)][:2] for proof in proofs}) != len(proofs):
             raise AutomationError('1-1 回执需要各自独立的原始截图。')
@@ -325,7 +326,7 @@ class LegacyFirstNode:
         proof = self._proof(scene, action['before'])
         with ExitStack() as stack:
             def before_send():
-                _, unchanged = self._hold_input_sources(stack, frame, proof)
+                _, unchanged = self._hold_input_sources(stack, proof, frame=frame)
                 self.require_pickup(scene, target)
                 self._finish_native_check(scene, unchanged, frame)
                 self.pickups_sent += 1
@@ -340,7 +341,7 @@ class LegacyFirstNode:
         frame = self._freeze_input(scene)
         with ExitStack() as stack:
             def before_send():
-                hold, unchanged = self._hold_input_sources(stack, frame)
+                hold, unchanged = self._hold_input_sources(stack, frame=frame)
                 self._check_journal(*self.pending, hold)
                 board, _ = self._before_start(scene)
                 if board.target != target:

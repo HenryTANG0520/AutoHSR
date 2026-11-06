@@ -114,7 +114,8 @@ def run_node(context, *, journal_name='currency-node.json', initial_scene=None):
                 before=str(before_path), screenshot=str(before_path))
     first_node = getattr(c, '_legacy_first_node', None) if source_node == '1-1' and not observing else None
     if first_node is not None:
-        data['first_node_preflight'] = first_node.flow['first_node_preflight']
+        data.update(first_node_preflight=first_node.flow['first_node_preflight'],
+                    battle_observed=False, result_observed=False, next_node_verified=False)
     c.report.currency_wars = data
     journal = Path(c.report.run_dir) / journal_name
     def persist():
@@ -130,6 +131,9 @@ def run_node(context, *, journal_name='currency-node.json', initial_scene=None):
         if first_node is not None:
             first_node.bind_pending(journal, data, before)
         c.currency_start_node(before)
+        if first_node is not None:
+            from .currency_wars_overclock_first_result import observe_first_node_result
+            return observe_first_node_result(c, first_node, journal, data)
         data['start_dispatched']=True
         persist()
     elapsed, unseen, battle_seen = 0., 0., observing

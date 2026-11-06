@@ -1548,6 +1548,8 @@ class Context:
     def currency_continue_node(self, scene: Scene):
         if self.report.operation != 'currency_wars_flow_test':
             raise AutomationError('当前运行类型不允许推进货币战争结算。')
+        if getattr(self, '_legacy_first_node', None) is not None:
+            raise AutomationError('本次超频 A0 首节点只核对结果，下一节点接续待核对。')
         from .currency_wars_flow import continue_target
         from .currency_wars import CurrencyWarsWorkflow
         self.checkpoint()
