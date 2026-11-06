@@ -11,12 +11,13 @@ from .screenshot_tool import TemplateCapture
 
 
 class WorkflowTemplateDialog(tk.Toplevel):
-    def __init__(self, ui, owner, *, base_dir):
+    def __init__(self, ui, owner, *, base_dir, capture_current=None):
         super().__init__(owner)
         self.withdraw()
         self.transient(owner)
         self.title('AutoHSR · 采集模板')
         self.ui, self.base_dir = ui, Path(base_dir)
+        self.capture_current = capture_current
         self.result = None
         self.image = self.box = self.job = None
         self.source = ''
@@ -99,7 +100,7 @@ class WorkflowTemplateDialog(tk.Toplevel):
         path = filedialog.askopenfilename(parent=self, title='打开模板来源图片', initialdir=str(self.base_dir),
                                           filetypes=(('PNG 或 JPEG', '*.png *.jpg *.jpeg'),))
         if path and self._idle:
-            self._submit('读取本地图片', lambda cancel: screenshot_tool.open_image(path, cancel),
+            self._submit('读取本地图片', lambda cancel: screenshot_tool.open_template_image(path, cancel),
                          lambda image: self._load_image(image, '本地图片'))
 
     def capture(self):
@@ -123,6 +124,10 @@ class WorkflowTemplateDialog(tk.Toplevel):
                                             defaultextension='.png', filetypes=(('PNG', '*.png'),),
                                             confirmoverwrite=False)
         if path and self._idle and self.image is image and self.box == box:
+            if self.capture_current is not None and not self.capture_current():
+                self.message = '当前流程另存位置或编辑状态已变化。请返回可视编辑核对后重新采集。'
+                self._refresh()
+                return
             self._submit('保存模板', lambda cancel: screenshot_tool.save_template(image, box, path, base_dir, cancel),
                          self._complete)
 
@@ -173,14 +178,14 @@ class WorkflowTemplateDialog(tk.Toplevel):
             finish(error=AutomationError('当前有其他操作，请结束后重试。'))
 
 
-def ask_workflow_template(ui, owner, *, base_dir) -> TemplateCapture | None:
+def ask_workflow_template(ui, owner, *, base_dir, capture_current=None) -> TemplateCapture | None:
     """Return the verified PNG receipt only when the user completed the modal."""
     previous = owner.grab_current()
     if (base_dir is None or ui.busy or ui.closing
             or previous is not None and (previous is not owner or owner.grab_status() != 'local')):
         return None
     focus = owner.focus_get()
-    dialog = WorkflowTemplateDialog(ui, owner, base_dir=base_dir)
+    dialog = WorkflowTemplateDialog(ui, owner, base_dir=base_dir, capture_current=capture_current)
     try:
         dialog.deiconify()
         dialog.wait_visibility()

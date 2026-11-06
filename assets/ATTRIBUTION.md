@@ -800,6 +800,17 @@ masked; sidecars retain hashes and non-identifier OCR. These are local
 regression samples, not independent automation-success evidence. Game artwork
 remains the property of HoYoverse.
 
+`upstream/March7thAssistant/daily-message/incoming_message.png` preserves the
+original 154×40 title crop from moesnow and contributors at
+`7cf6c6bed474539485d3b1504077ac352866829f`, upstream path
+`assets/images/screen/incoming_message.png`. The 4026-byte file is unchanged.
+Git blob is `c838cc3d8d39d142737f58fcfefb9fdd89a75329` and SHA-256 is
+`fa493d9797805cfa4cdcb6158c19a07407777363fa7161366d567de60f04729d`.
+It supports read-only message panel recognition. The upstream GPL v3 and
+HoYoverse game artwork attribution apply.
+[Pinned original](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/images/screen/incoming_message.png)
+· [Upstream license](upstream/March7thAssistant/LICENSE)
+
 `upstream/March7thAssistant/team-calibration/configure_team.png` preserves a
 single original crop from moesnow and contributors at
 `7cf6c6bed474539485d3b1504077ac352866829f`. It supports read-only normal team

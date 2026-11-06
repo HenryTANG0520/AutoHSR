@@ -11,7 +11,7 @@ import time
 from PIL import Image
 
 from .models import AutomationError, FocusLost, Stopped
-from .storage import hold_read_sources
+from .storage import file_revision, hold_read_sources
 from .warp_fetch import WarpStopped
 from .warp_records import WarpError
 from .warp_service import publish_new
@@ -46,8 +46,40 @@ def _check_size(width, height):
 def open_image(path, cancel):
     _checkpoint(cancel)
     path = Path(path).resolve(strict=True)
-    with hold_read_sources((path,)), path.open('rb') as source:
-        raw = source.read(MAX_BYTES + 1)
+    with hold_read_sources((path,)):
+        raw = _read_image_bytes(path)
+    return _decode_image(raw, cancel)
+
+
+def open_template_image(path, cancel):
+    """Read a workflow capture source from a stable ordinary local path."""
+    from .workflow_bundle import _path as bundle_path
+
+    _checkpoint(cancel)
+    try:
+        path = Path(path)
+        if not path.is_absolute() or path.suffix.casefold() not in ('.png', '.jpg', '.jpeg'):
+            raise ValueError()
+        source = bundle_path(path)
+        with hold_read_sources((source,)):
+            if bundle_path(path) != source:
+                raise OSError()
+            revision = file_revision(source)
+            _checkpoint(cancel)
+            raw = _read_image_bytes(source)
+            if bundle_path(path) != source or file_revision(source) != revision:
+                raise OSError()
+    except (OSError, TypeError, ValueError):
+        raise ScreenshotError('请选择可稳定读取的本地普通 PNG 或 JPEG 图片。') from None
+    return _decode_image(raw, cancel)
+
+
+def _read_image_bytes(path):
+    with path.open('rb') as source:
+        return source.read(MAX_BYTES + 1)
+
+
+def _decode_image(raw, cancel):
     if len(raw) > MAX_BYTES:
         raise ScreenshotError('请选择小于 64 MiB 的 PNG 或 JPEG 图片。')
     _checkpoint(cancel)

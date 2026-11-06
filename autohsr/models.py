@@ -146,6 +146,8 @@ class RunReport:
     challenge_result: dict = field(default_factory=dict)
     team_preset_calibration: dict = field(default_factory=dict)
     daily_reward_observe: dict = field(default_factory=dict)
+    daily_message_observe: dict = field(default_factory=dict)
+    daily_event_observe: dict = field(default_factory=dict)
     workflow_screen: dict = field(default_factory=dict)
     workflow_navigation: dict = field(default_factory=dict)
 
@@ -158,6 +160,10 @@ class RunReport:
             del data['team_preset_calibration']
         if self.operation != 'daily_reward_observe':
             del data['daily_reward_observe']
+        if self.operation != 'daily_message_observe':
+            del data['daily_message_observe']
+        if self.operation != 'daily_event_observe':
+            del data['daily_event_observe']
         from .task_workflow import GAME_VISION_TASKS, PAGE_TASK
         if self.operation not in GAME_VISION_TASKS:
             del data['workflow_screen']

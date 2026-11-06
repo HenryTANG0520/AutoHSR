@@ -264,6 +264,22 @@ class Lifecycle(unittest.TestCase):
         child.write_bytes(child.read_bytes() + b'\n')
         self.assertEqual(assignment_result(verified.report)[0], '委托记录待核对')
 
+    def test_daily_observation_routes_to_the_scoped_runner_with_manual_foreground_handoff(self):
+        settings, callback = Settings(auto_launch=True), Mock()
+        host = SimpleNamespace(_read_settings=Mock(return_value=settings), _start_scoped_runner=Mock(return_value=True))
+        for mode, operation in (('achievements', 'daily_reward_observe'), ('support', 'daily_reward_observe'),
+                                ('messages', 'daily_message_observe'), ('odyssey', 'daily_event_observe')):
+            with self.subTest(mode=mode):
+                self.assertTrue(AutoHSRWindow._start_daily_observation(host, mode, callback))
+                _, actual, factory, present = host._start_scoped_runner.call_args.args
+                runner = factory(Mock())
+                self.assertIs(present, callback)
+                self.assertEqual(actual, operation)
+                self.assertEqual(runner.report.operation, operation)
+                self.assertTrue(runner.observation_wait_for_foreground)
+                self.assertIsNone(runner.battle_budget)
+        self.assertTrue(all(call.kwargs == {'operation': 'check'} for call in host._read_settings.call_args_list))
+
     def test_schedule_activation_rejects_saved_revision_source_and_budget_drift(self):
         with TemporaryDirectory(prefix='autohsr-schedule-desktop-qa-') as directory:
             root = Path(directory)

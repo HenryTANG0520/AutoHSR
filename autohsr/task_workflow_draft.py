@@ -105,14 +105,18 @@ class WorkflowDraft:
         except (WorkflowError, OSError):
             return False
 
+    def destination_path(self, path) -> Path:
+        """Resolve a destination for this draft format without publishing it."""
+        return _selected_file(path)
+
     def validate(self, *, selected_path=None, destination=None) -> Recipe:
         directory = self.source.parent if self.source is not None else None
         if destination is not None:
-            directory = _selected_file(destination).parent
+            directory = self.destination_path(destination).parent
         return compile_recipe(self.document, selected_path=selected_path, base_dir=directory)
 
     def save_as(self, path) -> SavedWorkflow:
-        destination = _selected_file(path)
+        destination = self.destination_path(path)
         if destination == self.source:
             if not self.source_is_current():
                 raise WorkflowSaveConflict('source_changed', '来源文件已改变或无法读取，请重新加载或另选新文件。')

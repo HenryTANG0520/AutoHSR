@@ -332,13 +332,20 @@ class _WorkflowPanel(_Panel):
         self._edit()
 
     def _template_base(self):
-        destination = self.saved_target or self._source_file
-        if destination is None:
-            return None
+        from .workflow_bundle import _path as bundle_path
+
+        target = self.saved_target
         try:
-            return destination.parent.resolve(strict=True)
-        except (OSError, RuntimeError):
-            raise WorkflowError("当前流程目录无法核实，请重新选择另存位置。") from None
+            if target is not None:
+                if target.suffix.casefold() == ".json":
+                    destination = bundle_path(target, new=True)
+                    if destination == self.draft.destination_path(target):
+                        return destination.parent
+            elif self._source_file is not None:
+                return bundle_path(self._source_file).parent
+        except (ValueError, OSError, RuntimeError):
+            pass
+        return None
 
     def edit_tree(self):
         if self._busy or self.ui.closing or self.draft is None:

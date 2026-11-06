@@ -1077,6 +1077,19 @@ class AutoHSRWindow:
 
         return self._start_scoped_runner('领取委托奖励', 'task_workflow', factory, on_report)
 
+    def _start_daily_observation(self, mode, on_report=None) -> bool:
+        from .daily_observe import operation_for, runner_for
+
+        operation = operation_for(mode)
+        settings = self._read_settings(operation='check')
+        if settings is None:
+            return False
+
+        def factory(emit):
+            return runner_for(settings, emit, mode, wait_for_foreground=True)
+
+        return self._start_scoped_runner('核对日常页面', operation, factory, on_report)
+
     def _start_daily_attachment(self, operation, on_report=None) -> bool:
         item = ATTACHMENT_SECTIONS[operation]
         settings = self._read_settings(operation=operation)

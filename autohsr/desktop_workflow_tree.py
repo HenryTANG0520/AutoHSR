@@ -90,10 +90,10 @@ def hold_template_bindings(bindings, nodes, base_dir):
     return _hold_templates(tuple(_referenced_templates(nodes, bindings)), base_dir)
 
 
-def _ask_template(ui, owner, *, base_dir):
+def _ask_template(ui, owner, *, base_dir, capture_current):
     from .desktop_workflow_template import ask_workflow_template
 
-    return ask_workflow_template(ui, owner, base_dir=base_dir)
+    return ask_workflow_template(ui, owner, base_dir=base_dir, capture_current=capture_current)
 
 
 def _node_key(identity):
@@ -296,12 +296,12 @@ class WorkflowTreeDialog(tk.Toplevel):
         if self.tree.identify_region(event.x, event.y) in ('tree', 'cell'):
             self._edit()
 
-    def _can_capture_template(self):
+    def _can_capture_template(self, *, require_focus=True):
         try:
             if (not self.winfo_exists() or self.ui.busy or self.ui.closing or self.editing is None
                     or self.base_dir is None or not self.capture_current()):
                 return False
-            if self.winfo_viewable():
+            if require_focus and self.winfo_viewable():
                 focus = theme.focus_widget(self)
                 return focus is not None and focus.winfo_toplevel() is self
             return True
@@ -313,9 +313,13 @@ class WorkflowTreeDialog(tk.Toplevel):
             return None
         selection = (self._selection(), self._selection_version)
         editing, base_dir = self.editing, self.base_dir
-        capture = _ask_template(self.ui, self, base_dir=base_dir)
-        if (capture is None or not self._can_capture_template() or self.editing is not editing
-                or self.base_dir != base_dir or (self._selection(), self._selection_version) != selection):
+
+        def capture_current(*, require_focus=False):
+            return (self._can_capture_template(require_focus=require_focus) and self.editing is editing
+                    and self.base_dir == base_dir and (self._selection(), self._selection_version) == selection)
+
+        capture = _ask_template(self.ui, self, base_dir=base_dir, capture_current=capture_current)
+        if capture is None or not capture_current(require_focus=True):
             return None
         return _TemplateBinding.accept(base_dir, capture)
 

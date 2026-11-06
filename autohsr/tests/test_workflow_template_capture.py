@@ -3,6 +3,7 @@ from contextlib import ExitStack, nullcontext
 from hashlib import sha256
 import os
 from pathlib import Path
+import stat
 from tempfile import TemporaryDirectory
 from threading import Event
 import tkinter as tk
@@ -41,6 +42,58 @@ class TemplateFileTests(TestCase):
 
     def save(self, *, target=None, box=BOX, cancel=lambda: False):
         return screenshot.save_template(self.image, box, target or self.target, self.base, cancel)
+
+    def test_template_source_rejects_unc_and_mapped_drive_before_any_path_access(self):
+        if os.name != 'nt':
+            self.skipTest('Windows network paths')
+        with (patch('autohsr.workflow_bundle._local_drive', return_value=False) as drive,
+              patch.object(Path, 'lstat') as metadata, patch.object(Path, 'resolve') as resolve,
+              patch.object(Path, 'open') as open_file):
+            for path in (r'\\synthetic.invalid\share\source.png', 'Z:/share/source.jpg'):
+                with self.subTest(path=path), self.assertRaisesRegex(screenshot.ScreenshotError, '本地普通'):
+                    screenshot.open_template_image(path, lambda: False)
+        drive.assert_called_once_with('Z:\\')
+        metadata.assert_not_called()
+        resolve.assert_not_called()
+        open_file.assert_not_called()
+
+    def test_template_source_rejects_reparse_ancestor_or_offline_file_before_read(self):
+        source = self.target.parent / 'source.png'
+        self.image.save(source)
+        lstat = Path.lstat
+        for rejected, mode, attribute in ((source.parent, stat.S_IFDIR, stat.FILE_ATTRIBUTE_REPARSE_POINT),
+                                          (source, stat.S_IFREG, stat.FILE_ATTRIBUTE_OFFLINE)):
+            def observed(path):
+                if path == rejected:
+                    return SimpleNamespace(st_mode=mode, st_file_attributes=attribute)
+                return lstat(path)
+
+            with (self.subTest(attribute=attribute), patch.object(Path, 'lstat', observed),
+                  patch.object(screenshot, 'hold_read_sources') as lock,
+                  self.assertRaisesRegex(screenshot.ScreenshotError, '本地普通')):
+                screenshot.open_template_image(source, lambda: False)
+            lock.assert_not_called()
+
+    def test_template_source_reads_under_a_stable_native_lock(self):
+        if os.name != 'nt':
+            self.skipTest('Windows native read sharing')
+        source = self.base / 'original.PNG'
+        replacement = self.base / 'replacement.png'
+        self.image.save(source)
+        Image.new('RGB', self.image.size, 'black').save(replacement)
+        read_bytes = screenshot._read_image_bytes
+
+        def attempt_replacement(path):
+            self.assertEqual(path, source)
+            with self.assertRaises(PermissionError):
+                os.replace(replacement, path)
+            return read_bytes(path)
+
+        with patch.object(screenshot, '_read_image_bytes', side_effect=attempt_replacement) as read:
+            image = screenshot.open_template_image(source, lambda: False)
+        read.assert_called_once_with(source)
+        self.assertEqual(image.tobytes(), self.image.tobytes())
+        self.assertTrue(replacement.is_file())
 
     def test_published_receipt_has_relative_path_digest_and_exact_crop(self):
         self.image.info['icc_profile'] = b'private-fixture-data'

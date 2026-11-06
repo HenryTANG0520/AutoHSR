@@ -282,20 +282,12 @@ class March7thYamlDraft(WorkflowDraft):
         self.original_source = original_source
         self.metadata = MappingProxyType(metadata or {})
 
-    @staticmethod
-    def _destination(path):
+    def destination_path(self, path) -> Path:
         try:
-            return _local_path(path, {'.json'}, source=False)
+            destination = _local_path(path, {'.json'}, source=False)
         except (TypeError, OSError) as error:
             raise WorkflowError('请选择已存在的本地父目录和新的 .json 文件名。') from error
-
-    def validate(self, *, destination=None, selected_path=None):
-        if destination is not None:
-            destination = self._destination(destination)
-        return super().validate(destination=destination, selected_path=selected_path)
-
-    def save_as(self, path) -> SavedWorkflow:
-        return super().save_as(self._destination(path))
+        return super().destination_path(destination)
 
 
 def load_march7th_yaml(path) -> March7thYamlDraft:

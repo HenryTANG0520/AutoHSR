@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import CONFIG_PATH, Settings
+from .daily_observe import MODES as DAILY_OBSERVATION_MODES
 
 
 def _json(value: Any) -> str:
@@ -56,8 +57,8 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--check", action="store_true", help="检测窗口、客户端版本和 OCR，输出 JSON；不操作游戏")
     mode.add_argument("--scan-dungeons", action="store_true", help="采集生存索引全部副本入口；不开始挑战或消耗资源")
     mode.add_argument("--read-build-target", action="store_true", help="从已打开的生存索引核对培养目标页入口并留证")
-    mode.add_argument("--daily-reward-observe", choices=("achievements", "support"),
-                      help="从当前前台本人手机校准成就或更多菜单的漫游签证入口，保留到页证据")
+    mode.add_argument("--daily-reward-observe", choices=DAILY_OBSERVATION_MODES,
+                      help="核对前台成就、漫游签证、短信或巡星之礼，分别记录导航与观察结果")
     mode.add_argument("--preview-build-target", action="store_true", help="只读核对培养目标、材料详情与配方、花萼预览及结算提示")
     mode.add_argument('--build-target', action='store_true', help='核实用户指定的培养材料来源并生成单项体力草稿；只读')
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
@@ -448,7 +449,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.team_preset_calibration:
             runner = Runner(settings, emit, operation='team_preset_calibration')
         elif args.daily_reward_observe:
-            runner = Runner(settings, emit, operation='daily_reward_observe', daily_reward_mode=args.daily_reward_observe)
+            from .daily_observe import runner_for
+            runner = runner_for(settings, emit, args.daily_reward_observe)
         elif args.build_target:
             runner = Runner(settings, emit, operation='build_target_plan', build_target_selection=build_target_selection)
         elif build_target:

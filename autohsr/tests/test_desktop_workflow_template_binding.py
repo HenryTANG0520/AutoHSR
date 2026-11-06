@@ -7,14 +7,16 @@ from tempfile import TemporaryDirectory
 import tkinter as tk
 from types import SimpleNamespace
 from unittest import TestCase
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 from PIL import Image
 
 from autohsr import theme
+from autohsr.desktop_workflow_template import WorkflowTemplateDialog
 from autohsr.desktop_workflow_tree import WorkflowTreeDialog
 from autohsr.desktop_workflows import _TASK_NAMES, build_workflow_panel
 from autohsr.task_workflow import read
+from autohsr.workflow_yaml import load_march7th_yaml
 
 
 def document(task='workflow_image'):
@@ -76,7 +78,7 @@ class WorkflowTemplateBindingTests(TestCase):
                 dialog = self.tree(original)
                 with patch('autohsr.desktop_workflow_tree._ask_template', return_value=self.receipt) as capture:
                     dialog.form.template_button.invoke()
-                capture.assert_called_once_with(self.ui, dialog, base_dir=self.base)
+                capture.assert_called_once_with(self.ui, dialog, base_dir=self.base, capture_current=ANY)
                 expected = dict(original['steps'][0]['params'], template=self.receipt.relative_path)
                 self.assertEqual(self.parameters(dialog), expected)
                 self.assertEqual(dialog.draft.rows()[0].node, original['steps'][0])
@@ -170,6 +172,79 @@ class WorkflowTemplateBindingTests(TestCase):
 
         with patch('autohsr.desktop_workflow_tree.ask_workflow_tree', side_effect=edit):
             panel.edit_tree()
+
+    def test_explicit_save_target_must_be_new_json_before_opening_capture(self):
+        panel = self.panel()
+        legacy_source = self.base / 'original.flow'
+        self.source.rename(legacy_source)
+        panel._load(legacy_source)
+        self.assertEqual(panel._template_base(), self.base)
+        original = panel._text()
+        occupied = self.base / 'occupied.JSON'
+        occupied.write_bytes(b'preserve-existing')
+        modal = Mock(return_value=self.receipt)
+        for target in (self.base / 'wrong.png', self.other / 'missing' / 'new.json', occupied,
+                       occupied.with_suffix('.json') if os.name == 'nt' else occupied):
+            with self.subTest(target=target):
+                panel.saved_target = target
+                self.edit_hidden(panel, modal)
+                modal.assert_not_called()
+                self.assertEqual(panel._text(), original)
+        panel.saved_target = self.base / 'new.JSON'
+        self.edit_hidden(panel, modal)
+        modal.assert_called_once()
+        self.assertEqual(json.loads(panel._text())['steps'][0]['params']['template'], self.receipt.relative_path)
+        self.assertEqual(occupied.read_bytes(), b'preserve-existing')
+
+    def test_yaml_draft_uses_only_a_destination_that_its_real_save_accepts(self):
+        panel = self.panel()
+        yaml_source = self.other / '旧流程.yaml'
+        original = b'name: upstream\nsteps: [{type: wait}]\n'
+        yaml_source.write_bytes(original)
+        panel._install(load_march7th_yaml(yaml_source))
+        panel._replace_draft_document(document())
+        (self.base / 'nested').mkdir()
+        modal = Mock(return_value=self.receipt)
+        for target in (None, self.base / 'wrong.png', self.base / 'nested' / '..' / 'new.json'):
+            with self.subTest(target=target):
+                panel.saved_target = target
+                self.edit_hidden(panel, modal)
+                modal.assert_not_called()
+        target = panel.saved_target = self.base / 'new.json'
+        self.edit_hidden(panel, modal)
+        modal.assert_called_once()
+        panel.save_as()
+        self.assertEqual(read(target)['steps'][0]['params']['template'], self.receipt.relative_path)
+        self.assertEqual(yaml_source.read_bytes(), original)
+
+    def test_occupied_json_during_png_picker_does_not_submit_a_save(self):
+        panel = self.panel()
+        target = panel.saved_target = self.base / 'new.json'
+        candidate = self.base / 'late.png'
+        self.ui._submit_tool_job = Mock()
+
+        def modal(ui, owner, *, base_dir, capture_current):
+            dialog = WorkflowTemplateDialog(ui, owner, base_dir=base_dir, capture_current=capture_current)
+            try:
+                self.assertTrue(capture_current())
+                dialog._load_image(Image.new('RGB', (24, 18), 'green'), '本地图片')
+                dialog.select_all()
+
+                def occupy(*_args, **_kwargs):
+                    target.write_bytes(b'other-owner')
+                    return str(candidate)
+
+                with patch('autohsr.desktop_workflow_template.filedialog.asksaveasfilename', side_effect=occupy):
+                    dialog.save()
+                self.assertIsNone(dialog.result)
+                self.assertIn('另存位置或编辑状态已变化', dialog.message)
+            finally:
+                dialog.destroy()
+
+        self.edit_hidden(panel, modal)
+        self.ui._submit_tool_job.assert_not_called()
+        self.assertFalse(candidate.exists())
+        self.assertEqual(target.read_bytes(), b'other-owner')
 
     def test_switching_save_base_away_and_back_during_modal_invalidates_capture(self):
         panel = self.panel()

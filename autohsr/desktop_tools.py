@@ -4,6 +4,7 @@ from tkinter import ttk
 
 class ToolsShelf(ttk.Frame):
     def __init__(self, parent, ui):
+        from .desktop_daily_observe import build_daily_observation_panel
         from .desktop_services import build_notifications_panel, build_redemption_panel
         from .desktop_screenshot import build_screenshot_panel
         from .desktop_warp import build_warp_panel
@@ -23,7 +24,8 @@ class ToolsShelf(ttk.Frame):
                 ('notifications', '通知', build_notifications_panel),
                 ('workflow', '任务流', build_workflow_panel),
                 ('schedule', '应用内定时', build_schedule_panel),
-                ('screenshot', '截图与识别', build_screenshot_panel))):
+                ('screenshot', '截图与识别', build_screenshot_panel),
+                ('daily_observation', '日常页面核对', build_daily_observation_panel))):
             nav.columnconfigure(index, weight=1)
             self.buttons[key] = ttk.Button(nav, text=title, style='Settings.Nav.TButton',
                                            command=lambda key=key: self.select(key))
