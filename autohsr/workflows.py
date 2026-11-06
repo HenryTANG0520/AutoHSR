@@ -89,15 +89,23 @@ class DailyWorkflow:
         self._login_supply_closed = False
         self._daily_synthesis_attempted = False
         self.assignments_only = getattr(getattr(context, 'runner', None), 'assignments_only', False) is True
+        self.daily_attachment_only = getattr(getattr(context, 'runner', None), 'daily_attachment_only', None)
 
     def _snapshot(self) -> Scene:
         self.ctx.checkpoint()
-        return self.ctx.snapshot()
+        scene = self.ctx.snapshot()
+        if self.daily_attachment_only:
+            from .daily_attachments import observe
+            observe(self.ctx, scene)
+        return scene
 
     def _result(self, task: str, status: str, detail: str, scene=None) -> TaskResult:
         self.ctx.log(detail)
         if scene is not None:
             self.ctx.evidence(scene, f"{task}_{status}")
+        if task == self.daily_attachment_only:
+            from .daily_attachments import result
+            return result(self.ctx, task, status, detail)
         return TaskResult(task, status, detail)
 
     def _pause(self):
@@ -114,6 +122,14 @@ class DailyWorkflow:
         return self._snapshot()
 
     def _wait(self, predicate, timeout=30, description="等待页面") -> Scene:
+        if self.daily_attachment_only:
+            from .daily_attachments import observe
+
+            def checked(scene):
+                observe(self.ctx, scene)
+                return predicate(scene)
+
+            return self.ctx.wait(checked, timeout=timeout, description=description)
         return self.ctx.wait(predicate, timeout=timeout, description=description)
 
     def _matches(self, scene: Scene, name: str, roi: ROI, threshold=0.90):
@@ -290,7 +306,8 @@ class DailyWorkflow:
                 scene = self._settle_login_overlays(scene)
                 if self._phone(scene):
                     return scene
-            if not self.assignments_only and self._settlement(scene) and scene.has("退出关卡", BOTTOM, exact=True):
+            if (not (self.assignments_only or self.daily_attachment_only) and self._settlement(scene)
+                    and scene.has("退出关卡", BOTTOM, exact=True)):
                 self.ctx.log("已核实遗留结算与退出按钮，清理结算后继续导航。")
                 self._exit_result(scene)
                 scene = self._snapshot()
@@ -1409,6 +1426,8 @@ class DailyWorkflow:
             return self._result('mail','ok','已复核邮箱全部领取按钮为禁用状态，无可领取附件。',scene)
         if enabled is not True:
             return self._result('mail','partial','邮箱全部领取按钮的可用状态尚未核实。',scene)
+        if self.daily_attachment_only:
+            self.ctx.evidence(scene, 'mail_before_claim')
         self._click(scene, claim)
         after=self._wait(reward_overlay,description='核实邮件附件奖励展示')
         self.ctx.evidence(after,'mail_reward_verified')
@@ -1418,6 +1437,9 @@ class DailyWorkflow:
         after=self._wait(mailbox,description='返回邮箱复核附件')
         claim=after.find('全部领取',(.12,.83,.35,.97),exact=True)
         if mail_claimed(after):
+            if self.daily_attachment_only:
+                from .daily_attachments import MAIL, confirmed
+                confirmed(self.ctx, MAIL, after)
             return self._result("mail", "ok", "已核实邮件附件奖励展示及全部领取按钮禁用。", after)
         return self._result("mail", "partial", "已点击邮件全部领取，但尚未核实全部附件领取状态。", after)
 
@@ -1457,6 +1479,7 @@ class DailyWorkflow:
                     if kind=='tasks':
                         scene=self._wait(lambda s:battlepass_settled(s,kind)
                             and battlepass_progress(s) is not None
+                            and (not self.daily_attachment_only or task_category(s, category))
                             and battlepass_progress(s)[:2]>before[:2],description='核实勋礼任务经验到账')
                     else:
                         scene=self._wait(reward_overlay,description='核实勋礼免费奖励展示')
@@ -1465,6 +1488,9 @@ class DailyWorkflow:
                             ('点击空白处关闭','点击任意位置关闭','点击空白处继续'),exact=True),description='等待勋礼奖励关闭提示')
                         self._dismiss_reward(scene)
                         scene=self._wait(lambda s:battlepass_settled(s,kind),description='复核勋礼等级奖励已领取')
+                    if self.daily_attachment_only:
+                        from .daily_attachments import BATTLEPASS_STAGES, confirmed
+                        confirmed(self.ctx, BATTLEPASS_STAGES[category or kind], scene)
                 else:
                     # Observe again: tab switching briefly hides every row and
                     # action, which is not evidence of completed claims.

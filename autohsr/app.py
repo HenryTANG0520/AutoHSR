@@ -191,7 +191,7 @@ class Context:
         if self.report.operation == 'team_preset_calibration':
             raise AutomationError('编队入口校准只允许本次手机编队入口点击。')
         if self.report.operation == 'daily_reward_observe':
-            raise AutomationError('成就校准只允许本次已核实的手机入口点击。')
+            raise AutomationError('日常奖励校准只允许本次已核实的专用导航。')
         if self.report.operation == 'build_target_read':
             raise AutomationError('培养目标读取只允许核实后的生存索引入口点击。')
         if self.report.operation in ('build_target_preview', 'build_target_plan'):
@@ -256,25 +256,26 @@ class Context:
         reader = getattr(self, 'daily_reward_reader', None)
         if (self.report.operation != OPERATION or not isinstance(reader, DailyRewardObserver)
                 or reader.c is not self or reader.record is not self.report.daily_reward_observe):
-            raise AutomationError('缺少本次独立成就入口的校准意图。')
+            raise AutomationError('缺少本次独立日常奖励入口的校准意图。')
         self.checkpoint()
         with reader.hold_intent():
             target = reader.authorize(scene)
 
             def before_submit():
                 if reader.authorize(scene) != target:
-                    raise AutomationError('手机成就入口在发送前已变化。')
+                    raise AutomationError('日常奖励入口在发送前已变化。')
                 if self.window.emergency_pressed():
                     raise Stopped('F10 紧急停止。')
                 reader.guard_window()
-                reader.record.update(entry_input='unconfirmed', submission_capture_sequence=self.capture_sequence,
-                                     entry_point=list(target.center))
+                reader.step.update(entry_input='unconfirmed', submission_capture_sequence=self.capture_sequence,
+                                   entry_point=list(target.center))
+                reader.record['entry_input'] = 'unconfirmed'
                 self.last_scene, self._scroll_anchor = None, None
 
             self.window.click(*target.center, scene.geometry, before_submit=before_submit)
-        if reader.record['entry_input'] != 'unconfirmed':
-            raise AutomationError('缺少本次成就入口的原生提交标记。')
-        reader.record['entry_input'] = 'sent'
+        if reader.step['entry_input'] != 'unconfirmed':
+            raise AutomationError('缺少本次日常奖励入口的原生提交标记。')
+        reader.step['entry_input'] = reader.record['entry_input'] = 'sent'
         return time.monotonic()
 
     def du_rewards_input(self, scene, action):
@@ -1000,12 +1001,16 @@ class Context:
             raise AutomationError("识别画面已经过期，请重新识别后操作。")
         from .policy import guard_click, guard_differential_universe_click, replenishment_dialog
         assignment_commit = None
+        attachment_commit = None
         if assignment_intent is not None:
             from .daily_assignment_scope import before_submit
             assignment_commit = before_submit(self, scene, target, assignment_intent)
         elif getattr(self.runner, 'assignments_only', False) is True:
             from .daily_assignment_scope import require_navigation
             require_navigation(scene, target)
+        elif getattr(self.runner, 'daily_attachment_only', None) is not None:
+            from .daily_attachments import before_click
+            attachment_commit = before_click(self, scene, target)
         weekly_start_guard = None
         synthesis_resource_guard = None
         points_goal = None
@@ -1112,6 +1117,8 @@ class Context:
         try:
             if assignment_commit is not None:
                 self.window.click(*coordinates, scene.geometry, before_submit=assignment_commit)
+            elif attachment_commit is not None:
+                self.window.click(*coordinates, scene.geometry, before_submit=attachment_commit)
             elif station_confirmation:
                 def check_station_before_send():
                     if self.window is not station_window:
@@ -1195,6 +1202,9 @@ class Context:
             raise AutomationError("日常流程仅允许返回键和指南快捷键；其他快捷键被禁止。")
         if self.last_scene is None or self.scene_epoch != self.runner.input_epoch:
             raise InputInterrupted("按键前画面已失效，需要重新识别当前页面。")
+        if getattr(self.runner, 'daily_attachment_only', None) is not None:
+            from .daily_attachments import require_key
+            require_key(self, name)
         try:
             self.window.key(name)
         except FocusLost:
@@ -2216,9 +2226,15 @@ class Runner:
                  currency_configure=False, currency_wealth=None, currency_resume=False, weekly_plan=None, currency_strategy=None,
                  currency_remembrance_name=None,currency_fast_mode=None,currency_loop_guard=None,currency_rewards_resume=False,currency_weekly_guard=None,
                  use_power_plan=False,new_power_plan=False,currency_overclock_open_a0=False,build_target_selection=None,
-                 challenge_lobby_mode=None, assignments_only=False):
+                 challenge_lobby_mode=None, assignments_only=False, daily_reward_mode=None,
+                 daily_attachment_only=None):
         from dataclasses import replace
-        if operation == 'reward_only':
+        if daily_attachment_only is not None:
+            from .daily_attachments import attachment_settings
+            if operation != 'daily' or new_battle_run or use_power_plan or new_power_plan or assignments_only:
+                raise ValueError('独立免费领奖只允许本次明确选择一个附加任务。')
+            settings = attachment_settings(settings, daily_attachment_only)
+        elif operation == 'reward_only':
             from .recovery import reward_only_settings
             settings = reward_only_settings(settings)
         else:
@@ -2228,12 +2244,19 @@ class Runner:
                      or any((settings.battle, settings.daily, settings.redemption_enabled, settings.mail, settings.battlepass)))):
             raise ValueError('独立委托只允许本次明确选择已有委托奖励。')
         self.assignments_only = assignments_only
+        self.daily_attachment_only = daily_attachment_only
         if operation in ('build_target_read', 'build_target_preview', 'build_target_plan') and new_battle_run:
             raise ValueError('培养目标读取不能建立刷本预算。')
         if operation in ('team_preset_calibration', 'challenge_preset_observe') and new_battle_run:
             raise ValueError('编队观察入口不能建立刷本预算。')
-        if operation == 'daily_reward_observe' and new_battle_run:
-            raise ValueError('成就校准不能建立刷本预算。')
+        if operation == 'daily_reward_observe':
+            from .daily_reward_observe import MODES
+            daily_reward_mode = 'achievements' if daily_reward_mode is None else daily_reward_mode
+            if daily_reward_mode not in MODES or new_battle_run:
+                raise ValueError('日常奖励校准需要明确模式，不能建立刷本预算。')
+        elif daily_reward_mode is not None:
+            raise ValueError('日常奖励校准模式仅适用于独立入口。')
+        self.daily_reward_mode = daily_reward_mode
         if operation == 'build_target_plan' or build_target_selection is not None:
             from .build_target_preview import BuildTargetSelection
             if operation != 'build_target_plan' or type(build_target_selection) is not BuildTargetSelection:
@@ -2378,9 +2401,14 @@ class Runner:
         self.du_periodic_rank = du_periodic_rank
 
     def _run_tasks(self, context, workflow):
-        selected = [name for name in ("assignments", "battle", "daily", "redemption", "mail", "battlepass")
-                    if ((self.settings.redemption_enabled and self.report.operation == 'daily')
-                        if name == 'redemption' else getattr(self.settings, name))]
+        attachment = self.daily_attachment_only
+        if attachment:
+            from .daily_attachments import SAFE_NEXT, result as attachment_result
+            selected = [attachment]
+        else:
+            selected = [name for name in ("assignments", "battle", "daily", "redemption", "mail", "battlepass")
+                        if ((self.settings.redemption_enabled and self.report.operation == 'daily')
+                            if name == 'redemption' else getattr(self.settings, name))]
         if not selected:
             raise AutomationError("至少选择一个任务。")
         power=None
@@ -2393,12 +2421,19 @@ class Runner:
             self.emit(dict(type="task", task=name, status="running", detail="正在执行"))
             try:
                 result = self._resume_step(power.run if name=='battle' and power is not None else getattr(workflow, name), name)
-            except Stopped:
+            except Stopped as error:
+                if attachment:
+                    self.report.results.append(attachment_result(context, name, 'stopped', str(error)))
                 raise
             except Exception as error:
-                result = TaskResult(name, "partial", f"未核实完成：{error}")
+                detail = f"未核实完成：{error}"
+                if attachment:
+                    result = attachment_result(context, name, 'partial', detail)
+                else:
+                    result = TaskResult(name, "partial", detail)
                 self.report.error = str(error)
-                self.report.safe_next = ("原委托结果待核对。请查看本次截图及当前领取状态。"
+                self.report.safe_next = (SAFE_NEXT if attachment else
+                                         "原委托结果待核对。请查看本次截图及当前领取状态。"
                                          if self.assignments_only else
                                          "已保留每日奖励验证；请人工返回主界面后仅重试未完成的免费领奖。"
                                          if self.report.daily_verified else
@@ -2646,6 +2681,8 @@ class Runner:
                     raise AutomationError('兑换操作已中断，原提交与逐码结果保留；未重启整批或重放确认。')
                 if name == 'assignments' and self.assignments_only:
                     raise AutomationError('独立委托输入或反馈已中断，保留本次待核对记录。')
+                if name == self.daily_attachment_only:
+                    raise AutomationError('独立免费领奖输入或反馈已中断，保留本次结果待核对。')
                 if name == "battle" and (self.report.stamina_pending or self.report.immersifiers_pending):
                     raise AutomationError("挑战输入已中断且消耗待核对；保留本轮预算，不重复开始挑战。")
                 if name == 'daily' and self.report.daily_synthesis.get('status') == 'pending':
@@ -2672,7 +2709,8 @@ class Runner:
             self.stop()
             self._control_checkpoint()
 
-    def _save_run_report(self, directory, points_workflow=None, *, challenge_reader=None, preview_source=None):
+    def _save_run_report(self, directory, points_workflow=None, *, challenge_reader=None, preview_source=None,
+                         daily_reward_reader=None):
         temporary = directory / 'report.tmp'
 
         def write_report():
@@ -2682,6 +2720,9 @@ class Runner:
 
         if challenge_reader is not None:
             challenge_reader.save_report(temporary, write_report)
+            return
+        if daily_reward_reader is not None:
+            daily_reward_reader.save_verified_report(temporary, write_report)
             return
         write_report()
         if preview_source is not None:
@@ -2733,6 +2774,7 @@ class Runner:
         context = None
         points_workflow = None
         challenge_reader = None
+        daily_reward_reader = None
         overclock_session = None
         overclock_preparation = None
         monitor = None
@@ -2771,13 +2813,19 @@ class Runner:
                 self.report.safe_next = SAFE_NEXT
                 self.report.team_preset_calibration = initial_record()
             elif daily_reward:
-                from .daily_reward_observe import SAFE_NEXT, initial_record
-                self.report.safe_next = SAFE_NEXT
-                self.report.daily_reward_observe = initial_record()
+                from .daily_reward_observe import SAFE_NEXT, SUPPORT_SAFE_NEXT, initial_record
+                self.report.safe_next = SUPPORT_SAFE_NEXT if self.daily_reward_mode == 'support' else SAFE_NEXT
+                self.report.daily_reward_observe = initial_record(self.daily_reward_mode)
             if not mutex or already_running:
                 raise AutomationError("另一个 AutoHSR 任务正在运行，请先停止后重试。")
             from .workflow_lease import require_workflow_access
             require_workflow_access()
+            if self.daily_attachment_only:
+                from .daily_attachments import SAFE_NEXT
+                from .workflow_identity import active
+                self.report.safe_next = SAFE_NEXT
+                if not active():
+                    raise AutomationError('独立免费领奖须从正式单任务入口获得执行权及账号核验。')
             currency_wars = self.report.operation in ("currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", OVERCLOCK_CONFIGURE, START_OPERATION, PREP_OPERATION, "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", FLOW_OPERATION)
             differential_universe = self.report.operation == "differential_universe"
             catalogue = self.report.operation == "dungeon_catalogue"
@@ -2843,7 +2891,9 @@ class Runner:
                     require_session_access(saved,self.currency_resume)
                 configured_name=resolve_name(self.settings,self.currency_remembrance_name,saved,resume=self.currency_resume)
                 resolve_fast_mode(self.settings,self.currency_fast_mode,saved,resume=self.currency_resume)
-            if not guide_only and not currency_wars and not differential_universe and not redemption and not challenge_prepare and not du_rewards and self.settings.battle and self.settings.allow_stamina_spend:
+            if (not self.daily_attachment_only and not guide_only and not currency_wars and not differential_universe
+                    and not redemption and not challenge_prepare and not du_rewards and self.settings.battle
+                    and self.settings.allow_stamina_spend):
                 from .recovery import BattleBudget
                 self.battle_budget = BattleBudget(ROOT / "runs", self.settings, self.report)
                 from .workflow_identity import active as workflow_identity_active
@@ -2856,7 +2906,7 @@ class Runner:
             monitor.start()
             monitor_started = True
             cold_start = False
-            if not foreground_scope and ((not guide_only and not currency_wars and not differential_universe and not challenge_prepare and not du_rewards) or self.weekly_plan is not None or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard', 'currency_wars_points', 'currency_wars_rewards')):
+            if not self.daily_attachment_only and not foreground_scope and ((not guide_only and not currency_wars and not differential_universe and not challenge_prepare and not du_rewards) or self.weekly_plan is not None or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard', 'currency_wars_points', 'currency_wars_rewards')):
                 cold_start = self._prepare_daily_game() is True
             self._window = self._window or find_game(self.settings.game_path)
             if self.report.operation != "currency_wars" and is_elevated(self._window.hwnd) is True and not is_admin():
@@ -2888,7 +2938,7 @@ class Runner:
                                       configured_name=configured_name,
                                       timeout=.05 if self.currency_timeout_probe else 30.) if currency_wars else
                       Vision(ocr_confidence))
-            if self.assignments_only:
+            if self.assignments_only or self.daily_attachment_only:
                 from .currency_wars_identity import UID_VETO_FLOOR
                 vision.uid_counterevidence_floor = UID_VETO_FLOOR
             context = Context(self, self._window, vision)
@@ -2931,12 +2981,15 @@ class Runner:
                 self.report.failure_task = '' if result.status == 'ok' else self.report.operation
             elif daily_reward:
                 from .daily_reward_observe import DailyRewardObserver
-                self.emit(dict(type='task', task=self.report.operation, status='running', detail='核对当前手机成就入口'))
-                result = DailyRewardObserver(context).run()
+                detail = '核对当前手机更多与漫游签证入口' if self.daily_reward_mode == 'support' else '核对当前手机成就入口'
+                self.emit(dict(type='task', task=self.report.operation, status='running', detail=detail))
+                daily_reward_reader = DailyRewardObserver(context, self.daily_reward_mode)
+                result = daily_reward_reader.run()
                 self.report.results.append(result)
                 self.report.status = 'success' if result.status == 'ok' else 'partial'
                 self.report.failure_task = '' if result.status == 'ok' else self.report.operation
-                self.emit(dict(type='task', **result.__dict__))
+                if result.status != 'ok':
+                    self.emit(dict(type='task', **result.__dict__))
             elif build_target_preview:
                 from .build_target_preview import run_preview
                 self.emit(dict(type='task', task=self.report.operation, status='running', detail='观察材料与副本候选'))
@@ -3029,7 +3082,7 @@ class Runner:
             else:
                 workflow = daily_workflow
                 context.evidence(initial, "start")
-                if self.report.operation == 'daily' and self.settings.daily and self.settings.daily_synthesis:
+                if self.report.operation == 'daily' and not self.daily_attachment_only and self.settings.daily and self.settings.daily_synthesis:
                     from .daily_synthesis import resume_pending
                     try:
                         from .du_daily import account_key
@@ -3045,7 +3098,7 @@ class Runner:
                 ready_planar = (not self.use_power_plan and self.settings.dungeon_category == "planar" and self.settings.battle
                                 and not self.settings.assignments and workflow._calyx_target(initial)
                                 and workflow._team_page(initial))
-                if not ready_planar and not self.assignments_only:
+                if not ready_planar and not (self.assignments_only or self.daily_attachment_only):
                     with context.daily_startup(workflow, cold_start):
                         workflow.ensure_main()
                 self.report.failure_task = ""
@@ -3065,6 +3118,7 @@ class Runner:
             self.report.safe_next = ("货币战争操作已停止；核对画面和本次动作记录后重新识别。" if self.report.operation.startswith("currency_wars") else
                                      build_target_safe_next if build_target else
                                      self.report.safe_next if foreground_scope else
+                                     self.report.safe_next if self.daily_attachment_only else
                                      '独立委托已停止。请查看本次截图及当前领取状态。' if self.assignments_only else
                                      '差分领奖已停止；保留原意图及已核实领取，不重放未知动作；本次未开始演算。' if self.report.operation == 'du_rewards' else
                                      '高难备战已停止；保留层数选择记录，重新核对当前页面；本次未开战。' if self.report.operation == 'challenge_prepare' else
@@ -3087,6 +3141,7 @@ class Runner:
             self.report.safe_next = ("积分领奖未完成；保留原报告和领奖记录，未知领取不重发；仅已核实步骤可明确接续。" if self.report.operation=='currency_wars_rewards' else
                                      build_target_safe_next if build_target else
                                      self.report.safe_next if foreground_scope else
+                                     self.report.safe_next if self.daily_attachment_only else
                                      '差分领奖未完整核实；保留原意图和已核实领取，未知动作不重放；本次未开始演算。' if self.report.operation == 'du_rewards' else
                                      '高难备战未完整核实；查看原层数选择和页面证据，不自动重发；本次未开战。' if self.report.operation == 'challenge_prepare' else
                                      '兑换批次未完成；先核对逐码结果和未知提交，已保存成功不重试。' if self.report.operation == 'redemption' else
@@ -3133,6 +3188,10 @@ class Runner:
                 elif build_target_preview:
                     from .build_target_draft import publish_preview_report
                     publish_preview_report(self, directory, context)
+                elif daily_reward_reader is not None and self.report.daily_reward_observe['page_verified']:
+                    self.report.report_saved = True
+                    self._save_run_report(directory, daily_reward_reader=daily_reward_reader)
+                    self.emit(dict(type='task', **self.report.results[-1].__dict__))
                 elif challenge_reader is None:
                     self.report.report_saved = True
                     self._save_run_report(directory, points_workflow)
@@ -3146,11 +3205,15 @@ class Runner:
                     self.report.team_preset_calibration.get('input_status') in ('unconfirmed', 'sent'))
                 attempted_reward_entry = (daily_reward and
                     self.report.daily_reward_observe.get('entry_input') in ('unconfirmed', 'sent'))
-                self.report.status = "partial" if self.report.daily_verified or attempted_team_entry or attempted_reward_entry else "failed"
+                attempted_attachment = (self.daily_attachment_only and context is not None and (
+                    getattr(context, '_pending_attachment_claim', None) is not None
+                    or getattr(context, '_verified_attachment_claims', ())))
+                self.report.status = "partial" if self.report.daily_verified or attempted_team_entry or attempted_reward_entry or attempted_attachment else "failed"
                 self.report.error = (self.report.error + "；" if self.report.error else "") + f"报告保存失败：{error}"
                 self.report.safe_next = ("报告未保存；保留动作记录和截图，人工核对后重新识别。" if self.report.operation.startswith("currency_wars") else
                                          build_target_safe_next if build_target else
                                          self.report.safe_next if foreground_scope else
+                                         self.report.safe_next if self.daily_attachment_only else
                                          '高难备战报告未保存；保留原选择与页面证据，核对当前层数；本次未开战。' if self.report.operation == 'challenge_prepare' else
                                          "差分宇宙报告保存失败；保留当前目录，人工核对当前存档和动作。" if self.report.operation == "differential_universe" else
                                          "报告未保存；保留当前证据与刷本记录，人工核对消耗，不要直接重跑刷本。")

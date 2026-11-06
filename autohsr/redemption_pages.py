@@ -28,6 +28,15 @@ ASSET_HASHES = {
 }
 PHONE_HEADER = (.55, 0, 1, .35)
 MORE_MENU = (1261 / 1920, 1 / 1080, 1813 / 1920, 421 / 1080)
+_MORE_CAPSULE_SCAN = (.845, .053, .976, .153)
+_MORE_CAPSULE_CENTER = (.891, .081, .928, .119)
+_EXPANDED_COLUMN = (.782, .099, .876, .361)
+_CURRENT_PHONE_LEVEL = (.656, .213, .762, .274)
+_CURRENT_PHONE_GRID = (
+    ('好友', (.809, .353, .859, .405)), ('委托', (.878, .353, .927, .405)),
+    ('成就', (.878, .474, .928, .524)), ('无名勋礼', (.732, .590, .801, .646)),
+    ('指南', (.674, .711, .724, .764)),
+)
 PLACEHOLDERS = ('请输入兑换码', '请在此输入兑换码')
 STATUSES = {'兑换成功': 'redeemed', '兑换码已过期': 'expired',
             '无效的兑换码': 'invalid', '兑换码已被使用': 'already_used'}
@@ -162,12 +171,99 @@ def phone(scene, confidence=.65):
                 not clean.has(('兑换码', '兑换成功', '请输入兑换码'), (.15, .15, .85, .85), exact=True))
 
 
+def _current_phone_grid(scene):
+    levels = [token for token in scene.tokens if token.within(_CURRENT_PHONE_LEVEL)
+              and re.fullmatch(r'开拓等级(?:[0-9]{1,3})?', normalize(token.text))]
+    return len(levels) == 1 and all(_unique(scene.tokens, (label,), region) is not None
+                                    for label, region in _CURRENT_PHONE_GRID)
+
+
+def _more_ellipsis(dark):
+    height, width = dark.shape
+    left, right = round(.23 * width), round(.77 * width)
+    top, bottom = round(.23 * height), round(.77 * height)
+    _, _, stats, centers = cv2.connectedComponentsWithStats(dark[top:bottom, left:right].astype(np.uint8))
+    if len(stats) != 4:
+        return False
+    areas = stats[1:, cv2.CC_STAT_AREA]
+    if max(areas) > 2.25 * min(areas):
+        return False
+    for _, _, w, h, area in stats[1:]:
+        if (not .055 <= w / height <= .23 or not .055 <= h / height <= .23
+                or not .5 <= w / h <= 2 or area < .5 * w * h):
+            return False
+    xs = sorted((x + left + .5) / width for x, _ in centers[1:])
+    ys = [(y + top + .5) / height for _, y in centers[1:]]
+    first, second = xs[1] - xs[0], xs[2] - xs[1]
+    return (.45 <= xs[1] <= .55 and .068 <= first <= .128 and .068 <= second <= .128
+            and abs(first - second) <= .025 and .40 <= min(ys) <= max(ys) <= .60 and max(ys) - min(ys) <= .085)
+
+
+def _more_capsules(scene):
+    # The two 4.6 closed states preserve the contour and ellipsis geometry at different sizes.
+    height, width = scene.image.shape[:2]
+    left, top, right, bottom = (round(value * size) for value, size in zip(_MORE_CAPSULE_SCAN,
+                                                                        (width, height, width, height)))
+    patch = scene.image[top:bottom, left:right]
+    low, high = patch.min(axis=2), patch.max(axis=2)
+    white = (low >= 230) & (high - low <= 18)
+    _, labels, stats, _ = cv2.connectedComponentsWithStats(white.astype(np.uint8))
+    matches = []
+    for index, component in enumerate(stats[1:], 1):
+        x, y, w, h, area = map(int, component)
+        if (not .030 <= w / width <= .043 or not .026 <= h / height <= .039 or not 1.85 <= w / h <= 2.42
+                or not .78 <= area / (w * h) <= .94 or not 0 < x < x + w < patch.shape[1]
+                or not 0 < y < y + h < patch.shape[0]):
+            continue
+        shape = labels[y:y + h, x:x + w] == index
+        top_edge, bottom_edge = shape[round(.07 * (h - 1))], shape[round(.93 * (h - 1))]
+        if not (.58 <= top_edge.mean() <= .89 and .58 <= bottom_edge.mean() <= .89
+                and shape[round(.34 * (h - 1))].mean() >= .91 and shape[round(.66 * (h - 1))].mean() >= .91):
+            continue
+        if _more_ellipsis(high[y:y + h, x:x + w] <= 120):
+            matches.append(Token('redemption_more', 1., ((left + x) / width, (top + y) / height,
+                                                         (left + x + w) / width, (top + y + h) / height)))
+    return matches
+
+
 def phone_more_target(scene, confidence=.65):
     clean = _scene(scene, confidence)
     if not clean or not phone(scene, confidence):
         return None
     hits = _matches(clean, 'more', PHONE_HEADER)
-    return hits[0] if len(hits) == 1 else None
+    if len(hits) > 1:
+        return None
+    capsules = _more_capsules(clean)
+    if hits:
+        x, y = hits[0].center
+        if any(not _inside((x, y, x, y), capsule.box) for capsule in capsules):
+            return None
+        return hits[0]
+    if (len(capsules) != 1 or not capsules[0].within(_MORE_CAPSULE_CENTER)
+            or not _current_phone_grid(clean) or _unique(clean.tokens, ('合成',), (.810, .474, .861, .524)) is None
+            or clean.has(('漫游签证', '手机装饰', '开拓穿搭', '兑换码', '确认', '取消', '提示', '点击空白处关闭'), exact=True)):
+        return None
+    return capsules[0]
+
+
+def _expanded_more_menu(scene, visa, entry):
+    # The open 4.6 menu hides the closed ellipsis and the synthesis label.
+    if scene.has(('确认', '取消', '提示', '点击空白处关闭', '请输入兑换码'), exact=True):
+        return False
+    if not _current_phone_grid(scene):
+        return False
+    decoration = _unique(scene.tokens, ('手机装饰',), MORE_MENU)
+    outfit = _unique(scene.tokens, ('开拓穿搭',), MORE_MENU)
+    if decoration is None or outfit is None:
+        return False
+    rows = (visa, decoration, outfit, entry)
+    if any(not row.within(_EXPANDED_COLUMN) for row in rows):
+        return False
+    columns = [row.center[0] for row in rows]
+    gaps = [lower.center[1] - upper.center[1] for upper, lower in zip(rows, rows[1:])]
+    return (max(columns) - min(columns) <= .045 and min(gaps) >= .045 and max(gaps) <= .088
+            and max(gaps) - min(gaps) <= .027
+            and all(upper.box[3] < lower.box[1] for upper, lower in zip(rows, rows[1:])))
 
 
 def redemption_entry(scene, confidence=.65):
@@ -178,12 +274,14 @@ def redemption_entry(scene, confidence=.65):
     visa = _unique(clean.tokens, ('漫游签证',), MORE_MENU)
     menu = {normalize(token.text) for token in clean.tokens if token.within((.55, .25, 1, 1)) and
             normalize(token.text) in ('委托', '星际和平指南', '指南', '无名勋礼', '好友', '成就')}
-    if (entry is None or visa is None or len(menu) < 2 or
-            abs(entry.center[0] - visa.center[0]) > .08 or
-            not .015 <= abs(entry.center[1] - visa.center[1]) <= .18 or
-            len(_matches(clean, 'more', PHONE_HEADER)) != 1):
+    if entry is None or visa is None or len(menu) < 2 or abs(entry.center[0] - visa.center[0]) > .08:
         return None
-    return entry
+    span = abs(entry.center[1] - visa.center[1])
+    if not .015 <= span <= .23:
+        return None
+    if span <= .18:
+        return entry if len(_matches(clean, 'more', PHONE_HEADER)) == 1 else None
+    return entry if _expanded_more_menu(clean, visa, entry) else None
 
 
 def _title_hit(clean, title):

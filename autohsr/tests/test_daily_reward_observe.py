@@ -18,7 +18,11 @@ from autohsr.config import Settings
 from autohsr.daily_reward_observe import OPERATION, phone_achievement_target
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, RunReport, Scene, Token
 from autohsr.policy import guard_click
+from autohsr.storage import hold_read_sources
+from autohsr.tests.test_achievement_pages import overview
 from autohsr.tests.test_du_team import fixture
+from autohsr.tests.test_redemption_pages import (form_scene, four_row_more_scene, more_scene, phone_scene,
+                                               stamp, token, variant_phone_scene)
 from autohsr.windows import GameWindow, Geometry
 
 
@@ -34,6 +38,24 @@ def phone(*extra, account=ACCOUNT):
 
 def destination(*extra, account=ACCOUNT):
     return Scene([account, Token('成就', .99, (.027, .032, .052, .058)), *extra], phone().image)
+
+
+def achievement_page(*, account=ACCOUNT):
+    return Scene([account, *overview()], phone().image)
+
+
+def support_phone(*, menu=False, account=ACCOUNT):
+    scene = more_scene() if menu else phone_scene()
+    scene.image[95:125, 1775:1840] = 70
+    stamp(scene.image, 'more', 1728, 100)
+    if menu:
+        scene.image[170:395, 1440:1720] = 49
+    scene.tokens.append(account)
+    return scene
+
+
+def visa_page(*extra, account=ACCOUNT):
+    return Scene([account, token('漫游签证', (50, 40, 155, 74)), *extra], phone_scene().image)
 
 
 class _Window:
@@ -74,7 +96,8 @@ class DailyRewardObserveTests(unittest.TestCase):
         Settings(overlay_logs=True, auto_launch=True, ocr_confidence=.93).save(self.config)
         self.original = self.config.read_bytes()
 
-    def run_cli(self, frames, *, entry_hook=None, before_native=None, short=False, foreground=True):
+    def run_cli(self, frames, *, mode='achievements', entry_hook=None, before_native=None, short_at=None,
+                foreground=True, exit_code=1, publication_hook=None):
         self.window = window = _Window(frames)
         if not foreground:
             window.guard.side_effect = FocusLost('synthetic window is not foreground')
@@ -82,6 +105,7 @@ class DailyRewardObserveTests(unittest.TestCase):
         self.events = []
         key_checks = []
         original_entry = Context.daily_reward_entry_input
+        original_publish = Runner._save_run_report
 
         def entry(context, scene):
             self.context = context
@@ -93,9 +117,12 @@ class DailyRewardObserveTests(unittest.TestCase):
             key_checks.append(True)
             return before_native(len(key_checks)) if before_native else 0
 
+        def publish(runner, directory, *args, **kwargs):
+            return publication_hook(runner, directory, lambda: original_publish(runner, directory, *args, **kwargs))
+
         def submit(length, items, _size):
             self.events.append(tuple((item.mi.dwFlags, item.mi.dx, item.mi.dy) for item in items))
-            return length - 1 if short else length
+            return length - 1 if len(self.events) == short_at else length
 
         user32 = SimpleNamespace(GetAsyncKeyState=Mock(side_effect=key_state),
                                  GetSystemMetrics=Mock(side_effect={76: 0, 77: 0, 78: 1920, 79: 1080}.__getitem__),
@@ -106,7 +133,8 @@ class DailyRewardObserveTests(unittest.TestCase):
         output, logs = io.StringIO(), io.StringIO()
         with ExitStack() as stack:
             for target, value in (('autohsr.app.ROOT', self.root), ('autohsr.app.time', clock),
-                                  ('autohsr.daily_reward_observe.time', clock), ('autohsr.windows.user32', user32),
+                                  ('autohsr.daily_reward_observe.time', clock), ('autohsr.redemption_pages.time', clock),
+                                  ('autohsr.windows.user32', user32),
                                   ('autohsr.windows.kernel32', kernel),
                                   ('autohsr.workflow_lease.NAME', 'Local\\AutoHSR.DailyRewardQA.' + uuid4().hex)):
                 stack.enter_context(patch(target, value))
@@ -123,13 +151,15 @@ class DailyRewardObserveTests(unittest.TestCase):
                 stack.enter_context(patch(target, **kwargs))
             stack.enter_context(patch.object(Context, 'sleep', lambda ctx, _seconds: ctx.checkpoint()))
             stack.enter_context(patch.object(Context, 'daily_reward_entry_input', entry))
+            if publication_hook is not None:
+                stack.enter_context(patch.object(Runner, '_save_run_report', publish))
             stack.enter_context(redirect_stdout(output))
             stack.enter_context(redirect_stderr(logs))
-            self.assertEqual(main(['--daily-reward-observe', 'achievements', '--config', str(self.config)]), 1)
+            self.assertEqual(main(['--daily-reward-observe', mode, '--config', str(self.config)]), exit_code)
         report = json.loads(output.getvalue())
         self.assertEqual(report['operation'], OPERATION)
         self.assertEqual((report['stamina_spent'], report['stamina_pending'], report['battle_completed']), (0, 0, 0))
-        self.assertFalse(report['daily_reward_observe']['page_verified'])
+        self.assertEqual(report['daily_reward_observe']['page_verified'], exit_code == 0)
         self.assertEqual(json.loads((Path(report['run_dir']) / 'report.json').read_text('utf8')), report)
         self.assertEqual(self.config.read_bytes(), self.original)
         window.focus.assert_not_called()
@@ -158,6 +188,59 @@ class DailyRewardObserveTests(unittest.TestCase):
         intent = (directory / result['intent']).read_text('utf8')
         self.assertEqual(json.loads(intent)['sources'], result['before_frames'])
         self.assertNotIn(ACCOUNT.text[4:], intent)
+
+    def test_achievement_overview_requires_independent_same_account_frames(self):
+        report = self.run_cli([phone(), phone(), phone(), achievement_page(), achievement_page()], exit_code=0)
+        result = report['daily_reward_observe']
+        self.assertEqual((report['status'], result['entry_input'], result['destination_status']),
+                         ('success', 'sent', 'achievement_overview'))
+        self.assertEqual([row['capture_sequence'] for row in result['after_frames']], [4, 5])
+        self.assertEqual(len(self.events), 1)
+
+        for later in ([achievement_page(), destination()], [achievement_page(), achievement_page(account=OTHER)],
+                      [achievement_page(), EmptyCapture('gap'), achievement_page()]):
+            with self.subTest(later=len(later)):
+                report = self.run_cli([phone(), phone(), phone(), *later])
+                self.assertEqual(report['status'], 'partial')
+                self.assertEqual(report['daily_reward_observe']['entry_input'], 'sent')
+                self.assertEqual(len(self.events), 1)
+
+    def test_stop_at_achievement_overview_publication_withdraws_success(self):
+        report = self.run_cli([phone(), phone(), phone(), achievement_page(), achievement_page()],
+                              before_native=lambda count: count == 3)
+        self.assertEqual(report['status'], 'stopped')
+        self.assertEqual(report['daily_reward_observe']['entry_input'], 'sent')
+        self.assertEqual(report['daily_reward_observe']['destination_status'], 'unknown')
+        self.assertEqual(len(self.events), 1)
+
+    @unittest.skipUnless(os.name == 'nt', 'requires Windows file sharing')
+    def test_achievement_report_sharing_retry_rechecks_after_frames(self):
+        retries = []
+
+        def publication(runner, directory, save):
+            report_path = directory / 'report.json'
+            report_path.write_text('{}', encoding='utf8')
+            row = runner.report.daily_reward_observe['after_frames'][0]
+            source = directory / row['screenshot']
+            with ExitStack() as blocker:
+                blocker.enter_context(hold_read_sources([report_path]))
+
+                def on_retry(delay):
+                    retries.append(delay)
+                    blocker.close()
+                    source.write_bytes(source.read_bytes() + b'replaced during sharing retry')
+
+                with patch('autohsr.storage.time', SimpleNamespace(sleep=on_retry)):
+                    return save()
+
+        report = self.run_cli([phone(), phone(), phone(), achievement_page(), achievement_page()],
+                              publication_hook=publication)
+        self.assertEqual(len(retries), 1)
+        self.assertEqual(report['status'], 'partial')
+        self.assertEqual(report['daily_reward_observe']['entry_input'], 'sent')
+        self.assertEqual(report['daily_reward_observe']['destination_status'], 'unknown')
+        self.assertIn('证据在报告提交前已变化', report['error'])
+        self.assertEqual(len(self.events), 1)
 
     def test_wrong_page_modal_duplicate_weak_account_or_gap_cannot_send(self):
         duplicate = Token('成就', .72, (.31, .32, .34, .35))
@@ -246,7 +329,7 @@ class DailyRewardObserveTests(unittest.TestCase):
                 self.assertEqual(self.events, [])
 
     def test_short_send_or_account_change_after_click_never_retry(self):
-        short = self.run_cli([phone(), phone(), phone()], short=True)
+        short = self.run_cli([phone(), phone(), phone()], short_at=1)
         self.assertEqual(short['daily_reward_observe']['entry_input'], 'unconfirmed')
         self.assertEqual(len(self.events), 1)
         changed = self.run_cli([phone(), phone(), phone(), destination(account=OTHER)])
@@ -257,6 +340,157 @@ class DailyRewardObserveTests(unittest.TestCase):
         unchanged = self.run_cli([phone() for _ in range(9)])
         self.assertEqual(unchanged['daily_reward_observe']['destination_status'], 'phone_still_visible')
         self.assertEqual(len(self.events), 1)
+
+    def test_support_route_reuses_verified_more_feedback_and_never_clicks_redemption(self):
+        menu = [support_phone(menu=True) for _ in range(3)]
+        frames = [support_phone() for _ in range(3)] + menu + [visa_page(), visa_page()]
+        report = self.run_cli(frames, mode='support')
+        self.assertEqual(report['status'], 'partial', report['error'])
+        result = report['daily_reward_observe']
+        self.assertEqual((result['mode'], result['entry_input'], result['destination_status']),
+                         ('support', 'sent', 'support_title_only'))
+        more, visa = (result['steps'][step] for step in ('open_more', 'open_support'))
+        self.assertEqual((more['entry_input'], more['destination_status'], visa['entry_input']),
+                         ('sent', 'more_menu_verified', 'sent'))
+        self.assertEqual(len(self.events), 2)
+        self.assertEqual([[item[0] for item in batch] for batch in self.events], [[0xC001, 0x0002, 0x0004]] * 2)
+        self.assertAlmostEqual(more['entry_point'][0], .9091, places=4)
+        self.assertEqual(visa['entry_point'], list(next(t.center for t in menu[0].tokens if t.text == '漫游签证')))
+        self.assertEqual(more['after_frames'], visa['before_frames'])
+        self.assertEqual([row['capture_sequence'] for row in more['after_frames']], [4, 5])
+        self.assertEqual([more['submission_capture_sequence'], visa['submission_capture_sequence']], [3, 6])
+        self.assertEqual([row['capture_sequence'] for row in visa['after_frames']], [7, 8])
+        directory = Path(report['run_dir'])
+        first_intent = (directory / more['intent']).read_bytes()
+        final_intent = json.loads((directory / visa['intent']).read_bytes())
+        self.assertEqual(final_intent['previous_intent'], dict(name=more['intent'], sha256=sha256(first_intent).hexdigest()))
+        self.assertEqual(final_intent['sources'], more['after_frames'])
+
+    def test_support_four_row_more_submits_only_the_visa_label(self):
+        menu = four_row_more_scene()
+        menu.tokens.append(ACCOUNT)
+        frames = [support_phone() for _ in range(3)] + [menu] * 3 + [visa_page()] * 2
+        report = self.run_cli(frames, mode='support')
+        result = report['daily_reward_observe']
+        self.assertEqual(result['steps']['open_more']['destination_status'], 'more_menu_verified')
+        self.assertEqual(result['steps']['open_support']['entry_input'], 'sent')
+        visa = next(token for token in menu.tokens if token.text == '漫游签证')
+        self.assertEqual(result['steps']['open_support']['entry_point'], list(visa.center))
+        self.assertEqual(len(self.events), 2)
+
+    def test_support_accepts_closed_more_variant_then_current_four_row_menu(self):
+        closed, expanded = variant_phone_scene(), four_row_more_scene()
+        closed.tokens.append(ACCOUNT)
+        expanded.tokens.append(ACCOUNT)
+        report = self.run_cli([closed] * 3 + [expanded] * 3 + [visa_page()] * 2, mode='support')
+        result = report['daily_reward_observe']
+        self.assertEqual(result['steps']['open_more']['destination_status'], 'more_menu_verified')
+        self.assertEqual(result['steps']['open_support']['entry_input'], 'sent')
+        self.assertAlmostEqual(result['steps']['open_more']['entry_point'][0], .913, places=3)
+        self.assertEqual(len(self.events), 2)
+
+    def test_support_does_not_retoggle_an_existing_or_ambiguous_more_menu(self):
+        partial = support_phone()
+        partial.tokens.append(token('漫游签证', (1510, 215, 1660, 250), score=.70))
+        duplicate = support_phone()
+        stamp(duplicate.image, 'more', 1660, 100)
+        form = form_scene()
+        form.tokens.append(ACCOUNT)
+        for tag, scene in (('menu', support_phone(menu=True)), ('partial', partial), ('duplicate', duplicate), ('form', form)):
+            with self.subTest(tag=tag):
+                report = self.run_cli([scene] * 6, mode='support')
+                result = report['daily_reward_observe']
+                self.assertEqual(result['entry_input'], 'not_sent')
+                self.assertEqual(self.events, [])
+                self.assertNotIn('intent', result['steps']['open_more'])
+
+    def test_support_stops_at_incomplete_conflicting_or_stale_more_feedback(self):
+        absent = support_phone(menu=True)
+        absent.tokens = [t for t in absent.tokens if t.text != '漫游签证']
+        duplicate = support_phone(menu=True)
+        duplicate.tokens.append(token('漫游签证', (1310, 215, 1460, 250), score=.68))
+        wrong_column = support_phone(menu=True)
+        wrong_column.tokens = [t for t in wrong_column.tokens if t.text != '兑换码']
+        wrong_column.tokens.append(token('兑换码', (1275, 305, 1395, 340)))
+        conflict = support_phone(menu=True)
+        conflict.tokens.append(token('确认', (880, 640, 990, 676), score=.74))
+        valid = support_phone(menu=True)
+        changed = support_phone(menu=True, account=OTHER)
+        for later in ([absent] * 6, [duplicate] * 6, [wrong_column] * 6, [conflict] * 6,
+                      [valid, EmptyCapture('gap'), valid],
+                      [changed], [valid, valid, support_phone()]):
+            with self.subTest(observed_frames=len(later)):
+                report = self.run_cli([support_phone() for _ in range(3)] + later, mode='support')
+                result = report['daily_reward_observe']
+                self.assertEqual(report['status'], 'partial', report['error'])
+                self.assertEqual(result['steps']['open_more']['entry_input'], 'sent')
+                self.assertEqual(result['steps']['open_support']['entry_input'], 'not_sent')
+                self.assertEqual(len(self.events), 1)
+
+    def test_support_short_send_distinguishes_the_two_steps(self):
+        phone_frames = [support_phone() for _ in range(3)]
+        menu_frames = [support_phone(menu=True) for _ in range(3)]
+        for send in (1, 2):
+            with self.subTest(send=send):
+                report = self.run_cli(phone_frames + menu_frames, mode='support', short_at=send)
+                result = report['daily_reward_observe']
+                expected = ('unconfirmed', 'not_sent') if send == 1 else ('sent', 'unconfirmed')
+                self.assertEqual(report['status'], 'partial')
+                self.assertEqual(result['entry_input'], 'unconfirmed')
+                self.assertEqual(tuple(step['entry_input'] for step in result['steps'].values()), expected)
+                self.assertEqual(len(self.events), send)
+
+    def test_support_previous_intent_cannot_change_before_second_input(self):
+        def replace(context, _scene):
+            reader = context.daily_reward_reader
+            if reader.action == 'open_support':
+                previous, _ = reader.more_intent
+                previous.write_bytes(b'other intent')
+
+        frames = [support_phone() for _ in range(3)] + [support_phone(menu=True) for _ in range(3)]
+        report = self.run_cli(frames, mode='support', entry_hook=replace)
+        self.assertEqual(report['daily_reward_observe']['steps']['open_support']['entry_input'], 'not_sent')
+        self.assertIn('意图在发送前已变化', report['error'])
+        self.assertEqual(len(self.events), 1)
+
+    def test_support_stop_or_new_epoch_immediately_before_second_input_preserves_more(self):
+        def pause(count):
+            if count == 4:
+                self.context.runner.toggle_pause()
+            return 0
+
+        frames = [support_phone() for _ in range(3)] + [support_phone(menu=True) for _ in range(3)]
+        for gate, status in ((lambda count: count == 4, 'stopped'), (pause, 'partial')):
+            with self.subTest(status=status):
+                report = self.run_cli(frames, mode='support', before_native=gate)
+                result = report['daily_reward_observe']
+                self.assertEqual(report['status'], status)
+                self.assertEqual(result['steps']['open_more']['destination_status'], 'more_menu_verified')
+                self.assertEqual(result['steps']['open_support']['entry_input'], 'not_sent')
+                self.assertEqual(len(self.events), 1)
+
+    @unittest.skipUnless(os.name == 'nt', 'requires Windows file sharing')
+    def test_support_native_second_submit_holds_both_intents_and_all_four_frames(self):
+        blocked = []
+
+        def try_replace(count):
+            if count == 4:
+                reader = self.context.daily_reward_reader
+                for path, raw in reader._intents():
+                    names = (path.name, *(row['screenshot'] for row in json.loads(raw)['sources']))
+                    for name in names:
+                        replacement = reader.directory / 'other.tmp'
+                        replacement.write_bytes(b'other evidence')
+                        with self.assertRaises(PermissionError):
+                            os.replace(replacement, reader.directory / name)
+                        blocked.append(name)
+            return 0
+
+        frames = [support_phone() for _ in range(3)] + [support_phone(menu=True) for _ in range(3)] + [visa_page()] * 2
+        report = self.run_cli(frames, mode='support', before_native=try_replace)
+        self.assertEqual(len(set(blocked)), 6)
+        self.assertEqual(report['daily_reward_observe']['steps']['open_support']['entry_input'], 'sent')
+        self.assertEqual(len(self.events), 2)
 
     def test_generic_input_and_incompatible_cli_options_stay_out_of_scope(self):
         scene = phone()
@@ -274,6 +508,10 @@ class DailyRewardObserveTests(unittest.TestCase):
                 action(*args)
         with self.assertRaises(ValueError):
             Runner(Settings(), operation=OPERATION, new_battle_run=True)
+        with self.assertRaises(ValueError):
+            Runner(Settings(), operation=OPERATION, daily_reward_mode='redemption')
+        with self.assertRaises(ValueError):
+            Runner(Settings(), daily_reward_mode='support')
         self.assertNotIn('daily_reward_observe', RunReport().to_dict())
         for option in ('--run', '--reward-only', '--new-battle-run', '--with-redemption'):
             with (self.subTest(option=option), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error,

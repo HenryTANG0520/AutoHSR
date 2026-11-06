@@ -15,6 +15,7 @@ from tkinter.scrolledtext import ScrolledText
 from typing import Any
 
 from .config import CONFIG_PATH, ROOT, Settings, SettingsError
+from .desktop_daily import ASSIGNMENTS, ATTACHMENT_SECTIONS, HOME_TITLES
 from .ux import report_context, recovery_text, exit_text, immersifier_text, issue_text, standard_activity, standard_run_verified, universe_result, planned_battle_metrics, reported_battle_metrics, plan_result
 from . import theme
 from .currency_feedback import observation as currency_observation_text, result as currency_result
@@ -355,30 +356,34 @@ class AutoHSRWindow:
     _workflow_action_changed = _tool_action_changed
 
     def _show_daily_panel(self, section, *, focus=True):
-        page = 'home' if section == 'assignments_only' else 'tasks'
+        page = 'home' if section in HOME_TITLES else 'tasks'
         if self.active_page != page:
             self._show_page(page)
         self.daily_section = section
         self.pages[page].grid_remove()
         self.daily_panel.show(section)
         self.daily_view.grid()
-        self.page_title.set('持续委托' if page == 'home' else '培养目标')
+        self.page_title.set(HOME_TITLES.get(section, '培养目标'))
         self._refresh_controls()
         if focus:
             target = self.daily_back_button if self.busy else self.start_button
             self.root.after_idle(target.focus_set)
 
     def _leave_daily_panel(self):
-        target = self.assignment_button if self.active_page == 'home' else self.build_target_button
+        target = self.daily_entry_buttons.get(self.daily_section, self.build_target_button)
         self._show_page(self.active_page)
         self.root.after_idle(target.focus_set)
 
     def _run_daily_panel(self, operation, *, build_target_selection=None):
         def present(report):
-            self.daily_panel.present(operation, report)
+            caption = self.daily_panel.present(operation, report)
+            if operation in ATTACHMENT_SECTIONS and caption is not None:
+                self.status.set('● ' + caption)
 
-        if operation == 'assignments_only':
+        if operation == ASSIGNMENTS:
             return self._start_daily_assignment(present)
+        if operation in ATTACHMENT_SECTIONS:
+            return self._start_daily_attachment(operation, present)
         return self._start_build_target(operation, build_target_selection, present)
 
     def _du_action_label(self):
@@ -845,15 +850,19 @@ class AutoHSRWindow:
                               weekly_day=due.weekday()+1, weekly_time=due.strftime('%H:%M'),
                               action_delay=self._number('action_delay', float), battle_timeout=self._number('battle_timeout', int),
                               ocr_confidence=self._number('ocr_confidence', float))
-            elif not save and operation in ('assignments_only', 'redemption', 'build_target_read',
-                                            'build_target_preview', 'build_target_plan'):
-                values.update(auto_launch=False, assignments=operation == 'assignments_only',
+            elif not save and (operation in ATTACHMENT_SECTIONS or operation in (
+                    ASSIGNMENTS, 'redemption', 'build_target_read', 'build_target_preview', 'build_target_plan')):
+                values.update(auto_launch=False, assignments=operation == ASSIGNMENTS,
                               battle=False, daily=False, mail=False, battlepass=False,
                               redemption_enabled=operation == 'redemption',
                               action_delay=self._number('action_delay', float),
                               ocr_confidence=self._number('ocr_confidence', float))
                 if operation != 'redemption':
                     values['notification_enabled'] = False
+                if operation in ATTACHMENT_SECTIONS:
+                    values.update(weekly_enabled=False, daily_synthesis=False, allow_stamina_spend=False,
+                                  power_plan_enabled=False, use_support=False, support_daily_only=False)
+                    values[ATTACHMENT_SECTIONS[operation]['task']] = True
                 if operation in ('build_target_preview', 'build_target_plan'):
                     values['stamina_limit'] = self._number('stamina_limit', int)
             elif not save and operation == "dungeon_catalogue":
@@ -1058,7 +1067,7 @@ class AutoHSRWindow:
         return self._start_desktop_job(title, work, present, failed, game=game)
 
     def _start_daily_assignment(self, on_report=None) -> bool:
-        settings = self._read_settings(operation='assignments_only')
+        settings = self._read_settings(operation=ASSIGNMENTS)
         if settings is None:
             return False
 
@@ -1067,6 +1076,18 @@ class AutoHSRWindow:
             return assignment_runner(settings, emit)
 
         return self._start_scoped_runner('领取委托奖励', 'task_workflow', factory, on_report)
+
+    def _start_daily_attachment(self, operation, on_report=None) -> bool:
+        item = ATTACHMENT_SECTIONS[operation]
+        settings = self._read_settings(operation=operation)
+        if settings is None:
+            return False
+
+        def factory(emit):
+            from .daily_attachments import attachment_runner
+            return attachment_runner(settings, emit, task=item['task'])
+
+        return self._start_scoped_runner(item['action'], 'task_workflow', factory, on_report)
 
     def _start_build_target(self, operation, selection=None, on_report=None) -> bool:
         if operation not in ('build_target_read', 'build_target_preview', 'build_target_plan'):

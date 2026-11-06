@@ -215,16 +215,20 @@ class GameWindow:
         user32.GetWindowTextW(self.hwnd, buffer, len(buffer))
         return buffer.value
 
-    def focus(self) -> None:
+    def focus(self, *, checkpoint=None) -> None:
+        check = checkpoint or (lambda: None)
+        check()
         if user32.IsIconic(self.hwnd):
             user32.ShowWindow(self.hwnd, 9)
         for _ in range(4):
+            check()
             user32.SetForegroundWindow(self.hwnd)
             foreground = user32.GetForegroundWindow()
             if foreground == self.hwnd:
                 time.sleep(0.4)
                 if user32.GetForegroundWindow() == self.hwnd:
                     break
+            check()
             foreground_thread = user32.GetWindowThreadProcessId(foreground, None)
             target_thread = user32.GetWindowThreadProcessId(self.hwnd, None)
             current_thread = kernel32.GetCurrentThreadId()
@@ -239,6 +243,7 @@ class GameWindow:
                 if attached:
                     user32.AttachThreadInput(current_thread, foreground_thread, False)
             time.sleep(0.5)
+        check()
         self.guard()
 
     def guard(self, expected: Geometry | None = None) -> Geometry:

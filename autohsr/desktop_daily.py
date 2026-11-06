@@ -12,11 +12,26 @@ from .dungeons import BY_KEY
 
 
 ASSIGNMENTS = 'assignments_only'
+MAIL = 'mail_only'
+BATTLEPASS = 'battlepass_only'
 OPEN_TARGET = 'build_target_read'
 PREVIEW = 'build_target_preview'
 DRAFT = 'build_target_plan'
 ASSIGNMENT_STEP = 'assignments'
 ASSIGNMENT_FLOW = '仅领取持续委托'
+ATTACHMENT_SECTIONS = {
+    MAIL: dict(task='mail', title='邮件附件', action='仅领取邮件附件',
+               hint='请先进入游戏。只处理当前邮箱已有附件。',
+               empty='暂无可领邮件附件', claims={'mail_attachments': '邮件附件'}),
+    BATTLEPASS: dict(task='battlepass', title='无名勋礼', action='仅领取免费勋礼',
+                     hint='请先进入游戏。核对任务经验和免费等级奖励。',
+                     empty='暂无可领免费勋礼',
+                     claims={'battlepass_weekly_tasks': '本周任务经验',
+                             'battlepass_period_tasks': '本期任务经验',
+                             'battlepass_free_levels': '免费等级奖励'}),
+}
+HOME_TITLES = {ASSIGNMENTS: '持续委托', **{key: item['title'] for key, item in ATTACHMENT_SECTIONS.items()}}
+_REPORT_LIMIT = 64 * 1024 * 1024
 
 
 def assignment_runner(settings, emit, *, root=None):
@@ -65,6 +80,99 @@ def assignment_result(report):
             return '委托记录待核对', '请查看本次运行报告。', None
     title = '已停止' if report.get('status') == 'stopped' else '委托结果待核对'
     return title, report.get('error') or '查看本次运行报告。', None
+
+
+def _attachment_receipt(task, report):
+    from .daily_attachments import ATTACHMENT_FLOWS
+    from .task_workflow import _pairs
+
+    directory = Path(report.get('run_dir', ''))
+    parent = directory / 'report.json'
+    if not parent.is_absolute() or parent.resolve() != directory.resolve() / parent.name:
+        raise ValueError('父报告路径待核对。')
+    with parent.open('rb') as stream:
+        raw = stream.read(_REPORT_LIMIT + 1)
+    if len(raw) > _REPORT_LIMIT or json.loads(raw, object_pairs_hook=_pairs) != report:
+        raise ValueError('父报告内容待核对。')
+
+    workflow = report.get('workflow')
+    if not isinstance(workflow, dict) or workflow.get('name') != ATTACHMENT_FLOWS[task]:
+        raise ValueError('流程来源待核对。')
+    steps = workflow.get('steps')
+    if steps == []:
+        return workflow, {}, {}, {}, parent
+    if not isinstance(steps, list) or len(steps) != 1 or not isinstance(steps[0], dict):
+        raise ValueError('流程步骤待核对。')
+    step = steps[0]
+    if (step.get('type'), step.get('task'), step.get('step')) != ('task', 'daily', task):
+        raise ValueError('流程任务待核对。')
+    source = step.get('source')
+    if source is None:
+        return workflow, step, {}, {}, parent
+    if not isinstance(source, dict):
+        raise ValueError('子报告来源待核对。')
+    path = Path(source.get('path', ''))
+    child = json.loads(_verified_file(path, source.get('sha256'), _REPORT_LIMIT), object_pairs_hook=_pairs)
+    if not isinstance(child, dict) or child.get('operation') != 'daily' or child.get('report_saved') is not True:
+        raise ValueError('子报告待核对。')
+    child_dir = Path(child.get('run_dir', ''))
+    if not child_dir.is_absolute() or path != child_dir.resolve() / 'report.json':
+        raise ValueError('子报告路径待核对。')
+    rows = child.get('results')
+    if rows == []:
+        return workflow, step, child, {}, path
+    if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+        raise ValueError('子任务结果待核对。')
+    row = rows[0]
+    bootstrap_failed = (child.get('status') in ('failed', 'partial')
+                        and (row.get('task'), row.get('status')) == ('run', 'failed'))
+    if row.get('task') != task and not bootstrap_failed:
+        raise ValueError('子任务结果待核对。')
+    return workflow, step, child, row, path
+
+
+def attachment_result(section, report):
+    """Project the scoped receipt with separate claim, empty and unresolved states."""
+    item = ATTACHMENT_SECTIONS[section]
+    stopped = report.get('status') == 'stopped'
+    pending = '已停止' if stopped else item['title'] + '结果待核对'
+    reason = report.get('error') or '请查看本次运行报告。'
+    if report.get('operation') != 'task_workflow' or report.get('report_saved') is not True:
+        return pending, reason, None
+    try:
+        workflow, step, child, row, path = _attachment_receipt(item['task'], report)
+    except (KeyError, OSError, RuntimeError, TypeError, ValueError):
+        label = '已停止' if stopped else item['title'] + '记录待核对'
+        return label, '请核对本次原始报告。', None
+
+    if child.get('status') == 'stopped':
+        stopped, pending = True, '已停止'
+    identity = workflow.get('identity')
+    account = (isinstance(identity, dict) and identity.get('verified') is True
+               and identity.get('account_changed') is False and step.get('account_verified') is True)
+    outcome, claims = row.get('attachment_outcome'), row.get('verified_claims')
+    terminal = ('success', 'partial', 'failed', 'stopped')
+    checked = (account and row.get('task') == item['task']
+               and report.get('status') in terminal and child.get('status') in terminal
+               and step.get('status') == child.get('status')
+               and row.get('status') in ('ok', 'partial', 'failed', 'stopped')
+               and isinstance(claims, list)
+               and all(isinstance(claim, str) and claim in item['claims'] for claim in claims)
+               and len(claims) == len(set(claims))
+               and outcome in ('claimed', 'empty', 'unknown'))
+    complete = (checked and report.get('status') == 'success' and step.get('status') == 'success'
+                and child.get('status') == 'success' and row.get('status') == 'ok')
+    if complete and outcome == 'empty' and not claims:
+        return item['empty'], '已核对当前可领取状态。', path
+    if checked and outcome in ('claimed', 'unknown') and claims:
+        detail = '已核实领取 ' + '、'.join(item['claims'][claim] for claim in claims) + '。'
+        if complete and outcome == 'claimed':
+            return item['title'] + '已核实领取', detail, path
+        label = '已停止' if stopped else '部分领取已核实'
+        return label, detail + '其余结果待核对。', path
+    if row.get('status') in ('partial', 'failed', 'stopped') and isinstance(row.get('detail'), str):
+        reason = row['detail'] or reason
+    return pending, reason, path
 
 
 def _preview_text(preview):
@@ -180,6 +288,8 @@ class DailyPanel(ttk.Frame):
         self.draft_report = None
         self._applied_drafts = set()
         self._assignment_report = None
+        self._attachment_reports = {}
+        self._attachments = {}
         self.assignment_title = tk.StringVar(self, '等待领取')
         self.assignment_detail = tk.StringVar(self, '领取已有奖励，原委托继续累计。')
         self.build_title = tk.StringVar(self, '等待预览')
@@ -197,6 +307,17 @@ class DailyPanel(ttk.Frame):
         self.assignment_record = ttk.Button(self.assignment, text='查看原始报告', style='Panel.TButton',
                                             state='disabled', command=self._open_assignment_report)
         self.assignment_record.grid(row=3, column=0, sticky='w', pady=(d(10), 0))
+
+        for section, item in ATTACHMENT_SECTIONS.items():
+            panel = ttk.Frame(self, style='Card.TFrame', padding=d(20))
+            panel.columnconfigure(0, weight=1)
+            title = tk.StringVar(self, '等待领取')
+            detail = tk.StringVar(self, item['hint'])
+            self._heading(panel, item['title'], title, detail)
+            record = ttk.Button(panel, text='查看原始报告', style='Panel.TButton', state='disabled',
+                                command=lambda section=section: self._open_attachment_report(section))
+            record.grid(row=3, column=0, sticky='w', pady=(d(10), 0))
+            self._attachments[section] = panel, title, detail, record
 
         self.build = ttk.Frame(self, style='Card.TFrame', padding=d(20))
         self.build.columnconfigure(0, weight=1)
@@ -231,16 +352,21 @@ class DailyPanel(ttk.Frame):
         theme.wrapped_label(panel, textvariable=detail, style='Muted.TLabel').grid(row=2, column=0, sticky='ew', pady=(d(6), 0))
 
     def show(self, section):
-        panels = {ASSIGNMENTS: self.assignment, PREVIEW: self.build}
+        panels = {ASSIGNMENTS: self.assignment, PREVIEW: self.build,
+                  **{key: view[0] for key, view in self._attachments.items()}}
         panel = panels[section]
         for other in panels.values():
             other.grid_remove()
         self.section = section
         panel.grid(row=0, column=0, sticky='nsew')
+        if section in self._attachments:
+            self._refresh_attachment(section)
         self._controls()
 
     @property
     def primary_label(self):
+        if self.section in ATTACHMENT_SECTIONS:
+            return ATTACHMENT_SECTIONS[self.section]['action']
         return ASSIGNMENT_FLOW if self.section == ASSIGNMENTS else '预览材料'
 
     def invoke_primary(self):
@@ -255,6 +381,7 @@ class DailyPanel(ttk.Frame):
         """Copy the panel state without keeping references to the old widgets."""
         return deepcopy(dict(
             section=self.section, assignment_report=self._assignment_report,
+            attachment_reports=self._attachment_reports,
             build_title=self.build_title.get(), build_detail=self.build_detail.get(),
             entry_status=self.entry_status.get(),
             draft_detail=self.draft_detail.get(), draft_report=self.draft_report,
@@ -267,6 +394,7 @@ class DailyPanel(ttk.Frame):
         state = deepcopy(state)
         self._assignment_report = state['assignment_report']
         self._refresh_assignment()
+        self._attachment_reports = state['attachment_reports']
         self.build_title.set(state['build_title'])
         self.build_detail.set(state['build_detail'])
         self.entry_status.set(state['entry_status'])
@@ -363,10 +491,32 @@ class DailyPanel(ttk.Frame):
         if path is not None:
             self.ui._open_path(path)
 
+    def _refresh_attachment(self, section):
+        _, title, detail, record = self._attachments[section]
+        report = self._attachment_reports.get(section)
+        if report is None:
+            label, message, path = '等待领取', ATTACHMENT_SECTIONS[section]['hint'], None
+        else:
+            label, message, path = attachment_result(section, report)
+        title.set(label)
+        detail.set(message)
+        record.configure(state='normal' if path else 'disabled')
+        return path
+
+    def _open_attachment_report(self, section):
+        path = self._refresh_attachment(section)
+        if path is not None:
+            self.ui._open_path(path)
+
     def present(self, operation, report):
+        caption = None
         if operation == ASSIGNMENTS:
             self._assignment_report = deepcopy(report)
             self._refresh_assignment()
+        elif operation in self._attachments:
+            self._attachment_reports[operation] = deepcopy(report)
+            self._refresh_attachment(operation)
+            caption = self._attachments[operation][1].get()
         elif operation == OPEN_TARGET:
             self._present_open_target(report)
         elif operation == PREVIEW:
@@ -374,6 +524,7 @@ class DailyPanel(ttk.Frame):
         elif operation == DRAFT:
             self._present_draft(report)
         self._controls()
+        return caption
 
     def _present_open_target(self, report):
         entry = report.get('build_target') or {}

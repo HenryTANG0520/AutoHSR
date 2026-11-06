@@ -56,12 +56,14 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--check", action="store_true", help="检测窗口、客户端版本和 OCR，输出 JSON；不操作游戏")
     mode.add_argument("--scan-dungeons", action="store_true", help="采集生存索引全部副本入口；不开始挑战或消耗资源")
     mode.add_argument("--read-build-target", action="store_true", help="从已打开的生存索引核对培养目标页入口并留证")
-    mode.add_argument("--daily-reward-observe", choices=("achievements",),
-                      help="从当前前台本人手机核实并打开成就一次，保留到页证据")
+    mode.add_argument("--daily-reward-observe", choices=("achievements", "support"),
+                      help="从当前前台本人手机校准成就或更多菜单的漫游签证入口，保留到页证据")
     mode.add_argument("--preview-build-target", action="store_true", help="只读核对培养目标、材料详情与配方、花萼预览及结算提示")
     mode.add_argument('--build-target', action='store_true', help='核实用户指定的培养材料来源并生成单项体力草稿；只读')
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
     mode.add_argument("--run", action="store_true", help="按配置执行每日任务；F10 紧急停止")
+    mode.add_argument('--daily-attachment-only', choices=('mail', 'battlepass'),
+                      help='在已打开的游戏窗口独立核对邮件附件或无名勋礼免费领奖')
     mode.add_argument("--plan", action="store_true", help="执行日常和到期周常计划；不登记定时任务")
     parser.add_argument('--resume-weekly-currency',action='store_true',help='仅配合 --plan，接续原货币战争周常；复用原日常报告，不新增日常预算')
     mode.add_argument("--differential-universe", action="store_true", help="自动演算差分宇宙；不消耗每日刷本预算")
@@ -135,6 +137,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    if args.daily_attachment_only:
+        attachment_flags = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
+        if attachment_flags.count('--daily-attachment-only') != 1 or set(attachment_flags) - {
+                '--daily-attachment-only', '--config', '--game-path'}:
+            parser.error('独立免费领奖只接受一个任务及 --config 和 --game-path。')
     if args.daily_reward_observe and any(
             arg.partition('=')[0] not in {'--daily-reward-observe', '--config', '--game-path'}
             for arg in raw_args if arg.startswith('--')):
@@ -303,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
         tests = unittest.defaultTestLoader.discover(str(test_path))
         result = unittest.TextTestRunner(verbosity=2).run(tests)
         return 0 if result.wasSuccessful() else 1
-    if not any((args.check, args.scan_dungeons, build_target, args.daily_reward_observe, args.launch, args.run, args.plan,
+    if not args.daily_attachment_only and not any((args.check, args.scan_dungeons, build_target, args.daily_reward_observe, args.launch, args.run, args.plan,
                 args.redeem_codes, args.challenge_prepare, args.challenge_result, args.team_preset_calibration,
                 args.challenge_lobby, args.challenge_preset_observe, args.du_rewards_only,
                 args.currency_wars_check, args.currency_wars_prepare, args.currency_wars_locate,
@@ -406,6 +413,9 @@ def main(argv: list[str] | None = None) -> int:
             settings.dungeon_category = args.category or "auto"
         from .redemption_cli import apply_overrides as apply_redemption_overrides
         apply_redemption_overrides(args, parser, settings)
+        if args.daily_attachment_only:
+            from .daily_attachments import attachment_settings
+            settings = attachment_settings(settings, args.daily_attachment_only)
         challenge_observer = args.challenge_result or args.challenge_preset_observe
         check_only = (args.check or args.scan_dungeons or args.read_build_target or args.daily_reward_observe
                       or challenge_observer or args.challenge_lobby or args.team_preset_calibration)
@@ -423,10 +433,13 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(event, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
         wrap_notifications = None
         if not (build_target or args.daily_reward_observe or challenge_observer or args.challenge_lobby
-                or args.team_preset_calibration or overclock_entry):
+                or args.team_preset_calibration or overclock_entry or args.daily_attachment_only):
             from .notify_runtime import hooks as notification_hooks
             emit, wrap_notifications = notification_hooks(settings, emit)
-        if args.challenge_result:
+        if args.daily_attachment_only:
+            from .daily_attachments import attachment_runner
+            runner = attachment_runner(settings, emit, task=args.daily_attachment_only)
+        elif args.challenge_result:
             runner = Runner(settings, emit, operation='challenge_result')
         elif args.challenge_preset_observe:
             runner = Runner(settings, emit, operation='challenge_preset_observe')
@@ -435,7 +448,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.team_preset_calibration:
             runner = Runner(settings, emit, operation='team_preset_calibration')
         elif args.daily_reward_observe:
-            runner = Runner(settings, emit, operation='daily_reward_observe')
+            runner = Runner(settings, emit, operation='daily_reward_observe', daily_reward_mode=args.daily_reward_observe)
         elif args.build_target:
             runner = Runner(settings, emit, operation='build_target_plan', build_target_selection=build_target_selection)
         elif build_target:

@@ -78,6 +78,8 @@ def build_window(ui, task_names, server_names, *, scale=None):
 
 
 def _home(ui, names):
+    from .desktop_daily import ASSIGNMENTS, HOME_TITLES
+
     s = ui.ui_scale
     d = lambda n: round(n*s)
     page = ui.pages["home"]
@@ -86,9 +88,15 @@ def _home(ui, names):
     ui.table = TaskBoard(page, s, ui, names)
     ui.table.grid(row=1, column=0, sticky="nsew")
     page.rowconfigure(1, weight=1, minsize=d(250))
-    ui.assignment_button = ttk.Button(page, text='持续委托', style='Panel.TButton',
-                                      command=lambda: ui._show_daily_panel('assignments_only'))
-    ui.assignment_button.grid(row=2, column=0, sticky='w', pady=(d(4), 0))
+    shortcuts = ttk.Frame(page)
+    shortcuts.grid(row=2, column=0, sticky='w', pady=(d(4), 0))
+    ui.daily_entry_buttons = {}
+    for column, (section, label) in enumerate(HOME_TITLES.items()):
+        button = ttk.Button(shortcuts, text=label, style='Panel.TButton',
+                            command=lambda section=section: ui._show_daily_panel(section))
+        button.grid(row=0, column=column, padx=(0, d(8)))
+        ui.daily_entry_buttons[section] = button
+    ui.assignment_button = ui.daily_entry_buttons[ASSIGNMENTS]
     recovery = t.wrapped_label(page, textvariable=ui.recovery_hint, style="Hint.TLabel")
     recovery.grid(row=3, column=0, sticky="ew", pady=(d(8), 0))
     token = ui.recovery_hint.trace_add("write", lambda *_: recovery.grid() if ui.recovery_hint.get() else recovery.grid_remove())

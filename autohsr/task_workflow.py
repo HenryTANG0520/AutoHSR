@@ -363,6 +363,8 @@ def task_spec(settings: Settings, node, base_dir):
     options = {}
     if task == 'daily':
         only_assignments = params.get('tasks') == ['assignments']
+        explicit = params.get('tasks')
+        attachment = explicit[0] if explicit in (['mail'], ['battlepass']) else None
         selected = params.pop('tasks', [name for name in DAILY_TASKS if getattr(current, 'redemption_enabled' if name == 'redemption' else name)])
         if not selected:
             raise WorkflowError('日常需要选择任务；体力计划需要刷本。')
@@ -375,6 +377,10 @@ def task_spec(settings: Settings, node, base_dir):
             setattr(current, key, value)
         if current.redemption_enabled and current.redemption_source == 'file':
             current.redemption_catalog = str((base_dir / current.redemption_catalog).resolve())
+        if attachment:
+            from .daily_attachments import attachment_settings
+            current = attachment_settings(current, attachment)
+            options['daily_attachment_only'] = attachment
         current.validate('power_plan' if options['use_power_plan'] else 'daily')
         options['operation'] = 'daily'
         if only_assignments:

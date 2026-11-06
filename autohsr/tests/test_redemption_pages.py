@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 
 from autohsr.models import Scene, Token
-from autohsr.redemption_pages import (FIELD_KEY, _template, field_region, phone, phone_more_target,
+from autohsr.redemption_pages import (FIELD_KEY, PHONE_HEADER, _matches, _template, field_region, phone, phone_more_target,
                                      read_form, read_result, redemption_entry)
 
 
@@ -48,6 +48,35 @@ def phone_scene():
 def more_scene():
     scene = phone_scene()
     scene.tokens += [token('漫游签证', (1510, 215, 1660, 250)), token('兑换码', (1510, 305, 1630, 340))]
+    return scene
+
+
+def four_row_more_scene():
+    scene = base_scene()
+    scene.tokens = [token('开拓等级', (1286, 249, 1382, 276)), token('好友', (1578, 395, 1622, 421)),
+                    token('委托', (1711, 396, 1751, 419)), token('成就', (1709, 525, 1755, 551)),
+                    token('无名勋礼', (1430, 653, 1511, 682)), token('指南', (1321, 783, 1365, 810)),
+                    token('漫游签证', (1534, 124, 1638, 156)), token('手机装饰', (1534, 196, 1638, 228)),
+                    token('开拓穿搭', (1534, 268, 1638, 300)), token('兑换码', (1549, 341, 1622, 370))]
+    return scene
+
+
+def draw_more_capsule(image, x=1753, y=103, *, dots=((-7, 0), (0, 0), (7, 0)), rectangle=False):
+    white = (252, 252, 252)
+    if rectangle:
+        cv2.rectangle(image, (x - 36, y - 17), (x + 36, y + 17), white, -1)
+    else:
+        cv2.rectangle(image, (x - 19, y - 17), (x + 19, y + 17), white, -1)
+        for cx in (x - 19, x + 19):
+            cv2.circle(image, (cx, y), 17, white, -1, cv2.LINE_AA)
+    for dx, dy in dots:
+        cv2.circle(image, (x + dx, y + dy), 2, (18, 18, 18), -1, cv2.LINE_AA)
+
+
+def variant_phone_scene():
+    scene = four_row_more_scene()
+    scene.tokens = scene.tokens[:-4] + [token('合成', (1580, 525, 1625, 551))]
+    draw_more_capsule(scene.image)
     return scene
 
 
@@ -114,6 +143,42 @@ class RedemptionPagesTests(unittest.TestCase):
                 self.assertEqual(phone(scene), expected)
                 self.assertEqual(phone_more_target(scene) is not None, expected)
 
+    def test_closed_more_capsule_variant_requires_current_phone_grid_and_three_dots(self):
+        scene = variant_phone_scene()
+        self.assertEqual(_matches(scene, 'more', PHONE_HEADER), [])
+        target = phone_more_target(scene, .93)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(target.center[0], .913, places=3)
+        self.assertAlmostEqual(target.center[1], .096, places=3)
+        for label in ('开拓等级', '合成', '成就', '指南'):
+            with self.subTest(label=label):
+                scene = variant_phone_scene()
+                scene.tokens = [t for t in scene.tokens if t.text != label]
+                self.assertIsNone(phone_more_target(scene, .93))
+
+    def test_closed_more_capsule_rejects_light_wrong_marks_overlay_and_duplicates(self):
+        for tag, options in (('light', dict(dots=())), ('missing', dict(dots=((-7, 0), (0, 0)))),
+                             ('extra', dict(dots=((-10, 0), (-3, 0), (4, 0), (11, 0)))),
+                             ('vertical', dict(dots=((-7, -4), (0, 0), (7, 4)))),
+                             ('spacing', dict(dots=((-5, 0), (0, 0), (9, 0)))),
+                             ('rectangle', dict(rectangle=True)), ('wrong_position', dict(x=1670))):
+            with self.subTest(tag=tag):
+                scene = variant_phone_scene()
+                scene.image[:] = 70
+                draw_more_capsule(scene.image, **options)
+                self.assertIsNone(phone_more_target(scene, .93))
+        for label in ('手机装饰', '取消', '确认购买'):
+            with self.subTest(label=label):
+                scene = variant_phone_scene()
+                scene.tokens.append(token(label, (1515, 225, 1620, 256)))
+                self.assertIsNone(phone_more_target(scene, .93))
+        scene = variant_phone_scene()
+        draw_more_capsule(scene.image, x=1829)
+        self.assertIsNone(phone_more_target(scene, .93))
+        scene = variant_phone_scene()
+        stamp(scene.image, 'more', 1796, 104)
+        self.assertIsNone(phone_more_target(scene, .93))
+
     def test_more_menu_entry_requires_neighbor_and_current_phone_menu(self):
         self.assertEqual(redemption_entry(more_scene()).text, '兑换码')
         for label in ('漫游签证', '指南', '委托'):
@@ -123,6 +188,44 @@ class RedemptionPagesTests(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertIsNone(redemption_entry(scene))
         self.assertIsNone(redemption_entry(form_scene()))
+
+    def test_four_row_more_menu_extends_span_only_for_current_ordered_column(self):
+        scene = four_row_more_scene()
+        self.assertEqual(redemption_entry(scene), scene.tokens[-1])
+        self.assertAlmostEqual(scene.tokens[-1].center[1] - scene.tokens[-4].center[1], .200, places=3)
+        scene.tokens[0] = token('开拓等级 70', (1286, 249, 1413, 276))
+        self.assertEqual(redemption_entry(scene), scene.tokens[-1])
+        legacy = more_scene()
+        legacy.image[:] = 70
+        self.assertIsNone(redemption_entry(legacy))
+        for variant in ('missing', 'weak', 'duplicate', 'swapped', 'different_column', 'uneven', 'overlong',
+                        'no_level', 'no_grid_label', 'displaced_grid', 'modal'):
+            with self.subTest(variant=variant):
+                scene = four_row_more_scene()
+                if variant == 'missing':
+                    scene.tokens.pop(-2)
+                elif variant == 'weak':
+                    scene.tokens[-2] = token('开拓穿搭', (1534, 268, 1638, 300), score=.74)
+                elif variant == 'duplicate':
+                    scene.tokens.append(token('手机装饰', (1334, 196, 1438, 228)))
+                elif variant == 'swapped':
+                    scene.tokens[-3] = token('开拓穿搭', (1534, 196, 1638, 228))
+                    scene.tokens[-2] = token('手机装饰', (1534, 268, 1638, 300))
+                elif variant == 'different_column':
+                    scene.tokens[-2] = token('开拓穿搭', (1420, 268, 1524, 300))
+                elif variant == 'uneven':
+                    scene.tokens[-3] = token('手机装饰', (1534, 216, 1638, 248))
+                elif variant == 'overlong':
+                    scene.tokens[-1] = token('兑换码', (1549, 377, 1622, 406))
+                elif variant == 'no_level':
+                    scene.tokens.pop(0)
+                elif variant == 'no_grid_label':
+                    scene.tokens.pop(1)
+                elif variant == 'displaced_grid':
+                    scene.tokens[1] = token('好友', (1380, 395, 1435, 421))
+                else:
+                    scene.tokens.append(token('确认', (920, 600, 990, 640)))
+                self.assertIsNone(redemption_entry(scene))
 
     def test_geometry_is_current_field_and_empty_requires_placeholder(self):
         scene = form_scene()
