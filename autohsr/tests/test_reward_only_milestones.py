@@ -205,15 +205,18 @@ class RewardOnlyMilestonesTests(unittest.TestCase):
         self.assertFalse(report['daily_verified'])
 
     def test_duplicate_gifts_or_checkmarks_stop_every_milestone_input(self):
-        for marker, old in (
-                ('daily_reward', training(400, gifts=(100, 400))),
-                ('daily_completed', training(400, gifts=(400,), claimed=(100,)))):
-            with self.subTest(marker=marker):
-                stamp(old.image, marker, .260, .287)
-                old.tokens.append(token('100', .260, .33))
-                _, report, clicks = self.invoke((old,))
-                self.assertEqual(len(clicks), 1)  # Only the original guide navigation.
-                self.assertFalse(report['daily_verified'])
+        for marker, states in (
+                ('daily_reward', dict(gifts=(100, 400))),
+                ('daily_completed', dict(gifts=(400,), claimed=(100,)))):
+            for caption_read in (True, False):
+                with self.subTest(marker=marker, caption_read=caption_read):
+                    old = training(400, **states)
+                    stamp(old.image, marker, .260, .287)
+                    if caption_read:
+                        old.tokens.append(token('100', .260, .33))
+                    _, report, clicks = self.invoke((old,))
+                    self.assertEqual(len(clicks), 1)  # Only the original guide navigation.
+                    self.assertFalse(report['daily_verified'])
 
     def test_duplicate_return_checkmarks_keep_the_sent_milestone_pending(self):
         old = training(400, gifts=(300, 400))

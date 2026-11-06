@@ -33,13 +33,13 @@ def _markers(workflow, scene, name, confidence):
     for index, slot in enumerate(REWARD_SLOTS, 1):
         points = index * 100
         matches = workflow.ctx.vision.template(scene, path, slot, .90, all_matches=True)
+        if len(matches) > 1:
+            return None
         for x, y, _score in matches:
             caption = (x - .02, y + .025, x + .02, y + .066)
             numbers = [t for t in scene.tokens if t.within(caption) and re.fullmatch(r'[0-9]{1,3}', t.text.strip())]
             if len(numbers) != 1 or numbers[0].text.strip() != str(points) or not confidence <= numbers[0].score <= 1:
                 continue
-            if points in result:
-                return None
             result[points] = x, y
     return result
 
