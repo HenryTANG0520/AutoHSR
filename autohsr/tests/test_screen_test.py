@@ -175,6 +175,37 @@ class ScreenTestTests(TestCase):
                     config.write_text('[General]\ngame_version=4.7.0\n', encoding='utf8')
                     self.assertEqual(self.save(observer)['screen_test'], screen_test.initial_record())
 
+    def test_reward_guide_final_version_read_cannot_outlive_foreground_epoch_or_stop(self):
+        source = guide_scene()
+        source.tokens.append(ACCOUNT)
+        executable = self.directory / 'StarRail.exe'
+        executable.touch()
+        executable.with_name('config.ini').write_text('[General]\ngame_version=4.6.0\n', encoding='utf8')
+        native = screen_test.read_event_installation
+        for change in ('foreground', 'epoch', 'stop'):
+            with self.subTest(change=change):
+                observer = self.observer([source, source])
+                context = observer.context
+                context.window.current_executable = Mock(return_value=str(executable))
+                self.assertEqual(self.observe(observer).status, 'ok')
+                reads = count(1)
+
+                def drift(window):
+                    installation = native(window)
+                    if next(reads) == 3:
+                        if change == 'foreground':
+                            window.guard.side_effect = FocusLost('lost during the final installation read')
+                        elif change == 'epoch':
+                            context.runner.input_epoch += 1
+                        else:
+                            window.emergency_pressed.return_value = True
+                    return installation
+
+                with patch.object(screen_test, 'read_event_installation', side_effect=drift):
+                    saved = self.save(observer)
+                self.assertEqual(saved['screen_test'], screen_test.initial_record())
+                self.assertEqual(saved['status'], 'stopped' if change == 'stop' else 'partial')
+
     def test_achievement_button_disagreement_stays_unknown_and_conflicting_pages_are_rejected(self):
         bulk = label('一键领取奖励', .824, .897)
         seen = achievement_frame(overview(), bulk)

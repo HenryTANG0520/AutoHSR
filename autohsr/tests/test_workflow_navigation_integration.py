@@ -15,6 +15,7 @@ import cv2
 from autohsr.__main__ import main
 from autohsr.app import Runner
 from autohsr.config import Settings
+from autohsr.daily_event_observe import read_event_installation
 from autohsr.models import FocusLost, Scene, Token
 from autohsr.tests.test_daily_event_navigation import activity_frame
 from autohsr.tests.test_daily_event_pages import _odyssey
@@ -24,7 +25,8 @@ from autohsr.tests.test_task_workflow import condition, recipe, task
 
 class WorkflowNavigationIntegrationTests(unittest.TestCase):
     def run_navigation(self, *, already_open=False, late_loss=False, target='mail', version='4.6.0',
-                       start_in_list=False, late_version=False, from_odyssey=False, check_publication_lock=False):
+                       start_in_list=False, late_version=False, from_odyssey=False, check_publication_lock=False,
+                       lose_focus_on_installation_read=False):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -69,6 +71,14 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 window.guard.side_effect = FocusLost('fake late focus loss')
             if late_version:
                 (game / 'config.ini').write_text('[General]\ngame_version=4.7.0\n', encoding='utf8')
+            if lose_focus_on_installation_read and kwargs.get('workflow_navigation') is not None:
+                def read_then_lose_focus(game_window):
+                    installation = read_event_installation(game_window)
+                    game_window.guard.side_effect = FocusLost('focus lost at the end of the installation read')
+                    return installation
+
+                with patch('autohsr.workflow_navigation.read_event_installation', side_effect=read_then_lose_focus):
+                    return previous(runner, *args, **kwargs)
             if check_publication_lock and kwargs.get('workflow_navigation') is not None:
                 with patch.object(Path, 'replace', new=replace_while_held):
                     return previous(runner, *args, **kwargs)
@@ -123,7 +133,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             stack.enter_context(redirect_stdout(out))
             stack.enter_context(redirect_stderr(err))
             code = main(['--task-workflow', str(workflow), '--config', str(config)])
-            self.assertEqual(code, 1 if late_loss or late_version or version != '4.6.0' else 0, err.getvalue())
+            interrupted = late_loss or late_version or lose_focus_on_installation_read or version != '4.6.0'
+            self.assertEqual(code, 1 if interrupted else 0, err.getvalue())
             if check_publication_lock:
                 self.assertEqual(installation_held, [True])
             self.assertEqual(config.read_bytes(), original)
@@ -205,3 +216,9 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertEqual(sent, [])
         self.assertEqual(native['workflow_navigation']['actions'], [])
         self.assertTrue(steps[0]['facts']['page_verified'])
+
+    def test_reward_guide_publication_requires_foreground_after_the_last_installation_read(self):
+        sent, steps, native = self.run_navigation(target='reward_guide', lose_focus_on_installation_read=True)
+        self.assertEqual(len(sent), 2)
+        self.assertFalse(native['workflow_navigation']['page_verified'])
+        self.assertNotIn('page_verified', steps[0]['facts'])

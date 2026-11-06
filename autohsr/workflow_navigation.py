@@ -176,11 +176,11 @@ class WorkflowNavigation:
 
     def _guard(self):
         self._control()
+        if self._event_installation is not None and read_event_installation(self.window) != self._event_installation:
+            raise AutomationError('活动页面导航的游戏安装来源或版本已变化。')
         if (not self.key or self.window.current_window_key() != self.key
                 or self.window.guard(self.geometry) != self.geometry):
             raise AutomationError('日常页面导航的前台窗口来源已变化。')
-        if self._event_installation is not None and read_event_installation(self.window) != self._event_installation:
-            raise AutomationError('巡星之礼导航的游戏安装来源或版本已变化。')
         self._control()
 
     def _page(self, scene):

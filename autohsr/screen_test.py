@@ -114,8 +114,10 @@ class ScreenTestObserver:
         self._reader.verify_pair(*pair)
         if first is None or second is None or first[:2] != second[:2]:
             return None
-        if first[0] == 'reward_guide' and read_event_installation(self.context.window) != self._guide_installation:
-            raise AutomationError('奖励指南的客户端安装来源已变化。')
+        if first[0] == 'reward_guide':
+            if read_event_installation(self.context.window) != self._guide_installation:
+                raise AutomationError('奖励指南的客户端安装来源已变化。')
+            self._reader.guard()
         return (*first[:2], first[2] if first[2] == second[2] else None)
 
     def _result(self, status, detail):
