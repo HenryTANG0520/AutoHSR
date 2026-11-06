@@ -21,7 +21,7 @@ from .daily_reward_observe import phone_achievement_target
 from .daily_visa_pages import (VISA_LAYOUT_VERSION, refine_small_visa_title, visa_character_tab, visa_overview,
                               visa_support_section)
 from .dungeons import CATEGORIES
-from .free_rewards import battlepass_modal, battlepass_page, battlepass_tab, mail_entry, mailbox
+from .free_rewards import battlepass_modal, battlepass_page, mail_entry, mailbox
 from .models import FULL, AutomationError, EmptyCapture, InputInterrupted, Stopped, TaskResult, Token, normalize
 from .policy import has_du_field_plane_marker
 from .screenshot_tool import MAX_PIXELS
@@ -30,7 +30,7 @@ from .task_workflow import (ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES, 
                             VISA_CHARACTERS_PAGE, WORKFLOW_NAVIGATION_TARGETS, WORLD_WORKFLOW_PAGE)
 from .team_calibration_pages import calibration_overlay
 from .vision import helper_overlay
-from .workflow_battlepass_tabs import small_battlepass_tab, small_selection_agrees
+from .workflow_battlepass_tabs import exact_battlepass_tab, small_selection_agrees
 from .workflows import DailyWorkflow, TITLE
 
 
@@ -316,9 +316,7 @@ class WorkflowNavigation:
                 return _Action('open_battlepass', BATTLEPASS_WORKFLOW_PAGES, token) if token else None
             if page in BATTLEPASS_WORKFLOW_PAGES:
                 kind = self.target.removeprefix('battlepass_')
-                tab = battlepass_tab(trusted(frame.scene, self.confidence), kind)
-                if tab is None:
-                    tab = small_battlepass_tab(frame.image, kind)
+                tab = exact_battlepass_tab(trusted(frame.scene, self.confidence), kind)
                 return _Action('open_' + self.target, (self.target,), tab) if tab else None
             return None
         if page == 'world':

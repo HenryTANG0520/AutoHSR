@@ -20,7 +20,7 @@ from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, phone, visa_
 from autohsr.tests.test_daily_visa_pages import small_visa
 from autohsr.tests.test_du_team import fixture
 from autohsr.vision import Vision
-from autohsr.workflow_battlepass_tabs import small_battlepass_tab
+from autohsr.workflow_battlepass_tabs import exact_battlepass_tab, small_battlepass_tab
 from autohsr.workflow_navigation import OPERATION, WorkflowNavigation
 
 
@@ -42,6 +42,18 @@ def battlepass():
     return Scene([ACCOUNT, badge('无名勋礼', .078, .05), badge('任务', .24, .05),
                   badge('本周经验上限', .71, .257), badge('剩余时间', .25, .211),
                   badge('本周任务', .127, .40), badge('本期任务', .127, .64)], phone().image)
+
+
+def duplicate_battlepass_tab(scene, kind):
+    image = scene.image.copy()
+    filename = RESOURCE_ROOT / 'assets' / 'templates' / f'bp_{kind}_tab.png'
+    template = cv2.imdecode(np.fromfile(filename, np.uint8), 1)
+    height, width = template.shape[:2]
+    y, first, second = (44, 822, 876) if kind == 'rewards' else (42, 918, 969)
+    image[27:86, first - 1:second + width + 1] = 40
+    for x in (first, second):
+        image[y:y + height, x:x + width] = template
+    return Scene(scene.tokens, image)
 
 
 def world():
@@ -334,6 +346,24 @@ class WorkflowNavigationTests(unittest.TestCase):
         [action] = context.report.workflow_navigation['actions']
         self.assertEqual((action['input_status'], action['destination_status']), ('sent', 'unknown'))
         self.assertFalse(context.report.workflow_navigation['page_verified'])
+
+    def test_standard_battlepass_requires_one_tab_match_in_each_source_frame(self):
+        for name, target, center in (
+                ('bp_tasks_claimable', 'rewards', .45), ('bp_period_settled', 'rewards', .45),
+                ('bp_rewards_claimable', 'tasks', .50), ('bp_rewards_settled', 'tasks', .50)):
+            with self.subTest(name=name):
+                source = identified(fixture(name))
+                token = exact_battlepass_tab(source, target)
+                self.assertIsNotNone(token)
+                self.assertAlmostEqual(token.center[0], center, delta=.002)
+                duplicate = duplicate_battlepass_tab(source, target)
+                context = self._installed_context([source, duplicate], target='battlepass_' + target)
+                with self.assertRaisesRegex(AutomationError, '多个匹配位置'):
+                    context.workflow_navigation.run()
+                self.assertEqual(context.report.workflow_navigation['actions'], [])
+                generic = Context('battlepass', [duplicate, duplicate])
+                self.assertEqual(generic.workflow_navigation.run().status, 'ok')
+        self.assertEqual(self.sent, [])
 
     def test_phone_mail_real_envelope_then_real_page(self):
         source = phone()

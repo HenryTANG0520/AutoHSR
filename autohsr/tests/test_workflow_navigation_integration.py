@@ -18,7 +18,6 @@ from autohsr.__main__ import main
 from autohsr.app import Runner
 from autohsr.config import Settings
 from autohsr.daily_event_observe import read_event_installation
-from autohsr.free_rewards import battlepass_tab
 from autohsr.models import FocusLost, Scene, Token
 from autohsr.tests.test_daily_event_navigation import activity_frame
 from autohsr.tests.test_daily_event_pages import _odyssey
@@ -28,6 +27,7 @@ from autohsr.tests.test_task_workflow import condition, recipe, task
 from autohsr.tests.test_workflow_navigation import identified, world_hud
 from autohsr.vision import Vision
 from autohsr.windows import GameWindow, Geometry, INPUT
+from autohsr.workflow_battlepass_tabs import small_battlepass_tab
 from autohsr.workflow_navigation import WorkflowNavigation
 
 
@@ -35,7 +35,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
     def run_navigation(self, *, already_open=False, late_loss=False, target='mail', version='4.6.0',
                        start_in_list=False, late_version=False, from_odyssey=False, check_publication_lock=False,
                        lose_focus_on_installation_read=False, from_phone=False, battlepass_size=None,
-                       lose_focus_after_geometry=False):
+                       lose_focus_after_geometry=False, duplicate_tab=False):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -52,6 +52,10 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             rewards = identified(fixture('bp_rewards_claimable'))
             tasks = identified(fixture('bp_tasks_claimable'))
             pages = (tasks, rewards) if target == 'battlepass_rewards' else (rewards, tasks)
+            if duplicate_tab:
+                from autohsr.tests.test_workflow_navigation import duplicate_battlepass_tab
+
+                pages = (duplicate_battlepass_tab(pages[0], target.removeprefix('battlepass_')), pages[1])
             if from_phone:
                 pages = (identified(fixture('phone_mail_icon')), *pages)
             if battlepass_size is not None:
@@ -215,7 +219,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             stack.enter_context(redirect_stderr(err))
             code = main(['--task-workflow', str(workflow), '--config', str(config)])
             interrupted = (late_loss or late_version or lose_focus_on_installation_read
-                           or lose_focus_after_geometry or version != '4.6.0')
+                           or lose_focus_after_geometry or version != '4.6.0' or duplicate_tab)
             self.assertEqual(code, 1 if interrupted else 0, err.getvalue())
             if lose_focus_after_geometry:
                 self.assertTrue(focus_changed)
@@ -307,17 +311,13 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertNotIn('page_verified', steps[0]['facts'])
 
     def test_small_battlepass_formal_workflow_switches_when_the_primary_template_misses(self):
-        def primary_misses(scene, kind):
-            self.assertIsNone(battlepass_tab(scene, kind))
-            return None
-
         for size, target, expected_x in (((960, 540), 'battlepass_tasks', .50),
                                           ((1280, 720), 'battlepass_rewards', .45)):
-            with self.subTest(size=size, target=target), patch('autohsr.workflow_navigation.battlepass_tab',
-                                                             side_effect=primary_misses) as primary:
+            with self.subTest(size=size, target=target), patch('autohsr.workflow_battlepass_tabs.small_battlepass_tab',
+                                                             wraps=small_battlepass_tab) as fallback:
                 sent, steps, native = self.run_navigation(target=target, battlepass_size=size,
                                                           check_publication_lock=True)
-                primary.assert_called()
+                fallback.assert_called()
                 self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)])
                 self.assertAlmostEqual(self.clicks[0][0], expected_x, delta=.004)
                 self.assertAlmostEqual(self.clicks[0][1], .059, delta=.004)
@@ -331,6 +331,16 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertEqual(native['workflow_navigation']['actions'], [])
         self.assertFalse(native['workflow_navigation']['page_verified'])
         self.assertNotIn('page_verified', steps[0]['facts'])
+
+    def test_exact_battlepass_duplicate_standard_peaks_stop_before_native_input(self):
+        for target in ('battlepass_tasks', 'battlepass_rewards'):
+            with self.subTest(target=target), patch('autohsr.workflow_battlepass_tabs.small_battlepass_tab') as fallback:
+                sent, steps, native = self.run_navigation(target=target, duplicate_tab=True)
+                self.assertEqual(sent, [])
+                self.assertIn('多个匹配位置', native['error'])
+                self.assertEqual(native['workflow_navigation']['actions'], [])
+                self.assertNotIn('page_verified', steps[0]['facts'])
+                fallback.assert_not_called()
 
     def test_messages_uses_one_world_input_and_no_input_when_already_open(self):
         for already_open, actions in ((False, 1), (True, 0)):
