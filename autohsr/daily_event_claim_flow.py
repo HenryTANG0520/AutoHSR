@@ -160,13 +160,20 @@ class DailyEventClaim:
         previous = popup[-1]
         waiting, returned = [], []
         fade_waited = False
+        deadline = before[0].captured_at + _AGE
         self.record['stage'] = 'return_check'
         try:
             previous.guard()
             self._runner.emit(dict(type='daily_event_manual_close', message=MANUAL_CLOSE))
             for _ in range(_RETURN_CAPTURE_LIMIT):
-                self.context.sleep(_FRAME_DELAY if returned or fade_waited else _RETURN_DELAY)
-                if time.monotonic() - before[0].captured_at >= _AGE:
+                now = time.monotonic()
+                if returned:
+                    # OCR time already elapsed after the first clear return.
+                    delay = max(0., returned[-1].captured_at + _FRAME_DELAY - now)
+                else:
+                    delay = _FRAME_DELAY if fade_waited else _RETURN_DELAY
+                self.context.sleep(min(delay, max(0., deadline - now)))
+                if time.monotonic() >= deadline:
                     break
                 frame = self._capture(snapshot, reader)
                 _pair((previous, frame), origin=before[-1])
