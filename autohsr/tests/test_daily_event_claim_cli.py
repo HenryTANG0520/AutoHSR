@@ -11,6 +11,8 @@ from unittest.mock import Mock, patch
 
 from autohsr import app
 from autohsr.__main__ import main
+from autohsr.config import Settings
+from autohsr.daily_observe import EVENT_CLAIM_OPERATION
 from autohsr.daily_event_claim_flow import replace_file
 from autohsr.models import Token
 from autohsr.tests import test_daily_event_claim as cases
@@ -240,6 +242,47 @@ class DailyEventClaimCliTests(unittest.TestCase):
                          (1, 'failed', 'not_sent'))
         self.window.capture.assert_not_called()
         self.fixture.native.SendInput.assert_not_called()
+
+    def desktop_runner(self, *, observe_return=False):
+        return app.Runner(Settings(game_path=str(self.fixture.exe)), operation=EVENT_CLAIM_OPERATION,
+                          daily_event_claim_day=4, daily_event_observe_return=observe_return,
+                          observation_wait_for_foreground=True)
+
+    def test_desktop_waits_for_manual_foreground_before_claim_and_return(self):
+        self.queue_manual_return({1, 2, 3, 4})
+        native = self.fixture.native
+        native.GetForegroundWindow.return_value = 55
+
+        def handoff(_):
+            self.window.capture.assert_not_called()
+            native.SendInput.assert_not_called()
+            native.GetForegroundWindow.return_value = self.window.hwnd
+
+        clock = SimpleNamespace(monotonic=time.monotonic, sleep=Mock(side_effect=handoff))
+        with patch('autohsr.screenshot_tool.time', clock):
+            report = self.desktop_runner(observe_return=True).run().to_dict()
+        clock.sleep.assert_called_once()
+        self.assertEqual(report['status'], 'success', report['error'])
+        self.assertEqual(report['daily_event_claim']['state'], 'verified')
+        native.SendInput.assert_called_once()
+        self.window.focus.assert_not_called()
+
+    def test_desktop_f10_during_handoff_prevents_capture_and_claim(self):
+        native = self.fixture.native
+        native.GetForegroundWindow.return_value = 55
+
+        def stop(_):
+            native.GetAsyncKeyState.side_effect = lambda key: 0x8000 if key == 0x79 else 0
+
+        clock = SimpleNamespace(monotonic=time.monotonic, sleep=Mock(side_effect=stop))
+        with patch('autohsr.screenshot_tool.time', clock):
+            report = self.desktop_runner().run().to_dict()
+        self.assertEqual(report['status'], 'stopped', report['error'])
+        clock.sleep.assert_called_once()
+        self.assertEqual(report['daily_event_claim']['submission'], 'not_sent')
+        self.window.capture.assert_not_called()
+        native.SendInput.assert_not_called()
+        self.assertFalse((self.fixture.root / 'runs' / 'daily-event-claim').exists())
 
     def test_unrelated_and_duplicate_flags_fail_before_settings(self):
         for extras in (['--new-battle-run'], ['--daily-event-claim=5'], ['--config=a', '--config=b']):

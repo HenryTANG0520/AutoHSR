@@ -2308,7 +2308,7 @@ class Runner:
         if (type(observation_wait_for_foreground) is not bool
                 or observation_wait_for_foreground
                 and operation not in DAILY_OBSERVATION_OPERATIONS | WORKFLOW_FOREGROUND_TASKS | {
-                    ACHIEVEMENT_CLAIM_OPERATION, MESSAGE_REPLY_OPERATION}):
+                    ACHIEVEMENT_CLAIM_OPERATION, EVENT_CLAIM_OPERATION, MESSAGE_REPLY_OPERATION}):
             raise ValueError('前台等待只适用于明确启动的游戏页面核对。')
         self.observation_wait_for_foreground = observation_wait_for_foreground
         if reward_guide_capture is not None:
