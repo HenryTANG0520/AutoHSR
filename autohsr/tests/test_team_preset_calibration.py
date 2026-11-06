@@ -236,9 +236,9 @@ class TeamPresetCalibrationTests(unittest.TestCase):
         window.click.assert_called_once()
 
     @staticmethod
-    def ordinary_team():
+    def ordinary_team(caption='已启用'):
         from autohsr.tests.test_team_calibration_destination import normal_team_scene
-        scene = normal_team_scene()
+        scene = normal_team_scene(caption)
         scene.tokens.append(ACCOUNT)
         return scene
 
@@ -251,6 +251,7 @@ class TeamPresetCalibrationTests(unittest.TestCase):
                 report, window, state = self.run_calibration(frames, expected_code=0)
                 receipt = report['team_preset_calibration']
                 self.assertEqual(receipt['destination_status'], 'team_page_verified')
+                self.assertEqual(receipt['displayed_team_state'], 'enabled')
                 self.assertEqual(receipt['input_status'], 'not_sent' if existing else 'sent')
                 self.assertEqual(receipt['scope'], 'observe_current_team' if existing else 'open_team_from_phone')
                 self.assertEqual(len(state.sent), 0 if existing else 1)
@@ -258,6 +259,65 @@ class TeamPresetCalibrationTests(unittest.TestCase):
                 self.assertEqual(len(receipt['after_frames']), 2)
                 self.assertTrue(all(frame['team_page'] for frame in receipt['after_frames']))
                 self.assertNotIn('fixture-window', json.dumps(report))
+
+    def test_existing_team_preview_and_historical_overview_are_separate_scopes(self):
+        frames = [self.ordinary_team('启用队伍'), self.ordinary_team('启用队伍')]
+        report, window, state = self.run_calibration(frames, expected_code=0)
+        receipt = report['team_preset_calibration']
+        self.assertEqual((receipt['input_status'], receipt['displayed_team_state']), ('not_sent', 'preview'))
+        self.assertEqual(receipt['scope'], 'observe_current_team')
+        window.click.assert_not_called()
+
+        frames = [self.ordinary_team(), self.ordinary_team()]
+        for scene in frames:
+            scene.tokens.append(Token('已启用', .98, (.246, .794, .287, .825)))
+        report, window, state = self.run_calibration(frames)
+        receipt = report['team_preset_calibration']
+        self.assertEqual((receipt['input_status'], receipt['displayed_team_state']), ('not_sent', 'unknown'))
+        window.click.assert_not_called()
+
+    @staticmethod
+    def named_team(name='哈哈哈哈'):
+        from autohsr.tests.test_team_calibration_destination import _native_46
+        scene = _native_46(numbers=(3, 6, 7))
+        scene.tokens.extend((
+            ACCOUNT, Token(name, .99, (.058, .061, .113, .086)),
+            Token('火花', .99, (.090, .683, .126, .717)),
+            Token('80', .99, (.067, .697, .087, .728)),
+            Token('欢愉', .99, (.091, .715, .132, .744)),
+            Token('欢愉', .99, (.325, .779, .370, .812)),
+            Token('银狼LV.999', .99, (.584, .707, .668, .738)),
+            Token('80', .99, (.557, .723, .579, .753)),
+            Token('欢愉', .99, (.583, .739, .624, .769)),
+            Token('真珠', .99, (.766, .737, .805, .776)),
+            Token('80', .99, (.735, .748, .765, .791)),
+            Token('欢愉', .99, (.767, .776, .811, .806)),
+        ))
+        return scene
+
+    def test_current_named_team_reports_only_same_slot_captions_from_both_frames(self):
+        report, window, _ = self.run_calibration([self.named_team(), self.named_team()], expected_code=0)
+        window.click.assert_not_called()
+        record = report['team_preset_calibration']
+        displayed = record['displayed_preset']
+        self.assertEqual(displayed['name'], '哈哈哈哈')
+        self.assertEqual([slot['role_name'] for slot in displayed['slots']], ['火花', None, '银狼LV.999', '真珠'])
+        self.assertEqual([slot['visible_path'] for slot in displayed['slots']], ['欢愉'] * 4)
+        self.assertFalse(displayed['all_visible_members_named'])
+        self.assertFalse(record['preset_members_verified'])
+
+    def test_team_name_or_member_conflict_cannot_be_combined_into_a_preset(self):
+        report, window, _ = self.run_calibration([self.named_team(), self.named_team('记忆')], expected_code=0)
+        self.assertIsNone(report['team_preset_calibration']['displayed_preset'])
+        window.click.assert_not_called()
+
+        other = self.named_team()
+        other.tokens.append(Token('爻光', .74, (.765, .738, .810, .775)))
+        report, window, _ = self.run_calibration([self.named_team(), other], confidence=.90, expected_code=0)
+        slots = report['team_preset_calibration']['displayed_preset']['slots']
+        self.assertIsNone(slots[3]['role_name'])
+        self.assertEqual(slots[3]['visible_path'], '欢愉')
+        window.click.assert_not_called()
 
     def test_failed_report_recheck_keeps_input_and_withdraws_arrival(self):
         def tamper(reader):
@@ -283,6 +343,8 @@ class TeamPresetCalibrationTests(unittest.TestCase):
                 receipt = report['team_preset_calibration']
                 self.assertEqual((report['status'], receipt['input_status'], receipt['destination_status']),
                                  ('partial', 'sent', 'unknown'))
+                self.assertEqual(receipt['displayed_team_state'], 'unknown')
+                self.assertIsNone(receipt['displayed_preset'])
                 self.assertIn('到页报告未核实', report['error'])
                 window.click.assert_called_once()
 

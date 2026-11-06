@@ -1,4 +1,4 @@
-"""Observe the ordinary team page using the pinned emblem and separate OCR fields."""
+"""Observe the ordinary team page using the pinned emblem or the 4.6 layout."""
 from __future__ import annotations
 
 import hashlib
@@ -22,12 +22,21 @@ _NUMBERS = (311 / 1920, 15 / 1080, 1687 / 1920, 115 / 1080)
 _STATUS = (1507 / 1920, 955 / 1080, 1843 / 1920, 1013 / 1080)
 _CAPTIONS = ('已启用', '启用队伍')
 _NUMBER = re.compile(r'[0-9０-９]{2}')
+_NATIVE_LAYOUT = 'ordinary_team_4_6'
+_TITLE = (.042, .025, .110, .079)
+_FAVORITE = (.077, .884, .164, .947)
+_QUICK = (.638, .884, .735, .941)
+_NATIVE_FIELDS = (('title', '队伍', _TITLE), ('favorite', '常用队伍', _FAVORITE),
+                  ('quick', '快速编队', _QUICK))
 _PRESET_HEADINGS = ('队伍预设', '预设编队', '编队预设')
 _HEADING_AREAS = ((.01, .015, .16, .125), (.29, .17, .72, .50))
+_OVERVIEW_HEADINGS = ('编队总览', '队伍总览')
+_OVERVIEW_PANEL = (.01, .015, .55, .82)
 _BLOCKING_LABELS = frozenset((
     '提示', '温馨提示', '确定', '知道了', '开拓等级', '支援', '角色列表', '角色详情',
     '位面饰品', '饰品提取', '混沌回忆', '虚构叙事', '末日幻影', '星启模式',
-    '差分宇宙', '模拟宇宙', '货币战争', '快速编队', '开始挑战', '前往挑战', '进入故事',
+    '差分宇宙', '模拟宇宙', '货币战争', '开始挑战', '前往挑战', '进入故事',
+    '编辑', '编辑队伍', '编辑队名', '保存', '保存队伍', '保存编队', '离队', '我的角色',
 ))
 _BLOCKING_PHRASES = (
     '确认', '取消', '是否', '侵蚀隧洞', '饰品提取', '借用支援', '选择支援',
@@ -78,7 +87,7 @@ def _token_proof(token: Token) -> dict:
     return dict(text=token.text.strip(), box=list(token.box), score=float(token.score))
 
 
-def _team_numbers(tokens: list[Token], minimum: float) -> list[dict] | None:
+def _team_numbers(tokens: list[Token], minimum: float, *, native: bool = False) -> list[dict] | None:
     numbers = sorted((token for token in tokens if _NUMBER.fullmatch(token.text.strip())
                       and _overlaps(token.box, _NUMBERS)), key=lambda token: token.center[0])
     if len(numbers) < 2:
@@ -86,18 +95,44 @@ def _team_numbers(tokens: list[Token], minimum: float) -> list[dict] | None:
     values = [int(token.text.strip()) for token in numbers]
     if values[0] == 0:
         return None
+    max_width, max_height = (.064, .052) if native else (.040, .042)
     for token in numbers:
         left, top, right, bottom = token.box
         if (not _inside(token.box, _NUMBERS) or token.score < minimum
-                or not .006 <= right - left <= .040 or not .012 <= bottom - top <= .042):
+                or not .006 <= right - left <= max_width or not .012 <= bottom - top <= max_height):
             return None
     y = [token.center[1] for token in numbers]
     if max(y) - min(y) > .012:
         return None
     for before, after, left, right in zip(values, values[1:], numbers, numbers[1:]):
-        if after != before + 1 or not .035 <= right.center[0] - left.center[0] <= .18:
+        gap = right.center[0] - left.center[0]
+        difference = after - before
+        if native:
+            # OCR can miss or join labels and shift their measured centers.
+            if difference <= 0 or abs(gap - difference * .0625) > .022:
+                return None
+        elif difference != 1 or not .035 <= gap <= .18:
             return None
     return [dict(_token_proof(token), number=value) for token, value in zip(numbers, values)]
+
+
+def _native_source(tokens: list[Token], words: list[str], status: Token, minimum: float) -> dict | None:
+    fields = {}
+    for key, label, region in _NATIVE_FIELDS:
+        matches = [token for token, word in zip(tokens, words) if word == label]
+        if len(matches) != 1:
+            return None
+        token = matches[0]
+        if token.text.strip() != label or token.score < minimum or not _inside(token.box, region):
+            return None
+        if key != 'title' and any(other is not token and _overlaps(other.box, region) for other in tokens):
+            return None
+        fields[key] = token
+    centers_y = [fields['favorite'].center[1], fields['quick'].center[1], status.center[1]]
+    if max(centers_y) - min(centers_y) > .012:
+        return None
+    return dict(kind=_NATIVE_LAYOUT, box=list(fields['title'].box),
+                anchors={key: _token_proof(token) for key, token in fields.items()})
 
 
 def observe_team_page(scene: Scene, confidence: float = .65) -> dict | None:
@@ -112,6 +147,8 @@ def observe_team_page(scene: Scene, confidence: float = .65) -> dict | None:
     if (_BLOCKING_LABELS.intersection(words)
             or any(phrase in word for word in words for phrase in _BLOCKING_PHRASES)
             or any(word in _PRESET_HEADINGS and any(_overlaps(token.box, area) for area in _HEADING_AREAS)
+                   for token, word in zip(clean.tokens, words))
+            or any(word in _OVERVIEW_HEADINGS and _overlaps(token.box, _OVERVIEW_PANEL)
                    for token, word in zip(clean.tokens, words))):
         return None
 
@@ -121,30 +158,54 @@ def observe_team_page(scene: Scene, confidence: float = .65) -> dict | None:
             or not _inside(status[0].box, _STATUS)
             or any(token is not status[0] and _overlaps(token.box, _STATUS) for token in clean.tokens)):
         return None
-    numbers = _team_numbers(clean.tokens, minimum)
+    native = (any('快速编队' in word or '常用队伍' in word for word in words)
+              or any(_overlaps(token.box, _FAVORITE) or _overlaps(token.box, _QUICK) for token in clean.tokens))
+    numbers = _team_numbers(clean.tokens, minimum, native=native)
     if numbers is None:
         return None
-    emblem = _emblem_hit(clean.image)
-    if emblem is None:
+    source = _native_source(clean.tokens, words, status[0], minimum) if native else _emblem_hit(clean.image)
+    if source is None:
         return None
-    return dict(schema=1, source=emblem, status=_token_proof(status[0]), team_numbers=numbers)
+    return dict(schema=1, source=source, status=_token_proof(status[0]), team_numbers=numbers)
+
+
+def _same_native_page(source, other_source, numbers, other_numbers) -> bool:
+    if source.get('kind') != _NATIVE_LAYOUT or other_source.get('kind') != _NATIVE_LAYOUT:
+        return False
+    for key, _, _ in _NATIVE_FIELDS:
+        anchor, other = source['anchors'][key], other_source['anchors'][key]
+        if anchor['text'] != other['text'] or not _overlaps(anchor['box'], other['box']):
+            return False
+    by_number = {item['number']: item['box'] for item in numbers}
+    other_by_number = {item['number']: item['box'] for item in other_numbers}
+    shared = by_number.keys() & other_by_number.keys()
+    # Wider OCR boxes on adjacent numbers can overlap without a column conflict.
+    def center_x(box):
+        return (box[0] + box[2]) / 2
+
+    return (len(shared) >= 2
+            and all(_overlaps(by_number[number], other_by_number[number]) for number in shared)
+            and not any(left != right and abs(center_x(left_box) - center_x(right_box)) < .026
+                        for left, left_box in by_number.items() for right, right_box in other_by_number.items()))
 
 
 def same_team_page(first: dict | None, second: dict | None) -> bool:
-    """Require the same observed emblem, status and number row in two scenes."""
+    """Require agreeing page anchors and status from two scenes."""
     if not isinstance(first, dict) or not isinstance(second, dict):
         return False
     try:
         source, other_source = first['source'], second['source']
         status, other_status = first['status'], second['status']
         numbers, other_numbers = first['team_numbers'], second['team_numbers']
-        return (first['schema'] == second['schema'] == 1
-                and source['sha256'] == other_source['sha256'] == _EMBLEM_SHA256
+        if (first['schema'] != 1 or second['schema'] != 1 or status['text'] not in _CAPTIONS
+                or status['text'] != other_status['text'] or not _overlaps(status['box'], other_status['box'])):
+            return False
+        if source.get('kind') is not None or other_source.get('kind') is not None:
+            return _same_native_page(source, other_source, numbers, other_numbers)
+        return (source['sha256'] == other_source['sha256'] == _EMBLEM_SHA256
                 and _overlaps(source['box'], other_source['box'])
-                and status['text'] in _CAPTIONS and status['text'] == other_status['text']
-                and _overlaps(status['box'], other_status['box'])
                 and len(numbers) == len(other_numbers) >= 2
                 and all(left['number'] == right['number'] and _overlaps(left['box'], right['box'])
                         for left, right in zip(numbers, other_numbers)))
-    except (IndexError, KeyError, TypeError):
+    except (AttributeError, IndexError, KeyError, TypeError):
         return False

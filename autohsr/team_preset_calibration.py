@@ -15,6 +15,7 @@ from .models import AutomationError, EmptyCapture, InputInterrupted, Scene, Stop
 from .storage import hold_read_sources, replace_file
 from .team_calibration_destination import observe_team_page, same_team_page
 from .team_calibration_pages import phone_team_target
+from .team_preset_readback import compare_displayed_presets, read_displayed_preset
 
 
 OPERATION = 'team_preset_calibration'
@@ -27,7 +28,8 @@ MAX_PNG_BYTES = 64 * 1024 * 1024
 
 def initial_record():
     return dict(schema=1, scope='open_team_from_phone', input_status='not_sent',
-                destination_status='unknown', preset_members_verified=False,
+                destination_status='unknown', displayed_team_state='unknown', displayed_preset=None,
+                preset_members_verified=False,
                 before_frames=[], after_frames=[])
 
 
@@ -92,7 +94,13 @@ class TeamPresetCalibration:
 
     def _observe(self, scene):
         target = phone_team_target(scene, self.confidence)
-        return target, None if target is not None else observe_team_page(scene, self.confidence)
+        if target is not None:
+            return target, None
+        page = observe_team_page(scene, self.confidence)
+        displayed = read_displayed_preset(scene, page, self.confidence)
+        if displayed is not None:
+            page['displayed_preset_read'] = displayed
+        return None, page
 
     def _capture(self):
         scene = self.c.snapshot()
@@ -251,10 +259,14 @@ class TeamPresetCalibration:
 
     def _observe_destination(self, frames, phase):
         self.record['after_frames'] = self._save_pair(frames, phase)
-        if frames[-1].team_page is None:
+        page = frames[-1].team_page
+        if page is None:
             return False
         self.arrival = frames
-        self.record['destination_status'] = 'team_page_verified'
+        state = 'enabled' if page['status']['text'] == '已启用' else 'preview'
+        displayed = compare_displayed_presets(*(frame.team_page.get('displayed_preset_read') for frame in frames))
+        self.record.update(destination_status='team_page_verified', displayed_team_state=state,
+                           displayed_preset=displayed)
         return True
 
     def save_report(self, temporary, write_report):
@@ -301,7 +313,7 @@ class TeamPresetCalibration:
 
                 replace_file(temporary, destination, before_replace=recheck)
         except (AutomationError, OSError, UnicodeError) as error:
-            self.record['destination_status'] = 'unknown'
+            self.record.update(destination_status='unknown', displayed_team_state='unknown', displayed_preset=None)
             report = self.c.report
             report.status = 'stopped' if isinstance(error, Stopped) else 'partial'
             report.failure_task = OPERATION
