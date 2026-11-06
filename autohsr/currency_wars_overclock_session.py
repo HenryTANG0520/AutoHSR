@@ -217,7 +217,8 @@ class OverclockSession:
                         continue
                     if _exists(path):
                         paths.add(path)
-                if self.legacy_handoff:
+                if (directory != self.run_dir and self.advancing and not self.preparing
+                        and self.data.get('window_key')):
                     drag = directory / _DRAG_JOURNAL
                     if _exists(drag):
                         paths.add(drag)

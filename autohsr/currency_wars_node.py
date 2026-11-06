@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -111,14 +112,23 @@ def run_node(context, *, journal_name='currency-node.json', initial_scene=None):
                 completion_verified=False, gameplay_enabled=False, action_status='pending',
                 action='observe_existing_battle' if observing else 'start_node',
                 before=str(before_path), screenshot=str(before_path))
+    first_node = getattr(c, '_legacy_first_node', None) if source_node == '1-1' and not observing else None
+    if first_node is not None:
+        data['first_node_preflight'] = first_node.flow['first_node_preflight']
     c.report.currency_wars = data
     journal = Path(c.report.run_dir) / journal_name
     def persist():
-        journal.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+        with journal.open('w', encoding='utf-8') as stream:
+            stream.write(json.dumps(data, ensure_ascii=False, indent=2))
+            if first_node is not None and data['action_status'] == 'pending':
+                stream.flush()
+                os.fsync(stream.fileno())
     persist()
     c.checkpoint()
     guard._require_current_scene(before)
     if not observing:
+        if first_node is not None:
+            first_node.bind_pending(journal, data, before)
         c.currency_start_node(before)
         data['start_dispatched']=True
         persist()

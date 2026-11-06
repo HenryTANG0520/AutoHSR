@@ -9,7 +9,7 @@ from pathlib import Path
 from .currency_wars import CurrencyWarsWorkflow, TASK, observe
 from .currency_wars_match import read_match
 from .currency_wars_node import result_node, run_node, start_target
-from .models import AutomationError, EmptyCapture, TaskResult, normalize
+from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, Stopped, TaskResult, normalize
 
 
 def continue_target(scene, confidence=.65):
@@ -89,15 +89,28 @@ def run_flow(c):
                 start_from_lobby_requested=getattr(c.runner,'currency_start_from_lobby',False))
     if session is not None:
         data['overclock_session_id'] = session.match_id
+    first_node = None
+    if getattr(session, 'advancing', False):
+        from .currency_wars_overclock_first_node import LegacyFirstNode
+
+        first_node = c._legacy_first_node = LegacyFirstNode(c, data)
     journal = Path(c.report.run_dir)/'currency-flow.json'
     def persist():
         c.report.currency_wars = data
         with journal.open('w', encoding='utf-8') as stream:
             stream.write(json.dumps(data, ensure_ascii=False, indent=2))
-            if (data['action_status'] == 'pending' and data['actions']
-                    and data['actions'][-1].get('action') == 'advance_boss_preview'):
+            action = data['actions'][-1].get('action') if data['actions'] else None
+            first_node_intent = (first_node is not None and not first_node.sent
+                                 and action in ('collect_loot', 'run_current_node'))
+            if data['action_status'] == 'pending' and (action == 'advance_boss_preview' or first_node_intent):
                 stream.flush()
                 os.fsync(stream.fileno())
+
+    def first_node_block(scene, kind, reason):
+        data.update(action_status='needs_decision', page_kind=kind, reason=str(reason),
+                    screenshot=str(c.evidence(scene, 'currency_first_node_unverified')))
+        persist()
+
     persist()
     seen = set()
     excluded_candidates={}
@@ -123,6 +136,26 @@ def run_flow(c):
                                 reason='当前未核实原开局首领预览，保留本局。')
                     persist()
                     break
+        if first_node is not None and not first_node.sent:
+            reason = None
+            if kind in ('battle', 'node_result', 'final_victory', 'match_rating', 'match_summary', 'match_statistics',
+                        'match_defeat', 'defeat_rating', 'defeat_summary', 'shop'):
+                reason = '1-1 的现有战斗、结算或展开商店需要单独核对。'
+            elif kind == 'preparation':
+                state = read_match(scene, c.settings.ocr_confidence)
+                if first_node.arrival is None or state is None or state.node != '1-1':
+                    reason = '1-1 缺少本次同窗的环境确认与初始备战回执。'
+                else:
+                    first_node.observe_initial_ground(scene, state)
+                    try:
+                        first_node.require_formation(scene)
+                    except (FocusLost, InputInterrupted, Stopped):
+                        raise
+                    except AutomationError as error:
+                        reason = error
+            if reason is not None:
+                first_node_block(scene, kind, reason)
+                break
         if kind=='environment':
             from .currency_wars_environment import environment_choice,choose_environment
             try:
@@ -134,6 +167,8 @@ def run_flow(c):
                 break
             if not choose_environment(c,scene,data,persist):
                 break
+            if first_node is not None:
+                first_node.record_arrival(c.last_scene)
             continue
         if (kind in ('lobby','mode_select','difficulty_select') and data['start_from_lobby_requested']
                 and (session is None or session.data is None)
@@ -275,6 +310,9 @@ def run_flow(c):
                 from .currency_wars_position import misplaced_backend,correct_position
                 misplaced=misplaced_backend(scene,c.settings.ocr_confidence)
                 if misplaced is not None:
+                    if first_node is not None and first_node.applies(scene):
+                        first_node_block(scene, kind, '1-1 的当前站位不适配，原部署回执待核对。')
+                        break
                     if not correct_position(c,scene,misplaced,data,persist):
                         break
                     continue
@@ -284,6 +322,9 @@ def run_flow(c):
                 except AutomationError:
                     pass
                 else:
+                    if first_node is not None and first_node.applies(scene):
+                        first_node_block(scene, kind, '1-1 出现本次开场回执以外的奖励，交付待核对。')
+                        break
                     if not reward_action(c,scene,data,persist,opening=True):
                         break
                     continue
@@ -320,7 +361,8 @@ def run_flow(c):
                         loot_target(scene,c.settings.ocr_confidence)
                     except AutomationError as error:
                         from .currency_wars_deployment import _crop,_texture,bench_face
-                        full=all(_texture(_crop(scene.image,bench_face(slot)))>=15 for slot in range(1,10))
+                        full = (first_node is None or not first_node.applies(scene)) and all(
+                            _texture(_crop(scene.image,bench_face(slot))) >= 15 for slot in range(1,10))
                         if full:
                             from .currency_wars_sale import duplicate_candidate,sell_duplicate
                             try:
@@ -335,7 +377,16 @@ def run_flow(c):
                                     screenshot=str(c.evidence(scene,'currency_loot_needs_space')))
                         persist()
                         break
-                    if not collect_loot(c,scene,data,persist):
+                    try:
+                        collected = collect_loot(c, scene, data, persist)
+                    except (FocusLost, InputInterrupted, Stopped):
+                        raise
+                    except AutomationError as error:
+                        if first_node is None or not first_node.applies(scene):
+                            raise
+                        first_node_block(scene, kind, error)
+                        break
+                    if not collected:
                         if data.get('action_status')=='overflow_pending':
                             continue
                         break
@@ -363,6 +414,14 @@ def run_flow(c):
                 fields=equipment_fields(scene,checked,c.settings.ocr_confidence) if items else ()
                 if fields:
                     field=fields[0]
+                    if first_node is not None and first_node.applies(scene):
+                        try:
+                            first_node.require_equipment(scene, item_name, items[0])
+                        except (FocusLost, InputInterrupted, Stopped):
+                            raise
+                        except AutomationError as error:
+                            first_node_block(scene, kind, error)
+                            break
                     checked.add((field.zone,field.slot))
                     if not equip_battery(c,scene,field,items[0],data,persist,item_name=item_name):
                         break
@@ -370,6 +429,14 @@ def run_flow(c):
                 node = read_match(scene,c.settings.ocr_confidence).node
                 if ('start',node) in seen:
                     raise AutomationError('当前节点已有出战记录，未重复出战。')
+                if first_node is not None and first_node.applies(scene):
+                    try:
+                        scene = first_node.prepare_start(scene)
+                    except (FocusLost, InputInterrupted, Stopped):
+                        raise
+                    except AutomationError as error:
+                        first_node_block(c.last_scene or scene, kind, error)
+                        break
                 seen.add(('start',node))
             if session is not None:
                 action = dict(action='run_current_node', status='pending',

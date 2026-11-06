@@ -195,4 +195,8 @@ def deploy_candidate(c,scene,candidate,data,persist):
     after=observe_until(lambda s:verify_bench_deployment(current,s,plan,c.settings.ocr_confidence)['status']=='verified')
     if after is not None:
         action['feedback']=verify_bench_deployment(current,after,plan,c.settings.ocr_confidence)
-    return finish(action,after)
+    finished = finish(action, after)
+    first_node = getattr(c, '_legacy_first_node', None)
+    if finished and first_node is not None:
+        first_node.record_deployment(current, after, action, plan, profile)
+    return finished

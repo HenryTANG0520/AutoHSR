@@ -1459,12 +1459,18 @@ class Context:
         self.checkpoint()
         CurrencyWarsWorkflow(self)._require_current_scene(scene)
         target = start_target(scene, self.settings.ocr_confidence)
+        first_node = getattr(self, '_legacy_first_node', None)
         # Invalidate before dispatch, including unknown input outcomes.
-        self.last_scene, self._scroll_anchor = None, None
         try:
-            self.window.click(*target.center, scene.geometry)
+            if first_node is not None and first_node.applies(scene):
+                first_node.click(scene, target)
+            else:
+                self.last_scene, self._scroll_anchor = None, None
+                self.window.click(*target.center, scene.geometry)
         except FocusLost:
             self._focus_interrupted()
+        except OSError as error:
+            raise AutomationError('出战前置证据读取或共享读保护失败，原意图保留。') from error
         self.sleep(self.settings.action_delay)
 
     def currency_continue_node(self, scene: Scene):
@@ -1899,11 +1905,17 @@ class Context:
         CurrencyWarsWorkflow(self)._require_current_scene(scene)
         if target!=loot_target(scene,self.settings.ocr_confidence):
             raise AutomationError('奖励晶矿目标已改变。')
-        self.last_scene,self._scroll_anchor=None,None
+        first_node = getattr(self, '_legacy_first_node', None)
         try:
-            self.window.click(*target[:2],scene.geometry)
+            if first_node is not None and first_node.applies(scene):
+                first_node.click_pickup(scene, target)
+            else:
+                self.last_scene, self._scroll_anchor = None, None
+                self.window.click(*target[:2], scene.geometry)
         except FocusLost:
             self._focus_interrupted()
+        except OSError as error:
+            raise AutomationError('晶矿前置证据读取或共享读保护失败，原意图保留。') from error
         self.sleep(self.settings.action_delay)
 
     def template(self, scene: Scene, name: str, roi=(0, 0, 1, 1), threshold=0.88):

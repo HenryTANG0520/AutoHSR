@@ -8,7 +8,7 @@ from .currency_wars import CurrencyWarsWorkflow,observe
 from .currency_wars_deployment import _crop,_texture,bench_face
 from .currency_wars_match import read_match
 from .currency_wars_node import loot_centers
-from .models import AutomationError,EmptyCapture
+from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, Stopped
 
 
 def loot_target(scene,confidence=.65):
@@ -58,6 +58,13 @@ def collect_loot(c,before,data,persist):
     guard=CurrencyWarsWorkflow(c)
     target=loot_target(before,c.settings.ocr_confidence)
     guard._require_current_scene(before)
+    first_node = getattr(c, '_legacy_first_node', None)
+    if first_node is not None and first_node.applies(before):
+        from .currency_wars_overclock_first_node_pages import drop_delivery, same_crystals
+
+        first_node.require_pickup(before, target)
+    else:
+        first_node = None
     action=dict(action='collect_loot',status='pending',target=list(target),
                 before=str(c.evidence(before,'currency_loot_before')))
     data['actions'].append(action)
@@ -67,6 +74,7 @@ def collect_loot(c,before,data,persist):
     elapsed,absent=0.,0
     feedback='unknown'
     after=None
+    first_delivery = pair = None
     while elapsed<10:
         started=time.monotonic()
         inactive=c.runner.inactive_duration
@@ -74,11 +82,25 @@ def collect_loot(c,before,data,persist):
             after=c.snapshot()
         except EmptyCapture:
             after=None
+            first_delivery = None
         if after is not None:
             guard._require_current_scene(after)
             feedback=loot_feedback(before,after,target,c.settings.ocr_confidence)
             absent=absent+1 if feedback=='disappeared' else 0
-            if absent>=2 or feedback in ('choice_opened','unchanged') and observe(after,c.settings.ocr_confidence).page_kind=='bench_full':
+            if first_node is not None:
+                delivery = drop_delivery(before, after, target, c.settings.ocr_confidence) if feedback == 'disappeared' else None
+                if delivery is None:
+                    first_delivery = None
+                else:
+                    if first_delivery is not None:
+                        earlier, original = first_delivery
+                        if (earlier.captured_at < after.captured_at and original.kind == delivery.kind
+                                and original.value == delivery.value and same_crystals(original.remaining, delivery.remaining)):
+                            pair = earlier, delivery
+                            break
+                    first_delivery = after, delivery
+            if (first_node is None and absent >= 2 or feedback in ('choice_opened','unchanged')
+                    and observe(after,c.settings.ocr_confidence).page_kind=='bench_full'):
                 break
             if feedback=='choice_opened':
                 break
@@ -92,5 +114,18 @@ def collect_loot(c,before,data,persist):
         action['after']=str(c.evidence(after,'currency_loot_after'))
         data['screenshot']=action['after']
     data['action_status']=status
+    if first_node is not None:
+        try:
+            if pair is None or status != 'verified':
+                raise AutomationError('1-1 开场晶矿的双帧交付待核对。')
+            earlier, delivery = pair
+            first_node.record_drop(before, earlier, after, delivery, action)
+        except (FocusLost, InputInterrupted, Stopped):
+            raise
+        except AutomationError as error:
+            action['first_node_delivery'] = {'status': 'unknown'}
+            data.update(action_status='first_node_loot_unverified', reason=str(error))
+            persist()
+            return False
     persist()
     return status=='verified'

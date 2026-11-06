@@ -175,6 +175,7 @@ def equip_battery(c,scene,field,item,data,persist,*,item_name='battery'):
         persist()
         return True
     action=record('equip_'+item_name,current,name=profile.name,item=list(item),original_slots=list(original_slots))
+    equipment_action = action
     if item_name=='battery':
         c.currency_equip_battery(current,field,item,profile_scene)
     else:
@@ -196,4 +197,9 @@ def equip_battery(c,scene,field,item,data,persist,*,item_name='battery'):
     action=record('close_equipped_role',panel)
     c.currency_close_character(panel)
     after=wait_for(lambda s:board(s,original_count-1))
-    return finish(action,after)
+    finished = finish(action, after)
+    first_node = getattr(c, '_legacy_first_node', None)
+    if finished and item_name == 'battery' and first_node is not None:
+        first_node.record_equipped_battery(current, panel, after, (equipment_action, verification, action),
+                                           field, item, profile)
+    return finished
