@@ -1,0 +1,53 @@
+{
+  "source": "https://www.bilibili.com/video/BV1ygxg6iEw9/?p=1",
+  "cid": 43099161198,
+  "patch_period": "4.6",
+  "native_size": [
+    852,
+    480
+  ],
+  "transform": "Exact pixel crops containing only material art and, for cultivation slots, the displayed amount.",
+  "asset_rights": "Game art belongs to its respective rightsholders.",
+  "material_reference": "https://wiki.hoyolab.com/pc/hsr/entry/5355?lang=zh-cn",
+  "crops": [
+    {
+      "file": "sandbox-a.png",
+      "timestamp_seconds": 14.602,
+      "field": "cultivation_slot",
+      "source_xyxy": [
+        316,
+        175,
+        377,
+        231
+      ],
+      "source_png_sha256": "51dfbecbb246a60628dc991ce92360db0545101f33224de24048fc04d0488c5d",
+      "crop_png_sha256": "92400a8b7b2e3d9b7ec136887a3c3a6ae452ef712e341fa9ae80e8426d016234"
+    },
+    {
+      "file": "sandbox-b.png",
+      "timestamp_seconds": 16.602,
+      "field": "cultivation_slot",
+      "source_xyxy": [
+        316,
+        175,
+        377,
+        231
+      ],
+      "source_png_sha256": "1b5f7200c39405cf2800cf488a43e627ad69ccddcc138ad0227587d5292f4b70",
+      "crop_png_sha256": "329e45573abc3544268fea4b5a756e4144395f2f1180a754c5b8e7ebf8048882"
+    },
+    {
+      "file": "frame-rival.png",
+      "timestamp_seconds": 22.603,
+      "field": "possible_reward_star_system_frame",
+      "source_xyxy": [
+        614,
+        292,
+        648,
+        329
+      ],
+      "source_png_sha256": "54ad716dfb71aa8fc4f0b840793febceab75b15307448a4634662566fb0668e5",
+      "crop_png_sha256": "c011c895d58ba98e5225b3b66a70d269c9b82571be8a98b04a670da47c56a1f6"
+    }
+  ]
+}

@@ -19,15 +19,18 @@ MAX_DEPTH = 12
 MAX_EXECUTIONS = 10000
 MAX_STEP_NOTIFICATIONS = 20
 GAME_VISION_TASKS = {'workflow_game_image', 'workflow_game_text'}
+PAGE_TASK = 'workflow_open_page'
+WORKFLOW_PAGES = ('phone', 'guide', 'daily_training', 'survival_index', 'assignments', 'mail', 'battlepass')
+WORKFLOW_FOREGROUND_TASKS = GAME_VISION_TASKS | {PAGE_TASK}
 GAME_TASKS = {'daily', 'plan', 'differential_universe', 'currency_wars_loop',
-              'currency_wars_points', 'currency_wars_rewards', 'du_rewards'} | GAME_VISION_TASKS
+              'currency_wars_points', 'currency_wars_rewards', 'du_rewards'} | WORKFLOW_FOREGROUND_TASKS
 VISION_TASKS = {'workflow_image', 'workflow_text'} | GAME_VISION_TASKS
 TEMPLATE_TASKS = {'workflow_image', 'workflow_game_image'}
 TASKS = GAME_TASKS | VISION_TASKS | {'warp_analysis', 'warp_export', 'workflow_audio', 'workflow_notify'}
 DAILY_TASKS = ('assignments', 'battle', 'daily', 'redemption', 'mail', 'battlepass')
 FIELDS = {'status': str, 'daily_verified': bool, 'completed_runs': int,
           'victories': int, 'defeats': int, 'points_verified': bool, 'rewards_verified': bool,
-          'du_rewards_verified': bool, 'image_found': bool, 'text_found': bool}
+          'du_rewards_verified': bool, 'image_found': bool, 'text_found': bool, 'page_verified': bool}
 
 
 class WorkflowError(ValueError):
@@ -142,6 +145,7 @@ def _params(task, params):
         'workflow_text': {'image', 'text', 'region', 'threshold', 'contains'},
         'workflow_game_image': {'template', 'region', 'threshold'},
         'workflow_game_text': {'text', 'region', 'threshold', 'contains'},
+        PAGE_TASK: {'target'},
         'workflow_notify': {'profile', 'message'},
     }[task]
     _keys(params, allowed)
@@ -222,6 +226,9 @@ def _params(task, params):
             value = params['threshold']
             if type(value) not in (int, float) or not .5 <= value <= 1:
                 raise WorkflowError('识别阈值须在 0.5～1 之间。')
+    elif task == PAGE_TASK:
+        if params.get('target') not in WORKFLOW_PAGES:
+            raise WorkflowError('请选择任务流支持的游戏页面。')
     elif task == 'workflow_notify':
         from .notify_profiles import NotifyError, alias, text
 
@@ -471,6 +478,9 @@ def task_spec(settings: Settings, node, base_dir):
             from .workflow_vision import game_template_path
             params['template'] = str(game_template_path(params['template'], base_dir))
         options = dict(operation=task, workflow_screen_query=params)
+        current.validate('check')
+    elif task == PAGE_TASK:
+        options = dict(operation=task, workflow_page=params['target'])
         current.validate('check')
     elif task.startswith('warp_'):
         options = params

@@ -1,6 +1,7 @@
 """Task workflow and schedule content inside the settings guide."""
 from __future__ import annotations
 
+from contextlib import nullcontext
 from datetime import datetime
 from hashlib import sha256
 import json
@@ -19,6 +20,7 @@ from .task_workflow_draft import WorkflowDraft, WorkflowSaveConflict
 
 
 _JSON_FILES = (("JSON 文件", "*.json"),)
+_WORKFLOW_FILES = (*_JSON_FILES, ("三月七 YAML 流程", ("*.yaml", "*.yml")))
 _ZIP_FILES = (("任务流素材包", "*.zip"),)
 _WORKFLOW_SCOPE = "整棵流程"
 _STEP_SCOPE = "指定步骤"
@@ -32,6 +34,7 @@ _TASK_NAMES = {"daily": "每日任务", "plan": "日常与到期周常", "differ
                "currency_wars_rewards": "货币战争积分领奖", "workflow_audio": "播放本地音频",
                "workflow_image": "从图片查找模板", "workflow_text": "从图片查找文字",
                "workflow_game_image": "从游戏画面查找模板", "workflow_game_text": "从游戏画面查找文字",
+               "workflow_open_page": "切换到游戏页面",
                "workflow_notify": "发送主动通知"}
 
 
@@ -125,7 +128,9 @@ class _WorkflowPanel(_Panel):
         self.draft = None
         self.clean_text = ""
         self.editor_text = ""
-        self.saved_target = None
+        self._saved_target = None
+        self._template_revision = 0
+        self._template_bindings = {}
         self.loading = False
         self.reviewed_step = None
         self.bundle_job = None
@@ -210,6 +215,16 @@ class _WorkflowPanel(_Panel):
     @property
     def _source_file(self):
         return self.draft.source if self.draft is not None else None
+
+    @property
+    def saved_target(self):
+        return self._saved_target
+
+    @saved_target.setter
+    def saved_target(self, target):
+        if target != self._saved_target:
+            self._template_revision += 1
+        self._saved_target = target
 
     @property
     def _busy(self):
@@ -316,27 +331,48 @@ class _WorkflowPanel(_Panel):
         self.editor.edit_modified(True)
         self._edit()
 
+    def _template_base(self):
+        destination = self.saved_target or self._source_file
+        if destination is None:
+            return None
+        try:
+            return destination.parent.resolve(strict=True)
+        except (OSError, RuntimeError):
+            raise WorkflowError("当前流程目录无法核实，请重新选择另存位置。") from None
+
     def edit_tree(self):
         if self._busy or self.ui.closing or self.draft is None:
             return
         from .desktop_workflow_tree import ask_workflow_tree
 
         draft, text = self.draft, self._text()
-        destination = self.saved_target or self._source_file
+        revision = self._template_revision
+        captures = {}
+
+        def capture_current():
+            try:
+                return (getattr(self.ui, "workflow_panel", self) is self and not self.ui.closing and not self._busy
+                        and self.draft is draft and self._template_revision == revision and self._text() == text
+                        and self._template_base() == base_dir)
+            except (WorkflowError, OSError, tk.TclError):
+                return False
+
         try:
+            base_dir = self._template_base()
             original = load_workflow_json(text)
-            result = ask_workflow_tree(self.ui, original, base_dir=destination.parent if destination else None,
-                                       task_names=_TASK_NAMES)
-        except WorkflowError as error:
+            result = ask_workflow_tree(self.ui, original, base_dir=base_dir, task_names=_TASK_NAMES,
+                                       capture_current=capture_current, template_bindings=captures)
+        except (WorkflowError, OSError) as error:
             panel = getattr(self.ui, "workflow_panel", self)
             panel._error("无法打开可视编辑", error)
             panel._changed()
             return
         panel = getattr(self.ui, "workflow_panel", self)
-        if (result is None or self.ui.closing or self._busy or panel.draft is not draft
-                or panel._text() != text):
+        if (result is None or self.ui.closing or panel._busy or panel.draft is not draft
+                or panel._text() != text or (captures and not capture_current())):
             return
         document, path = result
+        panel._template_bindings.update(captures)
         if document != original:
             panel._replace_draft_document(document)
             if path is None and panel.scope.get() == _STEP_SCOPE:
@@ -367,6 +403,7 @@ class _WorkflowPanel(_Panel):
         text = self._text()
         if self.loading or self.draft is None or text == self.editor_text:
             return
+        self._template_revision += 1
         self.editor_text = text
         self.status.set("草稿有编辑 · 请重新校验" if text != self.clean_text else "内容已恢复 · 可重新校验")
         self._clear_profile()
@@ -375,6 +412,9 @@ class _WorkflowPanel(_Panel):
 
     def _install(self, draft, *, text=None, keep_scope=False):
         self.loading = True
+        self._template_revision += 1
+        if draft.source is None or draft.source != self._source_file:
+            self._template_bindings = {}
         self.draft = draft
         self.clean_text = _json(draft.document) if text is None else text
         if len(self.clean_text.encode("utf8")) > MAX_BYTES:
@@ -385,7 +425,12 @@ class _WorkflowPanel(_Panel):
             self.scope.set(_WORKFLOW_SCOPE)
             self.step_path.set("")
         self.loading = False
-        self.source.set(str(draft.source) if draft.source is not None else "新草稿 · 尚未保存")
+        if draft.source is not None:
+            self.source.set(str(draft.source))
+        elif original := getattr(draft, "original_source", None):
+            self.source.set(f"三月七 YAML · {original}")
+        else:
+            self.source.set("新草稿 · 尚未保存")
         self.saved_target = None
         self.destination.set("保存时选择新文件")
         self.source_status.set("")
@@ -415,14 +460,50 @@ class _WorkflowPanel(_Panel):
 
     def _choose_workflow_file(self, title, *, save=False):
         source = self._source_file
-        return self._choose_file(title, save=save, initialdir=source.parent if source is not None else None)
+        return self._choose_file(title, save=save, initialdir=source.parent if source is not None else None,
+                                 filetypes=_JSON_FILES if save else _WORKFLOW_FILES)
 
     def open(self):
         if self._busy:
             return
         source = self._choose_workflow_file("打开任务流")
         if source is not None:
-            self._load(source)
+            if source.suffix.casefold() in (".yaml", ".yml"):
+                panel = getattr(self.ui, "workflow_panel", self)
+                panel._import_yaml(source)
+            else:
+                self._load(source)
+
+    def _import_yaml(self, source):
+        if not self._bundle_idle:
+            return
+        draft, text = self.draft, self._text()
+        if not self._can_replace_form("导入三月七 YAML", "当前编辑尚未另存。转换成功后替换当前草稿？"):
+            return
+        panel = getattr(self.ui, "workflow_panel", self)
+        if not panel._bundle_idle or panel.draft is not draft or panel._text() != text:
+            return
+
+        def work(checkpoint):
+            from .workflow_yaml import load_march7th_yaml
+
+            imported = load_march7th_yaml(source)
+            checkpoint()
+            return imported
+
+        def present(current, imported):
+            if current.ui.stop_requested.is_set():
+                current.status.set("导入三月七 YAML 已停止")
+                return
+            if current.draft is not draft or current._text() != text:
+                current.status.set("YAML 已转换 · 保留当前草稿")
+                return
+            current._install(imported)
+            current.status.set("已转换为草稿 · 另存 JSON 并校验后可运行")
+            if current.winfo_ismapped():
+                current.editor.focus_set()
+
+        panel._start_bundle_job("导入三月七 YAML", work, present)
 
     def reload(self):
         source = self._source_file
@@ -565,6 +646,13 @@ class _WorkflowPanel(_Panel):
         self.draft.document = load_workflow_json(self._text())
         return self.draft.validate(destination=destination, selected_path=selected_path)
 
+    def _captured_scope(self, recipe):
+        if not self._template_bindings:
+            return nullcontext()
+        from .desktop_workflow_tree import hold_template_bindings
+
+        return hold_template_bindings(self._template_bindings, recipe.steps, recipe.base_dir)
+
     def _show_profile(self, recipe):
         fields = recipe.profile
         scope = _WORKFLOW_SCOPE
@@ -598,6 +686,8 @@ class _WorkflowPanel(_Panel):
         path = self._selected_path()
         try:
             recipe = self._draft_recipe(destination=self.saved_target, selected_path=path)
+            with self._captured_scope(recipe):
+                pass
         except (ValueError, OSError) as error:
             self._error("校验失败", error)
         else:
@@ -621,15 +711,18 @@ class _WorkflowPanel(_Panel):
         self.destination.set(str(target))
         self._check_source()
         try:
-            self._draft_recipe(destination=target)
-            saved = self.draft.save_as(target)
-            fresh = self._read_saved(saved)
+            recipe = self._draft_recipe(destination=target)
+            with self._captured_scope(recipe):
+                saved = self.draft.save_as(recipe.base_dir / target.name)
+                fresh = self._read_saved(saved)
         except WorkflowSaveConflict as error:
             self._error(_SAVE_ERRORS.get(error.reason, "另存失败"), error)
         except (WorkflowError, OSError) as error:
             self._error("另存失败", error)
         else:
+            captures = self._template_bindings
             self._install(fresh, text=self._text(), keep_scope=True)
+            self._template_bindings = captures
             single = self._selected_path() is not None
             self.status.set(f"已另存 · {saved.path}" + (" · 请重新校验单步" if single else ""))
             if not single:
@@ -683,11 +776,13 @@ class _WorkflowPanel(_Panel):
 
     def snapshot_draft(self):
         scope = self.scope.get(), self.step_path.get(), self.reviewed_step
-        return (self.draft, self.clean_text, self.saved_target, self._text(), scope, self.bundle_job,
+        return (self.draft, self.clean_text, self.saved_target, self._text(), scope, self.bundle_job, dict(self._template_bindings),
                 tuple(variable.get() for variable in self._draft_variables()))
 
     def restore_draft(self, snapshot):
-        self.draft, self.clean_text, self.saved_target, text, scope, self.bundle_job, labels = snapshot
+        self.draft, self.clean_text, self.saved_target, text, scope, self.bundle_job, captures, labels = snapshot
+        self._template_revision += 1
+        self._template_bindings = dict(captures)
         self.loading = True
         self.editor_text = text
         self._replace_editor(self.editor, text)

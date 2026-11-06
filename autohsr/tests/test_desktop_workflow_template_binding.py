@@ -1,0 +1,320 @@
+"""Hidden Tk coverage for carrying one verified capture into the workflow draft."""
+from hashlib import sha256
+import json
+import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import tkinter as tk
+from types import SimpleNamespace
+from unittest import TestCase
+from unittest.mock import Mock, patch
+
+from PIL import Image
+
+from autohsr import theme
+from autohsr.desktop_workflow_tree import WorkflowTreeDialog
+from autohsr.desktop_workflows import _TASK_NAMES, build_workflow_panel
+from autohsr.task_workflow import read
+
+
+def document(task='workflow_image'):
+    params = dict(template='旧模板.png', region=[.1, .2, .8, .9], threshold=.92)
+    if task == 'workflow_image':
+        params['image'] = '手填来源.png'
+    return dict(version=1, name='模板流程', steps=[
+        dict(id='observe', type='task', task=task, params=params, enabled=False, on_failure='stop'),
+        dict(id='wait', type='wait', seconds=2),
+    ])
+
+
+class WorkflowTemplateBindingTests(TestCase):
+    def setUp(self):
+        try:
+            root = tk.Tk()
+        except tk.TclError as error:
+            self.skipTest(str(error))
+        root.withdraw()
+        self.addCleanup(root.destroy)
+        self.addCleanup(root.update_idletasks)
+        theme.apply_theme(root, 1)
+        self.ui = SimpleNamespace(root=root, ui_scale=1, busy=False, closing=False,
+                                  _workflow_action_changed=Mock(), _start_task_workflow=Mock(return_value=True))
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.home = Path(directory.name).resolve()
+        self.base, self.other = self.home / '原目录', self.home / '其他目录'
+        self.base.mkdir()
+        self.other.mkdir()
+        self.source = self.base / 'original.json'
+        self.source.write_text(json.dumps(document(), ensure_ascii=False), encoding='utf8')
+        self.receipt = self.make_capture(self.base)
+
+    @staticmethod
+    def make_capture(base, color='green'):
+        path = base / '素材' / '选区.png'
+        path.parent.mkdir(exist_ok=True)
+        Image.new('RGB', (24, 18), color).save(path)
+        return SimpleNamespace(path=path, relative_path='素材/选区.png', sha256=sha256(path.read_bytes()).hexdigest())
+
+    def tree(self, draft=None, *, base=None, **options):
+        dialog = WorkflowTreeDialog(self.ui, draft or document(), base_dir=self.base if base is None else base,
+                                    task_names=_TASK_NAMES, **options)
+        self.addCleanup(lambda: dialog.destroy() if dialog.winfo_exists() else None)
+        dialog.tree.selection_set('node:observe')
+        dialog._refresh()
+        dialog._edit()
+        return dialog
+
+    @staticmethod
+    def parameters(dialog):
+        return json.loads(dialog.form.parameters.get('1.0', 'end-1c'))
+
+    def test_both_image_forms_fill_only_template_before_two_explicit_apply_actions(self):
+        for task in ('workflow_image', 'workflow_game_image'):
+            with self.subTest(task=task):
+                original = document(task)
+                dialog = self.tree(original)
+                with patch('autohsr.desktop_workflow_tree._ask_template', return_value=self.receipt) as capture:
+                    dialog.form.template_button.invoke()
+                capture.assert_called_once_with(self.ui, dialog, base_dir=self.base)
+                expected = dict(original['steps'][0]['params'], template=self.receipt.relative_path)
+                self.assertEqual(self.parameters(dialog), expected)
+                self.assertEqual(dialog.draft.rows()[0].node, original['steps'][0])
+                self.assertIsNone(dialog.result)
+                dialog.form.apply_button.invoke()
+                self.assertEqual(dialog.draft.rows()[0].node['params'], expected)
+                self.assertIsNone(dialog.result)
+                dialog.apply_button.invoke()
+                self.assertEqual(dialog.result[0]['steps'][0]['params'], expected)
+                self.assertEqual(original, document(task))
+        self.ui._start_task_workflow.assert_not_called()
+        self.assertEqual(self.ui.root.state(), 'withdrawn')
+
+    def test_no_destination_disables_only_capture_and_leaves_manual_parameters(self):
+        dialog = WorkflowTreeDialog(self.ui, document(), base_dir=None, task_names=_TASK_NAMES)
+        dialog.tree.selection_set('node:observe')
+        dialog._edit()
+        try:
+            self.assertTrue(dialog.form.template_button.instate(('disabled',)))
+            self.assertIn('另存', dialog.form.template_button.cget('text'))
+            dialog.form.apply_button.invoke()
+            self.assertEqual(dialog.draft.rows()[0].node['params']['template'], '旧模板.png')
+        finally:
+            dialog.destroy()
+
+    def test_cancel_focus_loss_switching_selection_or_form_cannot_fill(self):
+        for state in ('cancel', 'focus', 'selection', 'task', 'close'):
+            with self.subTest(state=state):
+                dialog = self.tree()
+                old = self.parameters(dialog)
+
+                def modal(*_args, **_kwargs):
+                    if state == 'cancel':
+                        return None
+                    if state == 'selection':
+                        dialog.tree.selection_set('node:wait')
+                        dialog._refresh()
+                        dialog.tree.selection_set('node:observe')
+                        dialog._refresh()
+                    elif state == 'task':
+                        dialog.form.values['task'].set(_TASK_NAMES['workflow_text'])
+                        dialog.form.values['task'].set(_TASK_NAMES['workflow_image'])
+                    elif state == 'close':
+                        dialog._close_form()
+                    return self.receipt
+
+                with (patch('autohsr.desktop_workflow_tree._ask_template', side_effect=modal) as capture,
+                      patch.object(dialog, 'winfo_viewable', return_value=state == 'focus'),
+                      patch('autohsr.desktop_workflow_tree.theme.focus_widget',
+                            side_effect=[dialog.form.parameters, None])):
+                    dialog.form.template_button.invoke()
+                capture.assert_called_once()
+                self.assertEqual(self.parameters(dialog), old)
+                self.assertEqual(dialog.template_bindings, {})
+
+    def test_changed_receipt_and_relative_mismatch_do_not_replace_manual_value(self):
+        dialog = self.tree()
+        old = self.parameters(dialog)
+        invalid = SimpleNamespace(**vars(self.receipt))
+        invalid.relative_path = 'another.png'
+        for receipt in (invalid, self.receipt):
+            if receipt is self.receipt:
+                Image.new('RGB', (24, 18), 'red').save(receipt.path)
+            with patch('autohsr.desktop_workflow_tree._ask_template', return_value=receipt):
+                dialog.form.template_button.invoke()
+            self.assertEqual(self.parameters(dialog), old)
+            self.assertTrue(dialog.form.error.get())
+
+    def panel(self):
+        panel = self.ui.workflow_panel = build_workflow_panel(self.ui.root, self.ui)
+        panel._load(self.source)
+        return panel
+
+    def edit_hidden(self, panel, modal=None):
+        def edit(ui, draft, *, template_bindings, **options):
+            dialog = WorkflowTreeDialog(ui, draft, **options)
+            try:
+                dialog.tree.selection_set('node:observe')
+                dialog._edit()
+                with patch('autohsr.desktop_workflow_tree._ask_template',
+                           side_effect=modal or (lambda *_args, **_kwargs: self.receipt)):
+                    dialog.form.template_button.invoke()
+                dialog.form.apply_button.invoke()
+                dialog.apply_button.invoke()
+                if dialog.result is not None:
+                    template_bindings.update(dialog.template_bindings)
+                return dialog.result
+            finally:
+                if dialog.winfo_exists():
+                    dialog.destroy()
+
+        with patch('autohsr.desktop_workflow_tree.ask_workflow_tree', side_effect=edit):
+            panel.edit_tree()
+
+    def test_switching_save_base_away_and_back_during_modal_invalidates_capture(self):
+        panel = self.panel()
+        original = panel._text()
+
+        def change_base(*_args, **_kwargs):
+            panel.saved_target = self.other / 'temporary.json'
+            panel.saved_target = None
+            return self.receipt
+
+        self.edit_hidden(panel, change_base)
+        self.assertEqual(panel._text(), original)
+        self.assertEqual(panel._template_bindings, {})
+
+    def test_current_draft_binding_survives_resize_and_same_folder_save(self):
+        panel = self.panel()
+        original = self.source.read_bytes()
+        self.edit_hidden(panel)
+        self.assertTrue(panel.dirty)
+        self.assertEqual(self.source.read_bytes(), original)
+        self.assertEqual(list(self.base.glob('*.json')), [self.source])
+
+        self.ui.ui_scale = 1.5
+        restored = self.ui.workflow_panel = build_workflow_panel(self.ui.root, self.ui)
+        restored.restore_draft(panel.snapshot_draft())
+        panel.destroy()
+        selected = self.base / '同目录.json'
+        restored.saved_target = selected
+        restored.save_as()
+        self.assertEqual(read(selected)['steps'][0]['params']['template'], self.receipt.relative_path)
+        self.assertEqual(self.source.read_bytes(), original)
+
+        # Even an existing identically named asset in another folder cannot silently take over.
+        self.make_capture(self.other, color='orange')
+        target = self.other / '另存.json'
+        restored.saved_target = target
+        restored.save_as()
+        self.assertFalse(target.exists())
+        self.assertIn('绑定到原目录', restored.status.get())
+
+    def test_manually_changed_template_keeps_existing_save_as_relative_semantics(self):
+        panel = self.panel()
+        self.edit_hidden(panel)
+        edited = json.loads(panel._text())
+        edited['steps'][0]['params']['template'] = '手填新模板.png'
+        panel._replace_draft_document(edited)
+        target = self.other / '另存.json'
+        panel.saved_target = target
+        panel.save_as()
+        self.assertEqual(read(target), edited)
+        self.assertEqual(panel.draft.validate().base_dir, self.other)
+
+    def test_reloading_the_same_definition_does_not_rebind_a_captured_template(self):
+        panel = self.panel()
+        self.edit_hidden(panel)
+        panel.saved_target = self.base / '保存.json'
+        panel.save_as()
+        panel.reload()
+        self.make_capture(self.other, color='orange')
+        target = self.other / '另存.json'
+        panel.saved_target = target
+        panel.save_as()
+        self.assertFalse(target.exists())
+        self.assertIn('绑定到原目录', panel.status.get())
+
+    def test_recapture_in_new_directory_rebinds_the_same_relative_name(self):
+        panel = self.panel()
+        self.edit_hidden(panel)
+        panel.saved_target = target = self.other / '另存.json'
+        self.receipt = self.make_capture(self.other, color='red')
+        self.edit_hidden(panel)
+        panel.save_as()
+        self.assertEqual(read(target)['steps'][0]['params']['template'], self.receipt.relative_path)
+        self.assertEqual(panel.draft.validate().base_dir, self.other)
+
+    def test_other_step_preview_still_works_but_save_checks_entire_tree(self):
+        panel = self.panel()
+        self.edit_hidden(panel)
+        panel.saved_target = target = self.other / '另存.json'
+        panel.scope.set('指定步骤')
+        panel.step_path.set('1')
+        panel.validate()
+        self.assertIn('校验通过', panel.status.get())
+        self.assertIn('步骤 1', panel.budget.get())
+        panel.save_as()
+        self.assertFalse(target.exists())
+        self.assertIn('绑定到原目录', panel.status.get())
+
+    def test_save_rechecks_hash_and_holds_capture_during_publication(self):
+        panel = self.panel()
+        self.edit_hidden(panel)
+        target = self.base / '另存.json'
+        panel.saved_target = target
+        original = self.receipt.path.read_bytes()
+        self.receipt.path.write_bytes(original + b'changed')
+        panel.save_as()
+        self.assertFalse(target.exists())
+        self.assertIn('无法回读', panel.status.get())
+
+        self.receipt = self.make_capture(self.base)
+        self.edit_hidden(panel)
+        if os.name == 'nt':
+            replacement = self.base / 'candidate.png'
+            replacement.write_bytes(original + b'other')
+            save = panel.draft.save_as
+            current_folder = self.receipt.path.parent.resolve(strict=True)
+            moved_folder = (self.base / 'retargeted').resolve()
+            self.assertTrue(current_folder.is_relative_to(self.base) and moved_folder.is_relative_to(self.base))
+
+            def publishing(destination):
+                with self.assertRaises(PermissionError):
+                    os.replace(replacement, self.receipt.path)
+                with self.assertRaises(PermissionError):
+                    current_folder.rename(moved_folder)
+                return save(destination)
+
+            with patch.object(panel.draft, 'save_as', side_effect=publishing) as checked:
+                panel.save_as()
+            checked.assert_called_once_with(target)
+            self.assertEqual(self.receipt.path.read_bytes(), original)
+        else:
+            panel.save_as()
+        self.assertTrue(target.exists())
+
+    def test_same_bytes_from_replaced_file_do_not_reuse_the_capture_receipt(self):
+        panel = self.panel()
+        self.edit_hidden(panel)
+        replacement = self.base / 'candidate.png'
+        replacement.write_bytes(self.receipt.path.read_bytes())
+        os.replace(replacement, self.receipt.path)
+        target = self.base / '另存.json'
+        panel.saved_target = target
+        panel.save_as()
+        self.assertFalse(target.exists())
+        self.assertIn('无法回读', panel.status.get())
+
+    def test_save_uses_the_validated_directory_instead_of_resolving_a_path_twice(self):
+        panel = self.panel()
+        self.edit_hidden(panel)
+        target = self.other / '另存.json'
+        checked = self.base / target.name
+        panel.saved_target = target
+        validate = panel._draft_recipe
+        # Model a selected directory alias that resolved to the capture directory at validation.
+        with patch.object(panel, '_draft_recipe', side_effect=lambda **_: validate(destination=checked)):
+            panel.save_as()
+        self.assertFalse(target.exists())
+        self.assertEqual(read(checked)['steps'][0]['params']['template'], self.receipt.relative_path)

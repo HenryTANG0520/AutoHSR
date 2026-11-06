@@ -1,10 +1,15 @@
 """Replay bounded material fields and verify the offline plan calculation."""
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import replace
+import hashlib
 import json
 import re
 import unittest
 from unittest.mock import patch
+
+import cv2
+import numpy as np
 
 from autohsr.models import Scene, Token
 from autohsr.tests import test_build_target_preview as fixtures
@@ -14,6 +19,8 @@ from tools.build_target_plan_probe import FIXTURE, Scope, Yield, estimate, repla
 DATA = json.loads(FIXTURE.read_text(encoding='utf-8'))
 FRAMES = {row['id']: row for row in DATA['frames']}
 SYNTHESIS = json.loads(FIXTURE.with_name('build_target_synthesis.json').read_text(encoding='utf-8'))
+SLOTS = FIXTURE.with_name('build_target_slots')
+SLOT_SOURCES = json.loads((SLOTS / 'sources.json').read_text(encoding='utf-8'))
 
 
 def evidence_token(field):
@@ -76,6 +83,92 @@ class QuantityEvidenceCliTests(unittest.TestCase):
         self.assertEqual(preview['shortfall_rows'], [{'observed_needed': [90, 32], 'shown_stamina': 10}])
         bad = [*frame, fixtures.token('3O', .52, .457, width=.018, score=.82)]
         self.assertEqual(self.cli([bad, bad])['build_target']['preview']['shortfall_rows'], [])
+
+    @staticmethod
+    def slot_image(filename, *, offset=0, size=(852, 480)):
+        row = next(row for row in SLOT_SOURCES['crops'] if row['file'] == filename)
+        data = (SLOTS / filename).read_bytes()
+        assert hashlib.sha256(data).hexdigest() == row['crop_png_sha256']
+        crop = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+        image = np.zeros((480, 852, 3), dtype=np.uint8)
+        if row['field'] == 'cultivation_slot':
+            left, top, right, bottom = row['source_xyxy']
+        else:
+            # Put the independently observed lower-tier icon at the same
+            # position and approximate scale as the target slot's artwork.
+            crop = cv2.resize(crop, None, fx=1.16, fy=1.16)
+            top, left = 185, 341 - crop.shape[1] // 2
+            bottom, right = top + crop.shape[0], left + crop.shape[1]
+        image[top:bottom, left + offset:right + offset] = crop
+        return image if size == (852, 480) else cv2.resize(image, size)
+
+    @staticmethod
+    @contextmanager
+    def artwork(*images):
+        frames = iter(images)
+        capture = fixtures.fixtures.Window.capture
+
+        def read(window):
+            window.image = next(frames, window.image)
+            return capture(window)
+
+        with patch.object(fixtures.fixtures.Window, 'capture', read):
+            yield
+
+    def test_real_same_slot_artwork_binds_name_and_shortfall_through_cli(self):
+        first, second = self.frame('need-a'), self.frame('need-b')
+        for size in ((852, 480), (1920, 1080), (3840, 2160)):
+            with self.subTest(size=size), self.artwork(
+                    self.slot_image('sandbox-a.png', size=size), self.slot_image('sandbox-b.png', size=size)):
+                data = self.cli([first, second])['build_target']
+                preview = data['preview']
+                self.assertEqual((preview['material'], preview['shortfall']), ('银河沙盘', 90))
+                self.assertEqual(preview['shortfall_rows'], [
+                    dict(observed_needed=[90], shown_stamina=10, identified_materials=[
+                        dict(material='银河沙盘', amount=90, slot=0)])])
+                self.assertEqual(preview['suggestion_reason'], 'unverified_per_round_minimum')
+                for key in ('held', 'craftable', 'units_per_challenge', 'count', 'effective_limit'):
+                    self.assertIsNone(preview[key], key)
+                self.assertEqual(preview['candidates'], [])
+                self.assertNotIn('draft', data)
+
+    def test_artwork_must_agree_in_both_frames_and_belong_to_the_amount_slot(self):
+        first, second = self.frame('need-a'), self.frame('need-b')
+        sandbox = self.slot_image('sandbox-a.png')
+        rival = self.slot_image('frame-rival.png')
+        adjacent = self.slot_image('sandbox-a.png', offset=51)
+        for images in ((sandbox, rival), (rival, sandbox), (rival, rival), (adjacent, adjacent)):
+            with self.artwork(*images):
+                preview = self.assert_observations_only(self.cli([first, second]))
+                self.assertEqual(preview['shortfall_rows'], [dict(observed_needed=[90], shown_stamina=10)])
+        multi = [*second, fixtures.token('32', .460, .457, width=.018)]
+        with self.artwork(adjacent, adjacent):
+            preview = self.cli([multi, multi])['build_target']['preview']
+        self.assertIsNone(preview['shortfall'])
+        self.assertIsNone(preview['material'])
+        self.assertEqual(preview['shortfall_rows'], [
+            dict(observed_needed=[90, 32], shown_stamina=10, identified_materials=[
+                dict(material='银河沙盘', amount=32, slot=1)])])
+        both = np.maximum(sandbox, adjacent)
+        with self.artwork(both, adjacent):
+            preview = self.assert_observations_only(self.cli([multi, multi]))
+            self.assertEqual(preview['shortfall_rows'], [dict(observed_needed=[90, 32], shown_stamina=10)])
+        shadow = [replace(t, text='30') if t.text == '10' else t for t in second]
+        with self.artwork(sandbox, sandbox):
+            preview = self.assert_observations_only(self.cli([shadow, shadow]))
+            self.assertEqual(preview['shortfall_rows'], [dict(observed_needed=[90], shown_stamina=30)])
+
+    def test_sandbox_manual_draft_requires_the_exact_material_source(self):
+        name, location = '银河沙盘', '海原电视塔'
+        with self.artwork(self.slot_image('sandbox-a.png'), self.slot_image('sandbox-b.png')):
+            target = self.frame('need-b')
+            self.assertNotIn('draft', self.draft_cli([target] * 8, material=name, location=location, code=1)['build_target'])
+        detail = [*self.material(name), self.route(location, .50), self.route('匹诺康尼大剧院', .58)]
+        report = self.draft_cli([detail, detail], material=name, location=location, count=2)
+        self.assertEqual(report['build_target']['draft']['items'], [
+            dict(category='calyx_crimson', target='智识之蕾', location=location, count=2)])
+        wrong = self.draft_cli([detail, detail], material=name, location='匹诺康尼大剧院', code=1)
+        self.assertNotIn('draft', wrong['build_target'])
 
     def test_result_reminder_has_its_own_count_and_previous_wave_count(self):
         before, first, second = (self.frame(key) for key in ('result-animating', 'result-a', 'result-b'))

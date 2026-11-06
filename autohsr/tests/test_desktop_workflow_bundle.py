@@ -127,6 +127,32 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
         self.save_dialog.assert_called_once()
         self.ui._submit_tool_job.assert_not_called()
 
+    def test_open_yaml_converts_in_worker_to_an_unsaved_workflow(self):
+        path = self.directory / "source.yml"
+        raw = "name: 外部流程\nsteps:\n  - type: wait\n    seconds: 3\n".encode("utf8")
+        path.write_bytes(raw)
+        self.open_dialog.return_value = str(path)
+        self.panel.open()
+        self.assertIn(("三月七 YAML 流程", ("*.yaml", "*.yml")),
+                      self.open_dialog.call_args.kwargs["filetypes"])
+        self.deliver(self.execute(threaded=True))
+        self.assertIsNone(self.panel.draft.source)
+        self.assertEqual(self.panel.draft.original_source, path)
+        self.assertEqual(self.panel.draft.document["steps"][0]["seconds"], 3)
+        self.assertTrue(self.panel.run_button.instate(("disabled",)))
+        self.assertEqual(path.read_bytes(), raw)
+
+    def test_unsupported_yaml_keeps_the_current_draft(self):
+        self.load_original()
+        original = self.panel.draft
+        path = self.directory / "unsupported.yaml"
+        path.write_text("name: unsupported\nsteps:\n  - type: click_text\n", encoding="utf8")
+        self.open_dialog.return_value = str(path)
+        self.panel.open()
+        self.deliver(self.execute(threaded=True))
+        self.assertIs(self.panel.draft, original)
+        self.assertIn("步骤 0", self.panel.status.get())
+
     def test_material_row_fits_within_existing_toolbar_width_at_both_scales(self):
         for scale in (1.0, 1.2):
             with self.subTest(scale=scale):

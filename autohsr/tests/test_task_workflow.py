@@ -124,6 +124,52 @@ class WorkflowTests(unittest.TestCase):
                                         plan_factory=self.factory, currency_factory=self.factory, **options)
         return self.owner
 
+    def test_current_account_page_receipt_drives_workflow_condition(self):
+        self.responses.append(dict(workflow_navigation=dict(target='survival_index', page_verified=True,
+                                                            actions=[])))
+        document = recipe(task('page', 'workflow_open_page', target='survival_index'),
+                          dict(id='check', type='if', condition=condition('page', 'page_verified', True),
+                               steps=[dict(id='ready', type='wait', seconds=0)]))
+        report = self.runner(document).run()
+        self.assertEqual(report.status, 'success')
+        self.assertEqual([row['step'] for row in report.workflow['steps']], ['page', 'check', 'ready'])
+        self.assertEqual(report.workflow['steps'][0]['facts'], dict(status='success', page_verified=True))
+        self.assertEqual(self.calls[0][1], dict(operation='workflow_open_page', workflow_page='survival_index'))
+        self.assertEqual(report.workflow['reservations']['daily_calls'], 0)
+
+    def test_conflicting_or_missing_page_receipt_cannot_release_next_step(self):
+        for invalid in (dict(target='guide', page_verified=True), dict(target='phone', page_verified=1),
+                        dict(target='phone', page_verified=False)):
+            with self.subTest(invalid=invalid):
+                self.responses.append(dict(workflow_navigation=invalid))
+                report = self.runner(recipe(task('page', 'workflow_open_page', target='phone'),
+                                            task('daily'))).run()
+                self.assertEqual(report.status, 'partial')
+                page, = report.workflow['steps']
+                self.assertNotIn('page_verified', page['facts'])
+        with self.assertRaises(WorkflowError):
+            compile_recipe(recipe(task('page', 'workflow_open_page', target='store')))
+
+    def test_yaml_cli_conversion_is_exclusive_and_never_loads_settings(self):
+        from autohsr.__main__ import main
+
+        source, target = self.root / 'sample.yml', self.root / 'converted.json'
+        raw = b'name: example\nsteps:\n  - type: wait\n    seconds: 3\n'
+        source.write_bytes(raw)
+        args = ['--task-workflow-convert-yaml', str(source), '--workflow-json-destination', str(target)]
+        with patch.object(Settings, 'load', side_effect=AssertionError('offline conversion')):
+            with redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(main(args), 0)
+            result = json.loads(out.getvalue())
+            original = target.read_bytes()
+            self.assertEqual(result['sha256'], hashlib.sha256(original).hexdigest())
+            with redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(main(args), 2)
+            self.assertEqual(json.loads(err.getvalue())['status'], 'failed')
+        self.assertEqual(source.read_bytes(), raw)
+        self.assertEqual(target.read_bytes(), original)
+        self.assertEqual(compile_recipe(loads(original)).steps[0]['seconds'], 3)
+
     def test_parent_reports_anonymous_redemption_feedback_from_verified_child(self):
         from autohsr.notify_runtime import report_message
 

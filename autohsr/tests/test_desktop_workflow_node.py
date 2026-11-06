@@ -24,6 +24,7 @@ class WorkflowNodeFormTests(unittest.TestCase):
     @classmethod
     def destroy_root(cls):
         root, cls.root = cls.root, None
+        root.update_idletasks()
         root.destroy()
         del root
         gc.collect()
@@ -60,6 +61,17 @@ class WorkflowNodeFormTests(unittest.TestCase):
         self.assertEqual(self.submitted(), dict(type="task", name=None, enabled=False, task="daily",
                                               params={"tasks": ["assignments"]}, on_failure="stop"))
         self.cancelled.assert_not_called()
+
+    def test_page_picker_writes_the_selected_native_target(self):
+        self.form.open()
+        self.form.values["task"].set("workflow_open_page")
+        self.assertEqual(self.form.page_target.get(), "手机")
+        self.form.page_target.set("生存索引")
+        self.form._select_page(None)
+        self.assertEqual(self.submitted()["params"], {"target": "survival_index"})
+        self.write_params('{"target":"mail"}')
+        self.form._show_page_picker()
+        self.assertEqual(self.form.page_target.get(), "邮件")
 
     def test_edit_locks_node_type_and_can_clear_optional_values(self):
         node = dict(id="original", type="task", name="旧名称", enabled=True, task="daily",

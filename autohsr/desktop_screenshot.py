@@ -34,11 +34,68 @@ def _image_box(start, end, preview, image_size):
     return box if box[0] < box[2] and box[1] < box[3] else None
 
 
+class SelectionCanvas(tk.Canvas):
+    """Preview an image while keeping selections in its original pixel coordinates."""
+
+    def __init__(self, parent, *, height, can_select, on_select):
+        super().__init__(parent, height=height, width=1, highlightthickness=0, background=theme.CARD)
+        self.can_select, self.on_select = can_select, on_select
+        self.image = self.box = None
+        self.preview = self.drag = self.preview_key = self.photo = None
+        self.bind('<Configure>', self._draw)
+        self.bind('<ButtonPress-1>', self._press)
+        self.bind('<B1-Motion>', self._drag)
+        self.bind('<ButtonRelease-1>', self._release)
+
+    def show(self, image, box):
+        self.image, self.box = image, box
+        self._draw()
+
+    def _draw(self, _event=None):
+        image = self.image
+        width, height = self.winfo_width(), self.winfo_height()
+        key = id(image), width, height
+        if key != self.preview_key:
+            self.preview_key = key
+            self.drag = None
+            self.preview = self.photo = None
+            self.delete('all')
+            if image is not None and width > 1 and height > 1:
+                factor = min(width / image.width, height / image.height, 1)
+                size = max(1, round(image.width * factor)), max(1, round(image.height * factor))
+                left, top = (width - size[0]) // 2, (height - size[1]) // 2
+                self.preview = left, top, *size
+                self.photo = ImageTk.PhotoImage(image.resize(size, Image.Resampling.LANCZOS), master=self)
+                self.create_image(left, top, anchor='nw', image=self.photo)
+        self.delete('selection')
+        if self.preview is not None and self.box is not None:
+            left, top, width, height = self.preview
+            x1, y1, x2, y2 = self.box
+            sx, sy = width / image.width, height / image.height
+            self.create_rectangle(left + x1 * sx, top + y1 * sy, left + x2 * sx, top + y2 * sy,
+                                  outline=theme.GOLD, width=2, tags='selection')
+
+    def _press(self, event):
+        if self.can_select() and self.preview is not None:
+            left, top, width, height = self.preview
+            if left <= event.x < left + width and top <= event.y < top + height:
+                self.drag = event.x, event.y
+
+    def _drag(self, event):
+        if self.drag is not None and self.can_select():
+            self.delete('selection')
+            self.create_rectangle(*self.drag, event.x, event.y, outline=theme.GOLD, width=2, tags='selection')
+
+    def _release(self, event):
+        start, self.drag = self.drag, None
+        if start is not None and self.preview is not None and self.can_select():
+            self.on_select(_image_box(start, (event.x, event.y), self.preview, self.image.size))
+
+
 class ScreenshotPanel(ttk.Frame):
     def __init__(self, parent, ui, state):
         super().__init__(parent)
         self.ui, self.model = ui, state
-        self.preview, self.drag, self.preview_key, self.photo = None, None, None, None
         pad = round(7 * ui.ui_scale)
         self.columnconfigure(0, weight=1)
         actions = ttk.Frame(self)
@@ -49,13 +106,9 @@ class ScreenshotPanel(ttk.Frame):
             button = ttk.Button(actions, text=label, style='Compact.TButton', command=command)
             button.pack(side='left', padx=(0, pad))
             self.buttons.append(button)
-        self.canvas = tk.Canvas(self, height=round(292 * ui.ui_scale), width=1,
-                                highlightthickness=0, background=theme.CARD)
+        self.canvas = SelectionCanvas(self, height=round(292 * ui.ui_scale),
+                                      can_select=lambda: self._idle and self._active, on_select=self._select)
         self.canvas.grid(row=1, column=0, sticky='ew')
-        self.canvas.bind('<Configure>', self._draw)
-        self.canvas.bind('<ButtonPress-1>', self._press)
-        self.canvas.bind('<B1-Motion>', self._drag)
-        self.canvas.bind('<ButtonRelease-1>', self._release)
         self.coordinates = theme.wrapped_label(self, style='Hint.TLabel')
         self.coordinates.grid(row=2, column=0, sticky='ew', pady=(pad, 0))
         self.feedback = theme.wrapped_label(self, style='Hint.TLabel')
@@ -109,48 +162,7 @@ class ScreenshotPanel(ttk.Frame):
             self.result.delete('1.0', 'end')
             self.result.insert('1.0', model.text)
             self.result.configure(state='disabled')
-        self._draw()
-
-    def _draw(self, _event=None):
-        image = self.model.image
-        width, height = self.canvas.winfo_width(), self.canvas.winfo_height()
-        key = id(image), width, height
-        if key != self.preview_key:
-            self.preview_key = key
-            self.drag = None
-            self.preview = self.photo = None
-            self.canvas.delete('all')
-            if image is not None and width > 1 and height > 1:
-                factor = min(width / image.width, height / image.height, 1)
-                size = max(1, round(image.width * factor)), max(1, round(image.height * factor))
-                left, top = (width - size[0]) // 2, (height - size[1]) // 2
-                self.preview = left, top, *size
-                self.photo = ImageTk.PhotoImage(image.resize(size, Image.Resampling.LANCZOS), master=self.canvas)
-                self.canvas.create_image(left, top, anchor='nw', image=self.photo)
-        self.canvas.delete('selection')
-        if self.preview is not None and self.model.box is not None:
-            left, top, width, height = self.preview
-            x1, y1, x2, y2 = self.model.box
-            sx, sy = width / image.width, height / image.height
-            self.canvas.create_rectangle(left + x1 * sx, top + y1 * sy, left + x2 * sx, top + y2 * sy,
-                                         outline=theme.GOLD, width=2, tags='selection')
-
-    def _press(self, event):
-        if self._idle and self._active and self.preview is not None:
-            left, top, width, height = self.preview
-            if left <= event.x < left + width and top <= event.y < top + height:
-                self.drag = event.x, event.y
-
-    def _drag(self, event):
-        if self.drag is not None and self._idle and self._active:
-            self.canvas.delete('selection')
-            self.canvas.create_rectangle(*self.drag, event.x, event.y, outline=theme.GOLD,
-                                         width=2, tags='selection')
-
-    def _release(self, event):
-        start, self.drag = self.drag, None
-        if start is not None and self.preview is not None and self._idle and self._active:
-            self._select(_image_box(start, (event.x, event.y), self.preview, self.model.image.size))
+        self.canvas.show(model.image, model.box)
 
     def _select(self, box):
         if box != self.model.box:
@@ -218,7 +230,7 @@ class ScreenshotPanel(ttk.Frame):
         ui, model = self.ui, self.model
         job, previous = object(), model.message
         model.job, model.message = job, f'正在{title}…'
-        self.drag = None
+        self.canvas.drag = None
 
         def update():
             panel = getattr(ui, 'screenshot_panel', self)

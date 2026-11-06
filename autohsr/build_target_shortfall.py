@@ -1,9 +1,15 @@
 """Read the cultivation panel and its separate post-battle reminder."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import lru_cache
+import hashlib
 import re
 from unicodedata import normalize as unicode_normalize
 
+import cv2
+import numpy as np
+
 from .build_target_read import ENTRY, MODAL_AREA, SECTIONS, SHORTFALL, _has_split_label
+from .config import RESOURCE_ROOT
 from .currency_wars_prepare import trusted
 from .dungeons import BY_KEY
 from .models import normalize
@@ -22,6 +28,9 @@ AMOUNT = r'(?:0|[1-9][0-9]{0,8}|[1-9][0-9]{0,2}(?:,[0-9]{3}){1,2})'
 RESULT_WAVES = re.compile(r'上轮挑战波次([1-9]|1[0-9]|2[0-4])')
 WAVE_AREA = (.55, .78, .72, .84)
 CALYX_STAMINA = BY_KEY['calyx_crimson'].cost
+GALAXY_SANDBOX = '银河沙盘'
+SLOT_LEFT = .37
+SLOT_WIDTH = .06
 
 
 @dataclass(frozen=True)
@@ -30,6 +39,7 @@ class ShortfallRow:
     shown_stamina: int
     row_band: int
     slots: tuple[int, ...]
+    materials: tuple[str | None, ...] = field(default=(), compare=False)
 
 
 @dataclass(frozen=True)
@@ -79,7 +89,51 @@ def _amount(token):
     return int(_number_text(token).replace(',', ''))
 
 
-def _need_rows(fields, page, heading, bottom):
+@lru_cache(maxsize=1)
+def _galaxy_sandbox_templates():
+    # The bundled 海原电视塔 medallion has the same art as the 4.6
+    # target slot. Use its center, clear of the medallion and search badge.
+    try:
+        raw = (RESOURCE_ROOT / 'assets/ui/survival/56e86ec575f7c498.png').read_bytes()
+        if hashlib.sha256(raw).hexdigest() != 'b5d9b8c0edd026e8d2f9f55d2e01e11012580b960bddfed9108787e30998d41f':
+            return ()
+        image = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+    except (OSError, cv2.error):
+        return ()
+    if image is None:
+        return ()
+    reference = image[41:86, 60:110]
+    return tuple(cv2.resize(reference, (width, round(width * .9)), interpolation=cv2.INTER_AREA)
+                 for width in range(15, 20))
+
+
+def _slot_material(image, amount, slot):
+    if not isinstance(image, np.ndarray) or image.ndim != 3 or image.shape[2] != 3 or image.dtype != np.uint8:
+        return None
+    height, width = image.shape[:2]
+    if height < 450 or width < 800 or abs(width / height - 16 / 9) > .02:
+        return None
+    x = SLOT_LEFT + (slot + .5) * SLOT_WIDTH
+    if abs(x - amount.center[0]) > .012:
+        return None
+    x = round(x * 852)
+    y = round(amount.box[1] * 480)
+    # Sample the art directly above this amount without the text or adjacent slot.
+    left, top, right, bottom = (round(value * scale) for value, scale in
+                                zip((x - 15, y - 22, x + 15, y - 1), (width/852, height/480) * 2))
+    patch = cv2.resize(image[top:bottom, left:right], (30, 21), interpolation=cv2.INTER_AREA)
+    for template in _galaxy_sandbox_templates():
+        h, w = template.shape[:2]
+        scores = cv2.matchTemplate(patch, template, cv2.TM_CCOEFF_NORMED)
+        # A match must lie on the slot's center, not on its visible border.
+        rows, columns = np.ogrid[:scores.shape[0], :scores.shape[1]]
+        aligned = (abs(columns + w / 2 - 15) <= 5) & (abs(rows + h / 2 - 11) <= 2.5)
+        if np.any(scores[aligned] >= .84):
+            return GALAXY_SANDBOX
+    return None
+
+
+def _need_rows(fields, page, heading, bottom, image):
     buttons = sorted((t for t in fields.tokens if t.within((.75, heading.box[3], .91, bottom))
                       and _label_text(t) == '进入'), key=lambda t: t.center[1])
     if any(lower.center[1] - upper.center[1] < .06 for upper, lower in zip(buttons, buttons[1:])):
@@ -89,14 +143,17 @@ def _need_rows(fields, page, heading, bottom):
         y = button.center[1]
         costs = _amount_tokens(fields, page, (.64, y - .025, .73, y + .025))
         items = _amount_tokens(fields, page, (.375, y + .008, .61, min(bottom, y + .057)))
-        slots = tuple(int((token.center[0] - .37) / .06) for token in items)
+        slots = tuple(int((token.center[0] - SLOT_LEFT) / SLOT_WIDTH) for token in items)
         if (button in page.tokens and len(costs) == 1 and _amount(costs[0]) in (10, 30)
                 and items and len(set(slots)) == len(slots)):
-            rows.append(ShortfallRow(tuple(map(_amount, items)), _amount(costs[0]), round(y * 20), slots))
+            stamina = _amount(costs[0])
+            materials = tuple(_slot_material(image, token, slot) if stamina == CALYX_STAMINA else None
+                              for token, slot in zip(items, slots))
+            rows.append(ShortfallRow(tuple(map(_amount, items)), stamina, round(y * 20), slots, materials))
     return tuple(rows)
 
 
-def target_panel(scene, page, guide_entry):
+def target_panel(scene, page, guide_entry, *, read_materials=False):
     """Return a current panel, its anchor, and whether conflicting roles veto fallback."""
     fields = trusted(scene, 0.)
     states = [t for t in fields.tokens if t.within(SECTIONS) and _label_text(t) in STATUS_LABELS]
@@ -120,7 +177,8 @@ def target_panel(scene, page, guide_entry):
     state = _label_text(status)
     if state in NEEDS:
         bottom = min(t.box[1] for t in relics)
-        return TargetPanel('target_resources_needed', _need_rows(fields, page, status, bottom)), guide_entry, False
+        image = scene.image if read_materials else None
+        return TargetPanel('target_resources_needed', _need_rows(fields, page, status, bottom, image)), guide_entry, False
     if state == COMPLETE:
         if not all(_label(fields, page, label, RELIC) for label in ('隧洞遗器推荐', '位面饰品推荐')):
             return None, None, False

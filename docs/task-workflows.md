@@ -6,7 +6,7 @@
 
 参考固定March7thAssistant提交`7cf6c6bed474539485d3b1504077ac352866829f`的[流程教程](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/docs/Workflow.md)及[执行模块](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/module/workflow/__init__.py)。借鉴步骤树、条件、循环、循环控制及选中步骤执行，采用AutoHSR自己的JSON与正式Runner。
 
-可视编辑覆盖 AutoHSR 的正式步骤类型。图文判断可选本地图片或当前游戏画面。AutoHSR 素材包关联本流程使用的图像与音频。坐标点击、拖动、按键、通用界面切换及上游 YAML 导入仍待适配。固定来源、函数与 SHA-256 见[来源清单](../assets/upstream/March7thAssistant/source.json)，原 GPL v3 保留。
+可视编辑覆盖 AutoHSR 的正式步骤类型。图文判断可选本地图片或当前游戏画面。AutoHSR 素材包关联本流程使用的图像与音频。页面切换沿用已经核实的日常入口，三月七 YAML 可转换其中已有对应实现的步骤。坐标点击、拖动、通用按键及其他页面继续分别适配。固定来源、函数与 SHA-256 见[来源清单](../assets/upstream/March7thAssistant/source.json)，原 GPL v3 保留。
 
 ## 当前任务与设置
 
@@ -28,6 +28,7 @@
 | `workflow_text` | 本地 OCR 判断 | 必填 `image`、`text`，可选 `region`、`threshold`、`contains`。默认精确匹配，阈值 0.65 |
 | `workflow_game_image` | 当前游戏画面模板判断 | 必填 `template`，可选 `region`、`threshold`。默认阈值 0.88 |
 | `workflow_game_text` | 当前游戏画面 OCR 判断 | 必填 `text`，可选 `region`、`threshold`、`contains`。默认精确匹配，阈值 0.65 |
+| `workflow_open_page` | 已知日常页面切换 | 必填 `target`，可选值见下方。只切换页面并核实到达 |
 | `workflow_notify` | 已保存通知方案 | 必填 `profile`、`message`。只在明确授权的手动运行中发送文本，同一运行出现待核对的提交后停止后续主动通知 |
 
 记录任务目前只接显式本地JSON；真实缓存／链接获取继续使用[独立工具入口](warp-records.md)，没有在流程中隐式扫描。XLSX仍使用已固定的可选加载引擎，见[统计与Excel](warp-statistics-xlsx.md)。
@@ -35,6 +36,8 @@
 图文判断的 `region` 是相对整张图片的 `[左, 上, 右, 下]`，缺省为整张图。已完成分析但未匹配时，回执明确给出 `image_found=false` 或 `text_found=false`，可以用于后续条件。文件、范围或识别失败时没有匹配事实。音频及图片路径相对流程文件，应用内定时冻结这些来源的文件指纹。
 
 游戏图文步骤读取已经登录且处于前台的游戏客户区。两张连续新画面都必须核实同一窗口、账号、输入代次及一致的识别结果。登录、遮挡、失焦、账号变化或两次识别不一致时，匹配字段留空。步骤占用正式执行权，只观察画面，回执只写布尔结果，账号证据仍按原规则留在本机。定时触发时也需要游戏已在前台，并受含游戏任务的单次重复限制。
+
+页面切换与实时图文共享前台及账号门禁。目标为 `phone` 手机、`guide` 指南、`daily_training` 每日实训、`survival_index` 生存索引、`assignments` 委托、`mail` 邮件、`battlepass` 无名勋礼。泛指南目标保留当前指南子页。已经在目标页时零输入。每次点击或返回都要求当前页面和可用入口有证据，再双帧核对新页面。遇到登录、弹窗、战斗、失焦或不认识的页面时保留已有动作回执。只有已核实到达的结果才提供 `page_verified=true`。导航不领取奖励、不开战，也不建立资源预算。
 
 音频支持 1 或 2 声道、8 或 16 位、8～48 kHz，文件最多 32 MiB、时长最多 120 秒。播放完成来自 Windows 驱动反馈。主动通知在桌面运行时显示本次最多步骤数和方案别名，授权后沿用冻结的方案版本。CLI 显式使用 `--workflow-allow-notify`。每次流程最多 20 个主动通知步骤。应用内定时暂未开放这项授权。通知正文留在流程文件及明确发往的渠道，运行回执只记结果及必要的匿名事实。[通知设置](notifications.md)
 
@@ -66,7 +69,7 @@ UTF-8 JSON顶层为`version:1`、`name`、`steps`；不接受重复JSON键、NaN
 
 条件形如`{"step":"daily","field":"daily_verified","op":"eq","value":true}`。只能引用树中前面出现的步骤结果；所引用分支本次没执行、步骤被禁用而字段未知、类型不一致时停止，不将缺值视作false。`step:"@last"`表示最近一次实际执行的task结果，可用于有界观察循环；普通控制步骤不会替换它。
 
-条件字段包括 `status`、`daily_verified`、`completed_runs`、`victories`、`defeats`、`points_verified`、`rewards_verified`、`du_rewards_verified`、`image_found` 和 `text_found`。`du_rewards_verified` 对应本次明确请求的红点。`image_found` 和 `text_found` 对应已成功核实的图文步骤。只有对应子报告确实存在且含该字段时才可比较，日常实训也须有执行证据。计数支持 `eq/ne/lt/le/gt/ge`，状态和布尔值支持 `eq/ne`。`completed_runs` 对应差分已完成数或货币战争已结束数，货币战争胜负另有 `victories` 和 `defeats`。
+条件字段包括 `status`、`daily_verified`、`completed_runs`、`victories`、`defeats`、`points_verified`、`rewards_verified`、`du_rewards_verified`、`image_found`、`text_found` 和 `page_verified`。`du_rewards_verified` 对应本次明确请求的红点。图文及页面字段对应已成功核实的观察或切换步骤。只有对应子报告确实存在且含该字段时才可比较，日常实训也须有执行证据。计数支持 `eq/ne/lt/le/gt/ge`，状态和布尔值支持 `eq/ne`。`completed_runs` 对应差分已完成数或货币战争已结束数，货币战争胜负另有 `victories` 和 `defeats`。
 
 上限为1 MiB定义、256个节点、12层、最多10000次展开执行；禁用节点也计执行数量。每个可能路径最多一份日常预算、一个差分批次、一个CW批次；循环乘算，互斥分支取最大值。不能用两个daily步骤或for循环重复创建240预算。`plan`保守预留日常、差分与CW各一个所有者，不能再叠加独立同类任务；其10局预留值仅为静态最大值，不是实际请求或完成数。
 
@@ -76,7 +79,11 @@ UTF-8 JSON顶层为`version:1`、`name`、`steps`；不接受重复JSON键、NaN
 
 「打开任务流」选择现有 JSON。通过校验且仅含一条明确指定 `daily` / `tasks: ["assignments"]` 的流程也可使用持续委托开关。其他流程可用「可视编辑…」或直接编辑文本。用「另存为」校验整棵树并保存到新路径，成功回读后切换到新文件。重名、校验失败或回读异常保留草稿。原件外部变化时可保留编辑另存，也可重新加载。
 
+「打开任务流」也可选择三月七的 `.yaml` 或 `.yml`。支持的文件会转换成未保存草稿，另存为 JSON 并重新校验后才可运行。未适配的步骤会给出具体节点路径并保留当前草稿。格式、支持范围和上游实测见[三月七 YAML 转换](march7th-workflow-yaml.md)。
+
 可视编辑显示步骤、启用状态和执行路径。选中流程根、条件成立、否则或循环体可向对应分支添加步骤。选中步骤可编辑属性、添加同级步骤、调整同级顺序或移除。步骤类型包括正式任务、等待、条件、固定循环、条件循环、跳出循环、继续循环和停止。条件字段、比较和值分别填写，正式任务的高级参数可用 JSON。新添加的正式任务默认禁用。
+
+「切换到游戏页面」的目标可以在属性面板中直接选择。两个图像判断节点可点「采集模板…」，打开本地 PNG／JPEG，或在提示后手动将已启动的游戏切到前台。框选后在当前流程目录内另存新的 PNG。程序校验裁片并回读摘要，再把相对路径填入当前节点。新草稿需先选定另存位置。采集后仍需应用属性和草稿。当前编辑会话会记住采集来源，同一 JSON 重新加载后仍保留。要在本会话换目录另存，需为相关节点重新采集或明确编辑路径。保存的 JSON 沿用相对路径格式，跨目录分享可使用 ZIP 素材包。
 
 编辑弹窗允许暂留空分支和待修正的引用，整棵树通过原编译器才可「应用到草稿」。应用后可在文本区撤销。取消只关闭编辑弹窗。按「应用并选中步骤」可把当前步骤路径带回指定步骤范围，之后仍需独立校验和另存。原范围为指定步骤时，应用改动后须重新选择路径或明确切回整棵流程。
 
@@ -135,6 +142,8 @@ UTF-8 JSON顶层为`version:1`、`name`、`steps`；不接受重复JSON键、NaN
 .\.venv\Scripts\python.exe -m autohsr --task-workflow-export my-workflow.json --workflow-bundle-destination my-workflow.zip
 # 核实并解包到一个新目录
 .\.venv\Scripts\python.exe -m autohsr --task-workflow-import my-workflow.zip --workflow-bundle-destination imported-workflow
+# 将三月七 YAML 转成新的 AutoHSR JSON
+.\.venv\Scripts\python.exe -m autohsr --task-workflow-convert-yaml workflow.yaml --workflow-json-destination migrated-workflow.json
 ```
 
 序号从0开始，`/`与`\`等价；控制节点的子序号先为`steps`，再为`else_steps`。选中控制节点仍需本次前序结果，缺少时在输入前停止；选中叶子则按上游单步语义跳过父控制。整个文件仍做结构检查，但最大预算按选中子树计算。单独选中的break／continue无效，会在执行前拒绝。

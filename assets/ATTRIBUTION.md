@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-11-07 培养材料槽取证
+
+银河沙盘两个正向槽及星系框架反例取自公开国服 4.6 视频，仅保留物品图案及槽位数字。游戏美术权利归相关权利人。使用既有海原电视塔目录小图作识别参考，样本来源、裁剪与 SHA-256 见[素材清单](../autohsr/tests/fixtures/dungeons/build_target_slots/sources.json)。
+
 ## 2026-11-06 逐光捡金页签图标
 
 保留固定 March7thAssistant 逐光捡金未选中图标的原始字节，用于识别生存索引上的相邻页签。上游作者为 moesnow 及其贡献者，游戏美术权利归 HoYoverse 及相应权利人。[来源与哈希](templates/high_guide_tab.json) · [GPL v3](upstream/March7thAssistant/LICENSE)

@@ -1,19 +1,99 @@
 """Edit a private copy of the formal workflow tree in the desktop guide."""
 from __future__ import annotations
 
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
+from hashlib import sha256
+from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, ttk
 
 from . import theme
 from .desktop_dialogs import place_dialog
 from .desktop_workflow_node import WorkflowNodeForm
-from .task_workflow import WorkflowError
+from .screenshot_tool import MAX_BYTES as MAX_IMAGE_BYTES
+from .storage import file_revision, hold_read_sources
+from .task_workflow import TEMPLATE_TASKS, WorkflowError
+from .workflow_bundle import _path as _asset_path
 from .workflow_tree_edit import WorkflowTreeDraft
 
 
 _ROOT = 'flow'
 _TYPES = {'task': '正式任务', 'wait': '等待', 'if': '条件', 'for': '固定循环',
           'while': '条件循环', 'break': '跳出循环', 'continue': '继续循环', 'stop': '停止流程'}
+
+
+@dataclass(frozen=True)
+class _TemplateBinding:
+    base_dir: Path
+    path: Path
+    relative_path: str
+    sha256: str
+    revision: tuple
+
+    @classmethod
+    def accept(cls, base_dir, capture):
+        try:
+            relative = Path(capture.relative_path)
+            path = Path(capture.path)
+            digest = capture.sha256
+            if (not path.is_absolute() or not path.is_relative_to(base_dir)
+                    or relative.anchor or '..' in relative.parts or relative.suffix.lower() != '.png'
+                    or not isinstance(digest, str) or len(digest) != 64):
+                raise ValueError
+            path = _asset_path(path)
+            if path != base_dir / relative:
+                raise ValueError
+            revision = file_revision(path)
+        except (AttributeError, OSError, TypeError, ValueError, RuntimeError):
+            raise WorkflowError('采集模板未能绑定到当前流程目录。') from None
+        binding = cls(base_dir, path, relative.as_posix(), digest, revision)
+        with _hold_templates((binding,), base_dir):
+            return binding
+
+    def verify(self):
+        if _asset_path(self.base_dir / self.relative_path) != self.path or file_revision(self.path) != self.revision:
+            raise OSError
+        with self.path.open('rb') as stream:
+            raw = stream.read(MAX_IMAGE_BYTES + 1)
+        if len(raw) > MAX_IMAGE_BYTES or sha256(raw).hexdigest() != self.sha256:
+            raise OSError
+
+
+def _referenced_templates(nodes, bindings):
+    for node in nodes:
+        if node.get('task') in TEMPLATE_TASKS:
+            relative = node['params']['template']
+            binding = bindings.get((node['id'], Path(relative)))
+            if binding is not None:
+                yield binding
+        yield from _referenced_templates(node.get('steps', ()), bindings)
+        yield from _referenced_templates(node.get('else_steps', ()), bindings)
+
+
+@contextmanager
+def _hold_templates(selected, base_dir):
+    if any(binding.base_dir != base_dir for binding in selected):
+        raise WorkflowError('采集模板绑定到原目录。请选回原目录，或在当前另存目录重新采集。')
+    with ExitStack() as locks:
+        if selected:
+            try:
+                locks.enter_context(hold_read_sources(binding.path for binding in selected))
+                for binding in selected:
+                    binding.verify()
+            except (OSError, RuntimeError, ValueError):
+                raise WorkflowError('已采集模板已变化或无法回读，请重新采集或手动选择模板。') from None
+        yield
+
+
+def hold_template_bindings(bindings, nodes, base_dir):
+    return _hold_templates(tuple(_referenced_templates(nodes, bindings)), base_dir)
+
+
+def _ask_template(ui, owner, *, base_dir):
+    from .desktop_workflow_template import ask_workflow_template
+
+    return ask_workflow_template(ui, owner, base_dir=base_dir)
 
 
 def _node_key(identity):
@@ -25,13 +105,19 @@ def _branch_key(identity, branch):
 
 
 class WorkflowTreeDialog(tk.Toplevel):
-    def __init__(self, ui, document, *, base_dir, task_names):
+    def __init__(self, ui, document, *, base_dir, task_names, capture_current=None):
         draft = WorkflowTreeDraft(document)
+        base_dir = None if base_dir is None else Path(base_dir).resolve(strict=True)
         super().__init__(ui.root)
         self.withdraw()
         self.transient(ui.root)
         self.title('AutoHSR · 可视编辑任务流')
-        self.ui, self.draft, self.base_dir = ui, draft, base_dir
+        self.ui, self.draft = ui, draft
+        self.base_dir = base_dir
+        self.capture_current = capture_current or (lambda: True)
+        self.template_bindings = {}
+        self._capture_selection = None
+        self._selection_version = 0
         self.task_names = task_names
         self.result = None
         self.editing = None
@@ -83,7 +169,8 @@ class WorkflowTreeDialog(tk.Toplevel):
         ))
         self.hint.grid(row=0, column=0, sticky='new')
         self.form = WorkflowNodeForm(details, scale=scale, task_names=task_names,
-                                     on_apply=self._store_node, on_cancel=self._close_form)
+                                     on_apply=self._store_node, on_cancel=self._close_form,
+                                     on_capture_template=self._capture_template if self.base_dir is not None else None)
         self.form.grid(row=0, column=0, sticky='nsew')
         self.form.grid_remove()
 
@@ -157,6 +244,9 @@ class WorkflowTreeDialog(tk.Toplevel):
 
     def _refresh(self, _event=None):
         key = self._selection()
+        if key != self._capture_selection:
+            self._capture_selection = key
+            self._selection_version += 1
         row = self.rows.get(key)
         idle = self.editing is None and not self.ui.busy and not self.ui.closing
         selectable = row is not None and row.node['type'] not in ('break', 'continue')
@@ -206,10 +296,34 @@ class WorkflowTreeDialog(tk.Toplevel):
         if self.tree.identify_region(event.x, event.y) in ('tree', 'cell'):
             self._edit()
 
+    def _can_capture_template(self):
+        try:
+            if (not self.winfo_exists() or self.ui.busy or self.ui.closing or self.editing is None
+                    or self.base_dir is None or not self.capture_current()):
+                return False
+            if self.winfo_viewable():
+                focus = theme.focus_widget(self)
+                return focus is not None and focus.winfo_toplevel() is self
+            return True
+        except tk.TclError:
+            return False
+
+    def _capture_template(self):
+        if not self._can_capture_template():
+            return None
+        selection = (self._selection(), self._selection_version)
+        editing, base_dir = self.editing, self.base_dir
+        capture = _ask_template(self.ui, self, base_dir=base_dir)
+        if (capture is None or not self._can_capture_template() or self.editing is not editing
+                or self.base_dir != base_dir or (self._selection(), self._selection_version) != selection):
+            return None
+        return _TemplateBinding.accept(base_dir, capture)
+
     def _store_node(self, fields):
         if self.editing is None or self.ui.busy or self.ui.closing:
             return
         identity, parent, branch, after = self.editing
+        binding = self.form.template_binding(fields)
         try:
             if identity is None:
                 identity = self.draft.add(fields, parent_id=parent, branch=branch, after=after)
@@ -218,6 +332,8 @@ class WorkflowTreeDialog(tk.Toplevel):
         except WorkflowError as error:
             self.feedback.set(str(error))
             return
+        if binding is not None:
+            self.template_bindings[identity, Path(binding.relative_path)] = binding
         self._close_form()
         self._rebuild(_node_key(identity))
 
@@ -259,6 +375,11 @@ class WorkflowTreeDialog(tk.Toplevel):
         try:
             self.draft.name = self.name.get()
             recipe = self.draft.validate(base_dir=self.base_dir)
+            if self.template_bindings:
+                if not self.capture_current():
+                    raise WorkflowError('流程草稿或另存目录已变化，请重新打开可视编辑。')
+                with hold_template_bindings(self.template_bindings, recipe.steps, recipe.base_dir):
+                    pass
         except WorkflowError as error:
             self.feedback.set(f'请修正草稿 · {error}')
             return
@@ -267,13 +388,15 @@ class WorkflowTreeDialog(tk.Toplevel):
         self.destroy()
 
 
-def ask_workflow_tree(ui, document, *, base_dir=None, task_names):
+def ask_workflow_tree(ui, document, *, base_dir=None, task_names, capture_current=None, template_bindings=None):
     if ui.root.tk.call('grab', 'current', str(ui.root)):
         return None
-    dialog = WorkflowTreeDialog(ui, document, base_dir=base_dir, task_names=task_names)
+    dialog = WorkflowTreeDialog(ui, document, base_dir=base_dir, task_names=task_names, capture_current=capture_current)
     dialog.deiconify()
     dialog.wait_visibility()
     dialog.grab_set()
     dialog.tree.focus_set()
     ui.root.wait_window(dialog)
+    if dialog.result is not None and template_bindings is not None:
+        template_bindings.update(dialog.template_bindings)
     return dialog.result

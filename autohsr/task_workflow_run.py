@@ -19,8 +19,8 @@ from .config import ROOT
 from .du_points_followup import FollowupWeek, followup_week_scope
 from .models import RunReport, Stopped, TaskResult
 from .storage import replace_file
-from .task_workflow import (FIELDS, GAME_TASKS, GAME_VISION_TASKS, MAX_EXECUTIONS, TEMPLATE_TASKS,
-                            VISION_TASKS, WorkflowError, compile_recipe, task_spec)
+from .task_workflow import (FIELDS, GAME_TASKS, GAME_VISION_TASKS, MAX_EXECUTIONS, PAGE_TASK, TEMPLATE_TASKS,
+                            VISION_TASKS, WORKFLOW_FOREGROUND_TASKS, WorkflowError, compile_recipe, task_spec)
 from .workflow_lease import workflow_lease
 
 
@@ -271,6 +271,11 @@ class TaskWorkflowRunner:
             if facts['status'] == 'success' and isinstance(observation, dict) and type(observation.get(field)) is bool:
                 facts[field] = observation[field]
             return facts
+        if operation == PAGE_TASK:
+            navigation = result.get('workflow_navigation')
+            if facts['status'] == 'success' and isinstance(navigation, dict) and navigation.get('page_verified') is True:
+                facts['page_verified'] = True
+            return facts
         if result.get('operation') == 'du_rewards':
             value = result.get('du_rewards', {}).get('rewards_verified')
             if type(value) is bool:
@@ -458,12 +463,14 @@ class TaskWorkflowRunner:
             native_points = options.get('du_until_points') is True
             if native_points and not self._identity.has_step_proof(identity_mark, run_dir=result.get('run_dir') or ''):
                 raise WorkflowError('差分积分的原始报告未绑定本次子任务的账号观察。')
-            if node['task'] in GAME_VISION_TASKS and result['status'] == 'success':
+            if node['task'] in WORKFLOW_FOREGROUND_TASKS and result['status'] == 'success':
                 run_dir = result.get('run_dir')
                 if not run_dir or not self._identity.has_step_proof(identity_mark, run_dir=run_dir):
-                    raise WorkflowError('游戏画面结果未绑定本次子任务的账号观察。')
+                    raise WorkflowError('游戏页面回执未绑定本次子任务的账号观察。')
                 if len(self._facts(result)) != 2:
-                    raise WorkflowError('游戏画面报告缺少已核实的布尔结果。')
+                    raise WorkflowError('游戏页面回执缺少已核实的布尔结果。')
+                if node['task'] == PAGE_TASK and result['workflow_navigation'].get('target') != options['workflow_page']:
+                    raise WorkflowError('已核实页面与本步骤请求的目标不符。')
             entry['source'] = self._source(result, expected, native_points=native_points)
             if node['task'] == 'du_rewards':
                 self._du_rewards(result, entry, node)

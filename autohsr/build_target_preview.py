@@ -1,4 +1,5 @@
 """Preview visible cultivation materials and Calyx rewards without game input."""
+from collections import Counter
 from dataclasses import asdict, dataclass, field, replace
 import re
 from unicodedata import normalize as unicode_normalize
@@ -7,7 +8,7 @@ from .build_target_read import (
     FRAGMENT_CONFIDENCE, MODAL, MODAL_AREA, SECTIONS, SHORTFALL,
     BuildTargetRead, _has_split_label, guide_blocked, guide_entry,
 )
-from .build_target_shortfall import ROLE, ResultShortfall, TargetPanel, result_shortfall, target_panel
+from .build_target_shortfall import GALAXY_SANDBOX, ROLE, ResultShortfall, TargetPanel, result_shortfall, target_panel
 from .build_target_synthesis import SynthesisPreview, synthesis_preview
 from .currency_wars_prepare import trusted
 from .dungeon_workflow import guide_row_fields
@@ -45,6 +46,7 @@ CALYX_FAMILIES = (
     (('《绒绒号》典藏版合集', '《绒绒号》连载纪念刊', '《绒绒号》手绘分镜稿'),
      'calyx_crimson', '欢愉之蕾', '「世界尽头」酒馆'),
     (('法吉娜之心', '法吉娜之酒', '法吉娜之泪'), 'calyx_crimson', '虚无之蕾', '「辉痕圣林」神悟树庭'),
+    ((GALAXY_SANDBOX,), 'calyx_crimson', '智识之蕾', '海原电视塔'),
 )
 CALYX_BY_MATERIAL = {material: (category, target, location)
                      for names, category, target, location in CALYX_FAMILIES for material in names}
@@ -220,7 +222,7 @@ def _classify(reader, scene, *, read_quantities=False):
         if page.has('角色培养', ROLE, exact=True):
             if any(_catalogue_row_areas(captured, reader.catalogue)):
                 return None, None
-            target, anchor, _ = target_panel(scene, page, entry)
+            target, anchor, _ = target_panel(scene, page, entry, read_materials=True)
             return target, anchor
         result, anchor = result_shortfall(scene, page)
         return (result, anchor) if result is not None else _calyx_preview(reader, scene, page)
@@ -232,7 +234,7 @@ def _classify(reader, scene, *, read_quantities=False):
         if catalogue_rows:
             return None, None
         if read_quantities and page.has('角色培养', ROLE, exact=True):
-            target, anchor, conflict = target_panel(scene, page, entry)
+            target, anchor, conflict = target_panel(scene, page, entry, read_materials=True)
             if target is not None or conflict:
                 return target, anchor
         kind, panel_entry = reader._classify(scene)
@@ -285,6 +287,17 @@ def _catalogue_sources(detail, catalogue):
 def _merge_preview(first, second):
     if isinstance(second, MaterialDetail) and first.held != second.held:
         return replace(second, held=None)
+    if isinstance(second, TargetPanel):
+        def unique_names(panel):
+            counts = Counter(name for row in panel.shortfall_rows for name in row.materials if name)
+            return {name for name, count in counts.items() if count == 1}
+
+        unique = unique_names(first) & unique_names(second)
+        rows = tuple(replace(new, materials=tuple(
+            current if previous == current and current in unique else None
+            for previous, current in zip(old.materials, new.materials)
+        )) for old, new in zip(first.shortfall_rows, second.shortfall_rows))
+        return replace(second, shortfall_rows=rows)
     return second
 
 
@@ -341,10 +354,15 @@ def run_preview(ctx, *, selection=None):
         detail = '已核对材料配方的持有量、所选合成量和滑杆上限。'
     elif isinstance(observation, TargetPanel):
         ctx.report.build_target['page_verified'] = True
-        preview.update(state=observation.state, target_section_visible=True, shortfall_rows=[
-            dict(observed_needed=list(row.observed_needed), shown_stamina=row.shown_stamina)
-            for row in observation.shortfall_rows
-        ])
+        shortfall_rows = []
+        for row in observation.shortfall_rows:
+            fields = dict(observed_needed=list(row.observed_needed), shown_stamina=row.shown_stamina)
+            identified = [dict(material=material, amount=amount, slot=slot)
+                          for material, amount, slot in zip(row.materials, row.observed_needed, row.slots) if material]
+            if identified:
+                fields['identified_materials'] = identified
+            shortfall_rows.append(fields)
+        preview.update(state=observation.state, target_section_visible=True, shortfall_rows=shortfall_rows)
         detail = {
             'target_level_trace_complete': '培养目标页显示已完成等级、行迹的提升。',
             'target_materials_sufficient': '培养目标页显示已获得足够的等级和行迹材料。',
@@ -352,6 +370,12 @@ def run_preview(ctx, *, selection=None):
         }[observation.state]
         if observation.state != 'target_resources_needed':
             preview['suggestion_reason'] = 'level_trace_requirements_met'
+        elif (len(shortfall_rows) == 1 and len(shortfall_rows[0]['observed_needed']) == 1
+              and 'identified_materials' in shortfall_rows[0]):
+            item, = shortfall_rows[0]['identified_materials']
+            preview.update(material=item['material'], shortfall=item['amount'])
+            preview['suggestion_reason'] = 'unverified_per_round_minimum'
+            detail = f'已核对「{item["material"]}」缺口 {item["amount"]}，单轮保底仍待核实。'
     elif observation == 'panel':
         ctx.report.build_target['page_verified'] = True
         preview.update(state='panel_observed', target_section_visible=True)

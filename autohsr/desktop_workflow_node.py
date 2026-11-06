@@ -1,11 +1,12 @@
 """Embedded properties editor for one task-tree node."""
 import json
+from pathlib import Path
 import re
 import tkinter as tk
 from tkinter import ttk
 
 from . import theme
-from .task_workflow import FIELDS, TASKS, WorkflowError, _condition, _integer, _params, _text, loads
+from .task_workflow import FIELDS, PAGE_TASK, TASKS, TEMPLATE_TASKS, WorkflowError, _condition, _integer, _params, _text, loads
 
 
 _KINDS = {
@@ -16,7 +17,7 @@ _FIELDS = {
     "status": "运行状态", "daily_verified": "日常已核实", "completed_runs": "完成局数",
     "victories": "胜利局数", "defeats": "失败局数", "points_verified": "积分已核实",
     "rewards_verified": "奖励已核实", "du_rewards_verified": "差分奖励已核实",
-    "image_found": "图片已匹配", "text_found": "文字已匹配",
+    "image_found": "图片已匹配", "text_found": "文字已匹配", "page_verified": "游戏页面已核实",
 }
 _OPERATORS = {"eq": "等于", "ne": "不等于", "lt": "小于", "le": "小于或等于", "gt": "大于", "ge": "大于或等于"}
 _VALUE_LABELS = {
@@ -24,6 +25,10 @@ _VALUE_LABELS = {
     bool: {True: "是", False: "否"},
 }
 _FAILURE = {"stop": "停止流程", "continue": "继续后续步骤"}
+_PAGES = {
+    "phone": "手机", "guide": "星际和平指南", "daily_training": "每日实训", "survival_index": "生存索引",
+    "assignments": "委托", "mail": "邮件", "battlepass": "无名勋礼",
+}
 _NUMBERS = {
     "wait": ("seconds", "等待秒数（0～3600）", 0, 3600),
     "for": ("count", "循环次数（1～1000）", 1, 1000),
@@ -53,6 +58,7 @@ def _default_params(task):
         "workflow_image": {"image": "截图.png", "template": "模板.png"},
         "workflow_game_image": {"template": "模板.png"},
         "workflow_game_text": {"text": "要查找的文字"},
+        "workflow_open_page": {"target": "phone"},
         "workflow_text": {"image": "截图.png", "text": "要查找的文字"},
         "workflow_notify": {"profile": "default", "message": "本步骤已到达。"},
     }.get(task, {})
@@ -61,10 +67,11 @@ def _default_params(task):
 class WorkflowNodeForm(ttk.Frame):
     """Collect one node's fields and hand them to the enclosing draft editor."""
 
-    def __init__(self, parent, *, scale, task_names, on_apply, on_cancel):
+    def __init__(self, parent, *, scale, task_names, on_apply, on_cancel, on_capture_template=None):
         super().__init__(parent)
         self.columnconfigure(0, weight=1)
-        self.on_apply = on_apply
+        self.on_apply, self.on_cancel = on_apply, on_cancel
+        self._on_capture_template = on_capture_template
         self._pad = round(6 * scale)
         self._tasks = {task: task_names.get(task, task) for task in sorted(TASKS)}
         self._edit_kind = None
@@ -72,6 +79,9 @@ class WorkflowNodeForm(ttk.Frame):
         self._steps = ()
         self._current_task = None
         self._task_drafts = {}
+        self._form_version = 0
+        self._capture_pending = False
+        self._captured_templates = {}
         self.values = {key: tk.StringVar(self) for key in (
             "type", "name", "task", "on_failure", "step", "field", "operator", "value",
             "seconds", "count", "max_iterations",
@@ -93,6 +103,14 @@ class WorkflowNodeForm(ttk.Frame):
         self._field(self._task_frame, 0, 1, "on_failure", "失败时", tuple(_FAILURE.values()))
         ttk.Label(self._task_frame, text="高级参数 JSON", style="Settings.Note.TLabel").grid(
             row=1, column=0, sticky="w", pady=(self._pad, 0))
+        self.template_button = ttk.Button(self._task_frame, style="Compact.TButton", command=self.capture_template,
+                                          text="采集模板…" if on_capture_template else "先选择另存位置")
+        self.template_button.grid(row=1, column=1, sticky="e", pady=(self._pad, 0))
+        self.page_target = tk.StringVar(self)
+        self.page_picker = ttk.Combobox(self._task_frame, width=13, textvariable=self.page_target,
+                                       values=tuple(_PAGES.values()), state="readonly", style="Settings.TCombobox")
+        self.page_picker.grid(row=1, column=1, sticky="e", pady=(self._pad, 0))
+        self.page_picker.bind("<<ComboboxSelected>>", self._select_page)
         editor = ttk.Frame(self._task_frame)
         editor.columnconfigure(0, weight=1)
         editor.grid(row=2, column=0, columnspan=2, sticky="ew")
@@ -102,6 +120,7 @@ class WorkflowNodeForm(ttk.Frame):
         scroll = ttk.Scrollbar(editor, orient="vertical", command=self.parameters.yview)
         self.parameters.configure(yscrollcommand=scroll.set)
         self.parameters.grid(row=0, column=0, sticky="ew")
+        self.parameters.bind("<<Modified>>", self._sync_page_json)
         scroll.grid(row=0, column=1, sticky="ns")
 
         self._number_frames = {}
@@ -126,7 +145,7 @@ class WorkflowNodeForm(ttk.Frame):
             row=6, column=0, sticky="ew", pady=(self._pad, 0))
         actions = ttk.Frame(self)
         actions.grid(row=7, column=0, sticky="e", pady=(self._pad, 0))
-        self.cancel_button = ttk.Button(actions, text="取消", style="Panel.TButton", command=on_cancel)
+        self.cancel_button = ttk.Button(actions, text="取消", style="Panel.TButton", command=self.cancel)
         self.apply_button = ttk.Button(actions, text="应用属性", style="Panel.TButton", command=self.apply)
         self.cancel_button.grid(row=0, column=0, padx=(0, self._pad))
         self.apply_button.grid(row=0, column=1)
@@ -166,6 +185,8 @@ class WorkflowNodeForm(ttk.Frame):
         edit_kind = node.get("type") if isinstance(node, dict) else None
         if node is not None and (not isinstance(edit_kind, str) or edit_kind not in _KINDS):
             raise WorkflowError("此步骤类型无法在属性面板中编辑。")
+        self._form_version += 1
+        self._captured_templates.clear()
         data = node or {}
         self._edit_kind = edit_kind
         kind = edit_kind or "task"
@@ -219,10 +240,13 @@ class WorkflowNodeForm(ttk.Frame):
             self._number_frames[kind].grid()
         if kind in ("if", "while"):
             self._condition_frame.grid()
+        self._show_template()
+        self._show_page_picker()
 
     def _kind_changed(self, *_):
         if self._loading or self._edit_kind is not None:
             return
+        self._form_version += 1
         self.enabled.set(self._kind() != "task")
         self.error.set("")
         self._show_kind()
@@ -238,6 +262,7 @@ class WorkflowNodeForm(ttk.Frame):
         task = _key(self._tasks, self.values["task"].get())
         if task is None or task == self._current_task:
             return
+        self._form_version += 1
         if self._current_task is not None:
             self._task_drafts[self._current_task] = self.parameters.get("1.0", "end-1c")
         self._current_task = task
@@ -246,6 +271,97 @@ class WorkflowNodeForm(ttk.Frame):
         text = self._task_drafts.get(task, json.dumps(_default_params(task), ensure_ascii=False, indent=2))
         self._set_parameters(text)
         self.error.set("")
+        self._show_template()
+        self._show_page_picker()
+
+    def _show_page_picker(self):
+        if self._kind() != "task" or self._current_task != PAGE_TASK:
+            self.page_picker.grid_remove()
+            return
+        self.page_picker.grid()
+        try:
+            params = loads(self.parameters.get("1.0", "end-1c"))
+        except WorkflowError:
+            params = {}
+        target = params.get("target") if isinstance(params, dict) else None
+        self.page_target.set(_PAGES.get(target, "") if isinstance(target, str) else "")
+
+    def _sync_page_json(self, _event):
+        if self.parameters.edit_modified():
+            self.parameters.edit_modified(False)
+            self._show_page_picker()
+
+    def _select_page(self, _event):
+        target = _key(_PAGES, self.page_target.get())
+        if target is None or self._kind() != "task" or self._current_task != PAGE_TASK:
+            return
+        try:
+            raw = self.parameters.get("1.0", "end-1c")
+            params = loads(raw) if raw.strip() else {}
+            if not isinstance(params, dict):
+                raise WorkflowError("页面参数须为 JSON 对象。")
+            params["target"] = target
+            _params(PAGE_TASK, params)
+        except WorkflowError as error:
+            self.error.set(str(error))
+            self._show_page_picker()
+            return
+        self._set_parameters(json.dumps(params, ensure_ascii=False, indent=2))
+        self.error.set("")
+
+    def _show_template(self):
+        if self._kind() == "task" and self._current_task in TEMPLATE_TASKS:
+            self.template_button.grid()
+        else:
+            self.template_button.grid_remove()
+        enabled = self._on_capture_template is not None and not self._capture_pending
+        self.template_button.state(("!disabled" if enabled else "disabled",))
+
+    def cancel(self):
+        self._form_version += 1
+        self.on_cancel()
+
+    def capture_template(self):
+        task = self._current_task
+        if (self._kind() != "task" or task not in TEMPLATE_TASKS or self._capture_pending
+                or self._on_capture_template is None):
+            return
+        raw = self.parameters.get("1.0", "end-1c")
+        version = self._form_version
+        try:
+            params = loads(raw) if raw.strip() else {}
+            if not isinstance(params, dict):
+                raise WorkflowError("高级参数须为 JSON 对象。")
+            self._capture_pending = True
+            self._show_template()
+            binding = self._on_capture_template()
+            if (binding is None or not self.winfo_exists() or self._form_version != version
+                    or self.parameters.get("1.0", "end-1c") != raw):
+                return
+            params["template"] = binding.relative_path
+            self._captured_templates[task, Path(binding.relative_path)] = binding
+            self.parameters.edit_separator()
+            self.parameters.replace("1.0", "end-1c", json.dumps(params, ensure_ascii=False, indent=2))
+            self.parameters.edit_separator()
+            self.error.set("")
+            self.parameters.focus_set()
+        except tk.TclError:
+            # The app or parent may have closed while the modal owned focus.
+            return
+        except (WorkflowError, OSError) as error:
+            if self.winfo_exists() and self._form_version == version:
+                self.error.set(str(error))
+        finally:
+            self._capture_pending = False
+            try:
+                if self.winfo_exists():
+                    self._show_template()
+            except tk.TclError:
+                pass
+
+    def template_binding(self, fields):
+        template = fields.get("params", {}).get("template")
+        return self._captured_templates.get((fields.get("task"), Path(template))) if isinstance(template, str) else None
 
     def _field_changed(self, *_):
         if not self._loading:
@@ -304,6 +420,8 @@ class WorkflowNodeForm(ttk.Frame):
         return fields
 
     def apply(self):
+        if self._capture_pending:
+            return
         try:
             fields = self._read_fields()
             self.error.set("")
