@@ -1,4 +1,4 @@
-"""Desktop entry and anonymous receipts for the four daily page observations."""
+"""Desktop entry and anonymous receipts for daily page observations."""
 
 from dataclasses import dataclass, field
 from tkinter import ttk
@@ -22,6 +22,8 @@ _SCOPES = {
                        '先打开游戏手机菜单或新消息通知面板。开始核对后切回游戏，只读当前页面。'),
     'odyssey': _Scope('巡星之礼', 'daily_event_observe',
                       '先打开游戏手机菜单或巡星之礼活动页。开始核对后切回游戏，只读当前页面。'),
+    'screen': _Scope('当前页面', 'screen_test',
+                     '先在游戏中打开日常页面。开始核对后手动切回游戏，让已登录的窗口保持前台。只读当前页面。'),
 }
 _BY_LABEL = {scope.label: mode for mode, scope in _SCOPES.items()}
 _UNKNOWN = ('结果待核对', '请核对游戏前台和所选范围。')
@@ -150,6 +152,10 @@ def observation_result(mode, report):
         return _message_result(value, status)
     if mode == 'odyssey':
         return _odyssey_result(value)
+    if mode == 'screen':
+        from .screen_test import desktop_result
+
+        return desktop_result(value, status)
     return _navigation_result(mode, value, status)
 
 

@@ -96,6 +96,39 @@ def _unique(matches, region, confidence):
     return None
 
 
+def classify_page(scene, confidence, daily):
+    """Classify an existing scene using the calibrated daily navigation landmarks."""
+    low = trusted(scene, COLLECTION_FLOOR)
+    if (calibration_overlay(low) or helper_overlay(low) or daily._login(low) or daily._in_battle(low)
+            or battlepass_modal(low) or low.has(_BLOCKERS, exact=True) or low.has(_DIALOG, _DIALOG_AREA, exact=True)
+            or _has_split_label(low, _BLOCKERS, FULL) or _has_split_label(low, _DIALOG, _DIALOG_AREA)):
+        raise AutomationError('当前有登录、战斗、弹窗或遮挡，日常页面导航已停止。')
+    if low.has(('加载中', '正在加载', '登录中'), exact=True):
+        return None
+    view = trusted(scene, confidence)
+    pages = []
+    if phone_achievement_target(scene, confidence) is not None:
+        pages.append('phone')
+    title = _unique(_matches(low, ('星际和平指南',), TITLE), TITLE, confidence)
+    active = _unique(_matches(low, _GUIDE_TITLES, TITLE), TITLE, confidence)
+    if title is not None and active is not None:
+        page = _GUIDE_TITLES[normalize(active.text)]
+        if ((page != 'daily_training' or daily._activity(view) is not None)
+                and (page != 'survival_index' or view.has(_CATEGORIES, (.10, .22, .39, .94), exact=True))):
+            pages.append(page)
+    if _unique(_matches(low, ('委托',), TITLE), TITLE, confidence) and daily._persistent_assignments(view):
+        pages.append('assignments')
+    if _unique(_matches(low, ('邮箱', '邮件'), TITLE), TITLE, confidence) and mailbox(view):
+        pages.append('mail')
+    if _unique(_matches(low, ('无名勋礼',), TITLE), TITLE, confidence) and battlepass_page(view):
+        pages.append('battlepass')
+    if pages:
+        return pages[0] if len(pages) == 1 else None
+    if not low.has('开拓等级', (.55, .05, .99, .35)) and daily._world(low):
+        return 'world'
+    return None
+
+
 @contextmanager
 def _seal(frames):
     writable = [frame.image for frame in frames if frame.image.flags.writeable]
@@ -147,35 +180,7 @@ class WorkflowNavigation:
         self._control()
 
     def _page(self, scene):
-        low = trusted(scene, COLLECTION_FLOOR)
-        if (calibration_overlay(low) or helper_overlay(low) or self.daily._login(low) or self.daily._in_battle(low)
-                or battlepass_modal(low) or low.has(_BLOCKERS, exact=True) or low.has(_DIALOG, _DIALOG_AREA, exact=True)
-                or _has_split_label(low, _BLOCKERS, FULL) or _has_split_label(low, _DIALOG, _DIALOG_AREA)):
-            raise AutomationError('当前有登录、战斗、弹窗或遮挡，日常页面导航已停止。')
-        if low.has(('加载中', '正在加载', '登录中'), exact=True):
-            return None
-        view = trusted(scene, self.confidence)
-        pages = []
-        if phone_achievement_target(scene, self.confidence) is not None:
-            pages.append('phone')
-        title = _unique(_matches(low, ('星际和平指南',), TITLE), TITLE, self.confidence)
-        active = _unique(_matches(low, _GUIDE_TITLES, TITLE), TITLE, self.confidence)
-        if title is not None and active is not None:
-            page = _GUIDE_TITLES[normalize(active.text)]
-            if ((page != 'daily_training' or self.daily._activity(view) is not None)
-                    and (page != 'survival_index' or view.has(_CATEGORIES, (.10, .22, .39, .94), exact=True))):
-                pages.append(page)
-        if _unique(_matches(low, ('委托',), TITLE), TITLE, self.confidence) and self.daily._persistent_assignments(view):
-            pages.append('assignments')
-        if _unique(_matches(low, ('邮箱', '邮件'), TITLE), TITLE, self.confidence) and mailbox(view):
-            pages.append('mail')
-        if _unique(_matches(low, ('无名勋礼',), TITLE), TITLE, self.confidence) and battlepass_page(view):
-            pages.append('battlepass')
-        if pages:
-            return pages[0] if len(pages) == 1 else None
-        if not low.has('开拓等级', (.55, .05, .99, .35)) and self.daily._world(low):
-            return 'world'
-        return None
+        return classify_page(scene, self.confidence, self.daily)
 
     def _phone_control(self, scene, page):
         low = trusted(scene, COLLECTION_FLOOR)

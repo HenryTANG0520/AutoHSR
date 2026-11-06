@@ -40,6 +40,12 @@ def event(*, status='success', **overrides):
     return report('daily_event_observe', value, status=status)
 
 
+def screen(*, status='success', saved=True, **overrides):
+    value = dict(page='guide', page_verified=True, account_verified=True, input_sent=False)
+    value.update(overrides)
+    return report('screen_test', value, status=status, saved=saved)
+
+
 class DailyObservationReceiptTests(unittest.TestCase):
     def test_scope_and_saved_receipt_binding(self):
         verified = reward(page_verified=True, entry_input='sent', destination_status='achievement_overview')
@@ -128,6 +134,19 @@ class DailyObservationReceiptTests(unittest.TestCase):
             with self.subTest(value=value['daily_event_observe']['claimable_state']):
                 self.assertEqual(observation_result('odyssey', value)[0], '结果待核对')
 
+    def test_current_screen_receipt_shows_only_a_saved_anonymous_verified_page(self):
+        verified = screen()
+        self.assertEqual(observation_result('screen', verified),
+                         ('当前页面已核实 · 星际和平指南', '同一账号的连续两帧一致。'))
+        for invalid in (screen(page=_MARKER), screen(account_verified=False), screen(input_sent=True),
+                        screen(page_verified=1), screen(status='partial')):
+            title, detail = observation_result('screen', invalid)
+            self.assertEqual(title, '当前页面待核对')
+            self.assertNotIn(_MARKER, detail)
+        for invalid in (screen(saved=False), screen(mode='odyssey'), event()):
+            self.assertEqual(observation_result('screen', invalid)[0], '结果待核对')
+        self.assertEqual(observation_result('screen', screen(status='stopped'))[0], '已停止')
+
 
 class DailyObservationPanelTests(unittest.TestCase):
     def setUp(self):
@@ -161,22 +180,32 @@ class DailyObservationPanelTests(unittest.TestCase):
         self.ui.busy = False
         self.callbacks[index][1](value)
 
-    def test_select_four_ranges_and_submit_only_current_explicit_mode(self):
-        expected = (('成就总览', 'achievements'), ('漫游签证', 'support'), ('短信', 'messages'), ('巡星之礼', 'odyssey'))
+    def test_select_five_ranges_and_submit_only_current_explicit_mode(self):
+        expected = (('成就总览', 'achievements'), ('漫游签证', 'support'), ('短信', 'messages'),
+                    ('巡星之礼', 'odyssey'), ('当前页面', 'screen'))
         self.assertEqual(tuple(self.panel.scope['values']), tuple(label for label, _ in expected))
         for label, mode in expected:
             self.select(label)
             self.assertIn('切回游戏', self.panel.hint['text'])
-            if mode in ('messages', 'odyssey'):
+            if mode in ('messages', 'odyssey', 'screen'):
                 self.assertIn('只读当前页面', self.panel.hint['text'])
+            if mode == 'screen':
+                self.assertIn('手动切回游戏', self.panel.hint['text'])
+                self.assertIn('已登录', self.panel.hint['text'])
             self.assertTrue(self.panel.primary_action()[2])
             self.assertTrue(self.panel.primary_action()[1]())
             self.assertEqual(self.callbacks[-1][0], mode)
             self.assertTrue(self.panel.scope.instate(('disabled',)))
             self.assertFalse(self.panel.start())
-            self.deliver(None)
+            self.deliver(screen() if mode == 'screen' else None)
             self.assertTrue(self.panel.scope.instate(('readonly', '!disabled')))
-        self.assertEqual(self.ui._start_daily_observation.call_count, 4)
+        self.assertEqual(self.panel.result_title['text'], '当前页面已核实 · 星际和平指南')
+        self.assertNotIn(_MARKER, repr(self.ui._daily_observation_state))
+        self.select('巡星之礼')
+        self.assertEqual(self.panel.result_title['text'], '结果待核对')
+        self.select('当前页面')
+        self.assertEqual(self.panel.result_title['text'], '当前页面已核实 · 星际和平指南')
+        self.assertEqual(self.ui._start_daily_observation.call_count, 5)
         self.assertEqual(self.root.state(), 'withdrawn')
 
     def test_rebuilt_panel_keeps_selection_and_only_current_anonymous_callback(self):
@@ -226,24 +255,39 @@ class DailyObservationPanelTests(unittest.TestCase):
             return panel
 
         self.panel.destroy()
-        self.ui._selected_tool = 'warp'
         self.ui.settings_shell = SimpleNamespace(canvas=Mock(), queue_layout=Mock())
         with ExitStack() as stack:
             for name in ('desktop_warp.build_warp_panel', 'desktop_services.build_redemption_panel',
                          'desktop_services.build_notifications_panel', 'desktop_workflows.build_workflow_panel',
                          'desktop_workflows.build_schedule_panel', 'desktop_screenshot.build_screenshot_panel'):
                 stack.enter_context(patch('autohsr.' + name, side_effect=other))
-            shelf = self.ui.tools_shelf = ToolsShelf(self.root, self.ui)
-        shelf.pack(fill='x')
-        shelf.select('daily_observation')
-        self.root.update_idletasks()
-        self.assertEqual(shelf.buttons['daily_observation']['text'], '日常页面核对')
-        self.assertIs(shelf.current(), self.ui.daily_observation_panel)
-        self.assertEqual(shelf.primary_action()[0], '核对页面')
-        self.assertTrue(shelf.primary_action()[2])
-        self.assertLess(shelf.buttons['daily_observation'].master.winfo_reqwidth(), 950)
-        self.ui.settings_shell.canvas.yview_moveto.assert_called_with(0)
-        self.assertEqual(self.root.state(), 'withdrawn')
+            for scale in (1., 1.5, 2.):
+                with self.subTest(scale=scale):
+                    self.ui.ui_scale = scale
+                    self.ui._selected_tool = 'warp'
+                    theme.apply_theme(self.root, scale)
+                    shelf = self.ui.tools_shelf = ToolsShelf(self.root, self.ui)
+                    try:
+                        shelf.pack(fill='x')
+                        shelf.select('daily_observation')
+                        panel = self.ui.daily_observation_panel
+                        self.select('当前页面', panel)
+                        self.assertTrue(shelf.primary_action()[1]())
+                        self.deliver(screen())
+                        self.root.update_idletasks()
+                        button = shelf.buttons['daily_observation']
+                        self.assertEqual(button['text'], '日常页面核对')
+                        self.assertIs(shelf.current(), panel)
+                        self.assertEqual(shelf.primary_action()[0], '核对页面')
+                        self.assertTrue(shelf.primary_action()[2])
+                        self.assertEqual(panel.result_title['text'], '当前页面已核实 · 星际和平指南')
+                        # Minimum desktop width minus the book margins, guide and settings scrollbar.
+                        available = round(1100 * scale) - 2 * round(18 * scale) - round(173 * scale) - round(14 * scale)
+                        self.assertLessEqual(max(button.master.winfo_reqwidth(), panel.winfo_reqwidth()), available)
+                        self.ui.settings_shell.canvas.yview_moveto.assert_called_with(0)
+                        self.assertEqual(self.root.state(), 'withdrawn')
+                    finally:
+                        shelf.destroy()
 
 
 if __name__ == '__main__':

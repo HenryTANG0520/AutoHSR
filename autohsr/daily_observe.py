@@ -3,12 +3,15 @@
 MESSAGE_OPERATION = 'daily_message_observe'
 EVENT_OPERATION = 'daily_event_observe'
 REWARD_OPERATION = 'daily_reward_observe'
-READ_ONLY_OPERATIONS = frozenset((MESSAGE_OPERATION, EVENT_OPERATION))
+SCREEN_OPERATION = 'screen_test'
+READ_ONLY_OPERATIONS = frozenset((MESSAGE_OPERATION, EVENT_OPERATION, SCREEN_OPERATION))
 OPERATIONS = READ_ONLY_OPERATIONS | {REWARD_OPERATION}
 MODES = ('achievements', 'support', 'messages', 'odyssey')
 
 
 def operation_for(mode):
+    if mode == 'screen':
+        return SCREEN_OPERATION
     if mode not in MODES:
         raise ValueError('请选择受支持的日常页面。')
     if mode in ('achievements', 'support'):

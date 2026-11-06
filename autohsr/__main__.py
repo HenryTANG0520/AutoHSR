@@ -60,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--read-build-target", action="store_true", help="从已打开的生存索引核对培养目标页入口并留证")
     mode.add_argument("--daily-reward-observe", choices=DAILY_OBSERVATION_MODES,
                       help="核对前台成就、漫游签证、短信或巡星之礼，分别记录导航与观察结果")
+    mode.add_argument("--screen-test", action="store_true", help="只读核对当前前台日常页面，输出匿名双帧回执")
     mode.add_argument("--preview-build-target", action="store_true", help="只读核对培养目标、材料详情与配方、花萼预览及结算提示")
     mode.add_argument('--build-target', action='store_true', help='核实用户指定的培养材料来源并生成单项体力草稿；只读')
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
@@ -149,6 +150,11 @@ def main(argv: list[str] | None = None) -> int:
             arg.partition('=')[0] not in {'--daily-reward-observe', '--config', '--game-path'}
             for arg in raw_args if arg.startswith('--')):
         parser.error('日常奖励校准为独立入口，仅可附带 --config 和 --game-path。')
+    if args.screen_test:
+        flags = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
+        if flags.count('--screen-test') != 1 or set(flags) - {'--screen-test', '--config', '--game-path'}:
+            parser.error('当前页面核对为独立入口，仅可附带 --config 和 --game-path。')
+        args.daily_reward_observe = 'screen'
     overclock_config = args.currency_wars_configure_overclock or args.currency_wars_open_overclock_a0
     overclock_entry = overclock_config or args.currency_wars_start_overclock_a0 or args.currency_wars_prepare_overclock_a0
     overclock_flag = ("--currency-wars-prepare-overclock-a0" if args.currency_wars_prepare_overclock_a0

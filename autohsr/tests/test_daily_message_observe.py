@@ -24,6 +24,7 @@ from autohsr.daily_message_state import read_panel_state, unknown_panel_state
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, RunReport, Scene, Token
 from autohsr.tests.test_daily_reward_observe import _Window
 from autohsr.tests.test_du_team import fixture
+from autohsr.vision import Vision
 
 
 ACCOUNT = Token('UID:135792468', .99, (.018, .957, .106, .985))
@@ -249,6 +250,8 @@ class MessageCliTests(unittest.TestCase):
         def vision(floor):
             reader = window.vision(floor)
             reader.confidence = floor
+            if mode == 'screen':
+                reader.template = Vision.__new__(Vision).template
             return reader
 
         def publish(runner, directory, *args, **kwargs):
@@ -294,7 +297,8 @@ class MessageCliTests(unittest.TestCase):
                                               settings, emit, mode, wait_for_foreground=True)))
             stack.enter_context(redirect_stdout(output))
             stack.enter_context(redirect_stderr(logs))
-            self.assertEqual(main(['--daily-reward-observe', mode, '--config', str(config)]), code)
+            flags = ['--screen-test'] if mode == 'screen' else ['--daily-reward-observe', mode]
+            self.assertEqual(main([*flags, '--config', str(config)]), code, output.getvalue() + logs.getvalue())
             report = json.loads(output.getvalue())
             directory = Path(report['run_dir'])
             if report['report_saved']:
@@ -302,7 +306,8 @@ class MessageCliTests(unittest.TestCase):
             self.assertFalse((directory / 'report.tmp').exists())
             self.assertFalse(list(directory.glob('*.png')))
             self.assertEqual(config.read_bytes(), original)
-        self.assertEqual(report['operation'], OPERATION if mode == 'messages' else 'daily_event_observe')
+        self.assertEqual(report['operation'], {'messages': OPERATION, 'odyssey': 'daily_event_observe',
+                                               'screen': 'screen_test'}[mode])
         self.assertNotIn('daily_reward_observe', report)
         self.assertEqual((report['stamina_limit'], report['stamina_spent'], report['stamina_pending']), (0, 0, 0))
         if mode == 'messages':
@@ -446,6 +451,32 @@ class MessageCliTests(unittest.TestCase):
         self.assertEqual(record['claimable_days'], [5, 6, 7])
         self.assertEqual(record['unknown_days'], [1, 2, 3])
         self.assertNotIn('executable', record)
+
+    def test_screen_test_cli_is_read_only_and_supports_explicit_desktop_handoff(self):
+        frames = [phone(ACCOUNT), phone(ACCOUNT)]
+        for handoff in (False, True):
+            with self.subTest(handoff=handoff):
+                report = self.run_cli(frames, mode='screen', foreground=not handoff, wait_for_foreground=handoff)
+                self.assertEqual(report['screen_test'], dict(schema=1, page='phone', page_verified=True,
+                                                            account_verified=True, input_sent=False))
+        self.assertNotIn('screen_test', RunReport().to_dict())
+
+    def test_screen_test_cli_revokes_result_on_late_focus_loss(self):
+        def lose_focus(runner, window, clock, user32):
+            window.guard.side_effect = FocusLost('synthetic late focus loss')
+
+        report = self.run_cli([phone(ACCOUNT), phone(ACCOUNT)], mode='screen', publication=lose_focus, code=1)
+        self.assertEqual(report['screen_test'], dict(schema=1, page='unknown', page_verified=False,
+                                                    account_verified=False, input_sent=False))
+
+    def test_screen_test_cli_rejects_conflicting_arguments_before_reading_settings(self):
+        for extra in (['--reward-only'], ['--stamina', '20'], ['--daily-reward-observe', 'messages'],
+                      ['--screen-test']):
+            with self.subTest(extra=extra), redirect_stderr(io.StringIO()), patch.object(
+                    Settings, 'load', side_effect=AssertionError('invalid flags reached config')):
+                with self.assertRaises(SystemExit) as error:
+                    main(['--screen-test', *extra])
+                self.assertEqual(error.exception.code, 2)
 
     def test_odyssey_cli_version_mismatch_and_publication_focus_loss_keep_days_unknown(self):
         def lose_focus(runner, window, clock, user32):

@@ -13,7 +13,8 @@ import time
 from datetime import datetime
 
 from .config import ROOT, RESOURCE_ROOT, Settings, SettingsError
-from .daily_observe import MESSAGE_OPERATION, OPERATIONS as DAILY_OBSERVATION_OPERATIONS, READ_ONLY_OPERATIONS
+from .daily_observe import (EVENT_OPERATION, MESSAGE_OPERATION, OPERATIONS as DAILY_OBSERVATION_OPERATIONS,
+                            READ_ONLY_OPERATIONS, SCREEN_OPERATION)
 from .du_points_followup import FollowupWeekExpired, require_followup_week
 from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, RunReport, Scene, Stopped, TaskResult, Token, normalize
 from .vision import Vision, save_scene,helper_overlay
@@ -2899,7 +2900,8 @@ class Runner:
         daily_reward = self.report.operation == 'daily_reward_observe'
         observation_operation = self.report.operation
         daily_observation = observation_operation in READ_ONLY_OPERATIONS
-        observation_name = '短信' if observation_operation == MESSAGE_OPERATION else '巡星之礼'
+        observation_name = {MESSAGE_OPERATION: '短信', EVENT_OPERATION: '巡星之礼',
+                            SCREEN_OPERATION: '当前页面'}.get(observation_operation, '')
         workflow_screen = self.report.operation in GAME_VISION_TASKS
         workflow_page = self.report.operation == PAGE_TASK
         workflow_foreground = self.report.operation in WORKFLOW_FOREGROUND_TASKS
@@ -2932,9 +2934,12 @@ class Runner:
                 if observation_operation == MESSAGE_OPERATION:
                     from . import daily_message_observe as observation
                     observer_type = observation.DailyMessageObserver
-                else:
+                elif observation_operation == EVENT_OPERATION:
                     from . import daily_event_observe as observation
                     observer_type = observation.DailyEventObserver
+                else:
+                    from . import screen_test as observation
+                    observer_type = observation.ScreenTestObserver
                 self.report.safe_next = observation.SAFE_NEXT
                 setattr(self.report, observation_operation, observation.initial_record())
             elif workflow_foreground:
@@ -3161,8 +3166,10 @@ class Runner:
                 self.report.status = 'success'
                 self.report.failure_task = ''
             elif daily_observation:
+                detail = ('只读核对当前日常页面' if observation_operation == SCREEN_OPERATION
+                          else f'只读核对当前{observation_name}画面')
                 self.emit(dict(type='task', task=observation_operation, status='running',
-                               detail=f'只读核对当前{observation_name}画面'))
+                               detail=detail))
                 daily_observation_reader = observer_type(context)
                 setattr(self.report, observation_operation, daily_observation_reader.record)
                 result = daily_observation_reader.run()
