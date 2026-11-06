@@ -1,6 +1,7 @@
 """Observe preset rows independently of the role tab and actual setup slots."""
 import time
 import unittest
+from unittest.mock import patch
 
 import cv2
 import numpy as np
@@ -36,6 +37,14 @@ def fixture(*, preset_tab=True, name='哈哈哈哈', offset=0, portrait='Pearl',
         start = 103 - sample.shape[1] // 2
         image[bottom - sample.shape[0]:bottom, start:start + sample.shape[1]] = sample
     return Scene(tokens, image, captured_at=time.monotonic())
+
+
+def native_4k(scene, dx=0, dy=0):
+    expanded = cv2.resize(scene.image, None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)
+    height, width = expanded.shape[:2]
+    image = np.full_like(expanded, 28)
+    image[dy:, dx:] = expanded[:height - dy, :width - dx]
+    return Scene(scene.tokens, image, captured_at=time.monotonic())
 
 
 class ChallengePresetPageTests(unittest.TestCase):
@@ -89,6 +98,24 @@ class ChallengePresetPageTests(unittest.TestCase):
         self.assertIsNone(page.compare(first, page.observe(fixture(preset_tab=False))))
         agreed = page.compare(first, page.observe(fixture(portrait='Tribbie')))
         self.assertIsNone(agreed['visible_presets'][0]['slots'][0]['portrait_asset_id'])
+
+    def test_full_portrait_can_start_at_any_native_4k_pixel_phase(self):
+        scene = fixture(portrait='Sunday', captions=1)
+        for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1)):
+            with self.subTest(dx=dx, dy=dy):
+                reading = page.observe(native_4k(scene, dx, dy))['rows'][0]['slots'][0]['portrait']
+                self.assertEqual(reading['asset_id'], 'Sunday')
+                self.assertEqual(reading['native_sample_phase'], [dx, dy])
+                self.assertGreater(reading['score'], .999)
+
+    def test_different_identities_across_phases_stay_ambiguous(self):
+        scene = native_4k(fixture(captions=1))
+        pearl = dict(asset_id='Pearl', box=[.028, .214, .080, .310], score=.99)
+        rival = dict(pearl, asset_id='Tribbie', score=.945)
+        with patch.object(page.roster, '_matches', side_effect=([pearl], [rival], [pearl], [])) as scan:
+            slot = page.observe(scene)['rows'][0]['slots'][0]
+        self.assertEqual(scan.call_count, 4)
+        self.assertIsNone(slot['portrait'])
 
 
 if __name__ == '__main__':

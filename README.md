@@ -24,7 +24,7 @@
 
 `--team-preset-calibration` 可从已在前台的手机核实并打开「编队」一次，也可零输入核对已打开的普通编队页。回执分开记录原生输入、到页、当前预览或启用状态，以及双帧一致的当前队名和同槽可见成员。总览入口及各预设完整名单待实机校准。[独立编队入口](docs/interface-calibration-2026-11-05.md#独立编队入口校准) · [总览与预设取证](docs/interface-calibration-2026-11-05.md#普通编队总览与预设取证)
 
-`--challenge-preset-observe` 零输入读取已打开的常规混沌十层预设页。实机原帧复放已按位匹配四队中的 10 张头像。报告分开记录左侧预设与右侧备战空槽。[用法与字段](docs/challenges.md#常规混沌十层预设观察)
+`--challenge-preset-observe` 零输入读取已打开的常规混沌十层预设页。4K 实机原帧的相邻双帧复放已逐位匹配四队 16 个头像槽，优先两队合计八个不同单位。报告分开记录左侧预设与右侧备战空槽。[用法与字段](docs/challenges.md#常规混沌十层预设观察)
 
 同日补齐[差分周常跨周开局](docs/weekly-plan.md)和[初始商店暂停／显式接续](docs/currency-wars-initial-environment.md)的来源边界：保留原周及已核实胜利，初始商店只在从未提交收店时重新观察；已有pending／unknown不重放。离线验证和实机验收分别记录。
 

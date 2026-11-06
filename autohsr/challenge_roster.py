@@ -147,8 +147,12 @@ def _matches(patch, gray, bank, offset, shape):
                 template=dict(source)))
             if len(matches) > MAX_MATCHES:
                 raise ValueError('too_many_matches')
-    # Adjacent quantized extents of one original describe the same physical
-    # portrait. Suppress only those same-asset peaks, never a competing ID.
+    return _distinct_matches(matches)
+
+
+def _distinct_matches(matches):
+    # Quantized extents and sampling origins can describe the same physical
+    # portrait. Suppress only same-asset peaks, never a competing ID.
     unique = []
     for item in sorted(matches, key=lambda item: item['score'], reverse=True):
         if not any(item['asset_id'] == prior['asset_id'] and _overlap(item['box'], prior['box']) for prior in unique):

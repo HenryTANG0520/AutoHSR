@@ -17,6 +17,8 @@ _FLOOR = _PERIOD + '其十'
 _NAME_REGION = (.015, .163, .174, .916)
 _LEVEL = re.compile(r'等级([1-9][0-9]?)')
 _COLUMNS = (.0537, .1212, .1888, .2563)
+_NATIVE_4K = (2160, 3840)
+_NATIVE_PHASES = ((0, 0), (1, 0), (0, 1), (1, 1))
 _SETUP_COLUMNS = (.7166, .7646, .8127, .8608)
 _SETUP_ROWS = (.699, .803)
 _ANCHORS = {
@@ -87,6 +89,24 @@ def _read_level(tokens, x, y, minimum):
     return None
 
 
+def _portrait_matches(native, image, roi, bank):
+    if native.shape[:2] != _NATIVE_4K:
+        return roster._scan_box(image, roi, bank)
+    height, width = image.shape[:2]
+    x1, y1, x2, y2 = (round(v * size) for v, size in zip(roi, (width, height, width, height)))
+    matches = []
+    # The 1080p template grid may start on either native pixel in each
+    # dimension. Use every even-sized sampling crop inside this same slot.
+    for dx, dy in _NATIVE_PHASES:
+        raw = native[2 * y1 + dy:2 * y2 - dy, 2 * x1 + dx:2 * x2 - dx]
+        patch = cv2.resize(raw, None, fx=.5, fy=.5, interpolation=cv2.INTER_AREA)
+        gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
+        offset = (x1 + dx / 2, y1 + dy / 2)
+        hits = roster._matches(patch, gray, bank, offset, (height, width))
+        matches.extend(dict(hit, native_sample_phase=[dx, dy]) for hit in hits)
+    return roster._distinct_matches(matches)
+
+
 def _read_preset_slots(scene, tokens, y, minimum):
     levels = [_read_level(tokens, x, y, minimum) for x in _COLUMNS]
     if not any(levels):
@@ -102,7 +122,7 @@ def _read_preset_slots(scene, tokens, y, minimum):
             if slot['level'] is None:
                 continue
             roi = (x - .033, y + .017, x + .033, min(y + .154, .916))
-            matches, ambiguities = roster._group(roster._scan_box(image, roi, bank))
+            matches, ambiguities = roster._group(_portrait_matches(scene.image, image, roi, bank))
             if len(matches) == 1 and not ambiguities:
                 left, _, right, bottom = matches[0]['box']
                 if abs((left + right) / 2 - x) <= .009 and abs(bottom - slot['level']['box'][1]) <= .022:
