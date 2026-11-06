@@ -14,7 +14,7 @@ from datetime import datetime
 
 from .config import ROOT, RESOURCE_ROOT, Settings, SettingsError
 from .daily_observe import (ACHIEVEMENT_CLAIM_OPERATION, EVENT_CLAIM_OPERATION, EVENT_OPERATION, MESSAGE_OPERATION,
-                            OPERATIONS as DAILY_OBSERVATION_OPERATIONS,
+                            MESSAGE_REPLY_OPERATION, OPERATIONS as DAILY_OBSERVATION_OPERATIONS,
                             READ_ONLY_OPERATIONS, SCREEN_OPERATION)
 from .du_points_followup import FollowupWeekExpired, require_followup_week
 from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, RunReport, Scene, Stopped, TaskResult, Token, normalize
@@ -110,6 +110,7 @@ class Context:
     def snapshot(self) -> Scene:
         occluded_frames=0
         strict_claim = self.report.operation in (EVENT_CLAIM_OPERATION, ACHIEVEMENT_CLAIM_OPERATION)
+        strict_reply = self.report.operation == MESSAGE_REPLY_OPERATION
         while True:
             self.checkpoint()
             self.last_scene = None
@@ -124,6 +125,8 @@ class Context:
                     self.capture_occlusion_count += 1
                     if strict_claim:
                         raise AutomationError('领取画面被助手界面遮挡。')
+                    if strict_reply:
+                        raise AutomationError('短信回复画面被助手界面遮挡。')
                     occluded_frames+=1
                     if occluded_frames==1:
                         if self.report.operation not in WORKFLOW_FOREGROUND_TASKS | READ_ONLY_OPERATIONS:
@@ -150,11 +153,13 @@ class Context:
                     self.last_scene = None
                     if strict_claim:
                         raise InputInterrupted('领取画面的采集输入代次已变化。')
+                    if strict_reply:
+                        raise InputInterrupted('短信回复采集的输入代次已变化。')
                     continue
                 self.window.guard(geometry)
             except FocusLost:
                 self.last_scene = None
-                if (strict_claim or self.report.operation in ('challenge_result', 'challenge_lobby', 'team_preset_calibration',
+                if (strict_claim or strict_reply or self.report.operation in ('challenge_result', 'challenge_lobby', 'team_preset_calibration',
                                               'challenge_preset_observe', 'daily_reward_observe')
                         or self.report.operation in WORKFLOW_FOREGROUND_TASKS | READ_ONLY_OPERATIONS
                         or getattr(self.runner, '_challenge_read_only', False) is True):
@@ -216,6 +221,8 @@ class Context:
             raise AutomationError('巡星之礼只允许本次已保存的单日领取意图输入。')
         if self.report.operation == ACHIEVEMENT_CLAIM_OPERATION:
             raise AutomationError('成就领奖仅允许本次有意图的领取和专属确认。')
+        if self.report.operation == MESSAGE_REPLY_OPERATION:
+            raise AutomationError('短信回复只允许本次已核实的单次提交。')
         if self.report.operation in READ_ONLY_OPERATIONS:
             raise AutomationError('日常短信与签到核对只允许观察当前画面。')
         if self.report.operation == 'build_target_read':
@@ -314,6 +321,15 @@ class Context:
                 or not isinstance(intent, ClaimIntent)):
             raise AutomationError('缺少巡星之礼本次已落盘的单日领取意图。')
         intent.submit(self)
+
+    def daily_message_reply_input(self, reply, scene):
+        from .daily_message_reply_flow import DailyMessageReply
+
+        if (self.report.operation != MESSAGE_REPLY_OPERATION or type(reply) is not DailyMessageReply
+                or reply is not getattr(self, 'daily_message_reply', None) or reply.context is not self
+                or reply.record is not self.report.daily_message_reply):
+            raise AutomationError('缺少本次短信回复的专用流程与一次性意图。')
+        reply.dispatch(scene)
 
     def workflow_navigation_input(self, scene, action):
         from .workflow_navigation import WorkflowNavigation
@@ -2284,7 +2300,7 @@ class Runner:
                  use_power_plan=False,new_power_plan=False,currency_overclock_open_a0=False,build_target_selection=None,
                  challenge_lobby_mode=None, assignments_only=False, daily_reward_mode=None,
                  daily_attachment_only=None, workflow_screen_query=None, workflow_page=None,
-                 observation_wait_for_foreground=False, daily_event_claim_day=None):
+                 observation_wait_for_foreground=False, daily_event_claim_day=None, daily_message_reply=None):
         from dataclasses import replace
         if (type(observation_wait_for_foreground) is not bool
                 or observation_wait_for_foreground
@@ -2339,6 +2355,13 @@ class Runner:
         if operation == ACHIEVEMENT_CLAIM_OPERATION and (new_battle_run or use_power_plan or new_power_plan
                                                         or weekly_plan is not None):
             raise ValueError('独立成就领奖不能附带刷本或周常计划。')
+        if operation == MESSAGE_REPLY_OPERATION or daily_message_reply is not None:
+            from .daily_message_reply_flow import supported_selection
+
+            if (operation != MESSAGE_REPLY_OPERATION or not supported_selection(daily_message_reply)
+                    or new_battle_run or use_power_plan or new_power_plan or weekly_plan is not None):
+                raise ValueError('短信回复需要独立入口和明确节点及回复。')
+        self.daily_message_reply_selection = daily_message_reply
         if operation == 'daily_reward_observe':
             from .daily_reward_observe import MODES
             daily_reward_mode = 'achievements' if daily_reward_mode is None else daily_reward_mode
@@ -2402,7 +2425,7 @@ class Runner:
         self._foreground_only = (self._challenge_read_only
                                  or operation in WORKFLOW_FOREGROUND_TASKS | DAILY_OBSERVATION_OPERATIONS
                                  or operation in ('challenge_lobby', 'team_preset_calibration',
-                                                  EVENT_CLAIM_OPERATION, ACHIEVEMENT_CLAIM_OPERATION))
+                                                  EVENT_CLAIM_OPERATION, ACHIEVEMENT_CLAIM_OPERATION, MESSAGE_REPLY_OPERATION))
         self._emit = emit or (lambda event: None)
         self._overlay = None
         self.report = RunReport()
@@ -2947,6 +2970,7 @@ class Runner:
         workflow_navigation = None
         daily_observation_reader = None
         daily_claim_flow = None
+        daily_reply_flow = None
         overclock_session = None
         overclock_preparation = None
         monitor = None
@@ -2967,13 +2991,14 @@ class Runner:
         observation_operation = self.report.operation
         daily_observation = observation_operation in READ_ONLY_OPERATIONS
         daily_claim = observation_operation == EVENT_CLAIM_OPERATION
+        daily_reply = observation_operation == MESSAGE_REPLY_OPERATION
         observation_name = {MESSAGE_OPERATION: '短信', EVENT_OPERATION: '巡星之礼',
                             SCREEN_OPERATION: '当前页面'}.get(observation_operation, '')
         workflow_screen = self.report.operation in GAME_VISION_TASKS
         workflow_page = self.report.operation == PAGE_TASK
         workflow_foreground = self.report.operation in WORKFLOW_FOREGROUND_TASKS
         foreground_scope = (challenge_observer or challenge_navigation or daily_reward
-                            or daily_observation or daily_claim or workflow_foreground or achievement_claim)
+                            or daily_observation or daily_claim or daily_reply or workflow_foreground or achievement_claim)
         guard_publication = self._foreground_only or build_target_preview
         build_target_safe_next = ('请核对当前培养目标或打开同一材料的获得途径。'
                                   if build_target_preview else '请在当前账号的生存索引核对培养目标页。材料详情与副本来源待校准。')
@@ -3006,6 +3031,10 @@ class Runner:
                 from .achievement_bulk_claim import SAFE_NEXT, initial_record
                 self.report.safe_next = SAFE_NEXT
                 self.report.achievement_bulk_claim = initial_record()
+            elif daily_reply:
+                from .daily_message_reply_flow import SAFE_NEXT, initial_record
+                self.report.safe_next = SAFE_NEXT
+                self.report.daily_message_reply = initial_record(self.daily_message_reply_selection)
             elif daily_observation:
                 if observation_operation == MESSAGE_OPERATION:
                     from . import daily_message_observe as observation
@@ -3053,7 +3082,7 @@ class Runner:
             if challenge_prepare and self.settings.challenge_plan['mode'] != self._challenge_prepare_mode:
                 raise SettingsError('challenge_plan', '高难计划模式已改变，请重新开始备战。')
             if self.report.operation != 'currency_wars' and not (challenge_observer or daily_observation
-                                                                or daily_claim or achievement_claim):
+                                                                or daily_claim or daily_reply or achievement_claim):
                 from .du_reward_store import preflight
                 preflight(directory.parent)
                 from .du_archive_store import preflight as archive_preflight
@@ -3080,7 +3109,7 @@ class Runner:
                 else:
                     require_no_active_match(saved, defeat_root=directory.parent)
             if self.report.operation != 'currency_wars' and not (challenge_observer or daily_observation
-                                                                or daily_claim or achievement_claim):
+                                                                or daily_claim or daily_reply or achievement_claim):
                 from .currency_wars_weekly_reward_store import RewardStore
                 rewards=RewardStore(directory.parent)
                 saved_rewards=rewards.preflight(self.currency_rewards_resume if self.report.operation=='currency_wars_rewards' else False)
@@ -3153,7 +3182,7 @@ class Runner:
             if team_calibration:
                 from .team_preset_calibration import COLLECTION_FLOOR
                 ocr_confidence = min(ocr_confidence, COLLECTION_FLOOR)
-            elif daily_reward or daily_observation or daily_claim or achievement_claim:
+            elif daily_reward or daily_observation or daily_claim or daily_reply or achievement_claim:
                 from .daily_reward_observe import COLLECTION_FLOOR
                 ocr_confidence = min(ocr_confidence, COLLECTION_FLOOR)
             elif challenge_preset:
@@ -3167,7 +3196,7 @@ class Runner:
                                       timeout=.05 if self.currency_timeout_probe else 30.) if currency_wars else
                       Vision(ocr_confidence))
             if (self.assignments_only or self.daily_attachment_only or workflow_foreground
-                    or daily_observation or daily_claim or achievement_claim):
+                    or daily_observation or daily_claim or daily_reply or achievement_claim):
                 from .currency_wars_identity import UID_VETO_FLOOR
                 vision.uid_counterevidence_floor = UID_VETO_FLOOR
             context = Context(self, self._window, vision)
@@ -3264,6 +3293,14 @@ class Runner:
                 result = daily_claim_flow.run()
                 self.report.results.append(result)
                 self.report.status = 'partial'
+            elif daily_reply:
+                from .daily_message_reply_flow import DailyMessageReply
+                daily_reply_flow = context.daily_message_reply = DailyMessageReply(
+                    context, root=ROOT, selection=self.daily_message_reply_selection)
+                self.report.daily_message_reply = daily_reply_flow.record
+                self.report.results.append(daily_reply_flow.run())
+                self.report.status = 'success'
+                self.report.failure_task = ''
             elif daily_observation:
                 detail = ('只读核对当前日常页面' if observation_operation == SCREEN_OPERATION
                           else f'只读核对当前{observation_name}画面')
@@ -3394,6 +3431,12 @@ class Runner:
                 self.stop()
                 self.report.status = 'stopped'
                 self.report.error = '成就领奖已停止。'
+            elif daily_reply:
+                self.stop()
+                self.report.status = 'stopped'
+                self.report.error = '短信单次回复已停止。'
+                if daily_reply_flow is not None:
+                    daily_reply_flow.invalidate_feedback()
             elif daily_claim:
                 self.stop()
                 self.report.status = 'stopped'
@@ -3415,6 +3458,8 @@ class Runner:
             raise
         except Stopped as error:
             self.stop()
+            if daily_reply_flow is not None:
+                daily_reply_flow.invalidate_feedback()
             if daily_claim_flow is not None:
                 daily_claim_flow.invalidate_popup()
             if workflow_page:
@@ -3442,9 +3487,12 @@ class Runner:
                 error = AutomationError('巡星之礼单日提交未能完成，请核对本次回执。')
             if achievement_claim and not isinstance(error, (AutomationError, SettingsError)):
                 error = AutomationError('成就领奖未能完成，请核对本次回执。')
+            if daily_reply and not isinstance(error, (AutomationError, SettingsError)):
+                error = AutomationError('短信单次回复未能完成，请核对本次回执。')
             if daily_claim_flow is not None:
                 daily_claim_flow.invalidate_popup()
             claim_pending = daily_claim and self.report.daily_event_claim.get('state') == 'pending'
+            reply_recorded = daily_reply and self.report.daily_message_reply.get('ledger_status') in ('pending', 'confirmed')
             team_input = (team_calibration and
                           self.report.team_preset_calibration.get('input_status') in ('unconfirmed', 'sent'))
             reward_input = (daily_reward and self.report.daily_reward_observe.get('entry_input') in ('unconfirmed', 'sent'))
@@ -3455,7 +3503,8 @@ class Runner:
                             and self.report.currency_wars.get('actions'))
             self.report.status = "partial" if (self.report.daily_verified or self.report.redemption.get('results')
                 or self.report.challenge.get('actions') or self.report.du_rewards.get('actions')
-                 or target_input or team_input or reward_input or mode_pending or claim_pending or achievement_input
+                 or target_input or team_input or reward_input or mode_pending or claim_pending
+                 or achievement_input or reply_recorded
                 or self.report.workflow_navigation.get('actions')) else "failed"
             self.report.error = str(error)
             self.report.safe_next = ("积分领奖未完成；保留原报告和领奖记录，未知领取不重发；仅已核实步骤可明确接续。" if self.report.operation=='currency_wars_rewards' else
@@ -3474,7 +3523,8 @@ class Runner:
             elif self.report.failure_task == 'startup':
                 self.report.safe_next = "请手动进入游戏主界面后重试当前任务。"
             self.log(str(error), "error")
-            if context and context.last_scene and not (daily_observation or daily_claim or workflow_foreground or achievement_claim):
+            if context and context.last_scene and not (daily_observation or daily_claim or daily_reply
+                                                       or workflow_foreground or achievement_claim):
                 try:
                     context.evidence(context.last_scene, "failure")
                 except Exception as evidence_error:
@@ -3529,6 +3579,9 @@ class Runner:
                 elif daily_claim_flow is not None and daily_claim_flow.record['popup'] == 'observed':
                     self.report.report_saved = True
                     self._save_run_report(directory, daily_observation_reader=daily_claim_flow)
+                elif daily_reply_flow is not None and daily_reply_flow.record['feedback_status'] == 'confirmed':
+                    self.report.report_saved = True
+                    self._save_run_report(directory, daily_observation_reader=daily_reply_flow)
                 elif guarded_observation:
                     self.report.report_saved = True
                     self._save_run_report(directory, daily_observation_reader=daily_observation_reader)
@@ -3545,7 +3598,11 @@ class Runner:
                 if workflow_page:
                     self.report.workflow_navigation['page_verified'] = False
                 status_before_save_failure = self.report.status
-                if daily_claim:
+                if daily_reply:
+                    error = OSError('短信单次回复报告未发布。')
+                    if daily_reply_flow is not None:
+                        daily_reply_flow.invalidate_feedback()
+                elif daily_claim:
                     error = OSError('巡星之礼单日提交报告未发布。')
                     if daily_claim_flow is not None:
                         daily_claim_flow.invalidate_popup()
@@ -3568,10 +3625,11 @@ class Runner:
                 self.report.status = ("partial" if self.report.daily_verified or attempted_team_entry
                                       or attempted_reward_entry or attempted_attachment or attempted_achievement
                                       or self.report.workflow_navigation.get('actions') else "failed")
-                if daily_observation or daily_claim or achievement_claim:
+                if daily_observation or daily_claim or daily_reply or achievement_claim:
                     if self.stop_requested or status_before_save_failure == 'stopped':
                         self.report.status = 'stopped'
-                    elif status_before_save_failure == 'partial':
+                    elif (status_before_save_failure == 'partial' or daily_reply
+                          and self.report.daily_message_reply.get('ledger_status') in ('pending', 'confirmed')):
                         self.report.status = 'partial'
                     self.report.failure_task = self.report.operation
                     if daily_observation_reader is not None:

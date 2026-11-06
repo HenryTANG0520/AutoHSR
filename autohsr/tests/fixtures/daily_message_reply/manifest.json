@@ -1,0 +1,472 @@
+{
+  "source": "https://www.bilibili.com/video/BV1Pj421X7r1/?p=178&t=18",
+  "bvid": "BV1Pj421X7r1",
+  "part": 178,
+  "cid": 42575333958,
+  "original_px": [
+    1920,
+    1080
+  ],
+  "avc_px": [
+    852,
+    480
+  ],
+  "fixture_px": [
+    480,
+    270
+  ],
+  "time_basis": "SIDX segment start + relative decoded PTS, seconds",
+  "regions_xyxy_half_open": {
+    "static_page_title": [
+      78,
+      52,
+      117,
+      65
+    ],
+    "left_selected_name_ocr": [
+      101,
+      67,
+      124,
+      79
+    ],
+    "right_selected_title_ocr": [
+      198,
+      46,
+      224,
+      57
+    ],
+    "first_choice_observed_text": [
+      277,
+      178,
+      323,
+      185
+    ],
+    "outgoing_observed_text": [
+      308,
+      211,
+      354,
+      218
+    ],
+    "warm_rim": [
+      315,
+      206,
+      352,
+      214
+    ],
+    "left_core": [
+      305,
+      210,
+      309,
+      218
+    ],
+    "right_core": [
+      354,
+      210,
+      358,
+      218
+    ],
+    "pane": [
+      368,
+      210,
+      373,
+      218
+    ]
+  },
+  "transform": "In-memory DASH decode and INTER_AREA. Preserve only the public static page title crop, existing anonymous panel and state medians, selected title ink distribution, and new rim/side/pane probe levels. Rim pixels are replaced by class medians and rearranged within each row. No account fields, names, dialogue text, avatars, artwork or raw frames persisted. OCR is local, compares in memory, and records only booleans and confidence.",
+  "geometry_scope": "Real source capsule boxes are scalar observations only. Fixture images preserve specified probe values, not complete bubbles or the glyph layout. No input signal, account linkage or reward is inferred.",
+  "frames": [
+    {
+      "file": "P178_18.138125_before.png",
+      "sha256": "765ba5ba745e38b5f221e380aab7abb6740bf1ab844d52bd8c14470ca3ee585e",
+      "pts_seconds": 18.138125,
+      "phase": "before",
+      "source_decoded_frame_sha256": "cd422ba17013d0318b6d774e5a507d9900087190523ff0944c10fa77e1088003",
+      "state": {
+        "conversation_status": "selected",
+        "unread_status": "unknown",
+        "reply_status": "options_visible",
+        "reply_options": 3
+      },
+      "geometry": {
+        "selected_y_half_open": [
+          68,
+          92
+        ],
+        "header_gray_median": 211.0,
+        "header_ink_below125": 45,
+        "rim_warm_counts_by_row": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "rim_width": 37,
+        "rim_max_fraction": 0.0,
+        "core_left_core_right_pane_gray_medians": [
+          139.0,
+          230.5,
+          230.5
+        ],
+        "minimum_core_minus_pane": -91.5
+      },
+      "source_panel_bgr_medians": [
+        39.0,
+        210.0,
+        230.0,
+        24.0
+      ],
+      "fixture_panel_bgr_medians": [
+        39.0,
+        210.0,
+        230.0,
+        24.0
+      ],
+      "source_bright_capsules": [],
+      "anonymous_ocr": {
+        "same_selected_left_and_right_title_as_first": true,
+        "left_and_right_confidence": [
+          0.996,
+          0.997
+        ],
+        "choice_or_outgoing_equals_first_choice_after_nfkc_whitespace": true,
+        "equals_first_choice_if_only_punctuation_ignored": null,
+        "character_count": 7,
+        "confidence": 0.995,
+        "option_counts_and_confidences": [
+          {
+            "length": 7,
+            "confidence": 0.995
+          },
+          {
+            "length": 8,
+            "confidence": 0.938
+          },
+          {
+            "length": 7,
+            "confidence": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "file": "P178_18.438250_before.png",
+      "sha256": "d81cad57212280ba5197cafee7b538d7a0ce9ef4468ccffc8d16876712e996dc",
+      "pts_seconds": 18.43825,
+      "phase": "before",
+      "source_decoded_frame_sha256": "9c1ef920376d2598a790c587c2d9aa752f93845ef9b5daf7e6e0c2dbaf02a314",
+      "state": {
+        "conversation_status": "selected",
+        "unread_status": "unknown",
+        "reply_status": "options_visible",
+        "reply_options": 3
+      },
+      "geometry": {
+        "selected_y_half_open": [
+          68,
+          92
+        ],
+        "header_gray_median": 211.0,
+        "header_ink_below125": 45,
+        "rim_warm_counts_by_row": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "rim_width": 37,
+        "rim_max_fraction": 0.0,
+        "core_left_core_right_pane_gray_medians": [
+          139.0,
+          230.5,
+          230.5
+        ],
+        "minimum_core_minus_pane": -91.5
+      },
+      "source_panel_bgr_medians": [
+        39.0,
+        210.0,
+        230.0,
+        24.0
+      ],
+      "fixture_panel_bgr_medians": [
+        39.0,
+        210.0,
+        230.0,
+        24.0
+      ],
+      "source_bright_capsules": [],
+      "anonymous_ocr": {
+        "same_selected_left_and_right_title_as_first": true,
+        "left_and_right_confidence": [
+          0.996,
+          0.997
+        ],
+        "choice_or_outgoing_equals_first_choice_after_nfkc_whitespace": true,
+        "equals_first_choice_if_only_punctuation_ignored": null,
+        "character_count": 7,
+        "confidence": 0.992,
+        "option_counts_and_confidences": [
+          {
+            "length": 7,
+            "confidence": 0.992
+          },
+          {
+            "length": 8,
+            "confidence": 0.928
+          },
+          {
+            "length": 7,
+            "confidence": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "file": "P178_19.205125_after.png",
+      "sha256": "76d4b358877f94cb31f0bd58c86ab32f428aa4eb1d208c3e06441c999f65f1b7",
+      "pts_seconds": 19.205125,
+      "phase": "after",
+      "source_decoded_frame_sha256": "d0a6a7d35edde48e30195f3369c1c1f869f9731b8d03ae9b47476373b4e88085",
+      "state": {
+        "conversation_status": "selected",
+        "unread_status": "unknown",
+        "reply_status": "not_visible",
+        "reply_options": null
+      },
+      "geometry": {
+        "selected_y_half_open": [
+          68,
+          92
+        ],
+        "header_gray_median": 211.0,
+        "header_ink_below125": 45,
+        "rim_warm_counts_by_row": [
+          0,
+          0,
+          0,
+          0,
+          35,
+          29,
+          7,
+          5
+        ],
+        "rim_width": 37,
+        "rim_max_fraction": 0.9459459459459459,
+        "core_left_core_right_pane_gray_medians": [
+          228.0,
+          234.0,
+          210.0
+        ],
+        "minimum_core_minus_pane": 18.0
+      },
+      "source_panel_bgr_medians": [
+        39.0,
+        210.0,
+        210.0,
+        24.0
+      ],
+      "fixture_panel_bgr_medians": [
+        39.0,
+        210.0,
+        210.0,
+        24.0
+      ],
+      "source_bright_capsules": [
+        {
+          "xyxy": [
+            305,
+            210,
+            358,
+            219
+          ],
+          "bright_area": 226
+        }
+      ],
+      "anonymous_ocr": {
+        "same_selected_left_and_right_title_as_first": true,
+        "left_and_right_confidence": [
+          0.996,
+          0.997
+        ],
+        "choice_or_outgoing_equals_first_choice_after_nfkc_whitespace": false,
+        "equals_first_choice_if_only_punctuation_ignored": true,
+        "character_count": 8,
+        "confidence": 0.97,
+        "option_counts_and_confidences": null
+      }
+    },
+    {
+      "file": "P178_19.505187_after.png",
+      "sha256": "ca32069a39b69f80b1efc0899df09458b908f9f4bee9b5c3f9e4fd1eee4a8613",
+      "pts_seconds": 19.505187,
+      "phase": "after",
+      "source_decoded_frame_sha256": "b76961d75030f7693a188504b0bb1cc812e3c0d34224303eb21f77a36c9656dd",
+      "state": {
+        "conversation_status": "selected",
+        "unread_status": "unknown",
+        "reply_status": "not_visible",
+        "reply_options": null
+      },
+      "geometry": {
+        "selected_y_half_open": [
+          68,
+          92
+        ],
+        "header_gray_median": 211.0,
+        "header_ink_below125": 45,
+        "rim_warm_counts_by_row": [
+          0,
+          0,
+          0,
+          0,
+          35,
+          29,
+          7,
+          5
+        ],
+        "rim_width": 37,
+        "rim_max_fraction": 0.9459459459459459,
+        "core_left_core_right_pane_gray_medians": [
+          228.0,
+          234.0,
+          209.5
+        ],
+        "minimum_core_minus_pane": 18.5
+      },
+      "source_panel_bgr_medians": [
+        39.0,
+        210.0,
+        210.0,
+        24.0
+      ],
+      "fixture_panel_bgr_medians": [
+        39.0,
+        210.0,
+        210.0,
+        24.0
+      ],
+      "source_bright_capsules": [
+        {
+          "xyxy": [
+            305,
+            210,
+            358,
+            219
+          ],
+          "bright_area": 226
+        }
+      ],
+      "anonymous_ocr": {
+        "same_selected_left_and_right_title_as_first": true,
+        "left_and_right_confidence": [
+          0.996,
+          0.997
+        ],
+        "choice_or_outgoing_equals_first_choice_after_nfkc_whitespace": false,
+        "equals_first_choice_if_only_punctuation_ignored": true,
+        "character_count": 8,
+        "confidence": 0.971,
+        "option_counts_and_confidences": null
+      }
+    }
+  ],
+  "fixed_data": {
+    "build": "OSPRODWin4.6.0_D16854589_A16781679_L16781679",
+    "files": {
+      "MessageItemConfig.json": {
+        "url": "https://git.yuuki.me/Backup/StarRail_Data/src/commit/74a7b96fba32f00cf495a5c00b0311bd02207aaf/ExcelOutput/MessageItemConfig.json",
+        "git_blob": "b352c5b40f54d8107c5328c6097654b408dc0d39",
+        "sha256": "b6d8a4436799b7d2d26fd8a00b49e0315e9981c59138e5e2137b4e866beda146"
+      },
+      "MessageSectionConfig.json": {
+        "url": "https://git.yuuki.me/Backup/StarRail_Data/src/commit/74a7b96fba32f00cf495a5c00b0311bd02207aaf/ExcelOutput/MessageSectionConfig.json",
+        "git_blob": "a6b6b97bf0e38fe6ba1d647e9552a463b81c6609",
+        "sha256": "14618b292b232e547ca0e74aa11a57ac0b644a4fc3a16e06009ebcfcb8afc70e"
+      },
+      "TextMapCHS.json": {
+        "url": "https://git.yuuki.me/Backup/StarRail_Data/src/commit/74a7b96fba32f00cf495a5c00b0311bd02207aaf/TextMap/TextMapCHS.json",
+        "git_blob": "799c7ea9309eb6f17eb57c0c4cf219f28483eee3",
+        "sha256": "b442c7a30bbd5c21e5f4393781bfd833e939e5feca6f6612b01b107e94b2ea9c"
+      }
+    },
+    "normalization": "NFKC then remove whitespace; preserve punctuation; SHA256 on UTF-8",
+    "section": 2024900,
+    "starter": 202490001,
+    "predecessor_image": 202490002,
+    "ordered_options": [
+      202490003,
+      202490005,
+      202490007
+    ],
+    "supported_item": 202490003,
+    "fields": {
+      "202490001.MainText": "39cf455816495cd22f41fdc03d73ae18d97d16543eb7ddb010ef0d29a12dcbb5",
+      "202490003.OptionText": "e041baf6f693b3d621ae9c4caa8aa3d7c3e25174fb6fb1c76300bae0e4c286ff",
+      "202490005.OptionText": "3a77aa304808105016490449f159ef4689e8144999d1c15ab739dd0aba72c9f3",
+      "202490007.OptionText": "972a1cce86695e800bed5c8f727b3c21c3b37b0b93830dfedfe114bb52edb95f",
+      "202490003.MainText": "156c4280e9c0346232abcc2da0cbed9b0517b9f75b3385bc1f18ffff4143283e"
+    }
+  },
+  "local_hd_verification": {
+    "decoded_px": [
+      1280,
+      720
+    ],
+    "media_sha256": "ac981e1154d6978da2b4cff632040605097ee4777fc052c3c4711d8e94f79c72",
+    "method": "Full-frame Vision.read at .65; strict fields and geometry evaluated in memory; no OCR strings retained.",
+    "same_selected_row_and_header": true,
+    "frames": [
+      {
+        "index": 544,
+        "pts_seconds": 18.138125,
+        "source_decoded_frame_sha256": "89a25af32c91a1e3937b749719e60d3e10b62d281436a97bc75421bce23f2b2c",
+        "ordered_target_verified": true,
+        "strict_outgoing_verified": false
+      },
+      {
+        "index": 553,
+        "pts_seconds": 18.43825,
+        "source_decoded_frame_sha256": "8d336955f3239dbb0a1c394722abd3883fa7cfc6a838c4d270fd24dbde08d8ff",
+        "ordered_target_verified": true,
+        "strict_outgoing_verified": false
+      },
+      {
+        "index": 570,
+        "pts_seconds": 19.005063,
+        "source_decoded_frame_sha256": "32d0794a8a3a37b81badc6b2a555500de1f245d92337c23a86b13b81d4fef4f6",
+        "ordered_target_verified": false,
+        "strict_outgoing_verified": false
+      },
+      {
+        "index": 575,
+        "pts_seconds": 19.17175,
+        "source_decoded_frame_sha256": "1951843b05e83b94aa75dae3df40151a903c431a2546f1c489603699784c807d",
+        "ordered_target_verified": false,
+        "strict_outgoing_verified": false
+      },
+      {
+        "index": 576,
+        "pts_seconds": 19.205125,
+        "source_decoded_frame_sha256": "8e602f6ff7e1a199dd8067261d0219894b1d00a09cbecb2485c4a418b32ae175",
+        "ordered_target_verified": false,
+        "strict_outgoing_verified": true
+      },
+      {
+        "index": 585,
+        "pts_seconds": 19.505188,
+        "source_decoded_frame_sha256": "71da1173341e5606ab16d54a4b1d0bf5a9a442e34ffb12dc45e6b3f9b87f0b93",
+        "ordered_target_verified": false,
+        "strict_outgoing_verified": true
+      }
+    ]
+  },
+  "rights": "Public gameplay video and game UI/data belong to their respective rightsholders. Only field hashes, anonymized geometry, and static title pixels are retained."
+}

@@ -1,6 +1,7 @@
 """Shared mode routing for the desktop and CLI daily page checks."""
 
 MESSAGE_OPERATION = 'daily_message_observe'
+MESSAGE_REPLY_OPERATION = 'daily_message_reply'
 EVENT_OPERATION = 'daily_event_observe'
 EVENT_CLAIM_OPERATION = 'daily_event_claim'
 ACHIEVEMENT_CLAIM_OPERATION = 'achievement_bulk_claim'

@@ -64,6 +64,8 @@ def main(argv: list[str] | None = None) -> int:
                       help="核对前台成就、漫游签证、短信或巡星之礼，分别记录导航与观察结果")
     mode.add_argument("--daily-event-claim", type=int, choices=range(3, 8), metavar='DAY',
                       help="在已核实的巡星之礼页提交第 3–7 天中的一天，并核对奖励弹窗")
+    from .daily_message_reply_cli import add_arguments as add_daily_message_reply_arguments
+    add_daily_message_reply_arguments(mode)
     mode.add_argument("--reward-guide-stitch", type=Path, nargs='+', metavar='PNG',
                       help="按滚动顺序拼接 1–3 张本地奖励指南内容裁片")
     parser.add_argument("--reward-guide-output", type=Path, metavar='NEW_PNG',
@@ -162,6 +164,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.achievement_bulk_claim:
         from .achievement_bulk_claim_cli import run as run_achievement_claim
         return run_achievement_claim(args, raw_args, parser)
+    if args.daily_message_reply is not None:
+        from .daily_message_reply_cli import run as run_daily_message_reply
+        return run_daily_message_reply(args, raw_args, parser)
     if args.daily_attachment_only:
         attachment_flags = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
         if attachment_flags.count('--daily-attachment-only') != 1 or set(attachment_flags) - {

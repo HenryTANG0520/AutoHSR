@@ -878,6 +878,10 @@ with HoYoverse and the footage with its respective rights holders.
 
 回复条淡出样本来自同一公开 P179 录像，沿用短信状态样本的 480×270 匿名亮度和静态标题转换。来源、时间、原解码帧及脱敏 PNG 的 SHA-256 和权利说明见[回复条夹具清单](../autohsr/tests/fixtures/daily_message_reply_targets/manifest.json)。
 
+单次短信候选引用公开 P178 录像的前后帧及固定 4.6 简中数据。仅收录静态页标题、匿名几何与亮度、固定游戏字段指纹和原件哈希。固定源提交、表文件及脱敏方式见[单次回复夹具清单](../autohsr/tests/fixtures/daily_message_reply/manifest.json)。
+
+另补同一录像系列 P179 后段的三选项、无气泡过渡和新发出气泡。沿用匿名标题和亮度转换，并记录第一条整帧漏标点与局部严格读数。来源、固定字段指纹、转换和逐帧哈希见[P179 夹具清单](../autohsr/tests/fixtures/daily_message_reply_p179/manifest.json)。
+
 `upstream/March7thAssistant/team-calibration/configure_team.png` preserves a
 single original crop from moesnow and contributors at
 `7cf6c6bed474539485d3b1504077ac352866829f`. It supports read-only normal team

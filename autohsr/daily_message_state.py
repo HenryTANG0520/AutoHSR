@@ -21,7 +21,7 @@ def unknown_panel_state() -> dict:
                 reply_status='unknown', reply_options=None)
 
 
-def _conversation_selected(gray) -> bool:
+def _selected_row(gray) -> tuple[int, int] | None:
     # Bright margins belong to the same highlighted row. Bridge the small gap
     # a row arrow or check mark can cut into the right strip.
     left = np.median(gray[66:221, 80:84], axis=1)
@@ -30,10 +30,16 @@ def _conversation_selected(gray) -> bool:
     groups = np.split(bright, np.flatnonzero(np.diff(bright) > 3) + 1)
     rows = [group for group in groups if len(group) >= 16]
     if len(rows) != 1 or not 17 <= rows[0][-1] - rows[0][0] + 1 <= 31:
-        return False
+        return None
     # Measure whether the pale header contains ink without reading the name.
     header = gray[46:57, 197:226]
-    return np.median(header) >= 155 and np.count_nonzero(header < 125) >= 30
+    if np.median(header) >= 155 and np.count_nonzero(header < 125) >= 30:
+        return int(rows[0][0]) + 66, int(rows[0][-1]) + 67
+    return None
+
+
+def _conversation_selected(gray) -> bool:
+    return _selected_row(gray) is not None
 
 
 def _reply_options(gray) -> tuple[str, int | None]:
