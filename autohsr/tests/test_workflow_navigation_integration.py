@@ -16,6 +16,7 @@ from autohsr.__main__ import main
 from autohsr.app import Runner
 from autohsr.config import Settings
 from autohsr.daily_event_observe import read_event_installation
+from autohsr.free_rewards import battlepass_tab
 from autohsr.models import FocusLost, Scene, Token
 from autohsr.tests.test_daily_event_navigation import activity_frame
 from autohsr.tests.test_daily_event_pages import _odyssey
@@ -23,12 +24,14 @@ from autohsr.tests.test_daily_reward_observe import ACCOUNT, _Window, phone, vis
 from autohsr.tests.test_du_team import fixture
 from autohsr.tests.test_task_workflow import condition, recipe, task
 from autohsr.tests.test_workflow_navigation import identified
+from autohsr.vision import Vision
+from autohsr.windows import Geometry
 
 
 class WorkflowNavigationIntegrationTests(unittest.TestCase):
     def run_navigation(self, *, already_open=False, late_loss=False, target='mail', version='4.6.0',
                        start_in_list=False, late_version=False, from_odyssey=False, check_publication_lock=False,
-                       lose_focus_on_installation_read=False, from_phone=False):
+                       lose_focus_on_installation_read=False, from_phone=False, battlepass_size=None):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -45,6 +48,10 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             pages = (tasks, rewards) if target == 'battlepass_rewards' else (rewards, tasks)
             if from_phone:
                 pages = (identified(fixture('phone_mail_icon')), *pages)
+            if battlepass_size is not None:
+                vision = Vision(.65)
+                pages = tuple(identified(vision.read(cv2.resize(page.image, battlepass_size, interpolation=cv2.INTER_AREA)))
+                              for page in pages)
         elif target in ('odyssey', 'reward_guide'):
             banner = activity_frame()
             banner.tokens.append(ACCOUNT)
@@ -70,6 +77,9 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 yield pages[-1] if already_open else pages[min(len(sent) + start_in_list, len(pages) - 1)]
 
         window = _Window(frames())
+        if battlepass_size is not None:
+            window.geometry = Geometry(0, 0, *battlepass_size)
+            window.guard.return_value = window.geometry
         previous = Runner._save_run_report
         native_replace = Path.replace
         installation_held = []
@@ -122,7 +132,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                                    steps=[dict(id='verified', type='wait', seconds=0)]))
             workflow.write_text(json.dumps(document, ensure_ascii=False), encoding='utf-8')
             user32 = SimpleNamespace(GetAsyncKeyState=Mock(return_value=0), SendInput=Mock(side_effect=native_send),
-                                     GetSystemMetrics=Mock(side_effect={76: 0, 77: 0, 78: 1920, 79: 1080}.__getitem__))
+                                     GetSystemMetrics=Mock(side_effect={76: 0, 77: 0, 78: window.geometry.width,
+                                                                        79: window.geometry.height}.__getitem__))
             for name, value in (
                 ('autohsr.app.ROOT', root),
                 ('autohsr.task_workflow_run.ROOT', root),
@@ -213,6 +224,25 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertEqual(native['workflow_navigation']['actions'], [])
         self.assertFalse(native['workflow_navigation']['page_verified'])
         self.assertNotIn('page_verified', steps[0]['facts'])
+
+    def test_small_battlepass_formal_workflow_switches_when_the_primary_template_misses(self):
+        def primary_misses(scene, kind):
+            self.assertIsNone(battlepass_tab(scene, kind))
+            return None
+
+        for size, target, expected_x in (((960, 540), 'battlepass_tasks', .50),
+                                          ((1280, 720), 'battlepass_rewards', .45)):
+            with self.subTest(size=size, target=target), patch('autohsr.workflow_navigation.battlepass_tab',
+                                                             side_effect=primary_misses) as primary:
+                sent, steps, native = self.run_navigation(target=target, battlepass_size=size,
+                                                          check_publication_lock=True)
+                primary.assert_called()
+                self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)])
+                self.assertAlmostEqual(self.clicks[0][0], expected_x, delta=.004)
+                self.assertAlmostEqual(self.clicks[0][1], .059, delta=.004)
+                self.assertTrue(steps[0]['facts']['page_verified'])
+                [action] = native['workflow_navigation']['actions']
+                self.assertEqual((action['input_status'], action['destination_page']), ('sent', target))
 
     def test_messages_uses_one_world_input_and_no_input_when_already_open(self):
         for already_open, actions in ((False, 1), (True, 0)):

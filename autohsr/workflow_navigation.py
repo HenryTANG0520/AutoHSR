@@ -29,6 +29,7 @@ from .task_workflow import (ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES, 
                             VISA_CHARACTERS_PAGE, WORKFLOW_NAVIGATION_TARGETS)
 from .team_calibration_pages import calibration_overlay
 from .vision import helper_overlay
+from .workflow_battlepass_tabs import small_battlepass_tab, small_selection_agrees
 from .workflows import DailyWorkflow, TITLE
 
 
@@ -193,8 +194,12 @@ class WorkflowNavigation:
         self._control()
 
     def _page(self, scene):
-        return classify_page(scene, self.confidence, self.daily,
+        page = classify_page(scene, self.confidence, self.daily,
                              battlepass_subpages=self.target in BATTLEPASS_WORKFLOW_PAGES)
+        if (page in BATTLEPASS_WORKFLOW_PAGES
+                and not small_selection_agrees(scene.image, page.removeprefix('battlepass_'))):
+            return None
+        return page
 
     def _phone_control(self, scene, page):
         low = trusted(scene, COLLECTION_FLOOR)
@@ -275,7 +280,10 @@ class WorkflowNavigation:
                 token = self._phone_control(frame.scene, 'battlepass')
                 return _Action('open_battlepass', BATTLEPASS_WORKFLOW_PAGES, token) if token else None
             if page in BATTLEPASS_WORKFLOW_PAGES:
-                tab = battlepass_tab(trusted(frame.scene, self.confidence), self.target.removeprefix('battlepass_'))
+                kind = self.target.removeprefix('battlepass_')
+                tab = battlepass_tab(trusted(frame.scene, self.confidence), kind)
+                if tab is None:
+                    tab = small_battlepass_tab(frame.image, kind)
                 return _Action('open_' + self.target, (self.target,), tab) if tab else None
             return None
         if page == 'world':

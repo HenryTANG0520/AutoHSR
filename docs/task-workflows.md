@@ -43,7 +43,9 @@
 
 任务流的「切换到游戏页面」可选「无名勋礼 · 奖励」`battlepass_rewards` 或「无名勋礼 · 任务」`battlepass_tasks`。泛目标 `battlepass` 仍接受已打开的任一页。两个明确目标支持简中 4.6.0，须从已核实的手机或勋礼页开始。从手机打开勋礼后先核对实际落在哪一页。只有需要切换时，才点两帧一致的目标页签一次。已在所选页时零输入。报告中的 `target`、`source_page`、`destination_page` 区分两页。
 
-离线验证复用了 10 月 24–25 日的脱敏历史帧，覆盖本周、本期、可领和已领取版式，并以历史奖励弹窗做反例。正式 CLI 的两向切换及从手机进入使用假 Win32 和合成账号。四个 1920×1080 页签样本均通过模板复读，缩到 960×540 时均未匹配，1280×720 仅本期任务样本匹配。页签未匹配时停在当前页，原生小窗口和当前客户端到页仍待实机验证。[任务页样本](../autohsr/tests/fixtures/du_runtime/bp_tasks_claimable.json) · [本期任务样本](../autohsr/tests/fixtures/du_runtime/bp_period_settled.json) · [奖励页样本](../autohsr/tests/fixtures/du_runtime/bp_rewards_claimable.json) · [模板来源](../assets/ATTRIBUTION.md)
+在 960×540 和 1280×720 客户区，两个明确目标额外核对当前页的白色选中线，并确认另一页签没有选中线。原模板优先。原匹配失败时，按基准图中的裁片位置将同一模板对齐缩小，再在当前页签局部用原有 `0.94` 门限匹配。标题、版式、选中线或目标图标的证据冲突时停止导航。
+
+离线复读了 10 月 24–25 日的 9 张勋礼历史帧和 2 张奖励弹窗，以两种插值缩到上述两档尺寸。36 组页签正例均通过，8 组弹窗均被拦截。遮挡、相邻图标和错选中线另作对照。正式 CLI 在两档尺寸以假 Win32 和合成账号各验证一批页签点击及双帧到达。历史帧缩放和原生小窗口的渲染条件有差异，当前客户端的实际小窗口切换仍待验证。[任务页样本](../autohsr/tests/fixtures/du_runtime/bp_tasks_claimable.json) · [本期任务样本](../autohsr/tests/fixtures/du_runtime/bp_period_settled.json) · [奖励页样本](../autohsr/tests/fixtures/du_runtime/bp_rewards_claimable.json) · [模板来源](../assets/ATTRIBUTION.md)
 
 ### 漫游签证角色展示
 

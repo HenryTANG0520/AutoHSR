@@ -20,6 +20,7 @@ from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, phone, visa_
 from autohsr.tests.test_daily_visa_pages import small_visa
 from autohsr.tests.test_du_team import fixture
 from autohsr.vision import Vision
+from autohsr.workflow_battlepass_tabs import small_battlepass_tab
 from autohsr.workflow_navigation import OPERATION, WorkflowNavigation
 
 
@@ -271,6 +272,62 @@ class WorkflowNavigationTests(unittest.TestCase):
                 [action] = context.report.workflow_navigation['actions']
                 self.assertEqual((action['input_status'], action['destination_status']), ('sent', 'unknown'))
                 self.assertFalse(context.report.workflow_navigation['page_verified'])
+
+    def test_small_battlepass_matches_both_inactive_glyphs_with_the_original_threshold(self):
+        nav = Context('battlepass_tasks', ()).workflow_navigation
+        for name, selected, target, expected_x in (
+                ('bp_tasks_claimable', 'tasks', 'rewards', .45), ('bp_period_settled', 'tasks', 'rewards', .45),
+                ('bp_rewards_claimable', 'rewards', 'tasks', .50), ('bp_rewards_settled', 'rewards', 'tasks', .50)):
+            frame = fixture(name)
+            for width, height in ((960, 540), (1280, 720)):
+                for method in (cv2.INTER_AREA, cv2.INTER_LINEAR):
+                    with self.subTest(name=name, width=width, method=method):
+                        image = cv2.resize(frame.image, (width, height), interpolation=method)
+                        self.assertEqual(nav._page(Scene(frame.tokens, image)), 'battlepass_' + selected)
+                        token = small_battlepass_tab(image, target)
+                        self.assertIsNotNone(token)
+                        self.assertGreaterEqual(token.score, .94)
+                        self.assertAlmostEqual(token.center[0], expected_x, delta=.002)
+                        self.assertIsNone(small_battlepass_tab(image, selected))
+
+    def test_small_battlepass_requires_the_actual_inactive_glyph_and_selected_line(self):
+        original = identified(fixture('bp_rewards_claimable'))
+        for width, height in ((960, 540), (1280, 720)):
+            source = cv2.resize(original.image, (width, height), interpolation=cv2.INTER_AREA)
+            covered, wrong_icon, wrong_line, double_line = (source.copy() for _ in range(4))
+            top, bottom = round(.03 * height), round(.084 * height)
+            left, right = round(.48 * width), round(.52 * width)
+            covered[top:bottom, left:right] = 40
+            # The neighboring slot has a glyph on the same bar but serves a different function.
+            offset = round(.05 * width)
+            wrong_icon[top:bottom, left:right] = source[top:bottom, left + offset:right + offset]
+            top, bottom = round(.093 * height), round(.104 * height)
+            active_left, active_right = round(.43 * width), round(.47 * width)
+            wrong_line[top:bottom, active_left:active_right] = 40
+            double_line[top:bottom, left:right] = source[top:bottom, active_left:active_right]
+            for name, image in (('covered', covered), ('wrong glyph', wrong_icon), ('missing underline', wrong_line),
+                                ('double underline', double_line)):
+                with self.subTest(width=width, name=name):
+                    scene = Scene(original.tokens, image)
+                    context = self._installed_context([scene] * 2, target='battlepass_tasks',
+                                                      geometry=windows.Geometry(0, 0, width, height))
+                    with self.assertRaises(AutomationError):
+                        context.workflow_navigation.run()
+                    self.assertEqual(context.report.workflow_navigation['actions'], [])
+        self.assertEqual(self.sent, [])
+
+    def test_small_battlepass_cannot_confirm_arrival_while_the_old_tab_stays_selected(self):
+        source = identified(fixture('bp_rewards_claimable'))
+        destination = identified(fixture('bp_tasks_claimable'))
+        stale = Scene(destination.tokens, source.image)
+        context = self._installed_context([source, source, *([stale] * 6)], target='battlepass_tasks',
+                                          geometry=windows.Geometry(0, 0, 960, 540))
+        with self.assertRaises(AutomationError):
+            context.workflow_navigation.run()
+        self.assertEqual(self.sent, [_CLICK])
+        [action] = context.report.workflow_navigation['actions']
+        self.assertEqual((action['input_status'], action['destination_status']), ('sent', 'unknown'))
+        self.assertFalse(context.report.workflow_navigation['page_verified'])
 
     def test_phone_mail_real_envelope_then_real_page(self):
         source = phone()
