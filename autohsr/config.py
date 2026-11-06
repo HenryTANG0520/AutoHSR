@@ -194,13 +194,17 @@ class Settings:
         replace_file(temp,path)
 
     @classmethod
-    def load(cls, path: Path = CONFIG_PATH) -> Settings:
-        if not path.exists():
-            return cls()
-        data = json.loads(path.read_text(encoding="utf-8"))
+    def load(cls, path: Path = CONFIG_PATH, *, reward_only: bool = False) -> Settings:
+        exists = path.exists()
+        data = json.loads(path.read_text(encoding="utf-8")) if exists else {}
         unknown = set(data) - set(cls.__dataclass_fields__)
         if unknown:
             raise ValueError(f"配置中存在未知字段：{', '.join(sorted(unknown))}")
         result = cls(**data)
-        result.validate("save")
+        if reward_only:
+            # Inactive tasks must not require their own inputs for recovery.
+            from .recovery import reward_only_settings
+            result = reward_only_settings(result)
+        if exists:
+            result.validate("save")
         return result

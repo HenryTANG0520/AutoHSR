@@ -41,9 +41,13 @@ def write_new(path,data,*,cancel=None):
 
 
 def run(*,imports=(),url_file=None,cache_dir=None,output=None,format='uigf',selected_uid=None,
-        pools=POOLS,max_pages=1000,cancel=None,emit=None,request=None,sleep=None,analysis_only=False):
+        pools=POOLS,max_pages=1000,cancel=None,emit=None,request=None,sleep=None,analysis_only=False,
+        include_details=False):
     emit=emit or (lambda event:None)
-    if type(analysis_only) is not bool or format not in ('uigf','srgf','xlsx'):raise WarpError('记录操作或导出格式无效。')
+    if (type(analysis_only) is not bool or type(include_details) is not bool
+            or format not in ('uigf','srgf','xlsx')):raise WarpError('记录操作或导出格式无效。')
+    if include_details and (not analysis_only or url_file is not None or cache_dir is not None):
+        raise WarpError('跃迁详情仅分析明确选中的本地导入文件。')
     if analysis_only and (output is not None or format!='uigf'):raise WarpError('仅分析不选择导出文件或导出格式。')
     if not analysis_only and output is None:raise WarpError('导出需要新的文件路径。')
     if not isinstance(imports,(tuple,list)) or len(imports)>1000:raise WarpError('最多一次导入1000份记录文件。')
@@ -75,12 +79,15 @@ def run(*,imports=(),url_file=None,cache_dir=None,output=None,format='uigf',sele
     data=export(accounts,format='uigf' if format=='xlsx' else format,selected_uid=selected_uid)
     exported,_=parse(data)
     from .warp_statistics import analyze,public_statistics
-    statistics=analyze(exported,history=False,cancel=cancel)
+    statistics=analyze(exported,history=include_details,cancel=cancel)
     checkpoint(cancel)
     result=dict(status='success',mode='analysis' if analysis_only else 'export',**summary(exported),
                 statistics=public_statistics(statistics),sources=sources,fetch=fetched)
     if analysis_only:
-        emit(dict(type='warp_analysis_finished',**result));return result
+        emit(dict(type='warp_analysis_finished', **result))
+        if include_details:
+            result['details'] = statistics
+        return result
     if format=='xlsx':
         from .warp_xlsx import write_new as write_workbook
         checksum=write_workbook(output,exported,cancel=cancel)

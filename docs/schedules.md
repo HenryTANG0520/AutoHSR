@@ -1,6 +1,6 @@
 # 应用内定时与有限重复
 
-更新日期：2026-10-30。本文记录应用内调度的实现范围与接口。默认关闭；保存计划不等于启用，启用也不登记Windows系统任务。当前GUI尚未接入，不把后端开发视为桌面设置、系统自启或真实无人值守验收。
+2026-11-06 开发版已接「设置 → 工具 → 应用内定时」。默认停用。计划保存只写本地定义，「启用计划」才在当前助手进程内计时。关闭应用后需重新启用。系统自启和真实无人值守仍待适配或验收。
 
 ## 时间、资源和执行边界
 
@@ -66,6 +66,12 @@
 
 互斥分支对各项上限分别取最大值。任务树内最多预留一份日常预算和一个差分批次，含游戏任务的外层重复仍限一次，自动接续同样由现有检查拒绝。三个本地重复、每次最多十步时，整批预览为三十步、零开拓力、零差分局。预览仅核对定义、所选目标和当前设置，导入文件、通知凭据、游戏库存和实际消耗分别由执行入口核对。[整批与拒绝用例](../autohsr/tests/test_schedule_dispatch.py)
 
+## 桌面操作
+
+新建或打开计划，填写目标、北京时间和重复设置。用「保存计划」写入定义，再「预览预算」查看下一时刻和单次触发整批上限。桌面预览同时核对设置及目标依赖版本，启用时重新核对并冻结同一已保存修订。定义保存在当前配置旁的 `schedules.local`。CLI 的日历预览给出未来五次时刻。
+
+「停用计划」取消所选计划的后续触发及其待启动任务。空闲时可停用单个计划。要停止整个控制器，用「停止定时」。它解除本进程的启用项，并请求停止自有任务。等待任务实际退出后才算空闲。桌面显示选中计划最近一次时隙的状态，子报告及通知结果另查记录。
+
 ## CLI：检查、保存、预览与显式计时
 
 下列入口互斥，不能混用游戏、记录、通知或管理员命令。`--config`只允许与`--schedule-run`一起使用；检查／保存／列举／预览不加载游戏配置，也不访问游戏。
@@ -98,11 +104,11 @@
 
 ## 目标、冻结与原生门禁
 
-`target.type=task`仅支持任务树已注册的正式任务：`daily`、`plan`、`differential_universe`、`currency_wars_loop`、`currency_wars_points`、`currency_wars_rewards`、`warp_analysis`及`warp_export`。`params`使用同一任务树协议，不接受任意CLI字符串；组合、条件、有限循环与选中子树通过`target.type=workflow`引用正式任务树JSON，参数详见[任务流程](task-workflows.md)。不接受上游`program / args / trigger_mode / post_action`配置。
+`target.type=task`仅支持任务树已注册的正式任务：`daily`、`plan`、`differential_universe`、`du_rewards`、`currency_wars_loop`、`currency_wars_points`、`currency_wars_rewards`、`warp_analysis`及`warp_export`。`params`使用同一任务树协议，不接受任意CLI字符串；组合、条件、有限循环与选中子树通过`target.type=workflow`引用正式任务树JSON，参数详见[任务流程](task-workflows.md)。不接受上游`program / args / trigger_mode / post_action`配置。
 
 启用时冻结完整设置、计划修订、工作流原件哈希、所选子树及预算预留、本地导入依赖哈希、已选通知配置版本；本地路径及完整清单保存在私有回执。CLI工作流目标的相对路径以当前运行版ROOT为基准，工作流内部的相对导入仍以工作流所在目录解析，不随`--schedule-store-dir`移动。
 
-每次创建子Runner前重新核对工作流与依赖原件、通知凭据版本及冻结清单哈希；有变化就停止该时隙，不悄悄采用新文件、新地址或新设置。运行期间修改普通配置文件不会替换已冻结设置；需要停止、核对后重新明确启用。通知只包装最外层任务树，原游戏输入释放后才发送，通知结果不改变原游戏报告，详见[通知说明](notifications.md)。
+每次创建子 Runner 前重新核对工作流、依赖、通知配置版本和冻结清单。实际执行前在 Windows 持有工作流原件及各依赖的只读句柄并再核对一次，原生执行结束后释放。工作流或依赖已改、缺失或被可写方式占用时，本次尝试记为目标未核实并结束该时隙。运行期间采用启用时冻结的设置，更换设置需停止、重新核对和启用。通知只包装最外层任务树，原游戏输入释放后才发送，原游戏报告保留，详见[通知说明](notifications.md)。
 
 含游戏任务的目标仅允许一次调度执行；其内部局数、日常与周常组合仍受任务树静态预留、原生资源账本及跨步骤账号协议约束。`resume / resume_active / resume_weekly_currency=true`首版均拒绝自动接续，旧局须回到手动原生入口核对。结构检查与只读预览不读取这些来源，不能替代启用时的完整冻结检查。
 
@@ -166,7 +172,7 @@
 | `schedule_result / schedule_finished` | 单次结果／本时隙终态，status与原游戏结果分开；含completed和requested，finished可另含稳定reason |
 | `schedule_child` | 只保留白名单child_type、布尔paused、允许的status／game_status及完成／当前／请求／通知受理计数，并附本时隙id／revision／slot；未知事件类型直接丢弃 |
 
-子finished不重复当作控制器结束；原始子事件须经允许字段投影，原日志、完整报告、UID、通知profile／provider、路径、来源哈希和manifest均不过公共事件。`child_type`可区分游戏进展和notification_phase／result／summary；通知的accepted／rejected／unknown／cancelled／filtered／partial单独呈现，`game_status`只允许原四种游戏结果，计数须为0～1000000的整数。调度器本身可以继续等待下一个时刻，UI须区分本时隙完成、当前已空闲与整个调度器已停止。当前GUI控件尚未接入，不能把这些API表述为已有设置页或按钮。
+子finished不重复当作控制器结束；原始子事件须经允许字段投影，原日志、完整报告、UID、通知profile／provider、路径、来源哈希和manifest均不过公共事件。`child_type`可区分游戏进展和notification_phase／result／summary；通知的accepted／rejected／unknown／cancelled／filtered／partial单独呈现，`game_status`只允许原四种游戏结果，计数须为0～1000000的整数。调度器本身可以继续等待下一个时刻，UI须区分本时隙完成、当前已空闲与整个调度器已停止。桌面调度由窗口轮询驱动。最后一个启用计划被停用后，仍继续核对活动或待执行任务的超时和退出状态。
 
 ## 固定上游参考与区别
 

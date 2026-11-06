@@ -3,6 +3,7 @@
 References March7thAssistant WarpExport.data_to_html, pinned 7cf6c6b.
 UIDs and five-star names in analyze() are local UI data, never model payloads.
 """
+from collections import Counter
 from copy import deepcopy
 from .warp_records import POOLS,merge
 
@@ -36,12 +37,21 @@ def analyze(accounts,*,history=True,cancel=None):
             bounded_intervals=0,bounded_interval_sum=0,mean_bounded_interval_records=None,
             time_order_consistent=True,first_time=None,last_time=None,range_start=None,range_end=None)
             for p in POOLS}
+        item_types = {key: Counter() for key in pools} if history else {}
         if history:
-            for pool in pools.values():pool['five_star_history']=[]
+            for pool in pools.values():
+                pool['five_star_history'] = []
         for row,position in positions(value['list']):
             if position['index']%256==1:checkpoint(cancel)
-            pool=pools[row['gacha_type']];rank=row.get('rank_type','unknown');pool['records']+=1
+            pool_key = row['gacha_type']
+            pool = pools[pool_key]
+            rank = row.get('rank_type', 'unknown')
+            pool['records'] += 1
             pool['rank_counts'][rank]+=1
+            if history:
+                item_type = row.get('item_type', '')
+                item_type = item_type if item_type.strip() else None
+                item_types[pool_key][item_type] += 1
             if 'count' not in row:pool['item_quantity_sum']=None
             elif pool['item_quantity_sum'] is not None:pool['item_quantity_sum']+=int(row['count'])
             timestamp=row['time']
@@ -54,18 +64,23 @@ def analyze(accounts,*,history=True,cancel=None):
             if rank=='5':
                 if distance is not None:
                     pool['bounded_intervals']+=1;pool['bounded_interval_sum']+=distance
-                if history:pool['five_star_history'].append(dict(id=row['id'],name=row.get('name'),time=timestamp,
-                    observed_span_records=position['span_records'],bounded_interval_records=distance,
-                    scope=position['scope']))
+                if history:
+                    pool['five_star_history'].append(dict(id=row['id'], name=row.get('name'), time=timestamp,
+                        item_type=item_type, pool_index=position['pool_index'],
+                        observed_span_records=position['span_records'], bounded_interval_records=distance,
+                        scope=position['scope']))
                 pool['observed_tail_records']=0;pool['known_tail_records']=0
             else:
                 pool['observed_tail_records']=position['span_records'];pool['known_tail_records']=distance
-        for pool in pools.values():
+        for pool_key, pool in pools.items():
             pool['rank_shares']={rank:count/pool['records'] if pool['records'] else None
                                  for rank,count in pool['rank_counts'].items()}
             intervals=pool['bounded_intervals']
             if intervals:pool['mean_bounded_interval_records']=pool['bounded_interval_sum']/intervals
             pool.pop('bounded_interval_sum')
+            if history:
+                labels = sorted(item_types[pool_key], key=lambda label: (label is None, label or ''))
+                pool['item_type_counts'] = [dict(item_type=label, records=item_types[pool_key][label]) for label in labels]
         result.append(dict(uid=value['uid'],timezone=value['timezone'],lang=value.get('lang'),index=ordinal,pools=pools))
     checkpoint(cancel)
     return dict(scope='imported_record_window',history_complete=False,accounts=result)

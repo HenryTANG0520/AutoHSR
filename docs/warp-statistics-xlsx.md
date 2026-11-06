@@ -1,6 +1,6 @@
 # 跃迁记录窗口统计与Excel导出
 
-更新日期：2026-10-30。新增独立分析入口和Excel阅读表，保留已有UIGF／SRGF交换、读取范围、原件保留及取消语义。GUI工具箱、图形呈现与真实账号路径仍待接入和验证；本轮只使用虚构资料，不控制游戏。
+2026-11-06 开发版可从「设置 → 工具 → 跃迁记录」导入本地 JSON。选账号及卡池查看窗口统计和分页五星明细。将格式选为 Excel，再用「导出记录…」保存到新路径。分析只读取原件，导出前核对原件变化和目标冲突。真实账号记录路径及 Excel 桌面显示仍待验收。[格式与入口](warp-records.md)
 
 ## 统计的是记录窗口
 
@@ -14,6 +14,8 @@
 
 例如同池星级为`3,5,4,3,5,未知,5,3,5,3`：首个五星前缀不计入均值，缺失星级后的下一段也不计入；剩下两段记录数为3和2，均值2.5，已知尾段为1。若第一条`count=3`、其余均为1，物品数量合计是12，记录数仍为10。这些都是虚构记录窗口的计算结果。
 
+2026-11-06 对照三月七主线 `cf5b5b6`。分池统计显示五星名称及观察段长度，Excel显示原物品类别和池内计数。两份相关源码的 Git blob 与已记录的 `7cf6c6b` 固定快照相同。AutoHSR 本地详情沿用同一批已合并记录和已有窗口区间，补充原物品类别的分组及五星的池内记录序号。[三月七分池统计](https://github.com/moesnow/March7thAssistant/blob/cf5b5b6aec57624cf76e00d5d156c8ee91f62310/app/tools/warp_export.py#L161-L214) · [三月七Excel](https://github.com/moesnow/March7thAssistant/blob/cf5b5b6aec57624cf76e00d5d156c8ee91f62310/app/warp_interface.py#L221-L323)
+
 ## CLI和保存
 
 以下仅为入口说明，没有在本轮读取真实玩家资料：
@@ -21,6 +23,8 @@
 ```powershell
 # 只输出匿名窗口统计，不生成文件，也不加载游戏设置
 .\.venv\Scripts\python.exe -m autohsr --warp-analysis --warp-import .\runs\warp\combined.json
+# 从本地导入读取具体账号和分池五星历史，结果仅输出到当前命令
+.\.venv\Scripts\python.exe -m autohsr --warp-analysis --warp-details --warp-import .\runs\warp\combined.json
 # Excel阅读表，全部账号分别成表；原JSON保留
 .\.venv\Scripts\python.exe -m autohsr --warp-records --warp-import .\runs\warp\combined.json --warp-format xlsx --warp-output .\runs\warp\records.xlsx
 # 只导出明确选择的账号；虚构UID示例
@@ -28,6 +32,8 @@
 ```
 
 只分析可以使用同一套明确链接／缓存读取来源及卡池、页数范围；只分析不接受`--warp-output`或`--warp-format`，不落盘导出。`--warp-analysis`和`--warp-records`互斥，均在游戏配置、GUI和Runner之前分派。它们不会启动、检测或控制游戏，不新增定时任务。
+
+显式指定 `--warp-details` 时只接受已选本地 JSON。详情包含账号和记录原字段，供本地界面或命令输出使用。可用 `--warp-uid` 限定明确账号。普通分析和任务流继续使用匿名统计。
 
 Excel使用`.xlsx`新文件，拒绝覆盖。缺少或版本不符的Excel依赖会在读取来源及请求接口前停止，提示运行项目setup；JSON交换和只分析仍不加载Excel引擎。文件按原[导入／获取协议](warp-records.md)完成校验、合并及明确账号选择后发布。
 
@@ -50,15 +56,19 @@ UID、记录ID等保持文本，避免Excel数字精度截断；显示名称等�
 
 ## 界面对接
 
-`warp_statistics.analyze(accounts, history=True, cancel=None)`为本地完整分析，返回每账号的UID、时区、语言及六池统计；`five_star_history`含已读名字、时间、记录ID、观察跨度、可用区间和窗口前缀／未知标记。它只供本地界面使用，不发给模型或日志。`positions(rows)`为已经格式核验且按数字ID排序的记录提供逐行注释。
+`warp_statistics.analyze(accounts, history=True, cancel=None)`为本地完整分析，返回每账号的UID、时区、语言及六池统计；`five_star_history`含已读名字、时间、记录ID、观察跨度、可用区间和窗口前缀／未知标记。明细供本地界面和显式指定的 CLI 输出使用。模型与公共事件沿用匿名统计。`positions(rows)`为已经格式核验且按数字ID排序的记录提供逐行注释。
 
-`public_statistics()`通过白名单生成匿名快照，只保留账号序号、计数、占比、区间与时序布尔值，不带UID、姓名、记录ID、具体时间、路径或鉴权。GUI需将姓名当作普通文字显示，不能将其拼成可执行HTML。
+`warp_service.run(analysis_only=True, include_details=True, imports=..., selected_uid=...)` 在调用返回值的 `details` 提供相同的本地数据。每池的 `item_type_counts` 按原 `item_type` 字符串分组，缺失或空白归 `null`，空池为 `[]`。计数单位为记录。五星行包含 `item_type`、`pool_index`、`observed_span_records`、`bounded_interval_records` 和 `scope`。范围值 `window_prefix`、`unknown_rank` 和 `observed` 分别表示窗口前缀、区间有未知星级和有可用观察区间。匿名完成事件与默认分析返回结构一致。
+
+`public_statistics()`通过白名单生成匿名快照，只保留账号序号、计数、占比、区间与时序布尔值，不带UID、姓名、记录ID、具体时间、路径或鉴权。桌面以普通文本显示本地姓名。
 
 原`warp_service.run`增加`analysis_only=False`与可选`output=None`。只分析必须不提供输出和导出格式，完成事件为`warp_analysis_finished`；导出完成事件仍为`warp_finished`且只在文件发布后发出。两者的公共结果均增加匿名`statistics`，原`accounts`数量、`records`及`pools`字段保留。格式新增`xlsx`，原UIGF／SRGF数据结构不变。只分析返回的`mode='analysis'`不得显示“文件已保存”，Excel也不能标为UIGF交换文件。
 
-`scope='imported_record_window'`、`history_complete=false`在所有统计结果中保留。界面显示“记录窗口统计”“未知”“首段不完整”等对应状态，不将其改成实时账号保底、概率预测或完整历史完成。
+`scope='imported_record_window'`、`history_complete=false`在所有统计结果中保留。桌面显示导入窗口的统计及明细状态。窗口前缀和未知星级各有标记，当前保底、概率和完整历史均无法从此结果核实。
 
 ## 验证边界
+
+2026-11-06 本地详情、标准导出、CLI、任务树及定时邻接共 112 项通过。另用正式进程执行匿名分析、本地详情、明确选择空账号、拒绝混用来源及 XLSX 导出五种场景。双账号、两种导入格式及重叠记录复用了已有合并，数字长 ID 保持字符串。核对角色和光锥原类别、未知星级、账号选择、匿名事件和原文件字节。
 
 [14项专项](../autohsr/tests/test_warp_statistics_xlsx.py)通过`runs/warp-xlsx-final-scope.log`（0.226秒），覆盖首段／未知、空记录、两账号六池、数字排序与时间逆序、记录数／物品数量区分、匿名事件快照、Excel真实服务和CLI、源文字、ID精度、颜色／冻结／筛选、错误／中途取消／写盘失败的原件及临时文件保留契约。除openpyxl重新读取外，另直接核对OOXML类型、无公式节点及无外部链接／宏关系。
 

@@ -329,7 +329,7 @@ def main(argv: list[str] | None = None) -> int:
         gui_main(args.config, admin_task=True) if args.admin_task else gui_main(args.config)
         return 0
     try:
-        settings = Settings.load(args.config)
+        settings = Settings.load(args.config, reward_only=True) if args.reward_only else Settings.load(args.config)
         from .challenge_cli import apply_overrides as apply_challenge_overrides
         apply_challenge_overrides(args, settings)
         from .notify_cli import override as override_notify
@@ -398,9 +398,6 @@ def main(argv: list[str] | None = None) -> int:
             settings.differential_universe_daily_from = args.du_daily_from
         if args.scan_dungeons:
             settings.dungeon_category = args.category or "auto"
-        if args.reward_only:
-            from .recovery import reward_only_settings
-            settings = reward_only_settings(settings)
         from .redemption_cli import apply_overrides as apply_redemption_overrides
         apply_redemption_overrides(args, parser, settings)
         challenge_observer = args.challenge_result or args.challenge_preset_observe

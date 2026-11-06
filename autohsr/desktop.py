@@ -66,6 +66,7 @@ def build_window(ui, task_names, server_names, *, scale=None):
     ui.server_combo = None
     _home(ui, task_names)
     _tasks(ui)
+    _daily_view(ui)
     ui.mode_decks = {}
     from .desktop_modes import build_currency, build_universe
     build_universe(ui)
@@ -85,6 +86,9 @@ def _home(ui, names):
     ui.table = TaskBoard(page, s, ui, names)
     ui.table.grid(row=1, column=0, sticky="nsew")
     page.rowconfigure(1, weight=1, minsize=d(250))
+    ui.assignment_button = ttk.Button(page, text='持续委托', style='Panel.TButton',
+                                      command=lambda: ui._show_daily_panel('assignments_only'))
+    ui.assignment_button.grid(row=2, column=0, sticky='w', pady=(d(4), 0))
     recovery = t.wrapped_label(page, textvariable=ui.recovery_hint, style="Hint.TLabel")
     recovery.grid(row=3, column=0, sticky="ew", pady=(d(8), 0))
     token = ui.recovery_hint.trace_add("write", lambda *_: recovery.grid() if ui.recovery_hint.get() else recovery.grid_remove())
@@ -120,6 +124,9 @@ def _tasks(ui):
         button.grid(row=row, column=0, sticky="nsew", pady=(0, d(10)))
         ui.category_buttons[category.label] = button
         ui.setting_controls.append(button)
+    ui.build_target_button = ttk.Button(menu, text='培养目标', style='Panel.TButton',
+                                        command=lambda: ui._show_daily_panel('build_target_preview'))
+    ui.build_target_button.grid(row=len(CATEGORY_NAVIGATION), column=0, sticky='ew')
     token = ui.dungeon_browse_category.trace_add("write", selected)
     menu.bind("<Destroy>", lambda e: ui.dungeon_browse_category.trace_remove("write", token) if e.widget is menu else None, add="+")
     selected()
@@ -130,6 +137,21 @@ def _tasks(ui):
     specific = ttk.Frame(content, style="Card.TFrame")
     specific.grid(row=0, column=0, sticky="nsew")
     ui._build_battle_fields(specific)
+
+
+def _daily_view(ui):
+    from .desktop_daily import DailyPanel
+
+    ui.daily_view = ttk.Frame(ui.guide.content)
+    ui.daily_view.columnconfigure(0, weight=1)
+    ui.daily_view.rowconfigure(1, weight=1)
+    ui.daily_back_button = ttk.Button(ui.daily_view, text='返回', style='Panel.TButton',
+                                       command=ui._leave_daily_panel)
+    ui.daily_back_button.grid(row=0, column=0, sticky='e', pady=(0, round(6 * ui.ui_scale)))
+    ui.daily_panel = DailyPanel(ui.daily_view, ui, start=ui._run_daily_panel)
+    ui.daily_panel.grid(row=1, column=0, sticky='nsew')
+    ui.daily_view.grid(row=0, column=0, sticky='nsew')
+    ui.daily_view.grid_remove()
 
 
 def _logs(ui):

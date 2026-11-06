@@ -86,6 +86,95 @@ class StatisticsTests(unittest.TestCase):
         with self.assertRaises(WarpStopped):analyze([sample()],cancel=lambda:True)
 
 
+class DetailedAnalysisTests(unittest.TestCase):
+    def test_details_reuse_deduplication_and_observed_positions_without_entering_public_events(self):
+        base = 9007199254740993000
+        records = [
+            dict(row(base+1, '3', '1', count='3'), item_type='光锥'),
+            dict(row(base+2, '5', '1'), item_type='角色'),
+            dict(row(base+3, '5', '12'), item_type='光锥'),
+            row(base+4, None, '1'),
+            dict(row(base+5, '5', '1'), item_type='光锥'),
+            dict(row(base+6, '4', '1'), item_type='  '),
+            dict(row(base+7, '5', '1', name='虚构隐私名'), item_type='角色'),
+        ]
+        records[3].pop('item_type')
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            first, second = root/'earlier.json', root/'later.json'
+            first.write_text(json.dumps(export([group(records[:4])], format='srgf')), 'utf8')
+            other = dict(group([dict(row(1, '5'), item_type='Light Cone')], uid='200000000'), lang='en-us')
+            second.write_text(json.dumps(export([group(records[2:]), other])), 'utf8')
+            originals = [path.read_bytes() for path in (first, second)]
+            events = []
+            public = run(imports=[first, second], analysis_only=True)
+            result = run(imports=[first, second], analysis_only=True, include_details=True, emit=events.append)
+            detail = result.pop('details')
+            self.assertEqual(result, public)
+            self.assertEqual(events[-1], dict(type='warp_analysis_finished', **public))
+            self.assertEqual([a['uid'] for a in detail['accounts']], ['100000000', '200000000'])
+            first_account, second_account = detail['accounts']
+            pool = first_account['pools']['1']
+            self.assertEqual(pool['records'], 6)
+            self.assertEqual(pool['item_quantity_sum'], 8)
+            self.assertEqual(pool['item_type_counts'],
+                             [dict(item_type='光锥', records=2), dict(item_type='角色', records=2),
+                              dict(item_type=None, records=2)])
+            history = pool['five_star_history']
+            self.assertEqual([r['id'] for r in history], [str(base+i) for i in (2, 5, 7)])
+            self.assertEqual([r['pool_index'] for r in history], [2, 4, 6])
+            self.assertEqual([r['item_type'] for r in history], ['角色', '光锥', '角色'])
+            self.assertEqual([r['bounded_interval_records'] for r in history], [None, None, 2])
+            self.assertEqual([r['scope'] for r in history], ['window_prefix', 'unknown_rank', 'observed'])
+            self.assertEqual(first_account['pools']['12']['five_star_history'][0]['pool_index'], 1)
+            self.assertEqual(second_account['pools']['11']['item_type_counts'],
+                             [dict(item_type='Light Cone', records=1)])
+            self.assertFalse(detail['history_complete'])
+            wire = json.dumps([result, events], ensure_ascii=False)
+            for private in ('100000000', '200000000', '虚构隐私名', 'Light Cone', str(base+7), '2026-10-29'):
+                self.assertNotIn(private, wire)
+            self.assertEqual(set(root.iterdir()), {first, second})
+            self.assertEqual([path.read_bytes() for path in (first, second)], originals)
+
+    def test_formal_local_cli_selects_the_requested_account_without_export(self):
+        from autohsr.__main__ import main
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root/'combined.json'
+            source.write_text(json.dumps(export([sample(), group([], uid='200000000')])), 'utf8')
+            original = source.read_bytes()
+            out = io.StringIO()
+            with patch('autohsr.config.Settings.load', side_effect=AssertionError('no game settings')), \
+                 patch('autohsr.warp_service.fetch', side_effect=AssertionError('no remote fetch')), \
+                 redirect_stdout(out):
+                self.assertEqual(main(['--warp-analysis', '--warp-details', '--warp-import', str(source),
+                                       '--warp-uid', '200000000']), 0)
+            result = json.loads(out.getvalue())
+            self.assertEqual(result['mode'], 'analysis')
+            self.assertEqual(result['records'], 0)
+            account, = result['details']['accounts']
+            self.assertEqual(account['uid'], '200000000')
+            self.assertTrue(all(pool['five_star_history'] == [] and pool['item_type_counts'] == []
+                                for pool in account['pools'].values()))
+            self.assertNotIn('output_sha256', result)
+            self.assertEqual(list(root.iterdir()), [source])
+            self.assertEqual(source.read_bytes(), original)
+
+    def test_detail_scope_rejects_remote_inputs_before_opening_the_files(self):
+        from autohsr.__main__ import main
+
+        arguments = dict(imports=['input.json'], analysis_only=True, include_details=True)
+        with patch.object(Path, 'open', side_effect=AssertionError('scope checked before reading')):
+            for options in (dict(url_file='private.txt'), dict(cache_dir='private'), dict(analysis_only=False)):
+                with self.subTest(options=options), self.assertRaises(WarpError):
+                    run(**(arguments | options))
+            for args in (['--warp-details'], ['--warp-records', '--warp-details', '--warp-output', 'new.json'],
+                         ['--warp-analysis', '--warp-details', '--warp-url-file', 'private.txt']):
+                with self.subTest(args=args), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                    main(args)
+
+
 class WorkbookTests(unittest.TestCase):
     def test_workbook_styles_ids_unknowns_and_filters_are_valid(self):
         with tempfile.TemporaryDirectory() as folder:

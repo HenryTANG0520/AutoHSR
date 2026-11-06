@@ -33,6 +33,9 @@ class Widget:
     def winfo_ismapped(self):
         return self.mapped
 
+    def winfo_viewable(self):
+        return self.mapped and (self.window or self.master.winfo_viewable())
+
     def winfo_toplevel(self):
         return self if self.window else self.master.winfo_toplevel()
 
@@ -152,6 +155,17 @@ class GuiLayoutTests(unittest.TestCase):
         self.assertEqual(rejected.exception.args[0]['check'], 'content_outside_client')
         self.assertEqual(rejected.exception.args[0]['window'], '.')
         self.assertEqual(self.owners, [])
+
+    def test_mapped_notebook_under_hidden_canvas_is_not_viewable(self):
+        root = root_window()
+        canvas = Widget('.canvas', root, kind='Canvas', mapped=False)
+        notebook = Widget('.canvas.notebook', canvas, kind='TNotebook', y=20, height=1200)
+        self.assertTrue(notebook.winfo_ismapped())
+        check_layout(root, work_area=self.work_area)
+        canvas.mapped = True
+        with self.assertRaises(AssertionError) as rejected:
+            check_layout(root, work_area=self.work_area)
+        self.assertEqual(rejected.exception.args[0]['widget'], str(notebook))
 
     def test_popup_content_uses_own_client_even_when_it_fits_root(self):
         for x, y, width, height in ((490, 120, 30, 30), (120, 290, 30, 30), (99, 120, 30, 30)):

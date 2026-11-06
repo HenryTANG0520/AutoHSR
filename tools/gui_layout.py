@@ -61,7 +61,7 @@ def check_layout(root, *, work_area):
                 walk(child, child)
                 continue
 
-            if child.winfo_ismapped():
+            if child.winfo_viewable():
                 left, top, right, bottom = _client_rect(child)
                 bounds = _client_rect(window)
                 # Preserve the original two-pixel right/bottom rounding margin.

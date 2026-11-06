@@ -374,6 +374,29 @@ def main():
                       not ui.pause_button.winfo_ismapped() and not ui.stop_button.winfo_ismapped())
                 ImageGrab.grab(window=root.winfo_id()).save(OUT / ('page-' + key + '.png'))
             if PACKAGE == 'autohsr':
+                previous_tasks = {key: value.get() for key, value in ui.tasks.items()}
+                for value in ui.tasks.values():
+                    value.set(False)
+                ui.redemption_panel.draft['enabled'].set(True)
+                ui._show_page('home')
+                check('redemption_alone_is_visible_in_daily_plan',
+                      not ui.start_button.instate(('disabled',)) and '兑换码' in ui.daily_caption.get())
+                with patch('autohsr.plan_runner.PlanRunner', FakeRunner):
+                    ui.start_button.invoke()
+                    pump(root, lambda: ui.runner is not None)
+                    fake_plan = ui.runner
+                    scoped = fake_plan.settings
+                    check('redemption_alone_reaches_native_plan_snapshot',
+                          ui.active_operation == 'plan' and scoped.redemption_enabled and
+                          not any(getattr(scoped, key) for key in ui.tasks))
+                    ui._stop()
+                    pump(root, lambda: not ui.busy)
+                    FakeRunner.instances.remove(fake_plan)
+                check('redemption_plan_draft_does_not_save', config.read_bytes() == original)
+                ui.redemption_panel.draft['enabled'].set(False)
+                for key, value in previous_tasks.items():
+                    ui.tasks[key].set(value)
+                ui._show_page('settings')
                 from autohsr.admin_launch import AdminLaunchError
                 enabled = dict(exists=True, valid=True, enabled=True, account_is_admin=True)
                 disabled = dict(exists=False, valid=False, enabled=False, account_is_admin=True)

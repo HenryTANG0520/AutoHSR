@@ -1,4 +1,5 @@
 import io
+import json
 import tempfile
 import unittest
 from contextlib import redirect_stdout, redirect_stderr
@@ -61,6 +62,27 @@ class CliContractTests(unittest.TestCase):
                 self.assertFalse(settings.mail)
                 self.assertEqual(runner.call_args.kwargs['operation'], 'reward_only')
             self.assertEqual(config.read_bytes(), original)
+
+    def test_reward_only_ignores_unfilled_redemption_without_changing_saved_settings(self):
+        with tempfile.TemporaryDirectory() as folder:
+            config = Path(folder) / 'config.json'
+            for source in ('manual', 'file'):
+                with self.subTest(source=source):
+                    Settings(redemption_source=source).save(config)
+                    data = json.loads(config.read_text(encoding='utf-8'))
+                    data['redemption_enabled'] = True
+                    config.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+                    original = config.read_bytes()
+                    args = ['--run', '--config', str(config)]
+                    with (patch('autohsr.app.Runner') as runner,
+                          redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO())):
+                        runner.return_value.run.return_value = {'status': 'success'}
+                        self.assertEqual(main(args), 2)
+                        runner.assert_not_called()
+                        self.assertEqual(main([*args, '--reward-only']), 0)
+                        self.assertEqual(runner.call_args.kwargs['operation'], 'reward_only')
+                        self.assertFalse(runner.call_args.args[0].redemption_enabled)
+                    self.assertEqual(config.read_bytes(), original)
 
     def test_recovery_flags_without_run_never_open_gui(self):
         with patch('autohsr.gui.main') as gui, redirect_stderr(io.StringIO()):

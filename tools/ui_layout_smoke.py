@@ -102,6 +102,29 @@ def main():
                                 notebook.select(0)
                             root.update()
                             ImageGrab.grab(window=root.winfo_id()).save(OUT/(page+".png"))
+                    ui._show_page('settings')
+                    ui.settings_shell.choose('tools')
+                    for tool in ui.tools_shelf.panels:
+                        ui.tools_shelf.select(tool)
+                        root.update()
+                        try:
+                            check_layout(root)
+                            if ui.settings_shell.canvas.yview()[1] < 1:
+                                ui.settings_shell.canvas.yview_moveto(1)
+                                root.update()
+                                check_layout(root)
+                        except AssertionError as exc:
+                            raise AssertionError((scale, size, tool, exc.args)) from exc
+                        cases.append(dict(dpi=round(scale*100), size=size, page='tools', tool=tool))
+                    for page, section in (('home', 'assignments_only'), ('tasks', 'build_target_preview')):
+                        ui._show_page(page)
+                        ui._show_daily_panel(section)
+                        root.update()
+                        try:
+                            check_layout(root)
+                        except AssertionError as exc:
+                            raise AssertionError((scale, size, section, exc.args)) from exc
+                        cases.append(dict(dpi=round(scale*100), size=size, page=page, section=section))
                 for size in ("default", "minimum"):
                     root.state("normal")
                     root.geometry(default_geometry if size == "default" else "%dx%d" % root.minsize())
@@ -162,6 +185,7 @@ def main():
                 interactions.append("unrelated_operation_does_not_clear_daily_proof")
                 ui._show_page("differential_universe")
                 expected = ui.start_button.cget("text")
+                ui.settings_shell.choose('game')
                 for page in ("logs", "settings"):
                     ui._show_page(page)
                     assert ui.start_button.cget("text") == expected
@@ -204,8 +228,7 @@ def main():
                 assert config.read_bytes() == original
             finally:
                 ui.closing = True
-                for token in root.tk.splitlist(root.tk.call("after", "info")):
-                    root.after_cancel(token)
+                root.update_idletasks()
                 root.destroy()
     result = dict(game_started=False, config_unchanged=True, reference_font_loaded=True, layout_cases=len(cases), dpi=[100, 150, 200], interactions=interactions)
     (OUT/"result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")

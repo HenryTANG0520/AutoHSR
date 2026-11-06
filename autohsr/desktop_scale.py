@@ -141,6 +141,8 @@ class ResponsiveLayout:
             if value is not None:
                 setattr(ui, key, value)
         ui._show_page(navigation["active_page"])
+        if navigation['daily_section'] is not None:
+            ui._show_daily_panel(navigation['daily_section'], focus=False)
         # An error may display a different page while keeping Start Plan as
         # its original action. Showing that page must not replace the action.
         if ui.action_page != navigation["action_page"]:
@@ -163,8 +165,12 @@ class ResponsiveLayout:
         focus = paths.get(focus_widget(root))
         return_focus = paths.get(getattr(ui, "settings_return_focus", None))
         settings_scroll = ui.settings_shell.canvas.yview()[0]
+        tool_drafts = {name: getattr(ui, name).snapshot_draft()
+                       for name in ('workflow_panel', 'schedule_panel', 'daily_panel')
+                       if hasattr(getattr(ui, name), 'snapshot_draft')}
         navigation = {key: getattr(ui, key, None) for key in
-            ("active_page", "action_page", "last_universe_page", "settings_return_page", "settings_return_action")}
+            ("active_page", "action_page", "last_universe_page", "settings_return_page", "settings_return_action",
+             "daily_section", "settings_return_daily_section")}
         mode_views = {key: deck["shown"] for key, deck in ui.mode_decks.items()}
         cards = deepcopy(ui.table.records), ui.table.offset, ui.table.selected
         browser = (ui.dungeon_search.get(), ui.dungeon_target_caption.get(),
@@ -222,6 +228,8 @@ class ResponsiveLayout:
             from .desktop_modes import show_mode_view
             for key, view in mode_views.items():
                 show_mode_view(ui, key, view)
+            for name, draft in tool_drafts.items():
+                getattr(ui, name).restore_draft(draft)
             self._restore_navigation(navigation)
             ui.settings_return_focus = current.get(return_focus)
             if (ui.table.records, ui.table.offset, ui.table.selected) != cards:
@@ -234,7 +242,8 @@ class ResponsiveLayout:
                 current[path].select(index)
             for path, (value, _, tags) in texts.items():
                 widget = current[path]
-                ui._replace_text(widget, value)
+                if widget.get('1.0', 'end-1c') != value:
+                    ui._replace_text(widget, value)
                 for tag, ranges in tags.items():
                     for start, end in zip(ranges[::2], ranges[1::2]):
                         widget.tag_add(tag, start, end)

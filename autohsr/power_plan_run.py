@@ -260,21 +260,29 @@ class PowerWorkflow:
     def resources(self,state):
         planned=[item for i,item in enumerate(state.items) if state.remaining(i)]
         echo=state.data.get('weekly_echo')
-        if echo is not None and echo['due']:planned.insert(0,state.item(-2))
+        echo_pending=echo is not None and echo['due'] and echo['state'] in ('waiting','active')
+        echo_only=echo_pending and not planned and state.data['fallback'] is None
+        if echo_pending:planned.insert(0,state.item(-2))
         if state.data['fallback'] is not None:planned.append(PowerItem(**dict(state.data['fallback'],count=1)))
         if not planned:return
         probe=next((item for item in planned if item.category=='planar'),
                    next((item for item in planned if not item.dungeon.weekly_limit),planned[0]))
         view,workflow=self.view(state,probe,1)
-        try:scene=workflow._open_calyx()
-        except DungeonQuotaExhausted as error:scene=error.scene
+        try:
+            scene=workflow._open_calyx()
+        except DungeonQuotaExhausted as error:
+            scene=error.scene
+            if echo_only:
+                state.observe_echo(view,scene,0)
+                return
+        finally:
+            self.ctx.last_scene,self.ctx.scene_epoch=view.last_scene,view.scene_epoch
         stamina=workflow._available(scene)
         if probe.category=='planar':
             from .planar_resources import inventory
             immersifiers=inventory(scene)
         else:immersifiers=0
         state.freeze_resources(view,scene,stamina,immersifiers)
-        self.ctx.last_scene,self.ctx.scene_epoch=view.last_scene,view.scene_epoch
 
     def execute(self,state,item,index,requested):
         state.check()

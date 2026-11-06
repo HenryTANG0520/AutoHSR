@@ -5,6 +5,7 @@ Private manifests remain in the ignored schedule store, outside public events.
 """
 from __future__ import annotations
 
+from contextlib import ExitStack, contextmanager, nullcontext
 from copy import deepcopy
 from dataclasses import asdict, replace
 import ctypes as C
@@ -14,7 +15,8 @@ from pathlib import Path
 import re
 
 from .config import ROOT, Settings
-from .schedule_plan import ScheduleError, revision, validate as validate_plan
+from .schedule_plan import ScheduleError, ScheduleSourceUnverified, revision, validate as validate_plan
+from .storage import hold_read_sources
 from .task_workflow import GAME_TASKS, MAX_BYTES, compile_recipe, loads, step_path, task_spec
 
 
@@ -86,6 +88,15 @@ def _fingerprint(path, *, maximum=128 * 1024 * 1024, raw=None):
             raise ScheduleError('计划来源文件缺失或无法读取。') from None
         digest = hasher.hexdigest()
     return dict(path=str(path), sha256=digest, size=size)
+
+
+def _dependency_paths(configured):
+    for node, current, options in configured:
+        if node['task'] not in GAME_TASKS:
+            for path in options.get('imports', []):
+                yield path, 128 * 1024 * 1024
+        if node['task'] in ('daily', 'plan') and current.redemption_enabled and current.redemption_source == 'file':
+            yield current.redemption_catalog, 256 * 1024
 
 
 def _execution_busy():
@@ -165,6 +176,17 @@ class NativeScheduleExecutor:
         """Project one full trigger from an explicit saved definition or draft."""
         plan = validate_plan(plan)
         _, recipe, _, game, configured = self._checked_target(plan)
+        return self._budget(plan, recipe, game, configured)
+
+    def preview_activation(self, plan):
+        """Bind the displayed budget to the sources that would be enabled."""
+        plan = validate_plan(plan)
+        checked = self._checked_target(plan)
+        _, recipe, _, game, configured = checked
+        return self._budget(plan, recipe, game, configured), self._manifest(checked)['sha256']
+
+    @staticmethod
+    def _budget(plan, recipe, game, configured):
         stamina = du_runs = 0
         # The compiled subtree reserves at most one daily and one DU owner
         # per possible path. Distinct enabled owners can only be alternatives.
@@ -182,18 +204,14 @@ class NativeScheduleExecutor:
                                      daily_stamina_max=stamina * count, du_runs_max=du_runs * count))
 
     def freeze(self, plan):
-        target, recipe, source, game, configured = self._checked_target(plan)
+        return self._manifest(self._checked_target(plan))
+
+    def _manifest(self, checked):
+        target, recipe, source, game, configured = checked
         dependencies = {}
-        for node, current, options in configured:
-            if node['task'] not in GAME_TASKS:
-                for path in options.get('imports', []):
-                    entry = _fingerprint(path)
-                    dependencies[entry['path']] = entry
-            if node['task'] in ('daily', 'plan') and current.redemption_enabled and current.redemption_source == 'file':
-                from .config import ROOT
-                path = Path(current.redemption_catalog)
-                entry = _fingerprint(path if path.is_absolute() else ROOT / path, maximum=256 * 1024)
-                dependencies[entry['path']] = entry
+        for path, maximum in _dependency_paths(configured):
+            entry = _fingerprint(path, maximum=maximum)
+            dependencies[entry['path']] = entry
         versions = {}
         if self.settings.notification_enabled:
             from .notify_runtime import NotificationService, validate_settings
@@ -229,7 +247,7 @@ class NativeScheduleExecutor:
                     node['type'] == 'task' and node['task'] in GAME_TASKS for node in _nodes(recipe.steps)):
                 raise ValueError()
             for entry in manifest['dependencies']:
-                if _fingerprint(entry['path']) != entry:
+                if _fingerprint(entry['path'], maximum=entry['size']) != entry:
                     raise ValueError()
             if manifest['notification_versions']:
                 from .notify_runtime import NotificationService
@@ -238,35 +256,59 @@ class NativeScheduleExecutor:
                     service.store.require_version(name, version)
             Settings(**deepcopy(manifest['settings']))
         except Exception:
-            raise ScheduleError('计划目标、输入文件、通知配置或冻结清单发生变化；未执行。') from None
+            raise ScheduleSourceUnverified('计划目标、输入文件、通知配置或冻结清单发生变化；未执行。') from None
         return True
 
+    @contextmanager
+    def _source_scope(self, manifest, bound_paths):
+        paths = tuple(entry['path'] for entry in manifest['dependencies'])
+        if bound_paths is not None and bound_paths != paths:
+            raise ScheduleSourceUnverified('原生任务的输入文件与冻结计划不一致；未执行。')
+        if manifest['source'] is not None:
+            paths = (manifest['source']['path'], *paths)
+        with ExitStack() as handles:
+            try:
+                handles.enter_context(hold_read_sources(paths))
+            except (OSError, RuntimeError):
+                raise ScheduleSourceUnverified('计划来源无法保持只读；未执行。') from None
+            self.revalidate(manifest)
+            yield
+
     def create(self, target, manifest, emit):
+        manifest = deepcopy(manifest)
         self.revalidate(manifest)
         if target != manifest['target']:
             raise ScheduleError('计划目标与启用时冻结的版本不符。')
         settings = Settings(**deepcopy(manifest['settings']))
-        recipe, source = self._recipe(target)
+        try:
+            recipe, source = self._recipe(target)
+        except ScheduleError:
+            raise ScheduleSourceUnverified('计划工作流在创建前无法读取；未执行。') from None
         if source != manifest['source']:
-            raise ScheduleError('计划工作流在创建前发生变化；未执行。')
-        if self.workflow_factory is None:
+            raise ScheduleSourceUnverified('计划工作流在创建前发生变化；未执行。')
+        factory = self.workflow_factory
+        native = factory is None
+        if native:
             from .task_workflow_run import TaskWorkflowRunner
             factory = TaskWorkflowRunner
-        else:
-            factory = self.workflow_factory
         from .notify_runtime import hooks
         child_emit, wrap = hooks(settings, emit, service=self.notification_service)
         # TaskWorkflowRunner owns the existing sequence marker, child input mutex,
         # cross-step account proof, static budget and original child reports.
         runner = factory(settings, recipe.document, child_emit, selected_path=target.get('step_path'),
                          base_dir=recipe.base_dir, root=self.run_root)
-        return VerifiedScheduleRunner(wrap(runner))
+        bound_paths = None
+        if native:
+            configured = ((node, *runner.specs[node['id']]) for node in _nodes(recipe.steps) if node['type'] == 'task')
+            bound_paths = tuple(dict.fromkeys(path for path, _ in _dependency_paths(configured)))
+        return VerifiedScheduleRunner(wrap(runner), source_scope=lambda: self._source_scope(manifest, bound_paths))
 
 
 class VerifiedScheduleRunner:
     """Reference the original saved report without rewriting its facts or bytes."""
-    def __init__(self, runner):
+    def __init__(self, runner, *, source_scope=nullcontext):
         self.runner = runner
+        self._source_scope = source_scope
         self.schedule_source = None
         self.schedule_stopped = False
 
@@ -274,7 +316,8 @@ class VerifiedScheduleRunner:
         return getattr(self.runner, name)
 
     def run(self):
-        report = self.runner.run()
+        with self._source_scope():
+            report = self.runner.run()
         from .run_control import stop_requested
         self.schedule_stopped = stop_requested(self.runner, report)
         value = report.to_dict() if hasattr(report, 'to_dict') else report

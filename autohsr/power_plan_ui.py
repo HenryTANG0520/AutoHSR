@@ -123,6 +123,10 @@ def result_text(report, *, reused=False):
         label='周额度已核实用尽' if state=='complete' else '未到期' if state=='not_due' else '本次预算不足' if state=='limited' else '额度待核对'
         text+=f"\n原周 {echo.get('week','未记录')} · 历战{label}"
         if type(count) is int and 0<=count<=3:text+=f' · 本次 {count} 次'
+    from .desktop_daily import support_result_text
+    support = support_result_text(report)
+    if support:
+        text += '\n' + support
     return text
 
 
@@ -195,6 +199,11 @@ class PowerPlanEditor(ttk.Frame):
                 ('移除',self.remove),('上移',lambda:self.move(-1)),('下移',lambda:self.move(1)))):
             button = ttk.Button(actions, text=title, command=command, style='Panel.TButton')
             button.grid(row=0, column=index, padx=(0,d(8))); self.buttons.append(button); ui.setting_controls.append(button)
+        from .support_ui import show as show_support
+        ui.power_support_button = ttk.Button(actions, text='支援偏好', style='Panel.TButton',
+                                             command=lambda: show_support(ui))
+        ui.power_support_button.grid(row=0, column=len(self.buttons))
+        ui.setting_controls.append(ui.power_support_button)
         echo = SettingRow(self, ui.ui_scale, 6, '历战优先',wide=True)
         field = BooleanSetting(echo.value, ui.echo_enabled); field.grid(row=0,column=0,sticky='nsew')
         ui.echo_enabled_combo = field; ui.setting_controls.append(field)

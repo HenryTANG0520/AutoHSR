@@ -90,7 +90,12 @@ class AutoHSRWindow:
         self.plan_phase = ''
         self._active_weekly_mode = self._weekly_currency_stage = None
         self._f9_local_pressed = False
+        self._selected_tool = 'warp'
+        self.daily_section = None
         self.stop_requested = threading.Event()
+        from .desktop_jobs import NativeRunSlot
+        self._native_run = NativeRunSlot(self.events, self.stop_requested)
+        self._tool_result_handler = None
         self.started_at: float | None = None
         self.elapsed_seconds = self.confirmed_stamina = 0
         self.last_run_dir: Path | None = None
@@ -106,6 +111,9 @@ class AutoHSRWindow:
             self.settings = Settings()
             config_error = f"无法读取配置，已使用默认值。\n{exc}"
         self._config_load_failed = bool(config_error)
+        from .desktop_schedule import DesktopSchedule
+        self.desktop_schedule = DesktopSchedule(self)
+        self.schedule_store = self.desktop_schedule.store
         root.title("AutoHSR · 星穹铁道每日助手")
         root.geometry("1180x820")
         root.minsize(1100, 760)
@@ -132,7 +140,8 @@ class AutoHSRWindow:
         root.bind_all("<FocusOut>", lambda _: setattr(self, "_f9_local_pressed", False), add="+")
         root.bind_all("<F10>", lambda _: self._stop())
         root.bind("<Escape>", self._page_escape, add="+")
-        root.after(100, self._drain)
+        self._drain_job = root.after(100, self._drain)
+        root.bind('<Destroy>', self._cancel_drain, add='+')
         self._log("准备就绪。")
         if not self.settings.allow_stamina_spend:
             self._log("开拓力刷本未授权。", "warning")
@@ -248,7 +257,10 @@ class AutoHSRWindow:
         if name == "settings" and getattr(self, "active_page", "home") != "settings":
             self.settings_return_page = getattr(self, "active_page", "home")
             self.settings_return_action = self.action_page
+            self.settings_return_daily_section = self.daily_section
             self.settings_return_focus = theme.focus_widget(self.root)
+        self.daily_section = None
+        self.daily_view.grid_remove()
         self.active_page = name
         self.input_focus.cancel_if_obsolete()
         self.page_title.set(PAGE_TITLES[name])
@@ -293,11 +305,25 @@ class AutoHSRWindow:
             enabled = not isinstance(focus, ttk.Widget) or not focus.instate(("disabled",))
             if enabled and (in_section(focus) or focus is self.settings_buttons[key] or focus is self.settings_shell.back):
                 return
+        if key == 'tools':
+            self.tools_shelf.focus_entry()
+            return
         target = next((control for control in self.setting_controls
                        if in_section(control) and not control.instate(("disabled",))), self.settings_buttons[key])
         target.focus_set()
 
     def _configure_primary_action(self):
+        if self.daily_section is not None or self._in_tools():
+            if self.daily_section is not None:
+                label, command, enabled = self.daily_panel.primary_label, self.daily_panel.invoke_primary, True
+            else:
+                label, command, enabled = self.tools_shelf.primary_action()
+            self.start_button = self.footer_start_button
+            self.start_button.pack(side='left', padx=(round(8*self.ui_scale), 0))
+            self.start_button.configure(text=label, command=command,
+                                        state='normal' if enabled and not self.busy else 'disabled')
+            self.header.position_plan()
+            return
         currency = getattr(self, "action_page", "home") == "currency_wars"
         differential_universe = getattr(self, "action_page", "home") == "differential_universe"
         deck = self.mode_decks.get(self.active_page)
@@ -316,6 +342,44 @@ class AutoHSRWindow:
         if not currency and not differential_universe and pending and pending.get('resume'):
             self.start_button.configure(text=pending['action'], command=lambda: self._start(run_plan=True, resume_weekly_currency=True))
         self.header.position_plan()
+
+    def _in_tools(self):
+        return (getattr(self, 'active_page', None) == 'settings' and
+                self.settings_tabs.select() == str(self.settings_sections['tools']))
+
+    def _tool_action_changed(self):
+        button = getattr(self, 'footer_start_button', None)
+        if not self._loading and button is not None and button.winfo_exists() and str(button).startswith(str(self.shell) + '.'):
+            self._configure_primary_action()
+
+    _workflow_action_changed = _tool_action_changed
+
+    def _show_daily_panel(self, section, *, focus=True):
+        page = 'home' if section == 'assignments_only' else 'tasks'
+        if self.active_page != page:
+            self._show_page(page)
+        self.daily_section = section
+        self.pages[page].grid_remove()
+        self.daily_panel.show(section)
+        self.daily_view.grid()
+        self.page_title.set('持续委托' if page == 'home' else '培养目标')
+        self._refresh_controls()
+        if focus:
+            target = self.daily_back_button if self.busy else self.start_button
+            self.root.after_idle(target.focus_set)
+
+    def _leave_daily_panel(self):
+        target = self.assignment_button if self.active_page == 'home' else self.build_target_button
+        self._show_page(self.active_page)
+        self.root.after_idle(target.focus_set)
+
+    def _run_daily_panel(self, operation, *, build_target_selection=None):
+        def present(report):
+            self.daily_panel.present(operation, report)
+
+        if operation == 'assignments_only':
+            return self._start_daily_assignment(present)
+        return self._start_build_target(operation, build_target_selection, present)
 
     def _du_action_label(self):
         return ("独立领取红点奖励" if self.du_operation.get() == "独立领奖" else
@@ -363,8 +427,11 @@ class AutoHSRWindow:
             return
         target = getattr(self, "settings_return_page", "home")
         action = getattr(self, "settings_return_action", self.action_page)
+        daily_section = getattr(self, 'settings_return_daily_section', None)
         focus = getattr(self, "settings_return_focus", None)
         self._show_page(target)
+        if daily_section is not None:
+            self._show_daily_panel(daily_section, focus=False)
         if self.action_page != action:
             self.action_page = action
             self._configure_primary_action()
@@ -384,6 +451,9 @@ class AutoHSRWindow:
         # Tcl-created combobox popdowns and separate dialogs own their Escape.
         if not isinstance(event.widget, tk.Misc) or event.widget.winfo_toplevel() is not self.root:
             return
+        if self.daily_section is not None:
+            self._leave_daily_panel()
+            return 'break'
         if self.active_page == "settings":
             self._leave_settings()
             return "break"
@@ -413,15 +483,17 @@ class AutoHSRWindow:
         if pending and pending.get('resume'):
             self.daily_caption.set('日常 · 沿用原报告' if pending['daily_reused'] else '日常 · 本次不执行')
             return
-        count = sum(variable.get() for variable in self.tasks.values())
+        redeem = self.redemption_panel.daily_enabled
+        count = sum(variable.get() for variable in self.tasks.values()) + int(redeem)
+        redemption = ' · 兑换码' if redeem else ''
         if self.power_mode.get() == '体力计划' and self.tasks['battle'].get():
             from .power_plan_ui import preview
-            self.daily_caption.set(f'日常 · {count} 项 · {preview(self)} · 共用 {self.stamina_limit.get()} 开拓力')
+            self.daily_caption.set(f'日常 · {count} 项 · {preview(self)} · 共用 {self.stamina_limit.get()} 开拓力' + redemption)
             return
         from .dungeon_ui import selected_category
         metrics = planned_battle_metrics(selected_category(self), self.challenge_count.get(), self.tasks["battle"].get())
         cost = metrics[1].replace("\n", " · ")+" · "+self.target_name.get() if metrics else "不刷本"
-        self.daily_caption.set(f"日常 · {count} 项" + (f" · {cost}" if cost else ""))
+        self.daily_caption.set(f"日常 · {count} 项" + (f" · {cost}" if cost else "") + redemption)
 
     def _refresh_plan_caption(self):
         self._refresh_daily_caption()
@@ -527,6 +599,8 @@ class AutoHSRWindow:
         self.save_status.set("未保存" if self.dirty else ("已保存" if self.config_path.exists() and not self._config_load_failed else "默认设置"))
         self.save_label.configure(foreground="#dcc391" if self.dirty else "#aeb8c7")
         selected = [label for key, label in TASK_NAMES.items() if self.tasks[key].get()]
+        if self.redemption_panel.daily_enabled:
+            selected.append('兑换码')
         from .dungeon_ui import refresh_count
         refresh_count(self)
         battle = f" · {self.target_name.get()} / {self.target_location.get() or '地点待填写'} · {self.challenge_count.get()} 次 · 开拓力上限 {self.stamina_limit.get()}" if self.tasks["battle"].get() else " · 不刷本"
@@ -560,6 +634,9 @@ class AutoHSRWindow:
             control.configure(state=state)
         if hasattr(self,'power_editor'):
             self.power_editor.refresh_actions()
+        if hasattr(self, 'tools_shelf'):
+            self.tools_shelf.refresh()
+        self.daily_panel.set_busy(self.busy)
         for name in ('currency_source_combo','currency_zone_combo','currency_level_combo','du_runs_combo','du_resume_combo','du_mode_combo','du_operation_combo',
                      'weekly_mode_combo', 'weekly_day_combo', 'weekly_runs_combo', 'currency_strategy_combo',
                      'weekly_enabled_combo', 'overlay_control', 'synthesis_control', 'power_mode_combo',
@@ -616,7 +693,8 @@ class AutoHSRWindow:
         for button in (self.save_button, self.check_button, self.launch_button):
             button.configure(state=state)
         currency_page = getattr(self, "action_page", "") == "currency_wars"
-        self.pause_button.configure(state="normal" if self.running and self.runner is not None and not self.stopping else "disabled", text="继续 F9" if self.paused else "暂停 F9")
+        can_pause = self.running and (self.runner is not None or self.desktop_schedule.owned) and not self.stopping
+        self.pause_button.configure(state="normal" if can_pause else "disabled", text="继续 F9" if self.paused else "暂停 F9")
         self.stop_button.configure(state="normal" if self.busy and not self.stopping else "disabled")
         for button in (self.pause_button, self.stop_button):
             if self.busy:
@@ -625,11 +703,16 @@ class AutoHSRWindow:
             else:
                 button.pack_forget()
         independent_page = currency_page or getattr(self, "action_page", "") == "differential_universe"
-        if getattr(self, "action_page", "") == "differential_universe":
-            self.start_button.configure(text=self._du_action_label())
-        self.start_button.configure(state="normal" if not self.busy and (independent_page or self.weekly_enabled.get() or any(v.get() for v in self.tasks.values())) else "disabled")
+        if self.daily_section is not None or self._in_tools():
+            self._configure_primary_action()
+        else:
+            if getattr(self, "action_page", "") == "differential_universe":
+                self.start_button.configure(text=self._du_action_label())
+            can_start = (independent_page or self.weekly_enabled.get() or self.redemption_panel.daily_enabled
+                         or any(v.get() for v in self.tasks.values()))
+            self.start_button.configure(state="normal" if not self.busy and can_start else "disabled")
         self.reward_button.configure(state="normal" if not self.busy and not independent_page else "disabled")
-        daily_page = self.active_page in ("home", "tasks")
+        daily_page = self.daily_section is None and self.active_page in ("home", "tasks")
         if daily_page and not self.busy:
             self.reward_button.pack(side="left", padx=(0, round(8*self.ui_scale)))
         else:
@@ -731,12 +814,20 @@ class AutoHSRWindow:
         if isinstance(field, str) and field in INPUT_FIELDS and isinstance(message, str) and message.strip():
             self._input_failed(SettingsError(field, message))
 
-    def _read_settings(self, save=False, operation="daily", *, resume_weekly_currency=False) -> Settings | None:
+    def _read_settings(self, save=False, operation="daily", *, resume_weekly_currency=False,
+                       overrides=None, quiet=False) -> Settings | None:
         try:
             use_power = (not resume_weekly_currency and operation in ('daily','plan') and self.tasks['battle'].get()
                          and self.settings.allow_stamina_spend and self.power_mode.get() == '体力计划')
             values = dict(game_path=self.game_path.get().strip(), overlay_logs=self.overlay_logs.get(),
                           daily_synthesis=self.daily_synthesis.get())
+            if save:
+                values.update(self.redemption_panel.settings_values())
+                values.update(self.notifications_panel.settings_values())
+            elif operation in ('daily', 'plan', 'redemption') and not resume_weekly_currency:
+                if operation != 'redemption':
+                    values.update(self.redemption_panel.runtime_values())
+                values.update(self.notifications_panel.settings_values())
             if save or use_power:
                 from .power_plan_ui import settings_values
                 values.update(settings_values(self))
@@ -754,6 +845,17 @@ class AutoHSRWindow:
                               weekly_day=due.weekday()+1, weekly_time=due.strftime('%H:%M'),
                               action_delay=self._number('action_delay', float), battle_timeout=self._number('battle_timeout', int),
                               ocr_confidence=self._number('ocr_confidence', float))
+            elif not save and operation in ('assignments_only', 'redemption', 'build_target_read',
+                                            'build_target_preview', 'build_target_plan'):
+                values.update(auto_launch=False, assignments=operation == 'assignments_only',
+                              battle=False, daily=False, mail=False, battlepass=False,
+                              redemption_enabled=operation == 'redemption',
+                              action_delay=self._number('action_delay', float),
+                              ocr_confidence=self._number('ocr_confidence', float))
+                if operation != 'redemption':
+                    values['notification_enabled'] = False
+                if operation in ('build_target_preview', 'build_target_plan'):
+                    values['stamina_limit'] = self._number('stamina_limit', int)
             elif not save and operation == "dungeon_catalogue":
                 values.update(auto_launch=False, assignments=False, battle=False, daily=False, mail=False, battlepass=False,
                               dungeon_category="auto", ocr_confidence=self._number("ocr_confidence", float))
@@ -801,13 +903,16 @@ class AutoHSRWindow:
                               ocr_confidence=self._number("ocr_confidence", float))
             elif operation == "check":
                 values["ocr_confidence"] = self._number("ocr_confidence", float)
+            if overrides is not None:
+                values.update(overrides)
             settings = replace(self.settings, **values)
             if save:
                 settings = replace(settings, **self._weekly_values())
             elif operation == "plan" and not resume_weekly_currency:
                 weekly = self._weekly_values() if self.weekly_enabled.get() else dict(weekly_enabled=False)
                 settings = replace(settings, **weekly)
-            settings.validate("save" if save else 'power_plan' if use_power else operation)
+            validation = ('build_target_preview' if operation == 'build_target_plan' else operation)
+            settings.validate("save" if save else 'power_plan' if use_power else validation)
             if save and settings.power_plan_enabled and settings.battle:
                 settings.validate('power_plan')
             if save:
@@ -824,10 +929,14 @@ class AutoHSRWindow:
                 self._loading = False
                 self._form_changed()
             else:
-                self.save_status.set("未保存" if self.dirty else ("已保存" if self.config_path.exists() and not self._config_load_failed else "默认设置"))
-            self._clear_input_error()
+                if not quiet:
+                    self.save_status.set("未保存" if self.dirty else ("已保存" if self.config_path.exists() and not self._config_load_failed else "默认设置"))
+            if not quiet:
+                self._clear_input_error()
             return settings
         except (ValueError, TypeError, OSError, StopIteration) as exc:
+            if quiet:
+                raise
             if isinstance(exc, SettingsError) and exc.field in INPUT_FIELDS:
                 self._input_failed(exc)
             else:
@@ -860,6 +969,177 @@ class AutoHSRWindow:
         self._refresh_controls()
         self.table.redraw()
         self._refresh_activity()
+
+    def _submit_tool_job(self, title, work, on_done, on_error=None) -> bool:
+        return self._start_desktop_job(title, work, on_done, on_error)
+
+    def _start_desktop_job(self, title, work, on_done, on_error, *, game=False) -> bool:
+        if self.busy or self.closing or (self.worker is not None and self.worker.is_alive()):
+            return False
+        self.stop_requested.clear()
+        self.runner = None
+        self.summary.set("")
+        self.result_alert.set("")
+        self.status.set("● " + title)
+        self.current_task.set("")
+        self.started_at = time.monotonic()
+        self._set_busy(True, game)
+        if game:
+            self.root.iconify()
+        self._tool_result_handler = title, game, on_done, on_error
+        events, cancel = self.events, self.stop_requested
+
+        def run():
+            try:
+                events.put(dict(type='tool_job_result', value=work(cancel)))
+            except Exception as error:
+                events.put(dict(type='tool_job_result', error=error.with_traceback(None)))
+
+        self.worker = threading.Thread(target=run, name="autohsr-desktop-job", daemon=True)
+        try:
+            self.worker.start()
+        except RuntimeError as error:
+            events.put(dict(type='tool_job_result', error=error.with_traceback(None)))
+        return True
+
+    def _desktop_job_finished(self, event):
+        title, game, on_done, on_error = self._tool_result_handler
+        self._tool_result_handler = None
+        self.runner = self.worker = None
+        self.focus_waiting = False
+        self._freeze_clock()
+        stopped = self.stop_requested.is_set()
+        error = event.get("error")
+        self.summary.set('')
+        self._set_busy(False)
+        self.status.set("● " + ("操作已结束" if error is None else "已停止" if stopped else "执行失败"))
+        if game:
+            self._restore()
+        callback = on_error if error is not None else on_done
+        try:
+            if callback is not None and not self.closing:
+                callback(error if error is not None else event.get("value"))
+            elif error is not None:
+                self.result_alert.set(title + "未完成，请核对当前输入和运行记录。")
+        except Exception:
+            self.result_alert.set(title + "的结果无法显示，请查看运行记录。")
+
+    def _start_scoped_runner(self, title, operation, factory, on_report, *, game=True):
+        emit, native = self.events.put, self._native_run
+
+        def work(_cancel):
+            def send(event):
+                if event_kind(event) not in ('finished', 'task', 'power_plan_progress', 'plan_phase',
+                                              'plan_daily_result', 'progress'):
+                    emit(event)
+
+            report = native.run(factory(send))
+            return report.to_dict() if hasattr(report, 'to_dict') else report
+
+        def present(report):
+            state = report.get('status', 'partial')
+            self.status.set('● ' + STATUS_NAMES.get(state, '结果待核对'))
+            if report.get('run_dir'):
+                self.last_run_dir = Path(report['run_dir'])
+                self.last_report_file = self.last_run_dir / 'report.json'
+                self.history_context.set(report_context(report, self.last_report_file))
+                self._replace_text(self.report_text, json.dumps(report, ensure_ascii=False, indent=2))
+            self._refresh_recovery()
+            self._refresh_controls()
+            if on_report is not None:
+                on_report(report)
+
+        def failed(_error):
+            message = title + '未完成，请核对当前输入和运行记录。'
+            self.result_alert.set(message)
+            if on_report is not None:
+                on_report(dict(operation=operation, status='failed', report_saved=False, error=message))
+
+        return self._start_desktop_job(title, work, present, failed, game=game)
+
+    def _start_daily_assignment(self, on_report=None) -> bool:
+        settings = self._read_settings(operation='assignments_only')
+        if settings is None:
+            return False
+
+        def factory(emit):
+            from .desktop_daily import assignment_runner
+            return assignment_runner(settings, emit)
+
+        return self._start_scoped_runner('领取委托奖励', 'task_workflow', factory, on_report)
+
+    def _start_build_target(self, operation, selection=None, on_report=None) -> bool:
+        if operation not in ('build_target_read', 'build_target_preview', 'build_target_plan'):
+            raise ValueError('未知培养目标操作。')
+        settings = self._read_settings(operation=operation)
+        if settings is None:
+            return False
+
+        def factory(emit):
+            from .app import Runner
+            return Runner(settings, emit, operation=operation, build_target_selection=selection)
+
+        return self._start_scoped_runner('核对培养目标', operation, factory, on_report)
+
+    def _start_service_redemption(self, values, on_report=None) -> bool:
+        settings = self._read_settings(operation='redemption', overrides={**values, 'redemption_enabled': True})
+        if settings is None:
+            return False
+
+        def factory(emit):
+            from .app import Runner
+            from .notify_runtime import hooks
+            send, wrap = hooks(settings, emit)
+            return wrap(Runner(settings, send, operation='redemption'))
+
+        def present(report):
+            if on_report is None:
+                self.redemption_panel.render_report(report)
+            else:
+                on_report(report)
+
+        return self._start_scoped_runner('兑换本次兑换码', 'redemption', factory, present)
+
+    def _start_task_workflow(self, recipe, on_report=None) -> bool:
+        settings = self._read_settings(operation='plan')
+        if settings is None:
+            return False
+
+        def factory(emit):
+            from .notify_runtime import hooks
+            from .task_workflow_run import TaskWorkflowRunner
+            send, wrap = hooks(settings, emit)
+            return wrap(TaskWorkflowRunner(settings, recipe.document, send, base_dir=recipe.base_dir,
+                                           selected_path='/'.join(map(str, recipe.path)) or None))
+
+        from .task_workflow import GAME_TASKS
+        from .task_workflow_run import _tasks
+        game = any(node['task'] in GAME_TASKS for node in _tasks(recipe.steps))
+        return self._start_scoped_runner('运行已保存流程', 'task_workflow', factory, on_report, game=game)
+
+    def _schedule_preview_budget(self, plan):
+        return self.desktop_schedule.preview(plan)
+
+    def _schedule_settings_key(self):
+        return self._form_signature()
+
+    def _schedule_snapshot(self):
+        return self.desktop_schedule.runtime.snapshot()
+
+    def _schedule_now(self):
+        return self.desktop_schedule.runtime.clock()
+
+    def _schedule_enable(self, plan_id, expected_revision):
+        return self.desktop_schedule.enable(plan_id, expected_revision)
+
+    def _schedule_disable(self, plan_id):
+        return self.desktop_schedule.disable(plan_id)
+
+    def _schedule_stop(self):
+        if self.desktop_schedule.owned and not self.stopping:
+            self._stop()
+            return self._schedule_snapshot()
+        return self.desktop_schedule.stop()
 
     def _check(self) -> None:
         self._operation("check")
@@ -1030,13 +1310,21 @@ class AutoHSRWindow:
                 messagebox.showerror("刷本记录待核对", reason, parent=self.root)
                 return
             if state["blocked"]:
-                new_battle_run = messagebox.askyesno("确认新一轮刷本预算",
-                    f"上次已确认 {state['spent']} 开拓力{immersifier_text(state)}。\n"
-                    f"本次会新增最多 {settings.stamina_limit} 开拓力预算。\n"
-                    "如只需领取每日奖励，请选否，再点“仅补领奖”。\n确认开始新一轮？", default="no", parent=self.root)
-                if not new_battle_run:
+                self.desktop_schedule.manual_confirmation = True
+                try:
+                    new_battle_run = messagebox.askyesno("确认新一轮刷本预算",
+                        f"上次已确认 {state['spent']} 开拓力{immersifier_text(state)}。\n"
+                        f"本次会新增最多 {settings.stamina_limit} 开拓力预算。\n"
+                        "如只需领取每日奖励，请选否，再点“仅补领奖”。\n确认开始新一轮？", default="no", parent=self.root)
+                finally:
+                    self.desktop_schedule.manual_confirmation = False
+                if (not new_battle_run or self.busy or self.closing
+                        or (self.worker is not None and self.worker.is_alive())):
                     return
-        if operation in ('daily', 'plan', 'reward_only') and not any(getattr(settings, key) for key in TASK_NAMES) and not (operation == "plan" and settings.weekly_enabled):
+        daily_selected = any(getattr(settings, key) for key in TASK_NAMES)
+        if operation in ('daily', 'plan') and settings.redemption_enabled:
+            daily_selected = True
+        if operation in ('daily', 'plan', 'reward_only') and not daily_selected and not (operation == "plan" and settings.weekly_enabled):
             messagebox.showinfo("未选择任务", "请开启至少一项每日任务。", parent=self.root)
             return
         self.runner = None
@@ -1056,6 +1344,8 @@ class AutoHSRWindow:
                           (" · 本次使用已有月下卡带，开始时余额冻结，每次100" if du_options['du_use_cassettes'] else " · 本次不使用月下卡带"))
         if use_power:
             self.plan.set(f'体力计划 · {len(settings.power_plan)} 项 · 本次共用上限 {settings.stamina_limit} 开拓力')
+        if operation in ('daily', 'plan') and not resume_weekly_currency and settings.redemption_enabled:
+            self.plan.set(self.plan.get() + '\n包含兑换码')
         if currency_prepare:
             self.plan.set('货币战争 · 配置标准A8-40 · 不开始对局' if currency_configure else
                           '货币战争 · 指南定位标准模式 · 不开始对局' if currency_locate else '货币战争 · 启动准备 · 不开始对局')
@@ -1143,14 +1433,20 @@ class AutoHSRWindow:
             self._log(self.plan.get()+"。助手将最小化，让游戏保持前台。" if du_rewards or operation in CONTROL_OPERATIONS else "开始标准A8-40开发；未知页面和反馈停下留证。" if currency_standard else "开始货币战争启动准备，不开始对局。" if currency_prepare else "开始差分宇宙自动演算。助手将最小化，让游戏保持前台。" if differential_universe else "开始货币战争流程推进验证。" if flow_test else "开始货币战争当前节点战斗验证。" if node_test else "开始货币战争单次部署验证。" if deploy_test else "开始货币战争单次拖动验证。" if drag_test else "开始货币战争只读识别。" if currency_wars else "开始执行每日任务。助手将最小化，让游戏保持前台。")
             self.root.iconify()
 
+        emit, native = self.events.put, self._native_run
+
         def work() -> None:
             def send(event: dict[str, Any]) -> None:
                 # Publish the terminal result only after run() returns. A backend
                 # exception after its own finished event must remain a failure.
                 if event_kind(event) != "finished":
-                    self.emit(event)
+                    emit(event)
             try:
                 from .app import Runner
+                wrap = lambda runner: runner
+                if operation in ('daily', 'plan') and not resume_weekly_currency:
+                    from .notify_runtime import hooks
+                    send, wrap = hooks(settings, send)
                 if operation == "plan":
                     from .plan_runner import PlanRunner
                     runner = PlanRunner(settings, send, new_battle_run=new_battle_run, root=ROOT/"runs",
@@ -1170,25 +1466,23 @@ class AutoHSRWindow:
                         **(dict(currency_timeout_probe=True) if currency_timeout_probe else {}),
                         **(dict(currency_source_slot=currency_source_slot,currency_zone=currency_zone) if deploy_test else {}),
                         **(dict(currency_target_level=currency_target_level,currency_start_from_lobby=currency_start_from_lobby) if flow_test else {}))
-                stop_applied = self.stop_requested.is_set()
-                if stop_applied:
-                    runner.stop()
-                self.emit({"type": "runner_ready", "runner": runner, "stop_applied": stop_applied})
-                report = runner.run()
-                self.emit({"type": "finished", "report": report.to_dict() if hasattr(report, "to_dict") else report})
+                runner = wrap(runner)
+                report = native.run(runner)
+                emit({"type": "finished", "report": report.to_dict() if hasattr(report, "to_dict") else report})
             except Exception as exc:
-                self.emit({"type": "run_error", "message": str(exc),
-                           "input_error_field": exc.field if isinstance(exc, SettingsError) else ""})
+                emit({"type": "run_error", "message": str(exc),
+                      "input_error_field": exc.field if isinstance(exc, SettingsError) else ""})
         self.worker = threading.Thread(target=work, name="autohsr-run", daemon=True)
         self.worker.start()
 
     def _pause(self) -> None:
-        if self.runner is None or not self.running or self.stopping:
+        scheduled = self.desktop_schedule.owned
+        if (self.runner is None and not scheduled) or not self.running or self.stopping:
             return
         try:
             if self.paused:
                 self.root.iconify()
-            self._pause_state(bool(self.runner.toggle_pause()))
+            self._pause_state(self.desktop_schedule.toggle_pause() if scheduled else bool(self.runner.toggle_pause()))
         except Exception as exc:
             self._log(f"暂停操作失败：{exc}", "error")
             self._restore()
@@ -1228,9 +1522,9 @@ class AutoHSRWindow:
             return
         self.stopping = True
         self.paused = False
-        self.stop_requested.set()
-        if self.runner is not None:
-            self.runner.stop()
+        self._native_run.stop()
+        if self.desktop_schedule.owned:
+            self.desktop_schedule.stop()
         self.status.set("● 正在停止")
         self.summary.set("停止请求已发送，正在结束当前操作并保存报告。")
         self._refresh_controls()
@@ -1474,6 +1768,9 @@ class AutoHSRWindow:
         if hasattr(report, "to_dict"):
             report = report.to_dict()
         report = report if isinstance(report, dict) else {}
+        from .redemption_report import report_summary
+        if report_summary(report) is not None:
+            self.redemption_panel.render_report(report)
         operation = self.active_operation if self.active_operation == 'du_rewards' or self.active_operation in CONTROL_OPERATIONS else report.get('operation', self.active_operation)
         rewards_only = operation == 'du_rewards'
         currency_controls = operation in CONTROL_OPERATIONS
@@ -1666,11 +1963,12 @@ class AutoHSRWindow:
         ttk.Button(frame, text="关闭", command=details.destroy).pack(anchor="e", pady=(10, 0))
 
     def _drain(self) -> None:
+        self._drain_job = None
         try:
             for _ in range(100):
                 event = self.events.get_nowait()
                 kind = event_kind(event)
-                if (kind in ("finished", "checked", "launched", "cancelled", "operation_error", "run_error", "admin_launch_result")
+                if (kind in ("finished", "checked", "launched", "cancelled", "operation_error", "run_error", "admin_launch_result", "tool_job_result")
                         and self.worker is not None and self.worker.is_alive()):
                     # Keep settings and new-run actions locked until the worker
                     # has actually exited, including the small emit/return gap.
@@ -1717,11 +2015,22 @@ class AutoHSRWindow:
                     self._restore()
                 elif kind == "runner_ready":
                     self.runner = event["runner"]
-                    if self.stop_requested.is_set() and not event.get("stop_applied", False):
-                        self.runner.stop()
                     self._refresh_controls()
                 elif kind == "finished":
                     self._finish(event.get("report", {}))
+                elif kind == "tool_job_result":
+                    self._desktop_job_finished(event)
+                elif kind == 'notification_summary':
+                    self.notifications_panel.render_run_result(event)
+                elif kind.startswith('schedule_'):
+                    if kind == 'schedule_child' and type(event.get('paused')) is bool and self.desktop_schedule.owned:
+                        self._pause_state(event['paused'])
+                    if kind == 'schedule_child' and event.get('child_type') == 'notification_summary':
+                        self.notifications_panel.render_run_result(event)
+                    self.desktop_schedule.sync(self._schedule_snapshot())
+                    if self._in_tools() and self._selected_tool == 'schedule':
+                        self.schedule_panel.refresh()
+                        self._tool_action_changed()
                 elif kind == "checked":
                     self._checked(event.get("data", {}))
                 elif kind == "launched":
@@ -1765,10 +2074,16 @@ class AutoHSRWindow:
             pass
         self._clock()
         self._refresh_weekly_caption()
-        if self.closing and (self.worker is None or not self.worker.is_alive()):
+        self.desktop_schedule.tick()
+        if self.closing and (self.worker is None or not self.worker.is_alive()) and self.desktop_schedule.runtime.wait_idle(0):
             self.root.destroy()
             return
-        self.root.after(100, self._drain)
+        self._drain_job = self.root.after(100, self._drain)
+
+    def _cancel_drain(self, event):
+        if event.widget is self.root and self._drain_job is not None:
+            self.root.after_cancel(self._drain_job)
+            self._drain_job = None
 
     def _close(self) -> None:
         if self.closing:
@@ -1789,8 +2104,10 @@ class AutoHSRWindow:
         self.closing = True
         if self.busy:
             self._stop()
+        if not self.desktop_schedule.owned:
+            self.desktop_schedule.stop()
         self.root.withdraw()
-        if self.worker is None or not self.worker.is_alive():
+        if (self.worker is None or not self.worker.is_alive()) and self.desktop_schedule.runtime.wait_idle(0):
             self.root.destroy()
 
 

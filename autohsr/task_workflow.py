@@ -381,6 +381,8 @@ def task_spec(settings: Settings, node, base_dir):
             options['assignments_only'] = True
     elif task == 'plan':
         options = params
+        if current.redemption_enabled and current.redemption_source == 'file':
+            current.redemption_catalog = str((ROOT / current.redemption_catalog).resolve())
         current.validate('power_plan' if params.get('use_power_plan') else 'plan')
         if params.get('use_power_plan') and (not current.battle or params.get('resume_weekly_currency')):
             raise WorkflowError('体力计划需要本次刷本，不能混入原周常接续。')

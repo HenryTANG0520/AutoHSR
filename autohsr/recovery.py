@@ -13,7 +13,7 @@ from .storage import replace_file
 
 def reward_only_settings(settings):
     return replace(settings, assignments=False, battle=False, daily=True, mail=False, battlepass=False,
-                   daily_synthesis=False)
+                   daily_synthesis=False, redemption_enabled=False)
 
 
 def _historical_battle(data, path):

@@ -24,6 +24,10 @@ class ScheduleError(ValueError):
         self.field = field
 
 
+class ScheduleSourceUnverified(ScheduleError):
+    """The scheduled runner could not start with its approved inputs."""
+
+
 def identity(value):
     if not isinstance(value, str) or not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}', value):
         raise ScheduleError('计划名称标识须为小写字母开头的1～64位字母、数字、下划线或连字符。', 'id')

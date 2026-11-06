@@ -12,7 +12,7 @@ from datetime import datetime
 import threading
 import time
 
-from .schedule_plan import CHINA, ScheduleError, due_slot, json_copy, local_time, next_due
+from .schedule_plan import CHINA, ScheduleError, ScheduleSourceUnverified, due_slot, json_copy, local_time, next_due
 from .schedule_store import MANIFEST_BYTES, source_reference
 from .run_control import stop_requested
 
@@ -92,11 +92,15 @@ class Scheduler:
             data.update(id=job.plan['id'], revision=job.revision, slot=job.slot.isoformat())
         self._emit(data)
 
-    def enable(self, plan_id):
+    def enable(self, plan_id, *, expected_revision=None, expected_manifest=None):
         plan, digest = self.store.load(plan_id)
+        if expected_revision is not None and digest != expected_revision:
+            raise ScheduleError('计划的已保存版本已改变，请重新读取和预览。')
         manifest = self.executor.freeze(deepcopy(plan))
         if not isinstance(manifest, dict):
             raise ScheduleError('计划执行器未返回有效冻结清单。')
+        if expected_manifest is not None and manifest.get('sha256') != expected_manifest:
+            raise ScheduleError('计划输入或设置已改变，请重新预览。')
         manifest = json_copy(manifest, maximum=MANIFEST_BYTES)
         now = local_time(self.clock()).replace(second=0, microsecond=0)
         with self._lock:
@@ -211,6 +215,7 @@ class Scheduler:
             return dict(running=self._running, started=self._running, stopping=stopping, state=state,
                         paused=self._paused, plans=plans, enabled_ids=[row['id'] for row in plans],
                         next_times={row['id']: row['next_due'] for row in plans}, active=public(active),
+                        active_game=active is not None and active.manifest.get('game') is True,
                         runner_active=active is not None and active.runner is not None,
                         pending=public(pending), last=deepcopy(self._last),
                         timezone='Asia/Shanghai', missed_policy='skip', system_tasks_registered=False)
@@ -424,11 +429,8 @@ class Scheduler:
                     checked = self.executor.revalidate(deepcopy(job.manifest))
                     if checked is not None and checked is not True:
                         raise ScheduleError('计划目标版本未核实。')
-                except Exception:
-                    status, reason = 'failed', 'target_unverified'
-                    self.store.record_result(job.claim, index, dict(status=status, reason=reason))
-                    pending_attempt = False
-                    break
+                except Exception as error:
+                    raise ScheduleSourceUnverified('计划目标版本未核实。') from error
                 self._checkpoint(job)
                 runner = self.executor.create(deepcopy(job.plan['target']), deepcopy(job.manifest),
                                               lambda event: self._child_event(job, event))
@@ -474,6 +476,12 @@ class Scheduler:
                     break
                 if status != 'success':
                     break
+        except ScheduleSourceUnverified:
+            status, reason = 'failed', 'target_unverified'
+            try:
+                self.store.record_result(job.claim, job.index, dict(status=status, reason=reason))
+            except Exception:
+                status, reason = 'unknown', 'receipt_write_failed'
         except _Cancelled:
             status, reason = ('partial' if job.completed else 'stopped'), job.reason or 'controller_stopped'
             if pending_attempt:

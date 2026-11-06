@@ -214,6 +214,52 @@ class EchoWeeklyTests(unittest.TestCase):
         self.assertEqual(report.power_plan['weekly_echo']['state'],'complete')
         self.assertTrue(any(e.get('type')=='power_plan_progress' and e['weekly_echo']['completed']==3 for e in events))
 
+    def test_home_plan_keeps_verified_zero_echo_without_an_unneeded_balance(self):
+        from autohsr.plan_runner import PlanRunner
+        from autohsr.power_plan_store import read_ref
+
+        class NoBalance(screens.World):
+            def scene(self, config):
+                scene = super().scene(config)
+                scene.tokens = [token for token in scene.tokens if token.text != f'{self.stamina}/300']
+                return scene
+
+        config = settings(power_plan_fill=False, stamina_limit=50, use_support=True, support_daily_only=True)
+        for quota in (0, 1):
+            with self.subTest(quota=quota):
+                root = self.root / str(quota)
+                world = NoBalance(stamina=50)
+                world.weekly_left = quota
+                events = []
+                with entry.runtime(root, config, world) as (window, _):
+                    def factory(snapshot, emit, **options):
+                        child = entry.Runner(snapshot, emit, **options)
+                        window.owner = child
+                        return child
+
+                    report = PlanRunner(config, events.append, root=root/'runs', now=self.now,
+                                        runner_factory=factory, use_power_plan=True).run()
+                self.assertEqual(world.payments, [])
+                self.assertEqual(report.support_selections, [])
+                ledger = read(root/'runs'/'battle-session.json')
+                self.assertEqual((ledger['spent'], ledger['pending'], ledger['completed']), (0, 0, 0))
+                self.assertIsNone(ledger['power_plan']['effective_limit'])
+                echo = report.power_plan['weekly_echo']
+                if quota:
+                    self.assertEqual(report.status, 'partial')
+                    self.assertEqual(echo['observations'], [])
+                    continue
+                self.assertEqual(report.status, 'success', report.error)
+                self.assertEqual(report.weekly_plan['status'], 'disabled')
+                self.assertEqual((echo['state'], echo['completed']), ('complete', 0))
+                observation, = echo['observations']
+                self.assertEqual(observation['remaining'], 0)
+                self.assertTrue(read_ref(root/'runs', observation['evidence']).is_file())
+                validate(root/'runs', ledger, settled=True)
+                self.assertEqual(read(Path(report.run_dir)/'report.json')['power_plan'], report.power_plan)
+                self.assertTrue(any(event.get('type') == 'power_plan_progress'
+                                    and event['weekly_echo']['remaining'] == 0 for event in events))
+
     def test_cli_weekly_only_and_temporary_schedule_do_not_save_config(self):
         from autohsr.__main__ import main
         path=self.root.parent/'config.json';Settings().save(path);before=path.read_bytes()

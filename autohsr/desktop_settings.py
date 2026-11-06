@@ -17,6 +17,7 @@ SECTIONS = (
     ("run", "运行偏好", "运行功能"),
     ("recognition", "识别与等待", "识别参数"),
     ("admin", "管理员启动", "启动权限"),
+    ("tools", "工具", "工具与任务编排"),
 )
 
 
@@ -224,6 +225,7 @@ def build_settings(ui):
             key = next((key for key, section in ui.settings_sections.items() if tabs.select() == str(section)), None)
             if key is not None:
                 ui.settings_shell.select(key)
+                ui._tool_action_changed()
     tabs.bind("<<NotebookTabChanged>>", selected)
     ui.settings_shell.select("game")
 
@@ -328,3 +330,7 @@ def build_settings(ui):
     buttons(row("admin", 1, "启动授权"), (("启用授权", lambda: ui._admin_operation("enable")),
             ("移除授权", lambda: ui._admin_operation("disable"))))
     note("admin", 2, text="首次需 Windows 授权；仅绑定当前账户和目录，移动目录后需重新启用。")
+
+    from .desktop_tools import ToolsShelf
+    ui.tools_shelf = ToolsShelf(ui.settings_sections['tools'], ui)
+    ui.tools_shelf.grid(row=0, column=0, sticky='new')

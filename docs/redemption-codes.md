@@ -1,6 +1,6 @@
 # 兑换码后端与逐码回执
 
-更新日期：2026-10-30。兑换码基础后端已完成原生Flow／Context、配置／CLI的离线整合及全量检查；同日另增`auto`服务器解析，其最终接线验证另列，不能沿用基础版全量结论。没有进行真实兑换或实时码表请求，完整表单／结果布局与实际游戏组合仍待验收。
+2026-11-06 开发版可从「设置 → 工具 → 兑换码」独立运行。原生 Flow／Context、配置和 CLI 的基础离线整合完成于 10 月 30 日，同日另增`auto`服务器解析，其最终接线验证另列，不能沿用基础版全量结论。真实游戏内表单、结果反馈、在线码表请求和组合运行仍待验收。
 
 ## 固定来源与离线码表
 
@@ -98,9 +98,11 @@ python -m autohsr --run --with-redemption --redemption-source file --redemption-
 
 `--redemption-source online|manual|file`、`--redemption-server cn|global|auto`、可重复的`--redemption-code`、`--redemption-catalog`及`--redemption-mail`／`--no-redemption-mail`均是本次覆盖。提供手动码会选择`manual`，提供本地表会选择`file`；两者不能同用，显式来源冲突会拒绝。运行参数仅允许独立兑换或普通`--run`／`--plan`日常；仅补领奖、周常接续、其他玩法和无运行入口不接受它们。`reward_only`排除兑换。两个预览入口明确拒绝`auto`，不会为预览读取注册表或打开原生窗口。
 
-仅保存设置才持久化配置；预览、运行、日常CLI覆盖及邮件结果不自动把本次开关／码列表保存为未来默认。当前GUI编辑与新入口由现有界面工作另行接入，本后端说明不把这些字段视为已交付界面控件。
+仅保存设置才持久化配置；预览、运行、日常CLI覆盖及邮件结果不自动把本次开关／码列表保存为未来默认。桌面可选在线码表、手动输入或本地码表，以及国服、国际服或「由当前客户端识别」。「选择码表」只填写路径。只读预览继续用上面的 CLI。
 
 任务树的`daily`步骤可在`tasks`中显式选择`"redemption"`，并在该步骤参数中提供来源／服务器／码列表／码表／邮件选项；显式任务列表未选兑换时，不继承设置中隐藏启用的兑换。步骤内码表路径相对工作流文件夹解析。应用内定时若使用已启用本地码表的日常／计划，启用时冻结该文件的有界指纹并在执行前重核；这不登记系统任务，不绕过账号与未知回执门禁，也不把游戏目标的重复次数限制放开。详见既有[任务树](task-workflows.md)及[定时边界](schedules.md)。
+
+底栏「开始兑换」使用当前游戏账号实际执行一批，在线来源会获取码表。「加入日常计划」与独立兑换分开，「成功后核对邮件附件」可单独选择。只加入兑换时也可从首页「开始计划」。
 
 ## 账号、服务器与逐码回执
 
@@ -141,7 +143,7 @@ python -m autohsr --run --with-redemption --redemption-source file --redemption-
 
 后端复用点为`resolve_batch(settings, cancel=..., server_resolution=...)`、`run_redemption(context, batch=..., store=...)`及`RunReport.redemption`；界面保存时只保存设置，开始时冻结本次Settings，线程内通过原生Runner执行。`auto`解析证明由本次原生窗口提供，不由界面或保存操作伪造。原始逐码／账号／证据数据留在私人报告，不直接放入公共事件或通知正文。独立本地预览只需`from_file`，显式在线预览才使用`fetch_catalog`；不要为编辑表单或刷新控件隐式联网、读账号或创建Runner。
 
-显示结果可调用 [redemption_report.report_summary](../autohsr/redemption_report.py)，输入为原生、计划或任务树的报告字典。它返回兑换反馈状态、五项匿名计数及是否沿用原日常结果。缺失或不一致的兑换反馈为 `unverified`，其计数缺省。任务树在核实子任务的原报告和账号后保存 `workflow.redemption_summary`。通知发送受理状态与游戏运行、兑换反馈各自展示。
+显示结果可调用 [redemption_report.report_summary](../autohsr/redemption_report.py)，输入为原生、计划或任务树的报告字典。它返回兑换反馈状态、五项匿名计数及是否沿用原日常结果。缺失或不一致的兑换反馈为 `unverified`，其计数缺省。任务树在核实子任务的原报告和账号后保存 `workflow.redemption_summary`。桌面兑换结果按逐码回执汇总新成功、服务端过期／已使用／无效和旧回执，另列码表预筛跳过、空批或待核对。原生报告和计划回执将逐码核实状态与附件反馈分开显示。原码、账号和证据留在本地原报告。
 
 ## 验证记录与限制
 
