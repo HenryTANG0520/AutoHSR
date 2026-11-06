@@ -27,10 +27,10 @@ def _publish(path, payload, *, exclusive=False, before_replace=None):
                 raise OSError('短信回复记录的文件来源已变化。')
 
     def prepare():
-        with hold_read_sources((temporary,)):
-            verify(temporary)
         if before_replace is not None:
             before_replace()
+        with hold_read_sources((temporary,)):
+            verify(temporary)
 
     try:
         with NamedTemporaryFile(mode='wb', dir=path.parent, prefix='.sms-reply-', suffix='.tmp',
@@ -83,9 +83,10 @@ class _Reservation:
                 raise AutomationError('缺少本次短信回复的待核对记录。')
 
             def verify():
-                self._verify_pending()
                 if before_replace is not None:
                     before_replace()
+                with self.hold_pending():
+                    pass
 
             try:
                 _publish(self._path, self._confirmed, before_replace=verify)

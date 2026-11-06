@@ -13,13 +13,14 @@ from unittest.mock import Mock, patch
 
 import cv2
 
-from autohsr import app, daily_message_reply as reply, windows, workflow_lease
+from autohsr import app, daily_message_reply as reply, daily_message_reply_store, windows, workflow_lease
 from autohsr.__main__ import main
 from autohsr.config import Settings
+from autohsr.currency_wars_identity import checked_account_key
 from autohsr.daily_message_reply_store import ReplyStore
 from autohsr.models import Scene, Token
 from autohsr.tests import test_daily_event_claim as native_cases, test_daily_message_reply as replay
-from autohsr.tests.test_daily_message_observe import ACCOUNT, phone
+from autohsr.tests.test_daily_message_observe import ACCOUNT, OTHER, phone
 
 
 class DailyMessageReplyCliTests(unittest.TestCase):
@@ -221,6 +222,9 @@ class DailyMessageReplyCliTests(unittest.TestCase):
         supply_local((local,))
         before = [frame(case) for case in cases[:2]]
         target, = [token for token in before[-1].tokens if token.text == third]
+        account = checked_account_key(before[-1], .93)
+        ReplyStore(self.ledger_dir).reserve(account, reply._SECTION)
+        original = self.ledger()
         self.frames = iter(before + [frame(case) for case in cases[2:]])
         code, report = self.invoke(reply.P179_SELECTION)
         self.assert_result((code, report), (0, 'success', 'sent', 'confirmed', 'confirmed'))
@@ -230,9 +234,11 @@ class DailyMessageReplyCliTests(unittest.TestCase):
         self.assertEqual(self.window.capture.call_count, 5)
         self.native.SendInput.assert_called_once()
         self.assertEqual(self.fixture.packets, [self.expected_click(target)])
-        self.assert_ledger_status('confirmed')
-        receipt, = self.ledger().values()
-        self.assertEqual(json.loads(receipt)['section'], manifest['section'])
+        records = self.ledger()
+        self.assertEqual({name: records[name] for name in original}, original)
+        receipt, = (json.loads(raw) for name, raw in records.items() if name not in original)
+        self.assertEqual((receipt['section'], receipt['status']), (manifest['section'], 'confirmed'))
+        self.assert_replay_blocked('pending', 1)
 
     def test_wrong_page_never_creates_an_intent_or_submits(self):
         self.frames = iter((phone(ACCOUNT), phone(ACCOUNT)))
@@ -312,6 +318,16 @@ class DailyMessageReplyCliTests(unittest.TestCase):
         self.assert_ledger_status('pending')
         self.assert_replay_blocked('pending', 2)
 
+        original = self.ledger()
+        self.fixture.accepted = 3
+        self.frames = (replace(frame, tokens=[OTHER, *frame.tokens[1:]]) for frame in replay.replay_frames())
+        self.assert_result(self.invoke(), (0, 'success', 'sent', 'confirmed', 'confirmed'))
+        records = self.ledger()
+        self.assertEqual({name: records[name] for name in original}, original)
+        self.assertEqual(len(records), 2)
+        self.assertEqual(self.native.SendInput.call_count, 3)
+        self.assert_replay_blocked('pending', 3)
+
     def test_focus_loss_after_reservation_never_submits_and_keeps_pending(self):
         self.frames = islice(replay.replay_frames(), 2)
         reserve = ReplyStore.reserve
@@ -327,6 +343,31 @@ class DailyMessageReplyCliTests(unittest.TestCase):
         self.assertEqual(self.window.capture.call_count, 2)
         self.native.SendInput.assert_not_called()
         self.assert_ledger_status('pending')
+
+    def test_pending_file_replaced_during_feedback_is_preserved_and_blocks_replay(self):
+        self.frames = iter(replay.replay_frames())
+        confirm = daily_message_reply_store._Reservation.confirm
+        changed = Mock()
+
+        def confirm_with_replacement(reservation, *, before_replace):
+            def verify_feedback():
+                before_replace()
+                record, = self.ledger_dir.glob('reply-*.json')
+                self.assert_ledger_status('pending')
+                replacement = record.with_suffix('.replacement')
+                replacement.write_bytes(record.read_bytes())
+                self.assertNotEqual(record.stat().st_ino, replacement.stat().st_ino)
+                replacement.replace(record)
+                changed(record.read_bytes(), record.stat().st_ino)
+
+            confirm(reservation, before_replace=verify_feedback)
+
+        with patch.object(daily_message_reply_store._Reservation, 'confirm', confirm_with_replacement):
+            self.assert_result(self.invoke(), (1, 'partial', 'sent', 'unknown', 'pending'))
+        changed.assert_called_once()
+        record, = self.ledger_dir.iterdir()
+        self.assertEqual((record.read_bytes(), record.stat().st_ino), changed.call_args.args)
+        self.assert_replay_blocked('pending', 1)
 
     def assert_publication_interrupt(self, interrupt, code, status):
         self.frames = iter(replay.replay_frames())

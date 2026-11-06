@@ -8,7 +8,6 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import Mock, patch
 
-from autohsr import daily_message_reply_store
 from autohsr.daily_message_reply_store import ReplyStore
 from autohsr.models import AutomationError, FocusLost
 
@@ -124,17 +123,15 @@ class ReplyStoreTests(unittest.TestCase):
         reservation, record = self.pending()
         pending = record.read_bytes()
         existing = self.directory.parent / 'unrelated.json'
-        replace = daily_message_reply_store.replace_file
 
-        def substitute(source, target, **kwargs):
+        def substitute():
+            source, = self.directory.glob('.sms-reply-*.tmp')
             existing.write_bytes(source.read_bytes())
             source.unlink()
             os.link(existing, source)
-            return replace(source, target, **kwargs)
 
-        with patch.object(daily_message_reply_store, 'replace_file', side_effect=substitute):
-            with self.assertRaises(AutomationError):
-                reservation.confirm()
+        with self.assertRaises(AutomationError):
+            reservation.confirm(before_replace=substitute)
         self.assertEqual(record.read_bytes(), pending)
         remaining, = self.directory.glob('.sms-reply-*.tmp')
         self.assertTrue(os.path.samefile(existing, remaining))
