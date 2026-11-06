@@ -3,7 +3,7 @@
 from io import BytesIO
 import os
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import mkstemp
 from zlib import error as DeflateError
 
 import cv2
@@ -13,7 +13,7 @@ from PIL import Image
 from .models import Stopped
 from .reward_guide_stitch import _MAX_INPUT_EDGE, _MAX_INPUT_PIXELS, _MAX_PAGES, stitch_reward_guide
 from .screenshot_tool import MAX_BYTES
-from .storage import file_revision, hold_read_sources
+from .storage import file_revision, hold_read_sources, remove_owned_stage
 from .workflow_bundle import _path as local_path
 
 
@@ -90,15 +90,16 @@ def _publish(target, sources, image, checkpoint):
 
     checkpoint()
     check_destination()
-    with TemporaryDirectory(dir=path.parent, prefix='.autohsr-reward-guide-', ignore_cleanup_errors=True) as temp:
-        staged = Path(temp) / 'calendar.tmp'
-        with staged.open('xb') as stream:
+    descriptor, name = mkstemp(dir=path.parent, prefix='.autohsr-reward-guide-', suffix='.tmp')
+    staged, created = Path(name), None
+    try:
+        with os.fdopen(descriptor, 'wb') as stream:
+            created = os.fstat(stream.fileno())
             check_destination()
             if stream.write(payload) != len(payload):
                 raise OSError()
             stream.flush()
             os.fsync(stream.fileno())
-            created = os.fstat(stream.fileno())
         checkpoint()
         if local_path(staged) != staged:
             raise OSError()
@@ -118,6 +119,12 @@ def _publish(target, sources, image, checkpoint):
                 os.link(staged, path)
             except FileExistsError:
                 raise _Rejected('invalid_target') from None
+    finally:
+        if created is not None:
+            try:
+                remove_owned_stage(staged, created)
+            except OSError:
+                pass
 
 
 def export_reward_guide(sources, destination, *, checkpoint=lambda: None):

@@ -12,7 +12,7 @@ REPLACE_RETRY_DELAYS=(.02,.04,.08,.16,.32,.50)
 if os.name == 'nt':
     import ctypes as C
     from ctypes import wintypes as W
-    from msvcrt import get_osfhandle
+    from msvcrt import get_osfhandle, open_osfhandle
 
     class _FileBasicInfo(C.Structure):
         _fields_ = [('creation', C.c_longlong), ('access', C.c_longlong),
@@ -29,6 +29,36 @@ if os.name == 'nt':
     _close_file.argtypes = [W.HANDLE]
     _close_file.restype = W.BOOL
     _INVALID_FILE = W.HANDLE(-1).value
+    _set_file_info = _kernel32.SetFileInformationByHandle
+    _set_file_info.argtypes = [W.HANDLE, C.c_int, C.c_void_p, W.DWORD]
+    _set_file_info.restype = W.BOOL
+
+
+def remove_owned_stage(path: Path, created: os.stat_result) -> None:
+    """Remove our staged file, preserving anything substituted at its name."""
+    if not created.st_ino or not S_ISREG(created.st_mode):
+        return
+    if os.name != 'nt':
+        if os.path.samestat(created, path.lstat()):
+            path.unlink()
+        return
+    # DELETE + FILE_READ_ATTRIBUTES; reject following a replacement reparse point.
+    handle = _open_file(str(path), 0x10080, 0x3, None, 3, 0x00200000, None)
+    if handle == _INVALID_FILE:
+        raise C.WinError(C.get_last_error())
+    try:
+        descriptor = open_osfhandle(handle, os.O_RDONLY | os.O_BINARY)
+    except OSError:
+        _close_file(handle)
+        raise
+    try:
+        current = os.fstat(descriptor)
+        if S_ISREG(current.st_mode) and os.path.samestat(created, current):
+            delete = C.c_ubyte(1)  # FILE_DISPOSITION_INFO.DeleteFile
+            if not _set_file_info(handle, 4, C.byref(delete), C.sizeof(delete)):
+                raise C.WinError(C.get_last_error())
+    finally:
+        os.close(descriptor)
 
 
 @contextmanager

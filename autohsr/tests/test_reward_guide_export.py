@@ -136,7 +136,7 @@ class RewardGuideExportTests(unittest.TestCase):
         @contextmanager
         def tamper(paths):
             for path in paths:
-                if path.parent.parent == self.output:
+                if path.parent == self.output:
                     contents = path.read_bytes()
                     path.write_bytes(contents[:-1] + b'\x01')
             with hold(paths):
@@ -166,7 +166,7 @@ class RewardGuideExportTests(unittest.TestCase):
         @contextmanager
         def substitute(paths):
             for path in paths:
-                if path.name == 'calendar.tmp':
+                if path.parent == self.output:
                     self.assertEqual(path.read_bytes(), original)
                     path.unlink()
                     os.link(existing, path)
@@ -175,9 +175,50 @@ class RewardGuideExportTests(unittest.TestCase):
                 yield
 
         with patch.object(service, 'hold_read_sources', substitute):
-            self.assert_unpublished(self.export(), 'publish_failed', (115,))
+            result = self.export()
+        self.assertEqual(result, dict(status='publish_failed', overlap_rows=[115], width=None, height=None))
+        self.assertFalse(self.target.exists())
         self.assertEqual(existing.read_bytes(), original)
-        self.assertEqual(existing.stat().st_nlink, 1)
+        remaining, = self.output.iterdir()
+        self.assertTrue(os.path.samefile(existing, remaining))
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows file identity')
+    def test_cleanup_preserves_an_unrelated_file_moved_into_the_stage_name(self):
+        hold = service.hold_read_sources
+        unrelated = self.root / 'unrelated.txt'
+        contents = b'keep the existing file'
+
+        def replace_stage(path):
+            path.rename(self.root / 'original-stage')
+            unrelated.rename(path)
+
+        @contextmanager
+        def replace_after_publication(paths):
+            with hold(paths):
+                yield
+            for path in paths:
+                if path.parent == self.output:
+                    replace_stage(path)
+
+        for after_publication in (False, True):
+            with self.subTest(after_publication=after_publication):
+                unrelated.write_bytes(contents)
+
+                def checkpoint():
+                    if not after_publication:
+                        stages = tuple(self.output.glob('.autohsr-reward-guide-*.tmp'))
+                        if stages:
+                            replace_stage(stages[0])
+                            raise Stopped('stop')
+
+                with patch.object(service, 'hold_read_sources', replace_after_publication):
+                    result = self.export(checkpoint=checkpoint)
+                self.assertEqual(result['status'], 'ok' if after_publication else 'stopped')
+                self.assertEqual(self.target.exists(), after_publication)
+                substitute, = self.output.glob('.autohsr-reward-guide-*.tmp')
+                self.assertEqual(substitute.read_bytes(), contents)
+                substitute.unlink()
+                (self.root / 'original-stage').unlink()
 
     @unittest.skipUnless(os.name == 'nt', 'Windows sharing semantics')
     def test_real_ntfs_holds_inputs_and_staged_parent_through_the_exclusive_link(self):
