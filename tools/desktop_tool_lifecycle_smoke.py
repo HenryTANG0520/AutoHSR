@@ -259,7 +259,9 @@ class Lifecycle(unittest.TestCase):
             conflict = assignment_fixture.AssignmentOnlyTests.invoke(self, workflow=False, event='other_uid_after_claim')
         self.assertEqual(verified.sent, ['委托', '领取奖励', '点击空白处关闭'])
         self.assertEqual(conflict.sent, ['委托', '领取奖励'])
-        self.assertEqual(projections[0][0], '委托状态已核实')
+        self.assertEqual(verified.report['workflow']['steps'][0]['assignment'],
+                         dict(outcome='claimed', submission='verified'))
+        self.assertEqual(projections[0][0], '已核实领取委托奖励')
         self.assertEqual(projections[1][0], '委托结果待核对')
         missing_account = deepcopy(verified.report)
         missing_account['workflow']['steps'][0]['account_verified'] = False
