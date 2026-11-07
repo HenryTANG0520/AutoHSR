@@ -8,9 +8,9 @@ from pathlib import Path
 import sys
 import time
 
-from .config import ROOT
+from . import schedule_dispatch
+from .config import ROOT, Settings
 from .schedule_plan import CHINA, ScheduleError, preview, read, revision
-from .schedule_dispatch import validate_target
 from .schedule_store import ScheduleStore
 
 DEFAULT_ROOT = ROOT / 'schedules.local'
@@ -21,6 +21,7 @@ def add_arguments(mode, parser):
     mode.add_argument('--schedule-save', type=Path, help='显式保存定时定义的新版本；不会启用计时或登记系统任务')
     mode.add_argument('--schedule-list', action='store_true', help='只读列出已保存计划；读取不启用')
     mode.add_argument('--schedule-preview', help='只读预览已保存计划的未来五次时间，不启用')
+    mode.add_argument('--schedule-budget', help='只读预览已保存计划在所选配置下的单次触发预算，不启用')
     mode.add_argument('--schedule-run', action='append', help='本进程显式启用所选已保存计划并计时；可重复选择，退出即停止')
     parser.add_argument('--schedule-store-dir', type=Path, help='独立计划工具与控制器使用的本地定义/回执目录')
     parser.add_argument('--schedule-replace', action='store_true', help='保存时明确新建替代版本；保留所有旧版本和回执')
@@ -31,7 +32,7 @@ def add_arguments(mode, parser):
 
 def _selected(args):
     return args.schedule_list or any(value is not None for value in
-            (args.schedule_check, args.schedule_save, args.schedule_preview, args.schedule_run))
+            (args.schedule_check, args.schedule_save, args.schedule_preview, args.schedule_budget, args.schedule_run))
 
 
 def _public(plan):
@@ -61,10 +62,10 @@ def dispatch(args, parser, raw_args):
         if extras:
             parser.error('计划附加参数需要明确的独立计划入口。')
         return None
-    allowed = {'--schedule-check', '--schedule-save', '--schedule-list', '--schedule-preview', '--schedule-run',
-               '--schedule-store-dir', '--schedule-replace', '--schedule-expected-revision', '--schedule-from',
+    allowed = {'--schedule-check', '--schedule-save', '--schedule-list', '--schedule-preview', '--schedule-budget',
+               '--schedule-run', '--schedule-store-dir', '--schedule-replace', '--schedule-expected-revision', '--schedule-from',
                '--schedule-limit-seconds'}
-    if args.schedule_run is not None:
+    if args.schedule_run is not None or args.schedule_budget is not None:
         allowed.add('--config')
     provided = {arg.partition('=')[0] for arg in raw_args if arg.startswith('--')}
     if provided - allowed:
@@ -82,7 +83,7 @@ def dispatch(args, parser, raw_args):
         store = ScheduleStore(args.schedule_store_dir or DEFAULT_ROOT)
         if args.schedule_check is not None or args.schedule_save is not None:
             plan = read(args.schedule_check or args.schedule_save)
-            validate_target(plan['target'])
+            schedule_dispatch.validate_target(plan['target'])
             if args.schedule_check is not None:
                 data = dict(status='success', mode='schedule_validation', plan=_public(plan), revision=revision(plan),
                             enabled=False, configuration_loaded=False, target_sources_read=False, game_accessed=False)
@@ -96,6 +97,11 @@ def dispatch(args, parser, raw_args):
             plan, _ = store.load(args.schedule_preview)
             now = datetime.fromisoformat(args.schedule_from) if args.schedule_from is not None else datetime.now(CHINA)
             data = dict(status='success', **preview(plan, now), enabled=False, game_accessed=False)
+        elif args.schedule_budget is not None:
+            plan, _ = store.load(args.schedule_budget)
+            settings = Settings.load(args.config, require_existing='--config' in provided)
+            budget = schedule_dispatch.NativeScheduleExecutor(settings).preview_budget(plan)
+            data = dict(status='success', mode='schedule_budget', **budget, enabled=False, game_accessed=False)
         else:
             names = args.schedule_run
             if not names or len(names) > 32 or len(set(names)) != len(names):
@@ -103,13 +109,11 @@ def dispatch(args, parser, raw_args):
             limit = args.schedule_limit_seconds
             if limit is not None and (not math.isfinite(limit) or not 0 <= limit <= 86400):
                 raise ScheduleError('本次计时期限须为0～86400秒的有限数值。')
-            from .config import Settings
-            from .schedule_dispatch import NativeScheduleExecutor
             from .schedule_runtime import Scheduler
             settings = Settings.load(args.config, require_existing='--config' in provided)
             def emit(event):
                 print(json.dumps(event, ensure_ascii=False, allow_nan=False), file=sys.stderr, flush=True)
-            controller = Scheduler(store, NativeScheduleExecutor(settings), emit=emit)
+            controller = Scheduler(store, schedule_dispatch.NativeScheduleExecutor(settings), emit=emit)
             for name in names:
                 controller.enable(name)
             controller.start()

@@ -77,7 +77,7 @@
 
 ## CLI：检查、保存、预览与显式计时
 
-下列入口互斥，不能混用游戏、记录、通知或管理员命令。`--config`只允许与`--schedule-run`一起使用；检查／保存／列举／预览不加载游戏配置，也不访问游戏。
+下列入口互斥，不能混用游戏、记录、通知或管理员命令。`--config` 可用于 `--schedule-budget` 和 `--schedule-run`。检查、保存、列举和日历预览不加载游戏配置。预算预览读取所选设置、已保存计划和它引用的任务流，返回 `whole_batch`，不启用定时、不读取执行素材，也不访问游戏。
 
 ```powershell
 # 只读检查JSON和目标结构，不读目标文件、不保存、不启用
@@ -90,6 +90,8 @@
 .\.venv\Scripts\python.exe -m autohsr --schedule-list
 # 只读预览未来五次日历时刻；参考时间必须带时区
 .\.venv\Scripts\python.exe -m autohsr --schedule-preview example-daily --schedule-from "2026-11-02T03:59:00+08:00"
+# 用本地配置只读核对该计划的开拓力、合成材料、差分局数和步数上限
+.\.venv\Scripts\python.exe -m autohsr --schedule-budget example-daily --config .\example-config.json
 ```
 
 默认存储根为当前运行版的`ROOT/schedules.local/`，源码版在项目根，打包版在EXE旁；目录整体忽略，不提交。`--schedule-store-dir <目录>`可明确替换独立工具及本次控制器的定义／回执目录。`--schedule-expected-revision <旧SHA-256>`仅配合`--schedule-save ... --schedule-replace`使用，使用列表／预览返回的规范计划revision核对旧版本后才替换，不是输入JSON原始字节的哈希；不凭空把未知旧回执改成已核实。

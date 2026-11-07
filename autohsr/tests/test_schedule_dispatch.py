@@ -474,6 +474,54 @@ class ScheduleDispatchTests(unittest.TestCase):
                     self.assertEqual(main(command + ['--schedule-store-dir', str(store)]), 0, error.getvalue())
                 self.assertIn('false', output.getvalue())
 
+    def test_cli_budget_reuses_native_projection_without_enabling_or_reading_execution_sources(self):
+        from autohsr.__main__ import main
+
+        self.write_workflow(steps=[
+            dict(id='training', type='task', task='daily', params=dict(tasks=['daily'])),
+            dict(id='records', type='task', task='warp_analysis', params=dict(imports=['missing.json'])),
+        ])
+        store = self.root / 'cli-budget'
+        plan = self.plan(dict(type='workflow', path=str(self.workflow)))
+        ScheduleStore(store).save(plan)
+        config = self.root / 'config.json'
+        self.settings.save(config)
+        originals = {path: path.read_bytes() for path in store.rglob('*') if path.is_file()}
+        originals.update({self.workflow: self.workflow.read_bytes(), config: config.read_bytes()})
+        output, error = io.StringIO(), io.StringIO()
+        with (patch('autohsr.schedule_runtime.Scheduler') as scheduler,
+              patch('autohsr.task_workflow_run.TaskWorkflowRunner') as runner,
+              patch('autohsr.schedule_dispatch._execution_busy') as busy,
+              redirect_stdout(output), redirect_stderr(error)):
+            result = main(['--schedule-budget', plan['id'], '--schedule-store-dir', str(store),
+                           '--config', str(config)])
+        self.assertEqual(result, 0, error.getvalue())
+        expected = self.executor.preview_budget(plan)
+        self.assertEqual(json.loads(output.getvalue()), dict(status='success', mode='schedule_budget', **expected,
+                                                            enabled=False, game_accessed=False))
+        self.assertEqual(expected['whole_batch']['daily_stamina_max'], 0)
+        self.assertEqual(expected['whole_batch']['daily_synthesis_max'], 1)
+        scheduler.assert_not_called()
+        runner.assert_not_called()
+        busy.assert_not_called()
+        self.assertEqual({path: path.read_bytes() for path in originals}, originals)
+        self.assertFalse((store / 'slots').exists())
+
+    def test_cli_budget_rejects_missing_explicit_configuration(self):
+        from autohsr.__main__ import main
+
+        store = self.root / 'cli-missing-config'
+        plan = self.plan(dict(type='task', task='daily_training_rewards'))
+        ScheduleStore(store).save(plan)
+        missing = self.root / 'missing-config.json'
+        for flags in (['--config', str(missing)], [f'--config={missing}']):
+            with self.subTest(flags=flags), patch('autohsr.schedule_dispatch.NativeScheduleExecutor') as executor, \
+                    redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as error:
+                self.assertEqual(main(['--schedule-budget', plan['id'], '--schedule-store-dir', str(store), *flags]), 2)
+                self.assertEqual(output.getvalue(), '')
+                self.assertEqual(json.loads(error.getvalue())['status'], 'failed')
+                executor.assert_not_called()
+
     def test_unverified_stopped_report_halts_real_adapter_controller_but_remains_unknown(self):
         def stopped_factory(*args, **kwargs):
             runner = FakeWorkflow(*args, **kwargs)
