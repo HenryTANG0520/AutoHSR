@@ -29,8 +29,24 @@ _BLOCKING_PHRASES = (
 )
 
 
-def _grid_label(tokens: list[Token], label: str, region: ROI, minimum: float) -> Token | None:
+def _edge_overlap(box: ROI, region: ROI) -> bool:
+    # Count only a thin sliver of a box lying mostly outside the label region.
+    for start, end in ((0, 2), (1, 3)):
+        overlap = min(box[end], region[end]) - max(box[start], region[start])
+        if 0 < overlap <= min(.005, (box[end] - box[start]) / 3):
+            return True
+    return False
+
+
+def _grid_label(tokens: list[Token], label: str, region: ROI, minimum: float,
+                *, allow_edge_overlap: bool = False) -> Token | None:
     hits = [token for token in tokens if _overlaps(token.box, region)]
+    if allow_edge_overlap:
+        candidates = [token for token in hits if normalize(token.text) == label]
+        if len(candidates) == 1:
+            caption = candidates[0]
+            hits = [token for token in hits if _overlaps(token.box, caption.box)
+                    or not _edge_overlap(token.box, region)]
     if len(hits) != 1:
         return None
     token = hits[0]
@@ -47,7 +63,7 @@ def calibration_overlay(scene: Scene) -> bool:
             or scene.has(('账号登录', '点击进入', '点击进入游戏'), exact=True))
 
 
-def phone_team_target(scene: Scene, confidence: float = .65) -> Token | None:
+def phone_team_target(scene: Scene, confidence: float = .65, *, allow_task_edge_overlap: bool = False) -> Token | None:
     """Return the original 编队 token only on a verified current phone grid."""
     if (not isinstance(scene, Scene) or not isinstance(scene.tokens, (list, tuple))
             or type(confidence) not in (int, float) or not 0 <= confidence <= 1):
@@ -70,7 +86,7 @@ def phone_team_target(scene: Scene, confidence: float = .65) -> Token | None:
     team = _grid_label(clean.tokens, '编队', _TEAM, minimum)
     guide = _grid_label(clean.tokens, '指南', _GUIDE, minimum)
     bag = _grid_label(clean.tokens, '背包', _BAG, minimum)
-    task = _grid_label(clean.tokens, '任务', _TASK, minimum)
+    task = _grid_label(clean.tokens, '任务', _TASK, minimum, allow_edge_overlap=allow_task_edge_overlap)
     if team is None or guide is None or bag is None or task is None:
         return None
 

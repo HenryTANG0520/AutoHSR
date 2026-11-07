@@ -56,14 +56,14 @@ def _label(scene, words, roi, minimum):
 def phone_journey_event_entry(scene, *, client_version, confidence=.65):
     """Observe the exact 4.6 旅情事记 caption on the independently verified phone grid."""
     clean = _visible_scene(scene, client_version, confidence)
-    if clean is None or phone_team_target(clean, confidence) is None:
+    if clean is None or phone_team_target(clean, confidence, allow_task_edge_overlap=True) is None:
         return None
     if sum(normalize(token.text) == '旅情事记' for token in clean.tokens) != 1:
         return None
     minimum = max(.85, confidence)
     entry = _label(clean, ('旅情事记',), _ENTRY, minimum)
     synthesis = _grid_label(clean.tokens, '合成', _SYNTHESIS, minimum)
-    shop = _grid_label(clean.tokens, '商店', _SHOP, minimum)
+    shop = _grid_label(clean.tokens, '商店', _SHOP, minimum, allow_edge_overlap=True)
     if (entry is not None and synthesis is not None and shop is not None
             and abs(entry.center[1] - synthesis.center[1]) <= .010
             and .105 <= entry.center[1] - shop.center[1] <= .136

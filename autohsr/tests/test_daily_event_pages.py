@@ -65,6 +65,41 @@ class JourneyEventEntryTests(unittest.TestCase):
             with self.subTest(rows=len(rows)):
                 self.assertIsNone(self.read(replace(phone, tokens=rows)))
 
+    def test_adjacent_boxes_touching_task_and_shop_edges_keep_the_journey_caption(self):
+        from autohsr.team_calibration_pages import phone_team_target
+
+        phone = _phone()
+        caption = next(token for token in phone.tokens if token.text == '旅情事记')
+        task_edge = Token('相邻标记', .99, (.8578, .8565, .887, .8722))
+        shop_edge = Token('邻区标记', .69, (.6786, .3454, .6964, .3611))
+        for edges in ((task_edge,), (shop_edge,), (task_edge, shop_edge)):
+            with self.subTest(edges=edges):
+                scene = replace(phone, tokens=[*phone.tokens, *edges])
+                self.assertIs(self.read(scene), caption)
+        self.assertIsNone(phone_team_target(replace(phone, tokens=[*phone.tokens, task_edge])))
+
+    def test_second_label_and_covering_box_keep_the_journey_entry_unknown(self):
+        phone = _phone()
+        extra = (
+            Token('任务', .99, (.8578, .8565, .887, .8722)),
+            Token('商店', .69, (.6786, .3454, .6964, .3611)),
+            Token('另一控件', .95, (.813, .834, .835, .848)),
+            Token('另一控件', .95, (.671, .358, .692, .376)),
+            Token('遮挡文字', .97, (.680, .327, .698, .379)),
+            Token('获得物品', .97, (.473, .144, .528, .178)),
+        )
+        for token in extra:
+            with self.subTest(token=token):
+                self.assertIsNone(self.read(replace(phone, tokens=[*phone.tokens, token])))
+
+        near_edge = replace(phone, tokens=[
+            replace(token, box=(.678, .358, .701, .385)) if token.text == '商店' else token
+            for token in phone.tokens
+        ])
+        self.assertIsNotNone(self.read(near_edge))
+        sliver_over_caption = Token('遮挡文字', .95, (.679, .341, .699, .361))
+        self.assertIsNone(self.read(replace(near_edge, tokens=[*near_edge.tokens, sliver_over_caption])))
+
     def test_modal_and_actual_activity_page_are_never_the_phone(self):
         phone = _phone()
         popup = Token('获得物品', .97, (.473, .144, .528, .178))
