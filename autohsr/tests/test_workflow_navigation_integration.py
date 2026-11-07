@@ -62,7 +62,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                        lose_focus_after_geometry=0, duplicate_tab=False, first_escape_native_count=2,
                        upstream_screen=None, guide_overlay=None, overlay_on_target=False,
                        achievement_page_kind="overview", redemption_state="form", current_redemption_form=False,
-                       visa_pages=None, expect_visa_stop=False, observe_only=False, resume=False):
+                       visa_pages=None, expect_visa_stop=False, observe_only=False, resume=False,
+                       training_page=None, selected_page=False):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -132,7 +133,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 if target == 'difficulty_guide':
                     pages = (survival, exact_guide_fixture('difficulty_guide'))
                 else:
-                    training = identified(fixture('daily_survival_badge'))
+                    training = training_page if training_page is not None else identified(fixture('daily_survival_badge'))
                     daily = Scene(training.tokens, cv2.resize(training.image, (1920, 1080)))
                     pages = (survival, daily) if target == 'daily_training' else (daily, survival)
             if guide_overlay is not None:
@@ -335,7 +336,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             stack.enter_context(redirect_stdout(out))
             stack.enter_context(redirect_stderr(err))
             command = '--screen-check-resume' if resume else '--task-workflow'
-            code = main([command, str(workflow), '--config', str(config)])
+            args = ['--screen-check-pages', target] if selected_page else [command, str(workflow)]
+            code = main([*args, '--config', str(config)])
             interrupted = (late_loss or late_version or lose_focus_on_installation_read
                            or lose_focus_after_geometry or version != '4.6.0'
                            or duplicate_tab or first_escape_native_count != 2 or guide_overlay is not None
@@ -348,6 +350,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 self.assertEqual(installation_held, [True])
             self.assertEqual(config.read_bytes(), original)
             parent = json.loads(out.getvalue())
+            if selected_page:
+                return sent, parent['pages'], None
             if resume:
                 self.assertEqual(workflow.read_bytes(), original_report)
                 return sent, parent, None
@@ -486,6 +490,36 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                         self.assertEqual([(row['action'], row['input_status'], row['destination_status'])
                                           for row in record['actions']],
                                          [] if current_page else [('open_guide', 'sent', 'unknown')])
+
+    def test_daily_training_reports_current_opportunities_without_reward_input(self):
+        from autohsr.tests.test_daily_support import training as support_card
+        from autohsr.tests.test_reward_only_milestones import training
+
+        labels = support_card().tokens[7:]
+        labels.extend((
+            badge('使用1次万能合成机', .728, .48), badge('+100', .728, .64), badge('前往', .728, .76),
+        ))
+        page = training(400, gifts=(400,), claimed=(100, 200, 300), labels=labels)
+        page.image[:, :120] = 95
+        sent, steps, native = self.run_navigation(target='daily_training', already_open=True, training_page=page)
+        self.assertEqual(sent, [])
+        observation = native['workflow_navigation']['training_observation']
+        self.assertEqual(steps[0]['training_observation'], observation)
+        self.assertEqual(observation['activity'], 400)
+        self.assertEqual(observation['support_task'], 'needed')
+        self.assertEqual(observation['synthesis_task'], 'available')
+        self.assertEqual(observation['milestones'], dict(claimed=[100, 200, 300], claimable=[400]))
+        self.assertFalse(native['daily_verified'])
+        sent, rows, _ = self.run_navigation(target='daily_training', already_open=True,
+                                            training_page=page, selected_page=True)
+        self.assertEqual(sent, [])
+        self.assertEqual(rows, [dict(target='daily_training', status='verified', actions_sent=0,
+                                     actions_unconfirmed=0, training_observation=observation)])
+        sent, steps, native = self.run_navigation(target='daily_training', already_open=True, late_loss=True,
+                                                  training_page=page)
+        self.assertEqual(sent, [])
+        self.assertNotIn('training_observation', steps[0])
+        self.assertNotIn('training_observation', native['workflow_navigation'])
 
     def test_incoming_message_import_reaches_the_existing_notification_panel(self):
         sent, steps, native = self.run_navigation(target='messages', upstream_screen='incoming_message')

@@ -131,6 +131,10 @@ python -m autohsr --screen-check-pages phone mail odyssey reward_guide
 
 每页只选一次。活动页面放在末尾，两项都选时依次核对巡星之礼和奖励指南。奖励指南可从已核实的巡星之礼打开，两项的离页路线仍待校准。已在目标页时不发送输入。遇到首次待核对时，保留之前已核实的页面及已发送、发送不完整的动作计数，后续页面记为未执行。核对不会领取奖励、开战、建立资源预算或发送通知。
 
+选中每日实训可用 `python -m autohsr --screen-check-pages daily_training`。同账号、同窗口、同游戏日的两张新画面均核实同一活跃度时，该页回执附带 `training_observation`。其中 `activity` 为实际活跃度，`milestones.claimed` 与 `milestones.claimable` 分列已领及可领档位。已达档位有缺读或两帧不一致时，`milestones` 为 `null`。满 500 活跃仍可能有可领奖励。
+
+`support_task` 区分支援胜利任务的 `needed`、`completed`、`activity_full` 和 `unknown`。`synthesis_task` 区分已核实的单次合成任务 `available`、`activity_full` 和 `unknown`。卡片隐藏、证据冲突或无匹配时保留 `unknown`。同一数据也附在任务流的 `workflow_open_page` 步骤回执中。实训观察用于判断下一步，实际领奖、合成和开战仍使用各自入口。
+
 三月七在单页失败后尝试返回主界面，再核对余下页面。AutoHSR 中，若最后一步在写入启动意图时中断、父报告最终保存成功，先前核实页的回执仍可查看。本步到页和动作次数保留待核对，后续页标为未执行。人工恢复到已知页面后，可以显式选中仍需核对的页面另开一批，新一批按当次窗口和账号重新取证。[三月七失败处理](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/base/screen_test.py#L33-L42)
 
 原页面核对保存为部分完成且还有未启动页面时，也可以使用 CLI 续查。选择本机 `runs` 中该批次的原 `report.json`，保留同目录的 `workflow.json`、`steps.jsonl` 和各子报告。程序交叉核对原顺序、已核实前缀和执行日志，只选尚无启动意图的后续页面。曾发生换号、主动停止、原报告和日志不一致时会拒绝续查。
@@ -151,7 +155,7 @@ python -m autohsr --screen-check-plan visa_characters
 python -m autohsr --screen-check-pages visa_characters
 ```
 
-`--list-task-capabilities` 中的 `autohsr.screen_check_plan` 同步列出这些目标，使用相同的单页选择和预算检查。执行后只在匿名回执中显示目标、核对状态与动作计数。
+`--list-task-capabilities` 中的 `autohsr.screen_check_plan` 同步列出这些目标，使用相同的单页选择和预算检查。执行后的匿名回执包含目标、核对状态与动作计数，每日实训还可附带上述观察。
 
 音频支持 1 或 2 声道、8 或 16 位、8～48 kHz，文件最多 32 MiB、时长最多 120 秒。播放完成来自 Windows 驱动反馈。主动通知在桌面运行时显示本次最多步骤数和方案别名，授权后沿用冻结的方案版本。CLI 显式使用 `--workflow-allow-notify`。每次流程最多 20 个主动通知步骤。应用内定时暂未开放这项授权。通知正文留在流程文件及明确发往的渠道，运行回执只记结果及必要的匿名事实。[通知设置](notifications.md)
 

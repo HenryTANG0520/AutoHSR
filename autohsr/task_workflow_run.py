@@ -508,6 +508,12 @@ class TaskWorkflowRunner:
                 if node['task'] == PAGE_TASK and result['workflow_navigation'].get('target') != options['workflow_page']:
                     raise WorkflowError('已核实页面与本步骤请求的目标不符。')
             entry['source'] = self._source(result, expected, native_points=native_points)
+            if node['task'] == PAGE_TASK and result['status'] == 'success' and options['workflow_page'] == 'daily_training':
+                from .daily_training_observe import training_observation_receipt
+
+                observation = training_observation_receipt(result['workflow_navigation'])
+                if observation is not None:
+                    entry['training_observation'] = deepcopy(observation)
             training = None
             if node['task'] == TRAINING_REWARDS_TASK:
                 from .daily_training_rewards import reached_milestones_receipt

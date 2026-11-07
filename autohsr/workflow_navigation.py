@@ -664,9 +664,19 @@ class WorkflowNavigation:
     def guard_publication(self):
         if self.arrival is None or self.record['page_verified'] is not True or not self._satisfies(self.arrival[-1].page):
             raise AutomationError('日常页面导航缺少本次到页回执。')
-        with _seal(self.arrival):
-            self._verify(self.arrival)
-            self._final_guard(self.arrival)
+        try:
+            with _seal(self.arrival):
+                self._verify(self.arrival)
+                self._final_guard(self.arrival)
+                observation = self.record.get('training_observation')
+                if observation is not None:
+                    from .du_daily import game_day
+
+                    if observation['game_day'] != game_day():
+                        raise AutomationError('每日实训观察已跨游戏日，请重新核对。')
+        except AutomationError:
+            self.record.pop('training_observation', None)
+            raise
 
     def require_claim_handoff(self, frame):
         """Keep the independently captured claim frames in the verified navigation scope."""
@@ -748,6 +758,14 @@ class WorkflowNavigation:
         self.record['page_verified'] = True
         try:
             self.guard_publication()
+            if self.target == 'daily_training':
+                from .daily_training_observe import observe_training
+
+                with _seal(pair):
+                    observation = observe_training(self.daily, (pair[0].scene, pair[1].scene), self.confidence)
+                    self._final_guard(pair)
+                if observation is not None:
+                    self.record['training_observation'] = observation
         except BaseException:
             self.record['page_verified'] = False
             raise

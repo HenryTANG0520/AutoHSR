@@ -48,7 +48,7 @@ def _markers(workflow, scene, name, confidence, *, strict):
 
 def _band(workflow, scene, activity, confidence, *, strict=False):
     if (_blocked(scene) or reward_overlay(scene) or scene.has(_CLOSE, exact=True)
-            or scene.has('本日活跃度已满', (.14, .68, .89, .87), exact=True)
+            or activity < 500 and scene.has('本日活跃度已满', (.14, .68, .89, .87), exact=True)
             or any(_unique(scene, (label,), TITLE, confidence) is None for label in ('星际和平指南', '每日实训'))):
         return None
     numbers = [t for t in scene.tokens if t.within(_ACTIVITY_VALUE) and re.fullmatch(r'[0-9]{1,3}', t.text.strip())]

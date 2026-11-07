@@ -153,6 +153,12 @@ def _project_child(row, step, parent_dir, read_source):
             and isinstance(facts, dict) and facts.get('status') == 'success' and facts.get('page_verified') is True
             and navigation['page_verified'] is True and (not actions or last in accepted)):
         row['status'] = 'verified'
+        if target == 'daily_training':
+            from .daily_training_observe import training_observation_receipt
+
+            observation = training_observation_receipt(navigation)
+            if observation is not None and step.get('training_observation') == observation:
+                row['training_observation'] = observation
 
 
 def project_result(recipe, report, *, read_source):
