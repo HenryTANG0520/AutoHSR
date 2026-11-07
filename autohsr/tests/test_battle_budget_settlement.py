@@ -56,7 +56,9 @@ class BattleBudgetSettlementTests(unittest.TestCase):
     def test_optional_recovery_does_not_accept_missing_or_changed_receipts_and_payments(self):
         reset = datetime.fromisoformat('2026-11-08T04:00:00+08:00')
         for fault in ('missing', 'cost', 'paid_rounds', 'pending', 'token_pending', 'day', 'timestamp',
-                      'wrong_run', 'wrong_source', 'unsaved', 'duplicate', 'all_ok', 'no_battlepass', 'daily_mismatch'):
+                      'wrong_run', 'wrong_source', 'unsaved', 'duplicate', 'all_ok', 'no_battlepass', 'daily_mismatch',
+                      'unknown_status', 'inconsistent_failure', 'boolean_completed', 'missing_token_fields',
+                      'missing_token_fields_both', 'unbound_battlepass_error'):
             with self.subTest(fault=fault), tempfile.TemporaryDirectory() as folder:
                 budget, source = self.settled_daily(Path(folder).resolve())
                 report = json.loads(source.read_text(encoding='utf-8'))
@@ -89,6 +91,20 @@ class BattleBudgetSettlementTests(unittest.TestCase):
                     report['results'].pop()
                 elif fault == 'daily_mismatch':
                     report['daily_verified'] = False
+                elif fault == 'unknown_status':
+                    report['results'][-1]['status'] = 'invented'
+                elif fault == 'inconsistent_failure':
+                    report['failure_task'] = 'battle'
+                elif fault == 'boolean_completed':
+                    ledger['completed'] = True
+                elif fault in ('missing_token_fields', 'missing_token_fields_both'):
+                    del ledger['immersifiers_spent']
+                    del ledger['immersifiers_pending']
+                    if fault == 'missing_token_fields_both':
+                        del report['immersifiers_spent']
+                        del report['immersifiers_pending']
+                elif fault == 'unbound_battlepass_error':
+                    report.update(error='等待勋礼页面超时', failure_task='battlepass')
                 if source.exists():
                     source.write_text(json.dumps(report, ensure_ascii=False), encoding='utf-8')
                 budget.path.write_text(json.dumps(ledger, ensure_ascii=False), encoding='utf-8')
@@ -108,6 +124,40 @@ class BattleBudgetSettlementTests(unittest.TestCase):
             self.assertTrue(state['blocked'])
             self.assertNotIn('settled_daily_battle_day', state)
             self.assertIsNone(new_budget_block_reason(state))
+
+    def test_verified_battlepass_exception_keeps_only_the_same_day_closed(self):
+        with tempfile.TemporaryDirectory() as folder:
+            budget, source = self.settled_daily(Path(folder).resolve())
+            report = json.loads(source.read_text(encoding='utf-8'))
+            error = '等待勋礼页面超时'
+            report.update(error=error, failure_task='battlepass')
+            report['results'][-1]['detail'] = f'未核实完成：{error}'
+            source.write_text(json.dumps(report, ensure_ascii=False), encoding='utf-8')
+            for when, expected in (('2026-11-07T12:00:00+08:00', True), ('2026-11-08T04:00:00+08:00', False)):
+                with self.subTest(when=when):
+                    state = recovery_state(budget.runs, now=datetime.fromisoformat(when))
+                    self.assertEqual(state['blocked'], expected)
+                    self.assertEqual(state['settled_daily_battle_day'], '2026-11-07')
+
+    def test_old_journal_without_token_fields_requires_explicit_other_partial_recovery(self):
+        with tempfile.TemporaryDirectory() as folder:
+            budget, source = self.settled_daily(Path(folder).resolve())
+            report = json.loads(source.read_text(encoding='utf-8'))
+            ledger = json.loads(budget.path.read_text(encoding='utf-8'))
+            for document in (report, ledger):
+                del document['immersifiers_spent']
+                del document['immersifiers_pending']
+            del report['execution_identity']
+            budget.path.write_text(json.dumps(ledger), encoding='utf-8')
+            for other_partial in (False, True):
+                with self.subTest(other_partial=other_partial):
+                    if other_partial:
+                        report['results'][2]['status'] = 'partial'
+                        report['daily_verified'] = False
+                    source.write_text(json.dumps(report, ensure_ascii=False), encoding='utf-8')
+                    state = recovery_state(budget.runs, now=datetime.fromisoformat('2026-11-08T04:00:00+08:00'))
+                    self.assertTrue(state['blocked'])
+                    self.assertEqual(new_budget_block_reason(state) is None, other_partial)
 
     def test_settlement_write_failure_preserves_the_previous_batch_and_pending_payment(self):
         for planned in (False, True):

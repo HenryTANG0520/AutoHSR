@@ -67,8 +67,7 @@ _OTHER_DAILY_RESULT = object()
 def _settled_daily_battle_day(journal, raw, ledger):
     """Prove that an ordinary battle settled and only the optional battlepass was partial."""
     if (ledger['status'] != 'partial' or ledger.get('power_plan') or ledger['spent'] <= 0
-            or ledger['pending'] != 0 or ledger.get('immersifiers_pending') != 0
-            or type(ledger.get('completed')) is not int or ledger['completed'] <= 0):
+            or ledger['pending'] != 0 or ledger.get('immersifiers_pending', 0) != 0):
         return _OTHER_DAILY_RESULT
     try:
         root = journal.parent.resolve(strict=True)
@@ -98,7 +97,14 @@ def _settled_daily_battle_day(journal, raw, ledger):
             'immersifiers_spent': 'immersifiers_spent', 'immersifiers_pending': 'immersifiers_pending',
             'battle_completed': 'completed', 'battle_requested': 'requested',
         }
+        # Early v1 journals and reports predate both token fields. Preserve
+        # explicit recovery for other verified partials, never rollover them.
+        token_fields = ('immersifiers_spent', 'immersifiers_pending')
+        legacy_tokens = ('execution_identity' not in report
+                         and all(key not in ledger and key not in report for key in token_fields))
         for report_key, ledger_key in fields.items():
+            if legacy_tokens and report_key in token_fields:
+                continue
             reported, recorded = report[report_key], ledger[ledger_key]
             if (type(reported) is not type(recorded) or reported != recorded
                     or (type(reported) is not int and (report_key != 'battle_requested' or reported is not None))):
@@ -106,10 +112,12 @@ def _settled_daily_battle_day(journal, raw, ledger):
         results = report['results']
         if not isinstance(results, list) or any(
                 not isinstance(entry, dict) or type(entry.get('task')) is not str
-                or type(entry.get('status')) is not str for entry in results):
+                or entry.get('status') not in ('ok', 'partial', 'skipped', 'failed', 'stopped') for entry in results):
             return None
         statuses = {entry['task']: entry['status'] for entry in results}
+        failed_task = report.get('failure_task')
         if (len(statuses) != len(results) or (statuses.get('daily') == 'ok') != (report.get('daily_verified') is True)
+                or (statuses.get(failed_task) == 'ok' and statuses.get('run') != 'failed')
                 or (report.get('error') == '' and all(status == 'ok' for status in statuses.values()))):
             return None
         started, finished = (datetime.fromisoformat(report[key]) for key in ('started_at', 'finished_at'))
@@ -119,13 +127,21 @@ def _settled_daily_battle_day(journal, raw, ledger):
         day = game_day(finished)
         if game_day(started) != day or game_day(updated) != day or report.get('game_day') not in ('unverified', day):
             return None
-        if (report.get('daily_verified') is not True or report.get('error') != ''
-                or report.get('failure_task')
+        if (ledger['completed'] <= 0 or report.get('daily_verified') is not True
                 or statuses.pop('battlepass', None) != 'partial'
                 or statuses.get('battle') != 'ok' or statuses.get('daily') != 'ok'
                 or any(status != 'ok' for status in statuses.values())):
             return _OTHER_DAILY_RESULT
-        return day
+        if legacy_tokens:
+            return None
+        error = report.get('error')
+        if error == '' and failed_task == '':
+            return day
+        if (type(error) is str and error and failed_task == 'battlepass'
+                and results[-1]['task'] == 'battlepass'
+                and results[-1].get('detail') == f'未核实完成：{error}'):
+            return day
+        return None
     except (OSError, ValueError, TypeError, KeyError, RuntimeError, OverflowError):
         # Unverifiable evidence keeps the original recovery rules in force.
         return None
