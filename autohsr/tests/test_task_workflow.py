@@ -20,7 +20,7 @@ import cv2
 from autohsr.config import Settings
 from autohsr.models import AutomationError, RunReport, TaskResult, Scene, Token
 import numpy as np
-from autohsr.task_workflow import WorkflowError, compile_recipe, loads, task_spec
+from autohsr.task_workflow import ASSIGNMENT_REWARDS_TASK, WorkflowError, compile_recipe, loads, task_spec
 from autohsr.task_workflow_run import TaskWorkflowRunner
 from autohsr.tests.test_du_points_goal import NOW, RESET, WEEK
 from autohsr.workflow_lease import require_workflow_access, workflow_lease
@@ -49,6 +49,23 @@ def condition(identity, field='status', value='success', op='eq'):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_independent_assignment_has_no_daily_budget_and_checks_overlaps(self):
+        assignment = task('assignments', ASSIGNMENT_REWARDS_TASK)
+        training = task('training', 'daily_training_rewards')
+        mail = task('mail', 'daily_free_attachment', target='mail')
+        battlepass = task('pass', 'daily_free_attachment', target='battlepass')
+        self.assertEqual(compile_recipe(recipe(assignment)).profile['daily_calls'], 0)
+        combined = compile_recipe(recipe(assignment, training, mail, battlepass))
+        self.assertEqual(combined.profile['daily_calls'], 1)
+        self.assertEqual(combined.profile['assignment_reward_calls'], 1)
+        self.assertEqual(combined.profile['free_attachment_calls'], 2)
+        for node in (task('other', ASSIGNMENT_REWARDS_TASK), task('legacy', tasks=['assignments']),
+                     task('all'), task('plan', 'plan')):
+            with self.subTest(node=node), self.assertRaises(WorkflowError):
+                compile_recipe(recipe(assignment, node))
+        with self.assertRaises(WorkflowError):
+            compile_recipe(recipe(task('unsupported', ASSIGNMENT_REWARDS_TASK, tasks=['daily'])))
+
     def test_training_rewards_preserves_legacy_synthesis_and_reserves_one_daily_call(self):
         rewards = task('rewards', 'daily_training_rewards')
         legacy = task('legacy', tasks=['daily'])

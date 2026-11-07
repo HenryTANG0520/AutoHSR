@@ -19,8 +19,8 @@ from autohsr.app import Context
 from autohsr.config import Settings
 from autohsr.desktop_daily import assignment_result
 from autohsr.models import AutomationError, InputInterrupted, Scene
-from autohsr.task_workflow import ASSIGNMENT_FLOW
-from autohsr.tests.test_core import assignments_scene, token
+from autohsr.task_workflow import ASSIGNMENT_FLOW, ASSIGNMENT_REWARDS_TASK, TRAINING_REWARDS_TASK
+from autohsr.tests.test_core import assignments_scene, daily_scene, token
 from autohsr.tests.test_daily_startup import phone, supply
 from autohsr.tests.test_du_team import fixture
 from autohsr.workflows import DailyWorkflow
@@ -33,7 +33,7 @@ OTHER = 'UID:100000001'
 
 class AssignmentOnlyTests(unittest.TestCase):
     def invoke(self, start='phone', *, event=None, workflow=True, active_scene=None, overrides=None,
-               standalone=False):
+               standalone=False, training_order=None):
         folder = TemporaryDirectory(prefix='autohsr-assignment-only-')
         self.addCleanup(folder.cleanup)
         root = Path(folder.name)
@@ -42,9 +42,13 @@ class AssignmentOnlyTests(unittest.TestCase):
                  daily_synthesis=False, overlay_logs=False).save(config)
         original = config.read_bytes()
         document = root / 'only-assignments.json'
-        document.write_text(json.dumps(dict(version=1, name=ASSIGNMENT_FLOW,
-            steps=[dict(id='assignments', type='task', task='daily', params=dict(tasks=['assignments']))])),
-            encoding='utf8')
+        assignment = dict(id='assignments', type='task', task='daily', params=dict(tasks=['assignments']))
+        steps = [assignment]
+        if training_order is not None:
+            assignment = dict(id='assignments', type='task', task=ASSIGNMENT_REWARDS_TASK)
+            training = dict(id='training', type='task', task=TRAINING_REWARDS_TASK)
+            steps = [training, assignment] if training_order == 'before' else [assignment, training]
+        document.write_text(json.dumps(dict(version=1, name=ASSIGNMENT_FLOW, steps=steps)), encoding='utf8')
         mode = start
         current = None
         active = None
@@ -92,6 +96,7 @@ class AssignmentOnlyTests(unittest.TestCase):
             nonlocal current
             pages = {
                 'phone': phone,
+                'training': lambda: daily_scene('500/500', marks=5),
                 'supply': supply,
                 'supply-revealed': lambda: supply(revealed=True),
                 'login-reward': lambda: Scene([token('获得物品', .50, .11),
@@ -104,6 +109,8 @@ class AssignmentOnlyTests(unittest.TestCase):
                                           token('再次派遣', .50, .86)]),
             }
             scene = (overrides or {}).get(mode, pages[mode])()
+            if mode == 'phone' and training_order is not None:
+                scene.tokens.append(token('指南', .74, .74))
             tokens = [field for field in scene.tokens if not field.text.startswith('UID:')]
             if mode not in ('supply', 'supply-revealed', 'reward', 'login-reward'):
                 tokens.append(token(actual_account, .08, .97, .99))
@@ -170,6 +177,8 @@ class AssignmentOnlyTests(unittest.TestCase):
                 mode = 'phone' if mode == 'login-reward' else 'disabled'
             elif active == 'esc':
                 mode = 'phone'
+            elif training_order is not None and active in ('指南', '星际和平指南'):
+                mode = 'training'
             else:
                 raise AssertionError(f'non-assignment fixture input {active!r}')
             return count
@@ -193,7 +202,10 @@ class AssignmentOnlyTests(unittest.TestCase):
                 ('autohsr.windows.time.sleep', Mock()),
             ):
                 stack.enter_context(patch(name, value))
-            for name in ('battle', 'daily', 'mail', 'battlepass'):
+            unselected = ('battle', 'mail', 'battlepass')
+            if training_order is None:
+                unselected += ('daily',)
+            for name in unselected:
                 stack.enter_context(patch.object(DailyWorkflow, name, side_effect=AssertionError('extra daily task')))
             args = ['--task-workflow', str(document)] if workflow else ['--run']
             if standalone:
@@ -203,6 +215,30 @@ class AssignmentOnlyTests(unittest.TestCase):
         self.assertFalse((root / 'runs' / 'battle-session.json').exists())
         report = json.loads(out.getvalue())
         return SimpleNamespace(code=code, report=report, sent=sent, root=root)
+
+    def test_independent_assignment_and_training_run_in_either_order(self):
+        for start, order in (('training', 'before'), ('active', 'after')):
+            with self.subTest(order=order):
+                completed = self.invoke(start, training_order=order)
+                report = completed.report
+                self.assertEqual((completed.code, report['status']), (0, 'success'), report['error'])
+                self.assertEqual((report['daily_verified'], report['engagement'], report['stamina_spent']),
+                                 (True, 500, 0))
+                workflow = report['workflow']
+                self.assertEqual((workflow['reservations']['daily_calls'], workflow['reservations']['assignment_reward_calls']),
+                                 (1, 1))
+                self.assertTrue(all(step['account_verified'] for step in workflow['steps']))
+                assignment = next(step for step in workflow['steps'] if step['step'] == 'assignments')
+                self.assertEqual(assignment['assignment'], dict(outcome='claimed', submission='verified'))
+                self.assertEqual(completed.sent.count('领取奖励'), 1)
+
+    def test_unverified_assignment_does_not_start_following_training(self):
+        interrupted = self.invoke('active', event='other_uid_after_claim', training_order='after')
+        self.assertEqual(interrupted.code, 1)
+        self.assertEqual(interrupted.sent, ['领取奖励'])
+        self.assertFalse(interrupted.report['daily_verified'])
+        [step] = interrupted.report['workflow']['steps']
+        self.assertEqual(step['assignment'], dict(outcome='unknown', submission='attempted'))
 
     def test_single_assignment_tree_blocks_unrelated_startup_rewards(self):
         for mode in ('supply', 'login-reward'):

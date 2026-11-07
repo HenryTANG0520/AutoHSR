@@ -20,7 +20,8 @@ from .config import ROOT
 from .du_points_followup import FollowupWeek, followup_week_scope
 from .models import AutomationError, RunReport, Stopped, TaskResult
 from .storage import replace_file
-from .task_workflow import (FIELDS, FREE_ATTACHMENT_TASK, GAME_TASKS, GAME_VISION_TASKS, MAX_EXECUTIONS, PAGE_TASK, TEMPLATE_TASKS,
+from .task_workflow import (ASSIGNMENT_REWARDS_TASK, FIELDS, FREE_ATTACHMENT_TASK, GAME_TASKS, GAME_VISION_TASKS,
+                            MAX_EXECUTIONS, PAGE_TASK, TEMPLATE_TASKS,
                             TRAINING_REWARDS_TASK, VISION_TASKS, WORKFLOW_FOREGROUND_TASKS, WorkflowError,
                             compile_recipe, execution_task, task_spec, workflow_notification_png_path)
 from .task_workflow import execution_tasks as _tasks
@@ -461,8 +462,10 @@ class TaskWorkflowRunner:
             if self._input_blocked:
                 raise WorkflowError('此前游戏任务未核实完成；失败后继续只能处理本地步骤，不能再发送游戏输入。')
         scoped_attachment = node['task'] == FREE_ATTACHMENT_TASK
+        scoped_assignment = node['task'] == ASSIGNMENT_REWARDS_TASK
+        scoped_reward = scoped_attachment or scoped_assignment
         expected = ('reward_only' if node['task'] == TRAINING_REWARDS_TASK
-                    else 'daily' if scoped_attachment else node['task'])
+                    else 'daily' if scoped_reward else node['task'])
         child = result = None
         identity_mark = self._identity.mark() if game else None
         followup = self._du_points_step[2] if game and self._du_points_step is not None else None
@@ -518,6 +521,9 @@ class TaskWorkflowRunner:
                 from .daily_assignment_scope import assignment_receipt
 
                 assignment = assignment_receipt(result)
+                if scoped_assignment and result['status'] == 'success' and (assignment is None
+                        or not self._identity.has_step_proof(identity_mark, run_dir=result.get('run_dir') or '')):
+                    raise WorkflowError('独立持续委托缺少本次同账号的原始回执。')
                 if assignment is not None and assignment['outcome'] == 'unknown':
                     entry['assignment'] = assignment
             if entry['type'] == 'screen_condition' and result['status'] == 'success':
@@ -530,7 +536,7 @@ class TaskWorkflowRunner:
             if native_points:
                 result = self._du_points_result(result, entry, options['du_runs'], identity_mark)
             else:
-                if not scoped_attachment and (not game or self._identity.has_step_proof(identity_mark)):
+                if not scoped_reward and (not game or self._identity.has_step_proof(identity_mark)):
                     self._copy_totals(result)
                 if game:
                     self._identity.require_step(identity_mark)
@@ -541,7 +547,7 @@ class TaskWorkflowRunner:
                 if (assignment is not None and assignment['outcome'] != 'unknown'
                         and self._identity.has_step_proof(identity_mark, run_dir=result.get('run_dir', ''))):
                     entry['assignment'] = assignment
-            entry['facts'] = self._facts(result)
+            entry['facts'] = {'status': result['status']} if scoped_reward else self._facts(result)
             entry['status'] = result['status']
             if native_points and result['status'] == 'success':
                 week = entry['periodic_points_goal']['observations'][-1]['game_week']

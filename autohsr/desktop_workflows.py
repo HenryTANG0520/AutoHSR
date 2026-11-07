@@ -15,7 +15,8 @@ from .schedule_dispatch import validate_target
 from .schedule_plan import (CHINA, ScheduleError, loads as load_schedule_json, preview as schedule_preview,
                             validate as validate_schedule)
 from .storage import hold_read_sources
-from .task_workflow import FREE_ATTACHMENT_TASK, MAX_BYTES, TASKS, TRAINING_REWARDS_TASK, WorkflowError, loads as load_workflow_json
+from .task_workflow import (ASSIGNMENT_REWARDS_TASK, FREE_ATTACHMENT_TASK, MAX_BYTES, TASKS, TRAINING_REWARDS_TASK,
+                            WorkflowError, loads as load_workflow_json)
 from .task_workflow_draft import WorkflowDraft, WorkflowSaveConflict
 
 
@@ -31,6 +32,7 @@ _SAVE_ERRORS = {"target_exists": "目标已存在", "source_path": "请选择新
                 "source_changed": "来源已变化", "readback_changed": "另存结果待核对"}
 _TASK_NAMES = {"daily": "每日任务", "plan": "日常与到期周常", "differential_universe": "差分宇宙",
                TRAINING_REWARDS_TASK: "仅补领每日实训",
+               ASSIGNMENT_REWARDS_TASK: "仅领取持续委托",
                FREE_ATTACHMENT_TASK: "独立免费领奖",
                "du_rewards": "差分红点领奖", "warp_analysis": "跃迁记录分析", "warp_export": "跃迁记录导出",
                "currency_wars_loop": "货币战争循环", "currency_wars_points": "货币战争积分",
@@ -817,6 +819,8 @@ class _WorkflowPanel(_Panel):
         self.budget.set(f"{scope}\n最多 {fields['executions']} 步 · 日常预算 {fields['daily_calls']} 份 · "
                         f"差分预留 {fields['du_runs']} 局 · 货币预留 {fields['currency_games']} 局\n"
                         f"相对路径按 {recipe.base_dir} 解析"
+                        + (f"\n持续委托最多 {fields['assignment_reward_calls']} 个独立步骤"
+                           if 'assignment_reward_calls' in fields else "")
                         + (f"\n独立免费领奖最多 {fields['free_attachment_calls']} 个步骤"
                            if 'free_attachment_calls' in fields else "")
                         + (f"\n主动通知最多 {fields['notification_calls']} 个步骤" if 'notification_calls' in fields else ""))

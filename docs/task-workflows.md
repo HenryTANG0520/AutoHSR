@@ -16,6 +16,7 @@
 | --- | --- | --- |
 | `daily` | `Runner(operation='daily')` | 不填`tasks`时沿用当前日常开关；可明确指定`assignments/battle/daily/redemption/mail/battlepass`子集。可覆盖`stamina_limit/rounds/target_name/target_location/dungeon_category/challenge_count/use_support/support_daily_only`；`use_power_plan`默认false |
 | `daily_training_rewards` | `Runner(operation='reward_only')` | 无参数，仅补领已完成的每日实训点数与已达档位。材料、开拓力、沉浸器预算均为零 |
+| `daily_assignment_rewards` | 日常 Runner 的独立持续委托范围 | 无参数。可与仅补领实训和其他独立领奖顺序执行 |
 | `daily_free_attachment` | 日常 Runner 的独立领奖范围 | 必填 `target`，选择 `mail`（邮件附件）或 `battlepass`（勋礼经验与免费等级奖励） |
 | `plan` | `PlanRunner` | 沿用现有日常→到期周常。`use_power_plan`、`resume_weekly_currency`默认false，`support_daily_only`可覆盖本次日常。原周目标及接续规则保持 |
 | `differential_universe` | `Runner(operation='differential_universe')` | `runs`默认1、范围1～10；`mode`默认periodic，可选normal；`team`默认沿用当前预设；`save/rewards/resume_active/until_points`默认false；`periodic_rank`仅用于明确接续；通关后日常固定关闭 |
@@ -190,6 +191,8 @@ python -m autohsr --task-workflow 'D:\Workflows\demo.json' --workflow-allow-noti
 ```
 
 预览把这两步计为两次独立免费领奖和零份日常预算。若同一路径中的普通日常或周常计划可能处理相同目标，编译会拦截。选择明确排除该目标的日常子集时可组合。两个独立步骤共享同一执行租约和账号核验，使用各自原生领取门禁。父报告在对应步骤的 `attachment` 字段记录目标、结果与已核实领取项目。
+
+任务树还可加入「仅领取持续委托」（`daily_assignment_rewards`）和「仅补领每日实训」（`daily_training_rewards`）。持续委托独立步骤只预留一次委托调用，不另计日常预算。四个步骤可按需要排列，每个步骤仍按本批已核实账号执行。持续委托的已领取、暂无可领和提交待核对保存在该步的 `assignment` 字段。后续委托领取回执与先前实训活跃度、领奖结论分开保留。
 
 ## 文件与控制步骤
 
