@@ -10,7 +10,7 @@
 | `for` | 1～1000 次、非空 `children`，子步骤全部可转换。缺省 1 次 |
 | `break`、`continue` | 在可转换的循环体中 |
 | `stop_workflow` | 转为原生 `stop` |
-| `switch_screen` | `main` 转为 `world`，`menu` 转为手机。`guide2`、`guide3`、`guide4`、`guide5` 分别转为每日实训、生存索引、逐光捡金、旷宇纷争。支持委托 `dispatch`、邮件 `mail`、奖励指南 `reward_guide`、新消息通知 `incoming_message`。`pass1`、`pass2` 分别转为 `battlepass_rewards`、`battlepass_tasks` |
+| `switch_screen` | `main` 转为 `world`，`menu` 转为手机。`guide2`、`guide3`、`guide4`、`guide5` 分别转为每日实训、生存索引、逐光捡金、旷宇纷争。支持委托 `dispatch`、邮件 `mail`、奖励指南 `reward_guide`、新消息通知 `incoming_message` 和成就 `achievement`。`pass1`、`pass2` 分别转为 `battlepass_rewards`、`battlepass_tasks` |
 | `play_audio` | 显式填写普通相对路径或本地绝对路径，扩展名为 `.wav`。转为原生 `workflow_audio` |
 | `send_message` | 调用方显式绑定一个原生方案名称。纯文本转为 `workflow_notify` |
 
@@ -24,10 +24,12 @@
 
 `guide4` 与 `guide5` 各核对明确页签，停在指南内。`incoming_message` 复用新消息通知双栏，须从带可见未读角标的大世界或已打开的通知双栏开始。[上游指南页签](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L407-L490) · [上游新消息通知](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L1122-L1135) · [明确指南页签](task-workflows.md#明确指南页签)
 
+`achievement` 沿用从手机进入成就的路线，转换为明确的 `achievement_overview`。总览必须有分类卡与底部成就进度证据。仅有标题、分类页和奖励面板均保留待核对。[固定上游手机入口](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L181-L186) · [成就总览导航](task-workflows.md#成就总览导航)
+
 | 待核对目标 | 补映射所需的最小证据 |
 | --- | --- |
 | 行动摘要 | 固定上游只列 `guide2` 至 `guide5`。先确认对应上游页面 ID，再核对 4.6.0 未选中入口与选中标题、独立正文标记，并用相邻指南页作反例 |
-| `visa`、`achievement` | 上游裁片只含页头。需分别确认哪些子页属于目标，再核对手机入口与目标子页的相邻双帧 |
+| `visa` | 上游裁片只含页头。需确认哪些子页属于目标，再核对手机入口与目标子页的相邻双帧 |
 | `activity`、`configure_team`、`redemption` | 需区分通用活动与具体横幅、普通编队与玩法备战、兑换码表单与输入或提交阶段。各需安全入口、到页双帧和相邻误页 |
 | 地图、相机、背包及玩法子页 | 需实际入口与到页标记，以及无消耗的独立动作回执。当前各玩法的正式命令有各自的停止条件 |
 

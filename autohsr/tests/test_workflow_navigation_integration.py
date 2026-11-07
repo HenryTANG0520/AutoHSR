@@ -37,7 +37,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                        start_in_list=False, late_version=False, from_odyssey=False, check_publication_lock=False,
                        lose_focus_on_installation_read=False, from_phone=False, battlepass_size=None,
                        lose_focus_after_geometry=0, duplicate_tab=False, first_escape_native_count=2,
-                       upstream_screen=None, guide_overlay=None, overlay_on_target=False):
+                       upstream_screen=None, guide_overlay=None, overlay_on_target=False,
+                       achievement_page_kind="overview"):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -47,6 +48,16 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
 
             pages = tuple(Scene(frame.tokens, cv2.resize(frame.image, (1920, 1080)))
                           for frame in (world_pair()[-1], bright_sequence()[-1]))
+        elif target == 'achievement_overview':
+            from autohsr.tests.test_achievement_pages import category_view
+            from autohsr.tests.test_daily_reward_observe import achievement_page, destination
+
+            achievement = achievement_page()
+            if achievement_page_kind == 'title':
+                achievement = destination()
+            elif achievement_page_kind == 'category':
+                achievement = Scene([ACCOUNT, *category_view()], achievement.image)
+            pages = (source, achievement)
         elif target == 'visa_characters':
             pages = (visa_collection(), visa_collection('characters'))
         elif target == 'world':
@@ -260,7 +271,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             code = main(['--task-workflow', str(workflow), '--config', str(config)])
             interrupted = (late_loss or late_version or lose_focus_on_installation_read
                            or lose_focus_after_geometry or version != '4.6.0'
-                           or duplicate_tab or first_escape_native_count != 2 or guide_overlay is not None)
+                           or duplicate_tab or first_escape_native_count != 2 or guide_overlay is not None
+                           or achievement_page_kind != 'overview')
             self.assertEqual(code, 1 if interrupted else 0, err.getvalue())
             if lose_focus_after_geometry:
                 self.assertTrue(focus_changed)
@@ -281,6 +293,27 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertEqual([step['step'] for step in steps], ['page', 'opened', 'verified'])
         self.assertTrue(steps[0]['facts']['page_verified'])
         self.assertTrue(native['workflow_navigation']['page_verified'])
+
+    def test_achievement_yaml_navigation_only_opens_the_verified_overview(self):
+        for already_open, inputs in ((False, 1), (True, 0)):
+            with self.subTest(already_open=already_open):
+                sent, steps, native = self.run_navigation(target='achievement_overview',
+                    upstream_screen='achievement', already_open=already_open)
+                self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * inputs)
+                self.assertTrue(steps[0]['facts']['page_verified'])
+                record = native['workflow_navigation']
+                self.assertEqual(len(record['actions']), inputs)
+                if inputs:
+                    self.assertEqual(record['actions'][0]['destination_page'], 'achievement_overview')
+
+    def test_achievement_title_and_category_do_not_certify_arrival_or_retry(self):
+        for kind, already_open, inputs in (('title', False, 1), ('category', True, 0)):
+            with self.subTest(kind=kind):
+                sent, steps, native = self.run_navigation(target='achievement_overview',
+                    already_open=already_open, achievement_page_kind=kind)
+                self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * inputs)
+                self.assertNotIn('page_verified', steps[0]['facts'])
+                self.assertFalse(native['workflow_navigation']['page_verified'])
 
     def test_exact_guide_switches_imported_from_yaml_only_send_guide_controls(self):
         for upstream, target, from_phone, start, wanted in (

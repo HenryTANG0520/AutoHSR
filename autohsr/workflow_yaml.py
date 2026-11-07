@@ -57,6 +57,7 @@ _PAGE_TARGETS = {
     'menu': 'phone', 'guide2': 'daily_training', 'guide3': 'survival_index',
     'guide4': 'difficulty_guide', 'guide5': 'universe_guide', 'incoming_message': 'messages',
     'dispatch': 'assignments', 'mail': 'mail', 'reward_guide': 'reward_guide',
+    'achievement': 'achievement_overview',
     'pass1': 'battlepass_rewards', 'pass2': 'battlepass_tasks',
 }
 _UNSUPPORTED = {

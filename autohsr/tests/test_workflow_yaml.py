@@ -228,7 +228,7 @@ class WorkflowYamlTests(unittest.TestCase):
                          ['phone', 'daily_training', 'survival_index', 'difficulty_guide', 'universe_guide',
                           'assignments', 'mail', 'reward_guide', 'battlepass_rewards', 'battlepass_tasks', 'world', 'messages'])
         self.assertEqual(self.source.read_bytes(), original)
-        for name in ('battlepass', 'pass3', 'start_srpass', 'guide1', 'guide', 'visa', 'achievement', 'activity',
+        for name in ('battlepass', 'pass3', 'start_srpass', 'guide1', 'guide', 'visa', 'activity',
                      'world', 'unknown'):
             with self.subTest(name=name):
                 self.write(f'name: 精确页面\nsteps: [{{type: switch_screen, target_screen: {name}}}]\n')

@@ -8,6 +8,7 @@ import time
 
 import numpy as np
 
+from .achievement_pages import observe_achievement_screen
 from .build_target_read import _has_split_label
 from .config import RESOURCE_ROOT
 from .currency_wars_identity import AccountNotObserved, UID_COUNTEREVIDENCE, checked_account_key
@@ -26,7 +27,8 @@ from .models import FULL, AutomationError, EmptyCapture, InputInterrupted, Stopp
 from .policy import du_guide_details, has_du_field_plane_marker
 from .screenshot_tool import MAX_PIXELS
 from .storage import hold_read_sources
-from .task_workflow import (ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES, GUIDE_WORKFLOW_SUBPAGES,
+from .task_workflow import (ACHIEVEMENT_OVERVIEW_PAGE, ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES,
+                            GUIDE_WORKFLOW_SUBPAGES,
                             MESSAGE_WORKFLOW_PAGE, VISA_CHARACTERS_PAGE, WORKFLOW_NAVIGATION_TARGETS,
                             WORLD_WORKFLOW_PAGE)
 from .team_calibration_pages import calibration_overlay
@@ -50,6 +52,7 @@ _EXACT_GUIDE_TITLES = ('逐光捡金', '旷宇纷争')
 _GUIDE_LAYOUT_VERSION = '4.6.0'
 _VISA_COLLECTION = 'visa_collection'
 _BATTLEPASS_LAYOUT_VERSION = '4.6.0'
+_ACHIEVEMENT_LAYOUT_VERSION = '4.6.0'
 _WORLD_LAYOUT_VERSION = '4.6.0'
 _WORLD_RETURN_PANELS = (*_GUIDE_PAGES, 'assignments', 'mail', 'battlepass')
 _WORLD_PHONE_ROI = (.005, .041, .042, .105)
@@ -329,6 +332,11 @@ class WorkflowNavigation:
             if panel:
                 return MESSAGE_WORKFLOW_PAGE
             return 'world' if world_message_target(scene) is not None else None
+        if self.target == ACHIEVEMENT_OVERVIEW_PAGE:
+            achievement = observe_achievement_screen(scene, self.confidence)
+            if achievement is not None:
+                return self.target if page is None and achievement[0] == self.target else None
+            return page if page == 'phone' else None
         if page is not None or self._installation is None or self.target in BATTLEPASS_WORKFLOW_PAGES:
             return page
         if self.target == VISA_CHARACTERS_PAGE:
@@ -367,6 +375,9 @@ class WorkflowNavigation:
         if self.target == MESSAGE_WORKFLOW_PAGE:
             token = world_message_target(frame.scene) if page == 'world' else None
             return _Action('open_messages', (MESSAGE_WORKFLOW_PAGE,), token) if token else None
+        if self.target == ACHIEVEMENT_OVERVIEW_PAGE:
+            token = phone_achievement_target(frame.scene, self.confidence) if page == 'phone' else None
+            return _Action('open_achievements', (self.target,), token) if token else None
         if self.target == VISA_CHARACTERS_PAGE:
             if page != _VISA_COLLECTION or self._installation is None:
                 return None
@@ -573,7 +584,9 @@ class WorkflowNavigation:
             raise AutomationError('日常页面导航缺少可核实的游戏客户区。')
         self._guard()
         expected, version = (), None
-        if self.target == VISA_CHARACTERS_PAGE:
+        if self.target == ACHIEVEMENT_OVERVIEW_PAGE:
+            expected, version = ('phone', self.target), _ACHIEVEMENT_LAYOUT_VERSION
+        elif self.target == VISA_CHARACTERS_PAGE:
             expected, version = (_VISA_COLLECTION, VISA_CHARACTERS_PAGE), VISA_LAYOUT_VERSION
         elif self.target in BATTLEPASS_WORKFLOW_PAGES:
             expected, version = ('phone', *BATTLEPASS_WORKFLOW_PAGES), _BATTLEPASS_LAYOUT_VERSION
