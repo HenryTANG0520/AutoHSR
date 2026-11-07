@@ -3557,7 +3557,7 @@ class Runner:
             self.report.status = "partial" if (self.report.daily_verified or self.report.redemption.get('results')
                 or self.report.challenge.get('actions') or self.report.du_rewards.get('actions')
                  or target_input or team_input or reward_input or mode_pending or claim_pending
-                 or achievement_input or reply_recorded
+                 or achievement_input or reply_recorded or self.report.train_supply_input_attempted
                 or self.report.workflow_navigation.get('actions')) else "failed"
             self.report.error = str(error)
             self.report.safe_next = ("积分领奖未完成；保留原报告和领奖记录，未知领取不重发；仅已核实步骤可明确接续。" if self.report.operation=='currency_wars_rewards' else
@@ -3687,6 +3687,7 @@ class Runner:
                     or getattr(context, '_verified_attachment_claims', ())))
                 self.report.status = ("partial" if self.report.daily_verified or attempted_team_entry
                                       or attempted_reward_entry or attempted_attachment or attempted_achievement
+                                      or self.report.train_supply_input_attempted
                                       or self.report.workflow_navigation.get('actions') else "failed")
                 if daily_observation or daily_claim or daily_reply or achievement_claim:
                     if self.stop_requested or status_before_save_failure == 'stopped':

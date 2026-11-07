@@ -155,12 +155,19 @@ class RunReport:
     workflow_screen: dict = field(default_factory=dict)
     workflow_navigation: dict = field(default_factory=dict)
     assignment: dict = field(default_factory=dict)
+    train_supply: dict = field(default_factory=dict)
+
+    @property
+    def train_supply_input_attempted(self) -> bool:
+        return any(self.train_supply.get(action) in ('unconfirmed', 'sent') for action in ('claim', 'close'))
 
     def to_dict(self) -> dict:
         from dataclasses import asdict
         data = asdict(self)
         if not self.assignment:
             del data['assignment']
+        if not self.train_supply:
+            del data['train_supply']
         if self.operation != 'challenge_result':
             del data['challenge_result']
         if self.operation != 'team_preset_calibration':

@@ -87,12 +87,15 @@ class PlanTests(unittest.TestCase):
                           runner_factory=self.factory, **kwargs)
 
     def test_one_start_runs_daily_then_due_weekly_and_preserves_proof(self):
+        supply = dict(claim='sent', reward_display='not_observed', close='not_sent', return_status='without_display')
+        self.daily['train_supply'] = supply
         runner = self.runner()
         report = runner.run()
         self.assertEqual([v[1]["operation"] for v in self.calls], ["daily", "differential_universe"])
         self.assertEqual(report.status, "success")
         self.assertTrue(report.daily_verified)
         self.assertEqual(report.stamina_spent, 120)
+        self.assertEqual(report.to_dict()['train_supply'], supply)
         self.assertEqual(report.weekly_plan["status"], "complete")
         self.assertFalse(report.weekly_plan["score_rewards_verified"])
         self.assertEqual(len([e for e in self.events if e["type"] == "finished"]), 1)

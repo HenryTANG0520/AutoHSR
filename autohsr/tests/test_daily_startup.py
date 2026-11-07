@@ -357,6 +357,8 @@ class ColdStartEntryTests(TestCase):
                               supply(revealed=True), phone(), phone()])
         self.assertEqual(result.code, 0)
         self.assertEqual([target for target, _ in result.sent], ['点击进入', '点击领取今日补给', '点击领取今日补给'])
+        self.assertEqual(result.report['train_supply'], dict(claim='sent', reward_display='observed_after_claim',
+                                                           close='sent', return_status='after_close'))
 
     def test_manual_blockers_and_battle_capture_use_original_gates(self):
         blocked = self.invoke([page(token('下载更新', .5, .5))])

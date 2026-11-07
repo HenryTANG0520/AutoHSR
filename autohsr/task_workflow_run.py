@@ -332,7 +332,7 @@ class TaskWorkflowRunner:
             return
         if result.get('operation') in ('daily', 'plan'):
             for key in ('stamina_spent', 'stamina_limit', 'stamina_pending', 'immersifiers_spent', 'immersifiers_pending',
-                        'daily_verified', 'daily_synthesis', 'engagement', 'battle_completed', 'battle_requested',
+                        'daily_verified', 'daily_synthesis', 'train_supply', 'engagement', 'battle_completed', 'battle_requested',
                         'game_day', 'power_plan', 'team_selections', 'support_selections', 'weekly_plan'):
                 if key in result:
                     setattr(self.report, key, deepcopy(result[key]))

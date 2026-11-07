@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from autohsr.config import Settings
-from autohsr.models import AutomationError, RunReport, Scene, TaskResult, Token, normalize
+from autohsr.models import AutomationError, InputInterrupted, RunReport, Scene, TaskResult, Token, normalize
 from autohsr.policy import guard_click
 from autohsr.storage import replace_file
 from autohsr.workflows import DailyWorkflow
@@ -1705,6 +1705,42 @@ class LoginSupplyTests(unittest.TestCase):
         self.assertEqual(context.clicks, ["点击领取今日补给"])
         self.assertEqual(context.click_scenes, [revealed])
         self.assertEqual(context.keys, [])
+        self.assertEqual(context.report.train_supply, dict(claim='not_sent', reward_display='already_open',
+                                                          close='sent', return_status='after_close'))
+
+    def test_ambiguous_claim_input_and_interrupted_feedback_are_distinct(self) -> None:
+        for during_send in (True, False):
+            with self.subTest(during_send=during_send):
+                context = FakeContext([train_supply_scene(), self.revealed(), self.phone()])
+                context.runner = SimpleNamespace(input_epoch=0)
+                original_click = context.click
+
+                def click(scene, target):
+                    original_click(scene, target)
+                    if during_send:
+                        raise AutomationError('synthetic native send ambiguity')
+                    context.runner.input_epoch += 1
+
+                context.click = click
+                with self.assertRaises(AutomationError if during_send else InputInterrupted):
+                    DailyWorkflow(context).ensure_main()
+                self.assertEqual(context.clicks, ['点击领取今日补给'])
+                self.assertEqual(context.report.train_supply, dict(
+                    claim='unconfirmed' if during_send else 'sent', reward_display='not_observed',
+                    close='not_sent', return_status='not_observed'))
+                context.index = 0
+                with self.assertRaises(AutomationError):
+                    DailyWorkflow(context).ensure_main()
+                self.assertEqual(context.clicks, ['点击领取今日补给'])
+
+    def test_duplicate_claim_label_sends_no_input(self) -> None:
+        duplicate = train_supply_scene()
+        duplicate.tokens.append(token('点击领取今日补给', .55, .86))
+        context = FakeContext([duplicate])
+        with self.assertRaises(AutomationError):
+            DailyWorkflow(context).ensure_main()
+        self.assertEqual(context.clicks, [])
+        self.assertEqual(context.report.train_supply['claim'], 'not_sent')
 
     def test_reward_amount_with_degree_ocr_suffix_keeps_the_two_stage_sequence(self) -> None:
         first, revealed = train_supply_scene(), self.revealed(amount="90°")
@@ -1726,9 +1762,11 @@ class LoginSupplyTests(unittest.TestCase):
                     self.assertEqual(context.keys, [])
 
     def test_second_click_requires_distinct_complete_reward_card_evidence(self) -> None:
+        conflicting = self.revealed()
+        conflicting.tokens.append(token("300", .51, .55))
         for revealed in (self.revealed(amount=None), self.revealed(currency=None),
                          self.revealed(amount="300"), self.revealed(currency="信用点"),
-                         self.revealed(central_card=False)):
+                         self.revealed(central_card=False), conflicting):
             with self.subTest(text=revealed.text):
                 first = train_supply_scene()
                 context = FakeContext([first, revealed])
@@ -1775,6 +1813,8 @@ class LoginSupplyTests(unittest.TestCase):
         self.assertEqual(context.clicks, ["点击领取今日补给"])
         self.assertEqual(context.keys, [])
         self.assertEqual(context.report.stamina_spent, 0)
+        self.assertEqual(context.report.train_supply, dict(claim='sent', reward_display='not_observed',
+                                                          close='not_sent', return_status='without_display'))
 
     def test_login_handles_supply_overlay_before_treating_it_as_world(self) -> None:
         login = Scene([token("点击进入", 0.5, 0.92)])

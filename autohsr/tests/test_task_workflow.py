@@ -181,6 +181,13 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.calls[0][1], dict(operation='workflow_open_page', workflow_page='survival_index'))
         self.assertEqual(report.workflow['reservations']['daily_calls'], 0)
 
+    def test_daily_workflow_preserves_the_original_supply_receipt(self):
+        supply = dict(claim='sent', reward_display='observed_after_claim', close='sent', return_status='after_close')
+        self.responses.append(dict(train_supply=supply))
+        report = self.runner(recipe(task('daily', tasks=['daily']))).run()
+        self.assertEqual(report.status, 'success')
+        self.assertEqual(report.to_dict()['train_supply'], supply)
+
     def test_conflicting_or_missing_page_receipt_cannot_release_next_step(self):
         for invalid in (dict(target='guide', page_verified=True), dict(target='phone', page_verified=1),
                         dict(target='phone', page_verified=False)):

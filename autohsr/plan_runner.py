@@ -149,7 +149,7 @@ class PlanRunner:
         if daily.get('report_write_error'):
             info['daily_report_write_error'] = daily['report_write_error']
         for name in ('stamina_spent','stamina_limit','stamina_pending','immersifiers_spent','immersifiers_pending',
-                     'battle_completed','battle_requested','daily_verified','daily_synthesis','redemption','engagement','game_day',
+                     'battle_completed','battle_requested','daily_verified','daily_synthesis','train_supply','redemption','engagement','game_day',
                      'error','input_error_field','safe_next','failure_task','support_selections'):
             if name in daily:setattr(report,name,deepcopy(daily[name]))
         if 'power_plan' in daily:report.power_plan=deepcopy(daily['power_plan'])

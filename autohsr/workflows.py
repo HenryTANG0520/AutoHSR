@@ -3,7 +3,8 @@ from __future__ import annotations
 from contextlib import nullcontext
 import re
 import time
-from .models import AutomationError, DungeonStaminaExhausted, FocusLost, ROI, Scene, Stopped, TaskResult, Token, normalize
+from .models import (AutomationError, DungeonStaminaExhausted, FocusLost, InputInterrupted, ROI, Scene, Stopped,
+                     TaskResult, Token, normalize)
 from .policy import replenishment_dialog
 from .dungeons import category_for
 
@@ -231,8 +232,9 @@ class DailyWorkflow:
         labels = [t for t in scene.tokens if t.within((0.45, 0.57, 0.55, 0.62))
                   and normalize(t.text) == "星琼"]
         amounts = [t for t in scene.tokens if t.within((0.465, 0.53, 0.535, 0.57))
-                   and normalize(t.text) in ("90", "90°")]
+                   and re.fullmatch(r"[0-9]{1,4}[°x]?", normalize(t.text))]
         return (len(labels) == 1 and len(amounts) == 1
+                and normalize(amounts[0].text) in ("90", "90°")
                 and abs(labels[0].center[0] - amounts[0].center[0]) < 0.025
                 and 0.012 < labels[0].center[1] - amounts[0].center[1] < 0.05)
 
@@ -245,23 +247,53 @@ class DailyWorkflow:
             return False
         return self._icon(scene, "world_character", (0.93, 0, 1, 0.09), threshold=0.65) is not None
 
+    def _supply_return(self, scene):
+        return not self._supply_overlay(scene) and (
+            self._phone(scene) or self._world(scene) or self._login_reward_overlay(scene))
+
+    def _submit_supply(self, scene, target, receipt, field, feedback, description):
+        runner = getattr(self.ctx, 'runner', None)
+        epoch = getattr(runner, 'input_epoch', None)
+
+        def observed(candidate):
+            if getattr(runner, 'input_epoch', None) != epoch:
+                raise InputInterrupted('列车补给发送后输入代次已变化，当前反馈待核对。')
+            return feedback(candidate)
+
+        receipt[field] = 'unconfirmed'
+        self.ctx.click(scene, target)
+        receipt[field] = 'sent'
+        self._pause()
+        self._snapshot()
+        return self._wait(observed, timeout=45, description=description)
+
     def _settle_login_overlays(self, scene: Scene) -> Scene:
         for _ in range(4):
             self._require_reward_only_clear(scene)
             if self._supply_overlay(scene):
+                receipt = self.ctx.report.train_supply
+                if not receipt:
+                    receipt.update(claim='not_sent', reward_display='not_observed',
+                                   close='not_sent', return_status='not_observed')
                 claim = self._supply_claim(scene)
+                if claim is not None and sum(
+                        token.within((.32, .75, .68, .93)) and normalize(token.text) == '点击领取今日补给'
+                        for token in scene.tokens) != 1:
+                    raise AutomationError('列车补给出现多个同名控件，未发送输入。')
                 if self._supply_revealed(scene):
-                    if self._login_supply_closed:
+                    if self._login_supply_closed or receipt['close'] != 'not_sent':
                         raise AutomationError("列车补给奖励展示已关闭过一次，尚未核实退出；已停止。")
+                    if receipt['reward_display'] == 'not_observed':
+                        receipt['reward_display'] = 'already_open'
                     self._login_supply_claimed = True
                     self._login_supply_closed = True
                     self.ctx.log("已核实列车补给中央90星琼奖励卡，关闭已有奖励展示。")
-                    self._click(scene, claim)
-                    scene = self._wait(lambda s: not self._supply_overlay(s) and
-                                       (self._phone(s) or self._world(s) or self._login_reward_overlay(s)),
-                                       timeout=45, description="验证列车补给奖励展示已关闭")
+                    scene = self._submit_supply(scene, claim, receipt, 'close', self._supply_return,
+                                                '验证列车补给奖励展示已关闭')
+                    receipt['return_status'] = 'after_close'
                     continue
-                if self._login_supply_claimed or claim is None:
+                if (self._login_supply_claimed or claim is None or receipt['claim'] != 'not_sent'
+                        or receipt['reward_display'] != 'not_observed'):
                     raise AutomationError("列车补给未能核实已有剩余天数和今日免费领取入口，或已领取过一次；已停止。")
                 if any(t.within((0.40, 0.45, 0.60, 0.68))
                        and (normalize(t.text) in ("星琼", "90°", "90x")
@@ -270,11 +302,14 @@ class DailyWorkflow:
                     raise AutomationError("列车补给中心奖励内容尚未核实为已有90星琼展示，已停止。")
                 self._login_supply_claimed = True
                 self.ctx.log("领取已拥有的列车补给今日登录奖励。")
-                self._click(scene, claim)
-                scene = self._wait(lambda s: self._supply_revealed(s) or
-                                   (not self._supply_overlay(s) and
-                                    (self._phone(s) or self._world(s) or self._login_reward_overlay(s))),
-                                   timeout=45, description="验证列车补给领奖后界面")
+                scene = self._submit_supply(scene, claim, receipt, 'claim',
+                                            lambda s: self._supply_revealed(s) or self._supply_return(s),
+                                            '验证列车补给领奖后界面')
+                if self._supply_revealed(scene):
+                    receipt['reward_display'] = 'observed_after_claim'
+                else:
+                    receipt['return_status'] = 'without_display'
+                    self.ctx.log('列车补给点击后已回到已知页面，90 星琼展示未核实。')
                 continue
             if self._login_reward_overlay(scene):
                 close = scene.find(("点击空白处关闭", "点击任意位置关闭", "点击空白处继续"),
