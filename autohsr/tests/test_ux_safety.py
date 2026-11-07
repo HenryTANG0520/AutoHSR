@@ -72,15 +72,25 @@ class BudgetRecoveryTests(unittest.TestCase):
     def test_confirmed_partial_battle_allows_explicit_new_budget(self):
         from autohsr.recovery import BattleBudget, new_budget_block_reason, recovery_state
         settings = Settings(stamina_limit=40, dungeon_category='planar')
-        original = BattleBudget(self.root, settings, RunReport(status='partial'))
+        runs = self.root / 'runs'
+        directory = runs / 'paid-attempt'
+        directory.mkdir(parents=True)
+        report = RunReport(operation='daily', status='partial', budget_scope='run',
+                           source=str(self.root), run_dir=str(directory), report_saved=True,
+                           stamina_limit=40, battle_requested=2,
+                           results=[TaskResult('battle', 'partial', '第二轮未执行')])
+        original = BattleBudget(runs, settings, report)
         original.begin()
         original.reserve(40, immersifiers=1)
-        original.confirm(40, immersifiers=1)
+        original.confirm(40, immersifiers=1, completed=1)
         original.finish()
-        state = recovery_state(self.root)
+        timestamp = json.loads(original.path.read_text(encoding='utf-8'))['updated_at']
+        report.started_at = report.finished_at = timestamp
+        (directory / 'report.json').write_text(json.dumps(report.to_dict()), encoding='utf-8')
+        state = recovery_state(runs)
         self.assertTrue(state['blocked'])
         self.assertIsNone(new_budget_block_reason(state))
-        candidate = BattleBudget(self.root, settings, RunReport())
+        candidate = BattleBudget(runs, settings, RunReport())
         with self.assertRaisesRegex(AutomationError, '明确确认新增预算'):
             candidate.begin()
         candidate.begin(new_run=True)
