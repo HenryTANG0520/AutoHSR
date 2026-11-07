@@ -1,5 +1,7 @@
 """Single-item synthesis, card binding and durable no-replay regressions."""
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timedelta, timezone
+import io
 import json
 import os
 from pathlib import Path
@@ -48,6 +50,58 @@ class SynthesisContext(FakeContext):
     def click(self, scene, target, *, du_intent):
         synthesis.guard_click(scene, target, du_intent, self.report.daily_synthesis)
         return super().click(scene, target)
+
+
+class DailySynthesisCliTests(TestCase):
+    def test_daily_and_plan_pass_temporary_switch_to_runner(self):
+        from autohsr.__main__ import main
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'settings.json'
+            for mode, factory_name in (('--run', 'autohsr.app.Runner'), ('--plan', 'autohsr.plan_runner.PlanRunner')):
+                for saved, flag, expected in ((True, None, True), (False, None, False),
+                                              (True, '--no-daily-synthesis', False), (False, '--daily-synthesis', True)):
+                    with self.subTest(mode=mode, saved=saved, flag=flag):
+                        Settings(daily_synthesis=saved, assignments=False, battle=False, daily=True).save(path)
+                        before = path.read_bytes()
+                        args = [mode, '--config', str(path)] + ([flag] if flag else [])
+                        with patch(factory_name) as runner, redirect_stdout(io.StringIO()):
+                            runner.return_value.run.return_value = RunReport(status='success')
+                            self.assertEqual(main(args), 0)
+                        selected = runner.call_args.args[0]
+                        self.assertIs(selected.daily_synthesis, expected)
+                        self.assertFalse(selected.battle)
+                        self.assertFalse(selected.assignments)
+                        self.assertEqual(path.read_bytes(), before)
+
+    def test_out_of_scope_and_conflicting_flags_fail_before_config_or_game_access(self):
+        from autohsr.__main__ import main
+
+        for flags in (['--daily-synthesis'], ['--check', '--no-daily-synthesis'],
+                      ['--run', '--reward-only', '--daily-synthesis'], ['--run', '--reward-only', '--no-daily-synthesis'],
+                      ['--plan', '--resume-weekly-currency', '--daily-synthesis'],
+                      ['--run', '--daily-synthesis', '--no-daily-synthesis']):
+            with self.subTest(flags=flags), patch.object(Settings, 'load') as load, \
+                    patch('autohsr.app.Runner') as runner, redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    main(flags)
+                self.assertEqual(error.exception.code, 2)
+                load.assert_not_called()
+                runner.assert_not_called()
+
+    def test_enabling_synthesis_cannot_select_daily_training(self):
+        from autohsr.__main__ import main
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'settings.json'
+            Settings(daily=False).save(path)
+            before = path.read_bytes()
+            error = io.StringIO()
+            with patch('autohsr.app.Runner') as runner, redirect_stderr(error):
+                self.assertEqual(main(['--run', '--config', str(path), '--daily-synthesis']), 2)
+            self.assertIn('需要开启每日实训', error.getvalue())
+            runner.assert_not_called()
+            self.assertEqual(path.read_bytes(), before)
 
 
 class DailySynthesisTests(TestCase):

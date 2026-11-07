@@ -125,6 +125,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--du-periodic-rank", type=int,
                         help="接续当前用户已启动的周期演算时提供页面已选难度（1～10）；会将该局计入请求局数")
     parser.add_argument("--reward-only", action="store_true", help="本次仅验证并补领每日实训；不刷本，不保存配置")
+    synthesis_options = parser.add_mutually_exclusive_group()
+    synthesis_options.add_argument('--daily-synthesis', action='store_true', default=None,
+                                   help='启用本次日常的实训单件奇巧零食补活跃；仅用于 --run 或 --plan，不保存配置')
+    synthesis_options.add_argument('--no-daily-synthesis', dest='daily_synthesis', action='store_false',
+                                   help='关闭本次日常的实训单件合成；仅用于 --run 或 --plan，不保存配置')
     parser.add_argument("--new-battle-run", action="store_true", help="确认新增刷本预算，要求原支付已核实")
     parser.add_argument('--power-plan',action='store_true',help='本次日常使用多副本／历战体力计划，统一资源预算；仅配合 --run 或 --plan')
     parser.add_argument('--power-plan-file',type=Path,help='本次体力计划JSON列表，不保存配置')
@@ -155,6 +160,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    if args.daily_synthesis is not None and (not (args.run or args.plan) or args.reward_only or args.resume_weekly_currency):
+        parser.error('实训合成开关仅用于 --run/--plan 的本次日常，不能用于仅补领奖或只接续周常。')
     if args.observe_daily_event_return and args.daily_event_claim is None:
         parser.error('--observe-daily-event-return 仅配合 --daily-event-claim。')
     if args.reward_guide_capture is not None:
@@ -392,6 +399,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         settings = Settings.load(args.config, reward_only=True) if args.reward_only else Settings.load(args.config)
+        if args.daily_synthesis is not None:
+            if args.daily_synthesis and not settings.daily:
+                raise ValueError('启用本次实训合成需要开启每日实训。')
+            settings.daily_synthesis = args.daily_synthesis
         from .challenge_cli import apply_overrides as apply_challenge_overrides
         apply_challenge_overrides(args, settings)
         from .notify_cli import override as override_notify
