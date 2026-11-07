@@ -10,9 +10,10 @@ from unittest import TestCase
 from unittest.mock import Mock, patch
 
 from autohsr import windows
+from autohsr.app import Context as NativeContext
 from autohsr.daily_support import observe as observe_support
 from autohsr.daily_synthesis import task_target
-from autohsr.daily_synthesis_search import find_hidden_card
+from autohsr.daily_training_card_claim import claim_hidden_points
 from autohsr.models import AutomationError, Scene
 from autohsr.tests.test_daily_synthesis import card
 from autohsr.tests.test_du_team import fixture
@@ -69,12 +70,20 @@ class DailyTrainingSearchTests(TestCase):
         self.initial, self.shifted, self.full = training_frames()
         self.packets = []
         self.accepted = 2
+        self.click_accepted = 3
 
         def submit(count, raw, _size):
             events = ctypes.cast(raw, ctypes.POINTER(windows.INPUT))
-            self.assertEqual(count, 2)
-            self.packets.append((events[0].mi.dwFlags, events[1].mi.dwFlags, events[1].mi.mouseData))
-            return self.accepted
+            if count == 2:
+                self.packets.append((events[0].mi.dwFlags, events[1].mi.dwFlags, events[1].mi.mouseData))
+                return self.accepted
+            if count == 1:
+                self.assertEqual(events[0].mi.dwFlags, 4)
+                self.packets.append((4,))
+                return count
+            self.assertEqual(count, 3)
+            self.packets.append(tuple(events[index].mi.dwFlags for index in range(count)))
+            return self.click_accepted
 
         native = SimpleNamespace(GetAsyncKeyState=Mock(return_value=0),
             GetSystemMetrics=Mock(side_effect={76: 0, 77: 0, 78: 1920, 79: 1080}.__getitem__),
@@ -90,6 +99,8 @@ class DailyTrainingSearchTests(TestCase):
         ctx.report.operation = 'daily'
         ctx.window.current_executable = Mock(return_value=str(self.exe))
         ctx.window.scroll_down_once = windows.GameWindow.scroll_down_once.__get__(ctx.window)
+        ctx._require_gameplay_input = Mock()
+        ctx.training_task_points_input = NativeContext.training_task_points_input.__get__(ctx)
         ctx.log = Mock()
         ctx.evidence = Mock()
         return DailyWorkflow(ctx)
@@ -114,11 +125,11 @@ class DailyTrainingSearchTests(TestCase):
 
     def test_no_movement_reads_again_without_resending(self):
         workflow = self.workflow(self.initial)
-        scene, found = find_hidden_card(workflow, workflow.ctx.snapshot(), 400)
+        scene, found = claim_hidden_points(workflow, workflow.ctx.snapshot(), 400, look_for_synthesis=True)
         self.assertIs(scene, workflow.ctx.last_scene)
         self.assertFalse(found)
         self.assertEqual(len(self.packets), 1)
-        self.assertEqual(workflow.ctx.report.training_synthesis_search, dict(state='no_movement', scrolls=['sent']))
+        self.assertEqual(workflow.ctx.report.training_task_points[0]['search'], dict(state='no_movement', scrolls=['sent']))
 
     def test_account_change_or_short_send_cannot_offer_a_craft(self):
         other = replace(self.shifted, tokens=[OTHER if token == ACCOUNT else token for token in self.shifted.tokens])
@@ -128,19 +139,24 @@ class DailyTrainingSearchTests(TestCase):
                 self.accepted = accepted
                 workflow = self.workflow(after)
                 with self.assertRaises(AutomationError):
-                    find_hidden_card(workflow, workflow.ctx.snapshot(), 400)
+                    claim_hidden_points(workflow, workflow.ctx.snapshot(), 400, look_for_synthesis=True)
                 self.assertEqual(len(self.packets), 1)
-                self.assertEqual(workflow.ctx.report.training_synthesis_search,
+                self.assertEqual(workflow.ctx.report.training_task_points[0]['search'],
                                  dict(state='unverified', scrolls=[expected]))
 
-    def test_reward_only_and_uncalibrated_installation_never_scroll(self):
+    def test_reward_only_search_skips_synthesis_and_uncalibrated_installation_never_scrolls(self):
         workflow = self.workflow(self.shifted)
         scene = workflow.ctx.snapshot()
         workflow.ctx.report.operation = 'reward_only'
-        self.assertEqual(find_hidden_card(workflow, scene, 400), (scene, False))
+        _, result = claim_hidden_points(workflow, scene, 400, look_for_synthesis=True)
+        self.assertIsNone(result)
+        self.assertEqual(len(self.packets), 1)
+        self.assertEqual(workflow.ctx.report.training_synthesis_search, {})
+        self.packets.clear()
         workflow.ctx.report.operation = 'daily'
         self.ini.write_text('[General]\ngame_version=4.7.0\n', encoding='utf8')
-        self.assertEqual(find_hidden_card(workflow, scene, 400), (scene, False))
+        scene = workflow.ctx.snapshot()
+        self.assertEqual(claim_hidden_points(workflow, scene, 400, look_for_synthesis=True), (scene, None))
         self.assertEqual(self.packets, [])
         self.assertEqual(workflow.ctx.report.training_synthesis_search, {})
 
@@ -150,7 +166,7 @@ class DailyTrainingSearchTests(TestCase):
         self.initial = replace(self.initial, image=image)
         workflow = self.workflow(self.shifted)
         scene = workflow.ctx.snapshot()
-        self.assertEqual(find_hidden_card(workflow, scene, 400), (scene, False))
+        self.assertEqual(claim_hidden_points(workflow, scene, 400, look_for_synthesis=True), (scene, None))
         self.assertEqual(self.packets, [])
 
     def support_workflow(self, progress, control, *, already_shifted=False):
@@ -206,3 +222,70 @@ class DailyTrainingSearchTests(TestCase):
         record, = workflow.ctx.report.support_selections
         self.assertEqual(record['state'], 'unknown')
         self.assertEqual(record['search'], dict(state='right_edge_clear', scrolls=['sent']))
+
+    def claim_workflow(self, *, mode='daily', gold=True, confirmed=True):
+        tokens = [replace(token, text='进度1/1') if token.text == '进度0/1' and token.center[0] > .70 else
+                  replace(token, text='领取') if token.text == '前往' else token
+                  for token in self.shifted.tokens]
+        image = self.shifted.image.copy()
+        target, = (token for token in tokens if token.text == '领取')
+        x1, y1, x2, y2 = (round(value*size) for value, size in zip(target.box, (1280, 720)*2))
+        image[y1:y2, x1:x2] = (89, 200, 255) if gold else (100, 100, 100)
+        offered = replace(self.shifted, tokens=tokens, image=image)
+        after = []
+        for token in tokens:
+            text = token.text
+            if text == '400' and .15 <= token.center[0] <= .205 and .30 <= token.center[1] <= .36:
+                text = '500'
+            elif text == '进行中' or text == '领取' and confirmed:
+                text = '本日活跃度已满'
+            after.append(replace(token, text=text))
+
+        def frames():
+            while True:
+                yield (self.initial, offered, replace(offered, tokens=after))[min(2, len(self.packets))]
+
+        workflow = self.workflow(offered)
+        workflow.ctx.frames = frames()
+        workflow.ctx.report.operation = mode
+        workflow._open_guide = Mock(side_effect=lambda _tab: workflow.ctx.snapshot())
+        return workflow
+
+    def test_daily_and_reward_only_claim_the_hidden_card_then_verify_cap_and_same_card(self):
+        for mode in ('daily', 'reward_only'):
+            with self.subTest(mode=mode):
+                self.packets.clear()
+                workflow = self.claim_workflow(mode=mode)
+                with patch('autohsr.daily_synthesis.complete_once') as craft:
+                    self.assertEqual(workflow.daily().status, 'ok')
+                craft.assert_not_called()
+                record, = workflow.ctx.report.training_task_points
+                self.assertEqual((record['task'], record['activity_before'], record['activity_after']),
+                                 ('synthesis', 400, 500))
+                self.assertEqual((record['input'], record['feedback']), ('sent', 'confirmed'))
+                self.assertEqual(self.packets, [(0xC001, 0x0800, (-120) & 0xFFFFFFFF), (0xC001, 2, 4)])
+
+    def test_activity_gain_alone_cannot_confirm_or_retry_the_claim(self):
+        workflow = self.claim_workflow(confirmed=False)
+        with self.assertRaisesRegex(AutomationError, '反馈待核对'):
+            workflow.daily()
+        record, = workflow.ctx.report.training_task_points
+        self.assertEqual((record['input'], record['feedback']), ('sent', 'unknown'))
+        self.assertEqual(len(self.packets), 2)
+
+    def test_gray_label_after_scroll_does_not_trigger_a_claim(self):
+        workflow = self.claim_workflow(gold=False)
+        _, confirmed = claim_hidden_points(workflow, workflow.ctx.snapshot(), 400)
+        self.assertFalse(confirmed)
+        record, = workflow.ctx.report.training_task_points
+        self.assertEqual((record['input'], record['search']['state']), ('not_sent', 'right_edge_clear'))
+        self.assertEqual(len(self.packets), 1)
+
+    def test_partial_card_click_releases_and_stops_with_unconfirmed_receipt(self):
+        workflow = self.claim_workflow()
+        self.click_accepted = 2
+        with self.assertRaises(AutomationError):
+            workflow.daily()
+        record, = workflow.ctx.report.training_task_points
+        self.assertEqual((record['input'], record['feedback']), ('unconfirmed', 'unknown'))
+        self.assertEqual(self.packets[1:], [(0xC001, 2, 4), (4,)])

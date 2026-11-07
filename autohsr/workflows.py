@@ -1393,8 +1393,14 @@ class DailyWorkflow:
         return len(matches) == 5 and matches[-1][0] - matches[0][0] > 0.4
 
     def daily(self) -> TaskResult:
+        from .daily_synthesis import complete_once, task_target
+        from .daily_training_card_claim import claim_hidden_points
+
         self.ctx.report.daily_verified = False
         scene = self._open_guide("每日实训")
+        can_synthesize = (self.ctx.report.operation == 'daily' and self.settings.daily and self.settings.daily_synthesis
+                          and not self._daily_synthesis_attempted)
+        outcome = None
         for _ in range(12):
             scene = self._snapshot()
             dismissed = self._dismiss_reward(scene)
@@ -1404,27 +1410,30 @@ class DailyWorkflow:
                 return self._result("daily", "partial", "实训奖励弹窗未识别，无法继续核实。", scene)
             claim = scene.find("领取", (0.14, 0.41, 0.88, 0.90), exact=True)
             if claim is None:
+                activity = self._activity(scene)
+                self.ctx.report.engagement = activity
+                if can_synthesize and type(activity) is int and activity < 500 and task_target(scene) is not None:
+                    outcome = 'synthesis'
+                    break
+                scene, outcome = claim_hidden_points(self, scene, activity, look_for_synthesis=can_synthesize)
+                if outcome == 'claimed':
+                    continue
                 break
             previous = normalize(scene.text)
             self._click(scene, claim)
             scene = self._wait(lambda s: normalize(s.text) != previous, description="确认领取实训任务点数")
             scene = self._dismiss_reward(scene)
+        else:
+            activity = self._activity(scene)
+            if can_synthesize and type(activity) is int and activity < 500 and task_target(scene) is not None:
+                outcome = 'synthesis'
         activity = self._activity(scene)
         self.ctx.report.engagement = activity
         if activity != 500:
-            if (self.settings.daily_synthesis and self.ctx.report.operation == 'daily'
-                    and type(activity) is int and activity < 500 and not self._daily_synthesis_attempted):
-                from .daily_synthesis import task_target, complete_once
-
-                found = task_target(scene) is not None
-                if not found:
-                    from .daily_synthesis_search import find_hidden_card
-
-                    scene, found = find_hidden_card(self, scene, activity)
-                if found:
-                    self._daily_synthesis_attempted = True
-                    complete_once(self, scene)
-                    return self.daily()
+            if outcome == 'synthesis':
+                self._daily_synthesis_attempted = True
+                complete_once(self, scene)
+                return self.daily()
             if self.ctx.report.operation in ('daily', 'reward_only') and type(activity) is int and 100 <= activity < 500:
                 from .daily_training_rewards import claim_reached_milestones
 

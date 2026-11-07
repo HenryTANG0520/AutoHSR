@@ -12,11 +12,12 @@ from .storage import hold_read_sources
 from .workflow_screen import _CurrentFrames
 
 
-def search_task(workflow, scene, activity, select, receipt, *, inspect_current=False):
+def search_task(workflow, scene, activity, select, receipt, *, inspect_current=False, reward_only=False):
     """Return the latest training frame and the caller's decision for a settled card."""
     ctx = workflow.ctx
     window = getattr(ctx, 'window', None)
-    if (ctx.report.operation != 'daily' or type(activity) is not int or not 0 <= activity < 500
+    operations = ('daily', 'reward_only') if reward_only else ('daily',)
+    if (ctx.report.operation not in operations or type(activity) is not int or not 0 <= activity < 500
             or not isinstance(scene.image, np.ndarray) or not callable(getattr(window, 'current_executable', None))):
         return scene, None
     confidence = max(.85, workflow.settings.ocr_confidence)

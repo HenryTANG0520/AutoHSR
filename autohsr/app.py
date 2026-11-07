@@ -350,6 +350,15 @@ class Context:
             raise AutomationError('缺少本步骤的游戏页面导航与当前动作意图。')
         return navigation.dispatch(scene, action)
 
+    def training_task_points_input(self, claim):
+        from .daily_training_card_claim import CardClaim
+
+        self._require_gameplay_input()
+        if (type(claim) is not CardClaim or claim.reader.context is not self
+                or self.report.operation not in ('daily', 'reward_only')):
+            raise AutomationError('缺少本次实训任务点数的一次性领取意图。')
+        claim.submit()
+
     def achievement_bulk_input(self, scene, action):
         from .achievement_bulk_claim import AchievementBulkClaim, OPERATION
 
