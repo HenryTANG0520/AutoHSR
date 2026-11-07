@@ -77,7 +77,7 @@ class AutoHSRWindow:
     BG, PANEL, INSET = theme.BG, theme.CARD, theme.CARD
     TEXT, MUTED, ACCENT = theme.TEXT, theme.MUTED, theme.GOLD
 
-    def __init__(self, root: tk.Tk, config_path: Path = CONFIG_PATH):
+    def __init__(self, root: tk.Tk, config_path: Path = CONFIG_PATH, *, loaded_settings: Settings | None = None):
         self.root, self.config_path = root, Path(config_path)
         self.events: queue.Queue[dict[str, Any]] = queue.Queue()
         self.runner: Any = None
@@ -119,12 +119,14 @@ class AutoHSRWindow:
         self._loading = True
         config_error = ""
         try:
-            self.settings = Settings.load(self.config_path)
+            self.settings = loaded_settings if loaded_settings is not None else Settings.load(self.config_path)
         except (OSError, ValueError, TypeError) as exc:
             self.settings = Settings()
             config_error = f"无法读取配置，已使用默认值。\n{exc}"
         self._config_load_failed = bool(config_error)
+        from .desktop_profiles import DesktopProfiles
         from .desktop_schedule import DesktopSchedule
+        self.desktop_profiles = DesktopProfiles(self)
         self.desktop_schedule = DesktopSchedule(self)
         self.schedule_store = self.desktop_schedule.store
         root.title("AutoHSR · 星穹铁道每日助手")
@@ -731,7 +733,7 @@ class AutoHSRWindow:
         self.daily_panel.set_busy(self.busy)
         for name in ('currency_source_combo','currency_zone_combo','currency_level_combo','du_runs_combo','du_resume_combo','du_mode_combo','du_operation_combo',
                      'weekly_mode_combo', 'weekly_day_combo', 'weekly_runs_combo', 'currency_strategy_combo',
-                     'weekly_enabled_combo', 'overlay_control', 'tray_control', 'finish_sound_control',
+                     'weekly_enabled_combo', 'configuration_profile_choice', 'overlay_control', 'tray_control', 'finish_sound_control',
                      'finish_close_control', 'synthesis_control', 'power_mode_combo',
                      'power_repeat_combo','power_fill_combo','echo_enabled_combo','support_toggle'):
             if hasattr(self,name):
@@ -2466,6 +2468,7 @@ def main(config_path: Path = CONFIG_PATH, *, admin_task: bool = False, start_in_
     from . import windows  # noqa: F401
     from contextlib import nullcontext
     from .admin_launch import TaskSession, when_window_ready
+    from .configuration_profiles import ConfigurationProfiles
     shared = not independent and (admin_task or config_path.resolve() == CONFIG_PATH.resolve())
     with TaskSession(desktop=True, ordinary=not admin_task) if shared else nullcontext() as session:
         if session is not None:
@@ -2475,15 +2478,39 @@ def main(config_path: Path = CONFIG_PATH, *, admin_task: bool = False, start_in_
                 return
             if admin_task:
                 start_in_tray = session.consume_login_tray()
-        root = tk.Tk()
-        if start_in_tray:
-            root.withdraw()
-        ui = AutoHSRWindow(root, config_path)
-        if session is not None:
-            session.attach(root, ui._restore_from_tray,
-                           parked=lambda: ui._tray is not None and ui._tray.parked)
-        if on_ready is not None:
-            when_window_ready(root, lambda: on_ready('window'))
-        if start_in_tray:
-            ui._park_in_tray()
-        root.mainloop()
+        catalog = ConfigurationProfiles(config_path)
+        placement = None
+        loaded_settings = None
+        while True:
+            next_config = None
+            root = tk.Tk()
+            if start_in_tray:
+                root.withdraw()
+            ui = AutoHSRWindow(root, config_path, loaded_settings=loaded_settings)
+
+            def switch(path, settings):
+                nonlocal next_config, placement
+                next_config = path, settings
+                placement = root.geometry(), root.state()
+                ui._close()
+
+            ui.desktop_profiles.connect(catalog, switch)
+            if placement is not None:
+                root.geometry(placement[0])
+                if placement[1] == 'zoomed':
+                    root.state('zoomed')
+                ui._show_page('settings')
+                ui.settings_tabs.select(ui.settings_sections['game'])
+            if session is not None:
+                session.attach(root, ui._restore_from_tray,
+                               parked=lambda: ui._tray is not None and ui._tray.parked)
+            if on_ready is not None:
+                when_window_ready(root, lambda callback=on_ready: callback('window'))
+                on_ready = None
+            if start_in_tray:
+                ui._park_in_tray()
+                start_in_tray = False
+            root.mainloop()
+            if next_config is None:
+                break
+            config_path, loaded_settings = next_config

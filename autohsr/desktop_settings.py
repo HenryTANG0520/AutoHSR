@@ -290,6 +290,11 @@ def build_settings(ui):
     ui.check_button, ui.launch_button = buttons(connection, (("检测窗口", ui._check), ("进入游戏", ui._launch)))
     note("game", 2, text="登录验证与更新需在游戏内完成。")
     note("game", 3, text="配置位置："+str(ui.config_path))
+    profiles = ui.desktop_profiles
+    combo(row("game", 4, "配置方案", variable=profiles.feedback), profiles.choice, profiles.names(),
+          "configuration_profile_choice")
+    buttons(row("game", 5, "管理方案"), (("新建副本", profiles.create), ("切换方案", profiles.switch)))
+    note("game", 6, text="切换会重新加载设置和工具页。游戏账号请在客户端核对。")
 
     ui.daily_task_controls = {}
     index = 0
