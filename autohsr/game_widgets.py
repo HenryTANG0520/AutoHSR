@@ -680,6 +680,7 @@ class TaskBoard(Surface):
                 recovery = getattr(self.ui, "_weekly_currency_recovery", None)
                 state = ("进行中" if self.ui.busy and self.ui.plan_phase=="weekly" else
                          "可接续" if recovery and recovery.get("resume") else
+                         "待核对" if recovery else
                          "已启用" if self.ui.weekly_enabled.get() else "已停用")
             elif key=="daily":
                 count=sum(value.get() for name,value in self.ui.tasks.items() if name!="battle")
@@ -701,7 +702,7 @@ class TaskBoard(Surface):
             p.box((x+1,q(16),x+min(width-q(16),status_width),q(47)),"#dedede" if excluded else "#e9dbbd",0,"#bdbdbd" if excluded else "#d7bd8b")
             p.text((x+q(24),q(20)),state,q(23),"#747474" if excluded else "#6b624d")
             p.text((x+q(24),q(80)),TITLES[key],q(28),"#717171" if excluded else "#111111")
-            if key=="weekly" and state!="已停用":
+            if key=="weekly" and state not in ("已停用","待核对"):
                 note=self.ui.weekly_status.get()
                 p.text((x+q(24),q(136)),p.wrap(note,width-q(48),q(21),3),q(21),"#494442")
             elif key=="daily":

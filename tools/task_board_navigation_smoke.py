@@ -6,6 +6,7 @@ import tkinter as tk
 from unittest.mock import patch
 
 from ux_smoke import ROOT, Settings, Window, module, pump
+from home_feedback_smoke import drawn_text
 from autohsr.desktop_daily import MAIL, BATTLEPASS
 
 OUT = ROOT / "runs/task-board-navigation"
@@ -81,7 +82,11 @@ def main():
                     root.update()
                     assert ui.active_page == "home" and ui.stop_button.winfo_ismapped()
                     ui._set_busy(False)
-                    checks += 9
+                    with patch.object(ui, "_weekly_currency_recovery", {"resume": False}):
+                        board.redraw()
+                        assert "待核对" in drawn_text(board)
+                    board.redraw()
+                    checks += 10
 
                     plan = ui._form_signature()
                     for keys in ((), ("battle",), ("battle", "daily"), ("battle", "daily", "weekly"),
