@@ -42,6 +42,19 @@ def check_layout(widget):
         check_layout(child)
 
 
+def check_pill_corners(root, *buttons):
+    capture = ImageGrab.grab(window=root.winfo_id()).convert("RGB")
+    for button in buttons:
+        x = button.winfo_rootx() - root.winfo_rootx()
+        y = button.winfo_rooty() - root.winfo_rooty()
+        right = x + button.winfo_width() - 3
+        bottom = y + button.winfo_height() - 3
+        surrounding = capture.getpixel((x - 2, (y + bottom) // 2))
+        for corner in ((x + 2, y + 2), (right, y + 2), (x + 2, bottom), (right, bottom)):
+            assert capture.getpixel(corner) == surrounding, (button.cget("text"), button.state(), corner, surrounding)
+    return capture
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     cases, interactions = [], []
@@ -124,6 +137,20 @@ def main():
                             check_layout(root)
                         except AssertionError as exc:
                             raise AssertionError((scale, size, section, exc.args)) from exc
+                        if section == 'build_target_preview':
+                            panel = ui.daily_panel
+                            assert panel.generate.instate(("disabled",)) and panel.add_draft.instate(("disabled",))
+                            assert panel.open_target.instate(("!disabled",))
+                            check_pill_corners(root, panel.open_target, panel.generate, panel.add_draft,
+                                               ui.guide.tools_button, ui.daily_back_button, ui.footer_start_button)
+                            root.focus_force()
+                            panel.open_target.focus_set()
+                            root.update()
+                            assert panel.open_target.instate(("focus",))
+                            capture = check_pill_corners(root, panel.open_target)
+                            if scale == 1. and size in ("default", "minimum"):
+                                capture.save(OUT / f"cultivation-focused-{size}.png")
+                            cases.append(dict(dpi=round(scale*100), size=size, page=page, state="pill_corners"))
                         cases.append(dict(dpi=round(scale*100), size=size, page=page, section=section))
                 for size in ("default", "minimum"):
                     root.state("normal")

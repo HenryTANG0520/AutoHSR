@@ -12,6 +12,7 @@ from .config import RESOURCE_ROOT
 
 BG = "#161621"
 RAIL = "#242323"
+GUIDE_RAIL = "#252525"
 PANEL = "#e1e1e1"
 CARD = "#f4f4f4"
 FIELD = "#ebebeb"
@@ -186,7 +187,7 @@ def _theme_image(root, image):
 def _button(root, style, scale, name, fill, ink, *, tab=False, option=False, background=PANEL):
     photos = []
     for state in ("normal","active","pressed","disabled"):
-        p = Painter(round(84*scale),round((58 if tab else 38)*scale),scale,background)
+        p = Painter(round(84*scale),round((58 if tab else 38)*scale),scale,background if tab or option else None)
         color = "#d3d3d3" if state=="disabled" else fill
         if tab:
             p.box((0,0,84,64), color, 7, None if fill==PANEL else "#54514e", 1.2)
@@ -203,8 +204,26 @@ def _button(root, style, scale, name, fill, ink, *, tab=False, option=False, bac
                              ("active",photos[1]),("focus",photos[1]),
                              border=(round((8 if tab or option else 19)*scale),round((8 if tab else 1)*scale),round((8 if tab or option else 19)*scale),round(scale)),sticky="nsew")
     style.layout(name,[(element,{"sticky":"nsew","children":[("Button.padding",{"sticky":"nsew","children":[("Button.label",{"sticky":"nsew"})]})]})])
-    style.configure(name,foreground=ink,background=fill,padding=(round(10*scale),round(7*scale)),font=native_font(root, 11),width=0,anchor="center",borderwidth=0)
-    style.map(name,foreground=[("disabled","#8b8b8b"),("!disabled",ink)],background=[("disabled","#d3d3d3"),("!disabled",fill)])
+    style.configure(name,foreground=ink,background=background,padding=(round(10*scale),round(7*scale)),font=native_font(root, 11),width=0,anchor="center",borderwidth=0)
+    style.map(name,foreground=[("disabled","#8b8b8b"),("!disabled",ink)])
+
+
+def _match_pill_to_surface(event):
+    """Tk backs transparent button pixels with the widget style's background."""
+    button = event.widget
+    name = str(button.cget("style")) or "TButton"
+    if name not in button._root()._hsr_pill_styles or not isinstance(button.master, ttk.Frame):
+        return
+    parent = button.master
+    style = ttk.Style(button)
+    color = style.lookup(str(parent.cget("style")) or parent.winfo_class(), "background")
+    if color == style.lookup(name, "background"):
+        return
+    rgb = "".join(f"{component // 257:02x}" for component in button.winfo_rgb(color))
+    variant = f"Surface{rgb}.{name}"
+    if style.lookup(variant, "background") != color:
+        style.configure(variant, background=color)
+    button.configure(style=variant)
 
 
 def _form_elements(root, style, scale):
@@ -418,9 +437,12 @@ def apply_theme(root, scale):
     root.option_add("*TCombobox*Listbox.foreground",TEXT)
     root.option_add("*TCombobox*Listbox.selectBackground","#d7cab0")
     root.option_add("*TCombobox*Listbox.selectForeground",TEXT)
+    if not hasattr(root, "_hsr_pill_styles"):
+        root._hsr_pill_styles = set()
+        root.bind_class("TButton", "<Map>", _match_pill_to_surface, add="+")
     for name,fill,ink,tab,option,background in (
         ("TButton",CARD,TEXT,False,False,CARD),("Panel.TButton",CARD,TEXT,False,False,PANEL),
-        ("RailShortcut.TButton",CARD,TEXT,False,False,RAIL),
+        ("RailShortcut.TButton",CARD,TEXT,False,False,GUIDE_RAIL),
         ("CardConfirm.TButton","#e8dfca",TEXT,False,False,CARD),
         ("Compact.TButton",CARD,TEXT,False,False,CARD),("Accent.TButton",CARD,TEXT,False,False,BG),
         ("Settings.TButton",CARD,TEXT,False,False,SETTING_VALUE),
@@ -430,6 +452,8 @@ def apply_theme(root, scale):
         ("Selected.Nav.TButton",PANEL,TEXT,True,False,RAIL),("Option.TButton",CARD,TEXT,False,True,PANEL),
         ("Selected.Option.TButton",RAIL,GOLD,False,True,PANEL)):
         _button(root,style,scale,name,fill,ink,tab=tab,option=option,background=background)
+        if not (tab or option):
+            root._hsr_pill_styles.add(name)
     style.configure("Nav.TButton",padding=(d(14),d(1)),font=native_font(root, 14))
     style.configure("Selected.Nav.TButton",padding=(d(14),d(1)),font=native_font(root, 14))
     style.configure("Option.TButton",anchor="w",padding=(d(22),d(17)),font=native_font(root, 13))

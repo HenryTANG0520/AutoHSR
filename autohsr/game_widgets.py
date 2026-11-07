@@ -329,8 +329,8 @@ class Guide(Surface):
         p.origin=(left,0)
         p.box((47,12,w-38,h-9),"#101111",25,"#3a3a3c",2)
         p.box((60,25,w-51,h-20),t.PANEL,16)
-        p.box((60,25,w-51,88),"#252525",15)
-        p.box((60,53,w-51,88),"#252525")
+        p.box((60,25,w-51,88),t.GUIDE_RAIL,15)
+        p.box((60,53,w-51,88),t.GUIDE_RAIL)
         p.box((60,88,w-51,111),t.PANEL)
         # The static paper pattern is isolated from the reference's live text.
         with p.clip((60,88,w-51,h-20),16):
