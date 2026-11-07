@@ -543,6 +543,8 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(len(executor.created), 1)
         self.assertIsNotNone(scheduler.snapshot()['pending'])
         self.assertFalse(scheduler.wait_idle(0))
+        scheduler.pause(); scheduler.resume()
+        self.assertIsNotNone(scheduler.snapshot()['pending'])
         runner.release.set(); self.assertTrue(scheduler.wait_idle(2))
         self.assertEqual(len(executor.created), 2)
         self.assertEqual(scheduler.snapshot()['last']['id'], 'second')
@@ -749,6 +751,34 @@ class RuntimeTests(unittest.TestCase):
         self.clock.set(minute=1); scheduler.resume(); scheduler.tick()
         self.assertEqual(executor.created, [])
         self.assertEqual(self.store.receipts(), [])
+
+    def test_resume_in_missed_due_minute_skips_it_and_keeps_future_slots(self):
+        scheduler, executor = self.build()
+        scheduler.pause()
+        self.clock.set(second=1); scheduler.tick()
+        self.clock.set(second=30); scheduler.resume(); scheduler.tick()
+        self.assertEqual(self.store.receipts(), [])
+        self.assertEqual(executor.created, [])
+
+        self.clock.set(days=1); scheduler.resume(); scheduler.tick()
+        self.assertTrue(scheduler.wait_idle(2))
+        self.assertEqual(len(executor.created), 1)
+        self.assertEqual(self.store.receipts()[0]['slot'], self.clock.now.isoformat())
+
+    def test_child_resume_does_not_claim_missed_stop_owned_slot(self):
+        runner = FakeRunner(block=True)
+        scheduler, executor = self.build(runner)
+        self.store.save(definition('second', time='04:01', conflict='stop_owned'))
+        scheduler.enable('second')
+        self.fire(scheduler); self.assertTrue(runner.started.wait(2))
+        runner.toggle_pause()
+        self.clock.set(minute=1, second=1); scheduler.tick()
+        self.clock.set(minute=1, second=30); runner.toggle_pause(); scheduler.tick()
+        self.assertFalse(runner.stopped.is_set())
+        self.assertIsNone(scheduler.snapshot()['pending'])
+        self.assertEqual([row['plan_id'] for row in self.store.receipts()], ['synthetic'])
+        runner.release.set(); self.assertTrue(scheduler.wait_idle(2))
+        self.assertEqual(len(executor.created), 1)
 
     def test_stop_preserves_reference_until_runner_exits_and_cancels_pending(self):
         runner = FakeRunner(block=True, auto_release=False)

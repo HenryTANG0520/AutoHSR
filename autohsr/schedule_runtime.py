@@ -147,11 +147,20 @@ class Scheduler:
             except Exception:
                 self._cancel(job, 'pause_unverified')
 
+    def _set_paused_locked(self, paused):
+        if self._running and self._paused and not paused:
+            now = local_time(self.clock()).replace(second=0, microsecond=0)
+            cutoff = max(now, self._latest_minute)
+            # Resume already admitted work, but skip new triggers in the resumed minute.
+            for entry in self._enabled.values():
+                entry['armed_at'] = max(entry['armed_at'], cutoff)
+        self._paused = paused
+        self._condition.notify_all()
+
     def pause(self):
         with self._condition:
-            self._paused = True
+            self._set_paused_locked(True)
             active = self._active
-            self._condition.notify_all()
         if active is not None:
             self._set_runner_pause(active, True)
         self._event('paused', paused=True)
@@ -159,9 +168,8 @@ class Scheduler:
 
     def resume(self):
         with self._condition:
-            self._paused = False
+            self._set_paused_locked(False)
             active = self._active
-            self._condition.notify_all()
         if active is not None:
             self._set_runner_pause(active, False)
         self._launch_pending()
@@ -251,14 +259,13 @@ class Scheduler:
             if not running or paused or rewound:
                 return self.snapshot()
             for plan_id, entry in entries:
+                slot = due_slot(entry['plan'], now)
                 with self._lock:
                     if not self._running or self._paused:
                         break
-                slot = due_slot(entry['plan'], now)
-                if slot is None or slot <= entry['armed_at']:
-                    continue
-                marker = (plan_id, entry['revision'], slot.isoformat())
-                with self._lock:
+                    if slot is None or slot <= entry['armed_at']:
+                        continue
+                    marker = (plan_id, entry['revision'], slot.isoformat())
                     if marker in self._seen:
                         continue
                     self._seen.add(marker)
@@ -380,8 +387,7 @@ class Scheduler:
                 job.runner_paused = event['paused']
             with self._condition:
                 if self._active is job:
-                    self._paused = event['paused']
-                    self._condition.notify_all()
+                    self._set_paused_locked(event['paused'])
         child_type = event.get('type')
         if isinstance(child_type, str) and child_type in CHILD_TYPES:
             # Raw logs, identity observations, paths and reports stay with the
