@@ -21,6 +21,7 @@ MAX_STEP_NOTIFICATIONS = 20
 MAX_WAIT_SECONDS = 3600
 GAME_VISION_TASKS = {'workflow_game_image', 'workflow_game_text'}
 PAGE_TASK = 'workflow_open_page'
+TRAINING_REWARDS_TASK = 'daily_training_rewards'
 ACTIVITY_WORKFLOW_PAGES = ('odyssey', 'reward_guide')
 BATTLEPASS_WORKFLOW_PAGES = ('battlepass_rewards', 'battlepass_tasks')
 GUIDE_WORKFLOW_SUBPAGES = ('difficulty_guide', 'universe_guide')
@@ -36,7 +37,7 @@ WORKFLOW_NAVIGATION_TARGETS = (*WORKFLOW_PAGES, *BATTLEPASS_WORKFLOW_PAGES, *GUI
                                VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE, ACHIEVEMENT_OVERVIEW_PAGE,
                                REDEMPTION_FORM_PAGE, WORLD_WORKFLOW_PAGE)
 WORKFLOW_FOREGROUND_TASKS = GAME_VISION_TASKS | {PAGE_TASK}
-GAME_TASKS = {'daily', 'plan', 'differential_universe', 'currency_wars_loop',
+GAME_TASKS = {'daily', TRAINING_REWARDS_TASK, 'plan', 'differential_universe', 'currency_wars_loop',
               'currency_wars_points', 'currency_wars_rewards', 'du_rewards'} | WORKFLOW_FOREGROUND_TASKS
 VISION_TASKS = {'workflow_image', 'workflow_text'} | GAME_VISION_TASKS
 TEMPLATE_TASKS = {'workflow_image', 'workflow_game_image'}
@@ -184,6 +185,7 @@ def _params(task, params):
                   'dungeon_category', 'challenge_count', 'use_support', 'support_daily_only', 'redemption_source',
                   'redemption_server', 'redemption_codes', 'redemption_catalog', 'redemption_claim_mail'},
         'plan': {'use_power_plan', 'resume_weekly_currency', 'support_daily_only'},
+        TRAINING_REWARDS_TASK: set(),
         'differential_universe': {'runs', 'mode', 'team', 'save', 'rewards', 'resume_active', 'periodic_rank',
                                   'until_points'},
         'currency_wars_loop': {'runs', 'resume', 'strategy', 'until_points', 'continue_after_defeat'},
@@ -315,7 +317,7 @@ def _profile(nodes):
         if kind == 'task':
             task = node['task']
             params = node.get('params', {})
-            if task in ('daily', 'plan'):
+            if task in ('daily', TRAINING_REWARDS_TASK, 'plan'):
                 current['daily_calls'] = 1
             if task in ('differential_universe', 'plan'):
                 current.update(du_calls=1, du_runs=params.get('runs', 1) if task != 'plan' else 10)
@@ -508,6 +510,13 @@ def task_spec(settings: Settings, node, base_dir):
         options['operation'] = 'daily'
         if only_assignments:
             options['assignments_only'] = True
+    elif task == TRAINING_REWARDS_TASK:
+        from .recovery import reward_only_settings
+
+        current = reward_only_settings(current)
+        current.allow_stamina_spend = False
+        current.validate('daily')
+        options['operation'] = 'reward_only'
     elif task == 'plan':
         options = params
         if current.redemption_enabled and current.redemption_source == 'file':

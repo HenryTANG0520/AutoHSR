@@ -15,7 +15,7 @@ from .schedule_dispatch import validate_target
 from .schedule_plan import (CHINA, ScheduleError, loads as load_schedule_json, preview as schedule_preview,
                             validate as validate_schedule)
 from .storage import hold_read_sources
-from .task_workflow import MAX_BYTES, TASKS, WorkflowError, loads as load_workflow_json
+from .task_workflow import MAX_BYTES, TASKS, TRAINING_REWARDS_TASK, WorkflowError, loads as load_workflow_json
 from .task_workflow_draft import WorkflowDraft, WorkflowSaveConflict
 
 
@@ -30,6 +30,7 @@ _RUN_STATES = {"success": "已完成", "ok": "已完成", "partial": "部分完�
 _SAVE_ERRORS = {"target_exists": "目标已存在", "source_path": "请选择新文件名",
                 "source_changed": "来源已变化", "readback_changed": "另存结果待核对"}
 _TASK_NAMES = {"daily": "每日任务", "plan": "日常与到期周常", "differential_universe": "差分宇宙",
+               TRAINING_REWARDS_TASK: "仅补领每日实训",
                "du_rewards": "差分红点领奖", "warp_analysis": "跃迁记录分析", "warp_export": "跃迁记录导出",
                "currency_wars_loop": "货币战争循环", "currency_wars_points": "货币战争积分",
                "currency_wars_rewards": "货币战争积分领奖", "workflow_audio": "播放本地音频",

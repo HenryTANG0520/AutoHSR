@@ -49,6 +49,30 @@ def condition(identity, field='status', value='success', op='eq'):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_training_rewards_preserves_legacy_synthesis_and_reserves_one_daily_call(self):
+        rewards = task('rewards', 'daily_training_rewards')
+        legacy = task('legacy', tasks=['daily'])
+        settings = Settings(daily=False, daily_synthesis=True, allow_stamina_spend=True,
+                            assignments=True, battle=True, mail=True, battlepass=True, redemption_enabled=True)
+        compiled = compile_recipe(recipe(rewards))
+        self.assertEqual(compiled.profile['daily_calls'], 1)
+        only, options = task_spec(settings, rewards, self.root)
+        self.assertEqual(options, dict(operation='reward_only'))
+        self.assertTrue(only.daily)
+        self.assertFalse(any(getattr(only, name) for name in ('daily_synthesis', 'allow_stamina_spend', 'assignments',
+                                                             'battle', 'mail', 'battlepass', 'redemption_enabled')))
+        normal, options = task_spec(settings, legacy, self.root)
+        self.assertEqual(options['operation'], 'daily')
+        self.assertTrue(normal.daily_synthesis)
+        self.assertFalse(settings.daily)
+        self.assertTrue(settings.allow_stamina_spend)
+        for conflicting in (legacy, task('plan', 'plan'), task('more', 'daily_training_rewards')):
+            with self.subTest(conflicting=conflicting), self.assertRaises(WorkflowError):
+                compile_recipe(recipe(rewards, conflicting))
+        for params in (dict(daily_synthesis=True), dict(stamina_limit=0), dict(tasks=['daily'])):
+            with self.subTest(params=params), self.assertRaises(WorkflowError):
+                compile_recipe(recipe(task('invalid', 'daily_training_rewards', **params)))
+
     def setUp(self):
         self.lease_name = 'Local\\AutoHSR.TaskWorkflowQA.' + uuid4().hex
         self.enterContext(patch('autohsr.workflow_lease.NAME', self.lease_name))

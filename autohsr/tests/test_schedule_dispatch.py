@@ -283,7 +283,7 @@ class ScheduleDispatchTests(unittest.TestCase):
 
     def test_game_repeat_and_automatic_resume_cannot_add_or_reuse_budget(self):
         for check in (self.executor.freeze, self.executor.preview_budget):
-            for task in ('daily', 'du_rewards'):
+            for task in ('daily', 'daily_training_rewards', 'du_rewards'):
                 with self.subTest(check=check.__name__, task=task), self.assertRaises(ScheduleError):
                     check(self.plan(dict(type='task', task=task), repeat=dict(count=2)))
             for task, params in [('currency_wars_loop', dict(resume=True)),
@@ -292,6 +292,17 @@ class ScheduleDispatchTests(unittest.TestCase):
                                  ('currency_wars_rewards', dict(resume=True))]:
                 with self.subTest(check=check.__name__, task=task), self.assertRaises(ScheduleError):
                     check(self.plan(dict(type='task', task=task, params=params)))
+        self.factory.assert_not_called()
+
+    def test_training_rewards_schedule_is_a_game_task_with_zero_budget(self):
+        self.executor.settings.battle = True
+        self.executor.settings.allow_stamina_spend = True
+        target = dict(type='task', task='daily_training_rewards', params={})
+        plan = self.plan(target)
+        budget = self.executor.preview_budget(plan)
+        self.assertTrue(budget['contains_game_tasks'])
+        self.assertEqual(budget['whole_batch'], dict(workflow_steps=1, daily_stamina_max=0, du_runs_max=0))
+        self.executor.revalidate(self.executor.freeze(plan))
         self.factory.assert_not_called()
 
     def test_preview_counts_the_whole_local_repeat_and_reads_no_dependencies(self):

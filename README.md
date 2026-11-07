@@ -469,6 +469,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 
 “仅补领奖”只验证、领取实训，不刷、不合成、不处理附加项、不改配置、不清原账单。会尝试返回已识别主界面，未知战斗或弹窗停止。**不能用它重试待核对合成**，后者由普通每日专用记录处理。
 
+任务流和应用内定时也可选无参数的「仅补领每日实训」。只选实训的普通每日任务仍沿用合成设置。[任务流入口](docs/task-workflows.md#仅补领每日实训)
+
 [storage.py](autohsr/storage.py)原子替换配置、报告、账单；短暂Windows占用只有限重试文件替换，不重发游戏动作。
 
 | 本地文件 | 内容 |

@@ -1,4 +1,4 @@
-"""The reward-only CLI through Context and the native sender with simulated frames."""
+"""Reward-only CLI and task-flow paths through the native sender with simulated frames."""
 
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 import ctypes
@@ -61,7 +61,7 @@ def item_overlay(*, account=ACCOUNT):
 
 
 class RewardOnlyMilestonesTests(unittest.TestCase):
-    def invoke(self, *phases, short_reward=False):
+    def invoke(self, *phases, short_reward=False, workflow=False):
         clicks = []
         releases = []
         phone = phone_scene()
@@ -103,32 +103,62 @@ class RewardOnlyMilestonesTests(unittest.TestCase):
         with TemporaryDirectory() as temporary, ExitStack() as stack:
             root = Path(temporary).resolve()
             config = root / 'config.json'
-            Settings(assignments=True, battle=True, daily_synthesis=True, mail=True, battlepass=True,
+            Settings(assignments=True, battle=True, allow_stamina_spend=True, daily_synthesis=True,
+                     mail=True, battlepass=True, redemption_enabled=True,
                      overlay_logs=False).save(config)
             saved = config.read_bytes()
-            for name, value in (('autohsr.app.ROOT', root), ('autohsr.windows.user32', native),
+            ledger = root / 'runs' / 'battle-session.json'
+            ledger.parent.mkdir()
+            ledger.write_bytes(b'untouched reward-only test sentinel')
+            for name, value in (('autohsr.app.ROOT', root), ('autohsr.task_workflow_run.ROOT', root),
+                                ('autohsr.daily_synthesis.ROOT', root),
+                                ('autohsr.windows.user32', native),
                                 ('autohsr.windows.kernel32', kernel),
-                                ('autohsr.workflow_lease.NAME', 'Local\\AutoHSR.RewardOnlyQA.' + uuid4().hex)):
+                                ('autohsr.workflow_lease.NAME', 'Local\\AutoHSR.RewardOnlyQA.' + uuid4().hex),
+                                ('autohsr.workflow_lease.NATIVE_NAME', 'Local\\AutoHSR.RewardOnlyNativeQA.' + uuid4().hex)):
                 stack.enter_context(patch(name, value))
             for name, options in (
                 ('autohsr.app.C.get_last_error', dict(return_value=0)),
                 ('autohsr.app.find_game', dict(return_value=window)),
                 ('autohsr.app.Vision', dict(side_effect=vision)),
                 ('autohsr.app.Runner._arm_hotkeys', {}), ('autohsr.app.Runner._hotkeys', {}),
+                ('autohsr.task_workflow_run.TaskWorkflowRunner._hotkeys', {}),
                 ('autohsr.app.launch_game', dict(side_effect=AssertionError('no game launch'))),
                 ('autohsr.app.is_elevated', dict(return_value=False)),
                 ('autohsr.daily_synthesis.complete_once', dict(side_effect=AssertionError('no synthesis'))),
+                ('autohsr.daily_synthesis.resume_pending', dict(side_effect=AssertionError('no synthesis recovery'))),
             ):
                 stack.enter_context(patch(name, **options))
             for name in ('assignments', 'battle', 'mail', 'battlepass', 'redemption'):
                 stack.enter_context(patch.object(DailyWorkflow, name, side_effect=AssertionError('extra task')))
             stack.enter_context(patch.object(Context, 'sleep', lambda context, _duration: context.checkpoint()))
+            args = ['--run', '--reward-only']
+            if workflow:
+                path = root / 'training.json'
+                path.write_text(json.dumps(dict(version=1, name='Training rewards',
+                                                steps=[dict(id='claim', type='task', task='daily_training_rewards')])),
+                                encoding='utf8')
+                args = ['--task-workflow', str(path)]
             output = io.StringIO()
             with redirect_stdout(output), redirect_stderr(io.StringIO()):
-                code = main(['--run', '--reward-only', '--config', str(config)])
+                code = main([*args, '--config', str(config)])
             report = json.loads(output.getvalue())
+            if workflow:
+                step, = report['workflow']['steps']
+                self.assertTrue(step['account_verified'], step)
+                source = Path(step['source']['path'])
+                with source.open(encoding='utf8') as stream:
+                    child = json.load(stream)
+                self.assertEqual(step['facts'], dict(status=child['status'], daily_verified=child['daily_verified']))
+                for name in ('status', 'engagement', 'daily_verified', 'stamina_spent', 'stamina_pending',
+                             'immersifiers_spent', 'immersifiers_pending'):
+                    self.assertEqual(report[name], child[name])
+                self.assertTrue(report['report_saved'])
+                report = child
             self.assertEqual(report['operation'], 'reward_only')
             self.assertEqual(config.read_bytes(), saved)
+            self.assertEqual(ledger.read_bytes(), b'untouched reward-only test sentinel')
+            self.assertFalse((root / 'runs' / 'daily-synthesis').exists())
             self.assertTrue(report['report_saved'])
             self.assertEqual([item['task'] for item in report['results']], ['daily'])
             self.assertEqual([report[name] for name in ('stamina_spent', 'stamina_pending',
@@ -138,6 +168,18 @@ class RewardOnlyMilestonesTests(unittest.TestCase):
                 self.assertEqual(json.load(stream), report)
         self.assertEqual(releases, [4] if short_reward else [])
         return code, report, clicks
+
+    def test_workflow_native_partial_claim_and_already_complete_report(self):
+        old = training(400, gifts=(400,), claimed=(100, 200, 300))
+        settled = training(400, claimed=(100, 200, 300, 400))
+        code, report, clicks = self.invoke((old,), (item_overlay(),), (settled,), workflow=True)
+        self.assertEqual((code, report['status'], report['engagement']), (1, 'partial', 400))
+        self.assertEqual(len(clicks), 3)
+        self.assertAlmostEqual(clicks[1][0], CENTERS[400], places=2)
+        full = training(500, claimed=tuple(CENTERS))
+        code, report, clicks = self.invoke((full,), workflow=True)
+        self.assertEqual((code, report['status'], report['engagement']), (0, 'success', 500))
+        self.assertEqual(len(clicks), 1)
 
     def test_partial_activity_claims_the_visible_reached_gift_and_requires_return(self):
         old = training(400, gifts=(100, 200, 300, 400))

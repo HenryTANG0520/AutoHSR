@@ -15,6 +15,7 @@
 | task | 正式实现 | params与默认行为 |
 | --- | --- | --- |
 | `daily` | `Runner(operation='daily')` | 不填`tasks`时沿用当前日常开关；可明确指定`assignments/battle/daily/redemption/mail/battlepass`子集。可覆盖`stamina_limit/rounds/target_name/target_location/dungeon_category/challenge_count/use_support/support_daily_only`；`use_power_plan`默认false |
+| `daily_training_rewards` | `Runner(operation='reward_only')` | 无参数，仅补领已完成的每日实训点数与已达档位。材料、开拓力、沉浸器预算均为零 |
 | `plan` | `PlanRunner` | 沿用现有日常→到期周常。`use_power_plan`、`resume_weekly_currency`默认false，`support_daily_only`可覆盖本次日常。原周目标及接续规则保持 |
 | `differential_universe` | `Runner(operation='differential_universe')` | `runs`默认1、范围1～10；`mode`默认periodic，可选normal；`team`默认沿用当前预设；`save/rewards/resume_active/until_points`默认false；`periodic_rank`仅用于明确接续；通关后日常固定关闭 |
 | `du_rewards` | `Runner(operation='du_rewards')` | 已打开差分主页，独立处理三类免费已有红点；`use_cassettes`默认false，明确true才加入月下；不演算，不改变保存设置，不等于周积分领奖 |
@@ -38,6 +39,20 @@
 游戏图文步骤读取已经登录且处于前台的游戏客户区。两张连续新画面都必须核实同一窗口、账号、输入代次及一致的识别结果。登录、遮挡、失焦、账号变化或两次识别不一致时，匹配字段留空。步骤占用正式执行权，只观察画面，回执只写布尔结果，账号证据仍按原规则留在本机。定时触发时也需要游戏已在前台，并受含游戏任务的单次重复限制。
 
 页面切换与实时图文共享前台及账号门禁。目标为 `phone` 手机、`guide` 指南、`daily_training` 每日实训、`survival_index` 生存索引、`assignments` 委托、`mail` 邮件、`battlepass` 无名勋礼、`odyssey` 巡星之礼、`reward_guide` 奖励指南和 `messages` 短信通知。泛指南目标保留当前指南子页。已经在目标页时零输入。每次点击或返回都要求当前页面和可用入口有证据，再双帧核对新页面。遇到登录、弹窗、战斗、失焦或不认识的页面时保留已有动作回执。只有已核实到达的结果才提供 `page_verified=true`。导航不领取奖励、不开战，也不建立资源预算。活动与短信通知目标目前支持已校准的 4.6.0 版式。短信从带可见未读角标的大世界或已打开的通知双栏开始，最多提交一次气泡点击。[活动页面导航](daily-event-observation.md#独立导航) · [短信导航](../DAILY_FLOW.md#短信只读校准)
+
+### 仅补领每日实训
+
+能力 ID 为 `daily_training_rewards`。任务流步骤接受省略的 `params` 或空对象 `{}`，其他字段均拒绝。普通 `daily` 节点的 `tasks: ["daily"]` 继续沿用保存的 `daily_synthesis`。独立领奖节点使用仅补领奖设置副本，关闭合成与已有资源消耗，跳过刷本、附加任务、合成恢复和旧账核销。它仍会发出导航和领奖输入，沿用原生仅补领奖的启动、页面和输入门禁，以及任务流的执行权与账号连续性。
+
+P1 底栏「仅补领奖」和 `--run --reward-only` 继续直达同一原生入口。任务流和应用内定时的任务下拉框显示「仅补领每日实训」。定时可直接选此任务，也可选包含此节点的已保存任务流。两者使用同一参数校验和回执。此节点占用一次日常执行名额，因此同一路径只允许一个 `daily_training_rewards`、`daily` 或 `plan` 节点。定时的批内重复上限为一次，单任务预览的体力预算为零。现有父层结束通知仍按其独立设置生效。[应用内定时](schedules.md)
+
+任务流保留子报告与账号核验状态。实训未到 500 时，即使已核实部分档位领取，状态仍为 `partial`。只有 500 活跃且五档均核实已领取时才给出 `daily_verified=true`。本能力可作为后续 P1 模块的执行落点。持久化模块开关及授权策略留待中央评审。
+
+| 最小回归 | 核对项 |
+| --- | --- |
+| 普通实训与独立领奖的设置投影 | 同一份开启合成、刷本的配置。旧实训继承合成，新节点只保留领奖，输入扩展和同路径重复被拒绝 |
+| 模拟窗口执行 | 400 活跃领取可见档位后报告部分完成，500 活跃五档已领取时零领奖点击。父子回执一致，材料流程及其恢复均未调用，资源账和配置不变 |
+| 任务编辑与定时 | 下拉框保存空参数，预览与冻结保留游戏任务身份和零体力预算，批内重复两次被拒绝 |
 
 ### 明确指南页签
 

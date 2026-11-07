@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 from autohsr import theme
 from autohsr.desktop_workflow_node import WorkflowNodeForm
+from autohsr.desktop_workflows import _TASK_NAMES
 from autohsr.task_workflow import TASKS, WorkflowError, compile_recipe
 
 
@@ -37,7 +38,7 @@ class WorkflowNodeFormTests(unittest.TestCase):
         self.addCleanup(self.form.destroy)
 
     def new_form(self, scale):
-        form = WorkflowNodeForm(self.root, scale=scale, task_names={"daily": "每日任务", "warp_export": "跃迁记录导出"},
+        form = WorkflowNodeForm(self.root, scale=scale, task_names=_TASK_NAMES,
                                 on_apply=self.applied, on_cancel=self.cancelled)
         form.pack(fill="both", expand=True)
         return form
@@ -65,7 +66,7 @@ class WorkflowNodeFormTests(unittest.TestCase):
 
     def test_page_picker_writes_the_selected_native_target(self):
         self.form.open()
-        self.form.values["task"].set("workflow_open_page")
+        self.form.values["task"].set(_TASK_NAMES["workflow_open_page"])
         self.assertEqual(self.form.page_target.get(), "手机")
         self.form.page_target.set("生存索引")
         self.form._select_page(None)
@@ -84,6 +85,13 @@ class WorkflowNodeFormTests(unittest.TestCase):
             self.form.page_target.set(label)
             self.form._select_page(None)
             self.assertEqual(self.submitted()["params"], {"target": target})
+
+    def test_training_rewards_picker_saves_a_parameterless_native_step(self):
+        self.form.open()
+        self.assertIn("仅补领每日实训", self.form.controls["task"].cget("values"))
+        self.form.values["task"].set("仅补领每日实训")
+        self.assertEqual(self.submitted(), dict(type="task", name=None, enabled=False, task="daily_training_rewards",
+                                                params={}, on_failure="stop"))
 
     def test_edit_locks_node_type_and_can_clear_optional_values(self):
         node = dict(id="original", type="task", name="旧名称", enabled=True, task="daily",

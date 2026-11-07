@@ -21,8 +21,8 @@ from .du_points_followup import FollowupWeek, followup_week_scope
 from .models import AutomationError, RunReport, Stopped, TaskResult
 from .storage import replace_file
 from .task_workflow import (FIELDS, GAME_TASKS, GAME_VISION_TASKS, MAX_EXECUTIONS, PAGE_TASK, TEMPLATE_TASKS,
-                            VISION_TASKS, WORKFLOW_FOREGROUND_TASKS, WorkflowError, compile_recipe, execution_task,
-                            task_spec, workflow_notification_png_path)
+                            TRAINING_REWARDS_TASK, VISION_TASKS, WORKFLOW_FOREGROUND_TASKS, WorkflowError,
+                            compile_recipe, execution_task, task_spec, workflow_notification_png_path)
 from .task_workflow import execution_tasks as _tasks
 from .workflow_lease import workflow_lease
 
@@ -309,7 +309,7 @@ class TaskWorkflowRunner:
             return facts
         observed_daily = (result.get('daily_verified') is True or
                           any(row.get('task') == 'daily' for row in result.get('results', []) if isinstance(row, dict)))
-        if (result.get('operation') in ('daily', 'plan') and observed_daily
+        if (operation in ('daily', 'plan', 'reward_only') and observed_daily
                 and type(result.get('daily_verified')) is bool):
             facts['daily_verified'] = result['daily_verified']
         currency = result.get('currency_wars', {})
@@ -324,6 +324,10 @@ class TaskWorkflowRunner:
         # Static reservations admit at most one daily owner. DU post-daily is off.
         if result.get('operation') == 'du_rewards':
             self.report.du_rewards = deepcopy(result['du_rewards'])
+            return
+        if result.get('operation') == 'reward_only':
+            self.report.daily_verified = result['daily_verified']
+            self.report.engagement = result['engagement']
             return
         if result.get('operation') in ('daily', 'plan'):
             for key in ('stamina_spent', 'stamina_limit', 'stamina_pending', 'immersifiers_spent', 'immersifiers_pending',
@@ -456,7 +460,7 @@ class TaskWorkflowRunner:
             self._check_du_points_week()
             if self._input_blocked:
                 raise WorkflowError('此前游戏任务未核实完成；失败后继续只能处理本地步骤，不能再发送游戏输入。')
-        expected = {'plan': 'plan', 'currency_wars_loop': 'currency_wars_loop'}.get(node['task'], node['task'])
+        expected = 'reward_only' if node['task'] == TRAINING_REWARDS_TASK else node['task']
         child = result = None
         identity_mark = self._identity.mark() if game else None
         followup = self._du_points_step[2] if game and self._du_points_step is not None else None
