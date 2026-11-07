@@ -11,8 +11,9 @@ import cv2
 import numpy as np
 
 from autohsr.models import Scene, Token
-from autohsr.redemption_pages import (FIELD_KEY, PHONE_HEADER, _matches, _template, field_region, phone, phone_more_target,
-                                     read_form, read_result, redemption_entry)
+from autohsr.redemption_pages import (FIELD_KEY, PHONE_HEADER, _matches, _template, field_region,
+                                     navigation_empty_form_controls, phone, phone_more_target, read_form,
+                                     read_result, redemption_entry)
 
 
 def token(text, box, score=.99):
@@ -102,6 +103,25 @@ def form_scene(code=None, *, echo=True, empty=None, disabled=False):
         if roi is None:
             raise AssertionError('Synthetic form did not satisfy actual page geometry')
         scene.field_reads[FIELD_KEY] = (Token(code, .99, roi), Token(code, .99, roi))
+    return scene
+
+
+def current_empty_form_scene():
+    scene = base_scene()
+    scene.image[324:660, 396:1524] = 218
+    scene.image[660:761, 396:1524] = 38
+    scene.image[504:552, 493:1426] = 202
+    scene.image[504:506, 493:1426] = 160
+    scene.image[550:552, 493:1426] = 160
+    scene.image[680:736, 572:816] = 225
+    stamp(scene.image, 'title', 906, 354)
+    stamp(scene.image, 'paste', 1392, 517)
+    scene.tokens = [
+        token('兑换码', (911, 358, 1011, 397)),
+        token('取消', (742, 691, 798, 724)),
+        token('确认', (1159, 690, 1216, 724)),
+        token('请输入兑换码...', (512, 512, 668, 542), score=.886),
+    ]
     return scene
 
 
@@ -240,6 +260,36 @@ class RedemptionPagesTests(unittest.TestCase):
         self.assertFalse(form.empty)
         self.assertIsNone(form.current_code)
         self.assertIsNone(form.confirm_target)
+
+    def test_navigation_recognizes_current_empty_layout_at_both_scales(self):
+        for size in ((1920, 1080), (3840, 2160)):
+            with self.subTest(size=size):
+                scene = current_empty_form_scene()
+                scene.image = cv2.resize(scene.image, size, interpolation=cv2.INTER_NEAREST)
+                self.assertEqual(navigation_empty_form_controls(scene, .91), tuple(scene.tokens[1:3]))
+                self.assertIsNone(read_form(scene, .91))
+        legacy = form_scene()
+        self.assertEqual(navigation_empty_form_controls(legacy, .91), tuple(legacy.tokens[1:3]))
+
+    def test_navigation_empty_layout_rejects_ambiguous_ocr_or_field_pixels(self):
+        for change in ('placeholder', 'duplicate', 'unexpected', 'field_border', 'paste', 'active_confirm', 'typed'):
+            with self.subTest(change=change):
+                scene = current_empty_form_scene()
+                if change == 'placeholder':
+                    scene.tokens[-1] = token('请输入兑换码...', (512, 512, 668, 542), score=.84)
+                elif change == 'duplicate':
+                    scene.tokens.append(token('确认', (930, 580, 992, 618), score=.78))
+                elif change == 'unexpected':
+                    scene.tokens.append(token('额外内容', (880, 580, 1040, 618), score=.78))
+                elif change == 'field_border':
+                    scene.image[545:553, 698:933] = 202
+                elif change == 'paste':
+                    scene.image[517:541, 1392:1411] = 202
+                elif change == 'active_confirm':
+                    scene.image[680:736, 1070:1330] = 225
+                else:
+                    scene.tokens[-1] = token('ExampleCode24', (512, 512, 668, 542))
+                self.assertIsNone(navigation_empty_form_controls(scene, .91))
 
     def test_exact_independent_field_echo_preserves_case_and_chinese(self):
         for code in ('AbCd1234', 'aBcD1234', '星穹铁道2026', '中AbC文2'):

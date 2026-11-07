@@ -1,7 +1,7 @@
 """Daily page transitions for a task-tree step and its native input gate."""
 
 from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 import math
 import time
@@ -90,7 +90,6 @@ _BLOCKERS = ('列车补给', '获得物品', '选择奖励', '请选择奖励', 
              '资源下载', '确认购买', '确认支付', '退出挑战', '开始挑战', '是否消耗')
 _DIALOG = ('提示', '温馨提示', '确认', '确定', '取消', '知道了', '我知道了', '支付', '付款')
 _DIALOG_AREA = (.25, .20, .75, .86)
-_FORM_DIALOG = tuple(label for label in _DIALOG if label not in ('确认', '取消'))
 _LOADING = ('加载中', '正在加载', '登录中')
 
 
@@ -160,10 +159,14 @@ def _activity_title(scene):
     return scene.has(_ROUTE_ACTIVITY, TITLE, exact=True) or _has_split_label(scene, _ROUTE_ACTIVITY, TITLE)
 
 
-def _require_clear_page(scene, daily, dialog=_DIALOG):
+def _require_clear_page(scene, daily, *, allowed_dialog=()):
+    dialog = scene
+    if allowed_dialog:
+        dialog = replace(scene, tokens=[token for token in scene.tokens if token not in allowed_dialog])
     if (calibration_overlay(scene) or helper_overlay(scene) or daily._login(scene) or daily._in_battle(scene)
-            or battlepass_modal(scene) or scene.has(_BLOCKERS, exact=True) or scene.has(dialog, _DIALOG_AREA, exact=True)
-            or _has_split_label(scene, _BLOCKERS, FULL) or _has_split_label(scene, dialog, _DIALOG_AREA)
+            or battlepass_modal(scene) or scene.has(_BLOCKERS, exact=True)
+            or dialog.has(_DIALOG, _DIALOG_AREA, exact=True)
+            or _has_split_label(scene, _BLOCKERS, FULL) or _has_split_label(dialog, _DIALOG, _DIALOG_AREA)
             or _route_blocked(scene, _ROUTE_STOP, _ROUTE_MODAL_PHRASES)):
         raise AutomationError('当前有登录、战斗、弹窗或遮挡，日常页面导航已停止。')
 
@@ -328,17 +331,19 @@ class WorkflowNavigation:
         return Token(label, score, (x-.005, y-.006, x+.005, y+.006))
 
     def _read_redemption_page(self, scene):
-        from .redemption_pages import MORE_MENU, STATUSES, phone_more_target, read_form, redemption_entry
+        from .redemption_pages import (
+            MORE_MENU, STATUSES, navigation_empty_form_controls, phone_more_target, redemption_entry,
+        )
 
         low = trusted(scene, COLLECTION_FLOOR)
         statuses = tuple(STATUSES)
         if _activity_title(low) or _route_blocked(low, statuses, statuses):
             raise AutomationError('当前有活动页面或兑换结果，兑换表单导航已停止。')
-        form = read_form(scene, self.confidence)
-        _require_clear_page(low, self.daily, _FORM_DIALOG if form is not None else _DIALOG)
+        controls = navigation_empty_form_controls(low, self.confidence)
+        _require_clear_page(low, self.daily, allowed_dialog=controls or ())
         if low.has(_LOADING, exact=True):
             return None
-        if form is not None:
+        if controls is not None:
             return REDEMPTION_FORM_PAGE
         entry = redemption_entry(scene, self.confidence)
         if entry is not None and redemption_entry(scene, COLLECTION_FLOOR) == entry:

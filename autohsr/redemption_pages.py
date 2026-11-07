@@ -38,6 +38,13 @@ _CURRENT_PHONE_GRID = (
     ('指南', (.674, .711, .724, .764)),
 )
 PLACEHOLDERS = ('请输入兑换码', '请在此输入兑换码')
+_NAVIGATION_PLACEHOLDERS = tuple(label + ending for label in PLACEHOLDERS for ending in ('', '...', '…', '⋯'))
+_NAVIGATION_MODAL = (.20, .29, .80, .71)
+_CURRENT_EMPTY_TITLE = (.443, .314, .557, .386)
+_CURRENT_EMPTY_PLACEHOLDER = (.258, .467, .405, .509)
+_CURRENT_EMPTY_PASTE = (.706, .465, .746, .511)
+_CURRENT_EMPTY_CANCEL = (.371, .627, .427, .682)
+_CURRENT_EMPTY_CONFIRM = (.589, .627, .646, .682)
 STATUSES = {'兑换成功': 'redeemed', '兑换码已过期': 'expired',
             '无效的兑换码': 'invalid', '兑换码已被使用': 'already_used'}
 FIELD_KEY = 'redemption.code'
@@ -118,7 +125,7 @@ def _template(name):
         return None
 
 
-def _matches(scene, name, roi=(0, 0, 1, 1)):
+def _matches(scene, name, roi=(0, 0, 1, 1), *, minimum=.96):
     original = _template(name)
     if original is None:
         return []
@@ -136,7 +143,7 @@ def _matches(scene, name, roi=(0, 0, 1, 1)):
     scores = cv2.matchTemplate(patch, sample, cv2.TM_CCORR_NORMED if mask is not None else cv2.TM_CCOEFF_NORMED,
                                mask=mask)
     scores = np.nan_to_num(scores, nan=-1., posinf=-1., neginf=-1.)
-    ys, xs = np.where((scores >= .96) & (scores >= cv2.dilate(scores, np.ones((3, 3), np.uint8))))
+    ys, xs = np.where((scores >= minimum) & (scores >= cv2.dilate(scores, np.ones((3, 3), np.uint8))))
     candidates = sorted(((float(scores[y, x]), int(x), int(y)) for y, x in zip(ys, xs)), reverse=True)
     hits, centers = [], []
     selected = mask > 0 if mask is not None else np.ones((sh, sw), dtype=bool)
@@ -405,6 +412,62 @@ def read_form(scene, confidence=.65):
     digest = _proof(clean, [roi, *(token.box for token in shell)],
                     dict(code=code, empty=empty, icon=icon_kind))
     return Form(target, roi, code, empty, confirm, digest)
+
+
+def _pixels(image, roi):
+    height, width = image.shape[:2]
+    left, top, right, bottom = (round(value * size) for value, size in zip(roi, (width, height, width, height)))
+    return image[top:bottom, left:right]
+
+
+def _current_empty_field(image):
+    # Both blank parts of the grey field have two thin darker edges, with a
+    # lighter modal body just outside. A pasted icon alone cannot prove this.
+    for left, right in ((.37, .48), (.53, .68)):
+        above = np.median(_pixels(image, (left, .450, right, .460)))
+        upper_edge = np.median(_pixels(image, (left, .464, right, .472)), axis=(1, 2)).min()
+        inside = np.median(_pixels(image, (left, .479, right, .500)))
+        lower_edge = np.median(_pixels(image, (left, .506, right, .514)), axis=(1, 2)).min()
+        below = np.median(_pixels(image, (left, .519, right, .529)))
+        outside = min(above, below)
+        if outside < 185 or not 150 <= inside <= outside - 8 or max(upper_edge, lower_edge) > inside - 18:
+            return False
+    return True
+
+
+def navigation_empty_form_controls(scene, confidence):
+    """Identify only the empty 4.6 navigation destination and its two button labels."""
+    clean = _scene(scene, .85)
+    if clean is None:
+        return None
+    title = _unique(clean.tokens, ('兑换码',))
+    placeholder = _unique(clean.tokens, _NAVIGATION_PLACEHOLDERS)
+    cancel = _unique(clean.tokens, ('取消',))
+    confirm = _unique(clean.tokens, ('确认',))
+    labels = (title, placeholder, cancel, confirm)
+    if (None in labels or min(title.score, cancel.score, confirm.score) < confidence
+            or any(token.within(_NAVIGATION_MODAL) and token not in labels for token in scene.tokens)):
+        return None
+
+    regions = (_CURRENT_EMPTY_TITLE, _CURRENT_EMPTY_PLACEHOLDER, _CURRENT_EMPTY_CANCEL, _CURRENT_EMPTY_CONFIRM)
+    if not all(_inside(token.box, region) for token, region in zip(labels, regions)):
+        form = read_form(scene, confidence)
+        return (cancel, confirm) if form is not None and form.empty and _inside(placeholder.box, form.field_roi) else None
+
+    height, width = clean.image.shape[:2]
+    if abs(width / height - 16 / 9) > .02 or abs(cancel.center[1] - confirm.center[1]) > .014:
+        return None
+    # The current 4K skin renders the old title/paste artwork slightly
+    # differently. These floors apply only within the calibrated modal ROIs.
+    titles = _matches(clean, 'title', _CURRENT_EMPTY_TITLE, minimum=.94)
+    paste = _matches(clean, 'paste', _CURRENT_EMPTY_PASTE, minimum=.93)
+    if (len(titles) != 1 or not title.within(titles[0].box) or len(paste) != 1
+            or abs(placeholder.center[1] - paste[0].center[1]) > .014
+            or not _current_empty_field(clean.image)):
+        return None
+    light_cancel = np.median(_pixels(clean.image, (.321, .639, .366, .669)))
+    dim_confirm = np.median(_pixels(clean.image, (.577, .639, .596, .669)))
+    return (cancel, confirm) if light_cancel >= 175 and dim_confirm <= 85 else None
 
 
 def _result_word(value):
