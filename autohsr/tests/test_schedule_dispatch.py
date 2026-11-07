@@ -588,6 +588,78 @@ class ScheduleDispatchTests(unittest.TestCase):
             finally:
                 release.set();controller.stop(wait=True,timeout=4)
 
+    def test_cli_rejects_notification_version_swapped_between_checks(self):
+        from autohsr.__main__ import main
+        from autohsr.notify_http import Reply
+        from autohsr.notify_runtime import NotificationService
+        from autohsr.task_workflow_run import TaskWorkflowRunner
+
+        request = Mock(return_value=Reply(200, b'{}'))
+        service = NotificationService(root=self.root / 'notify-race', request=request)
+        identity = 'offline-hook'
+        profile = dict(id=identity, provider='webhook', params=dict(url='https://example.test/old'))
+        service.store.save(profile)
+        path = service.store.path(identity)
+        old = path.read_bytes()
+        service.store.save(dict(profile, params=dict(url='https://example.test/new')), replace=True)
+        new = path.read_bytes()
+        path.write_bytes(old)
+        load_version = service.store.load_version
+        self.executor.notification_service = service
+        self.executor.settings.notification_enabled = True
+        self.executor.settings.notification_profiles = [identity]
+        self.executor.workflow_factory = None
+
+        def swap_during_control_load(name):
+            if load.call_count == 1:  # Scheduler.enable() freezes the original version.
+                return load_version(name)
+            path.write_bytes(new)
+            try:
+                return load_version(name)
+            finally:
+                path.write_bytes(old)  # The last pre-run check still observes the original version.
+
+        original_steps = TaskWorkflowRunner._steps
+
+        def complete_with_changed_profile(runner, *args, **kwargs):
+            original_steps(runner, *args, **kwargs)
+            path.write_bytes(new)
+
+        store = ScheduleStore(self.root / 'notify-cli')
+        plan = self.plan(); store.save(plan)
+        now = datetime(2026, 10, 30, 8, 29, tzinfo=CHINA)
+        controllers = []
+
+        def build(*args, **kwargs):
+            controller = Scheduler(*args, **kwargs, clock=lambda: now)
+            controllers.append(controller)
+            return controller
+
+        def advance(_):
+            nonlocal now
+            self.assertTrue(controllers[0].wait_idle(3))
+            now += timedelta(minutes=1)
+
+        output, error = io.StringIO(), io.StringIO()
+        with (patch.object(service.store, 'load_version', side_effect=swap_during_control_load) as load,
+              patch.object(TaskWorkflowRunner, '_steps', new=complete_with_changed_profile),
+              patch('autohsr.config.Settings.load', return_value=self.settings),
+              patch('autohsr.schedule_dispatch.NativeScheduleExecutor', return_value=self.executor),
+              patch('autohsr.schedule_runtime.Scheduler', side_effect=build),
+              patch('autohsr.schedule_cli.time', SimpleNamespace(monotonic=lambda: 0., sleep=advance)),
+              patch('autohsr.schedule_cli._stop_pressed', side_effect=[False, False, True]),
+              patch('autohsr.task_workflow_run.workflow_lease', side_effect=nullcontext),
+              patch('autohsr.notify_runtime._notification_key_state', return_value=(False, False, False)),
+              redirect_stdout(output), redirect_stderr(error)):
+            code = main(['--schedule-run', plan['id'], '--schedule-store-dir', str(store.root)])
+        self.assertEqual(code, 0, error.getvalue())
+        self.assertEqual(load.call_count, 2)
+        request.assert_not_called()
+        self.assertFalse((service.root / 'attempts').exists())
+        self.assertFalse(self.executor.run_root.exists())
+        receipt, = store.receipts()
+        self.assertEqual((receipt['status'], receipt['reason']), ('failed', 'target_unverified'))
+
 
 if __name__ == '__main__':
     unittest.main()

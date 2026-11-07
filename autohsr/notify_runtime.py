@@ -377,9 +377,14 @@ class NotificationRunner:
         return report
 
 
-def hooks(settings, emit, *, service=None):
+def hooks(settings, emit, *, service=None, expected_versions=None):
     if not settings.notification_enabled:
         return emit, lambda runner: runner
     validate_settings(settings)
     control = NotificationControl(settings, emit, service=service)
+    if expected_versions is not None:
+        # Compare the versions actually captured by the wrapper, not a separate read.
+        versions = {identity: frozen[1] for identity, frozen in control.frozen if frozen is not None}
+        if versions != expected_versions:
+            raise NotifyError('结束通知方案与定时启用时的版本不一致。')
     return control.events, lambda runner: NotificationRunner(runner, control)

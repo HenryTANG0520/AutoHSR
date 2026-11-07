@@ -292,8 +292,13 @@ class NativeScheduleExecutor:
         if native:
             from .task_workflow_run import TaskWorkflowRunner
             factory = TaskWorkflowRunner
+        from .notify_profiles import NotifyError
         from .notify_runtime import hooks
-        child_emit, wrap = hooks(settings, emit, service=self.notification_service)
+        try:
+            child_emit, wrap = hooks(settings, emit, service=self.notification_service,
+                                     expected_versions=manifest['notification_versions'])
+        except NotifyError as error:
+            raise ScheduleSourceUnverified('计划结束通知方案版本未核实；未执行。') from error
         # TaskWorkflowRunner owns the existing sequence marker, child input mutex,
         # cross-step account proof, static budget and original child reports.
         runner = factory(settings, recipe.document, child_emit, selected_path=target.get('step_path'),
