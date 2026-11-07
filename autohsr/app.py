@@ -23,8 +23,8 @@ from .vision import Vision, save_scene,helper_overlay
 from .ocr_isolation import IsolatedVision
 from .windows import find_game, is_admin, is_elevated, launch
 from .storage import file_revision, hold_read_sources, replace_file
-from .task_workflow import (GAME_VISION_TASKS, PAGE_TASK, TEMPLATE_TASKS, WORKFLOW_FOREGROUND_TASKS,
-                            WORKFLOW_NAVIGATION_TARGETS, WORLD_WORKFLOW_PAGE)
+from .task_workflow import (BACKGROUND_NAVIGATION_PAGES, GAME_VISION_TASKS, PAGE_TASK, TEMPLATE_TASKS,
+                            WORKFLOW_FOREGROUND_TASKS, WORKFLOW_NAVIGATION_TARGETS, WORLD_WORKFLOW_PAGE)
 
 
 def launch_game(settings: Settings) -> str:
@@ -2310,7 +2310,7 @@ class Runner:
                  use_power_plan=False,new_power_plan=False,currency_overclock_open_a0=False,build_target_selection=None,
                  challenge_lobby_mode=None, assignments_only=False, daily_reward_mode=None,
                  daily_attachment_only=None, workflow_screen_query=None, workflow_page=None,
-                 workflow_page_observe_only=False,
+                 workflow_page_observe_only=False, workflow_page_background=False,
                  observation_wait_for_foreground=False, daily_event_claim_day=None, daily_event_observe_return=False,
                  daily_event_claim_navigate=False, daily_event_workflow=False, daily_message_reply=None,
                  reward_guide_capture=None):
@@ -2346,6 +2346,11 @@ class Runner:
                 or workflow_page_observe_only and (operation != PAGE_TASK or workflow_page != WORLD_WORKFLOW_PAGE)):
             raise ValueError('仅大世界核对支持禁止本次导航输入。')
         self.workflow_page_observe_only = workflow_page_observe_only
+        if (type(workflow_page_background) is not bool or workflow_page_background
+                and (operation != PAGE_TASK or workflow_page not in BACKGROUND_NAVIGATION_PAGES
+                     or workflow_page_observe_only or observation_wait_for_foreground)):
+            raise AutomationError('后台窗口仅用于手机和指南的专用导航入口。')
+        self.workflow_page_background = workflow_page_background
         if daily_attachment_only is not None:
             from .daily_attachments import attachment_settings
             if operation != 'daily' or new_battle_run or use_power_plan or new_power_plan or assignments_only:
@@ -3202,9 +3207,14 @@ class Runner:
             cold_start = False
             if not self.daily_attachment_only and not foreground_scope and ((not guide_only and not currency_wars and not differential_universe and not challenge_prepare and not du_rewards) or self.weekly_plan is not None or self.report.operation in ('currency_wars_prepare', 'currency_wars_standard', 'currency_wars_points', 'currency_wars_rewards')):
                 cold_start = self._prepare_daily_game() is True
+            if self.workflow_page_background and not self.settings.game_path:
+                raise AutomationError('后台导航需要明确选择星铁安装。')
             self._window = self._window or find_game(self.settings.game_path)
             if self.report.operation != "currency_wars" and is_elevated(self._window.hwnd) is True and not is_admin():
                 raise AutomationError("游戏以管理员运行，请在设置启用管理员免重复确认启动后重开助手，或使用 Start-AutoHSR-Admin.cmd。")
+            if self.workflow_page_background:
+                from .windows_background import BackgroundGameWindow
+                self._window = BackgroundGameWindow(self._window, checkpoint=self._control_checkpoint)
             if self.observation_wait_for_foreground:
                 from .screenshot_tool import _foreground_geometry
 

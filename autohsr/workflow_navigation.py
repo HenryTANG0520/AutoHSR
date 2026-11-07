@@ -231,6 +231,9 @@ class WorkflowNavigation:
         self.target = target
         self._observe_only = observe_only
         self.record = {'target': target, 'page_verified': False, 'actions': []}
+        self.background = getattr(context.runner, 'workflow_page_background', False) is True
+        if self.background:
+            self.record['control_mode'] = 'background'
         context.report.workflow_navigation = self.record
         self.daily = DailyWorkflow(context)
         self.confidence = max(.85, context.settings.ocr_confidence)
@@ -290,7 +293,7 @@ class WorkflowNavigation:
             raise AutomationError('日常页面导航的游戏安装来源或版本已变化。')
         if (not self.key or self.window.current_window_key() != self.key
                 or self.window.guard(self.geometry) != self.geometry):
-            raise AutomationError('日常页面导航的前台窗口来源已变化。')
+            raise AutomationError('日常页面导航的窗口来源已变化。')
         self._control()
 
     def _page(self, scene):
@@ -419,7 +422,7 @@ class WorkflowNavigation:
             if achievement is not None:
                 return self.target if page is None and achievement[0] == self.target else None
             return page if page == 'phone' else None
-        if page is not None or self._installation is None or self.target in BATTLEPASS_WORKFLOW_PAGES:
+        if page is not None or self._installation is None or self.target not in ACTIVITY_WORKFLOW_PAGES:
             return page
         options = dict(client_version=self._installation.version, confidence=self.confidence)
         if self.target == 'reward_guide':
@@ -490,7 +493,8 @@ class WorkflowNavigation:
             return None
         if page == 'world':
             return None if message_panel(frame.scene) else _Action('open_phone', ('phone',))
-        if self._installation is not None and page in ('phone', 'activity_list', 'odyssey'):
+        if (self.target in ACTIVITY_WORKFLOW_PAGES and self._installation is not None
+                and page in ('phone', 'activity_list', 'odyssey')):
             options = dict(client_version=self._installation.version, confidence=self.confidence)
             if page == 'phone':
                 token = phone_journey_event_entry(frame.scene, **options)
@@ -607,7 +611,10 @@ class WorkflowNavigation:
         self._latest(pair[-1])
         if not self._retained(pair[0]) or any(frame.image.flags.writeable for frame in pair):
             raise AutomationError('日常页面导航的封存双帧已变化。')
-        self.window.require_foreground()
+        if self.background:
+            self.window.guard(self.geometry)
+        else:
+            self.window.require_foreground()
         self._control()
 
     def _planned(self, pair):
@@ -735,6 +742,8 @@ class WorkflowNavigation:
                 expected = ('phone', 'activity_list', 'odyssey')
             elif self._bound_to_guide_capture():
                 expected = ('phone', 'activity_list', 'odyssey', 'reward_guide')
+        if self.background:
+            version = _GUIDE_LAYOUT_VERSION
         if version is not None:
             self._installation = read_event_installation(self.window)
             if self._installation.version != version:

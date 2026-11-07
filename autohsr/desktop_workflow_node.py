@@ -7,7 +7,8 @@ from tkinter import ttk
 
 from . import theme
 from .task_workflow import (
-    DAILY_TASKS, FIELDS, FREE_ATTACHMENT_TASK, GAME_VISION_TASKS, MAX_WAIT_SECONDS, PAGE_TASK, TASKS, TEMPLATE_TASKS,
+    BACKGROUND_NAVIGATION_PAGES, DAILY_TASKS, FIELDS, FREE_ATTACHMENT_TASK, GAME_VISION_TASKS, MAX_WAIT_SECONDS,
+    PAGE_TASK, TASKS, TEMPLATE_TASKS,
     WorkflowError,
     _condition, _integer, _params, _screen_condition, _text, _wait_seconds, loads,
 )
@@ -146,6 +147,10 @@ class WorkflowNodeForm(ttk.Frame):
                                        values=tuple(_PAGES.values()), state="readonly", style="Settings.TCombobox")
         self.page_picker.grid(row=1, column=1, sticky="e")
         self.page_picker.bind("<<ComboboxSelected>>", self._select_page)
+        self.page_background = tk.BooleanVar(self)
+        self.page_background_check = ttk.Checkbutton(self._parameters_frame, variable=self.page_background,
+                                                    text="后台导航（试验）", command=self._select_page_background)
+        self.page_background_check.grid(row=3, column=0, columnspan=2, sticky="w")
         editor = ttk.Frame(self._parameters_frame)
         editor.columnconfigure(0, weight=1)
         editor.grid(row=2, column=0, columnspan=2, sticky="ew")
@@ -413,6 +418,7 @@ class WorkflowNodeForm(ttk.Frame):
         labels = self._target_labels()
         if labels is None:
             self.page_picker.grid_remove()
+            self.page_background_check.grid_remove()
             return
         self.page_picker.configure(values=tuple(labels.values()))
         self.page_picker.grid()
@@ -422,6 +428,11 @@ class WorkflowNodeForm(ttk.Frame):
             params = {}
         target = params.get("target") if isinstance(params, dict) else None
         self.page_target.set(labels.get(target, "") if isinstance(target, str) else "")
+        if self._parameter_key == ("task", PAGE_TASK) and target in BACKGROUND_NAVIGATION_PAGES:
+            self.page_background.set(params.get("background") is True)
+            self.page_background_check.grid()
+        else:
+            self.page_background_check.grid_remove()
 
     def _target_labels(self):
         if self._parameter_key == ("task", PAGE_TASK):
@@ -449,7 +460,26 @@ class WorkflowNodeForm(ttk.Frame):
             if not isinstance(params, dict):
                 raise WorkflowError("页面参数须为 JSON 对象。")
             params["target"] = target
+            if target not in BACKGROUND_NAVIGATION_PAGES:
+                params.pop("background", None)
             _params(self._parameter_key[1], params)
+        except WorkflowError as error:
+            self.error.set(str(error))
+            self._show_page_picker()
+            return
+        self._set_parameters(json.dumps(params, ensure_ascii=False, indent=2))
+        self.error.set("")
+
+    def _select_page_background(self):
+        try:
+            params = loads(self.parameters.get("1.0", "end-1c"))
+            if not isinstance(params, dict) or params.get("target") not in BACKGROUND_NAVIGATION_PAGES:
+                raise WorkflowError("请先选择支持后台导航的页面。")
+            if self.page_background.get():
+                params["background"] = True
+            else:
+                params.pop("background", None)
+            _params(PAGE_TASK, params)
         except WorkflowError as error:
             self.error.set(str(error))
             self._show_page_picker()

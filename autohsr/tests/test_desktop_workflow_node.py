@@ -122,6 +122,19 @@ class WorkflowNodeFormTests(unittest.TestCase):
             self.form._select_page(None)
             self.assertEqual(self.submitted()["params"], {"target": target})
 
+    def test_background_checkbox_only_changes_supported_navigation(self):
+        form = self.form
+        form.open(dict(type="task", task="workflow_open_page", params={"target": "guide"}))
+        self.assertTrue(form.page_background_check.grid_info())
+        self.assertFalse(form.page_background.get())
+        form.page_background_check.invoke()
+        self.assertEqual(self.submitted()["params"], {"target": "guide", "background": True})
+        form.page_target.set("邮件")
+        form._select_page(None)
+        form._show_page_picker()
+        self.assertFalse(form.page_background_check.grid_info())
+        self.assertEqual(self.submitted()["params"], {"target": "mail"})
+
     def test_training_rewards_picker_saves_a_parameterless_native_step(self):
         self.form.open()
         self.assertIn("仅补领每日实训", self.form.controls["task"].cget("values"))

@@ -258,7 +258,7 @@ class TaskWorkflowRunner:
         task = node['task']
         settings, options = self.specs[node['id']]
         options = deepcopy(options)
-        if self._initial_foreground_pending:
+        if self._initial_foreground_pending and not options.get('workflow_page_background'):
             self._initial_foreground_pending = False
             if task in WORKFLOW_FOREGROUND_TASKS or task == EVENT_CLAIM_OPERATION:
                 options['observation_wait_for_foreground'] = True
@@ -508,6 +508,9 @@ class TaskWorkflowRunner:
                     raise WorkflowError('游戏页面回执缺少已核实的布尔结果。')
                 if node['task'] == PAGE_TASK and result['workflow_navigation'].get('target') != options['workflow_page']:
                     raise WorkflowError('已核实页面与本步骤请求的目标不符。')
+                if options.get('workflow_page_background') is True and (
+                        result['workflow_navigation'].get('control_mode') != 'background'):
+                    raise WorkflowError('页面回执没有核实本次使用后台窗口。')
             entry['source'] = self._source(result, expected, native_points=native_points)
             if node['task'] == EVENT_CLAIM_OPERATION:
                 from .daily_event_claim_flow import claim_receipt

@@ -106,6 +106,7 @@ class AutoHSRWindow:
         from .desktop_jobs import NativeRunSlot
         self._native_run = NativeRunSlot(self.events, self.stop_requested)
         self._tool_result_handler = None
+        self._keep_window_for_run = False
         self.started_at: float | None = None
         self.elapsed_seconds = self.confirmed_stamina = 0
         self.last_run_dir: Path | None = None
@@ -1129,6 +1130,7 @@ class AutoHSRWindow:
             self.input_focus.cancel()
         if not running:
             self.paused = self.stopping = False
+            self._keep_window_for_run = False
         self._refresh_controls()
         self.table.redraw()
         self._refresh_activity()
@@ -1136,7 +1138,8 @@ class AutoHSRWindow:
     def _submit_tool_job(self, title, work, on_done, on_error=None) -> bool:
         return self._start_desktop_job(title, work, on_done, on_error)
 
-    def _start_desktop_job(self, title, work, on_done, on_error, *, game=False, clear_run_evidence=False) -> bool:
+    def _start_desktop_job(self, title, work, on_done, on_error, *, game=False, clear_run_evidence=False,
+                           keep_window=False) -> bool:
         if self.busy or self.closing or (self.worker is not None and self.worker.is_alive()):
             return False
         self.stop_requested.clear()
@@ -1148,10 +1151,11 @@ class AutoHSRWindow:
         self.status.set("● " + title)
         self.current_task.set("")
         self.started_at = time.monotonic()
+        self._keep_window_for_run = keep_window
         self._set_busy(True, game)
-        if game:
+        if game and not keep_window:
             self.root.iconify()
-        self._tool_result_handler = title, game, on_done, on_error
+        self._tool_result_handler = title, game and not keep_window, on_done, on_error
         events, cancel = self.events, self.stop_requested
 
         def run():
@@ -1189,7 +1193,8 @@ class AutoHSRWindow:
         except Exception:
             self.result_alert.set(title + "的结果无法显示，请查看运行记录。")
 
-    def _start_scoped_runner(self, title, operation, factory, on_report, *, game=True, source_scope=None):
+    def _start_scoped_runner(self, title, operation, factory, on_report, *, game=True, source_scope=None,
+                             keep_window=False):
         emit, native = self.events.put, self._native_run
 
         def work(_cancel):
@@ -1223,7 +1228,8 @@ class AutoHSRWindow:
             if on_report is not None:
                 on_report(dict(operation=operation, status='failed', report_saved=False, error=message))
 
-        return self._start_desktop_job(title, work, present, failed, game=game, clear_run_evidence=True)
+        options = {'keep_window': True} if keep_window else {}
+        return self._start_desktop_job(title, work, present, failed, game=game, clear_run_evidence=True, **options)
 
     def _start_daily_assignment(self, on_report=None) -> bool:
         settings = self._read_settings(operation=ASSIGNMENTS)
@@ -1387,12 +1393,14 @@ class AutoHSRWindow:
             send, wrap = hooks(settings, emit)
             return wrap(TaskWorkflowRunner(settings, recipe.document, send, base_dir=recipe.base_dir,
                                            selected_path='/'.join(map(str, recipe.path)) or None,
-                                           wait_for_foreground=game, **authorization))
+                                           wait_for_foreground=foreground_game, **authorization))
 
         from .task_workflow import GAME_TASKS
-        game = any(node['task'] in GAME_TASKS for node in _tasks(recipe.steps))
-        return self._start_scoped_runner('运行已保存流程', 'task_workflow', factory, on_report, game=game,
-                                         source_scope=source_scope)
+        game_nodes = [node for node in _tasks(recipe.steps) if node['task'] in GAME_TASKS]
+        foreground_game = any(node.get('params', {}).get('background') is not True for node in game_nodes)
+        options = {'keep_window': True} if game_nodes and not foreground_game else {}
+        return self._start_scoped_runner('运行已保存流程', 'task_workflow', factory, on_report,
+                                         game=bool(game_nodes), source_scope=source_scope, **options)
 
     def _schedule_preview_budget(self, plan):
         return self.desktop_schedule.preview(plan)
@@ -1770,7 +1778,7 @@ class AutoHSRWindow:
         if (self.runner is None and not scheduled) or not self.running or self.stopping:
             return
         try:
-            if self.paused:
+            if self.paused and not self._keep_window_for_run:
                 self.root.iconify()
             self._pause_state(self.desktop_schedule.toggle_pause() if scheduled else bool(self.runner.toggle_pause()))
         except Exception as exc:
@@ -1802,10 +1810,11 @@ class AutoHSRWindow:
         self._refresh_controls()
         if changed:
             self._log("已暂停。点击“继续”或按 F9 恢复。" if paused else "继续执行任务。", "warning" if paused else "info")
-        if paused:
-            self._restore()
-        elif not self.closing:
-            self.root.iconify()
+        if not self._keep_window_for_run:
+            if paused:
+                self._restore()
+            elif not self.closing:
+                self.root.iconify()
 
     def _stop(self) -> None:
         if not self.busy or self.stopping:

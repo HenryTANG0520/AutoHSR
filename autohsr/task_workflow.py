@@ -38,6 +38,7 @@ REDEMPTION_FORM_PAGE = 'redemption_form'
 WORLD_WORKFLOW_PAGE = 'world'
 WORKFLOW_PAGES = ('phone', 'guide', 'daily_training', 'survival_index', 'assignments', 'mail', 'battlepass',
                   *ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE)
+BACKGROUND_NAVIGATION_PAGES = ('phone', 'guide', 'daily_training', 'survival_index')
 WORKFLOW_NAVIGATION_TARGETS = (*WORKFLOW_PAGES, *BATTLEPASS_WORKFLOW_PAGES, *GUIDE_WORKFLOW_SUBPAGES,
                                VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE, ACHIEVEMENT_OVERVIEW_PAGE,
                                REDEMPTION_FORM_PAGE, WORLD_WORKFLOW_PAGE)
@@ -222,7 +223,7 @@ def _params(task, params):
         'workflow_text': {'image', 'text', 'region', 'threshold', 'contains'},
         'workflow_game_image': {'template', 'region', 'threshold'},
         'workflow_game_text': {'text', 'region', 'threshold', 'contains'},
-        PAGE_TASK: {'target', 'observe_only'},
+        PAGE_TASK: {'target', 'observe_only', 'background'},
         'workflow_notify': {'profile', 'message', 'png'},
     }[task]
     _keys(params, allowed)
@@ -310,6 +311,10 @@ def _params(task, params):
             _boolean(params['observe_only'])
             if params['target'] != WORLD_WORKFLOW_PAGE:
                 raise WorkflowError('仅大世界核对支持禁止本次导航输入。')
+        if 'background' in params:
+            _boolean(params['background'])
+            if params['background'] and params['target'] not in BACKGROUND_NAVIGATION_PAGES:
+                raise WorkflowError('后台页面导航仅支持手机和指南的已核实页签。')
     elif task == FREE_ATTACHMENT_TASK:
         if params.get('target') not in FREE_ATTACHMENT_TARGETS:
             raise WorkflowError('请选择独立邮件附件或无名勋礼。')
@@ -634,6 +639,8 @@ def task_spec(settings: Settings, node, base_dir):
         options = dict(operation=task, workflow_page=params['target'])
         if params.get('observe_only') is True:
             options['workflow_page_observe_only'] = True
+        if params.get('background') is True:
+            options['workflow_page_background'] = True
         current.validate('check')
     elif task.startswith('warp_'):
         options = params

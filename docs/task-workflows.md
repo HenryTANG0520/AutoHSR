@@ -43,6 +43,12 @@
 
 页面切换与实时图文共享前台及账号门禁。目标为 `phone` 手机、`guide` 指南、`daily_training` 每日实训、`survival_index` 生存索引、`assignments` 委托、`mail` 邮件、`battlepass` 无名勋礼、`odyssey` 巡星之礼、`reward_guide` 奖励指南和 `messages` 短信通知。泛指南目标保留当前指南子页。已经在目标页时零输入。每次点击或返回都要求当前页面和可用入口有证据，再双帧核对新页面。遇到登录、弹窗、战斗、失焦或不认识的页面时保留已有动作回执。只有已核实到达的结果才提供 `page_verified=true`。导航不领取奖励、不开战，也不建立资源预算。活动与短信通知目标目前支持已校准的 4.6.0 版式。短信从带可见未读角标的大世界或已打开的通知双栏开始，最多提交一次气泡点击。[活动页面导航](daily-event-observation.md#独立导航) · [短信导航](../DAILY_FLOW.md#短信只读校准)
 
+### Windows 后台页面导航试验
+
+在任务流步骤「切换到游戏页面」选择手机、指南、每日实训或生存索引，再勾选「后台导航（试验）」；对应参数为 `"background": true`。保持配置指向已打开且未最小化的简中 4.6.0 星铁窗口，手动运行该流程。该选项仅作用于当前导航步骤，原前台入口仍按默认流程执行。
+
+后台只读绑定窗口的客户区，取帧失败时停止。Esc 和点击发送到同一个窗口，仍须用同账号双帧核实入口和到页。点击会短暂借用系统光标，检测到鼠标操作时停止，释放窗口按键消息并保留实际提交状态。无到页反馈时保留当前动作并停止。后台能力目前通过隔离 Windows 窗口验证，真实星铁的窗口取帧和动作反馈待校准。按键激活、拖动、滚轮和定时运行继续分别验收。[三月七后台设计](https://github.com/moesnow/March7thAssistant/blob/26bee153544db44a882313f361b5ddbcefb001fa/assets/docs/Background.md) · [Windows 客户区取帧](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-printwindow)
+
 ### 仅补领每日实训
 
 能力 ID 为 `daily_training_rewards`。任务流步骤可省略 `params`，或提供可选布尔值 `reached_only`，默认 `false`。普通 `daily` 节点的 `tasks: ["daily"]` 继续沿用保存的 `daily_synthesis`。独立领奖节点使用仅补领奖设置副本，关闭合成与已有资源消耗，跳过刷本、附加任务、合成恢复和旧账核销。它仍会发出导航和领奖输入，沿用原生仅补领奖的启动、页面和输入门禁，以及任务流的执行权与账号连续性。

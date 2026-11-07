@@ -259,9 +259,29 @@ class WorkflowNavigationTests(unittest.TestCase):
                 c = Context(target, [scene, scene])
                 result = c.workflow_navigation.run()
                 self.assertEqual((result.task, result.status), (OPERATION, 'ok'))
-                self.assertEqual(c.report.workflow_navigation, dict(target=target, page_verified=True, actions=[]))
+                report = dict(c.report.workflow_navigation)
+                if target == 'daily_training':
+                    self.assertEqual(report.pop('training_observation')['activity'], 500)
+                self.assertEqual(report, dict(target=target, page_verified=True, actions=[]))
                 c.workflow_navigation.guard_publication()
         self.assertEqual(self.sent, [])
+
+    def test_background_page_uses_the_same_verified_route_without_foreground(self):
+        frames = [scene for scene in (world(), phone(), self.daily, self.survival) for _ in range(2)]
+        context = self._installed_context(frames, target='survival_index')
+        context.runner.workflow_page_background = True
+        context.workflow_navigation = WorkflowNavigation(context, 'survival_index')
+        context.window.require_foreground = Mock(side_effect=AssertionError('unexpected foreground requirement'))
+        context.window.click = Mock(side_effect=lambda *args, before_submit: before_submit())
+        context.window.key = Mock(side_effect=lambda *args, before_submit, **kwargs: before_submit())
+        result = context.workflow_navigation.run()
+        self.assertEqual(result.status, 'ok')
+        context.window.key.assert_called_once()
+        self.assertEqual(context.window.click.call_count, 2)
+        record = context.workflow_navigation.record
+        self.assertEqual(record['control_mode'], 'background')
+        self.assertEqual([row['destination_page'] for row in record['actions']],
+                         ['phone', 'daily_training', 'survival_index'])
 
     def test_battlepass_subpages_reject_ambiguous_heading_covered_tab_modal_and_unrelated_page(self):
         tasks = identified(fixture('bp_tasks_claimable'))

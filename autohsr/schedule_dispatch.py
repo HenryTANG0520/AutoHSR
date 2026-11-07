@@ -168,6 +168,8 @@ class NativeScheduleExecutor:
             if node['task'] == EVENT_CLAIM_OPERATION:
                 raise ScheduleError('巡星之礼单日提交需要手动关闭弹窗核验，请手动运行任务流。')
             params = node.get('params', {})
+            if params.get('background') is True:
+                raise ScheduleError('试验后台页面导航需手动运行任务流。')
             if node['task'] in GAME_TASKS and any(params.get(name) is True for name in
                     ('resume', 'resume_active', 'resume_weekly_currency')):
                 raise ScheduleError('定时接续需要专用旧局版本协议；请先用手动原生入口核对。')
