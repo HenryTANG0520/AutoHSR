@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import sys
+from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from .storage import replace_file
+from tempfile import NamedTemporaryFile
+
+from .storage import remove_owned_stage, replace_file
 from .du_station_policy import default_priorities
 
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
@@ -189,9 +193,19 @@ class Settings:
 
     def save(self, path: Path = CONFIG_PATH) -> None:
         self.validate("save")
-        temp = path.with_suffix(".tmp")
-        temp.write_text(json.dumps(asdict(self), ensure_ascii=False, indent=2), encoding="utf-8")
-        replace_file(temp,path)
+        payload = json.dumps(asdict(self), ensure_ascii=False, indent=2)
+        created = None
+        try:
+            with NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                    prefix=".autohsr-settings-", suffix=".tmp", delete=False) as stream:
+                temporary = Path(stream.name)
+                created = os.fstat(stream.fileno())
+                stream.write(payload)
+            replace_file(temporary, path)
+        finally:
+            if created is not None:
+                with suppress(OSError):
+                    remove_owned_stage(temporary, created)
 
     @classmethod
     def load(cls, path: Path = CONFIG_PATH, *, reward_only: bool = False,

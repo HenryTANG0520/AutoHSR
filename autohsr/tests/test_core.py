@@ -5,13 +5,16 @@ import json
 import tempfile
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from autohsr.config import Settings
 from autohsr.models import AutomationError, RunReport, Scene, TaskResult, Token, normalize
 from autohsr.policy import guard_click
+from autohsr.storage import replace_file
 from autohsr.workflows import DailyWorkflow
 
 
@@ -1084,6 +1087,73 @@ class SettingsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 Settings(stamina_limit=15).save(path)
             self.assertEqual(path.read_bytes(), original)
+
+    def test_concurrent_saves_to_different_suffixes_keep_their_own_settings(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_DIR) as directory:
+            root = Path(directory)
+            primary, backup = root / "daily.json", root / "daily.backup"
+            primary_settings, backup_settings = Settings(stamina_limit=80), Settings(stamina_limit=160)
+            primary_staged, backup_staged, primary_replaced = Event(), Event(), Event()
+
+            def interleave(source, destination):
+                if destination == primary:
+                    primary_staged.set()
+                    if not backup_staged.wait(5):
+                        raise TimeoutError("Backup never reached replace")
+                    try:
+                        replace_file(source, destination)
+                    finally:
+                        primary_replaced.set()
+                else:
+                    backup_staged.set()
+                    if not primary_replaced.wait(5):
+                        raise TimeoutError("Primary never reached replace")
+                    replace_file(source, destination)
+
+            with patch("autohsr.config.replace_file", side_effect=interleave), ThreadPoolExecutor(2) as workers:
+                first = workers.submit(primary_settings.save, primary)
+                self.assertTrue(primary_staged.wait(5))
+                second = workers.submit(backup_settings.save, backup)
+                first.result(timeout=10)
+                self.assertEqual(Settings.load(primary), primary_settings)
+                second.result(timeout=10)
+            self.assertEqual(Settings.load(backup), backup_settings)
+            self.assertEqual(set(root.iterdir()), {primary, backup})
+
+    def test_failed_replace_keeps_existing_config_and_unrelated_temp(self) -> None:
+        for name in ("daily.json", "daily.tmp"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=TEST_DIR) as directory:
+                root = Path(directory)
+                target = root / name
+                unrelated = root / ("daily.tmp" if target.suffix == ".json" else "other.tmp")
+                Settings(stamina_limit=80).save(target)
+                original = target.read_bytes()
+                unrelated.write_bytes(b"other writer's file")
+                with (patch("autohsr.storage.REPLACE_RETRY_DELAYS", (0, 0)),
+                      patch.object(Path, "replace", side_effect=PermissionError("busy")) as replace):
+                    with self.assertRaisesRegex(PermissionError, "busy"):
+                        Settings(stamina_limit=160).save(target)
+                self.assertEqual(replace.call_count, 3)
+                self.assertEqual(target.read_bytes(), original)
+                self.assertEqual(unrelated.read_bytes(), b"other writer's file")
+                self.assertEqual(set(root.iterdir()), {target, unrelated})
+
+    def test_save_replaces_a_tmp_named_target_from_a_separate_stage(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_DIR) as directory:
+            root = Path(directory)
+            target = root / "daily.tmp"
+            Settings(stamina_limit=80).save(target)
+            original = target.read_bytes()
+            expected = Settings(stamina_limit=160)
+
+            def check_unpublished(source, destination):
+                self.assertEqual(destination.read_bytes(), original)
+                replace_file(source, destination)
+
+            with patch("autohsr.config.replace_file", side_effect=check_unpublished):
+                expected.save(target)
+            self.assertEqual(Settings.load(target), expected)
+            self.assertEqual(list(root.iterdir()), [target])
 
     def test_load_missing_config_uses_defaults_without_writing(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_DIR) as directory:
