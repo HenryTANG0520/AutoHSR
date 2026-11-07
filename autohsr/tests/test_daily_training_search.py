@@ -1,4 +1,4 @@
-"""Daily synthesis fallback over native wheel input and calibrated card geometry."""
+"""Daily task fallback over native wheel input and calibrated card geometry."""
 
 import ctypes
 from dataclasses import replace
@@ -10,6 +10,7 @@ from unittest import TestCase
 from unittest.mock import Mock, patch
 
 from autohsr import windows
+from autohsr.daily_support import observe as observe_support
 from autohsr.daily_synthesis import task_target
 from autohsr.daily_synthesis_search import find_hidden_card
 from autohsr.models import AutomationError, Scene
@@ -51,7 +52,7 @@ def training_frames():
     return initial, Scene(shifted, image), full
 
 
-class DailySynthesisSearchTests(TestCase):
+class DailyTrainingSearchTests(TestCase):
     def setUp(self):
         ticks = count(10_000)
         def monotonic():
@@ -59,6 +60,7 @@ class DailySynthesisSearchTests(TestCase):
 
         self.enterContext(patch('time.monotonic', monotonic))
         self.enterContext(patch('autohsr.daily_synthesis.monotonic', monotonic))
+        self.enterContext(patch('autohsr.daily_support.monotonic', monotonic))
         self.root = Path(self.enterContext(TemporaryDirectory()))
         self.exe = self.root / 'StarRail.exe'
         self.exe.touch()
@@ -150,3 +152,57 @@ class DailySynthesisSearchTests(TestCase):
         scene = workflow.ctx.snapshot()
         self.assertEqual(find_hidden_card(workflow, scene, 400), (scene, False))
         self.assertEqual(self.packets, [])
+
+    def support_workflow(self, progress, control, *, already_shifted=False):
+        def in_card(token, left, right):
+            return token.within((left, .375, right, .81))
+
+        source = [token for token in self.initial.tokens if in_card(token, .675, .825)]
+        self.initial = replace(self.initial,
+            tokens=[token for token in self.initial.tokens if not in_card(token, .675, .825)])
+        tokens = [token for token in self.shifted.tokens if not in_card(token, .54, .864)]
+        for token in source:
+            x1, y1, x2, y2 = token.box
+            text = (f'进度{progress}' if token.text.startswith('进度')
+                    else control if token.text == '进行中' else token.text)
+            tokens.append(replace(token, text=text, box=(x1+.039, y1, x2+.039, y2)))
+        shifted = replace(self.shifted, tokens=tokens)
+        if already_shifted:
+            self.initial = shifted
+        workflow = self.workflow(shifted)
+        workflow.settings.use_support = workflow.settings.support_daily_only = True
+        workflow._open_guide = Mock(side_effect=lambda _tab: workflow.ctx.snapshot())
+        return workflow
+
+    def test_hidden_support_uses_the_real_progress_to_decide_borrowing(self):
+        original = self.initial
+        for progress, control, expected in (('0/1', '进行中', 'needed'), ('1/1', '领取', 'completed')):
+            with self.subTest(progress=progress):
+                self.packets.clear()
+                self.initial = original
+                workflow = self.support_workflow(progress, control)
+                decision = observe_support(workflow)
+                self.assertEqual(decision.state, expected)
+                decision.require(workflow.ctx, workflow.ctx.last_scene)
+                record, = workflow.ctx.report.support_selections
+                self.assertEqual(record['state'], expected)
+                self.assertEqual(record['search'], dict(state='found', scrolls=['sent']))
+                self.assertEqual(len(self.packets), 1)
+
+    def test_support_already_visible_at_shifted_position_requires_no_scroll(self):
+        workflow = self.support_workflow('0/1', '进行中', already_shifted=True)
+        self.assertEqual(observe_support(workflow).state, 'needed')
+        self.assertEqual(workflow.ctx.report.support_selections[0]['search'], dict(state='found', scrolls=[]))
+        self.assertEqual(self.packets, [])
+
+    def test_uncertain_support_card_does_not_reach_dungeon_or_payment(self):
+        workflow = self.support_workflow('0/1', '前往')
+        workflow.settings.allow_stamina_spend = True
+        workflow._open_calyx = Mock(side_effect=AssertionError('unverified card must stop before dungeon'))
+        with self.assertRaisesRegex(AutomationError, '支援需求未核实'):
+            workflow.battle()
+        workflow._open_calyx.assert_not_called()
+        self.assertEqual(workflow.ctx.report.stamina_pending, 0)
+        record, = workflow.ctx.report.support_selections
+        self.assertEqual(record['state'], 'unknown')
+        self.assertEqual(record['search'], dict(state='right_edge_clear', scrolls=['sent']))

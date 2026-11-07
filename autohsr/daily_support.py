@@ -1,6 +1,6 @@
-"""A read-only, same-day reason to borrow support for an existing battle batch."""
+"""Verify the same-day reason to borrow support for an existing battle batch."""
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 import re
 from time import monotonic
@@ -92,6 +92,25 @@ def read_state(scene, *, badge_verified=False, confidence=.85):
     return _read_card(scene, confidence), activity
 
 
+def _settled_support(pair, view, confidence):
+    matches = [(card, center) for card, center in zip(view.cards, view.centers) if card['task'] == 'support_win']
+    if len(matches) != 1:
+        return None
+    card, center = matches[0]
+    if card['state'] in ('claimable', 'claimed', 'completed'):
+        return 'completed'
+    if card['state'] != 'pending':
+        return None
+    for frame in pair:
+        controls = [token for token in frame.scene.tokens
+                    if token.within((center - .07, .73, center + .07, .81))
+                    and re.search(r'[\u3400-\u9fff]', token.text)]
+        if (len(controls) != 1 or normalize(controls[0].text) != '进行中'
+                or not confidence <= controls[0].score <= 1):
+            return None
+    return 'needed'
+
+
 @dataclass(frozen=True)
 class Decision:
     state: str
@@ -180,8 +199,22 @@ def observe(workflow):
     state, activity = read_state(scene, confidence=confidence, badge_verified=badge is not None)
     decision = Decision(state, day, _account(scene, confidence), ctx.scene_epoch, confidence)
     decision.require(ctx, scene)
-    ctx.report.support_selections.append(dict(mode='daily_training', state=state, activity=activity, game_day=day))
-    if state == 'unknown':
+    record = dict(mode='daily_training', state=state, activity=activity, game_day=day)
+    ctx.report.support_selections.append(record)
+    if state == 'unknown' and workflow.settings.use_support and workflow.settings.support_daily_only:
+        from .daily_training_search import search_task
+
+        receipt = {}
+        try:
+            current, found = search_task(workflow, scene, activity, _settled_support, receipt, inspect_current=True)
+            if found is not None:
+                decision = replace(decision, state=found)
+                decision.require(ctx, current)
+                record['state'] = found
+        finally:
+            if receipt:
+                record['search'] = receipt
+    if decision.state == 'unknown':
         raise AutomationError('每日实训支援需求未核实，未借用或开始挑战。')
     return decision
 
