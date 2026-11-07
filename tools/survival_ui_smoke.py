@@ -134,6 +134,10 @@ def main():
                       and board.matches(mission) and board.action_label(mission) == "已选"
                       and not ui.challenge_entry.instate(("disabled",)) and not ui.busy
                       and config.read_bytes() == original)
+                check(f"{scale}_home_shortcut_returns_after_join", ui.active_page == "home" and not board.winfo_ismapped())
+                # The shortcut returned home. Open the standalone index for the remaining cases.
+                ui.nav_buttons["tasks"].invoke()
+                pump(root, lambda: ui.active_page == "tasks" and board.winfo_ismapped())
                 ui.battle_checkbox.invoke()
                 root.update()
                 snapshot = ui._read_settings(operation="plan")
@@ -142,6 +146,7 @@ def main():
                 ui.category_buttons["历战余响"].invoke()
                 root.update()
                 board.focus_force()
+                check(f"{scale}_keyboard_join_has_list_focus", board.winfo_ismapped() and root.focus_get() is board)
                 board.event_generate("<Home>")
                 root.update()
                 mission = board.rows[board.cursor]
@@ -149,6 +154,8 @@ def main():
                 root.update()
                 snapshot = ui._read_settings(operation="plan")
                 check(f"{scale}_keyboard_join_applies_exact_category_and_limit", snapshot is not None and snapshot.battle
+                      and (snapshot.dungeon_category, snapshot.target_name, snapshot.target_location, snapshot.challenge_count)
+                      == (mission.category, mission.name, mission.location, 3)
                       and board.matches(mission) and ui.challenge_count.get() == "3"
                       and "90" in ui.battle_cost.get() and "90" in ui.daily_caption.get())
                 ui.battle_checkbox.invoke()
