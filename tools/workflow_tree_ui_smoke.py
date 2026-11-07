@@ -11,9 +11,10 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from autohsr import theme
+from autohsr.desktop_workflow_node import WorkflowNodeForm
 from autohsr.desktop_workflow_tree import WorkflowTreeDialog
 from autohsr.desktop_workflows import _TASK_NAMES, build_workflow_panel
-from autohsr.task_workflow import read
+from autohsr.task_workflow import FREE_ATTACHMENT_TASK, read
 
 
 def workflow():
@@ -37,6 +38,18 @@ class WorkflowTreeSmoke(unittest.TestCase):
     def select(self, dialog, item):
         dialog.tree.selection_set(item)
         dialog._refresh()
+
+    def test_free_attachment_picker_saves_the_explicit_target(self):
+        apply = Mock()
+        form = WorkflowNodeForm(self.ui.root, scale=1, task_names=_TASK_NAMES, on_apply=apply, on_cancel=Mock())
+        form.open(dict(id='reward', type='task', task=FREE_ATTACHMENT_TASK, params=dict(target='mail')))
+        self.assertEqual(form.page_target.get(), '仅领取邮件附件')
+        form.page_target.set('仅领取无名勋礼')
+        form._select_page(None)
+        form.apply()
+        self.assertEqual(apply.call_args.args[0]['params'], {'target': 'battlepass'})
+        form.open(dict(id='page', type='task', task='workflow_open_page', params=dict(target='phone')))
+        self.assertEqual(form.page_target.get(), '手机')
 
     def test_false_branch_paths_follow_sibling_order_and_can_transfer_to_runner_scope(self):
         original = workflow()

@@ -7,7 +7,8 @@ from tkinter import ttk
 
 from . import theme
 from .task_workflow import (
-    DAILY_TASKS, FIELDS, GAME_VISION_TASKS, MAX_WAIT_SECONDS, PAGE_TASK, TASKS, TEMPLATE_TASKS, WorkflowError,
+    DAILY_TASKS, FIELDS, FREE_ATTACHMENT_TASK, GAME_VISION_TASKS, MAX_WAIT_SECONDS, PAGE_TASK, TASKS, TEMPLATE_TASKS,
+    WorkflowError,
     _condition, _integer, _params, _screen_condition, _text, _wait_seconds, loads,
 )
 
@@ -69,6 +70,7 @@ def _number(raw, low, high):
 def _default_params(task):
     return {
         "daily": {"tasks": ["assignments"]},
+        FREE_ATTACHMENT_TASK: {"target": "mail"},
         "workflow_audio": {"path": "提示.wav"},
         "workflow_image": {"image": "截图.png", "template": "模板.png"},
         "workflow_game_image": {"template": "模板.png"},
@@ -408,16 +410,27 @@ class WorkflowNodeForm(ttk.Frame):
         self.error.set("")
 
     def _show_page_picker(self):
-        if self._parameter_key != ("task", PAGE_TASK):
+        labels = self._target_labels()
+        if labels is None:
             self.page_picker.grid_remove()
             return
+        self.page_picker.configure(values=tuple(labels.values()))
         self.page_picker.grid()
         try:
             params = loads(self.parameters.get("1.0", "end-1c"))
         except WorkflowError:
             params = {}
         target = params.get("target") if isinstance(params, dict) else None
-        self.page_target.set(_PAGES.get(target, "") if isinstance(target, str) else "")
+        self.page_target.set(labels.get(target, "") if isinstance(target, str) else "")
+
+    def _target_labels(self):
+        if self._parameter_key == ("task", PAGE_TASK):
+            return _PAGES
+        if self._parameter_key == ("task", FREE_ATTACHMENT_TASK):
+            from .daily_attachments import ATTACHMENT_FLOWS
+
+            return ATTACHMENT_FLOWS
+        return None
 
     def _sync_parameter_controls(self, _event):
         if self.parameters.edit_modified():
@@ -426,8 +439,9 @@ class WorkflowNodeForm(ttk.Frame):
             self._show_daily_scope()
 
     def _select_page(self, _event):
-        target = _key(_PAGES, self.page_target.get())
-        if target is None or self._parameter_key != ("task", PAGE_TASK):
+        labels = self._target_labels()
+        target = _key(labels, self.page_target.get()) if labels is not None else None
+        if target is None:
             return
         try:
             raw = self.parameters.get("1.0", "end-1c")
@@ -435,7 +449,7 @@ class WorkflowNodeForm(ttk.Frame):
             if not isinstance(params, dict):
                 raise WorkflowError("页面参数须为 JSON 对象。")
             params["target"] = target
-            _params(PAGE_TASK, params)
+            _params(self._parameter_key[1], params)
         except WorkflowError as error:
             self.error.set(str(error))
             self._show_page_picker()

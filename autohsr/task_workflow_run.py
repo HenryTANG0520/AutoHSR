@@ -20,7 +20,7 @@ from .config import ROOT
 from .du_points_followup import FollowupWeek, followup_week_scope
 from .models import AutomationError, RunReport, Stopped, TaskResult
 from .storage import replace_file
-from .task_workflow import (FIELDS, GAME_TASKS, GAME_VISION_TASKS, MAX_EXECUTIONS, PAGE_TASK, TEMPLATE_TASKS,
+from .task_workflow import (FIELDS, FREE_ATTACHMENT_TASK, GAME_TASKS, GAME_VISION_TASKS, MAX_EXECUTIONS, PAGE_TASK, TEMPLATE_TASKS,
                             TRAINING_REWARDS_TASK, VISION_TASKS, WORKFLOW_FOREGROUND_TASKS, WorkflowError,
                             compile_recipe, execution_task, task_spec, workflow_notification_png_path)
 from .task_workflow import execution_tasks as _tasks
@@ -460,7 +460,9 @@ class TaskWorkflowRunner:
             self._check_du_points_week()
             if self._input_blocked:
                 raise WorkflowError('此前游戏任务未核实完成；失败后继续只能处理本地步骤，不能再发送游戏输入。')
-        expected = 'reward_only' if node['task'] == TRAINING_REWARDS_TASK else node['task']
+        scoped_attachment = node['task'] == FREE_ATTACHMENT_TASK
+        expected = ('reward_only' if node['task'] == TRAINING_REWARDS_TASK
+                    else 'daily' if scoped_attachment else node['task'])
         child = result = None
         identity_mark = self._identity.mark() if game else None
         followup = self._du_points_step[2] if game and self._du_points_step is not None else None
@@ -503,6 +505,14 @@ class TaskWorkflowRunner:
                 if node['task'] == PAGE_TASK and result['workflow_navigation'].get('target') != options['workflow_page']:
                     raise WorkflowError('已核实页面与本步骤请求的目标不符。')
             entry['source'] = self._source(result, expected, native_points=native_points)
+            attachment = None
+            if scoped_attachment:
+                from .daily_attachments import attachment_receipt
+
+                attachment = attachment_receipt(result, options['daily_attachment_only'])
+                if result['status'] == 'success' and (attachment is None or not self._identity.has_step_proof(
+                        identity_mark, run_dir=result.get('run_dir') or '')):
+                    raise WorkflowError('独立免费领奖缺少本次同账号的原始回执。')
             assignment = None
             if options.get('assignments_only'):
                 from .daily_assignment_scope import assignment_receipt
@@ -520,11 +530,14 @@ class TaskWorkflowRunner:
             if native_points:
                 result = self._du_points_result(result, entry, options['du_runs'], identity_mark)
             else:
-                if not game or self._identity.has_step_proof(identity_mark):
+                if not scoped_attachment and (not game or self._identity.has_step_proof(identity_mark)):
                     self._copy_totals(result)
                 if game:
                     self._identity.require_step(identity_mark)
                     entry['account_verified'] = True
+                if attachment is not None and self._identity.has_step_proof(
+                        identity_mark, run_dir=result.get('run_dir') or ''):
+                    entry['attachment'] = attachment
                 if (assignment is not None and assignment['outcome'] != 'unknown'
                         and self._identity.has_step_proof(identity_mark, run_dir=result.get('run_dir', ''))):
                     entry['assignment'] = assignment

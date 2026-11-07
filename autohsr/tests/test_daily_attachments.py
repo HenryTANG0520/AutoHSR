@@ -1,6 +1,7 @@
 """Official free-reward CLI and workflow through fake Win32 and local fixtures."""
 
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
+import ctypes
 from dataclasses import replace
 import io
 import json
@@ -19,7 +20,7 @@ from autohsr.config import Settings
 from autohsr.daily_attachments import ATTACHMENT_FLOWS
 from autohsr.free_rewards import battlepass_progress, battlepass_tab, mail_entry
 from autohsr.models import AutomationError, InputInterrupted, Scene
-from autohsr.task_workflow import task_spec
+from autohsr.task_workflow import FREE_ATTACHMENT_TASK, WorkflowError, compile_recipe, task_spec
 from autohsr.tests.test_assignment_only import ACCOUNT, OTHER
 from autohsr.tests.test_core import token
 from autohsr.tests.test_daily_startup import supply
@@ -31,7 +32,8 @@ GEOMETRY = windows.Geometry(0, 0, 1920, 1080)
 
 
 class AttachmentTests(unittest.TestCase):
-    def invoke(self, task, start, *, event=None, workflow=False):
+    def invoke(self, task, start, *, event=None, workflow=False, combined=False):
+        workflow = workflow or combined
         folder = TemporaryDirectory(prefix='autohsr-attachment-')
         self.addCleanup(folder.cleanup)
         root = Path(folder.name)
@@ -42,9 +44,11 @@ class AttachmentTests(unittest.TestCase):
         original = config.read_bytes()
         if workflow:
             document = root / 'task.json'
-            document.write_text(json.dumps(dict(version=1, name='自定义单附件', steps=[
-                dict(id='single', type='task', task='daily', params=dict(tasks=[task])),
-            ]), ensure_ascii=False), encoding='utf8')
+            steps = ([dict(id=target, type='task', task=FREE_ATTACHMENT_TASK, params=dict(target=target))
+                      for target in ('mail', 'battlepass')] if combined else
+                     [dict(id='single', type='task', task='daily', params=dict(tasks=[task]))])
+            document.write_text(json.dumps(dict(version=1, name='自定义单附件', steps=steps),
+                                           ensure_ascii=False), encoding='utf8')
             args = ['--task-workflow', str(document)]
         else:
             args = ['--daily-attachment-only', task]
@@ -55,6 +59,7 @@ class AttachmentTests(unittest.TestCase):
         native.IsWindow.return_value = 1
         native.IsIconic.return_value = 0
         native.GetSystemMetrics.side_effect = {76: 0, 77: 0, 78: 1920, 79: 1080}.__getitem__
+        native.MapVirtualKeyW.side_effect = lambda key, _: key
         current = None
         mode = start
         active = None
@@ -130,7 +135,8 @@ class AttachmentTests(unittest.TestCase):
                     scene = fixture('mail_claimable')
             tokens = [value for value in scene.tokens if not value.text.lower().startswith('uid')]
             if mode not in ('reward', 'old-reward', 'supply'):
-                tokens.append(token(ACCOUNT, .08, .97, .99))
+                changed = event == 'combined_account_change' and window.owner.daily_attachment_only == 'battlepass'
+                tokens.append(token(OTHER if changed else ACCOUNT, .08, .97, .99))
             image = scene.image if scene.image is not None else np.full((1080, 1920, 3), 35, np.uint8)
             current = replace(scene, tokens=tokens, image=image, geometry=GEOMETRY)
             return image, GEOMETRY
@@ -164,8 +170,18 @@ class AttachmentTests(unittest.TestCase):
                         return window.hwnd + 1
             return window.hwnd
 
-        def send(count, _events, _size):
+        def send(count, events, _size):
             nonlocal mode, last_stage
+            if combined and active is None and count == 1:
+                key = ctypes.cast(events, ctypes.POINTER(windows.INPUT))[0]
+                self.assertEqual((key.type, key.ki.wScan), (1, 0x1B))
+                if key.ki.dwFlags == 0x08:
+                    self.assertEqual(mode, 'mail_claimed')
+                    sent.append('esc')
+                    mode = 'phone-battlepass'
+                else:
+                    self.assertEqual(key.ki.dwFlags, 0x0A)
+                return count
             sent.append(active)
             if active == 'phone_mail_body':
                 mode = 'mail_claimable'
@@ -215,7 +231,10 @@ class AttachmentTests(unittest.TestCase):
                 ('autohsr.windows.geometry', Mock(return_value=GEOMETRY)), ('autohsr.windows.time.sleep', Mock()),
             ):
                 stack.enter_context(patch(name, value))
-            for other in ('assignments', 'battle', 'daily', 'redemption', 'mail' if task == 'battlepass' else 'battlepass'):
+            unselected = ('assignments', 'battle', 'daily', 'redemption')
+            if not combined:
+                unselected += ('mail' if task == 'battlepass' else 'battlepass',)
+            for other in unselected:
                 stack.enter_context(patch.object(DailyWorkflow, other, side_effect=AssertionError('extra daily task')))
             if not workflow:
                 stack.enter_context(patch('autohsr.notify_runtime.hooks', side_effect=AssertionError('unrequested notification')))
@@ -225,7 +244,9 @@ class AttachmentTests(unittest.TestCase):
         self.assertFalse((root / 'runs' / 'battle-session.json').exists())
         self.assertNotIn(ACCOUNT, out.getvalue() + err.getvalue())
         parent = json.loads(out.getvalue())
-        step, = parent['workflow']['steps']
+        step = parent['workflow']['steps'][0]
+        if not combined:
+            self.assertEqual(len(parent['workflow']['steps']), 1)
         child = json.loads(Path(step['source']['path']).read_text(encoding='utf8'))
         self.assertEqual(child['stamina_spent'], 0)
         self.assertEqual(child['stamina_pending'], 0)
@@ -233,6 +254,44 @@ class AttachmentTests(unittest.TestCase):
         self.assertEqual(child['operation'], 'daily')
         self.assertEqual(parent['workflow']['name'], '自定义单附件' if workflow else ATTACHMENT_FLOWS[task])
         return SimpleNamespace(code=code, parent=parent, child=child, step=step, sent=sent)
+
+    def test_combines_independent_mail_and_battlepass_without_a_daily_budget(self):
+        combined = self.invoke('mail', 'mail_claimable', combined=True)
+        self.assertEqual((combined.code, combined.parent['status']), (0, 'success'), combined.parent['error'])
+        workflow = combined.parent['workflow']
+        self.assertEqual((workflow['reservations']['daily_calls'], workflow['reservations']['free_attachment_calls']),
+                         (0, 2))
+        self.assertEqual([step['attachment'] for step in workflow['steps']], [
+            dict(target='mail', outcome='claimed', verified_claims=['mail_attachments']),
+            dict(target='battlepass', outcome='claimed', verified_claims=['battlepass_weekly_tasks', 'battlepass_free_levels']),
+        ])
+        self.assertEqual(combined.sent[:4], ['全部领取', '点击空白处关闭', 'esc', '无名勋礼'])
+        self.assertEqual(combined.sent.count('全部领取'), 1)
+
+    def test_combination_stops_after_unknown_claim_or_changed_account(self):
+        for event, count in (('close_stuck', 1), ('combined_account_change', 2)):
+            with self.subTest(event=event):
+                combined = self.invoke('mail', 'mail_claimable', event=event, combined=True)
+                self.assertEqual(combined.code, 1)
+                self.assertEqual(combined.sent, ['全部领取', '点击空白处关闭'])
+                steps = combined.parent['workflow']['steps']
+                self.assertEqual(len(steps), count)
+                if count == 2:
+                    self.assertEqual(steps[0]['attachment']['outcome'], 'claimed')
+                    self.assertNotIn('attachment', steps[1])
+
+    def test_reservation_rejects_duplicate_or_overlapping_reward_owners(self):
+        def compile_steps(*steps):
+            return compile_recipe(dict(version=1, name='领奖', steps=list(steps)))
+
+        mail = dict(id='mail', type='task', task=FREE_ATTACHMENT_TASK, params=dict(target='mail'))
+        battlepass = dict(id='bp', type='task', task=FREE_ATTACHMENT_TASK, params=dict(target='battlepass'))
+        assignments = dict(id='daily', type='task', task='daily', params=dict(tasks=['assignments']))
+        self.assertEqual(compile_steps(assignments, mail, battlepass).profile['free_attachment_calls'], 2)
+        for overlapping in (dict(mail, id='other'), dict(assignments, params=dict(tasks=['mail'])),
+                            dict(assignments, params={}), dict(assignments, task='plan', params={})):
+            with self.subTest(overlapping=overlapping), self.assertRaises(WorkflowError):
+                compile_steps(mail, overlapping)
 
     def test_mail_navigates_claims_closes_and_distinguishes_empty(self):
         claimed = self.invoke('mail', 'phone_mail_icon')

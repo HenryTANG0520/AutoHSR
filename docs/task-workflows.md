@@ -16,6 +16,7 @@
 | --- | --- | --- |
 | `daily` | `Runner(operation='daily')` | 不填`tasks`时沿用当前日常开关；可明确指定`assignments/battle/daily/redemption/mail/battlepass`子集。可覆盖`stamina_limit/rounds/target_name/target_location/dungeon_category/challenge_count/use_support/support_daily_only`；`use_power_plan`默认false |
 | `daily_training_rewards` | `Runner(operation='reward_only')` | 无参数，仅补领已完成的每日实训点数与已达档位。材料、开拓力、沉浸器预算均为零 |
+| `daily_free_attachment` | 日常 Runner 的独立领奖范围 | 必填 `target`，选择 `mail`（邮件附件）或 `battlepass`（勋礼经验与免费等级奖励） |
 | `plan` | `PlanRunner` | 沿用现有日常→到期周常。`use_power_plan`、`resume_weekly_currency`默认false，`support_daily_only`可覆盖本次日常。原周目标及接续规则保持 |
 | `differential_universe` | `Runner(operation='differential_universe')` | `runs`默认1、范围1～10；`mode`默认periodic，可选normal；`team`默认沿用当前预设；`save/rewards/resume_active/until_points`默认false；`periodic_rank`仅用于明确接续；通关后日常固定关闭 |
 | `du_rewards` | `Runner(operation='du_rewards')` | 已打开差分主页，独立处理三类免费已有红点；`use_cassettes`默认false，明确true才加入月下；不演算，不改变保存设置，不等于周积分领奖 |
@@ -172,6 +173,23 @@ python -m autohsr --task-workflow 'D:\Workflows\demo.json' --workflow-allow-noti
 任务树在接收积分结果、判断条件及进入后续游戏步骤时核对游戏周。接续满额结果的游戏任务沿用原游戏周，在原生检查点和发送输入前复核。父流程每次尝试提交最终报告也核对游戏周。跨周时将 `periodic_points_goal` 标为待核对，停止后续游戏输入，保留原报告、原周观察、已核实胜利以及已发生的后续操作及其回执。固定局数仍沿用原流程。
 
 货币战争仍为标准A8财富造物主40开发流程，没有扩大超频、其他模式、资源授权或独立整局计数；历史0/10保持。流程中的差分仍由原生页面、预设与账本核验，不能因为任务树完成就宣称所有模式验收。
+
+### 独立免费领奖
+
+在现有任务树属性中选择「独立免费领奖」，再选择邮件附件或无名勋礼。也可在 JSON 中按需要排列两个步骤。
+
+```json
+{
+  "version": 1,
+  "name": "领取邮件和勋礼",
+  "steps": [
+    {"id": "mail", "type": "task", "task": "daily_free_attachment", "params": {"target": "mail"}},
+    {"id": "pass", "type": "task", "task": "daily_free_attachment", "params": {"target": "battlepass"}}
+  ]
+}
+```
+
+预览把这两步计为两次独立免费领奖和零份日常预算。若同一路径中的普通日常或周常计划可能处理相同目标，编译会拦截。选择明确排除该目标的日常子集时可组合。两个独立步骤共享同一执行租约和账号核验，使用各自原生领取门禁。父报告在对应步骤的 `attachment` 字段记录目标、结果与已核实领取项目。
 
 ## 文件与控制步骤
 

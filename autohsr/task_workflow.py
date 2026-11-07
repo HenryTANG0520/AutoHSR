@@ -22,6 +22,8 @@ MAX_WAIT_SECONDS = 3600
 GAME_VISION_TASKS = {'workflow_game_image', 'workflow_game_text'}
 PAGE_TASK = 'workflow_open_page'
 TRAINING_REWARDS_TASK = 'daily_training_rewards'
+FREE_ATTACHMENT_TASK = 'daily_free_attachment'
+FREE_ATTACHMENT_TARGETS = ('mail', 'battlepass')
 ACTIVITY_WORKFLOW_PAGES = ('odyssey', 'reward_guide')
 BATTLEPASS_WORKFLOW_PAGES = ('battlepass_rewards', 'battlepass_tasks')
 GUIDE_WORKFLOW_SUBPAGES = ('difficulty_guide', 'universe_guide')
@@ -40,7 +42,7 @@ SCREEN_CHECK_EXTRA_PAGES = (VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE, ACHIEVEM
                             *BATTLEPASS_WORKFLOW_PAGES, REDEMPTION_FORM_PAGE, WORLD_WORKFLOW_PAGE)
 SCREEN_CHECK_PAGES = (*WORKFLOW_PAGES, *SCREEN_CHECK_EXTRA_PAGES)
 WORKFLOW_FOREGROUND_TASKS = GAME_VISION_TASKS | {PAGE_TASK}
-GAME_TASKS = {'daily', TRAINING_REWARDS_TASK, 'plan', 'differential_universe', 'currency_wars_loop',
+GAME_TASKS = {'daily', TRAINING_REWARDS_TASK, FREE_ATTACHMENT_TASK, 'plan', 'differential_universe', 'currency_wars_loop',
               'currency_wars_points', 'currency_wars_rewards', 'du_rewards'} | WORKFLOW_FOREGROUND_TASKS
 VISION_TASKS = {'workflow_image', 'workflow_text'} | GAME_VISION_TASKS
 TEMPLATE_TASKS = {'workflow_image', 'workflow_game_image'}
@@ -200,6 +202,7 @@ def _params(task, params):
                   'redemption_server', 'redemption_codes', 'redemption_catalog', 'redemption_claim_mail'},
         'plan': {'use_power_plan', 'resume_weekly_currency', 'support_daily_only'},
         TRAINING_REWARDS_TASK: set(),
+        FREE_ATTACHMENT_TASK: {'target'},
         'differential_universe': {'runs', 'mode', 'team', 'save', 'rewards', 'resume_active', 'periodic_rank',
                                   'until_points'},
         'currency_wars_loop': {'runs', 'resume', 'strategy', 'until_points', 'continue_after_defeat'},
@@ -301,6 +304,9 @@ def _params(task, params):
             _boolean(params['observe_only'])
             if params['target'] != WORLD_WORKFLOW_PAGE:
                 raise WorkflowError('仅大世界核对支持禁止本次导航输入。')
+    elif task == FREE_ATTACHMENT_TASK:
+        if params.get('target') not in FREE_ATTACHMENT_TARGETS:
+            raise WorkflowError('请选择独立邮件附件或无名勋礼。')
     elif task == 'workflow_notify':
         from .notify_profiles import NotifyError, alias, text
 
@@ -324,7 +330,8 @@ def workflow_notification_png_path(value):
 def _profile(nodes):
     """Worst-case reservations: mutually exclusive branches use max, loops multiply."""
     total = dict(daily_calls=0, du_calls=0, currency_calls=0, du_runs=0, currency_games=0,
-                 du_rewards_calls=0, notification_calls=0, executions=0)
+                 du_rewards_calls=0, notification_calls=0, free_attachment_calls=0,
+                 mail_owners=0, battlepass_owners=0, executions=0)
     for node in nodes:
         kind = node['type']
         current = dict.fromkeys(total, 0)
@@ -337,6 +344,13 @@ def _profile(nodes):
             params = node.get('params', {})
             if task in ('daily', TRAINING_REWARDS_TASK, 'plan'):
                 current['daily_calls'] = 1
+            if task in ('daily', 'plan'):
+                for target in params.get('tasks', FREE_ATTACHMENT_TARGETS):
+                    if target in FREE_ATTACHMENT_TARGETS:
+                        current[f'{target}_owners'] = 1
+            if task == FREE_ATTACHMENT_TASK:
+                current['free_attachment_calls'] = 1
+                current[f"{params['target']}_owners"] = 1
             if task in ('differential_universe', 'plan'):
                 current.update(du_calls=1, du_runs=params.get('runs', 1) if task != 'plan' else 10)
             if task in ('currency_wars_loop', 'plan'):
@@ -483,16 +497,18 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
     profile = _profile(selected)
     if any(profile[key] > 1 for key in ('daily_calls', 'du_calls', 'currency_calls')):
         raise WorkflowError('一个流程路径最多一份日常预算、一个差分批次和一个货币战争批次；不能用重复步骤新增预算。')
+    attachment_owners = [profile.pop(f'{target}_owners') for target in FREE_ATTACHMENT_TARGETS]
+    if any(count > 1 for count in attachment_owners):
+        raise WorkflowError('同一路径的邮件附件或无名勋礼只能由一个步骤处理。')
     if profile['executions'] > MAX_EXECUTIONS:
         raise WorkflowError('流程展开超过10000步。')
     if profile['notification_calls'] > MAX_STEP_NOTIFICATIONS:
         raise WorkflowError(f'每次任务流程最多执行 {MAX_STEP_NOTIFICATIONS} 个主动通知步骤。')
     # Existing frozen scheduler manifests compare this exact public mapping.
     # Keep the old key set when the selected scope has no new reward owner.
-    if profile['du_rewards_calls'] == 0:
-        profile.pop('du_rewards_calls')
-    if profile['notification_calls'] == 0:
-        profile.pop('notification_calls')
+    for key in ('du_rewards_calls', 'notification_calls', 'free_attachment_calls'):
+        if profile[key] == 0:
+            profile.pop(key)
     return Recipe(document, selected, path, profile, Path(base_dir or ROOT).resolve())
 
 
@@ -534,6 +550,13 @@ def task_spec(settings: Settings, node, base_dir):
         current = reward_only_settings(current)
         current.validate('daily')
         options['operation'] = 'reward_only'
+    elif task == FREE_ATTACHMENT_TASK:
+        from .daily_attachments import attachment_settings
+
+        target = params['target']
+        current = attachment_settings(current, target)
+        current.validate('daily')
+        options = dict(operation='daily', daily_attachment_only=target)
     elif task == 'plan':
         options = params
         if current.redemption_enabled and current.redemption_source == 'file':

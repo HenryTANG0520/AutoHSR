@@ -63,6 +63,30 @@ def result(ctx, task, status, detail):
     return AttachmentResult(task, status, detail, outcome, verified)
 
 
+def attachment_receipt(report, target):
+    """Project the independent reward facts from one saved native child."""
+    rows = report.get('results')
+    if (report.get('operation') != 'daily' or report.get('report_saved') is not True
+            or not isinstance(rows, list)):
+        return None
+    matches = [row for row in rows if isinstance(row, dict) and row.get('task') == target]
+    if len(matches) != 1:
+        return None
+    row = matches[0]
+    state, stages = row.get('attachment_outcome'), row.get('verified_claims')
+    allowed = (MAIL,) if target == 'mail' else tuple(BATTLEPASS_STAGES.values())
+    if (not isinstance(stages, list) or any(stage not in allowed for stage in stages)
+            or stages != [stage for stage in allowed if stage in stages]):
+        return None
+    if report.get('status') == 'success':
+        if row.get('status') != 'ok' or state != ('claimed' if stages else 'empty'):
+            return None
+    elif (report.get('status') not in ('partial', 'failed', 'stopped')
+          or row.get('status') not in ('partial', 'failed', 'stopped') or state != 'unknown'):
+        return None
+    return dict(target=target, outcome=state, verified_claims=list(stages))
+
+
 def _uid_reads(scene):
     return tuple(scene.field_reads.get(UID_COUNTEREVIDENCE) or ())
 
