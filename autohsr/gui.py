@@ -2483,6 +2483,7 @@ class AutoHSRWindow:
 
 
 def main(config_path: Path = CONFIG_PATH, *, admin_task: bool = False, start_in_tray: bool = False,
+         login_startup: bool = False,
          independent: bool = False, on_ready=None) -> None:
     # Establish DPI awareness before Tk creates a window.
     from . import windows  # noqa: F401
@@ -2498,6 +2499,7 @@ def main(config_path: Path = CONFIG_PATH, *, admin_task: bool = False, start_in_
                 return
             if admin_task:
                 start_in_tray = session.consume_login_tray()
+                login_startup = start_in_tray
         catalog = ConfigurationProfiles(config_path)
         placement = None
         loaded_settings = None
@@ -2530,6 +2532,9 @@ def main(config_path: Path = CONFIG_PATH, *, admin_task: bool = False, start_in_
             if start_in_tray:
                 ui._park_in_tray()
                 start_in_tray = False
+            if login_startup:
+                root.after_idle(ui.desktop_schedule.restore_on_logon)
+                login_startup = False
             root.mainloop()
             if next_config is None:
                 break

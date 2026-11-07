@@ -1002,6 +1002,7 @@ class _SchedulePanel(_Panel):
         self.saved_id = self.saved_revision = None
         self.preview_stamp = None
         self.runtime = {}
+        self.login_authorization = None
         self.controls = {}
         self.saved_labels = {}
         self.values = {key: tk.StringVar(self) for key in ("id", "name", "time", "target_type", "task",
@@ -1068,9 +1069,11 @@ class _SchedulePanel(_Panel):
         self.preview_button = self._button(actions, "预览预算", self.preview, 0)
         self.disable_button = self._button(actions, "停用计划", self.disable, 1)
         self.stop_button = self._button(actions, "停止定时", self.stop, 2)
-        self._hint(self.status, 7)
-        self._hint(self.preview_status, 8)
-        self._hint(self.budget, 9)
+        login_actions = self._group(7, 1)
+        self.login_button = self._button(login_actions, "登录后启用", self.toggle_logon, 0)
+        self._hint(self.status, 8)
+        self._hint(self.preview_status, 9)
+        self._hint(self.budget, 10)
 
         for variable in (*self.values.values(), *self.days):
             variable.trace_add("write", self._edit)
@@ -1355,6 +1358,34 @@ class _SchedulePanel(_Panel):
             self.status.set("已请求停用计划")
         self._changed()
 
+    def toggle_logon(self):
+        controller = self.ui.desktop_schedule
+        if self._busy or self.saved_revision is None or self.dirty or not controller.can_restore_on_logon():
+            return
+        plan_id, revision = self.saved_id, self.saved_revision
+        try:
+            if plan_id in self.store.login_authorizations():
+                self.store.set_login_authorization(plan_id)
+                message = '已取消登录后启用。当前进程的计时状态可单独调整。'
+            else:
+                budget, manifest = controller.preview_logon(plan_id, revision)
+                upper = budget['whole_batch']
+                bounds = ' · '.join(f'{label} {upper[key]} {unit}' for key, label, unit in _BUDGET_FIELDS)
+                prompt = (f'Windows 登录后启用「{self.values["name"].get()}」的当前版本？\n\n'
+                          f'按已保存设置计时，跳过登录时和错过的计划点。\n每次触发上限 · {bounds}')
+                if budget.get('completion'):
+                    prompt += f'\n整批成功后 · {self.values["completion"].get()}'
+                if not messagebox.askyesno('登录后启用计划', prompt, parent=self.winfo_toplevel()):
+                    return
+                self.store.set_login_authorization(plan_id, revision=revision, manifest=manifest)
+                message = '已保存登录启用授权，请在管理员启动页启用 Windows 登录自启。'
+            controller.login_results.pop(plan_id, None)
+        except (OSError, ValueError) as error:
+            self._error('登录启用设置失败', error)
+        else:
+            self.status.set(message)
+        self._changed()
+
     def _may_stop(self):
         return not self.runtime.get("stopping") and bool(
             self.runtime.get("running") or self.runtime.get("active") or self.runtime.get("pending"))
@@ -1392,6 +1423,12 @@ class _SchedulePanel(_Panel):
             status = f"已启用 · 等待触发 · {_time_label(enabled.get('next_due'))}（北京时间）"
         else:
             status = "已启用 · 计时已停止"
+        if self.login_authorization:
+            status += ("\n已授权随登录启用" if self.login_authorization['revision'] == self.saved_revision
+                       else "\n已保存新版本 · 请重新确认登录启用")
+        login_result = self.ui.desktop_schedule.login_results.get(self.saved_id)
+        if login_result:
+            status += '\n' + login_result
         last = self.runtime.get("last")
         if self.saved_id is not None and last and last["id"] == self.saved_id:
             label = "最近触发" if last.get("revision") == self.saved_revision else "旧版本最近触发"
@@ -1425,6 +1462,15 @@ class _SchedulePanel(_Panel):
     def refresh(self):
         self.runtime = self.ui._schedule_snapshot() or {}
         idle = not self._busy
+        logon = self.ui.desktop_schedule.can_restore_on_logon()
+        self.login_authorization = None
+        if logon and self.saved_id is not None:
+            try:
+                self.login_authorization = self.store.login_authorizations().get(self.saved_id)
+            except (OSError, ScheduleError):
+                self.status.set('登录启用记录待核对。')
+        self.login_button.configure(text='取消登录启用' if self.login_authorization else '登录后启用')
+        _set_enabled(self.login_button, idle and logon and self.saved_revision is not None and not self.dirty)
         for key, control in self.controls.items():
             _set_enabled(control, idle)
             if key == "id":

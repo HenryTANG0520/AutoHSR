@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 
+from .config import CONFIG_PATH, Settings
 from .schedule_dispatch import NativeScheduleExecutor, _execution_busy
 from .schedule_plan import ScheduleError
 from .schedule_runtime import Scheduler
@@ -20,6 +21,7 @@ class DesktopSchedule:
         self.manual_confirmation = False
         self.previewed = None
         self.next_tick = 0.0
+        self.login_results = {}
 
     def _busy(self):
         ui = self.ui
@@ -44,6 +46,48 @@ class DesktopSchedule:
 
     def disable(self, plan_id):
         return self.runtime.disable(plan_id)
+
+    def can_restore_on_logon(self):
+        return self.ui.config_path.resolve() == CONFIG_PATH.resolve()
+
+    def preview_logon(self, plan_id, expected_revision):
+        if not self.can_restore_on_logon():
+            raise ScheduleError('Windows 登录自启使用默认配置。')
+        if self.ui.dirty or self.ui._config_load_failed:
+            raise ScheduleError('请先保存默认配置后再确认登录启用。')
+        plan, revision = self.store.load(plan_id)
+        if revision != expected_revision:
+            raise ScheduleError('计划版本已变化，请重新打开计划。')
+        settings = Settings.load(self.ui.config_path, require_existing=True)
+        budget, manifest = NativeScheduleExecutor(settings).preview_activation(plan)
+        if budget['contains_game_tasks'] and not settings.profile_account_key:
+            raise ScheduleError('登录启用游戏计划前，请为默认配置绑定账号。')
+        return budget, manifest
+
+    def restore_on_logon(self):
+        if not self.can_restore_on_logon() or self.ui._config_load_failed:
+            return
+        try:
+            entries = self.store.login_authorizations()
+        except (OSError, ScheduleError):
+            self.ui._log('登录启用记录无法读取，未启用计划。', 'warning')
+            return
+        restored = 0
+        for plan_id, entry in entries.items():
+            try:
+                budget, manifest = self.preview_logon(plan_id, entry['revision'])
+                if manifest != entry['manifest']:
+                    raise ScheduleError('计划设置或来源已变化，请重新确认登录启用。')
+                self.runtime.enable(plan_id, expected_revision=budget['revision'], expected_manifest=manifest)
+            except (OSError, ValueError, TypeError) as error:
+                self.login_results[plan_id] = '登录时未启用，请重新核对授权和设置。'
+                detail = str(error) if isinstance(error, ScheduleError) else '已保存配置无法重新核实。'
+                self.ui._log(f'计划「{plan_id}」登录时未启用。{detail}', 'warning')
+            else:
+                restored += 1
+        if restored:
+            self.runtime.start()
+            self.ui._log(f'已恢复 {restored} 条登录计划，等待后续计划点。')
 
     def stop(self):
         snapshot = self.runtime.stop()

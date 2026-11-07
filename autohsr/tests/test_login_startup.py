@@ -56,7 +56,7 @@ class LoginStartupTests(TestCase):
             self.assertEqual(main(["--login-task"]), 0)
         self.assertEqual(handoff.call_count, 2)
         handoff.assert_called_with(login=True)
-        gui.assert_called_once_with(CONFIG_PATH, start_in_tray=True)
+        gui.assert_called_once_with(CONFIG_PATH, start_in_tray=True, login_startup=True)
         load.assert_not_called()
 
     def test_login_entry_rejects_options(self):

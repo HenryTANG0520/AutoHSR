@@ -1,4 +1,5 @@
 """Desktop polling with the scheduler's fake clock and Runner."""
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -7,6 +8,7 @@ from unittest.mock import Mock, patch
 
 from autohsr import desktop_schedule
 from autohsr.config import Settings
+from autohsr.schedule_plan import ScheduleError
 from autohsr.tests.test_schedule_core import Clock, FakeExecutor, FakeRunner, definition
 
 
@@ -30,6 +32,73 @@ class DesktopScheduleTests(unittest.TestCase):
         runtime.clock = self.clock
         runtime.monotonic = lambda: self.clock.seconds
         return controller
+
+    def logon_controller(self):
+        self.enterContext(patch.object(desktop_schedule, 'CONFIG_PATH', self.ui.config_path))
+        self.ui.dirty = self.ui._config_load_failed = False
+        self.ui.settings.save(self.ui.config_path)
+        controller = desktop_schedule.DesktopSchedule(self.ui)
+        controller.runtime.clock = self.clock
+        return controller
+
+    def test_logon_restores_exact_authorization_and_skips_startup_minute(self):
+        controller = self.logon_controller()
+        path = self.ui.config_path.with_name('wait.json')
+        path.write_text(json.dumps(dict(version=1, name='Offline fixture',
+            steps=[dict(id='wait', type='wait', seconds=0)])), encoding='utf8')
+        plan = definition(target=dict(type='workflow', path=str(path)))
+        saved = controller.store.save(plan)
+        _, manifest = controller.preview_logon(plan['id'], saved['revision'])
+        controller.store.set_login_authorization(plan['id'], revision=saved['revision'], manifest=manifest)
+        self.assertFalse(controller.runtime.snapshot()['running'])
+        self.clock.set()
+        controller.restore_on_logon()
+        state = controller.runtime.tick()
+        self.assertEqual(state['enabled_ids'], [plan['id']])
+        self.assertTrue(state['running'])
+        self.assertIsNone(state['active'])
+        self.assertIsNone(state['last'])
+
+    def test_logon_refuses_changed_source_definition_or_saved_settings(self):
+        controller = self.logon_controller()
+        path = self.ui.config_path.with_name('wait.json')
+        path.write_text(json.dumps(dict(version=1, name='Offline fixture',
+            steps=[dict(id='wait', type='wait', seconds=0)])), encoding='utf8')
+        plan = definition(target=dict(type='workflow', path=str(path)))
+        saved = controller.store.save(plan)
+        _, manifest = controller.preview_logon(plan['id'], saved['revision'])
+        controller.store.set_login_authorization(plan['id'], revision=saved['revision'], manifest=manifest)
+        initial_workflow = path.read_bytes()
+        path.write_bytes(initial_workflow.replace(b'Offline fixture', b'Changed fixture'))
+        controller.restore_on_logon()
+        self.assertFalse(controller.runtime.snapshot()['running'])
+        path.write_bytes(initial_workflow)
+        self.ui.settings = Settings(close_to_tray=True)
+        self.ui.settings.save(self.ui.config_path)
+        controller.restore_on_logon()
+        self.assertFalse(controller.runtime.snapshot()['running'])
+        self.assertIn(plan['id'], controller.login_results)
+        self.ui.settings = Settings()
+        self.ui.settings.save(self.ui.config_path)
+        controller.store.save(dict(plan, name='Changed'), replace=True, expected_revision=saved['revision'])
+        controller.restore_on_logon()
+        self.assertFalse(controller.runtime.snapshot()['running'])
+        self.assertIn(plan['id'], controller.store.login_authorizations())
+
+    def test_logon_game_plan_requires_bound_account_and_revocation_persists(self):
+        controller = self.logon_controller()
+        plan = definition(target=dict(type='task', task='daily'))
+        saved = controller.store.save(plan)
+        with self.assertRaisesRegex(ScheduleError, '绑定账号'):
+            controller.preview_logon(plan['id'], saved['revision'])
+        self.ui.settings = Settings(profile_account_key='a' * 64)
+        self.ui.settings.save(self.ui.config_path)
+        _, manifest = controller.preview_logon(plan['id'], saved['revision'])
+        controller.store.set_login_authorization(plan['id'], revision=saved['revision'], manifest=manifest)
+        controller.store.set_login_authorization(plan['id'])
+        controller.restore_on_logon()
+        self.assertFalse(controller.runtime.snapshot()['running'])
+        self.assertEqual(controller.store.login_authorizations(), {})
 
     def test_revision_removes_last_enabled_plan_but_old_runner_still_times_out(self):
         runner = FakeRunner(block=True, auto_release=False)

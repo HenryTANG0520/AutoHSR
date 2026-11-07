@@ -105,6 +105,36 @@ class ScheduleStore:
     def __init__(self, root):
         self.root = Path(root)
 
+    def login_authorizations(self):
+        path = self.root / 'login.json'
+        if not path.exists():
+            return {}
+        value = _read(path, MAX_BYTES)
+        if (not isinstance(value, dict) or set(value) != {'schema', 'plans'}
+                or type(value['schema']) is not int or value['schema'] != 1
+                or not isinstance(value['plans'], dict) or len(value['plans']) > 32):
+            raise ScheduleError('登录启用记录无效。')
+        for plan_id, entry in value['plans'].items():
+            identity(plan_id)
+            if (not isinstance(entry, dict) or set(entry) != {'revision', 'manifest'}
+                    or not _digest(entry['revision']) or not _digest(entry['manifest'])):
+                raise ScheduleError('登录启用记录无效。')
+        return value['plans']
+
+    def set_login_authorization(self, plan_id, *, revision=None, manifest=None):
+        plan_id = identity(plan_id)
+        with _lock(self.root / 'store.lock'):
+            entries = self.login_authorizations()
+            if revision is None and manifest is None:
+                entries.pop(plan_id, None)
+            else:
+                if not _digest(revision) or not _digest(manifest) or self.load(plan_id)[1] != revision:
+                    raise ScheduleError('计划版本已变化，请重新确认登录启用。')
+                if plan_id not in entries and len(entries) >= 32:
+                    raise ScheduleError('最多可设置 32 条登录启用计划。')
+                entries[plan_id] = dict(revision=revision, manifest=manifest)
+            _publish(self.root / 'login.json', dict(schema=1, plans=entries))
+
     def _definition(self, plan_id, digest):
         identity(plan_id)
         if not _digest(digest):

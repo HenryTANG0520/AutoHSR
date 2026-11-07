@@ -484,7 +484,9 @@ def main(argv: list[str] | None = None) -> int:
         from .gui import main as gui_main
         if desktop_ready is not None:
             gui_main(args.config, on_ready=desktop_ready)
-        elif args.start_in_tray or args.login_task:
+        elif args.login_task:
+            gui_main(args.config, start_in_tray=True, login_startup=True)
+        elif args.start_in_tray:
             if args.no_admin_launch:
                 gui_main(args.config, start_in_tray=True, independent=True)
             else:
