@@ -546,7 +546,6 @@ class DailyObservationPanelTests(unittest.TestCase):
             return panel
 
         self.panel.destroy()
-        self.ui.settings_shell = SimpleNamespace(canvas=Mock(), queue_layout=Mock())
         with ExitStack() as stack:
             for name in ('desktop_warp.build_warp_panel', 'desktop_services.build_redemption_panel',
                          'desktop_services.build_notifications_panel', 'desktop_workflows.build_workflow_panel',
@@ -557,6 +556,8 @@ class DailyObservationPanelTests(unittest.TestCase):
                     self.ui.ui_scale = scale
                     self.ui._selected_tool = 'warp'
                     theme.apply_theme(self.root, scale)
+                    nav = ttk.Frame(self.root)
+                    self.ui.settings_shell = SimpleNamespace(tools_nav=nav, canvas=Mock(), queue_layout=Mock())
                     shelf = self.ui.tools_shelf = ToolsShelf(self.root, self.ui)
                     try:
                         shelf.pack(fill='x')
@@ -567,6 +568,8 @@ class DailyObservationPanelTests(unittest.TestCase):
                         self.deliver(screen())
                         self.root.update_idletasks()
                         button = shelf.buttons['daily_observation']
+                        self.assertIs(shelf.nav, nav)
+                        self.assertIs(button.master, nav)
                         self.assertEqual(button['text'], '日常页面核对')
                         self.assertIs(shelf.current(), panel)
                         self.assertEqual(shelf.primary_action()[0], '核对页面')
@@ -598,6 +601,7 @@ class DailyObservationPanelTests(unittest.TestCase):
                         self.assertEqual(self.root.state(), 'withdrawn')
                     finally:
                         shelf.destroy()
+                        nav.destroy()
 
 
 if __name__ == '__main__':
