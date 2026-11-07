@@ -463,14 +463,16 @@ class ClaimIntent:
     def submit(self, context):
         """Consume this intent at the native click boundary for its bound Context."""
         from .windows import GameWindow
+        from .workflow_identity import native_window
 
         origin = self._before[-1]
-        window = origin.window
-        if context is not origin.context:
+        if context is not origin.context or context.window is not origin.window:
             raise AutomationError('巡星之礼提交必须属于创建意图的运行。')
+        window = native_window(context, require_verified=True)
 
         def require_native_sender():
-            if type(window) is not GameWindow or window.send != GameWindow.send.__get__(window, GameWindow):
+            if (native_window(context, require_verified=True) is not window or type(window) is not GameWindow
+                    or window.send != GameWindow.send.__get__(window, GameWindow)):
                 raise AutomationError('巡星之礼领取缺少本次原生点击来源。')
 
         require_native_sender()

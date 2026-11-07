@@ -8,6 +8,7 @@ import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
+from uuid import uuid4
 
 import cv2
 
@@ -45,8 +46,8 @@ class DailyEventClaimCliTests(unittest.TestCase):
         self.account = cases.ACCOUNT
 
     def capture(self):
-        self.scene, amount = next(self.frames)
-        self.scene.tokens.append(self.account)
+        self.scene, amount, *account = next(self.frames)
+        self.scene.tokens.append(account[0] if account else self.account)
         self.scene.geometry = self.fixture.geometry
         self.amount = amount
         return self.scene.image, self.fixture.geometry
@@ -89,11 +90,11 @@ class DailyEventClaimCliTests(unittest.TestCase):
         self.assertEqual({path: path.read_bytes() for path in receipts}, originals)
         self.fixture.native.SendInput.assert_called_once()
 
-    def queue_navigation(self, start, *, handoff_account=cases.ACCOUNT):
+    def queue_navigation(self, start, *, handoff_account=cases.ACCOUNT, workflow=False):
         def frames():
             size = (self.fixture.geometry.width, self.fixture.geometry.height)
             if start == 'phone':
-                for _ in range(2):
+                for _ in range(3 if workflow else 2):
                     scene = fixture('phone_mail_icon')
                     scene.image = cv2.resize(scene.image, size)
                     yield scene, None
@@ -107,6 +108,9 @@ class DailyEventClaimCliTests(unittest.TestCase):
                 yield cases.day_cards({1, 2, 3}), None
             for _ in range(2):
                 yield cases.popup(), 1
+            if workflow:
+                for _ in range(2):
+                    yield cases.day_cards({1, 2, 3, 4}), None
 
         self.frames = frames()
 
@@ -170,6 +174,76 @@ class DailyEventClaimCliTests(unittest.TestCase):
         self.fixture.native.SendInput.assert_called_once()
         verified, = (self.fixture.root / 'runs' / 'daily-event-claim').glob('*.verified.json')
         self.assertTrue(json.loads(verified.read_text(encoding='utf8'))['same_card_claimed'])
+
+    def invoke_workflow(self, *, navigate=False):
+        root = self.fixture.root
+        recipe = root / 'recipe.json'
+        recipe.write_text(json.dumps(dict(version=1, name='Odyssey', steps=[
+            dict(id='odyssey', type='task', task=EVENT_CLAIM_OPERATION, params=dict(day=4, navigate=navigate)),
+            dict(id='after', type='wait', seconds=0),
+        ])), encoding='utf8')
+        with (patch('autohsr.task_workflow_run.ROOT', root),
+              patch('autohsr.workflow_lease.NAME', 'Local\\AutoHSR.OdysseyTaskQA.' + uuid4().hex),
+              patch('autohsr.workflow_lease.NATIVE_NAME', 'Local\\AutoHSR.OdysseyNativeQA.' + uuid4().hex),
+              redirect_stdout(io.StringIO()) as stdout, redirect_stderr(io.StringIO()) as stderr):
+            code = main(['--task-workflow', str(recipe), '--config', str(self.config)])
+        self.close_notice = stderr.getvalue()
+        self.assertNotIn(cases.ACCOUNT.text, stdout.getvalue())
+        self.assertNotIn(cases.OTHER.text, stdout.getvalue())
+        self.assertEqual(self.config.read_bytes(), self.original_config)
+        return code, json.loads(stdout.getvalue())
+
+    def test_task_workflow_continues_only_after_same_card_is_verified(self):
+        self.frames = iter([(cases.day_cards({1, 2, 3}), None) for _ in range(4)]
+                           + [(cases.popup(), 1) for _ in range(3)]
+                           + [(cases.day_cards({1, 2, 3, 4}), None) for _ in range(2)])
+        code, report = self.invoke_workflow()
+        self.assertEqual((code, report['status']), (0, 'success'), report['workflow']['steps'])
+        claim, after = report['workflow']['steps']
+        self.assertEqual(after['status'], 'success')
+        self.assertTrue(claim['account_verified'])
+        native = json.loads(Path(claim['source']['path']).read_text(encoding='utf8'))
+        self.assertEqual(claim['daily_event_claim'], native['daily_event_claim'])
+        self.assertEqual(claim['daily_event_claim']['state'], 'verified')
+        self.assertIn('请手动关闭当前弹窗', self.close_notice)
+        self.fixture.native.SendInput.assert_called_once()
+
+    def test_task_workflow_can_navigate_from_phone_to_the_selected_claim(self):
+        self.queue_navigation('phone', workflow=True)
+        code, report = self.invoke_workflow(navigate=True)
+        self.assertEqual((code, report['status']), (0, 'success'), report['workflow']['steps'])
+        claim = report['workflow']['steps'][0]
+        native = json.loads(Path(claim['source']['path']).read_text(encoding='utf8'))
+        self.assertEqual([(row['action'], row['destination_page'])
+                          for row in native['workflow_navigation']['actions']],
+                         [('open_journey_events', 'activity_list'), ('open_odyssey', 'odyssey')])
+        self.assertEqual(claim['daily_event_claim']['state'], 'verified')
+        self.assertEqual(self.fixture.native.SendInput.call_count, 3)
+
+    def test_task_workflow_pending_return_retains_receipt_and_stops_followup(self):
+        self.frames = iter([(cases.day_cards({1, 2, 3}), None) for _ in range(4)]
+                           + [(cases.popup(), 1) for _ in range(2)]
+                           + [(cases.day_cards({1, 2, 3, 4, 5}), None) for _ in range(2)])
+        code, report = self.invoke_workflow()
+        self.assertEqual((code, report['status']), (1, 'partial'))
+        claim, = report['workflow']['steps']
+        self.assertEqual(claim['daily_event_claim']['state'], 'pending')
+        self.assertTrue(report['workflow']['input_blocked'])
+        self.fixture.native.SendInput.assert_called_once()
+        self.frames = iter([(cases.day_cards({1, 2, 3}), None) for _ in range(4)])
+        code, repeated = self.invoke_workflow()
+        self.assertEqual((code, repeated['status']), (1, 'partial'))
+        self.fixture.native.SendInput.assert_called_once()
+
+    def test_task_workflow_account_change_before_submission_creates_no_intent(self):
+        self.frames = iter([(cases.day_cards({1, 2, 3}), None) for _ in range(3)]
+                           + [(cases.day_cards({1, 2, 3}), None, cases.OTHER) for _ in range(2)])
+        code, report = self.invoke_workflow()
+        self.assertEqual((code, report['status']), (1, 'partial'))
+        self.assertTrue(report['workflow']['identity']['account_changed'])
+        self.assertTrue(report['workflow']['input_blocked'])
+        self.fixture.native.SendInput.assert_not_called()
+        self.assertFalse((self.fixture.root / 'runs' / 'daily-event-claim').exists())
 
     def test_another_day_changing_with_the_selected_day_does_not_settle(self):
         self.queue_manual_return({1, 2, 3, 4, 5})

@@ -16,6 +16,7 @@
 | --- | --- | --- |
 | `daily` | `Runner(operation='daily')` | 不填`tasks`时沿用当前日常开关；可明确指定`assignments/battle/daily/redemption/mail/battlepass`子集。可覆盖`stamina_limit/rounds/target_name/target_location/dungeon_category/challenge_count/use_support/support_daily_only`；`use_power_plan`默认false |
 | `daily_training_rewards` | `Runner(operation='reward_only')` | 补领已完成的每日实训点数与已达档位，可设 `reached_only: true`。材料、开拓力、沉浸器预算均为零 |
+| `daily_event_claim` | 巡星之礼原生单日入口 | 手动运行，明确选择第 3 至 7 日中的一天，保留弹窗和回页回执 |
 | `daily_assignment_rewards` | 日常 Runner 的独立持续委托范围 | 无参数。可与仅补领实训和其他独立领奖顺序执行 |
 | `daily_free_attachment` | 日常 Runner 的独立领奖范围 | 必填 `target`，选择 `mail`（邮件附件）或 `battlepass`（勋礼经验与免费等级奖励） |
 | `plan` | `PlanRunner` | 沿用现有日常→到期周常。`use_power_plan`、`resume_weekly_currency`默认false，`support_daily_only`可覆盖本次日常。原周目标及接续规则保持 |
@@ -119,6 +120,18 @@ P1 底栏「仅补领奖」和 `--run --reward-only` 继续直达同一原生入
 ### 当前页面核对
 
 「设置 → 工具 → 日常页面核对 → 当前页面」在用户手动切回前台后，只读核对当前页面。独立 CLI `python -m autohsr --screen-test` 要求游戏已在前台。手机、指南、每日实训、生存索引、委托、邮件、无名勋礼和奖励指南复用任务流的页面识别，成就总览、分类和奖励面板使用各自的布局证据。只有同一账号连续双帧一致并完成报告发布时的复核，才给出固定页名。报告不导出原图、OCR 内容或 UID。[成就领奖布局](../DAILY_FLOW.md#成就领奖布局核对)
+
+### 巡星之礼单日提交
+
+在手动任务流添加「巡星之礼单日提交」，并在高级参数明确填写 `day`。例如，领取第 4 天并允许从已打开的手机或活动列表导航。
+
+```json
+{"id":"signup","type":"task","task":"daily_event_claim","params":{"day":4,"navigate":true}}
+```
+
+适用于已登录、在前台的简中 4.6.0 客户端。默认从已打开的巡星之礼开始。每条路径最多安排一个日卡，仅支持第 3 至 7 天。领取发送后，看到提示再手动关闭奖励弹窗。程序核实同一张日卡变为已领取后记录 `success`，并在 `daily_event_claim` 中保留发送、弹窗、票数及回页结果。反馈不明时，原账本会拦截同日卡重跑，后续游戏输入按任务流失败规则停止。
+
+同卡核验结束时停在巡星之礼。需要从其他页面开始的游戏步骤可安排在领取之前。这个步骤可手动运行，应用内定时拒绝含本步骤的任务流。[领取与回页边界](daily-event-observation.md#巡星之礼单日提交)
 
 ### 核对所选页面
 

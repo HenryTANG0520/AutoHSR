@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 
 from .config import ROOT, Settings
+from .daily_observe import EVENT_CLAIM_OPERATION
 
 MAX_BYTES = 1024 * 1024
 MAX_NODES = 256
@@ -44,7 +45,7 @@ SCREEN_CHECK_EXTRA_PAGES = (VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE, ACHIEVEM
                             *BATTLEPASS_WORKFLOW_PAGES, REDEMPTION_FORM_PAGE, WORLD_WORKFLOW_PAGE)
 SCREEN_CHECK_PAGES = (*WORKFLOW_PAGES, *SCREEN_CHECK_EXTRA_PAGES)
 WORKFLOW_FOREGROUND_TASKS = GAME_VISION_TASKS | {PAGE_TASK}
-GAME_TASKS = {'daily', TRAINING_REWARDS_TASK, ASSIGNMENT_REWARDS_TASK, FREE_ATTACHMENT_TASK,
+GAME_TASKS = {'daily', TRAINING_REWARDS_TASK, ASSIGNMENT_REWARDS_TASK, FREE_ATTACHMENT_TASK, EVENT_CLAIM_OPERATION,
               'plan', 'differential_universe', 'currency_wars_loop',
               'currency_wars_points', 'currency_wars_rewards', 'du_rewards'} | WORKFLOW_FOREGROUND_TASKS
 VISION_TASKS = {'workflow_image', 'workflow_text'} | GAME_VISION_TASKS
@@ -207,6 +208,7 @@ def _params(task, params):
         TRAINING_REWARDS_TASK: {'reached_only'},
         ASSIGNMENT_REWARDS_TASK: set(),
         FREE_ATTACHMENT_TASK: {'target'},
+        EVENT_CLAIM_OPERATION: {'day', 'navigate'},
         'differential_universe': {'runs', 'mode', 'team', 'save', 'rewards', 'resume_active', 'periodic_rank',
                                   'until_points'},
         'currency_wars_loop': {'runs', 'resume', 'strategy', 'until_points', 'continue_after_defeat'},
@@ -311,6 +313,13 @@ def _params(task, params):
     elif task == FREE_ATTACHMENT_TASK:
         if params.get('target') not in FREE_ATTACHMENT_TARGETS:
             raise WorkflowError('请选择独立邮件附件或无名勋礼。')
+    elif task == EVENT_CLAIM_OPERATION:
+        from .daily_event_claim import _supported_day
+
+        if not _supported_day(params.get('day')):
+            raise WorkflowError('巡星之礼须明确选择第三至第七日中的一天。')
+        if 'navigate' in params:
+            _boolean(params['navigate'])
     elif task == 'workflow_notify':
         from .notify_profiles import NotifyError, alias, text
 
@@ -335,6 +344,7 @@ def _profile(nodes):
     """Worst-case reservations: mutually exclusive branches use max, loops multiply."""
     total = dict(daily_calls=0, du_calls=0, currency_calls=0, du_runs=0, currency_games=0,
                  du_rewards_calls=0, notification_calls=0, free_attachment_calls=0, assignment_reward_calls=0,
+                 odyssey_claim_calls=0,
                  assignments_owners=0, mail_owners=0, battlepass_owners=0, executions=0)
     for node in nodes:
         kind = node['type']
@@ -357,6 +367,8 @@ def _profile(nodes):
             if task == FREE_ATTACHMENT_TASK:
                 current['free_attachment_calls'] = 1
                 current[f"{params['target']}_owners"] = 1
+            if task == EVENT_CLAIM_OPERATION:
+                current['odyssey_claim_calls'] = 1
             if task in ('differential_universe', 'plan'):
                 current.update(du_calls=1, du_runs=params.get('runs', 1) if task != 'plan' else 10)
             if task in ('currency_wars_loop', 'plan'):
@@ -506,13 +518,16 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
     reward_owners = [profile.pop(f'{target}_owners') for target in INDEPENDENT_DAILY_TARGETS]
     if any(count > 1 for count in reward_owners):
         raise WorkflowError('同一路径的持续委托、邮件附件或无名勋礼各只能由一个步骤处理。')
+    if profile['odyssey_claim_calls'] > 1:
+        raise WorkflowError('同一路径的巡星之礼最多提交一个明确日卡。')
     if profile['executions'] > MAX_EXECUTIONS:
         raise WorkflowError('流程展开超过10000步。')
     if profile['notification_calls'] > MAX_STEP_NOTIFICATIONS:
         raise WorkflowError(f'每次任务流程最多执行 {MAX_STEP_NOTIFICATIONS} 个主动通知步骤。')
     # Existing frozen scheduler manifests compare this exact public mapping.
     # Keep the old key set when the selected scope has no new reward owner.
-    for key in ('du_rewards_calls', 'notification_calls', 'free_attachment_calls', 'assignment_reward_calls'):
+    for key in ('du_rewards_calls', 'notification_calls', 'free_attachment_calls', 'assignment_reward_calls',
+                'odyssey_claim_calls'):
         if profile[key] == 0:
             profile.pop(key)
     return Recipe(document, selected, path, profile, Path(base_dir or ROOT).resolve())
@@ -571,6 +586,10 @@ def task_spec(settings: Settings, node, base_dir):
         current = attachment_settings(current, target)
         current.validate('daily')
         options = dict(operation='daily', daily_attachment_only=target)
+    elif task == EVENT_CLAIM_OPERATION:
+        current.validate('check')
+        options = dict(operation=task, daily_event_claim_day=params['day'], daily_event_workflow=True,
+                       daily_event_observe_return=True, daily_event_claim_navigate=params.get('navigate', False))
     elif task == 'plan':
         options = params
         if current.redemption_enabled and current.redemption_source == 'file':

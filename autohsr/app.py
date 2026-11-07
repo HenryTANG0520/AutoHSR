@@ -2312,7 +2312,7 @@ class Runner:
                  daily_attachment_only=None, workflow_screen_query=None, workflow_page=None,
                  workflow_page_observe_only=False,
                  observation_wait_for_foreground=False, daily_event_claim_day=None, daily_event_observe_return=False,
-                 daily_event_claim_navigate=False, daily_message_reply=None,
+                 daily_event_claim_navigate=False, daily_event_workflow=False, daily_message_reply=None,
                  reward_guide_capture=None):
         from dataclasses import replace
         if (type(observation_wait_for_foreground) is not bool
@@ -2375,6 +2375,9 @@ class Runner:
         if (type(daily_event_claim_navigate) is not bool
                 or daily_event_claim_navigate and operation != EVENT_CLAIM_OPERATION):
             raise ValueError('巡星之礼领取导航需要独立单日提交。')
+        if (type(daily_event_workflow) is not bool
+                or daily_event_workflow and (operation != EVENT_CLAIM_OPERATION or not daily_event_observe_return)):
+            raise ValueError('任务流巡星之礼需要单日提交及回页核验。')
         if operation == EVENT_CLAIM_OPERATION or daily_event_claim_day is not None:
             from .daily_event_claim import _supported_day
 
@@ -2384,6 +2387,7 @@ class Runner:
         self.daily_event_claim_day = daily_event_claim_day
         self.daily_event_observe_return = daily_event_observe_return
         self.daily_event_claim_navigate = daily_event_claim_navigate
+        self.daily_event_workflow = daily_event_workflow
         if operation == ACHIEVEMENT_CLAIM_OPERATION and (new_battle_run or use_power_plan or new_power_plan
                                                         or weekly_plan is not None):
             raise ValueError('独立成就领奖不能附带刷本或周常计划。')

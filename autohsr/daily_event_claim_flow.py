@@ -13,7 +13,7 @@ from .daily_event_claim_fade import observed_return_fade
 from .models import AutomationError, Stopped, TaskResult
 from .storage import hold_read_sources, remove_owned_stage
 from .windows import GameWindow
-from .workflow_identity import active as active_account_scope
+from .workflow_identity import active as active_account_scope, native_window
 from .workflow_lease import sequence_lease
 
 
@@ -28,6 +28,34 @@ MANUAL_CLOSE = '已核实巡星之礼奖励弹窗。请手动关闭当前弹窗�
 def initial_record(day):
     return dict(schema=1, activity=ACTIVITY, day=day, client_version=None, state='not_sent',
                 stage='source', submission='not_sent', popup='not_observed', quantity=None)
+
+
+def claim_receipt(report, day):
+    """Project only the public facts of the explicitly selected card."""
+    record = report.get('daily_event_claim')
+    if (report.get('operation') != OPERATION or report.get('report_saved') is not True
+            or not _supported_day(day) or not isinstance(record, dict) or record.keys() != initial_record(day).keys()
+            or type(record['day']) is not int or record['day'] != day
+            or type(record['schema']) is not int or record['schema'] != 1 or record['activity'] != ACTIVITY
+            or record['client_version'] not in (None, _VERSION)):
+        return None
+    state, stage, submission, popup, quantity = (
+        record[key] for key in ('state', 'stage', 'submission', 'popup', 'quantity'))
+    if popup == 'observed':
+        if type(quantity) is not int or quantity != _QUANTITY_BY_DAY[day] or submission != 'sent':
+            return None
+    elif popup not in ('not_observed', 'unknown', 'account_unverified') or quantity is not None:
+        return None
+    if report.get('status') == 'success':
+        if (state, stage, submission, popup, record['client_version']) != ('verified', 'done', 'sent', 'observed', _VERSION):
+            return None
+    elif (state, submission) == ('not_sent', 'not_sent'):
+        if stage not in ('source', 'intent') or popup != 'not_observed':
+            return None
+    elif (state != 'pending' or submission not in ('unconfirmed', 'sent')
+          or stage not in ('submission', 'popup', 'return', 'return_check', 'return_unverified')):
+        return None
+    return dict(record)
 
 
 def _ledger(root):
@@ -93,6 +121,7 @@ class DailyEventClaim:
         self.context, self._root, self._day = context, root, day
         self._check_return = observe_return
         self._window, self._runner, self._vision = context.window, context.runner, context.vision
+        self._workflow = getattr(self._runner, 'daily_event_workflow', False) is True
         self.record = initial_record(day)
         self._started = False
         self._intent = self._popup = None
@@ -102,7 +131,7 @@ class DailyEventClaim:
         context = self.context
         return (context.window is self._window and context.runner is self._runner and context.vision is self._vision
                 and context.report.operation == OPERATION and getattr(self._runner, '_foreground_only', False) is True
-                and not active_account_scope())
+                and active_account_scope() == self._workflow)
 
     def _guard(self):
         if not self._same_context():
@@ -168,6 +197,8 @@ class DailyEventClaim:
         try:
             previous.guard()
             self._runner.emit(dict(type='daily_event_manual_close', message=MANUAL_CLOSE))
+            if self._workflow:
+                self._runner.log(MANUAL_CLOSE)
             for _ in range(_RETURN_CAPTURE_LIMIT):
                 now = time.monotonic()
                 if returned:
@@ -258,7 +289,7 @@ class DailyEventClaim:
         snapshot = getattr(context, 'snapshot_foreground', None)
         submit = getattr(context, 'daily_event_claim_input', None)
         reader = getattr(self._vision, '_read_field', None)
-        if (self._started or not self._same_context() or type(self._window) is not GameWindow
+        if (self._started or not self._same_context() or type(native_window(context)) is not GameWindow
                 or not callable(snapshot) or not callable(submit) or not callable(reader)):
             raise AutomationError('巡星之礼领取需要独立的严格前台采集入口。')
         self._started = True
@@ -268,6 +299,12 @@ class DailyEventClaim:
 
                 self._navigation = context.workflow_navigation = WorkflowNavigation(context, 'odyssey')
                 self._navigation.run()
+            elif self._workflow:
+                # Bind the outer account before beginning the exact card pair.
+                self._guard()
+                snapshot()
+            if self._workflow:
+                native_window(context, require_verified=True)
             first = self._open_card(snapshot, reader)
             self._guard()
             context.sleep(_FRAME_DELAY)

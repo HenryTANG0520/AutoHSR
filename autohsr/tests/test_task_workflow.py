@@ -91,6 +91,19 @@ class WorkflowTests(unittest.TestCase):
             with self.subTest(params=params), self.assertRaises(WorkflowError):
                 compile_recipe(recipe(task('invalid', 'daily_training_rewards', **params)))
 
+    def test_odyssey_is_one_explicit_day_per_workflow_path(self):
+        from autohsr.daily_observe import EVENT_CLAIM_OPERATION
+
+        signup = task('signup', EVENT_CLAIM_OPERATION, day=4)
+        compiled = compile_recipe(recipe(signup, task('training', 'daily_training_rewards')))
+        self.assertEqual(compiled.profile['odyssey_claim_calls'], 1)
+        self.assertEqual(compiled.profile['daily_calls'], 1)
+        for params in ({}, {'day': 2}, {'day': '4'}, {'day': True}, {'day': 4, 'navigate': 1}):
+            with self.subTest(params=params), self.assertRaises(WorkflowError):
+                compile_recipe(recipe(task('invalid', EVENT_CLAIM_OPERATION, **params)))
+        with self.assertRaisesRegex(WorkflowError, '最多提交一个'):
+            compile_recipe(recipe(signup, task('another', EVENT_CLAIM_OPERATION, day=5)))
+
     def setUp(self):
         self.lease_name = 'Local\\AutoHSR.TaskWorkflowQA.' + uuid4().hex
         self.enterContext(patch('autohsr.workflow_lease.NAME', self.lease_name))

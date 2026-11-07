@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import theme as t
 from .models import Stopped
+from .daily_observe import EVENT_CLAIM_OPERATION
 from .schedule_dispatch import validate_target
 from .schedule_plan import (CHINA, ScheduleError, loads as load_schedule_json, preview as schedule_preview,
                             validate as validate_schedule)
@@ -34,6 +35,7 @@ _TASK_NAMES = {"daily": "每日任务", "plan": "日常与到期周常", "differ
                TRAINING_REWARDS_TASK: "仅补领每日实训",
                ASSIGNMENT_REWARDS_TASK: "仅领取持续委托",
                FREE_ATTACHMENT_TASK: "独立免费领奖",
+               EVENT_CLAIM_OPERATION: "巡星之礼单日提交",
                "du_rewards": "差分红点领奖", "warp_analysis": "跃迁记录分析", "warp_export": "跃迁记录导出",
                "currency_wars_loop": "货币战争循环", "currency_wars_points": "货币战争积分",
                "currency_wars_rewards": "货币战争积分领奖", "workflow_audio": "播放本地音频",

@@ -121,6 +121,22 @@ def active():
     return _scope.get() is not None
 
 
+def native_window(context, *, require_verified=False):
+    """Resolve the real sender for a native protocol with its own input guard."""
+    current = _scope.get()
+    window = context.window
+    if current is None:
+        return window
+    if (type(window) is not _Window or window._context is not context or window._scope is not current
+            or _scope_thread.get() != threading.get_ident()):
+        raise AutomationError('本次原生输入未绑定当前任务流程的账号作用域。')
+    if require_verified:
+        current.require(context)
+        if current.state(context).verified_epoch != context.runner.input_epoch:
+            raise AutomationError('本次原生输入缺少当前账号的双帧核验。')
+    return window._raw
+
+
 def prepare(context):
     current = _scope.get()
     if current is None:
