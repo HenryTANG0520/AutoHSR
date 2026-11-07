@@ -57,6 +57,11 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 achievement = destination()
             elif achievement_page_kind == 'category':
                 achievement = Scene([ACCOUNT, *category_view()], achievement.image)
+            elif achievement_page_kind == 'receipt_overlay':
+                source = phone(Token('成就奖励', .78, (.473, .109, .527, .143)))
+            elif achievement_page_kind == 'split_receipt_overlay':
+                source = phone(Token('成就', .78, (.473, .109, .499, .143)),
+                               Token('奖励', .78, (.501, .109, .527, .143)))
             pages = (source, achievement)
         elif target == 'visa_characters':
             pages = (visa_collection(), visa_collection('characters'))
@@ -307,7 +312,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                     self.assertEqual(record['actions'][0]['destination_page'], 'achievement_overview')
 
     def test_achievement_title_and_category_do_not_certify_arrival_or_retry(self):
-        for kind, already_open, inputs in (('title', False, 1), ('category', True, 0)):
+        for kind, already_open, inputs in (('title', False, 1), ('category', True, 0),
+                                            ('receipt_overlay', False, 0), ('split_receipt_overlay', False, 0)):
             with self.subTest(kind=kind):
                 sent, steps, native = self.run_navigation(target='achievement_overview',
                     already_open=already_open, achievement_page_kind=kind)

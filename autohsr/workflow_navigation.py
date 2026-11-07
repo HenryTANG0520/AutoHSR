@@ -8,7 +8,7 @@ import time
 
 import numpy as np
 
-from .achievement_pages import observe_achievement_screen
+from .achievement_pages import achievement_reward_panel_started, observe_achievement_screen
 from .build_target_read import _has_split_label
 from .config import RESOURCE_ROOT
 from .currency_wars_identity import AccountNotObserved, UID_COUNTEREVIDENCE, checked_account_key
@@ -333,6 +333,8 @@ class WorkflowNavigation:
                 return MESSAGE_WORKFLOW_PAGE
             return 'world' if world_message_target(scene) is not None else None
         if self.target == ACHIEVEMENT_OVERVIEW_PAGE:
+            if achievement_reward_panel_started(scene):
+                raise AutomationError('当前有成就奖励面板，成就总览导航已停止。')
             achievement = observe_achievement_screen(scene, self.confidence)
             if achievement is not None:
                 return self.target if page is None and achievement[0] == self.target else None

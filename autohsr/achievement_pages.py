@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .build_target_read import _has_split_label
 from .challenge_pages import _inside, _overlaps
 from .currency_wars_prepare import trusted
 from .free_rewards import claim_enabled, gold_fraction, reward_overlay
@@ -228,7 +229,9 @@ def achievement_bulk_receipt_visible(scene, confidence=.85) -> bool:
 
 
 def achievement_reward_panel_started(scene):
-    return bool(_labels(trusted(scene, .65), ('成就奖励',), _RECEIPT_TITLE))
+    visible = trusted(scene, .65)
+    labels = ('成就奖励',)
+    return bool(_labels(visible, labels, _RECEIPT_TITLE)) or _has_split_label(visible, labels, _RECEIPT_TITLE)
 
 
 def observe_achievement_screen(scene, confidence):
