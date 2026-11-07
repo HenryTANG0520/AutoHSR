@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import tkinter as tk
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from PIL import ImageGrab
 from ux_smoke import ROOT, Settings, Window, module, pump
@@ -88,9 +88,14 @@ def main():
                     check(field+"_rejected_"+value, ui._read_settings(operation="plan") is None)
                     root.update()
                     expected_page = "settings" if section else "tasks"
+                    primary = ui.start_button
+                    if section:
+                        action_ok = not primary.winfo_ismapped() and primary.instate(("disabled",))
+                    else:
+                        action_ok = primary.winfo_ismapped() and primary.cget("text") == "开始计划"
                     check(field+"_focus_"+value, ui.active_page == expected_page and root.focus_get() == getattr(ui, control)
                           and (not section or ui.settings_tabs.select() == str(ui.settings_sections[section]))
-                          and ui.action_page == "home" and ui.start_button.cget("text") == "开始计划")
+                          and ui.action_page == "home" and action_ok)
                     check(field+"_reason_"+value, fragment in ui.summary_label.message() and
                           ui.summary.get() == "上次结果保留" and config.read_bytes() == original and not ui.busy)
                     check_layout(root)
@@ -108,6 +113,13 @@ def main():
                 ui.weekly_team_entry.insert(0, "哈哈哈哈")
                 check("corrected_plan_ready_without_saving", ui._read_settings(operation="plan") is not None and
                       not ui.input_error.get() and config.read_bytes() == original)
+                ui.settings_shell.back.invoke()
+                root.update()
+                check("corrected_settings_return_to_plan", ui.active_page == ui.action_page == "home"
+                      and ui.start_button.winfo_ismapped() and ui.start_button.cget("text") == "开始计划")
+                with patch.object(ui, "_start") as start:
+                    ui.start_button.invoke()
+                    check("corrected_settings_restore_plan_scope", start.call_args_list == [call(run_plan=True)])
                 ui._show_page("differential_universe")
                 ui.du_team.set("")
                 check("independent_missing_team_rejected", ui._read_settings(operation="differential_universe") is None)

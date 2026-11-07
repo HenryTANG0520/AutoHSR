@@ -6,7 +6,7 @@ import sys
 import tempfile
 import tkinter as tk
 import types
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from PIL import ImageGrab
 from ux_smoke import ROOT, Settings, Window, module, pump
@@ -66,7 +66,8 @@ def main():
                 prefix = "after_daily" if daily_verified else "before_daily"
                 check(prefix+"_focuses_path", ui.active_page == "settings" and root.focus_get() == ui.game_path_entry
                       and ui.settings_tabs.select() == str(ui.settings_sections["game"]))
-                check(prefix+"_keeps_start_plan", ui.action_page == "home" and ui.start_button.cget("text") == "开始计划")
+                check(prefix+"_settings_hide_start_plan", ui.action_page == "home"
+                      and not ui.start_button.winfo_ismapped() and ui.start_button.instate(("disabled",)))
                 check(prefix+"_keeps_report", json.loads(ui.report_text.get("1.0", "end-1c")) == frozen and report == frozen)
                 check(prefix+"_keeps_daily_and_cost", ui.training_meter.verified == daily_verified
                       and ui.confirmed_stamina == (120 if daily_verified else 0))
@@ -77,7 +78,11 @@ def main():
                       and json.loads(ui.report_text.get("1.0", "end-1c")) == frozen)
                 ui._leave_settings()
                 root.update()
-                check(prefix+"_return_home", ui.active_page == "home")
+                check(prefix+"_return_home", ui.active_page == ui.action_page == "home"
+                      and ui.start_button.winfo_ismapped() and ui.start_button.cget("text") == "开始计划")
+                with patch.object(ui, "_start") as start:
+                    ui.start_button.invoke()
+                    check(prefix+"_return_restores_plan_scope", start.call_args_list == [call(run_plan=True)])
 
             ui._show_page("home")
             ui._finish(dict(operation="plan", status="partial", error=MESSAGE, input_error_field="game_path",

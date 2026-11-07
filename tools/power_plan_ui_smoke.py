@@ -50,8 +50,10 @@ def main():
                 check('unused_single_count_does_not_block_plan_without_fill',chosen is not None and chosen.power_plan==[ITEM])
                 check('home_previews_targets_and_shared_budget','体力计划 1 项' in ui.daily_caption.get() and '共用 240' in ui.daily_caption.get())
                 check('battle_card_edits_plan',ui.table.action_label('battle')=='调整计划' and ui.table.resource_metrics('battle')[0]=='1 项')
-                ui.settings_shell.choose('power');root.update_idletasks()
-                check('power_settings_keeps_start_plan',ui.action_page=='home' and ui.start_button.cget('text')=='开始计划')
+                ui._show_page('settings');ui.settings_shell.choose('power');root.update()
+                check('power_settings_hides_start_plan',ui.active_page=='settings' and ui.action_page=='home'
+                      and ui.settings_tabs.select()==str(ui.settings_sections['power'])
+                      and not ui.start_button.winfo_manager() and ui.start_button.instate(('disabled',)))
                 check('editor_shows_original_targets',ui.power_plan_list.item('0','values')[-1]=='8')
                 ui.power_editor.commit(dict(ITEM,target='丰饶之蕾',location='边缘通路',count=2),None)
                 ui.power_plan_list.selection_set('1');ui.power_editor.buttons[3].invoke()
@@ -60,7 +62,11 @@ def main():
                 check('down_button_preserves_counts',rows(ui)[1]['count']==2 and rows(ui)[0]['count']==8)
                 ui.power_editor.buttons[2].invoke()
                 check('remove_does_not_mutate_saved_config',rows(ui)==[ITEM] and config.read_bytes()==saved)
-                ui._start(run_plan=True);pump(root,lambda:not ui.busy,timeout=10)
+                ui.settings_shell.back.invoke();root.update()
+                check('return_restores_plan_action',ui.active_page=='home' and ui.action_page=='home'
+                      and ui.start_button.winfo_manager()=='pack' and ui.start_button.cget('text')=='开始计划'
+                      and ui.start_button.instate(('!disabled',)))
+                ui.start_button.invoke();pump(root,lambda:not ui.busy,timeout=10)
                 check('explicit_mode_reaches_formal_parent_and_daily',parents[-1].use_power_plan and calls[-1][1].get('use_power_plan') is True)
                 check('parent_copies_power_report',parents[-1].report.power_plan['done']==[4])
                 check('limited_goal_is_not_all_goals_complete','本次安排已结束' in ui.summary.get() or ui.status.get()=='● 本次安排已结束')
@@ -99,7 +105,11 @@ def main():
                 ui.power_fill.set(True)
                 check('fallback_preview_is_a_bounded_request','最多24次' in ui.power_editor.caption.get())
                 ui.tasks['battle'].set(True);ui.challenge_count.set('bad')
-                check('fallback_error_is_located_in_power_plan',ui._read_settings(operation='plan') is None and ui.input_error_field=='challenge_count' and ui.input_focus.pending[3]=='power_fill_config_button' and ui.settings_tabs.select()==str(ui.settings_sections['power']) and ui.start_button.cget('text')=='开始计划')
+                check('fallback_error_is_located_in_power_plan',ui._read_settings(operation='plan') is None
+                      and ui.input_error_field=='challenge_count' and ui.input_focus.pending[3]=='power_fill_config_button'
+                      and ui.settings_tabs.select()==str(ui.settings_sections['power'])
+                      and ui.active_page=='settings' and ui.action_page=='home'
+                      and not ui.start_button.winfo_manager() and ui.start_button.instate(('disabled',)))
                 check('no_callback_errors',not errors)
             finally:
                 ui.closing=True

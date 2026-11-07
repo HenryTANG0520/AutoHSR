@@ -78,10 +78,17 @@ def main():
                                 selected=bool(target.selection_present()), pending=ui.input_focus.pending,
                                 page=ui.active_page, action_page=ui.action_page, action=ui.start_button.cget("text"),
                                 callbacks=callback_errors),ensure_ascii=False),flush=True)
+                        primary = ui.start_button
+                        if field == "stamina_limit":
+                            action_ok = (ui.active_page == "tasks" and primary.winfo_ismapped()
+                                         and primary.cget("text") == "开始计划")
+                        else:
+                            action_ok = (ui.active_page == "settings" and not primary.winfo_ismapped()
+                                         and primary.instate(("disabled",)))
                         check(prefix+f"{cycle}_{field}_is_focused_after_resize", target.winfo_ismapped()
                               and root.focus_get() is target and target.selection_present()
                               and target.index("sel.first") == 0 and target.index("sel.last") == len(value)
-                              and ui.action_page == "home" and ui.start_button.cget("text") == "开始计划")
+                              and ui.action_page == "home" and action_ok)
                         old_tabs.event_generate("<<NotebookTabChanged>>")
                         root.update()
                         check(prefix+f"{cycle}_{field}_retired_notebook_cannot_change_current_section", not callback_errors
@@ -107,6 +114,11 @@ def main():
                 check(prefix+"leaving_the_error_page_drops_the_request", root.focus_get() is ui.start_button
                       and ui.active_page == "home" and ui.input_focus.pending is None)
                 ui.battle_timeout.set("900")
+                check(prefix+"leaving_restores_visible_plan", ui.action_page == "home"
+                      and ui.start_button.winfo_ismapped() and ui.start_button.cget("text") == "开始计划")
+                with patch.object(ui, "_start") as start:
+                    ui.start_button.invoke()
+                    check(prefix+"leaving_restores_plan_scope", start.call_args_list == [call(run_plan=True)])
 
                 ui._input_failed(SettingsError("stamina_limit", "开拓力上限请填写整数。"))
                 ui._input_failed(SettingsError("battle_timeout", "战斗超时应为60～3600。"))

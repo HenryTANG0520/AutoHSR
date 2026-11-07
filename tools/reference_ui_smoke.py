@@ -6,7 +6,7 @@ from pathlib import Path
 import statistics
 import tempfile
 import tkinter as tk
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import cv2
 import numpy as np
@@ -124,12 +124,22 @@ def main():
                 root.update()
                 check(f"{scale}_weekly_shows_plan_in_shared_guide", ui.header.plan.winfo_ismapped()
                       and ui.guide.winfo_ismapped() and ui.guide.selected_page=='settings'
-                      and ui.start_button.cget("text") == "开始计划")
+                      and not ui.start_button.winfo_ismapped() and ui.start_button.instate(("disabled",)))
                 ui.target_name.set("长副本名称"*10)
                 root.update()
                 check(f"{scale}_cost_precedes_truncatable_target", ui.daily_caption.get().index("240 开拓力")
                       < ui.daily_caption.get().index("长副本名称"))
                 check(f"{scale}_config_unchanged", config.read_bytes() == original)
+                ui.settings_shell.back.invoke()
+                root.update()
+                check(f"{scale}_weekly_back_restores_independent_action",
+                      ui.active_page == ui.action_page == "differential_universe"
+                      and ui.start_button.winfo_ismapped()
+                      and ui.start_button.cget("text") == f"开始演算 · {ui.differential_universe_runs.get()} 局")
+                with patch.object(ui, "_start") as start:
+                    ui.start_button.invoke()
+                    check(f"{scale}_restored_action_dispatches_independent_mode",
+                          start.call_args_list == [call(differential_universe=True)])
                 for key, caption in (("logs", "记录"), ("settings", "设置")):
                     button = ui.guide.buttons[key]
                     ui._show_page("home")
@@ -142,7 +152,7 @@ def main():
                     button.event_generate("<KeyRelease-space>")
                     root.update()
                     check(f"{scale}_{key}_named_button_opens_expected_page", ui.active_page == key and
-                          ui.start_button.cget("text") == "开始计划")
+                          not ui.start_button.winfo_ismapped() and ui.start_button.instate(("disabled",)))
                 for key, page in (("home", "home"), ("tasks", "tasks"), ("universe", "differential_universe")):
                     ui._show_page(page)
                     root.focus_force()

@@ -5,7 +5,7 @@ import sys
 import tempfile
 import tkinter as tk
 import types
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from PIL import ImageGrab
 from ux_smoke import ROOT, Settings, Window, module
@@ -110,7 +110,7 @@ def main():
                 check(f"{scale}_daily_card_opens_task_choices", ui.active_page == "settings"
                       and ui.settings_tabs.select() == str(ui.settings_sections["daily"])
                       and not ui.dungeon_list.winfo_ismapped()
-                      and ui.start_button.cget("text") == "开始计划")
+                      and not ui.start_button.winfo_ismapped() and ui.start_button.instate(("disabled",)))
                 for task in ("assignments", "daily", "mail", "battlepass"):
                     control = ui.daily_task_controls[task]
                     original_value = ui.tasks[task].get()
@@ -124,6 +124,11 @@ def main():
                 returned_focus = str(root.tk.call("focus", "-lastfor", root)) == str(board)
                 check(f"{scale}_return_restores_daily_card", ui.active_page == "home"
                       and returned_focus and board.selected == "daily" and not ui.dirty)
+                check(f"{scale}_return_restores_plan_button", ui.start_button.winfo_ismapped()
+                      and ui.start_button.cget("text") == "开始计划")
+                with patch.object(ui, "_start") as start:
+                    ui.start_button.invoke()
+                    check(f"{scale}_return_dispatches_daily_plan", start.call_args_list == [call(run_plan=True)])
                 ui.tasks["battle"].set(False)
                 ui.table.selected = "battle"
                 ui.table.activate()
@@ -186,7 +191,8 @@ def main():
                 ui.weekly_time_entry.event_generate("<KeyPress-Escape>")
                 root.update()
                 check(f"{scale}_escape_returns_to_daily", ui.active_page == "home"
-                      and root.focus_get() == ui.table and ui.start_button.cget("text") == "开始计划")
+                      and root.focus_get() == ui.table and ui.start_button.winfo_ismapped()
+                      and ui.start_button.cget("text") == "开始计划")
                 for origin in ("home", "tasks", "differential_universe", "currency_wars", "logs"):
                     ui._show_page(origin)
                     root.update()
@@ -269,9 +275,15 @@ def main():
                         button.invoke()
                         root.update()
                         check_layout(root)
-                        expected = ui.tools_shelf.primary_action()[0] if name == "tools" else "开始计划"
+                        primary = ui.start_button
+                        if name == "tools":
+                            label, _, enabled = ui.tools_shelf.primary_action()
+                            action_ok = (primary.winfo_ismapped() and primary.cget("text") == label
+                                         and primary.instate(("!disabled",)) == enabled)
+                        else:
+                            action_ok = not primary.winfo_ismapped() and primary.instate(("disabled",))
                         check(f"{scale}_{size}_{name}_reachable", ui.settings_tabs.select() == str(ui.settings_sections[name])
-                              and ui.start_button.cget("text") == expected and ui.guide.winfo_ismapped()
+                              and action_ok and ui.guide.winfo_ismapped()
                               and ui.settings_shell.back.winfo_ismapped())
                         if scale == 1.5:
                             ImageGrab.grab(window=root.winfo_id()).save(OUT/(name+"-"+size+".png"))
