@@ -38,7 +38,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                        lose_focus_on_installation_read=False, from_phone=False, battlepass_size=None,
                        lose_focus_after_geometry=0, duplicate_tab=False, first_escape_native_count=2,
                        upstream_screen=None, guide_overlay=None, overlay_on_target=False,
-                       achievement_page_kind="overview"):
+                       achievement_page_kind="overview", redemption_state="form"):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -48,6 +48,29 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
 
             pages = tuple(Scene(frame.tokens, cv2.resize(frame.image, (1920, 1080)))
                           for frame in (world_pair()[-1], bright_sequence()[-1]))
+        elif target == 'redemption_form':
+            from autohsr.tests.test_redemption_pages import (
+                form_scene, four_row_more_scene, more_scene, result_scene, variant_phone_scene,
+            )
+
+            source, more, form = variant_phone_scene(), four_row_more_scene(), form_scene()
+            more.image[:, :900] = 95
+            if redemption_state == 'stale_phone':
+                more = variant_phone_scene()
+            elif redemption_state == 'unverified_more':
+                source = more_scene()
+                candidate = source.tokens[-1]
+                source.tokens[-1] = Token(candidate.text, .78, candidate.box)
+            elif redemption_state == 'purchase':
+                form.tokens.append(Token('确认购买并支付', .79, (.40, .46, .60, .50)))
+            elif redemption_state == 'result':
+                form = result_scene()
+            elif redemption_state == 'split_result':
+                form.tokens.extend((Token('兑换', .86, (.43, .49, .47, .52)),
+                                    Token('成功', .86, (.473, .49, .513, .52))))
+            for frame in (source, more, form):
+                frame.tokens.append(ACCOUNT)
+            pages = (source, more, form)
         elif target == 'achievement_overview':
             from autohsr.tests.test_achievement_pages import category_view
             from autohsr.tests.test_daily_reward_observe import achievement_page, destination
@@ -277,7 +300,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             interrupted = (late_loss or late_version or lose_focus_on_installation_read
                            or lose_focus_after_geometry or version != '4.6.0'
                            or duplicate_tab or first_escape_native_count != 2 or guide_overlay is not None
-                           or achievement_page_kind != 'overview')
+                           or achievement_page_kind != 'overview' or redemption_state != 'form')
             self.assertEqual(code, 1 if interrupted else 0, err.getvalue())
             if lose_focus_after_geometry:
                 self.assertTrue(focus_changed)
@@ -298,6 +321,29 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertEqual([step['step'] for step in steps], ['page', 'opened', 'verified'])
         self.assertTrue(steps[0]['facts']['page_verified'])
         self.assertTrue(native['workflow_navigation']['page_verified'])
+
+    def test_redemption_yaml_stops_at_the_form_without_submit(self):
+        for already_open, start_in_list, actions in (
+                (False, False, ['open_redemption_more', 'open_redemption_form']),
+                (False, True, ['open_redemption_form']), (True, False, [])):
+            with self.subTest(start_in_list=start_in_list, already_open=already_open):
+                sent, steps, native = self.run_navigation(target='redemption_form', upstream_screen='redemption',
+                    already_open=already_open, start_in_list=start_in_list)
+                self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * len(actions))
+                self.assertTrue(steps[0]['facts']['page_verified'])
+                self.assertEqual([row['action'] for row in native['workflow_navigation']['actions']], actions)
+                self.assertNotIn('redemption', steps[0]['facts'])
+
+    def test_redemption_navigation_rejects_old_phone_payment_and_result_frames(self):
+        for state, already_open, inputs in (
+                ('stale_phone', False, 1), ('unverified_more', False, 0), ('purchase', False, 2),
+                ('result', True, 0), ('split_result', True, 0)):
+            with self.subTest(state=state):
+                sent, steps, native = self.run_navigation(target='redemption_form', redemption_state=state,
+                    already_open=already_open)
+                self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * inputs)
+                self.assertNotIn('page_verified', steps[0]['facts'])
+                self.assertFalse(native['workflow_navigation']['page_verified'])
 
     def test_achievement_yaml_navigation_only_opens_the_verified_overview(self):
         for already_open, inputs in ((False, 1), (True, 0)):

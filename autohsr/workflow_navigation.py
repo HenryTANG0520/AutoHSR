@@ -29,7 +29,7 @@ from .screenshot_tool import MAX_PIXELS
 from .storage import hold_read_sources
 from .task_workflow import (ACHIEVEMENT_OVERVIEW_PAGE, ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES,
                             GUIDE_WORKFLOW_SUBPAGES,
-                            MESSAGE_WORKFLOW_PAGE, VISA_CHARACTERS_PAGE, WORKFLOW_NAVIGATION_TARGETS,
+                            MESSAGE_WORKFLOW_PAGE, REDEMPTION_FORM_PAGE, VISA_CHARACTERS_PAGE, WORKFLOW_NAVIGATION_TARGETS,
                             WORLD_WORKFLOW_PAGE)
 from .team_calibration_pages import calibration_overlay
 from .vision import helper_overlay
@@ -53,6 +53,9 @@ _GUIDE_LAYOUT_VERSION = '4.6.0'
 _VISA_COLLECTION = 'visa_collection'
 _BATTLEPASS_LAYOUT_VERSION = '4.6.0'
 _ACHIEVEMENT_LAYOUT_VERSION = '4.6.0'
+_REDEMPTION_LAYOUT_VERSION = '4.6.0'
+_REDEMPTION_MORE = 'redemption_more'
+_REDEMPTION_MENU_LABELS = ('漫游签证', '手机装饰', '开拓穿搭', '兑换码')
 _WORLD_LAYOUT_VERSION = '4.6.0'
 _WORLD_RETURN_PANELS = (*_GUIDE_PAGES, 'assignments', 'mail', 'battlepass')
 _WORLD_PHONE_ROI = (.005, .041, .042, .105)
@@ -86,6 +89,8 @@ _BLOCKERS = ('列车补给', '获得物品', '选择奖励', '请选择奖励', 
              '资源下载', '确认购买', '确认支付', '退出挑战', '开始挑战', '是否消耗')
 _DIALOG = ('提示', '温馨提示', '确认', '确定', '取消', '知道了', '我知道了', '支付', '付款')
 _DIALOG_AREA = (.25, .20, .75, .86)
+_FORM_DIALOG = tuple(label for label in _DIALOG if label not in ('确认', '取消'))
+_LOADING = ('加载中', '正在加载', '登录中')
 
 
 @dataclass(frozen=True)
@@ -154,17 +159,21 @@ def _activity_title(scene):
     return scene.has(_ROUTE_ACTIVITY, TITLE, exact=True) or _has_split_label(scene, _ROUTE_ACTIVITY, TITLE)
 
 
+def _require_clear_page(scene, daily, dialog=_DIALOG):
+    if (calibration_overlay(scene) or helper_overlay(scene) or daily._login(scene) or daily._in_battle(scene)
+            or battlepass_modal(scene) or scene.has(_BLOCKERS, exact=True) or scene.has(dialog, _DIALOG_AREA, exact=True)
+            or _has_split_label(scene, _BLOCKERS, FULL) or _has_split_label(scene, dialog, _DIALOG_AREA)
+            or _route_blocked(scene, _ROUTE_STOP, _ROUTE_MODAL_PHRASES)):
+        raise AutomationError('当前有登录、战斗、弹窗或遮挡，日常页面导航已停止。')
+
+
 def classify_page(scene, confidence, daily, *, battlepass_subpages=False, exact_guide_subpages=False):
     """Classify an existing scene using the calibrated daily navigation landmarks."""
     low = trusted(scene, COLLECTION_FLOOR)
-    if (calibration_overlay(low) or helper_overlay(low) or daily._login(low) or daily._in_battle(low)
-            or battlepass_modal(low) or low.has(_BLOCKERS, exact=True) or low.has(_DIALOG, _DIALOG_AREA, exact=True)
-            or _has_split_label(low, _BLOCKERS, FULL) or _has_split_label(low, _DIALOG, _DIALOG_AREA)
-            or _route_blocked(low, _ROUTE_STOP, _ROUTE_MODAL_PHRASES)):
-        raise AutomationError('当前有登录、战斗、弹窗或遮挡，日常页面导航已停止。')
+    _require_clear_page(low, daily)
     if exact_guide_subpages and (_activity_title(low) or _route_blocked(low, _CLAIM_PROMPT, _CLAIM_PROMPT)):
         raise AutomationError('当前有活动页面或领奖提示，指南页签导航已停止。')
-    if low.has(('加载中', '正在加载', '登录中'), exact=True):
+    if low.has(_LOADING, exact=True):
         return None
     view = trusted(scene, confidence)
     pages = []
@@ -317,7 +326,30 @@ class WorkflowNavigation:
             return None
         return Token(label, score, (x-.005, y-.006, x+.005, y+.006))
 
+    def _read_redemption_page(self, scene):
+        from .redemption_pages import MORE_MENU, STATUSES, phone_more_target, read_form, redemption_entry
+
+        low = trusted(scene, COLLECTION_FLOOR)
+        statuses = tuple(STATUSES)
+        if _activity_title(low) or _route_blocked(low, statuses, statuses):
+            raise AutomationError('当前有活动页面或兑换结果，兑换表单导航已停止。')
+        form = read_form(scene, self.confidence)
+        _require_clear_page(low, self.daily, _FORM_DIALOG if form is not None else _DIALOG)
+        if low.has(_LOADING, exact=True):
+            return None
+        if form is not None:
+            return REDEMPTION_FORM_PAGE
+        entry = redemption_entry(scene, self.confidence)
+        if entry is not None and redemption_entry(scene, COLLECTION_FLOOR) == entry:
+            return _REDEMPTION_MORE
+        if low.has(_REDEMPTION_MENU_LABELS, MORE_MENU, exact=True) or _has_split_label(
+                low, _REDEMPTION_MENU_LABELS, MORE_MENU):
+            return None
+        return 'phone' if phone_more_target(scene, self.confidence) is not None else None
+
     def _read_page(self, scene):
+        if self.target == REDEMPTION_FORM_PAGE:
+            return self._read_redemption_page(scene)
         page = self._page(scene)
         if self.target == WORLD_WORKFLOW_PAGE:
             return self._world_return_page(scene, page)
@@ -377,6 +409,16 @@ class WorkflowNavigation:
         if self.target == MESSAGE_WORKFLOW_PAGE:
             token = world_message_target(frame.scene) if page == 'world' else None
             return _Action('open_messages', (MESSAGE_WORKFLOW_PAGE,), token) if token else None
+        if self.target == REDEMPTION_FORM_PAGE:
+            from .redemption_pages import phone_more_target, redemption_entry
+
+            if page == 'phone':
+                token = phone_more_target(frame.scene, self.confidence)
+                return _Action('open_redemption_more', (_REDEMPTION_MORE,), token) if token else None
+            if page == _REDEMPTION_MORE:
+                token = redemption_entry(frame.scene, self.confidence)
+                return _Action('open_redemption_form', (self.target,), token) if token else None
+            return None
         if self.target == ACHIEVEMENT_OVERVIEW_PAGE:
             token = phone_achievement_target(frame.scene, self.confidence) if page == 'phone' else None
             return _Action('open_achievements', (self.target,), token) if token else None
@@ -586,7 +628,9 @@ class WorkflowNavigation:
             raise AutomationError('日常页面导航缺少可核实的游戏客户区。')
         self._guard()
         expected, version = (), None
-        if self.target == ACHIEVEMENT_OVERVIEW_PAGE:
+        if self.target == REDEMPTION_FORM_PAGE:
+            expected, version = ('phone', _REDEMPTION_MORE, self.target), _REDEMPTION_LAYOUT_VERSION
+        elif self.target == ACHIEVEMENT_OVERVIEW_PAGE:
             expected, version = ('phone', self.target), _ACHIEVEMENT_LAYOUT_VERSION
         elif self.target == VISA_CHARACTERS_PAGE:
             expected, version = (_VISA_COLLECTION, VISA_CHARACTERS_PAGE), VISA_LAYOUT_VERSION
