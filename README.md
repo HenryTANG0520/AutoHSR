@@ -2,7 +2,7 @@
 
 > **本项目于2026年10月28日恢复开发。** 后续将更多地以基于[三月七启动器（三月七小助手／March7thAssistant）](https://github.com/moesnow/March7thAssistant)的二次开发为方向，重点完善交互设计。
 
-2026年11月6日调整开发顺序，当前先完成日常和工具界面。高难与差分暂停开发，货币战争等到下个版本再评估。日常与工具界面验收后，将游戏窗口交回 AutoZZZ。[当前开发范围](docs/core-priorities-2026-11-01.md#2026-11-06-日常与工具界面)
+2026 年 11 月 7 日，本期收尾聚焦 AutoMHY 的自动日常与体力适配，由 AutoMHY 统一占用桌面和验收。其余开发项按上轮记录暂停。[当前开发范围](docs/core-priorities-2026-11-01.md#2026-11-07-automhy-自动日常与体力)
 
 2026年10月28日以前，本项目的开发仅受[BetterGI](https://github.com/babalae/better-genshin-impact)启发，参考其I/O交互逻辑。在知晓[三月七启动器](https://github.com/moesnow/March7thAssistant)的存在后，维护者曾认为本项目已经没有存在价值，因而于2026年10月26日停止开发。随后，在实际尝试过[三月七启动器](https://github.com/moesnow/March7thAssistant)后，希望能进一步完善交互设计，遂于2026年10月28日重启项目；今日之后的开发将更多地像基于该项目的二次开发。
 
