@@ -33,6 +33,15 @@ def page(rows,timezone=8):
         list=[dict(value,uid='100000000',lang='zh-cn') for value in rows]))
 
 
+def compact_legacy_uigf():
+    rows = [row('9007199254740993001'), row('9007199254740993002')]
+    for value in rows:
+        del value['name'], value['item_type']
+        value['time'] = '2026-10-29 04:34:56'
+    return dict(info=dict(version='v4.0', export_timestamp=1793200000, export_app='Synthetic',
+                          export_app_version='1.0'), hkrpg=[dict(uid='100000000', timezone=0, list=rows)])
+
+
 class WarpTests(unittest.TestCase):
     def test_uigf_all_pools_multiple_accounts_and_large_numeric_ids_roundtrip(self):
         first=group([row('9','1'),row('10','2'),row('9007199254740993001','11'),row('9007199254740993002','12'),
@@ -106,6 +115,72 @@ class WarpTests(unittest.TestCase):
         self.assertNotIn('lang',values[0]);self.assertNotIn('rank_type',values[0]['list'][0])
         self.assertEqual(summary(values)['pools']['11']['unknown_rank'],1)
         with self.assertRaises(WarpError):export(values,format='srgf')
+
+    def test_language_neutral_old_archive_merges_with_a_declared_language_in_either_order(self):
+        legacy, _ = parse(compact_legacy_uigf())
+        known = [group()]
+        before = deepcopy((legacy, known))
+        for first, second, timezone in ((legacy, known, 0), (known, legacy, 8)):
+            with self.subTest(timezone=timezone):
+                combined, = merge(first, second)
+                self.assertEqual((combined['lang'], combined['timezone']), ('zh-cn', timezone))
+                common, old_only = combined['list']
+                self.assertEqual(common['name'], known[0]['list'][0]['name'])
+                self.assertEqual(common['time'], old_only['time'])
+                self.assertEqual(common['time'], first[0]['list'][0]['time'])
+                self.assertNotIn('name', old_only)
+                self.assertNotIn('item_type', old_only)
+        self.assertEqual((legacy, known), before)
+
+    def test_unknown_language_with_localized_fields_or_extensions_still_blocks_merge(self):
+        for key, value in (('name', '未声明的语言'), ('item_type', '角色'), ('extension', {'text': 'unknown'})):
+            with self.subTest(key=key):
+                document = compact_legacy_uigf()
+                document['hkrpg'][0]['list'][1][key] = value
+                legacy, _ = parse(document)
+                for first, second in ((legacy, [group()]), ([group()], legacy)):
+                    with self.assertRaisesRegex(WarpError, '语言不同'):
+                        merge(first, second)
+
+    def test_compact_old_archive_migrates_through_formal_local_cli(self):
+        from autohsr.__main__ import main
+        from openpyxl import load_workbook
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            old, current, other = (root / name for name in ('old.json', 'current.json', 'other.json'))
+            for path, data in ((old, compact_legacy_uigf()), (current, export([group()], format='srgf')),
+                               (other, export([dict(group(), uid='200000000')]))):
+                path.write_text(json.dumps(data), encoding='utf8')
+            sources = {path: path.read_bytes() for path in (old, current, other)}
+            args = ['--warp-records', '--warp-import', str(old), '--warp-import', str(current),
+                    '--warp-import', str(other), '--warp-uid', '100000000']
+            with patch('autohsr.config.Settings.load', side_effect=AssertionError('no game settings')), \
+                 patch('autohsr.warp_service.fetch', side_effect=AssertionError('no network')):
+                for kind in ('uigf', 'srgf', 'xlsx'):
+                    with self.subTest(kind=kind), redirect_stdout(io.StringIO()) as stdout, \
+                         redirect_stderr(io.StringIO()) as stderr:
+                        output = root / (kind + ('.xlsx' if kind == 'xlsx' else '.json'))
+                        self.assertEqual(main([*args, '--warp-format', kind, '--warp-output', str(output)]),
+                                         0, stderr.getvalue())
+                        receipt = json.loads(stdout.getvalue())
+                        self.assertEqual((receipt['accounts'], receipt['records']), (1, 2))
+                        if kind == 'xlsx':
+                            workbook = load_workbook(output, read_only=True)
+                            try:
+                                self.assertEqual(workbook.sheetnames, ['分池统计', '记录-100000000'])
+                                sheet = workbook['记录-100000000']
+                                self.assertEqual((sheet['K6'].value, sheet['K7'].value),
+                                                 ('9007199254740993001', '9007199254740993002'))
+                                self.assertIsNone(sheet['B7'].value)
+                            finally:
+                                workbook.close()
+                        else:
+                            account, = parse(loads(output.read_bytes()))[0]
+                            self.assertEqual((account['uid'], account['lang'], account['timezone']),
+                                             ('100000000', 'zh-cn', 0))
+                            self.assertEqual(len(account['list']), 2)
+            self.assertEqual({path: path.read_bytes() for path in sources}, sources)
 
     def test_link_clears_old_cursor_uses_official_endpoints_and_redacts_repr(self):
         link=WarpLink(LINK);self.assertNotIn('synthetic-secret',repr(link))

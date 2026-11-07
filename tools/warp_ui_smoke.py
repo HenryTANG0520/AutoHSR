@@ -162,6 +162,33 @@ class WarpPanelSmoke(unittest.TestCase):
         self.assertEqual(self.panel.overview.get_children(), ())
         self.assertEqual(self.source.read_bytes(), self.original)
 
+    def test_local_legacy_merge_requires_explicit_account_and_exports_only_that_account(self):
+        from autohsr.tests.test_warp_records import compact_legacy_uigf, group
+
+        legacy = self.folder / 'old.json'
+        current = self.folder / 'current.json'
+        other = self.folder / 'other.json'
+        legacy.write_text(json.dumps(compact_legacy_uigf()), encoding='utf8')
+        current.write_text(json.dumps(export([group()], format='srgf')), encoding='utf8')
+        other.write_text(json.dumps(export([dict(group(), uid='200000000')])), encoding='utf8')
+        originals = {path: path.read_bytes() for path in (legacy, current, other)}
+        with patch('autohsr.desktop_warp.filedialog.askopenfilenames',
+                   return_value=tuple(map(str, originals))):
+            self.panel.import_files()
+        self.host.complete()
+        self.assertEqual(self.panel.last_result['status'], 'success')
+        self.assertFalse(self.panel.can_export)
+        self.choose_account('UID 100000000')
+        self.choose_format('SRGF JSON')
+        destination = self.folder / 'selected.json'
+        self.save_to(destination)
+        accounts, details = parse(json.loads(destination.read_text(encoding='utf8')))
+        self.assertEqual(details['format'], 'srgf-v1.0')
+        combined, = accounts
+        self.assertEqual((combined['uid'], combined['lang']), ('100000000', 'zh-cn'))
+        self.assertEqual([row['id'] for row in combined['list']], ['9007199254740993001', '9007199254740993002'])
+        self.assertEqual({path: path.read_bytes() for path in originals}, originals)
+
     def test_summary_and_paginated_five_star_details_follow_explicit_selection(self):
         self.load_source()
         self.choose_account("UID 200000000")

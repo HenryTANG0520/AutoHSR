@@ -18,6 +18,7 @@ LANGS=frozenset(('de-de','en-us','es-es','fr-fr','id-id','it-it','ja-jp','ko-kr'
                  'pt-pt','ru-ru','th-th','tr-tr','vi-vn','zh-cn','zh-tw'))
 REQUIRED=frozenset(('gacha_id','gacha_type','item_id','time','id'))
 OPTIONAL=frozenset(('count','name','item_type','rank_type'))
+_LANGUAGE_NEUTRAL_FIELDS = REQUIRED | {'count', 'rank_type'}
 
 
 class WarpError(ValueError):
@@ -137,8 +138,14 @@ def merge(*groups):
             incoming=account(original);key=incoming['uid']
             if key not in result:result[key]=incoming;continue
             base=result[key]
-            if incoming.get('lang')!=base.get('lang'):
-                raise WarpError('同账号记录语言不同，请分别导出；未混合翻译文字。')
+            base_language, incoming_language = base.get('lang'), incoming.get('lang')
+            if base_language != incoming_language:
+                unlabeled = base if base_language is None else incoming
+                # Only the archive with an explicit language may supply localized fields.
+                if ((base_language is not None and incoming_language is not None)
+                        or any(row.keys() - _LANGUAGE_NEUTRAL_FIELDS for row in unlabeled['list'])):
+                    raise WarpError('同账号记录语言不同，请分别导出；未混合翻译文字。')
+                base['lang'] = base_language or incoming_language
             previous={r['id']:r for r in base['list']}
             for row in incoming['list']:
                 delta=base['timezone']-incoming['timezone']
