@@ -113,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--no-admin-launch", action="store_true", help="跳过管理员启动入口，仅打开当前权限的 GUI 以排查或移除授权")
     parser.add_argument("--start-in-tray", action="store_true", help="以当前权限将助手启动到系统托盘，不启动游戏")
     mode.add_argument("--admin-task", action="store_true", help=argparse.SUPPRESS)
+    mode.add_argument("--login-task", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--admin-owner", help=argparse.SUPPRESS)
     parser.add_argument("--config", type=Path, help="配置 JSON 路径，省略时使用默认配置")
     parser.add_argument("--replay-ocr", action="store_true", help="仅配合 --currency-wars-replay，对样本 PNG 重新执行隔离 OCR")
@@ -183,6 +184,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    if args.login_task and raw_args != ["--login-task"]:
+        parser.error("登录自启只允许使用固定桌面入口。")
     if args.start_in_tray:
         flags = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
         if flags.count('--start-in-tray') != 1 or set(flags) - {'--start-in-tray', '--config', '--no-admin-launch'}:
@@ -457,7 +460,9 @@ def main(argv: list[str] | None = None) -> int:
         try:
             if args.admin_task and not is_admin():
                 raise AdminLaunchError("管理员启动任务未获得管理员权限，未打开任务界面。")
-            if (not args.admin_task and not args.no_admin_launch and not args.start_in_tray
+            if args.login_task and handoff(login=True):
+                return 0
+            if (not args.admin_task and not args.login_task and not args.no_admin_launch and not args.start_in_tray
                     and args.config.resolve() == CONFIG_PATH.resolve()):
                 if handoff():
                     if desktop_ready is not None:
@@ -467,7 +472,7 @@ def main(argv: list[str] | None = None) -> int:
             # A failed or unknown handoff must not open a second controller.
             if sys.stderr is not None:
                 print(_json({"error": str(error)}), file=sys.stderr)
-            else:
+            elif not args.login_task:
                 import tkinter as tk
                 from tkinter import messagebox
                 root = tk.Tk()
@@ -478,8 +483,13 @@ def main(argv: list[str] | None = None) -> int:
         from .gui import main as gui_main
         if desktop_ready is not None:
             gui_main(args.config, on_ready=desktop_ready)
-        elif args.start_in_tray:
-            gui_main(args.config, start_in_tray=True)
+        elif args.start_in_tray or args.login_task:
+            if args.no_admin_launch:
+                gui_main(args.config, start_in_tray=True, independent=True)
+            else:
+                gui_main(args.config, start_in_tray=True)
+        elif args.no_admin_launch:
+            gui_main(args.config, independent=True)
         else:
             gui_main(args.config, admin_task=True) if args.admin_task else gui_main(args.config)
         return 0

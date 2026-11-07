@@ -238,6 +238,7 @@ class AutoHSRWindow:
         self.detect_size = tk.StringVar(value="客户区尺寸：—")
         self.detect_permission = tk.StringVar(value="助手管理员权限：—")
         self.admin_launch_status = tk.StringVar(value="授权状态：未查询")
+        self.login_startup_status = tk.StringVar(value="登录自启：未查询")
         self.currency_status = tk.StringVar(value="开发中 · 整局未验收")
         self.currency_observation = tk.StringVar(value="暂无识别记录")
         self.currency_result_report = None
@@ -1417,19 +1418,22 @@ class AutoHSRWindow:
     def _launch(self) -> None:
         self._operation("launch")
 
-    def _admin_operation(self, action: str) -> None:
+    def _admin_operation(self, action: str, *, login: bool = False) -> None:
         if self.busy or self.closing or (self.worker is not None and self.worker.is_alive()):
             return
         self._set_busy(True)
-        self.admin_launch_status.set("正在查询……" if action == "status" else "等待 Windows 授权及结果核实……")
+        status_var = self.login_startup_status if login else self.admin_launch_status
+        pending = "正在更新并核实 Windows 启动任务……" if login else "等待 Windows 授权及结果核实……"
+        status_var.set("正在查询……" if action == "status" else pending)
 
         def work() -> None:
             try:
-                from .admin_launch import configure, status, status_text
-                data = status() if action == "status" else configure(action)
-                self.emit(dict(type="admin_launch_result", message=status_text(data), action=action))
+                from . import admin_launch, login_startup
+                backend = login_startup if login else admin_launch
+                data = backend.status() if action == "status" else backend.configure(action)
+                self.emit(dict(type="admin_launch_result", message=backend.status_text(data), action=action, login=login))
             except Exception as error:
-                self.emit(dict(type="admin_launch_result", message=str(error), error=True, action=action))
+                self.emit(dict(type="admin_launch_result", message=str(error), error=True, action=action, login=login))
         self.worker = threading.Thread(target=work, name="autohsr-admin-launch", daemon=True)
         self.worker.start()
 
@@ -2346,8 +2350,11 @@ class AutoHSRWindow:
                     self._log(event.get("message") or "启动请求已发送。请完成登录。")
                 elif kind == "admin_launch_result":
                     self._set_busy(False)
-                    self.admin_launch_status.set(event["message"])
-                    self._log("管理员启动：" + event["message"], "warning" if event.get("error") else "info")
+                    login = event.get("login", False)
+                    status_var = self.login_startup_status if login else self.admin_launch_status
+                    status_var.set(event["message"])
+                    self._log(("登录自启：" if login else "管理员启动：") + event["message"],
+                              "warning" if event.get("error") else "info")
                 elif kind in ("operation_error", "run_error"):
                     self.runner = None
                     if kind == "run_error":
@@ -2436,18 +2443,27 @@ class AutoHSRWindow:
 
 
 def main(config_path: Path = CONFIG_PATH, *, admin_task: bool = False, start_in_tray: bool = False,
-         on_ready=None) -> None:
+         independent: bool = False, on_ready=None) -> None:
     # Establish DPI awareness before Tk creates a window.
     from . import windows  # noqa: F401
     from contextlib import nullcontext
     from .admin_launch import TaskSession, when_window_ready
-    with TaskSession() if admin_task else nullcontext() as session:
+    shared = not independent and (admin_task or config_path.resolve() == CONFIG_PATH.resolve())
+    with TaskSession(desktop=True, ordinary=not admin_task) if shared else nullcontext() as session:
+        if session is not None:
+            if not session.primary:
+                if not start_in_tray:
+                    session.activate()
+                return
+            if admin_task:
+                start_in_tray = session.consume_login_tray()
         root = tk.Tk()
         if start_in_tray:
             root.withdraw()
         ui = AutoHSRWindow(root, config_path)
         if session is not None:
-            session.attach(root, ui._restore_from_tray)
+            session.attach(root, ui._restore_from_tray,
+                           parked=lambda: ui._tray is not None and ui._tray.parked)
         if on_ready is not None:
             when_window_ready(root, lambda: on_ready('window'))
         if start_in_tray:

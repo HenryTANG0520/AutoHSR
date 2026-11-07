@@ -353,6 +353,12 @@ def build_settings(ui):
     buttons(row("admin", 1, "启动授权"), (("启用授权", lambda: ui._admin_operation("enable")),
             ("移除授权", lambda: ui._admin_operation("disable"))))
     note("admin", 2, text="首次需 Windows 授权；仅绑定当前账户和目录，移动目录后需重新启用。")
+    buttons(row("admin", 3, "登录自启", variable=ui.login_startup_status),
+            (("刷新状态", lambda: ui._admin_operation("status", login=True)),))
+    buttons(row("admin", 4, "自启设置"),
+            (("启用自启", lambda: ui._admin_operation("enable", login=True)),
+             ("移除自启", lambda: ui._admin_operation("disable", login=True))))
+    note("admin", 5, text="登录 Windows 后启动助手到托盘。应用内定时需在助手中另行启用。")
 
     from .desktop_tools import ToolsShelf
     ui.tools_shelf = ToolsShelf(ui.settings_sections['tools'], ui)

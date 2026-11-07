@@ -1,8 +1,8 @@
-"""Opt-in, per-user/per-installation elevated GUI launcher. No game operations.
+"""Per-user/per-installation Windows desktop launch tasks. No game operations.
 
 Task Scheduler stores the authorization; config.json never acts as permission.
-The task has no triggers, accepts no caller arguments, and uses an interactive
-token for the same administrator account (no password or SYSTEM service).
+Both tasks accept fixed arguments and use the same account's interactive token.
+Only the login task has a trigger. Elevation requires the existing admin task.
 """
 from __future__ import annotations
 
@@ -63,22 +63,25 @@ class LaunchSpec:
     executable: Path
     prefix: tuple[str, ...]
     sid: str
+    login: bool = False
 
     @property
     def task_name(self) -> str:
         key = f"{self.sid}|{os.path.normcase(str(self.root))}"
-        return "AutoHSR-Admin-v1-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:20]
+        kind = "Login" if self.login else "Admin"
+        return f"AutoHSR-{kind}-v1-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:20]
 
     @property
     def arguments(self) -> str:
-        return subprocess.list2cmdline([*self.prefix, "--admin-task"])
+        return subprocess.list2cmdline([*self.prefix, "--login-task" if self.login else "--admin-task"])
 
     @property
     def description(self) -> str:
-        return f"AutoHSR admin launcher v1 | {self.sid} | {self.root}"
+        kind = "login" if self.login else "admin"
+        return f"AutoHSR {kind} launcher v1 | {self.sid} | {self.root}"
 
 
-def launch_spec() -> LaunchSpec:
+def launch_spec(*, login: bool = False) -> LaunchSpec:
     executable = Path(sys.executable).resolve()
     prefix: tuple[str, ...] = ()
     if not getattr(sys, "frozen", False):
@@ -87,7 +90,7 @@ def launch_spec() -> LaunchSpec:
             executable = windowed
         # Ignore inherited PYTHON* and user-site packages during elevation.
         prefix = ("-E", "-s", "-m", "autohsr")
-    return LaunchSpec(ROOT.resolve(), executable, prefix, current_sid())
+    return LaunchSpec(ROOT.resolve(), executable, prefix, current_sid(), login)
 
 
 # Data is encoded separately; paths, quotes, $, backticks and non-ASCII names
@@ -96,6 +99,12 @@ _TASK_SCRIPT = r"""
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $p = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__PAYLOAD__')) | ConvertFrom-Json
+function Resolve-Sid([string]$user) {
+    if ($user.StartsWith('S-1-')) { return $user }
+    if ($user) {
+        return ([Security.Principal.NTAccount]$user).Translate([Security.Principal.SecurityIdentifier]).Value
+    }
+}
 try {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     if ($identity.User.Value -cne $p.sid) { throw 'Windows account changed; no task was modified.' }
@@ -111,21 +120,29 @@ try {
         if ($e.HResult -ne -2147024894) { throw }
     }
     $owned = $task -and ($task.Definition.RegistrationInfo.Description -ceq $p.description)
+    $runLevel = if ($p.login) { 0 } else { 1 }
     if ($p.operation -eq 'enable') {
-        if (-not $accountAdmin) { throw 'The current Windows account must be an administrator.' }
+        if (-not $p.login -and -not $accountAdmin) { throw 'The current Windows account must be an administrator.' }
         if ($task -and -not $owned) { throw 'A different task uses this name; it was not overwritten.' }
         $definition = $service.NewTask(0)
         $definition.RegistrationInfo.Description = $p.description
         $definition.Principal.UserId = $p.sid
         $definition.Principal.LogonType = 3
-        $definition.Principal.RunLevel = 1
+        $definition.Principal.RunLevel = $runLevel
         $definition.Settings.Enabled = $true
-        $definition.Settings.AllowDemandStart = $true
+        $definition.Settings.AllowDemandStart = -not $p.login
         $definition.Settings.DisallowStartIfOnBatteries = $false
         $definition.Settings.StopIfGoingOnBatteries = $false
         $definition.Settings.ExecutionTimeLimit = 'PT0S'
         $definition.Settings.MultipleInstances = 2
         $definition.Settings.AllowHardTerminate = $false
+        if ($p.login) {
+            $trigger = $definition.Triggers.Create(9)
+            $trigger.UserId = $p.sid
+            $trigger.Enabled = $true
+            $trigger.Delay = 'PT15S'
+            $trigger.ExecutionTimeLimit = 'PT0S'
+        }
         $action = $definition.Actions.Create(0)
         $action.Path = $p.executable
         $action.Arguments = $p.arguments
@@ -143,16 +160,24 @@ try {
     $valid = $false
     if ($task -and $owned) {
         $d = $task.Definition
-        $user = $d.Principal.UserId
-        if (-not $user.StartsWith('S-1-')) {
-            $user = ([Security.Principal.NTAccount]$user).Translate([Security.Principal.SecurityIdentifier]).Value
+        $user = Resolve-Sid $d.Principal.UserId
+        $validTrigger = $d.Triggers.Count -eq 0
+        if ($p.login) {
+            $validTrigger = $false
+            if ($d.Triggers.Count -eq 1) {
+                $trigger = $d.Triggers.Item(1)
+                $validTrigger = $trigger.Type -eq 9 -and $trigger.Enabled -and
+                    (Resolve-Sid $trigger.UserId) -ceq $p.sid -and $trigger.Delay -eq 'PT15S' -and
+                    $trigger.ExecutionTimeLimit -eq 'PT0S' -and -not $trigger.Repetition.Interval -and
+                    -not $trigger.StartBoundary -and -not $trigger.EndBoundary
+            }
         }
         $a = $d.Actions.Item(1)
         $valid = $d.Actions.Count -eq 1 -and $a.Type -eq 0 -and
             $a.Path -ieq $p.executable -and $a.Arguments -ceq $p.arguments -and
             $a.WorkingDirectory -ieq $p.root -and $user -ceq $p.sid -and
-            $d.Principal.LogonType -eq 3 -and $d.Principal.RunLevel -eq 1 -and
-            $d.Triggers.Count -eq 0 -and $d.Settings.AllowDemandStart -and
+            $d.Principal.LogonType -eq 3 -and $d.Principal.RunLevel -eq $runLevel -and
+            $validTrigger -and $d.Settings.AllowDemandStart -eq (-not $p.login) -and
             $d.Settings.MultipleInstances -eq 2 -and $d.Settings.ExecutionTimeLimit -eq 'PT0S' -and
             -not $d.Settings.DisallowStartIfOnBatteries -and -not $d.Settings.StopIfGoingOnBatteries -and
             -not $d.Settings.AllowHardTerminate
@@ -172,10 +197,12 @@ try {
 
 
 def _task(operation: str, spec: LaunchSpec) -> dict:
-    if operation not in ("status", "enable", "disable", "run"):
-        raise ValueError("未知管理员启动操作。")
+    if operation not in ("status", "enable", "disable", "run") or (spec.login and operation == "run"):
+        raise ValueError("未知启动任务操作。")
     payload = dict(operation=operation, task_name=spec.task_name, description=spec.description,
-                   root=str(spec.root), executable=str(spec.executable), arguments=spec.arguments, sid=spec.sid)
+                   root=str(spec.root), executable=str(spec.executable), arguments=spec.arguments,
+                   sid=spec.sid, login=spec.login)
+    label = "登录自启" if spec.login else "管理员启动"
     encoded = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
     script = _TASK_SCRIPT.replace("__PAYLOAD__", encoded)
     command = base64.b64encode(script.encode("utf-16le")).decode("ascii")
@@ -189,11 +216,11 @@ def _task(operation: str, spec: LaunchSpec) -> dict:
                                 creationflags=subprocess.CREATE_NO_WINDOW)
         data = json.loads(result.stdout.lstrip("\ufeff"))
     except (OSError, subprocess.TimeoutExpired, ValueError) as error:
-        raise AdminLaunchError(f"无法核实 Windows 管理员启动任务：{error}") from error
+        raise AdminLaunchError(f"无法核实 Windows {label}任务：{error}") from error
     if not isinstance(data, dict):
         raise AdminLaunchError("Windows 返回的启动任务状态不完整，未视为授权成功。")
     if result.returncode or "error" in data:
-        raise AdminLaunchError("Windows 管理员启动操作失败：" + str(data.get("error", result.stderr.strip())))
+        raise AdminLaunchError(f"Windows {label}操作失败：" + str(data.get("error", result.stderr.strip())))
     if (not isinstance(data, dict) or data.get("task_name") != spec.task_name or
             any(type(data.get(key)) is not bool for key in ("exists", "valid", "enabled", "account_is_admin")) or
             (data["enabled"] and not (data["exists"] and data["valid"]))):
@@ -290,16 +317,19 @@ def when_window_ready(root, callback):
 
 class TaskSession:
     """Named events live only while the GUI (or its waiting launcher) is alive."""
-    def __init__(self, spec: LaunchSpec | None = None):
+    def __init__(self, spec: LaunchSpec | None = None, *, desktop=False, ordinary=False):
         spec = spec or launch_spec()
+        name = "Local\\" + spec.task_name + ("Desktop" if ordinary else "")
         self.kernel = C.WinDLL("kernel32", use_last_error=True)
         self.kernel.CreateEventW.argtypes = [C.c_void_p, W.BOOL, W.BOOL, W.LPCWSTR]
         self.kernel.CreateEventW.restype = W.HANDLE
         self.kernel.SetEvent.argtypes = [W.HANDLE]
+        self.kernel.ResetEvent.argtypes = [W.HANDLE]
         self.kernel.WaitForSingleObject.argtypes = [W.HANDLE, W.DWORD]
         self.kernel.CloseHandle.argtypes = [W.HANDLE]
         self.kernel.LocalFree.argtypes = [C.c_void_p]
         self.handles: list = []
+        self.primary = False
         # Same account only; medium integrity lets the normal launcher contact
         # an existing elevated GUI even when that GUI created the events first.
         class SecurityAttributes(C.Structure):
@@ -312,11 +342,20 @@ class TaskSession:
             raise AdminLaunchError(f"无法限定启动反馈的账户权限：{C.WinError(C.get_last_error())}")
         security = SecurityAttributes(C.sizeof(SecurityAttributes), descriptor, False)
         try:
-            for suffix, manual in (("Ready", True), ("Activate", False)):
-                handle = self.kernel.CreateEventW(C.byref(security), manual, False, "Local\\" + spec.task_name + suffix)
+            events = [("Ready", True), ("Activate", False), ("LoginTray", False)]
+            if desktop:
+                events.append(("Owner", True))
+            for suffix, manual in events:
+                C.set_last_error(0)
+                handle = self.kernel.CreateEventW(C.byref(security), manual, False, name + suffix)
+                already_exists = C.get_last_error() == 183
                 if not handle:
-                    raise AdminLaunchError(f"无法建立管理员启动反馈：{C.WinError(C.get_last_error())}")
+                    raise AdminLaunchError(f"无法建立桌面启动反馈：{C.WinError(C.get_last_error())}")
                 self.handles.append(handle)
+                if suffix == "Owner":
+                    self.primary = not already_exists
+            if self.primary:
+                self.kernel.ResetEvent(self.handles[0])
         except Exception:
             self.close()
             raise
@@ -340,16 +379,40 @@ class TaskSession:
     def activate(self) -> None:
         self.kernel.SetEvent(self.handles[1])
 
-    def attach(self, root, restore) -> None:
+    def request_login_tray(self) -> None:
+        if not self.kernel.SetEvent(self.handles[2]):
+            raise AdminLaunchError(f"无法发送登录托盘启动请求：{C.WinError(C.get_last_error())}")
+
+    def clear_login_tray(self) -> None:
+        self.kernel.ResetEvent(self.handles[2])
+
+    def consume_login_tray(self) -> bool:
+        return self.kernel.WaitForSingleObject(self.handles[2], 0) == 0
+
+    def attach(self, root, restore, *, parked=None) -> None:
+        scheduled = None
+        ready = False
+
         def poll():
+            nonlocal scheduled, ready
+            scheduled = None
+            if not ready and (root.winfo_viewable() or (parked is not None and parked())):
+                ready = bool(self.kernel.SetEvent(self.handles[0]))
             if self.kernel.WaitForSingleObject(self.handles[1], 0) == 0:
                 restore()
-            root.after(300, poll)
-        when_window_ready(root, lambda: self.kernel.SetEvent(self.handles[0]))
-        root.after(300, poll)
+            scheduled = root.after(300 if ready else 50, poll)
+
+        def cancel(event):
+            nonlocal scheduled
+            if event.widget is root and scheduled is not None:
+                root.after_cancel(scheduled)
+                scheduled = None
+
+        root.bind("<Destroy>", cancel, add="+")
+        scheduled = root.after_idle(poll)
 
 
-def handoff() -> bool:
+def handoff(*, login=False) -> bool:
     """Only default GUI startup may call this; never forward game/CLI arguments."""
     if is_admin():
         return False
@@ -358,13 +421,22 @@ def handoff() -> bool:
     if not data["exists"]:
         return False
     if not data["enabled"]:
+        if login:
+            return False
         raise AdminLaunchError("管理员启动任务已禁用或与当前路径不符。可用 --no-admin-launch 打开设置，重新启用或移除。")
     with TaskSession(spec) as session:
         # A GUI can outlive task removal/re-registration. Reuse its live
         # feedback channel before asking Scheduler to start another process.
         if not session.wait_ready(0):
-            _task("run", spec)
-            if not session.wait_ready():
-                raise AdminLaunchError("已发送管理员启动请求，但未收到界面就绪反馈；请检查任务栏或用 --no-admin-launch 排查。")
-        session.activate()
+            if login:
+                session.request_login_tray()
+            try:
+                _task("run", spec)
+                if not session.wait_ready():
+                    raise AdminLaunchError("已发送管理员启动请求，但未收到界面就绪反馈；请检查任务栏或用 --no-admin-launch 排查。")
+            finally:
+                if login:
+                    session.clear_login_tray()
+        if not login:
+            session.activate()
     return True
