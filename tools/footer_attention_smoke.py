@@ -52,8 +52,9 @@ def main():
                     ImageGrab.grab(window=root.winfo_id()).save(OUT/"home.png")
                 ui._show_weekly_plan()
                 root.update()
-                check(prefix+"weekly_has_its_start_without_reward_action", not ui.reward_button.winfo_ismapped()
-                      and ui.start_button.winfo_ismapped() and ui.start_button.cget("text") == "开始计划")
+                check(prefix+"weekly_hides_run_and_reward_actions", ui.settings_shell.section == "weekly"
+                      and not ui.reward_button.winfo_ismapped() and not ui.footer_start_button.winfo_ismapped()
+                      and ui.footer_start_button.instate(("disabled",)))
                 old_time = ui.weekly_time.get()
                 ui.weekly_time.set("25:99")
                 root.update()
@@ -72,13 +73,17 @@ def main():
                 root.update()
                 check(prefix+"dirty_daily_groups_save_before_reward", ui.save_button.winfo_ismapped()
                       and ui.reward_button.winfo_ismapped() and ui.save_button.winfo_rootx() < ui.reward_button.winfo_rootx())
+                check(prefix+"daily_settings_hide_plan_start", ui.settings_shell.section == "daily"
+                      and not ui.footer_start_button.winfo_ismapped() and ui.footer_start_button.instate(("disabled",)))
                 if scale == 1.5:
                     ImageGrab.grab(window=root.winfo_id()).save(OUT/"draft.png")
                 ui._set_busy(True, running=True)
                 root.update()
                 check(prefix+"running_shows_controls_and_hides_idle_actions", ui.stop_button.winfo_ismapped()
+                      and ui.stop_button.instate(("!disabled",))
                       and ui.activity_label.winfo_ismapped() and not ui.save_button.winfo_ismapped()
-                      and not ui.reward_button.winfo_ismapped())
+                      and not ui.reward_button.winfo_ismapped() and not ui.footer_start_button.winfo_ismapped()
+                      and ui.footer_start_button.instate(("disabled",)))
                 ui._set_busy(False)
                 root.update()
                 check(prefix+"finished_restores_unsaved_actions", ui.save_button.winfo_ismapped()
@@ -106,6 +111,9 @@ def main():
                         root.update()
                     check(prefix+page+"_hides_reward_and_old_save_acknowledgement",
                           not ui.reward_button.winfo_ismapped() and not ui.save_label.winfo_ismapped())
+                    if page in ("logs", "settings"):
+                        check(prefix+page+"_hides_run_action", not ui.footer_start_button.winfo_ismapped()
+                              and ui.footer_start_button.instate(("disabled",)))
                 ui._show_page("home")
                 ui.status.set("● 检测已停止")
                 root.update()
