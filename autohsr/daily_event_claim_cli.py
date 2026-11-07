@@ -11,8 +11,9 @@ def run(args, raw_args, parser):
     flags = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
     if (flags.count('--daily-event-claim') != 1
             or len(set(flags)) != len(flags)
-            or set(flags) - {'--daily-event-claim', '--observe-daily-event-return', '--config', '--game-path'}):
-        parser.error('巡星之礼单日提交只接受本次回页观察、--config 和 --game-path。')
+            or set(flags) - {'--daily-event-claim', '--observe-daily-event-return', '--navigate-daily-event',
+                             '--config', '--game-path'}):
+        parser.error('巡星之礼单日提交只接受本次导航、回页观察、--config 和 --game-path。')
 
     from .app import Runner
 
@@ -25,7 +26,8 @@ def run(args, raw_args, parser):
                 print(event['message'], file=sys.stderr, flush=True)
 
         runner = Runner(settings, emit, operation=EVENT_CLAIM_OPERATION, daily_event_claim_day=args.daily_event_claim,
-                        daily_event_observe_return=args.observe_daily_event_return)
+                        daily_event_observe_return=args.observe_daily_event_return,
+                        daily_event_claim_navigate=args.navigate_daily_event)
     except (OSError, ValueError, TypeError):
         print(json.dumps({'status': 'failed', 'error': '无法读取本次巡星之礼配置。'}, ensure_ascii=False))
         return 1

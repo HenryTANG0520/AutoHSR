@@ -1,4 +1,4 @@
-"""Coordinate one explicitly selected Odyssey card on an already open page."""
+"""Coordinate one explicitly selected Odyssey card in an independent run."""
 from contextlib import ExitStack, contextmanager, nullcontext
 import json
 import os
@@ -96,6 +96,7 @@ class DailyEventClaim:
         self.record = initial_record(day)
         self._started = False
         self._intent = self._popup = None
+        self._navigation = None
 
     def _same_context(self):
         context = self.context
@@ -128,6 +129,8 @@ class DailyEventClaim:
 
     def _open_card(self, snapshot, reader):
         frame = self._capture(snapshot, reader)
+        if self._navigation is not None:
+            self._navigation.require_claim_handoff(frame)
         if frame.page is None or frame.button is None or frame.tickets is not None:
             raise AutomationError('请先打开巡星之礼，并核对指定日卡的可领取按钮。')
         return frame
@@ -260,6 +263,11 @@ class DailyEventClaim:
             raise AutomationError('巡星之礼领取需要独立的严格前台采集入口。')
         self._started = True
         with sequence_lease():
+            if getattr(self._runner, 'daily_event_claim_navigate', False) is True:
+                from .workflow_navigation import WorkflowNavigation
+
+                self._navigation = context.workflow_navigation = WorkflowNavigation(context, 'odyssey')
+                self._navigation.run()
             first = self._open_card(snapshot, reader)
             self._guard()
             context.sleep(_FRAME_DELAY)

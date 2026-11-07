@@ -244,6 +244,20 @@ class WorkflowNavigation:
     def installation_source(self):
         return self._installation.source if self._installation is not None else None
 
+    def _bound_to_event_claim(self):
+        from .daily_event_claim_flow import DailyEventClaim, OPERATION as CLAIM_OPERATION
+
+        c = self.c
+        claim = getattr(c, 'daily_event_claim', None)
+        return (c.report.operation == CLAIM_OPERATION and self.target == 'odyssey'
+                and getattr(c.runner, 'daily_event_claim_navigate', False) is True
+                and type(claim) is DailyEventClaim and claim.context is c
+                and claim.record is c.report.daily_event_claim and claim._navigation is self)
+
+    def authorizes_input(self, action):
+        return (self.c.report.operation == OPERATION
+                or action in ('open_journey_events', 'open_odyssey') and self._bound_to_event_claim())
+
     def _control(self):
         c = self.c
         if self.window.emergency_pressed() or c.runner.stop_requested:
@@ -251,7 +265,8 @@ class WorkflowNavigation:
         if c.runner.input_epoch != self.epoch:
             raise InputInterrupted('日常页面导航的输入代次已变化。')
         if (c.window is not self.window or c.capture_occlusion_count != self.occlusions
-                or c.report.operation != OPERATION or getattr(c, 'workflow_navigation', None) is not self
+                or (c.report.operation != OPERATION and not self._bound_to_event_claim())
+                or getattr(c, 'workflow_navigation', None) is not self
                 or c.report.workflow_navigation is not self.record or self.record.get('target') != self.target):
             raise AutomationError('日常页面导航的窗口、入口或遮挡状态已变化。')
 
@@ -639,6 +654,20 @@ class WorkflowNavigation:
             self._verify(self.arrival)
             self._final_guard(self.arrival)
 
+    def require_claim_handoff(self, frame):
+        """Keep the independently captured claim frames in the verified navigation scope."""
+        self._guard()
+        installation = self._installation
+        scope = frame.scope
+        if (not self._bound_to_event_claim() or not self.record['page_verified'] or self.arrival is None
+                or installation is None or frame.context is not self.c or frame.window is not self.window
+                or scope.key != self.key or scope.epoch != self.epoch or scope.occlusions != self.occlusions
+                or scope.account != self.account or scope.geometry != self.geometry
+                or scope.executable != installation.executable
+                or scope.installation != (installation.version, installation.sha256, installation.revision)
+                or frame.sequence <= self.arrival[-1].sequence or frame.captured_at < self.arrival[-1].captured_at):
+            raise AutomationError('巡星之礼领卡画面与本次到页的账号或窗口来源不一致。')
+
     def run(self):
         if self.started or getattr(self.c.runner, '_foreground_only', False) is not True:
             raise AutomationError('日常页面导航需要独立的当前前台运行。')
@@ -667,6 +696,8 @@ class WorkflowNavigation:
             expected, version = (WORLD_WORKFLOW_PAGE, 'phone', *_WORLD_RETURN_PANELS), _WORLD_LAYOUT_VERSION
         elif self.target in (*ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE):
             version = _VERSION
+            if self._bound_to_event_claim():
+                expected = ('phone', 'activity_list', 'odyssey')
         if version is not None:
             self._installation = read_event_installation(self.window)
             if self._installation.version != version:

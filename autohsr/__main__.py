@@ -67,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
                       help="在已核实的巡星之礼页提交第 3–7 天中的一天，并核对奖励弹窗")
     parser.add_argument('--observe-daily-event-return', action='store_true',
                         help='仅配合 --daily-event-claim，等待手动关闭后核对同一日卡')
+    parser.add_argument('--navigate-daily-event', action='store_true',
+                        help='仅配合 --daily-event-claim，从前台手机或活动列表打开巡星之礼')
     from .daily_message_reply_cli import add_arguments as add_daily_message_reply_arguments
     add_daily_message_reply_arguments(mode)
     mode.add_argument("--reward-guide-stitch", type=Path, nargs='+', metavar='PNG',
@@ -168,6 +170,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error('实训合成开关仅用于 --run/--plan 的本次日常，不能用于仅补领奖或只接续周常。')
     if args.observe_daily_event_return and args.daily_event_claim is None:
         parser.error('--observe-daily-event-return 仅配合 --daily-event-claim。')
+    if args.navigate_daily_event and args.daily_event_claim is None:
+        parser.error('--navigate-daily-event 仅配合 --daily-event-claim。')
     if args.reward_guide_capture is not None:
         return run_capture(args, raw_args, parser)
     if args.reward_guide_notify is not None or args.reward_guide_notify_profile is not None:

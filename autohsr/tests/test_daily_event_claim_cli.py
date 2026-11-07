@@ -9,12 +9,18 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
+import cv2
+
 from autohsr import app, daily_event_claim_flow as flow
 from autohsr.__main__ import main
 from autohsr.config import Settings
 from autohsr.daily_observe import EVENT_CLAIM_OPERATION
 from autohsr.models import Token
 from autohsr.tests import test_daily_event_claim as cases
+from autohsr.tests.test_daily_event_navigation import activity_frame
+from autohsr.tests.test_du_team import fixture
+from autohsr.tests.test_workflow_navigation import world_hud
+from autohsr.vision import Vision
 
 
 class DailyEventClaimCliTests(unittest.TestCase):
@@ -33,12 +39,14 @@ class DailyEventClaimCliTests(unittest.TestCase):
         self.enterContext(patch.object(app, 'find_game', return_value=self.window))
         self.enterContext(patch.object(app, 'is_elevated', return_value=False))
         self.enterContext(patch.object(app, 'Vision', return_value=SimpleNamespace(
-            confidence=.65, read=lambda image, _: self.scene, _read_field=self.field)))
+            confidence=.65, read=lambda image, _: self.scene, _read_field=self.field,
+            template=Vision.__new__(Vision).template)))
         self.frames = iter(())
+        self.account = cases.ACCOUNT
 
     def capture(self):
         self.scene, amount = next(self.frames)
-        self.scene.tokens.append(cases.ACCOUNT)
+        self.scene.tokens.append(self.account)
         self.scene.geometry = self.fixture.geometry
         self.amount = amount
         return self.scene.image, self.fixture.geometry
@@ -66,6 +74,7 @@ class DailyEventClaimCliTests(unittest.TestCase):
                            + [(cases.popup(), 1) for _ in range(2)])
         code, report = self.invoke()
         claim = report['daily_event_claim']
+        self.assertNotIn('workflow_navigation', report)
         self.assertEqual((code, report['status']), (1, 'partial'), report['error'])
         self.assertEqual((claim['state'], claim['submission'], claim['popup'], claim['quantity']),
                          ('pending', 'sent', 'observed', 1))
@@ -79,6 +88,70 @@ class DailyEventClaimCliTests(unittest.TestCase):
         self.assertEqual((code, report['status']), (1, 'failed'))
         self.assertEqual({path: path.read_bytes() for path in receipts}, originals)
         self.fixture.native.SendInput.assert_called_once()
+
+    def queue_navigation(self, start, *, handoff_account=cases.ACCOUNT):
+        def frames():
+            size = (self.fixture.geometry.width, self.fixture.geometry.height)
+            if start == 'phone':
+                for _ in range(2):
+                    scene = fixture('phone_mail_icon')
+                    scene.image = cv2.resize(scene.image, size)
+                    yield scene, None
+            if start in ('phone', 'activity_list'):
+                for _ in range(2):
+                    yield activity_frame(size=size), None
+            for _ in range(2):
+                yield cases.day_cards({1, 2, 3}), None
+            self.account = handoff_account
+            for _ in range(2):
+                yield cases.day_cards({1, 2, 3}), None
+            for _ in range(2):
+                yield cases.popup(), 1
+
+        self.frames = frames()
+
+    def test_explicit_navigation_reaches_then_submits_only_the_selected_day(self):
+        self.queue_navigation('phone')
+        code, report = self.invoke('--navigate-daily-event')
+        navigation = report['workflow_navigation']
+        self.assertTrue(navigation['page_verified'], report['error'])
+        self.assertEqual([(row['action'], row['destination_page']) for row in navigation['actions']],
+                         [('open_journey_events', 'activity_list'), ('open_odyssey', 'odyssey')])
+        claim = report['daily_event_claim']
+        self.assertEqual((code, report['status'], claim['day'], claim['submission'], claim['popup']),
+                         (1, 'partial', 4, 'sent', 'observed'), report['error'])
+        self.assertEqual(self.fixture.native.SendInput.call_count, 3)
+
+    def test_explicit_navigation_on_open_page_sends_only_the_claim(self):
+        self.queue_navigation('odyssey')
+        _, report = self.invoke('--navigate-daily-event')
+        self.assertTrue(report['workflow_navigation']['page_verified'], report['error'])
+        self.assertEqual(report['workflow_navigation']['actions'], [])
+        self.assertEqual(report['daily_event_claim']['popup'], 'observed', report['error'])
+        self.fixture.native.SendInput.assert_called_once()
+
+    def test_changed_account_after_arrival_sends_no_claim_or_reservation(self):
+        self.queue_navigation('activity_list', handoff_account=cases.OTHER)
+        code, report = self.invoke('--navigate-daily-event')
+        self.assertTrue(report['workflow_navigation']['page_verified'], report['error'])
+        self.assertEqual((code, report['status'], report['daily_event_claim']['submission']),
+                         (1, 'partial', 'not_sent'))
+        self.assertIn('本次到页', report['error'])
+        self.assertFalse((self.fixture.root / 'runs' / 'daily-event-claim').exists())
+        self.fixture.native.SendInput.assert_called_once()
+
+    def test_navigation_does_not_open_phone_or_claim_from_world(self):
+        scene = world_hud()
+        scene.tokens.clear()
+        scene.image = cv2.resize(scene.image, (self.fixture.geometry.width, self.fixture.geometry.height))
+        self.frames = iter([(scene, None)])
+        code, report = self.invoke('--navigate-daily-event')
+        self.assertEqual((code, report['status'], report['daily_event_claim']['submission']),
+                         (1, 'failed', 'not_sent'))
+        self.assertIn('预期之外', report['error'])
+        self.assertEqual(report['workflow_navigation']['actions'], [])
+        self.assertFalse((self.fixture.root / 'runs' / 'daily-event-claim').exists())
+        self.fixture.native.SendInput.assert_not_called()
 
     def queue_manual_return(self, claimed, *, next_frames=()):
         self.frames = iter([(cases.day_cards({1, 2, 3}), None) for _ in range(2)]
@@ -411,9 +484,12 @@ class DailyEventClaimCliTests(unittest.TestCase):
         self.assertFalse((self.fixture.root / 'runs' / 'daily-event-claim').exists())
 
     def test_unrelated_and_duplicate_flags_fail_before_settings(self):
-        for extras in (['--new-battle-run'], ['--daily-event-claim=5'], ['--config=a', '--config=b']):
-            with self.subTest(extras=extras), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as stopped:
+        for args in (['--navigate-daily-event'], ['--daily-event-claim=4', '--new-battle-run'],
+                     ['--daily-event-claim=4', '--daily-event-claim=5'],
+                     ['--daily-event-claim=4', '--config=a', '--config=b'],
+                     ['--daily-event-claim=4', '--navigate-daily-event', '--navigate-daily-event']):
+            with self.subTest(args=args), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as stopped:
                 with patch('autohsr.daily_event_claim_cli.Settings.load') as load:
-                    main(['--daily-event-claim=4', *extras])
+                    main(args)
                 load.assert_not_called()
             self.assertEqual(stopped.exception.code, 2)
