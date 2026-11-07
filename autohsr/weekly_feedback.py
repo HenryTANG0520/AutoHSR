@@ -68,6 +68,8 @@ def currency_weekly_caption(report):
     if weekly.get('mode') != 'currency_wars':
         return None
     state = weekly.get('status')
+    if state == 'not_started':
+        return weekly.get('message') or '周常未开始。'
     if state in ('disabled', 'not_due', 'waiting'):
         return None
     verified = (report.get('status') == 'success' and report.get('report_saved') is True

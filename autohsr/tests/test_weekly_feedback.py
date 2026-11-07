@@ -65,6 +65,17 @@ class WeeklyFeedbackTests(unittest.TestCase):
         self.assertIn('原周常回执已核对',text)
         self.assertNotIn('积分及奖励已核实',text)
 
+    def test_daily_handoff_block_preserves_original_not_started_message(self):
+        data = currency_report(status='partial')
+        message = '所选日常仍有未核实项；周常未开始。'
+        data['weekly_plan'].update(status='not_started', daily_status='failed', daily_handoff='needs_review',
+                                   message=message, score_rewards_verified=False)
+        self.assertEqual(currency_weekly_caption(data), message)
+        text = plan_result(data)[1]
+        self.assertIn(message, text)
+        self.assertNotIn('周常待核对', text)
+        self.assertNotIn('开发对局', text)
+
     def test_exhausted_uses_frozen_limit_and_keeps_daily_success(self):
         data=currency_report(status='partial',daily_verified=True,stamina_spent=120)
         data['weekly_plan'].update(status='exhausted',maximum_runs=1,completed_runs=1,score_rewards_verified=False)
