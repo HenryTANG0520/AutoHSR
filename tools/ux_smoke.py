@@ -77,7 +77,7 @@ class FakeRunner:
             return report
         if self.kwargs.get('operation', '').startswith('currency_wars'):
             self.emit(dict(type='task', task='currency_wars', status='running', detail='离线只读模拟，无游戏输入'))
-            self.release.wait(5)
+            self.release.wait(15)
             report = dict(status='stopped' if self.stopped else 'partial', operation=self.kwargs['operation'],
                 results=[], currency_wars=dict(mode_text_visible=True, gameplay_enabled=False, completion_verified=False),
                 error='离线模拟：真实规则尚未核实', safe_next='人工采集教程后校准')
@@ -368,12 +368,33 @@ def main():
             ui._log('离线 UX 验收：此界面使用假后端，未运行游戏。')
             for key in ui.pages:
                 ui._show_page(key)
+                if PACKAGE == 'autohsr' and key == 'settings':
+                    ui.settings_shell.choose('game')
                 pump(root)
                 layout(root)
-                check('idle_primary_control_' + key, ui.start_button.winfo_ismapped() and
+                if PACKAGE == 'autohsr' and key in ('logs', 'settings'):
+                    check('idle_run_action_hidden_' + key, not ui.footer_start_button.winfo_ismapped()
+                          and ui.footer_start_button.instate(('disabled',)))
+                else:
+                    check('idle_primary_control_' + key, ui.start_button.winfo_ismapped()
+                          and (PACKAGE != 'autohsr' or ui.start_button.instate(('!disabled',))))
+                check('idle_running_controls_hidden_' + key,
                       not ui.pause_button.winfo_ismapped() and not ui.stop_button.winfo_ismapped())
                 ImageGrab.grab(window=root.winfo_id()).save(OUT / ('page-' + key + '.png'))
             if PACKAGE == 'autohsr':
+                ui._show_page('settings')
+                ui.settings_shell.choose('game')
+                ui.guide.tools_button.invoke()
+                ui.tools_shelf.select('workflow')
+                pump(root)
+                check('workflow_tool_uses_its_own_primary_action', ui.footer_start_button.winfo_ismapped()
+                      and ui.footer_start_button.instate(('!disabled',))
+                      and ui.footer_start_button.cget('text') == '新建草稿')
+                ui.settings_shell.back.invoke()
+                pump(root)
+                check('workflow_tool_return_restores_ordinary_settings_and_focus',
+                      ui.settings_shell.section == 'game' and root.focus_get() is ui.guide.tools_button
+                      and not ui.footer_start_button.winfo_ismapped() and ui.footer_start_button.instate(('disabled',)))
                 previous_tasks = {key: value.get() for key, value in ui.tasks.items()}
                 for value in ui.tasks.values():
                     value.set(False)
@@ -465,9 +486,13 @@ def main():
             if PACKAGE == 'autohsr':
                 # Independent mode must not depend on daily selections or invalid resource drafts.
                 ui._show_page('currency_wars')
-                check('currency_has_own_sidebar_entry_and_primary_action',
-                    '货币战争' in ui.nav_buttons['currency_wars'].cget('text') and
-                    ui.start_button.cget('text') == '只读识别当前画面' and
+                ui._show_page('home')
+                ui.guide.buttons['universe'].invoke()
+                pump(root)
+                check('shared_universe_tab_restores_currency_and_its_primary_action',
+                    ui.active_page == 'currency_wars' and ui.nav_buttons['currency_wars'] is ui.guide.buttons['universe']
+                    and ui.guide.buttons['universe'].cget('text') == '旷宇纷争' and ui.start_button.winfo_ismapped()
+                    and ui.start_button.cget('text') == '只读识别当前画面' and
                     str(ui.start_button.cget('state')) == 'normal' and str(ui.reward_button.cget('state')) == 'disabled')
                 ui.start_button.invoke()
                 pump(root, lambda: ui.runner is not None)
@@ -478,11 +503,26 @@ def main():
                 check('currency_busy_locks_controls', all(str(w.cget('state')) == 'disabled' for w in ui.setting_controls))
                 ui._pause()
                 pump(root, lambda: ui.paused)
+                root.focus_force()
+                ui.nav_buttons['currency_wars'].focus_set()
+                pump(root)
+                ui._show_page('settings')
+                ui.settings_shell.choose('game')
+                pump(root)
+                check('currency_run_keeps_stop_in_settings_without_run_action', ui.stop_button.winfo_ismapped()
+                      and ui.stop_button.instate(('!disabled',)) and not ui.footer_start_button.winfo_ismapped()
+                      and ui.footer_start_button.instate(('disabled',)))
                 ui._pause()
                 pump(root, lambda: not ui.paused)
-                ui._stop()
+                ui.stop_button.invoke()
                 pump(root, lambda: not ui.busy)
                 check('currency_stop_does_not_offer_daily_recovery', '已停止' in ui.currency_status.get() and '补领奖' not in ui.summary.get())
+                ui.settings_shell.back.invoke()
+                pump(root)
+                check('settings_return_restores_currency_action_and_focus', ui.active_page == 'currency_wars'
+                      and ui.action_page == 'currency_wars' and root.focus_get() is ui.nav_buttons['currency_wars']
+                      and ui.start_button.winfo_ismapped() and ui.start_button.instate(('!disabled',))
+                      and ui.start_button.cget('text') == '只读识别当前画面')
                 ui.start_button.invoke()
                 pump(root, lambda: ui.runner is not None)
                 FakeRunner.instances[-1].release.set()
@@ -603,9 +643,13 @@ def main():
                 check('du_optional_saving_and_rewards_default_off',not ui.du_save.get() and not ui.du_rewards.get())
                 check('du_daily_interlude_default_off',not ui.du_daily.get())
                 check('du_defaults_to_periodic_named_preset',ui.du_mode.get()=='周期演算' and ui.du_team.get()=='哈哈哈哈')
-                check('differential_universe_has_parallel_sidebar_and_action',
-                    '差分宇宙' in ui.nav_buttons['differential_universe'].cget('text') and
-                    ui.start_button.cget('text') == '开始演算 · 3 局' and
+                ui._show_page('home')
+                ui.guide.buttons['universe'].invoke()
+                pump(root)
+                check('shared_universe_tab_restores_differential_and_its_primary_action',
+                    ui.active_page == 'differential_universe'
+                    and ui.nav_buttons['differential_universe'] is ui.guide.buttons['universe']
+                    and ui.start_button.winfo_ismapped() and ui.start_button.cget('text') == '开始演算 · 3 局' and
                     str(ui.start_button.cget('state')) == 'normal' and str(ui.reward_button.cget('state')) == 'disabled')
                 ui.differential_universe_runs.set('10')
                 ui.du_save.set(True)
