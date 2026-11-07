@@ -44,6 +44,8 @@ def main(argv: list[str] | None = None) -> int:
     from .game_update_status import CHANNELS as GAME_UPDATE_CHANNELS
     mode.add_argument("--game-update-check", choices=GAME_UPDATE_CHANNELS,
                       help="只读核对本地星铁版本与官方更新、预下载包清单")
+    mode.add_argument("--app-update-check", action="store_true", help="核对 AutoHSR 的 GitHub 正式版本")
+    mode.add_argument("--app-update-stage", type=Path, metavar="ZIP", help="校验并暂存官方 Windows 便携包")
     mode.add_argument("--currency-wars-replay", type=Path, help="离线回放 .sample.json；不访问游戏或加载每日配置")
     mode.add_argument("--currency-wars-check", action="store_true", help="货币战争只读识别与证据保存；自动玩法尚未开放")
     mode.add_argument("--currency-wars-prepare", action="store_true", help="启动或复用游戏，进入已有登录及主界面；不开始对局")
@@ -187,6 +189,10 @@ def main(argv: list[str] | None = None) -> int:
         from .game_update_status import run as run_game_update_check
 
         return run_game_update_check(args, raw_args, parser)
+    if args.app_update_check or args.app_update_stage is not None:
+        from .app_update import run as run_app_update
+
+        return run_app_update(args, raw_args, parser)
     if args.build_target_output is not None:
         parser.error('--build-target-output 仅配合 --compose-build-target。')
     if args.reward_guide_capture is not None:
