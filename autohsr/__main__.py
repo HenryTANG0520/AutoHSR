@@ -99,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
                       help='离线合并已发布的培养草稿回执，须显式指定 --stamina')
     parser.add_argument('--build-target-output', type=Path, metavar='NEW_JSON',
                         help='配合 --compose-build-target 保存新体力计划，省略时只预览')
-    mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
+    mode.add_argument("--launch", action="store_true", help="启动游戏程序，权限受限时交接已核实的官方启动器")
     mode.add_argument("--enter-profile", action="store_true", help="进入游戏并核对当前方案账号")
     mode.add_argument("--run", action="store_true", help="按配置执行每日任务；F10 紧急停止")
     mode.add_argument('--assignments-only', action='store_true', help='独立核对并领取持续委托奖励')
@@ -591,7 +591,7 @@ def main(argv: list[str] | None = None) -> int:
             print(_json(inspect_game(settings)))
             return 0
         if args.launch:
-            print(launch_game(settings))
+            print(launch_game(settings, allow_official_launcher=True))
             return 0
         def emit(event: dict[str, Any]) -> None:
             kind = event.get("type", event.get("event", event.get("kind", "log")))

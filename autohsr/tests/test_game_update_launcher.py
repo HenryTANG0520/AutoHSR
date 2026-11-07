@@ -1,3 +1,5 @@
+from contextlib import redirect_stdout
+import io
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -6,8 +8,12 @@ from unittest.mock import Mock, patch
 from uuid import uuid4
 
 from autohsr import game_update_launcher as launcher, workflow_lease as lease
+from autohsr.__main__ import main
+from autohsr.app import launch_game
+from autohsr.config import Settings
 from autohsr.models import AutomationError
 from autohsr.redemption_server import HYP_KEYS
+from autohsr.windows import GameLaunchPermissionError
 
 
 class LauncherOfferTests(TestCase):
@@ -68,6 +74,37 @@ class LauncherOfferTests(TestCase):
         self.assertEqual(launcher.verify_installation(offer)['status'], 'partial')
         self.write_version('4.7.0')
         self.assertEqual(launcher.verify_installation(offer)['status'], 'success')
+
+    def test_explicit_launch_hands_off_only_after_elevation_denial(self):
+        settings = Settings(game_path=str(self.game))
+        config = self.root / 'autohsr.json'
+        settings.save(config)
+        output = io.StringIO()
+        with patch('autohsr.windows.find_game', side_effect=AutomationError('absent')), \
+                patch('autohsr.windows.subprocess.Popen', side_effect=OSError(0, 'test', None, 740)), \
+                patch('autohsr.workflow_lease.require_workflow_access'):
+            with self.assertRaises(GameLaunchPermissionError):
+                launch_game(settings)
+            self.open.assert_not_called()
+            with redirect_stdout(output):
+                self.assertEqual(main(['--launch', '--config', str(config)]), 0)
+        self.assertIn('请在启动器点击「开始游戏」', output.getvalue())
+        self.open.assert_called_once_with(self.launcher, 'cn')
+        self.verify.assert_called_once_with(self.launcher, 'cn')
+        self.feed.assert_not_called()
+
+    def test_manual_fallback_rejects_a_changed_or_unverified_launcher(self):
+        settings = Settings(game_path=str(self.game))
+        failure = GameLaunchPermissionError('elevation required')
+        with patch('autohsr.app.launch', side_effect=failure), patch('autohsr.workflow_lease.require_workflow_access'):
+            self.verify.side_effect = lambda *_: self.write_version('4.7.0')
+            with self.assertRaisesRegex(AutomationError, '来源已变化'):
+                launch_game(settings, allow_official_launcher=True)
+            self.verify.side_effect = AutomationError('signature unverified')
+            with self.assertRaisesRegex(AutomationError, 'signature unverified'):
+                launch_game(settings, allow_official_launcher=True)
+        self.open.assert_not_called()
+        self.feed.assert_not_called()
 
     def test_changed_release_or_launcher_file_prevents_open(self):
         offer = self.offer()

@@ -120,6 +120,19 @@ def _open(launcher, channel):
         raise AutomationError('Windows 未能打开官方启动器。')
 
 
+def open_installed_launcher(game_path):
+    """Select the installed game's official launcher page without an update offer."""
+    channel = resolve(game_path).server
+    if channel not in _GAMES:
+        raise AutomationError('无法核实星铁安装的官方渠道。')
+    source = _source(game_path, channel)
+    _verify_publisher(source.launcher, channel)
+    with native_idle_lease():
+        if _source(game_path, channel) != source:
+            raise InstallationSourceChanged('星铁安装或官方启动器来源已变化。')
+        _open(source.launcher, channel)
+
+
 def handoff(offer, *, cancelled=lambda: False):
     """Send one shell request after rechecking the offer and source."""
     path = offer.source.client['executable']

@@ -243,6 +243,8 @@ P178 的 18.138125、18.438250 秒前帧与 19.205125、19.505188 秒后帧通�
 
 固定 4.6.0 数据中保留了要求拍照一次、奖励 100 活跃度的条目。当前账号当日任务可通过实训卡回执中的 `photo` 核对。现有脱敏手机图可见右侧相机入口，仍缺同一游戏日内从普通相机快门回到同一卡的完成画面。玩法中的「拍摄结束」及带笑点、评价的画面属于独立玩法。[三月七拍照流程](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/daily/photo.py) · [脱敏手机帧](autohsr/tests/fixtures/du_runtime/phone_mail_icon.png)
 
+三月七的取景标记是圆形快门图，预览标记只含「编辑」。后续需要独立核对取景控件、同一普通相机预览的操作区，以及实训卡反馈。单独出现任一标记时，保持待核对。[上游取景标记](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/images/screen/camera.png) · [上游预览标记](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/images/screen/photo_preview.png)
+
 现场应先核实同一张「拍照1次」、0/1、+100 的待完成卡，再从普通手机相机保留入口、取景及快门提示。经本次授权只操作一次快门，保留预览和返回操作区。回同卡后留两张 1/1 或可领取画面。未核实回页时保留待核对。照片编辑、保存、分享、活动摄影和任务点数领取各属独立操作。
 
 ### 登录奖励与合成

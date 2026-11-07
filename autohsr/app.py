@@ -21,18 +21,29 @@ from .du_points_followup import FollowupWeekExpired, require_followup_week
 from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, RunReport, Scene, Stopped, TaskResult, Token, normalize
 from .vision import Vision, save_scene,helper_overlay
 from .ocr_isolation import IsolatedVision
-from .windows import find_game, is_admin, is_elevated, launch
+from .windows import GameLaunchPermissionError, find_game, is_admin, is_elevated, launch
 from .storage import file_revision, hold_read_sources, replace_file
 from .task_workflow import (BACKGROUND_NAVIGATION_PAGES, GAME_CAPTURE_TASK, GAME_VISION_TASKS, PAGE_TASK, TEMPLATE_TASKS,
                             WORKFLOW_FOREGROUND_TASKS, WORKFLOW_NAVIGATION_TARGETS, WORKFLOW_SCREEN_TASKS,
                             WORLD_WORKFLOW_PAGE)
 
 
-def launch_game(settings: Settings) -> str:
+def launch_game(settings: Settings, *, allow_official_launcher=False) -> str:
     from .workflow_lease import require_workflow_access
     require_workflow_access()
     settings.validate("launch")
-    return launch(settings.game_path)
+    try:
+        return launch(settings.game_path)
+    except GameLaunchPermissionError as error:
+        if not allow_official_launcher:
+            raise
+        from .game_update_launcher import open_installed_launcher
+
+        try:
+            open_installed_launcher(settings.game_path)
+        except AutomationError as handoff_error:
+            raise AutomationError(f'{error} 官方启动器交接失败。{handoff_error}') from handoff_error
+    return '游戏需要管理员权限，已请求官方启动器显示星铁页面。请在启动器点击「开始游戏」。'
 
 
 def inspect_game(settings: Settings) -> dict:

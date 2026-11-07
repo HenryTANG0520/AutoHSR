@@ -149,6 +149,10 @@ def find_game(expected_path: str | None = None) -> GameWindow:
     return GameWindow(max(matches)[1])
 
 
+class GameLaunchPermissionError(AutomationError):
+    """Windows requires elevation for the selected game executable."""
+
+
 def launch(path: str) -> str:
     executable = Path(path)
     if not executable.is_file() or executable.name.casefold() != "starrail.exe":
@@ -165,7 +169,7 @@ def launch(path: str) -> str:
         subprocess.Popen([str(executable)], cwd=str(executable.parent))
     except OSError as error:
         if error.winerror == 740:
-            raise AutomationError("游戏需要管理员权限，请以管理员身份启动 AutoHSR 后重试。") from error
+            raise GameLaunchPermissionError("游戏需要管理员权限，请以管理员身份启动 AutoHSR 后重试。") from error
         raise AutomationError(f"启动游戏失败：{error}") from error
     return "启动请求已发送。窗口出现后，请完成登录并检测窗口，再开始每日任务。"
 

@@ -1508,7 +1508,7 @@ class AutoHSRWindow:
                     data = inspect_game(settings)
                     self.emit({"type": "cancelled"} if self.stop_requested.is_set() else {"type": "checked", "data": data})
                 else:
-                    self.emit({"type": "launched", "message": launch_game(settings)})
+                    self.emit({"type": "launched", "message": launch_game(settings, allow_official_launcher=True)})
             except Exception as exc:
                 self.emit({"type": "operation_error", "message": str(exc),
                            "input_error_field": exc.field if isinstance(exc, SettingsError) else ""})
@@ -2394,7 +2394,9 @@ class AutoHSRWindow:
                 elif kind == "launched":
                     self._set_busy(False)
                     self.status.set("● 启动请求已发送")
-                    self._log(event.get("message") or "启动请求已发送。请完成登录。")
+                    message = event.get("message") or "启动请求已发送。请完成登录。"
+                    self.readiness.set(message)
+                    self._log(message)
                 elif kind == "admin_launch_result":
                     self._set_busy(False)
                     login = event.get("login", False)

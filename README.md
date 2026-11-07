@@ -81,6 +81,7 @@ AutoHSR默认使用本地Python流程、OCR、图像规则和ONNX检测模型决
 | [Windows 托盘驻留](docs/schedules.md#windows-托盘驻留)与[登录自启](docs/schedules.md#windows-登录自启) | 可保存关闭驻留偏好，并为当前 Windows 账户启用登录启动。可逐条确认随登录启用默认配置中的定时计划 | Windows 任务定义及隔离桌面流程已核对。真实登录触发、无人值守及 Explorer 交互待验收 |
 | [任务完成后的操作](docs/schedules.md#任务完成后的操作) | 手动日常和每条定时计划可分别配置整批成功后的提示音、退出本次游戏与独立回执 | 隔离桌面与定时回执测试已核对。真实星铁退出、声音和无人值守组合待验收 |
 | [配置方案](docs/workflow-account-continuity.md#本机配置方案) | 在设置的游戏连接页复制、切换配置，并可绑定当前方案的账号。每套方案独立保存设置和定时计划 | 绑定后运行游戏任务前双帧核对 UID。「进入游戏」与日常可选[自动进入已有会话](docs/workflow-account-continuity.md#自动进入已有会话) |
+| [手动启动游戏](docs/game-update.md#手动启动时交接官方启动器) | 设置 → 游戏连接中的普通「进入游戏」或 CLI `--launch`。Windows 要求提升权限时，核对安装渠道和签名后打开官方启动器的星铁页 | 已实机核对国服星铁页。打开后由用户点击「开始游戏」 |
 | [任务流](docs/task-workflows.md)与[应用内定时](docs/schedules.md) | 设置 → 工具中可编辑前序结果、实时图像及实时文字条件，并在分支和循环中重采。可采集模板、切换已知日常页面、迁移受支持的三月七 YAML 并导入导出 ZIP 素材包。定时可预览单次预算与未来五次北京时间 | 只在当前应用运行期间计时。游戏图文、导航、组合和无人值守各自验收 |
 | [Windows 后台页面导航](docs/task-workflows.md#windows-后台页面导航试验) | 手动任务流可对手机与指南选定页签显式使用窗口取帧和消息输入 | 隔离 Windows 测试通过，真实星铁反馈和其他动作待校准 |
 | [截图与识别](docs/ui-integration-checklist-2026-11-06.md#桌面操作与-cli-边界) | 设置 → 工具中截取当前游戏窗口或打开本地图片，框选后读取坐标、识别文字及另存 PNG。[任务流](docs/task-workflows.md#导出游戏截图选区)可独立导出已登录前台游戏的指定选区 | 本地文件、隐藏桌面及任务流假窗口验收通过，真实游戏窗口的截图入口待实机复核 |
@@ -528,7 +529,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 ```powershell
 # 检测窗口、客户端版本和OCR，不执行任务，但会聚焦游戏
 .\.venv\Scripts\python.exe -m autohsr --check
-# 只启动
+# 启动游戏，权限受限时打开官方启动器
 .\.venv\Scripts\python.exe -m autohsr --launch
 # 已打开差分主页：只领拟合／稳态／画廊已有奖励，不开始演算
 .\.venv\Scripts\python.exe -m autohsr --du-rewards-only
