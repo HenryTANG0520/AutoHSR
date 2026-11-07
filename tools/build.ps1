@@ -1,11 +1,12 @@
 [CmdletBinding()]
-param([switch]$UpdaterOnly, [string]$PythonPath)
+param([switch]$UpdaterOnly, [switch]$StageOnly, [string]$PythonPath)
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $taskVenvPython = Join-Path $projectRoot '.venv\Scripts\python.exe'
+if ($UpdaterOnly -and $StageOnly) { throw 'Choose one isolated build mode.' }
 if ($PythonPath) {
-    if (-not $UpdaterOnly) { throw 'PythonPath is only for an isolated updater build.' }
+    if (-not ($UpdaterOnly -or $StageOnly)) { throw 'PythonPath is only for an isolated build.' }
     $taskVenvPython = [IO.Path]::GetFullPath($PythonPath)
 }
 $taskOutputDirectory = [IO.Path]::GetFullPath((Join-Path $projectRoot 'dist\AutoHSR'))
@@ -53,7 +54,8 @@ try {
         Write-Host "Independent updater verified: $(Join-Path $taskUpdaterOnlyOutput 'AutoHSRUpdater.exe')"
         return
     }
-    foreach ($taskSavedName in @('config.json', 'runs')) {
+    $taskDataNames = if ($StageOnly) { @() } else { @('config.json', 'runs') }
+    foreach ($taskSavedName in $taskDataNames) {
         $taskSavedPath = Join-Path $taskOutputDirectory $taskSavedName
         if (Test-Path -LiteralPath $taskSavedPath) {
             if (-not $taskBackupDirectory) {
@@ -82,10 +84,13 @@ try {
         Copy-Item -LiteralPath $taskAssetFile.FullName -Destination $taskAssetTarget -Force
     }
     # Build elsewhere: Explorer or a process can keep the output directory itself open.
+    $taskMainWork = Join-Path $taskStagingRoot 'main-work'
+    $taskLicense = Join-Path $projectRoot 'LICENSE'
     & $taskVenvPython -m PyInstaller --noconfirm --onedir --windowed --name AutoHSR --distpath $taskStagingRoot `
+        --workpath $taskMainWork --specpath $taskStagingRoot `
         --icon (Join-Path $taskRuntimeAssets 'ui\autohsr.ico') `
         --collect-all rapidocr_onnxruntime --collect-all onnxruntime `
-        --add-data "$taskRuntimeAssets;assets" --add-data 'LICENSE;.' launcher.py
+        --add-data "$taskRuntimeAssets;assets" --add-data "$taskLicense;." launcher.py
     if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed. See output above.' }
     $taskInternalDirectory = Join-Path $taskStagingOutput '_internal'
     Build-IndependentUpdater $taskInternalDirectory
@@ -96,6 +101,10 @@ try {
     if ($LASTEXITCODE -ne 0 -or $taskSourceRevision -notmatch '^[0-9a-f]{40}$') { throw 'Cannot resolve the source revision for packaged documentation.' }
     & $taskVenvPython (Join-Path $PSScriptRoot 'stage_release_metadata.py') $taskStagingOutput $taskSourceRevision
     if ($LASTEXITCODE -ne 0) { throw 'Release documentation and license staging failed. See output above.' }
+    if ($StageOnly) {
+        Write-Host "Isolated package staged: $taskStagingOutput"
+        return
+    }
     New-Item -ItemType Directory -Path $taskOutputDirectory -Force | Out-Null
     $taskStagingPrefix = $taskStagingOutput.TrimEnd('\') + '\'
     $taskMainExecutable = Join-Path $taskStagingOutput 'AutoHSR.exe'

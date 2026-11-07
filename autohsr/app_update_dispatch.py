@@ -11,7 +11,8 @@ from uuid import uuid4
 
 from . import __version__
 from .app_update import UpdateError, _sha256_stream, compare_release, official_release
-from .app_update_handoff import PROTOCOL, WORKER, installed_version, process_environment, publish, read_job
+from .app_update_handoff import (PROTOCOL, WORKER, installed_version, process_environment, publish, read_job,
+                                 read_record, startup_receipt)
 from .app_update_install import _TRANSACTION, _id, _runtime
 from .config import RESOURCE_ROOT, ROOT
 from .storage import hold_read_sources
@@ -73,17 +74,40 @@ def begin(root, *, restart=True):
     return dict(status='queued', job=job.name, version=version, release=release.tag[1:])
 
 
-def probe(path):
-    job, root, release, _, _ = read_job(path)
+def _updated_installation(path):
+    job, root, release, restart, _ = read_job(path)
     if (not getattr(sys, 'frozen', False) or root != ROOT or RESOURCE_ROOT != root / '_internal'
             or __version__ != release.tag[1:] or installed_version(root) != __version__):
         raise UpdateError('new_runtime_unverified')
     _runtime(root)
+    return job, release, restart
+
+
+def probe(path):
+    job, release, _ = _updated_installation(path)
     # Verify that the GUI and Python/Tk runtime import from the new installation.
     from . import gui
 
     gui.tk.Tcl()
-    publish(job, 'probe.json', dict(protocol=PROTOCOL, job=job.name, version=__version__))
+    publish(job, 'probe.json', startup_receipt(job, release))
+
+
+def desktop_ready_callback(path):
+    job, release, restart = _updated_installation(path)
+    expected = startup_receipt(job, release)
+    receipt = read_record(job / 'probe.json')
+    if (not restart or os.path.lexists(job / 'desktop.json')
+            or type(receipt.get('protocol')) is not int or receipt != expected):
+        raise UpdateError('new_desktop_unverified')
+
+    def report(mode):
+        try:
+            publish(job, 'desktop.json', dict(expected, mode=mode))
+        except OSError:
+            # The desktop is usable even if the worker cannot collect proof.
+            pass
+
+    return report
 
 
 def run(args, raw_args, parser):

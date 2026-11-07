@@ -38,6 +38,6 @@ python -m autohsr --app-update-handoff 'D:\Apps\AutoHSR'
 
 更新器下载并校验 ZIP 后，最多等目标助手自行退出 120 秒。它替换运行文件，再从新安装启动探针，核对版本并加载 GUI 模块和 Tcl 运行时。探针失败会恢复旧运行文件，确认通过后默认尝试启动桌面。可用 `--app-update-no-restart` 保留探针检查并跳过桌面启动。
 
-交接命令返回本次任务编号。进度证据保存在安装目录的 `runs/app-update/<编号>/`。结束后查看 `result.json`，其中 `runtime_verified` 表示启动探针通过，`desktop_restart: launched` 表示已创建桌面进程。新版仍需人工核对界面，退出后可执行验收并释放旧运行文件。打包版的任务目录可在更新器退出后清理其临时副本。
+交接命令返回本次任务编号。进度证据保存在安装目录的 `runs/app-update/<编号>/`。结束后查看 `result.json`，其中 `runtime_verified` 表示启动探针通过，`desktop_restart: ready` 表示已收到本次新版的界面就绪信号。普通启动在主窗口映射后报告，管理员模式沿用现有启动通道的就绪信号。进程提前退出、回执不符或 40 秒内未就绪时，结果为部分完成并保留旧运行文件。核对后可退出新版，再执行验收或回滚。打包版的任务目录可在更新器退出后清理其临时副本。
 
 三月七同样在确认新版后交给独立更新器。AutoHSR 目前通过 CLI 发起交接，桌面操作入口待接入。[三月七固定更新入口](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/version/app_update.py)

@@ -52,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--app-update-accept", type=Path, metavar="DIR", help="确认保留当前运行文件并清理更新备份")
     mode.add_argument("--app-update-handoff", type=Path, metavar="DIR", help="交给独立更新器下载、安装并核验新版")
     mode.add_argument("--app-update-probe", type=Path, help=argparse.SUPPRESS)
+    mode.add_argument("--app-update-desktop", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--app-update-no-restart", action="store_true", help="更新探针通过后不重开桌面")
     parser.add_argument("--app-update-target", type=Path, metavar="DIR", help="指定助手便携版安装目录")
     parser.add_argument("--app-update-checksum", type=Path, metavar="SHA256", help="离线安装时指定发布方的校验文件")
@@ -208,6 +209,17 @@ def main(argv: list[str] | None = None) -> int:
         from .app_update_dispatch import run as run_app_update_dispatch
 
         return run_app_update_dispatch(args, raw_args, parser)
+    desktop_ready = None
+    if args.app_update_desktop is not None:
+        if [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')] != ['--app-update-desktop']:
+            parser.error('新版桌面核验须独立运行。')
+        from .app_update import UpdateError
+        from .app_update_dispatch import desktop_ready_callback
+
+        try:
+            desktop_ready = desktop_ready_callback(args.app_update_desktop)
+        except (OSError, UpdateError):
+            return 1
     if (args.app_update_target is not None or args.app_update_checksum is not None) and args.app_update_install is None:
         parser.error('助手更新目标与校验文件仅配合 --app-update-install。')
     if any(value is not None for value in (args.app_update_install, args.app_update_status,
@@ -442,6 +454,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise AdminLaunchError("管理员启动任务未获得管理员权限，未打开任务界面。")
             if not args.admin_task and not args.no_admin_launch and args.config.resolve() == CONFIG_PATH.resolve():
                 if handoff():
+                    if desktop_ready is not None:
+                        desktop_ready('admin_task')
                     return 0
         except Exception as error:
             # A failed or unknown handoff must not open a second controller.
@@ -456,7 +470,10 @@ def main(argv: list[str] | None = None) -> int:
                 root.destroy()
             return 2
         from .gui import main as gui_main
-        gui_main(args.config, admin_task=True) if args.admin_task else gui_main(args.config)
+        if desktop_ready is not None:
+            gui_main(args.config, on_ready=desktop_ready)
+        else:
+            gui_main(args.config, admin_task=True) if args.admin_task else gui_main(args.config)
         return 0
     try:
         require_config = explicit_config and any((args.run, args.plan, args.launch, standalone_daily,

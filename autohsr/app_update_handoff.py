@@ -18,6 +18,7 @@ PROTOCOL = 1
 WORKER = 'AutoHSRUpdater.exe'
 _JOB_ID = re.compile(r'[0-9a-f]{32}')
 _WAIT_SECONDS = 120
+_DESKTOP_WAIT_SECONDS = 40
 
 
 def publish(job, name, record):
@@ -111,13 +112,44 @@ def _probe(root, job, release):
         receipt = read_record(job / 'probe.json')
     except (OSError, UpdateError, subprocess.TimeoutExpired):
         raise UpdateError('new_runtime_unverified') from None
-    if result.returncode != 0 or receipt != {'protocol': PROTOCOL, 'job': job.name, 'version': release.tag[1:]}:
+    if result.returncode != 0 or type(receipt.get('protocol')) is not int or receipt != startup_receipt(job, release):
         raise UpdateError('new_runtime_unverified')
+
+
+def startup_receipt(job, release):
+    return dict(protocol=PROTOCOL, job=job.name, version=release.tag[1:])
+
+
+def _desktop(root, job, release):
+    try:
+        child = subprocess.Popen([str(root / _EXE), '--app-update-desktop', str(job)], cwd=root,
+                                 env=process_environment(), stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        return 'failed', None
+    expected = startup_receipt(job, release)
+    ready = job / 'desktop.json'
+    deadline = monotonic() + _DESKTOP_WAIT_SECONDS
+    while True:
+        if os.path.lexists(ready):
+            try:
+                receipt = read_record(ready)
+            except (OSError, UpdateError):
+                return 'unverified', None
+            mode = receipt.pop('mode', None)
+            if type(receipt.get('protocol')) is int and receipt == expected and mode in ('window', 'admin_task'):
+                return 'ready', mode
+            return 'unverified', None
+        if child.poll() is not None:
+            return 'exited_before_ready', None
+        if monotonic() >= deadline:
+            return 'timeout', None
+        sleep(.15)
 
 
 def _apply(job, root, release, restart, current_version):
     archive = job / release.filename
-    if os.path.lexists(job / 'result.json') or os.path.lexists(job / 'probe.json'):
+    if any(os.path.lexists(job / name) for name in ('result.json', 'probe.json', 'desktop.json')):
         raise UpdateError('update_handoff_already_used')
     if os.path.lexists(root / _TRANSACTION):
         raise UpdateError('installation_previous_transaction')
@@ -151,13 +183,12 @@ def _apply(job, root, release, restart, current_version):
     report = dict(status='success', installation='installed', version=release.tag[1:],
                   runtime_verified=True, backup_retained=True, desktop_restart='not_requested')
     if restart:
-        try:
-            subprocess.Popen([str(root / _EXE)], cwd=root, env=process_environment(),
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except OSError:
-            report.update(status='partial', desktop_restart='failed')
+        state, mode = _desktop(root, job, release)
+        report['desktop_restart'] = state
+        if state == 'ready':
+            report['desktop_ready_via'] = mode
         else:
-            report['desktop_restart'] = 'launched'
+            report['status'] = 'partial'
     return report
 
 

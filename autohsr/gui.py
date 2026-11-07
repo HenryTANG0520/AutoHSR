@@ -2408,14 +2408,16 @@ class AutoHSRWindow:
             self.root.destroy()
 
 
-def main(config_path: Path = CONFIG_PATH, *, admin_task: bool = False) -> None:
+def main(config_path: Path = CONFIG_PATH, *, admin_task: bool = False, on_ready=None) -> None:
     # Establish DPI awareness before Tk creates a window.
     from . import windows  # noqa: F401
     from contextlib import nullcontext
-    from .admin_launch import TaskSession
+    from .admin_launch import TaskSession, when_window_ready
     with TaskSession() if admin_task else nullcontext() as session:
         root = tk.Tk()
         ui = AutoHSRWindow(root, config_path)
         if session is not None:
             session.attach(root, lambda: ui._restore() if not ui.busy or ui.paused else None)
+        if on_ready is not None:
+            when_window_ready(root, lambda: on_ready('window'))
         root.mainloop()

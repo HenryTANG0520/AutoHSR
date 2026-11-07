@@ -278,6 +278,16 @@ def _elevated_manage(spec: LaunchSpec, operation: str) -> None:
             ole.CoUninitialize()
 
 
+def when_window_ready(root, callback):
+    def check():
+        if root.winfo_viewable():
+            callback()
+        else:
+            root.after(50, check)
+
+    root.after_idle(check)
+
+
 class TaskSession:
     """Named events live only while the GUI (or its waiting launcher) is alive."""
     def __init__(self, spec: LaunchSpec | None = None):
@@ -335,7 +345,7 @@ class TaskSession:
             if self.kernel.WaitForSingleObject(self.handles[1], 0) == 0:
                 restore()
             root.after(300, poll)
-        root.after(0, lambda: self.kernel.SetEvent(self.handles[0]))
+        when_window_ready(root, lambda: self.kernel.SetEvent(self.handles[0]))
         root.after(300, poll)
 
 
