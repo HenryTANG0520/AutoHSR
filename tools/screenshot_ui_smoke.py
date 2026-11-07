@@ -105,6 +105,36 @@ class ScreenshotSmoke(unittest.TestCase):
         self.assertIs(self.panel.model.image, before)
         self.assertIn('已停止', self.panel.feedback.cget('text'))
 
+    def test_second_capture_discards_the_previous_export_selection(self):
+        first = Image.new('RGB', (1440, 810), 'navy')
+        second = Image.new('RGB', (1920, 1080), 'black')
+        second.putpixel((123, 77), (218, 54, 12))
+        with TemporaryDirectory() as temporary:
+            first_path, second_path = (Path(temporary) / name for name in ('first.png', 'second.png'))
+            with patch('autohsr.desktop_screenshot.screenshot_tool.capture_game', side_effect=(first, second)):
+                self.panel.capture()
+                self.host.complete()
+                self.panel._select((11, 22, 51, 62))
+                with patch('autohsr.desktop_screenshot.filedialog.asksaveasfilename', return_value=str(first_path)):
+                    self.panel.save()
+                self.host.complete()
+                first_bytes = first_path.read_bytes()
+
+                self.panel.capture()
+                self.host.complete()
+            self.assertIs(self.panel.model.image, second)
+            self.assertIsNone(self.panel.model.box)
+            with patch('autohsr.desktop_screenshot.filedialog.asksaveasfilename', return_value=str(second_path)) as dialog:
+                self.panel.save()
+                dialog.assert_not_called()
+                self.panel._select((123, 77, 153, 117))
+                self.panel.save()
+            self.host.complete()
+            self.assertEqual(first_path.read_bytes(), first_bytes)
+            with Image.open(second_path) as exported:
+                self.assertEqual(exported.size, (30, 40))
+                self.assertEqual(exported.getpixel((0, 0)), (218, 54, 12))
+
     def test_replaced_panel_or_inactive_tool_cannot_begin_capture(self):
         self.host.screenshot_panel = build_screenshot_panel(self.host.root, self.host)
         self.panel.capture()

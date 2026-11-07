@@ -153,6 +153,20 @@ class RewardGuideCaptureTests(unittest.TestCase):
             self.assertEqual(image.info, {})
             np.testing.assert_array_equal(np.asarray(image)[:, :, ::-1], second.image[342:945, 378:1404])
 
+    def test_second_explicit_export_uses_its_own_verified_pair_and_destination(self):
+        first_target = self.target
+        first, _, _ = self.cli(_pair())
+        first_bytes = first_target.read_bytes()
+        self.target = self.root / 'second-capture.png'
+        current_pair = [_frame('viewport-7014.png', OTHER), _frame('viewport-7026.png', OTHER)]
+        current_pair[1].image[500:504, 650:654] = (2, 41, 250)
+        second, window, _ = self.cli(current_pair)
+        self.assertEqual((first['status'], second['status']), ('ok', 'ok'))
+        self.assertEqual(window.capture.call_count, 2)
+        self.assertEqual(first_target.read_bytes(), first_bytes)
+        with Image.open(self.target) as exported:
+            np.testing.assert_array_equal(np.asarray(exported)[:, :, ::-1], current_pair[1].image[342:945, 378:1404])
+
     def test_invalid_target_and_busy_or_background_never_capture(self):
         self.target.write_bytes(b'original')
         result, window, find = self.cli(_pair(), code=1)

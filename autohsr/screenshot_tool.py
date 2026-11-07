@@ -138,19 +138,20 @@ def capture_game(settings, cancel, *, foreground_only=False):
             current()
             if foreground_only:
                 geometry = _foreground_geometry(window, current)
-                window_key = window.current_window_key()
-                if not window_key or window.guard(geometry) != geometry:
-                    raise AutomationError('游戏窗口来源无法核实，请重新截取。')
             else:
                 window.focus(checkpoint=current)
                 current()
                 geometry = window.guard()
+            _checkpoint(cancel)
+            window_key = window.current_window_key()
+            if not window_key or window.guard(geometry) != geometry:
+                raise AutomationError('游戏窗口来源无法核实，请重新截取。')
             _check_size(geometry.width, geometry.height)
             current()
             bgr, captured = window.capture()
             if captured != geometry:
                 raise AutomationError('游戏客户区已变化，请重新截取。')
-            if foreground_only and (window.current_window_key() != window_key or window.guard(geometry) != geometry):
+            if window.current_window_key() != window_key or window.guard(geometry) != geometry:
                 raise AutomationError('游戏窗口来源已变化，请重新截取。')
             current()
         finally:

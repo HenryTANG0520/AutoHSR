@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 from PIL import Image
 
-from autohsr import workflow_lease
+from autohsr import windows, workflow_lease
 from autohsr.config import Settings
 from autohsr.models import AutomationError, Stopped
 from autohsr.screenshot_tool import (ScreenshotError, capture_game, open_image, read_selection, save_selection,
@@ -63,6 +63,7 @@ class ScreenshotToolTests(TestCase):
         geometry = SimpleNamespace(width=4, height=3)
         window = Mock()
         window.emergency_pressed.return_value = False
+        window.current_window_key.return_value = 'same-window'
         window.guard.return_value = geometry
         window.capture.return_value = np.full((3, 4, 3), (20, 60, 100), dtype=np.uint8), geometry
         kernel = Mock()
@@ -77,7 +78,7 @@ class ScreenshotToolTests(TestCase):
         kernel.CloseHandle.assert_called_once_with(17)
         find.assert_called_once()
         self.assertEqual([call[0] for call in window.mock_calls if call[0] != 'emergency_pressed'],
-                         ['focus', 'guard', 'capture'])
+                         ['focus', 'guard', 'current_window_key', 'guard', 'capture', 'current_window_key', 'guard'])
         self.assertEqual(image.getpixel((0, 0)), (100, 60, 20))
 
     def test_existing_native_runner_blocks_before_game_lookup(self):
@@ -91,6 +92,82 @@ class ScreenshotToolTests(TestCase):
             capture_game(Settings(), lambda: False)
         find.assert_not_called()
         kernel.CloseHandle.assert_called_once_with(19)
+
+    def test_capture_rejects_reused_handle_at_the_same_physical_client_rect(self):
+        hwnd = 41
+        geometry = windows.Geometry(-2070, 116, 1440, 810)
+        pid = 101
+        reuse_handle = False
+        window = windows.GameWindow.__new__(windows.GameWindow)
+        window.hwnd = hwnd
+        window.focus = Mock()
+
+        def client_rect(handle, result):
+            self.assertEqual(handle, hwnd)
+            result._obj.right, result._obj.bottom = geometry.width, geometry.height
+            return 1
+
+        def client_origin(handle, result):
+            self.assertEqual(handle, hwnd)
+            result._obj.x, result._obj.y = geometry.left, geometry.top
+            return 1
+
+        def thread_and_pid(handle, result):
+            self.assertEqual(handle, hwnd)
+            result._obj.value = pid
+            return 91
+
+        def process_times(process, created, *_):
+            created._obj.dwLowDateTime = process * 100
+            return 1
+
+        def grab(rect):
+            nonlocal pid
+            self.assertEqual(rect, dict(left=-2070, top=116, width=1440, height=810))
+            if reuse_handle:
+                pid = 202
+            return np.full((810, 1440, 4), (20, 60, 100, 255), dtype=np.uint8)
+
+        user = SimpleNamespace(IsWindow=lambda _: True, IsIconic=lambda _: False,
+                               GetForegroundWindow=lambda: hwnd, GetAsyncKeyState=lambda _: 0,
+                               GetClientRect=client_rect, ClientToScreen=client_origin,
+                               GetWindowThreadProcessId=thread_and_pid,
+                               GetSystemMetrics={76: -2560, 77: 0, 78: 4480, 79: 1440}.__getitem__)
+        native = SimpleNamespace(OpenProcess=Mock(side_effect=lambda _rights, _inherit, current_pid: current_pid),
+                                 GetProcessTimes=process_times, CloseHandle=Mock())
+        slot = SimpleNamespace(CreateMutexW=Mock(return_value=27), CloseHandle=Mock())
+        with (patch('autohsr.workflow_lease.workflow_lease', return_value=nullcontext()),
+              patch('autohsr.workflow_lease._kernel', return_value=slot),
+              patch('autohsr.screenshot_tool.C.get_last_error', return_value=0),
+              patch.object(windows, 'find_game', return_value=window), patch.object(windows, 'user32', user),
+              patch.object(windows, 'kernel32', native),
+              patch('mss.mss', return_value=nullcontext(SimpleNamespace(grab=grab)))):
+            image = capture_game(Settings(), lambda: False)
+            self.assertEqual((image.size, image.getpixel((0, 0))), ((1440, 810), (100, 60, 20)))
+            reuse_handle = True
+            with self.assertRaisesRegex(AutomationError, '来源已变化'):
+                capture_game(Settings(), lambda: False)
+        self.assertEqual(window.focus.call_count, 2)
+        self.assertEqual(pid, 202)
+        self.assertEqual([call.args for call in slot.CloseHandle.call_args_list], [(27,), (27,)])
+
+    def test_capture_does_not_return_pixels_if_the_client_rect_changes_after_grab(self):
+        geometry = windows.Geometry(-1920, 75, 1440, 810)
+        moved = windows.Geometry(-1910, 75, 1440, 810)
+        window = Mock()
+        window.emergency_pressed.return_value = False
+        window.current_window_key.return_value = 'same-window'
+        window.guard.side_effect = (geometry, geometry, moved)
+        window.capture.return_value = np.full((810, 1440, 3), 100, dtype=np.uint8), geometry
+        slot = SimpleNamespace(CreateMutexW=Mock(return_value=29), CloseHandle=Mock())
+        with (patch('autohsr.workflow_lease.workflow_lease', return_value=nullcontext()),
+              patch('autohsr.workflow_lease._kernel', return_value=slot),
+              patch('autohsr.screenshot_tool.C.get_last_error', return_value=0),
+              patch.object(windows, 'find_game', return_value=window)):
+            with self.assertRaisesRegex(AutomationError, '来源已变化'):
+                capture_game(Settings(), lambda: False)
+        window.capture.assert_called_once()
+        slot.CloseHandle.assert_called_once_with(29)
 
     def test_stop_during_geometry_check_prevents_capture_and_releases_slot(self):
         geometry = SimpleNamespace(width=4, height=3)
