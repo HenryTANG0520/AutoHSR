@@ -88,8 +88,6 @@ def stage_notices(bundle):
             if NOTICE_NAME.match(file.name):
                 copy_notice(Path(dist.locate_file(file)), folder / relative)
                 installed_notices.append(file)
-            elif relative == Path('METADATA'):
-                copy_notice(Path(dist.locate_file(file)), folder / relative)
         if installed_notices:
             continue
         # Two known wheels omit the original license. Bind replacements to the
