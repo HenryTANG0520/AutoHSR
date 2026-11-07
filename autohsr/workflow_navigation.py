@@ -486,7 +486,8 @@ class WorkflowNavigation:
             if planned.token is None:
                 if planned.name not in ('open_phone', 'return_to_hub'):
                     raise AutomationError('日常页面导航缺少受支持的原生输入。')
-                self.window.key('esc', expected=self.geometry, before_submit=before_submit)
+                options = {'require_release': True} if self.target == WORLD_WORKFLOW_PAGE else {}
+                self.window.key('esc', expected=self.geometry, before_submit=before_submit, **options)
             else:
                 self.window.click(*planned.token.center, self.geometry, before_submit=before_submit)
         if row is None:

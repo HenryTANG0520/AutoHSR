@@ -35,7 +35,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
     def run_navigation(self, *, already_open=False, late_loss=False, target='mail', version='4.6.0',
                        start_in_list=False, late_version=False, from_odyssey=False, check_publication_lock=False,
                        lose_focus_on_installation_read=False, from_phone=False, battlepass_size=None,
-                       lose_focus_after_geometry=False, duplicate_tab=False):
+                       lose_focus_after_geometry=0, duplicate_tab=False, first_escape_native_count=2):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -83,6 +83,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         completed_inputs = 0
         self.clicks = []
         self.key_scans = []
+        self.key_accepts = []
+        first_release_rejected = False
 
         def frames():
             while True:
@@ -145,20 +147,28 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             return previous(runner, *args, **kwargs)
 
         def native_send(length, events, _size):
-            nonlocal completed_inputs
+            nonlocal completed_inputs, first_release_rejected
             events = ctypes.cast(events, ctypes.POINTER(INPUT))
+            accepted = length
             if events[0].type == 1:
                 self.assertEqual(length, 1)
                 key = events[0].ki
                 sent.append((key.dwFlags,))
                 self.key_scans.append(key.wScan)
                 if key.dwFlags == 0x08:
-                    completed_inputs += 1
+                    if not completed_inputs and first_escape_native_count == 0:
+                        accepted = 0
+                    else:
+                        completed_inputs += 1
+                elif completed_inputs == 1 and first_escape_native_count == 1 and not first_release_rejected:
+                    first_release_rejected = True
+                    accepted = 0
+                self.key_accepts.append(accepted)
             else:
                 sent.append(tuple(events[index].mi.dwFlags for index in range(length)))
                 self.clicks.append((events[0].mi.dx / 65535, events[0].mi.dy / 65535))
                 completed_inputs += 1
-            return length
+            return accepted
 
         def vision(confidence):
             engine = window.vision(confidence)
@@ -219,7 +229,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             stack.enter_context(redirect_stderr(err))
             code = main(['--task-workflow', str(workflow), '--config', str(config)])
             interrupted = (late_loss or late_version or lose_focus_on_installation_read
-                           or lose_focus_after_geometry or version != '4.6.0' or duplicate_tab)
+                           or lose_focus_after_geometry or version != '4.6.0'
+                           or duplicate_tab or first_escape_native_count != 2)
             self.assertEqual(code, 1 if interrupted else 0, err.getvalue())
             if lose_focus_after_geometry:
                 self.assertTrue(focus_changed)
@@ -279,6 +290,25 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 record = native['workflow_navigation']
                 self.assertFalse(record['page_verified'])
                 self.assertEqual([row['destination_page'] for row in record['actions']], ['phone'][:completed])
+
+    def test_world_native_requires_both_key_events_before_following_the_phone(self):
+        for count, packets, accepts in ((0, [(0x08,)], [0]),
+                                        (1, [(0x08,), (0x0A,), (0x0A,)], [1, 0, 1]),
+                                        (2, [(0x08,), (0x0A,)] * 2, [1, 1, 1, 1])):
+            with self.subTest(first_escape_events_accepted=count):
+                sent, steps, native = self.run_navigation(target='world', first_escape_native_count=count)
+                self.assertEqual((sent, self.key_accepts), (packets, accepts))
+                self.assertEqual(self.key_scans, [0x1B] * len(packets))
+                record = native['workflow_navigation']
+                if count < 2:
+                    self.assertNotIn('page_verified', steps[0]['facts'])
+                    self.assertFalse(record['page_verified'])
+                    [row] = record['actions']
+                    self.assertEqual((row['source_page'], row['input_status'], row['destination_status']),
+                                     ('mail', 'unconfirmed', 'unknown'))
+                else:
+                    self.assertTrue(record['page_verified'])
+                    self.assertEqual([row['destination_page'] for row in record['actions']], ['phone', 'world'])
 
     def test_battlepass_exact_targets_click_only_opposite_tab_and_verify_current_page(self):
         for source, target, center_x in (('battlepass_tasks', 'battlepass_rewards', .45),

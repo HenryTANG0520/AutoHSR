@@ -356,7 +356,7 @@ class GameWindow:
         px, py = g.left + round(x*(g.width-1)), g.top + round(y*(g.height-1))
         self.send([INPUT(type=0, mi=MOUSEINPUT(round((px-vx)*65535/(vw-1)), round((py-vy)*65535/(vh-1)), 0, 0xC001, 0, 0))], expected)
 
-    def key(self, name: str, *, expected: Geometry | None = None, before_submit=None) -> None:
+    def key(self, name: str, *, expected: Geometry | None = None, before_submit=None, require_release=False) -> None:
         vk = {"esc": 0x1B, "f": 0x46, "f1": 0x70, "f2": 0x71, "f4": 0x73, "v": 0x56, "space": 0x20,
               "1": 0x31, "2": 0x32, "3": 0x33, "4": 0x34}.get(name.casefold())
         if vk is None:
@@ -371,7 +371,19 @@ class GameWindow:
             time.sleep(0.08)  # Unity polls keys once per frame.
         finally:
             release = INPUT(type=1, ki=KEYBDINPUT(0, scan, 0xA, 0, 0))
-            user32.SendInput(1, C.byref(release), C.sizeof(INPUT))
+            try:
+                released = user32.SendInput(1, C.byref(release), C.sizeof(INPUT))
+            except OSError:
+                if not require_release:
+                    raise
+                released = 0
+            if require_release and released != 1:
+                try:
+                    user32.SendInput(1, C.byref(release), C.sizeof(INPUT))
+                except OSError:
+                    pass
+        if require_release and released != 1:
+            raise AutomationError('Windows 未核实本次返回键松开，保留当前动作待核对。')
 
     def type_du_save_name(self, name: str, expected: Geometry, *, checkpoint, before_submit=None):
         """Replace the focused archive-name field with a generated ASCII name."""
