@@ -108,6 +108,9 @@ class AttachmentTests(unittest.TestCase):
                             round((x - .05) * width):round((x + .05) * width)] = (30, 175, 245)
             else:
                 scene = fixture(mode)
+            if mode == 'bp_tasks_claimable' and event in ('weekly_alias', 'weekly_alias_unverified'):
+                target = scene.find('一键领取', exact=True)
+                scene.tokens = [replace(t, text='-键领取') if t == target else t for t in scene.tokens]
             if mode == 'bp_rewards_settled' and event == 'late_purchase':
                 scene.tokens.append(token('选择奖励', .50, .45))
             if mode == 'mail_claimable' and event == 'duplicate':
@@ -175,7 +178,7 @@ class AttachmentTests(unittest.TestCase):
             elif active == '点击空白处关闭':
                 if event != 'close_stuck':
                     mode = 'mail_claimed' if last_stage == 'mail' else 'bp_rewards_settled'
-            elif active == '一键领取' and mode == 'bp_tasks_claimable':
+            elif active in ('一键领取', '-键领取') and mode == 'bp_tasks_claimable':
                 mode = 'bp_tasks_settled'
             elif active == '本期任务':
                 mode = 'period-claimable' if event == 'period_claim' else 'bp_period_settled'
@@ -194,7 +197,10 @@ class AttachmentTests(unittest.TestCase):
         native.GetAsyncKeyState.side_effect = lambda code: (
             0x8000 if code == 0x79 and event == 'late_stop' and active == '全部领取' and claim_guards >= 3 else 0)
         native.SendInput.side_effect = send
-        vision = SimpleNamespace(read=lambda *_: replace(current, tokens=list(current.tokens)), template=lambda *_: None)
+        vision = SimpleNamespace(
+            read=lambda *_: replace(current, tokens=list(current.tokens)), template=lambda *_: None,
+            _read_field=lambda _crop, _pattern: token('一键领取', .5, .5) if event == 'weekly_alias' else None,
+        )
         mutex = SimpleNamespace(CreateMutexW=Mock(return_value=1), CloseHandle=Mock())
         launch = Mock(side_effect=AssertionError('launch out of scope'))
         out, err = io.StringIO(), io.StringIO()
@@ -268,6 +274,20 @@ class AttachmentTests(unittest.TestCase):
         self.assertEqual((result.code, result.sent), (1, ['一键领取', '本期任务', 'bp_rewards_tab']))
         self.assertEqual(result.child['results'][0]['attachment_outcome'], 'unknown')
         self.assertEqual(result.child['results'][0]['verified_claims'], ['battlepass_weekly_tasks'])
+
+    def test_battlepass_native_claim_requires_local_verification_for_weekly_alias(self):
+        observed = self.invoke('battlepass', 'bp_tasks_claimable', event='weekly_alias')
+        self.assertEqual(observed.code, 0)
+        self.assertEqual(observed.sent, [
+            '-键领取', '本期任务', 'bp_rewards_tab', '一键领取', '点击空白处关闭',
+        ])
+        self.assertEqual(observed.child['results'][0]['verified_claims'], [
+            'battlepass_weekly_tasks', 'battlepass_free_levels',
+        ])
+        unknown = self.invoke('battlepass', 'bp_tasks_claimable', event='weekly_alias_unverified')
+        self.assertEqual((unknown.code, unknown.sent), (1, []))
+        self.assertEqual(unknown.child['failure_task'], 'battlepass')
+        self.assertEqual(unknown.child['results'][0]['verified_claims'], [])
 
     def test_battlepass_period_experience_has_its_own_receipt(self):
         result = self.invoke('battlepass', 'bp_tasks_claimable', event='period_claim', workflow=True)

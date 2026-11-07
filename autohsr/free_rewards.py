@@ -5,6 +5,8 @@ import re
 from .models import Scene, Token, normalize
 
 TITLE=(0,0,.32,.13)
+_BATTLEPASS_CLAIM_AREA = (.60, .79, .98, .91)
+_BATTLEPASS_CLAIM_TEXTS = ('一键领取', '-键领取', '键领取')
 
 
 def phone(scene):
@@ -128,6 +130,36 @@ def task_category(scene,label):
     return fraction is not None and fraction>.20
 
 
+def battlepass_claim_target(scene, vision, confidence):
+    """Resolve the bulk button, including a locally verified task-footer OCR variant."""
+    kind = battlepass_page(scene)
+    if kind is None or battlepass_modal(scene):
+        return None
+    matches = [t for t in scene.tokens if t.within(_BATTLEPASS_CLAIM_AREA)
+               and normalize(t.text) in _BATTLEPASS_CLAIM_TEXTS]
+    if len(matches) != 1:
+        return None
+    target = matches[0]
+    if confidence <= target.score <= 1 and normalize(target.text) == '一键领取':
+        return target
+    if (kind != 'tasks' or normalize(target.text) == '一键领取' or not max(.85, confidence) <= target.score <= 1
+            or not target.within((.79, .81, .96, .89)) or claim_enabled(scene, target) is not True
+            or sum(task_category(scene, label) for label in ('本周任务', '本期任务')) != 1):
+        return None
+    read = getattr(vision, '_read_field', None)
+    if not callable(read):
+        return None
+    h, w = scene.image.shape[:2]
+    x1, y1, x2, y2 = target.box
+    if not (.025 <= x2 - x1 <= .075 and .012 <= y2 - y1 <= .040):
+        return None
+    patch = scene.image[round((y1-.008)*h):round((y2+.008)*h), round((x1-.008)*w):round((x2+.008)*w)]
+    if not patch.size:
+        return None
+    exact = read(patch, '一键领取')
+    return target if exact and exact.text == '一键领取' and max(.85, confidence) <= exact.score <= 1 else None
+
+
 def battlepass_progress(scene):
     if battlepass_page(scene) is None:
         return None
@@ -145,7 +177,7 @@ def battlepass_progress(scene):
 def battlepass_settled(scene,kind):
     if kind not in ('tasks','rewards') or battlepass_page(scene)!=kind or battlepass_modal(scene):
         return False
-    if scene.has('一键领取',(.60,.79,.98,.91),exact=True):
+    if scene.has(_BATTLEPASS_CLAIM_TEXTS, _BATTLEPASS_CLAIM_AREA, exact=True):
         return False
     if scene.image is None:
         return False

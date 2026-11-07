@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 from time import monotonic
 
 from .currency_wars_identity import UID_COUNTEREVIDENCE, checked_account_key
-from .free_rewards import (battlepass_modal, battlepass_page, battlepass_progress, battlepass_tab,
+from .free_rewards import (battlepass_claim_target, battlepass_modal, battlepass_page, battlepass_progress, battlepass_tab,
                            claim_enabled, mail_claimed, mail_entry, mailbox, reward_overlay, task_category)
 from .models import AutomationError, InputInterrupted, Stopped, TaskResult, Token, normalize
 from .workflow_identity import active
@@ -137,7 +137,7 @@ def _action(ctx, scene, target):
         if (kind == 'tasks' and label in ('本周任务', '本期任务')
                 and _unique(scene, target, (label,), (.07, .31, .20, .74), confidence)):
             return 'navigate', None
-        if (_unique(scene, target, ('一键领取',), (.60, .79, .98, .91), confidence)
+        if (battlepass_claim_target(scene, getattr(ctx, 'vision', None), confidence) == target
                 and claim_enabled(scene, target) is True):
             if kind == 'rewards':
                 return 'claim', BATTLEPASS_STAGES['rewards']

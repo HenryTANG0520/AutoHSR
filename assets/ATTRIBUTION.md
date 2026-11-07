@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-11-07 无名勋礼周任务底栏
+
+`bp_weekly_bulk_footer_46.png` 取自简中 4.6.0 日常回执 `20261107_113542_072937` 的 3840×2160 失败帧。原 PNG 的 SHA-256 为 `27b5d7500069680a78ccb0cd3dcffc11ebfe7fb09b95bd1b506d9805daeda007`。仅保留底栏 `[3000,1755,3717,1939)` 的原分辨率像素并重新编码 PNG，裁片无 UID 或账号信息。测试将其嵌入已有任务页夹具验证局部 OCR。裁片 SHA-256 为 `af7f0eb5c16082213f90061f503ba17c59e946a98a8377a6546f1cb7408cfc88`。游戏画面美术归 HoYoverse 及相应权利人。[脱敏底栏](../autohsr/tests/fixtures/du_runtime/bp_weekly_bulk_footer_46.png)
+
 ## 2026-11-07 AutoHSR 程序图标
 
 `assets/ui/autohsr.ico` 是本项目绘制的指南书与星轨图标，使用深靛与金色配色。通过 [图标绘制脚本](../tools/prepare_app_icon.py) 从几何图形生成，包含 16、20、24、32、48、64、128、256 像素帧。小尺寸沿用原书形、四芒星、弧形星轨和留白，书封线条对齐像素，曲线以面积采样保留边缘。源图及脚本沿用项目 GPL-3.0-only 许可。ICO 的 SHA-256 为 `0e91071e54c5cf493309f5a96106e740eb57f234ef56b4151d06124e18835353`。

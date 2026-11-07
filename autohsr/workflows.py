@@ -1457,7 +1457,7 @@ class DailyWorkflow:
 
     def battlepass(self) -> TaskResult:
         from .free_rewards import (battlepass_page,battlepass_modal,battlepass_tab,
-            task_category,battlepass_progress,battlepass_settled,claim_enabled,reward_overlay)
+            battlepass_claim_target,task_category,battlepass_progress,battlepass_settled,claim_enabled,reward_overlay)
         scene=self._snapshot()
         if battlepass_page(scene) is None:
             if battlepass_modal(scene):
@@ -1479,7 +1479,7 @@ class DailyWorkflow:
                         return self._result('battlepass','partial','未识别勋礼任务分类。',scene)
                     self._click(scene,target)
                     scene=self._wait(lambda s:task_category(s,category),description='确认'+category+'已加载')
-                target=scene.find('一键领取',(.60,.79,.98,.91),exact=True)
+                target=battlepass_claim_target(scene, getattr(self.ctx, 'vision', None), self.settings.ocr_confidence)
                 if target is not None:
                     if battlepass_modal(scene) or claim_enabled(scene,target) is not True:
                         return self._result('battlepass','partial','勋礼免费领取控件或当前弹窗尚未核实。',scene)
@@ -1491,7 +1491,7 @@ class DailyWorkflow:
                     if kind=='tasks':
                         scene=self._wait(lambda s:battlepass_settled(s,kind)
                             and battlepass_progress(s) is not None
-                            and (not self.daily_attachment_only or task_category(s, category))
+                            and task_category(s, category)
                             and battlepass_progress(s)[:2]>before[:2],description='核实勋礼任务经验到账')
                     else:
                         scene=self._wait(reward_overlay,description='核实勋礼免费奖励展示')
