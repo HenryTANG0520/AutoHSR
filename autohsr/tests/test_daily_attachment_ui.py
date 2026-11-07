@@ -150,6 +150,61 @@ class AttachmentRoutesTests(unittest.TestCase):
             time.sleep(.015)
         self.assertFalse(ui.busy)
 
+    def test_daily_settings_can_run_only_training_rewards(self):
+        try:
+            root = tk.Tk()
+        except tk.TclError as error:
+            raise unittest.SkipTest('Tk 不可用') from error
+        root.withdraw()
+        runner = FakeRunner(dict(operation='reward_only', status='success', report_saved=True,
+                                 daily_verified=True, engagement=500, results=[]))
+        ui = None
+        with TemporaryDirectory(prefix='autohsr-training-desktop-') as directory:
+            folder = Path(directory)
+            config = folder / 'config.json'
+            Settings(assignments=True, battle=True, daily=False, daily_synthesis=True, mail=True, battlepass=True,
+                     weekly_enabled=True, notification_enabled=True, notification_profiles=['fixture'],
+                     redemption_enabled=True, redemption_source='manual', redemption_codes=['FixtureCode']).save(config)
+            original = config.read_bytes()
+            try:
+                with (patch('autohsr.gui.ROOT', folder), patch.object(root, 'iconify'),
+                      patch('autohsr.app.Runner', return_value=runner) as factory,
+                      patch('autohsr.notify_profiles.DEFAULT_ROOT', folder / 'notifications'),
+                      patch('autohsr.notify_runtime.hooks') as notify):
+                    ui = AutoHSRWindow(root, config)
+                    ui._restore = Mock()
+                    ui._show_daily_tasks()
+                    root.update_idletasks()
+                    self.assertFalse(ui.tasks['daily'].get())
+                    self.assertFalse(ui.reward_button.winfo_manager())
+                    ui.training_rewards_button.invoke()
+                    self.assertTrue(runner.entered.wait(5))
+                    self.assertTrue(ui.training_rewards_button.instate(('disabled',)))
+                    ui.training_rewards_button.invoke()
+                    factory.assert_called_once()
+                    frozen = factory.call_args.args[0]
+                    self.assertEqual(factory.call_args.kwargs['operation'], 'reward_only')
+                    self.assertTrue(frozen.daily)
+                    self.assertFalse(any(getattr(frozen, key) for key in (
+                        'assignments', 'battle', 'allow_stamina_spend', 'daily_synthesis', 'mail', 'battlepass',
+                        'redemption_enabled')))
+                    notify.assert_not_called()
+                    runner.release.set()
+                    self.wait_finished(root, ui)
+                    self.assertEqual(ui.training_result.get(), 'verified')
+                    self.assertFalse(ui.tasks['daily'].get())
+                    self.assertEqual(config.read_bytes(), original)
+                    self.assertEqual(root.state(), 'withdrawn')
+                    ui._close()
+            finally:
+                runner.release.set()
+                if ui is not None and ui.worker is not None:
+                    ui.worker.join(5)
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_withdrawn_desktop_routes_each_claim_and_restores_results_after_resize(self):
         try:
             root = tk.Tk()

@@ -514,7 +514,6 @@ def task_spec(settings: Settings, node, base_dir):
         from .recovery import reward_only_settings
 
         current = reward_only_settings(current)
-        current.allow_stamina_spend = False
         current.validate('daily')
         options['operation'] = 'reward_only'
     elif task == 'plan':

@@ -14,7 +14,7 @@ from .storage import hold_read_sources, replace_file
 
 def reward_only_settings(settings):
     return replace(settings, assignments=False, battle=False, daily=True, mail=False, battlepass=False,
-                   daily_synthesis=False, redemption_enabled=False)
+                   allow_stamina_spend=False, daily_synthesis=False, redemption_enabled=False)
 
 
 def _historical_battle(data, path):

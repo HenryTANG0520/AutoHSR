@@ -318,6 +318,8 @@ def build_settings(ui):
     ), editable=False)
     ui.daily_entry_buttons = dict(zip(HOME_TITLES, entries))
     ui.assignment_button = ui.daily_entry_buttons[ASSIGNMENTS]
+    training = row("daily", index + 2, "实训奖励", hint="本次不刷本、不合成")
+    ui.training_rewards_button, = buttons(training, (("仅补领每日实训", ui._reward_only),))
 
     from .power_plan_ui import PowerPlanEditor
     ui.settings_sections['power'].rowconfigure(0, weight=1)
