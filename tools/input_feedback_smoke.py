@@ -3,13 +3,50 @@ import json
 from pathlib import Path
 import tempfile
 import tkinter as tk
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from PIL import ImageGrab
-from ux_smoke import ROOT, Settings, Window, module
+from ux_smoke import ROOT, Settings, Window, module, pump
 from ui_layout_smoke import check_layout
 
 OUT = ROOT/"runs/input-feedback-ui"
+
+
+def check_battle_timeout_round_trip(folder, check):
+    for timeout in (60.5, 60.0, 900):
+        config = folder / f"timeout-{timeout}.json"
+        Settings(battle=False, battle_timeout=timeout, overlay_logs=False).save(config)
+        original = config.read_bytes()
+        starts = []
+
+        def fake_plan(settings, emit, **options):
+            starts.append(settings.battle_timeout)
+            return SimpleNamespace(run=lambda: dict(operation="plan", status="success", report_saved=True))
+
+        root = tk.Tk()
+        ui = Window(root, config)
+        try:
+            root.update()
+            check(f"timeout_{timeout}_loads", ui.battle_timeout.get() == str(timeout))
+            with patch("autohsr.plan_runner.PlanRunner", side_effect=fake_plan):
+                ui.start_button.invoke()
+                check(f"timeout_{timeout}_starts_plan", ui.worker is not None)
+                pump(root, lambda: not ui.busy)
+            check(f"timeout_{timeout}_starts_without_writing", starts == [timeout] and config.read_bytes() == original)
+            independent = ui._read_settings(operation="differential_universe", quiet=True)
+            check(f"timeout_{timeout}_independent_uses_same_value",
+                  independent is not None and independent.battle_timeout == timeout)
+            with patch.object(ui, "_weekly_currency_recovery", {"due_at": "2026-11-02T04:00:00+08:00", "maximum": 2}):
+                resumed = ui._read_settings(operation="plan", resume_weekly_currency=True, quiet=True)
+            check(f"timeout_{timeout}_resume_uses_same_value", resumed is not None and resumed.battle_timeout == timeout)
+            ui.overlay_logs.set(True)
+            root.update()
+            ui.save_button.invoke()
+            saved = Settings.load(config)
+            check(f"timeout_{timeout}_saves", saved.battle_timeout == timeout and saved.overlay_logs and not ui.dirty)
+        finally:
+            root.destroy()
 
 
 def main():
@@ -36,6 +73,9 @@ def main():
                     ("target_location", "", None, "dungeon_location_combo", "地点"),
                     ("action_delay", "nan", "recognition", "action_delay_entry", "有限"),
                     ("battle_timeout", "50", "recognition", "battle_timeout_entry", "60～3600"),
+                    ("battle_timeout", "59.9", "recognition", "battle_timeout_entry", "60～3600"),
+                    ("battle_timeout", "3600.1", "recognition", "battle_timeout_entry", "60～3600"),
+                    ("battle_timeout", "inf", "recognition", "battle_timeout_entry", "有限"),
                     ("ocr_confidence", "2", "recognition", "ocr_confidence_entry", "0.4～0.99"),
                     ("weekly_time", "24:00", "weekly", "weekly_time_entry", "HH:MM"))
                 for field, value, section, control, fragment in cases:
@@ -127,7 +167,8 @@ def main():
             finally:
                 ui.closing = True
                 root.destroy()
-    result = dict(game_started=False, config_unchanged=True, count=len(checks), checks=checks)
+            check_battle_timeout_round_trip(Path(folder), check)
+    result = dict(game_started=False, runtime_config_unchanged=True, explicit_save_verified=True, count=len(checks), checks=checks)
     (OUT/"result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), "utf-8")
     print(json.dumps(result, ensure_ascii=False))
 

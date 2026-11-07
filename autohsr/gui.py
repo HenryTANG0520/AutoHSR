@@ -985,7 +985,7 @@ class AutoHSRWindow:
                 values.update(assignments=False, battle=False, daily=False, mail=False, battlepass=False,
                               weekly_enabled=True, weekly_mode='currency_wars', weekly_runs=pending['maximum'],
                               weekly_day=due.weekday()+1, weekly_time=due.strftime('%H:%M'),
-                              action_delay=self._number('action_delay', float), battle_timeout=self._number('battle_timeout', int),
+                              action_delay=self._number('action_delay', float), battle_timeout=self._number('battle_timeout', float),
                               ocr_confidence=self._number('ocr_confidence', float))
             elif not save and (operation in ATTACHMENT_SECTIONS or operation in (
                     ASSIGNMENTS, 'redemption', 'build_target_read', 'build_target_preview', 'build_target_plan')):
@@ -1021,7 +1021,7 @@ class AutoHSRWindow:
                               differential_universe_save=self.du_save.get(),
                               differential_universe_rewards=self.du_rewards.get(),
                               differential_universe_daily=self.du_daily.get(),
-                              action_delay=self._number("action_delay", float), battle_timeout=self._number("battle_timeout", int),
+                              action_delay=self._number("action_delay", float), battle_timeout=self._number("battle_timeout", float),
                               ocr_confidence=self._number("ocr_confidence", float))
             elif save or operation not in ("check", "launch"):
                 values.update(auto_launch=self.auto_launch.get(),
@@ -1045,7 +1045,7 @@ class AutoHSRWindow:
                         count = self._number("challenge_count", int)
                         values.update(dungeon_category=selected_category(self).key, challenge_count=count,
                                       rounds=max(1, min(count, selected_category(self).batch)))
-                values.update(action_delay=self._number("action_delay", float), battle_timeout=self._number("battle_timeout", int),
+                values.update(action_delay=self._number("action_delay", float), battle_timeout=self._number("battle_timeout", float),
                               ocr_confidence=self._number("ocr_confidence", float))
             elif operation == "check":
                 values["ocr_confidence"] = self._number("ocr_confidence", float)

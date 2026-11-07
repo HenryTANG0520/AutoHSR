@@ -41,7 +41,7 @@ class Settings:
     overlay_logs: bool = True
     daily_synthesis: bool = True
     action_delay: float = 1.0
-    battle_timeout: int = 900
+    battle_timeout: float = 900
     ocr_confidence: float = 0.65
     differential_universe_runs: int = 3
     differential_universe_save: bool = False
