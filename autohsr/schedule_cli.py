@@ -66,7 +66,8 @@ def dispatch(args, parser, raw_args):
                '--schedule-limit-seconds'}
     if args.schedule_run is not None:
         allowed.add('--config')
-    if any(arg.split('=', 1)[0] not in allowed for arg in raw_args if arg.startswith('--')):
+    provided = {arg.partition('=')[0] for arg in raw_args if arg.startswith('--')}
+    if provided - allowed:
         parser.error('计划工具不能混用游戏、记录、通知或管理员命令；运行设置在所选配置与目标中明确指定。')
     if (args.schedule_replace or args.schedule_expected_revision is not None) and args.schedule_save is None:
         parser.error('替代版本和旧版本核对仅用于显式保存计划。')
@@ -105,7 +106,7 @@ def dispatch(args, parser, raw_args):
             from .config import Settings
             from .schedule_dispatch import NativeScheduleExecutor
             from .schedule_runtime import Scheduler
-            settings = Settings.load(args.config)
+            settings = Settings.load(args.config, require_existing='--config' in provided)
             def emit(event):
                 print(json.dumps(event, ensure_ascii=False, allow_nan=False), file=sys.stderr, flush=True)
             controller = Scheduler(store, NativeScheduleExecutor(settings), emit=emit)

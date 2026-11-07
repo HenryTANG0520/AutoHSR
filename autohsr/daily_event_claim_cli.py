@@ -17,7 +17,7 @@ def run(args, raw_args, parser):
     from .app import Runner
 
     try:
-        settings = Settings.load(args.config)
+        settings = Settings.load(args.config, require_existing='--config' in flags)
         if args.game_path is not None:
             settings.game_path = args.game_path
         def emit(event):

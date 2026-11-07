@@ -26,7 +26,7 @@ def run(args, raw_args, parser):
     if not supported_selection(selection):
         parser.error('请选择已校准的短信节点和回复。支持的组合见 --help。')
     try:
-        settings = Settings.load(args.config)
+        settings = Settings.load(args.config, require_existing='--config' in flags)
         if args.game_path is not None:
             settings.game_path = args.game_path
         runner = Runner(settings, operation=MESSAGE_REPLY_OPERATION, daily_message_reply=selection)

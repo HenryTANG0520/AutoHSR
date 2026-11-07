@@ -22,6 +22,9 @@ class DailyEventClaimCliTests(unittest.TestCase):
         self.fixture = cases.DailyEventClaimTests()
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
+        self.config = self.fixture.root / 'settings.json'
+        Settings().save(self.config)
+        self.original_config = self.config.read_bytes()
         for module in ('autohsr.daily_event_claim', 'autohsr.challenge_pages'):
             self.enterContext(patch(module + '.time', time))
         self.window = self.fixture.window
@@ -46,9 +49,8 @@ class DailyEventClaimCliTests(unittest.TestCase):
         return None
 
     def invoke(self, *flags, report_saved=True):
-        config = self.fixture.root / 'settings.json'
         with redirect_stdout(io.StringIO()) as stdout, redirect_stderr(io.StringIO()) as stderr:
-            code = main(['--daily-event-claim', '4', '--config', str(config), '--game-path', str(self.fixture.exe), *flags])
+            code = main(['--daily-event-claim', '4', '--config', str(self.config), '--game-path', str(self.fixture.exe), *flags])
         self.close_notice = stderr.getvalue()
         data = json.loads(stdout.getvalue())
         self.assertIs(data['report_saved'], report_saved)
@@ -56,7 +58,7 @@ class DailyEventClaimCliTests(unittest.TestCase):
             self.assertEqual(json.loads((Path(data['run_dir']) / 'report.json').read_text(encoding='utf8')), data)
         self.assertNotIn(cases.ACCOUNT.text, stdout.getvalue())
         self.assertNotIn(str(self.fixture.exe), stdout.getvalue())
-        self.assertFalse(config.exists())
+        self.assertEqual(self.config.read_bytes(), self.original_config)
         return code, data
 
     def test_official_entry_observes_one_popup_and_rejects_a_repeat(self):

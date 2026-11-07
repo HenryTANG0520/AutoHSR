@@ -15,7 +15,7 @@ from autohsr import windows
 from autohsr.__main__ import main
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
-from autohsr.models import AutomationError, EmptyCapture, FocusLost, Scene, Stopped, TaskResult
+from autohsr.models import AutomationError, EmptyCapture, FocusLost, RunReport, Scene, Stopped, TaskResult
 from autohsr.workflows import DailyWorkflow
 from autohsr.tests.test_core import FakeContext, token
 
@@ -114,6 +114,63 @@ class ColdStartEntryTests(TestCase):
                     runner.assert_not_called()
                     launch.assert_not_called()
             self.assertFalse(absent.exists())
+
+    def test_executable_cli_requires_an_explicit_config_but_keeps_implicit_defaults(self):
+        from autohsr.daily_message_reply import REPLY_CHOICE, REPLY_NODE
+        from autohsr.tests.test_challenge_integration import PLAN
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            absent = root / 'absent config.json'
+            plan = root / 'challenge.json'
+            plan.write_text(json.dumps(PLAN), encoding='utf-8')
+            modes = (
+                (['--schedule-run', 'sample', '--schedule-store-dir', str(root / 'schedules')], 'scheduler', 2),
+                (['--daily-event-claim', '3'], 'runner', 1),
+                (['--achievement-bulk-claim'], 'runner', 1),
+                (['--daily-message-reply', REPLY_NODE, REPLY_CHOICE], 'runner', 1),
+                (['--daily-attachment-only', 'mail'], 'attachment', 2),
+                (['--daily-attachment-only', 'battlepass'], 'attachment', 2),
+                (['--redeem-codes', '--redemption-code', 'TESTCODE'], 'runner', 2),
+                (['--du-rewards-only'], 'runner', 2),
+                (['--differential-universe'], 'runner', 2),
+                (['--challenge-prepare', '--challenge-plan', str(plan)], 'runner', 2),
+                (['--launch'], 'launch', 2),
+            )
+            with ExitStack() as stack:
+                replacements = {
+                    'runner': 'autohsr.app.Runner',
+                    'attachment': 'autohsr.task_workflow_run.TaskWorkflowRunner',
+                    'executor': 'autohsr.schedule_dispatch.NativeScheduleExecutor',
+                    'scheduler': 'autohsr.schedule_runtime.Scheduler',
+                    'launch': 'autohsr.app.launch_game',
+                    'window': 'autohsr.app.find_game',
+                    'check': 'autohsr.app.inspect_game',
+                }
+                backends = {name: stack.enter_context(patch(target)) for name, target in replacements.items()}
+                stack.enter_context(patch('autohsr.__main__.CONFIG_PATH', absent))
+                for name in ('runner', 'attachment'):
+                    backends[name].return_value.run.return_value = RunReport(status='success')
+                backends['scheduler'].return_value.snapshot.return_value = {'running': False}
+                backends['launch'].return_value = 'fixture launch'
+                for arguments, backend, expected in modes:
+                    for option in (['--config', str(absent)], ['--config=' + str(absent)], []):
+                        for stub in backends.values():
+                            stub.reset_mock()
+                        out, err = io.StringIO(), io.StringIO()
+                        with self.subTest(mode=arguments[0], config=option), redirect_stdout(out), redirect_stderr(err):
+                            self.assertEqual(main([*arguments, *option]), expected if option else 0,
+                                             (out.getvalue(), err.getvalue()))
+                            if option:
+                                for stub in backends.values():
+                                    stub.assert_not_called()
+                            else:
+                                backends[backend].assert_called_once()
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(main(['--check', '--config', str(absent)]), 0)
+                backends['check'].assert_called_once()
+            self.assertFalse(absent.exists())
+            self.assertFalse((root / 'schedules').exists())
 
     def invoke(self, frames, *, plan=False, rewards=False, cold=True, stop=None, battle=False):
         temporary = TemporaryDirectory(prefix='hsr-cold-')

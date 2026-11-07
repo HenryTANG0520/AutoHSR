@@ -401,7 +401,10 @@ def main(argv: list[str] | None = None) -> int:
         gui_main(args.config, admin_task=True) if args.admin_task else gui_main(args.config)
         return 0
     try:
-        load_options = {"require_existing": True} if explicit_config and (args.run or args.plan) else {}
+        require_config = explicit_config and any((args.run, args.plan, args.launch, args.daily_attachment_only,
+                                                   args.redeem_codes, args.du_rewards_only,
+                                                   args.differential_universe, args.challenge_prepare))
+        load_options = {"require_existing": True} if require_config else {}
         if args.reward_only:
             load_options["reward_only"] = True
         settings = Settings.load(args.config, **load_options)
