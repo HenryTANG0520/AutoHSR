@@ -16,17 +16,18 @@ from autohsr.tests import test_power_plan as fixtures
 
 class BattleBudgetSettlementTests(unittest.TestCase):
     def settled_daily(self, root):
-        directory = root / 'settled'
-        directory.mkdir()
+        runs = root / 'runs'
+        directory = runs / 'settled'
+        directory.mkdir(parents=True)
         start = datetime.fromisoformat('2026-11-07T11:35:42+08:00')
         finish = datetime.fromisoformat('2026-11-07T11:45:35+08:00')
         report = RunReport(operation='daily', status='partial', budget_scope='run', daily_verified=True,
-                           report_saved=True, run_dir=str(directory), started_at=start.isoformat(),
+                           report_saved=True, run_dir=str(directory), source=str(root), started_at=start.isoformat(),
                            finished_at=finish.isoformat(), stamina_limit=240, stamina_spent=240,
                            battle_completed=24)
         report.results = [TaskResult(task, 'ok', '') for task in ('assignments', 'battle', 'daily', 'mail')]
         report.results.append(TaskResult('battlepass', 'partial', '分类未核实'))
-        budget = BattleBudget(root, Settings(stamina_limit=240), report)
+        budget = BattleBudget(runs, Settings(stamina_limit=240), report)
         with patch('autohsr.recovery.datetime', wraps=datetime) as clock:
             clock.now.return_value = finish
             budget._write('partial')
@@ -55,7 +56,7 @@ class BattleBudgetSettlementTests(unittest.TestCase):
     def test_optional_recovery_does_not_accept_missing_or_changed_receipts_and_payments(self):
         reset = datetime.fromisoformat('2026-11-08T04:00:00+08:00')
         for fault in ('missing', 'cost', 'paid_rounds', 'pending', 'token_pending', 'day', 'timestamp',
-                      'wrong_run', 'unsaved', 'duplicate'):
+                      'wrong_run', 'wrong_source', 'unsaved', 'duplicate', 'all_ok', 'no_battlepass', 'daily_mismatch'):
             with self.subTest(fault=fault), tempfile.TemporaryDirectory() as folder:
                 budget, source = self.settled_daily(Path(folder).resolve())
                 report = json.loads(source.read_text(encoding='utf-8'))
@@ -76,10 +77,18 @@ class BattleBudgetSettlementTests(unittest.TestCase):
                     report['started_at'] = '2026-11-06T11:35:42+08:00'
                 elif fault == 'wrong_run':
                     report['run_dir'] = str(source.parent.parent)
+                elif fault == 'wrong_source':
+                    report['source'] = str(source.parent)
                 elif fault == 'unsaved':
                     report['report_saved'] = False
                 elif fault == 'duplicate':
                     report['results'].append(report['results'][0])
+                elif fault == 'all_ok':
+                    report['results'][-1]['status'] = 'ok'
+                elif fault == 'no_battlepass':
+                    report['results'].pop()
+                elif fault == 'daily_mismatch':
+                    report['daily_verified'] = False
                 if source.exists():
                     source.write_text(json.dumps(report, ensure_ascii=False), encoding='utf-8')
                 budget.path.write_text(json.dumps(ledger, ensure_ascii=False), encoding='utf-8')

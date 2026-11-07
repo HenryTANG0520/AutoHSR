@@ -89,7 +89,9 @@ def _settled_daily_battle_day(journal, raw, ledger):
                 or report.get('power_plan')):
             return None
         reported_directory = Path(report['run_dir'])
-        if not reported_directory.is_absolute() or reported_directory.resolve(strict=True) != directory:
+        source = Path(report['source'])
+        if (not reported_directory.is_absolute() or reported_directory.resolve(strict=True) != directory
+                or not source.is_absolute() or not (source / 'runs').samefile(root)):
             return None
         fields = {
             'stamina_limit': 'limit', 'stamina_spent': 'spent', 'stamina_pending': 'pending',
@@ -107,7 +109,8 @@ def _settled_daily_battle_day(journal, raw, ledger):
                 or type(entry.get('status')) is not str for entry in results):
             return None
         statuses = {entry['task']: entry['status'] for entry in results}
-        if len(statuses) != len(results):
+        if (len(statuses) != len(results) or (statuses.get('daily') == 'ok') != (report.get('daily_verified') is True)
+                or (report.get('error') == '' and all(status == 'ok' for status in statuses.values()))):
             return None
         started, finished = (datetime.fromisoformat(report[key]) for key in ('started_at', 'finished_at'))
         updated = datetime.fromisoformat(ledger['updated_at'])
