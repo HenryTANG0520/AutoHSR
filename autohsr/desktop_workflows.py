@@ -393,6 +393,9 @@ class _WorkflowPanel(_Panel):
             panel.step_path.set(path)
             panel._clear_profile()
             panel.status.set("已选择步骤 · 请重新校验")
+        elif captures and document == original:
+            panel._clear_profile()
+            panel.status.set("模板来源已更新 · 请重新校验")
         panel._changed()
         panel.visual_button.focus_set()
 
@@ -789,12 +792,12 @@ class _WorkflowPanel(_Panel):
         self.draft.document = load_workflow_json(self._text())
         return self.draft.validate(destination=destination, selected_path=selected_path)
 
-    def _captured_scope(self, recipe):
+    def _captured_scope(self, recipe, *, executable=False):
         if not self._template_bindings:
             return nullcontext()
         from .desktop_workflow_tree import hold_template_bindings
 
-        return hold_template_bindings(self._template_bindings, recipe.steps, recipe.base_dir)
+        return hold_template_bindings(self._template_bindings, recipe.steps, recipe.base_dir, executable=executable)
 
     def _show_profile(self, recipe):
         fields = recipe.profile
@@ -899,9 +902,14 @@ class _WorkflowPanel(_Panel):
                     recipe = WorkflowDraft.load(source).validate(selected_path=path)
                     if path is not None and self.reviewed_step != (path, recipe.base_dir):
                         raise WorkflowError("保存来源目录已变化，请重新打开并校验单步。")
+                    options = {}
+                    if self._template_bindings:
+                        with self._captured_scope(recipe, executable=True):
+                            pass
+                        options["source_scope"] = self._captured_scope(recipe, executable=True)
                     self._show_profile(recipe)
                     self.status.set("已提交已保存的单步" if recipe.path else "已提交已保存的任务流")
-                    if not self.ui._start_task_workflow(recipe, on_report=self._deliver_report):
+                    if not self.ui._start_task_workflow(recipe, on_report=self._deliver_report, **options):
                         self.status.set("任务流未启动 · 当前执行权不可用")
         except (ValueError, OSError) as error:
             self._check_source()

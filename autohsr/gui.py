@@ -1,6 +1,7 @@
 """Chinese desktop interface; worker threads only communicate through events."""
 from __future__ import annotations
 
+from contextlib import ExitStack
 import os
 import json
 import queue
@@ -1033,7 +1034,7 @@ class AutoHSRWindow:
         except Exception:
             self.result_alert.set(title + "的结果无法显示，请查看运行记录。")
 
-    def _start_scoped_runner(self, title, operation, factory, on_report, *, game=True):
+    def _start_scoped_runner(self, title, operation, factory, on_report, *, game=True, source_scope=None):
         emit, native = self.events.put, self._native_run
 
         def work(_cancel):
@@ -1042,7 +1043,14 @@ class AutoHSRWindow:
                                               'plan_daily_result', 'progress'):
                     emit(event)
 
-            report = native.run(factory(send))
+            with ExitStack() as sources:
+                if source_scope is not None:
+                    from .task_workflow import WorkflowError
+                    try:
+                        sources.enter_context(source_scope)
+                    except WorkflowError as error:
+                        return dict(operation=operation, status='failed', report_saved=False, error=str(error))
+                report = native.run(factory(send))
             return report.to_dict() if hasattr(report, 'to_dict') else report
 
         def present(report):
@@ -1200,7 +1208,7 @@ class AutoHSRWindow:
 
         return self._start_scoped_runner('兑换本次兑换码', 'redemption', factory, present)
 
-    def _start_task_workflow(self, recipe, on_report=None) -> bool:
+    def _start_task_workflow(self, recipe, on_report=None, *, source_scope=None) -> bool:
         settings = self._read_settings(operation='plan')
         if settings is None:
             return False
@@ -1230,7 +1238,8 @@ class AutoHSRWindow:
 
         from .task_workflow import GAME_TASKS
         game = any(node['task'] in GAME_TASKS for node in _tasks(recipe.steps))
-        return self._start_scoped_runner('运行已保存流程', 'task_workflow', factory, on_report, game=game)
+        return self._start_scoped_runner('运行已保存流程', 'task_workflow', factory, on_report, game=game,
+                                         source_scope=source_scope)
 
     def _schedule_preview_budget(self, plan):
         return self.desktop_schedule.preview(plan)

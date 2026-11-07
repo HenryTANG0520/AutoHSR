@@ -13,7 +13,7 @@ from .desktop_dialogs import place_dialog
 from .desktop_workflow_node import WorkflowNodeForm
 from .screenshot_tool import MAX_BYTES as MAX_IMAGE_BYTES
 from .storage import file_revision, hold_read_sources
-from .task_workflow import TEMPLATE_TASKS, WorkflowError, execution_task
+from .task_workflow import TEMPLATE_TASKS, WorkflowError, execution_task, execution_tasks
 from .workflow_bundle import _path as _asset_path
 from .workflow_tree_edit import WorkflowTreeDraft
 
@@ -87,7 +87,9 @@ def _hold_templates(selected, base_dir):
         yield
 
 
-def hold_template_bindings(bindings, nodes, base_dir):
+def hold_template_bindings(bindings, nodes, base_dir, *, executable=False):
+    if executable:
+        nodes = execution_tasks(nodes)
     return _hold_templates(tuple(_referenced_templates(nodes, bindings)), base_dir)
 
 

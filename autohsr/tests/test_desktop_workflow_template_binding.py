@@ -12,9 +12,11 @@ from unittest.mock import ANY, Mock, patch
 from PIL import Image
 
 from autohsr import theme
+from autohsr.config import Settings
 from autohsr.desktop_workflow_template import WorkflowTemplateDialog
 from autohsr.desktop_workflow_tree import WorkflowTreeDialog
 from autohsr.desktop_workflows import _TASK_NAMES, build_workflow_panel
+from autohsr.gui import AutoHSRWindow
 from autohsr.task_workflow import read
 from autohsr.workflow_yaml import load_march7th_yaml
 
@@ -468,6 +470,94 @@ class WorkflowTemplateBindingTests(TestCase):
         panel.save_as()
         self.assertFalse(target.exists())
         self.assertIn('无法回读', panel.status.get())
+
+    def saved_capture(self, name):
+        panel = self.panel()
+        self.edit_hidden(panel)
+        document = json.loads(panel._text())
+        document['steps'][0]['enabled'] = True
+        panel._replace_draft_document(document)
+        panel.saved_target = self.base / name
+        panel.save_as()
+        panel.scope.set('指定步骤')
+        panel.step_path.set('0')
+        panel.validate()
+        self.assertTrue(panel._can_run_saved())
+        return panel
+
+    def test_run_rejects_changed_capture_and_identical_replacement_after_review(self):
+        for same_bytes in (False, True):
+            with self.subTest(same_bytes=same_bytes):
+                self.receipt = self.make_capture(self.base)
+                panel = self.saved_capture(f'check-{same_bytes}.json')
+                identity = self.receipt.path.stat().st_ino
+                if same_bytes:
+                    replacement = self.base / 'replacement.png'
+                    replacement.write_bytes(self.receipt.path.read_bytes())
+                    os.replace(replacement, self.receipt.path)
+                    self.assertNotEqual(self.receipt.path.stat().st_ino, identity)
+                else:
+                    Image.new('RGB', (24, 18), 'red').save(self.receipt.path)
+                    self.assertEqual(self.receipt.path.stat().st_ino, identity)
+                panel.run_saved()
+                self.ui._start_task_workflow.assert_not_called()
+                self.assertIn('无法回读', panel.status.get())
+                self.assertFalse(panel._can_run_saved())
+
+    def test_worker_rechecks_capture_and_holds_explicitly_reselected_source(self):
+        panel = self.saved_capture('run.json')
+        jobs = []
+        ui = self.ui
+        ui.events = Mock()
+        ui._native_run = Mock()
+        ui._read_settings = Mock(return_value=Settings())
+        ui._start_desktop_job = Mock(side_effect=lambda _title, work, *_args, **_kw: jobs.append(work) or True)
+        ui._start_task_workflow = AutoHSRWindow._start_task_workflow.__get__(ui)
+        ui._start_scoped_runner = AutoHSRWindow._start_scoped_runner.__get__(ui)
+        runner = self.enterContext(patch('autohsr.task_workflow_run.TaskWorkflowRunner'))
+        panel.run_saved()
+        replacement = self.base / 'replacement.png'
+        replacement.write_bytes(self.receipt.path.read_bytes())
+        os.replace(replacement, self.receipt.path)
+        result = jobs[0](None)
+        self.assertEqual(result['status'], 'failed')
+        self.assertIn('无法回读', result['error'])
+        runner.assert_not_called()
+        ui._native_run.run.assert_not_called()
+
+        # Reapplying a new capture with the same relative name still invalidates review.
+        self.receipt = self.make_capture(self.base, color='orange')
+        self.edit_hidden(panel)
+        self.assertFalse(panel._can_run_saved())
+        panel.validate()
+        panel.run_saved()
+        self.assertEqual(len(jobs), 2)
+
+        def run_native(_runner):
+            if os.name == 'nt':
+                with self.assertRaises(PermissionError), self.receipt.path.open('ab'):
+                    pass
+            return dict(status='success')
+
+        ui._native_run.run.side_effect = run_native
+        self.assertEqual(jobs[1](None), dict(status='success'))
+        self.assertEqual(runner.call_args.kwargs['selected_path'], '0')
+        ui._native_run.run.assert_called_once()
+        with self.receipt.path.open('ab'):
+            pass  # The worker released the read handle.
+
+    def test_selected_leaf_does_not_require_ancestor_condition_template(self):
+        self.source.write_text(json.dumps(live_image_document(), ensure_ascii=False), encoding='utf8')
+        panel = self.saved_capture('condition.json')
+        self.receipt.path.write_bytes(b'changed')
+        panel.run_saved()
+        self.ui._start_task_workflow.assert_not_called()
+        self.assertIn('无法回读', panel.status.get())
+        panel.step_path.set('0/0')
+        panel.validate()
+        panel.run_saved()
+        self.ui._start_task_workflow.assert_called_once()
+        self.assertEqual(self.ui._start_task_workflow.call_args.args[0].path, (0, 0))
 
     def test_save_uses_the_validated_directory_instead_of_resolving_a_path_twice(self):
         panel = self.panel()
