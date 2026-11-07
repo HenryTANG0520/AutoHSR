@@ -11,9 +11,9 @@
       "native_files": ["autohsr/build_target_read.py", "autohsr/app.py", "autohsr/__main__.py"],
       "reference_source": "tasks/daily/buildtarget.py",
       "reference_functions": ["DefaultHandler._parse_calyx_instance_info", "DropHandler._get_instance_by_drop"],
-      "additional_references": [{"source": "assets/config/instance_drops.json", "scope": "exact selected Calyx material families"}],
+      "additional_references": [{"source": "assets/config/instance_drops.json", "scope": "exact selected Calyx material families and Stagnant Shadow material-to-dungeon pairs"}],
       "tests": ["autohsr/tests/test_build_target_preview.py"],
-      "kind": "AutoHSR read-only candidate preview using a pinned material detail crop and exact Calyx location fields, intersected with the bundled CN directory. Report fields distinguish material observation, cultivation context, catalogue alternatives and unknown quantities. Tests use synthetic material layouts."
+      "kind": "AutoHSR read-only candidate preview using a pinned material detail crop and exact Calyx or Stagnant Shadow source fields, intersected with the bundled CN directory. Report fields distinguish material observation, cultivation context, catalogue alternatives and unknown quantities. Tests use synthetic material layouts."
     },
     {
       "path": "autohsr/build_target_read.py",

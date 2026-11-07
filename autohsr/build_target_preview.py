@@ -1,4 +1,4 @@
-"""Preview visible cultivation materials and Calyx rewards without game input."""
+"""Preview visible cultivation materials and dungeon sources without game input."""
 from collections import Counter
 from dataclasses import asdict, dataclass, field, replace
 import re
@@ -29,7 +29,7 @@ SOURCE_BODY = (790 / 1920, 377 / 1080, 1484 / 1920, 731 / 1080)
 OBSERVATION_SOURCE = (.40, SOURCE_BODY[1], SOURCE_BODY[2], .71)
 SOURCE_LABEL = '获得途径'
 DETAIL_BLOCKERS = tuple(label for label in MODAL if label != SOURCE_LABEL)
-CALYX_SOURCE = re.compile(r'拟造花萼〖([^〖〗\r\n]{2,64})〗')
+SOURCE_LOCATION = re.compile(r'〖([^〖〗\r\n]{2,64})〗')
 LOCK_MARKERS = ('未解锁', '尚未解锁')
 HELD_COUNT = r'(?:0|[1-9][0-9]{0,8}|[1-9][0-9]{0,2}(?:,[0-9]{3}){1,2})'
 CALYX_TITLE = (.59, .09, .96, .15)
@@ -52,13 +52,48 @@ CALYX_FAMILIES = (
 )
 CALYX_BY_MATERIAL = {material: (category, target, location)
                      for names, category, target, location in CALYX_FAMILIES for material in names}
+# Exact factual pairs from the pinned drop index. The bundled catalogue and
+# the current source row must independently agree on the location.
+SHADOW_TARGETS = {
+    '虚幻铸铁': '空海之形',
+    '暴风之眼': '巽风之形',
+    '往日之影的雷冠': '鸣雷之形',
+    '恒温晶壳': '炎华之形',
+    '铁狼碎齿': '锋芒之形',
+    '风雪之角': '霜晶之形',
+    '往日之影的金饰': '幻光之形',
+    '苦寒晶壳': '冰棱之形',
+    '炼形者雷枝': '震厄之形',
+    '镇灵敕符': '偃偶之形',
+    '苍猿之钉': '孽兽之形',
+    '天人遗垢': '天人之形',
+    '幽府通令': '幽府之形',
+    '过热钢刃': '燔灼之形',
+    '冷藏梦箱': '冰酿之形',
+    '炙梦喷枪': '焦炙之形',
+    '忿火之心': '嗔怒之形',
+    '星际和平工作证': '职司之形',
+    '兽棺之钉': '机狼之形',
+    '一杯酩酊的时代': '今宵之形',
+    '一曲合弦的幻景': '弦音之形',
+    '暗帷月华': '凛月之形',
+    '纷争先兆': '役轮之形',
+    '侵略凝块': '溟簇之形',
+    '暮晖烬蕾': '烬日之形',
+    '海妖残鳍': '塞壬之形',
+    '明辉日珥': '残灰之形',
+    '狂雷扫弦': '音爆之形',
+    '嗤笑丑面': '吞噬之形',
+}
+MATERIAL_SOURCES = {**CALYX_BY_MATERIAL,
+                    **{material: ('stagnant_shadow', target, None) for material, target in SHADOW_TARGETS.items()}}
 
 
 @dataclass(frozen=True)
 class MaterialDetail:
     material: str
     locations: tuple[str, ...]
-    unreadable_calyx_rows: int
+    unreadable_source_rows: int
     lock_marker_rows: int
     target_section_visible: bool
     repeated_locations: tuple[str, ...]
@@ -81,7 +116,7 @@ class BuildTargetSelection:
     count: int
 
     def __post_init__(self):
-        if type(self.material) is not str or self.material not in CALYX_BY_MATERIAL:
+        if type(self.material) is not str or self.material not in MATERIAL_SOURCES:
             raise ValueError('请指定当前支持的完整培养材料名。')
         if (type(self.location) is not str or not 2 <= len(self.location) <= 64
                 or self.location != self.location.strip() or any(c in self.location for c in '\r\n')):
@@ -172,19 +207,22 @@ def _catalogue_row_areas(scene, catalogue):
                    max(box[2] for box in boxes), max(box[3] for box in boxes))
 
 
-def _calyx_locations(scene, page, fragments, heading):
+def _source_locations(scene, page, fragments, heading, prefix):
     rows = sorted((token for token in scene.tokens if token.within(SOURCE_BODY)
-                   and token.box[1] >= heading.box[3] and token.text.strip().startswith('拟造花萼')),
+                   and token.box[1] >= heading.box[3] and token.text.strip().startswith(prefix)),
                   key=lambda token: token.box[1])
     locations = []
     seen, repeated = set(), set()
     source_rows = (SOURCE_BODY[0], heading.box[3], SOURCE_BODY[2], SOURCE_BODY[3])
     # A split prefix establishes at least one unresolved row. Preserve full
     # rows for preview, but do not certify the list for a manual draft.
-    unreadable = int(_has_split_label(fragments, ('拟造花萼',), source_rows, exact=False))
+    unreadable = int(_has_split_label(fragments, (prefix,), source_rows, exact=False))
+    if prefix == '凝滞虚影' and (fragments.has('拟造花萼', source_rows)
+            or _has_split_label(fragments, ('拟造花萼',), source_rows, exact=False)):
+        unreadable += 1
     locked = 0
     for token in rows:
-        match = CALYX_SOURCE.fullmatch(token.text.strip())
+        match = SOURCE_LOCATION.fullmatch(token.text.strip().removeprefix(prefix))
         if not match:
             unreadable += 1
             continue
@@ -207,7 +245,7 @@ def _calyx_locations(scene, page, fragments, heading):
 
 
 def _title_candidate(token):
-    return (token.text.strip() in CALYX_BY_MATERIAL
+    return (token.text.strip() in MATERIAL_SOURCES
             or token.score >= FRAGMENT_CONFIDENCE and re.search(r'[\u3400-\u9fff]', token.text))
 
 
@@ -235,7 +273,7 @@ def _classify(reader, scene, *, read_quantities=False):
     headings = [token for token in captured.tokens if token.within(MODAL_AREA)
                 and normalize(token.text) == SOURCE_LABEL]
     title_region = [token for token in captured.tokens if token.within(MATERIAL_TITLE)]
-    if not headings and not any(token.text.strip() in CALYX_BY_MATERIAL for token in title_region):
+    if not headings and not any(token.text.strip() in MATERIAL_SOURCES for token in title_region):
         if catalogue_rows:
             return None, None
         if read_quantities and page.has('角色培养', ROLE, exact=True):
@@ -250,7 +288,8 @@ def _classify(reader, scene, *, read_quantities=False):
     if len(titles) != 1 or len(headings) != 1:
         return None, None
     title, heading = titles[0], headings[0]
-    if title.text.strip() not in CALYX_BY_MATERIAL or title not in page.tokens or heading not in page.tokens:
+    material = title.text.strip()
+    if material not in MATERIAL_SOURCES or title not in page.tokens or heading not in page.tokens:
         return None, None
     # A separate directory background only vetoes the cultivation context.
     if any(heading.within(area) for area in catalogue_rows):
@@ -263,7 +302,8 @@ def _classify(reader, scene, *, read_quantities=False):
                                 for token in captured.tokens):
         held = None
     if _inside(title, MATERIAL_TITLE) and _inside(heading, SOURCE_BODY):
-        locations, unreadable, locked, repeated = _calyx_locations(scene, page, fragments, heading)
+        prefix = '凝滞虚影' if material in SHADOW_TARGETS else '拟造花萼'
+        locations, unreadable, locked, repeated = _source_locations(scene, page, fragments, heading, prefix)
     elif held is not None and _inside(title, OBSERVATION_TITLE) and _inside(heading, OBSERVATION_SOURCE):
         # The longer item card still supplies inventory. Routes require the
         # independently calibrated source layout.
@@ -275,11 +315,11 @@ def _classify(reader, scene, *, read_quantities=False):
     target_visible = (len(target_titles) == 1 and target_titles[0] in page.tokens
                       and target_titles[0].box[3] <= title.box[1] and not catalogue_rows
                       and not target_status_conflicts(fragments))
-    return MaterialDetail(title.text.strip(), locations, unreadable, locked, target_visible, repeated, held), entry
+    return MaterialDetail(material, locations, unreadable, locked, target_visible, repeated, held), entry
 
 
 def _catalogue_sources(detail, catalogue):
-    category, target, reference_location = CALYX_BY_MATERIAL[detail.material]
+    category, target, reference_location = MATERIAL_SOURCES[detail.material]
     sources = []
     for location in detail.locations:
         if reference_location is not None and location != reference_location:
@@ -331,7 +371,8 @@ def run_preview(ctx, *, selection=None):
             rule = BY_KEY[source.category]
             maximum = count_limit(rule, limit)
             blocker = None
-            if observation.unreadable_calyx_rows:
+            if (observation.unreadable_source_rows
+                    or source.category == 'stagnant_shadow' and len(observation.locations) != 1):
                 blocker = 'incomplete_source'
             elif source.location in observation.repeated_locations:
                 blocker = 'repeated_location'
@@ -399,12 +440,13 @@ def run_preview(ctx, *, selection=None):
         preview.update(state='panel_observed', target_section_visible=True)
         detail = '已保存培养目标页。打开一项材料详情并显示获得途径可核对目录候选。'
     else:
+        unmatched_key = 'unmatched_shadow_rows' if observation.material in SHADOW_TARGETS else 'unmatched_calyx_rows'
         preview.update(state='catalogue_candidates' if candidates else 'material_observed',
                        material=observation.material, held=observation.held, candidates=candidates,
                        target_section_visible=observation.target_section_visible,
                        source_locations=[source.location for source in sources],
-                       lock_marker_rows=observation.lock_marker_rows,
-                       unmatched_calyx_rows=observation.unreadable_calyx_rows + len(observation.locations) - len(sources))
+                       lock_marker_rows=observation.lock_marker_rows)
+        preview[unmatched_key] = observation.unreadable_source_rows + len(observation.locations) - len(sources)
         detail = f'已观察材料「{observation.material}」及 {len(candidates)} 项目录候选，缺口和单轮产量待核实。'
     if selection is None:
         ctx.build_target_preview_source = source, unverified_preview

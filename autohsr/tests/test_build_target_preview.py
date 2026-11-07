@@ -14,9 +14,10 @@ from unittest.mock import Mock, patch
 from autohsr.__main__ import main
 from autohsr.app import Context, Runner
 from autohsr import build_target_compose, build_target_draft
-from autohsr.build_target_preview import BuildTargetSelection
-from autohsr.config import Settings, SettingsError
+from autohsr.build_target_preview import BuildTargetSelection, SHADOW_TARGETS
+from autohsr.config import RESOURCE_ROOT, Settings, SettingsError
 from autohsr.desktop_daily import DailyPanel, _preview_text
+from autohsr.dungeons import load_catalogue
 from autohsr.models import AutomationError, EmptyCapture, Scene
 from autohsr.power_plan import items
 from autohsr.tests import test_build_target_read as fixtures
@@ -45,6 +46,9 @@ class BuildTargetPreviewTests(unittest.TestCase):
 
     def route(self, location, y, *, score=.99):
         return token(f'拟造花萼〖{location}〗', .57, y, score=score, width=.18)
+
+    def shadow_route(self, location, y=.52):
+        return token(f'凝滞虚影〖{location}〗', .57, y, width=.20)
 
     def native(self, frames):
         with self.runtime(frames) as window:
@@ -301,12 +305,16 @@ class BuildTargetPreviewTests(unittest.TestCase):
         self.assertEqual(report['build_target']['draft']['items'],
                          [dict(category='calyx_crimson', target='虚无之蕾', location=location, count=1)])
 
-    def compose_sources(self):
+    def compose_sources(self, *, shadow=False):
         golden = [*self.material(), self.route('城郊雪原', .50)]
-        material, location = '法吉娜之心', '「辉痕圣林」神悟树庭'
-        crimson = [*self.material(material), self.route(location, .52)]
+        if shadow:
+            material, location = '海妖残鳍', '「酣歌海垠」斯缇科西亚'
+            second = [*self.material(material), self.shadow_route(location)]
+        else:
+            material, location = '法吉娜之心', '「辉痕圣林」神悟树庭'
+            second = [*self.material(material), self.route(location, .52)]
         drafts = (self.draft_cli([golden, golden], count=2),
-                  self.draft_cli([crimson, crimson], material=material, location=location))
+                  self.draft_cli([second, second], material=material, location=location))
         receipts = [self.root / f'receipt-{index}.json' for index in range(len(drafts))]
         for path, report in zip(receipts, drafts):
             path.write_text(json.dumps(report, ensure_ascii=False), encoding='utf8')
@@ -371,6 +379,47 @@ class BuildTargetPreviewTests(unittest.TestCase):
         evidence.write_bytes(evidence.read_bytes() + b'changed')
         self.compose_cli(receipts, stamina=40, output=output, code=1)
         self.assertFalse(output.exists())
+
+    def test_shadow_materials_match_bundled_dungeons_and_disambiguate_shared_locations(self):
+        catalogue = load_catalogue(RESOURCE_ROOT / 'assets' / 'dungeons.json')
+        for material, target in SHADOW_TARGETS.items():
+            with self.subTest(material=material):
+                self.assertEqual(sum(row.category == 'stagnant_shadow' and row.name == target for row in catalogue), 1)
+        self.settings.stamina_limit = 60
+        for material, target in (('铁狼碎齿', '锋芒之形'), ('过热钢刃', '燔灼之形')):
+            frame = [*self.material(material), self.shadow_route('大矿区')]
+            report = self.draft_cli([frame, frame], material=material, location='大矿区', count=2)
+            draft = report['build_target']['draft']
+            self.assertEqual(draft['stamina_required'], 60)
+            self.assertEqual(draft['items'], [dict(category='stagnant_shadow', target=target,
+                                                   location='大矿区', count=2)])
+
+    def test_shadow_location_must_be_unique_unlocked_and_match_the_material(self):
+        material, location = '海妖残鳍', '「酣歌海垠」斯缇科西亚'
+        wrong = '「龙骸古城」斯缇科西亚'
+        self.settings.stamina_limit = 60
+        valid = [*self.material(material), self.shadow_route(location)]
+        for frame in (
+            [*self.material(material), self.shadow_route(wrong)],
+            [*self.material(material), self.route(location, .52)],
+            [*valid, token('未解锁', .73, .52, width=.065)],
+            [*valid, self.shadow_route(wrong, .58)],
+            [*valid, self.shadow_route(location, .58)],
+            [*valid, self.route(location, .58)],
+        ):
+            with self.subTest(tokens=[field.text for field in frame[4:]]):
+                report = self.draft_cli([frame, frame], material=material, location=location, code=1)
+                self.assertNotIn('draft', report['build_target'])
+        budget = self.draft_cli([valid, valid], material=material, location=location, count=3, code=1)
+        self.assertIn('最多 2 次', budget['error'])
+
+    def test_compose_supports_a_calyx_and_shadow_with_their_distinct_costs(self):
+        self.settings.stamina_limit = 60
+        _, receipts = self.compose_sources(shadow=True)
+        result = self.compose_cli(receipts, stamina=50, output=self.root / 'mixed-plan.json')
+        self.assertEqual(result['stamina_required'], 50)
+        self.assertEqual([(row['category'], row['count']) for row in result['items']],
+                         [('calyx_golden', 2), ('stagnant_shadow', 1)])
 
     def test_draft_refuses_unproven_source_and_out_of_budget_request(self):
         valid = [*self.material(), self.route('城郊雪原', .50)]
@@ -840,7 +889,7 @@ class BuildTargetPreviewTests(unittest.TestCase):
             [*self.material(), token('获得途径', .48, .43), self.route('城郊雪原', .48)],
             [*self.material(), token('获得途径', .48, .75), self.route('城郊雪原', .48)],
             [*self.material(), token('遗失碎金', .525, .323), self.route('城郊雪原', .48)],
-            [*self.material('侵略凝块'), token('凝滞虚影〖「龙骸古城」斯缇科西亚〗', .57, .48)],
+            [*self.material('未知晋阶材料'), token('凝滞虚影〖「龙骸古城」斯缇科西亚〗', .57, .48)],
             self.catalogue,
         ):
             with self.subTest(fields=[field.text for field in frame[4:]]):

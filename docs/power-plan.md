@@ -221,6 +221,10 @@ $draft = .\.venv\Scripts\python.exe -m autohsr --build-target --material '漫游
 
 命令输出的 `status=success` 与 `build_target.draft.state=prepared` 表示草稿已发布。`build_target.draft.file` 指向 `run_dir` 内的新建 `power-plan.json`，内容只有一条分类、名称、地点和次数。`count_source=manual` 表示轮次为用户手填，`stamina_required` 是按目录费用算出的预计开拓力。草稿阶段开战、支付及游戏输入均为零。该草稿的材料缺口、单轮产量和实际预算留空。
 
+凝滞虚影使用同一入口。程序将材料名与固定掉落索引中的 29 个副本配对，再要求当前材料详情中的完整 `凝滞虚影〖地点〗` 与随包目录匹配。同一地点可能有不同副本，例如大矿区的锋芒之形和燔灼之形，由材料和地点共同区分。画面来源截断、锁定、重复或冲突时不发布。凝滞虚影按每次 30 开拓力计入草稿。[固定掉落索引](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/instance_drops.json#L170-L255)
+
+海妖残鳍的来源行复核采用公开录像 P1 的 11.6 与 11.8 秒。CID `42059499562`，AVC 轨为 854×384，SHA-256 为 `ff26bb970a853c3f383e518ea15de60a64c2cbb16779bcdac807f96e69adb02a`。中央裁片确认整行和材料置换行分开。局部放大后 OCR 仍有地点错字，这两帧只校准来源行结构。正式草稿的同账号双帧、目录匹配和费用用假窗口核对，当前 Windows 客户端仍需实机验收。[公开原片](https://www.bilibili.com/video/BV1xuez6uEwV/?t=11)
+
 若「获得途径」内的花萼前缀被拆成同一行相邻字框，预览保留已核实的完整来源，至少记一项未核实来源，草稿保持待核对。跨行片段不拼接成来源。
 
 本次 `report.json` 先保存 `partial/staged` 审计回执，记录所选条目、草稿 SHA-256 和所引用的原始截图。最终草稿随后在同一 NTFS 运行目录独占发布，磁盘回执保留在 `staged` 阶段。同名文件保留原样，截图或回执发生变化、停止或发布失败时，命令返回失败或停止并保留已有记录。旧同名文件即使字节相同，也可能让 `staged` 回执与现有文件哈希一致。应核对本次命令的 `success/prepared` 输出和当前草稿哈希来确认本次发布。
@@ -245,7 +249,7 @@ python -m autohsr --compose-build-target '材料一.json' '材料二.json' --sta
 python -m autohsr --compose-build-target '材料一.json' '材料二.json' --stamina 60 --build-target-output '培养组合.json'
 ```
 
-合并保留每项的手填次数。回执、审计、单项计划或截图不一致，或者重复选择同一副本地点、预计总费用超出上限时停止。合并阶段只读取本地文件。审阅后可用既有 `--run --power-plan --power-plan-file` 入口显式执行，并用 `--stamina 60 --no-fill-power-plan --no-echo-of-war` 约束该次计划。实际开拓力、账号和支付仍在执行时核验。
+合并保留每项的手填次数，花萼与凝滞虚影分别按目录费用计入同一上限。回执、审计、单项计划或截图不一致，或者重复选择同一副本地点、预计总费用超出上限时停止。合并阶段只读取本地文件。审阅后可用既有 `--run --power-plan --power-plan-file` 入口显式执行，并用 `--stamina 60 --no-fill-power-plan --no-echo-of-war` 约束该次计划。实际开拓力、账号和支付仍在执行时核验。
 
 #### 当前客户端最小补样
 

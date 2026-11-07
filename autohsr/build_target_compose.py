@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 
 from .build_target_draft import PLAN, _json_bytes, _link, _private_file
+from .build_target_preview import MATERIAL_SOURCES
 from .config import ROOT
 from .models import AutomationError, normalize
 from .power_plan import items
@@ -68,10 +69,11 @@ def _source(receipt, root, held):
         raise AutomationError('培养草稿条目与回执不一致。')
     item, = items(rows)
     material = draft.get('material')
-    if (item.category not in ('calyx_golden', 'calyx_crimson') or item.count > item.dungeon.batch
+    if (not isinstance(material, str) or material not in MATERIAL_SOURCES
+            or (item.category, item.target) != MATERIAL_SOURCES[material][:2] or item.count > item.dungeon.batch
             or type(draft.get('stamina_required')) is not int
             or draft['stamina_required'] != item.count * item.dungeon.cost
-            or not isinstance(material, str) or not material.strip() or preview.get('material') != material):
+            or preview.get('material') != material):
         raise AutomationError('培养草稿缺少同一材料的有效单项预算。')
     return item, material
 
