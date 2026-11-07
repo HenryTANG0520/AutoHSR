@@ -131,14 +131,20 @@ def main():
                 panel.tkraise()
                 panel.invoke_primary()
                 start.assert_called_once_with(ASSIGNMENTS)
-                child = directory / 'assignment.json'
-                child_report = dict(operation='daily', report_saved=True, status='success', results=[dict(
+                parent_dir = directory / f'assignment-flow-{scale}'
+                child_dir = directory / f'assignment-run-{scale}'
+                parent_dir.mkdir()
+                child_dir.mkdir()
+                parent, child = parent_dir / 'report.json', child_dir / 'report.json'
+                child_report = dict(operation='daily', report_saved=True, status='success', run_dir=str(child_dir), results=[dict(
                     task='assignments', status='ok', detail='持续委托暂无可收取奖励，已核对原委托进行中。',
                 )])
                 child.write_text(json.dumps(child_report, ensure_ascii=False), encoding='utf-8')
-                receipt = dict(operation='task_workflow', report_saved=True, workflow=dict(name=ASSIGNMENT_FLOW,
-                    steps=[dict(step='assignments', task='daily', status='success', account_verified=True,
+                receipt = dict(operation='task_workflow', report_saved=True, status='success', run_dir=str(parent_dir),
+                    workflow=dict(name=ASSIGNMENT_FLOW, identity=dict(verified=True, account_changed=False),
+                    steps=[dict(step='assignments', type='task', task='daily', status='success', account_verified=True,
                     source=dict(path=str(child), sha256=hashlib.sha256(child.read_bytes()).hexdigest()))]))
+                parent.write_text(json.dumps(receipt, ensure_ascii=False), encoding='utf-8')
                 panel.present(ASSIGNMENTS, receipt)
                 panel = replace_panel(panel)
                 assert panel.assignment_title.get() == '委托状态已核实' and '暂无' in panel.assignment_detail.get()
@@ -155,6 +161,7 @@ def main():
                 child.write_text(json.dumps(child_report, ensure_ascii=False), encoding='utf-8')
                 step = receipt['workflow']['steps'][0]
                 step['account_verified'] = False
+                parent.write_text(json.dumps(receipt, ensure_ascii=False), encoding='utf-8')
                 panel.present(ASSIGNMENTS, receipt)
                 assert '待核对' in panel.assignment_title.get() and '已核对' not in panel.assignment_detail.get()
                 assert not panel.assignment_record.instate(('disabled',))
@@ -162,6 +169,7 @@ def main():
                 child_report['status'] = 'partial'
                 child.write_text(json.dumps(child_report, ensure_ascii=False), encoding='utf-8')
                 step['source']['sha256'] = hashlib.sha256(child.read_bytes()).hexdigest()
+                parent.write_text(json.dumps(receipt, ensure_ascii=False), encoding='utf-8')
                 panel.present(ASSIGNMENTS, receipt)
                 assert '待核对' in panel.assignment_title.get() and '已核对' not in panel.assignment_detail.get()
 

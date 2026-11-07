@@ -265,7 +265,11 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(projections[1][0], '委托结果待核对')
         missing_account = deepcopy(verified.report)
         missing_account['workflow']['steps'][0]['account_verified'] = False
+        parent = Path(verified.report['run_dir']) / 'report.json'
+        original_parent = parent.read_bytes()
+        parent.write_text(json.dumps(missing_account, ensure_ascii=False), 'utf8')
         self.assertEqual(assignment_result(missing_account)[0], '委托结果待核对')
+        parent.write_bytes(original_parent)
         child = projections[0][2]
         child.write_bytes(child.read_bytes() + b'\n')
         self.assertEqual(assignment_result(verified.report)[0], '委托记录待核对')

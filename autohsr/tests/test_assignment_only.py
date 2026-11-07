@@ -1,5 +1,6 @@
 """The existing JSON assignment selection through native Runner and fake Win32."""
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
+from copy import deepcopy
 from dataclasses import replace
 import io
 import json
@@ -325,3 +326,26 @@ class AssignmentOnlyTests(unittest.TestCase):
                     main(['--assignments-only', *extra])
                 self.assertEqual(error.exception.code, 2)
             load.assert_not_called()
+
+    def test_desktop_requires_saved_parent_account_and_matching_assignment_outcome(self):
+        result = self.invoke(standalone=True)
+        self.assertEqual(result.code, 0, result.report)
+        report = result.report
+        parent = Path(report['run_dir']) / 'report.json'
+        child = Path(report['workflow']['steps'][0]['source']['path'])
+        parent_bytes = parent.read_bytes()
+        mismatched = deepcopy(report)
+        mismatched['workflow']['steps'][0]['assignment'] = dict(outcome='empty', submission='not_attempted')
+        self.assertEqual(assignment_result(mismatched)[::2], ('委托记录待核对', None))
+        parent.write_text(json.dumps(mismatched, ensure_ascii=False), 'utf8')
+        self.assertEqual(assignment_result(mismatched)[::2], ('委托结果待核对', child))
+        changed = deepcopy(report)
+        changed['workflow']['identity'].update(verified=False, account_changed=True)
+        parent.write_text(json.dumps(changed, ensure_ascii=False), 'utf8')
+        self.assertEqual(assignment_result(changed)[::2], ('委托结果待核对', child))
+        for status, title in (('partial', '委托结果待核对'), ('stopped', '已停止')):
+            interrupted = dict(report, status=status)
+            parent.write_text(json.dumps(interrupted, ensure_ascii=False), 'utf8')
+            self.assertEqual(assignment_result(interrupted), (title, '已核实领取委托奖励。', child))
+        parent.write_bytes(parent_bytes)
+        self.assertEqual(assignment_result(report)[::2], ('已核实领取委托奖励', child))

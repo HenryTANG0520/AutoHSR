@@ -43,43 +43,7 @@ def _verified_file(path, digest, limit):
     return raw
 
 
-def assignment_result(report):
-    """Show the child receipt, including the distinction between zero and a claim."""
-    workflow = report.get('workflow') or {}
-    steps = workflow.get('steps', [])
-    if (report.get('operation') == 'task_workflow' and report.get('report_saved') is True
-            and workflow.get('name') == ASSIGNMENT_FLOW and len(steps) == 1
-            and steps[0].get('step') == ASSIGNMENT_STEP and steps[0].get('task') == 'daily'):
-        step = steps[0]
-        source = step.get('source') or {}
-        try:
-            path = Path(source.get('path', ''))
-            child = json.loads(_verified_file(path, source.get('sha256'), 64 * 1024 * 1024))
-            if child.get('operation') == 'daily' and child.get('report_saved') is True:
-                rows = [row for row in child['results'] if row.get('task') == ASSIGNMENT_STEP]
-                verified = (step.get('account_verified') is True and step.get('status') == 'success'
-                            and child.get('status') == 'success')
-                if verified and len(rows) == 1 and rows[0].get('status') == 'ok':
-                    if 'assignment' not in child:
-                        return '委托状态已核实', rows[0]['detail'], path
-                    from .daily_assignment_scope import assignment_receipt
-
-                    receipt = assignment_receipt(child)
-                    if receipt is not None:
-                        title = '已核实领取委托奖励' if receipt['outcome'] == 'claimed' else '暂无可领委托奖励'
-                        return title, rows[0]['detail'], path
-                incomplete = len(rows) == 1 and rows[0].get('status') in ('partial', 'failed', 'stopped')
-                title = '已停止' if report.get('status') == 'stopped' else '委托结果待核对'
-                detail = rows[0].get('detail') if incomplete else report.get('error')
-                return title, detail or '请查看本次原始报告。', path
-        except (KeyError, OSError, TypeError, ValueError):
-            return '委托记录待核对', '请查看本次运行报告。', None
-    title = '已停止' if report.get('status') == 'stopped' else '委托结果待核对'
-    return title, report.get('error') or '查看本次运行报告。', None
-
-
-def _attachment_receipt(task, report):
-    from .daily_attachments import ATTACHMENT_FLOWS
+def _scoped_daily_receipt(task, flow, report):
     from .task_workflow import _pairs
 
     directory = Path(report.get('run_dir', ''))
@@ -92,7 +56,7 @@ def _attachment_receipt(task, report):
         raise ValueError('父报告内容待核对。')
 
     workflow = report.get('workflow')
-    if not isinstance(workflow, dict) or workflow.get('name') != ATTACHMENT_FLOWS[task]:
+    if not isinstance(workflow, dict) or workflow.get('name') != flow:
         raise ValueError('流程来源待核对。')
     steps = workflow.get('steps')
     if steps == []:
@@ -127,8 +91,51 @@ def _attachment_receipt(task, report):
     return workflow, step, child, row, path
 
 
+def _account_verified(workflow, step):
+    identity = workflow.get('identity')
+    return (isinstance(identity, dict) and identity.get('verified') is True
+            and identity.get('account_changed') is False and step.get('account_verified') is True)
+
+
+def assignment_result(report):
+    """Show only the assignment outcome supported by both saved reports."""
+    stopped = report.get('status') == 'stopped'
+    pending = '已停止' if stopped else '委托结果待核对'
+    reason = report.get('error') or '请查看本次运行报告。'
+    if report.get('operation') != 'task_workflow' or report.get('report_saved') is not True:
+        return pending, reason, None
+    try:
+        workflow, step, child, row, path = _scoped_daily_receipt(ASSIGNMENT_STEP, ASSIGNMENT_FLOW, report)
+    except (KeyError, OSError, RuntimeError, TypeError, ValueError):
+        return '已停止' if stopped else '委托记录待核对', '请核对本次原始报告。', None
+
+    if child.get('status') == 'stopped':
+        pending = '已停止'
+    detail = row.get('detail')
+    if (_account_verified(workflow, step) and step.get('status') == child.get('status') == 'success'
+            and row.get('status') == 'ok' and isinstance(detail, str)):
+        from .daily_assignment_scope import assignment_receipt
+
+        receipt = assignment_receipt(child)
+        if receipt is not None and step.get('assignment') == receipt:
+            outcome = '已核实领取委托奖励' if receipt['outcome'] == 'claimed' else '暂无可领委托奖励'
+        elif 'assignment' not in child and 'assignment' not in step:
+            outcome = '委托状态已核实'
+        else:
+            outcome = None
+        if outcome and report.get('status') == 'success':
+            return outcome, detail, path
+        if outcome and report.get('status') in ('partial', 'stopped'):
+            return pending, outcome + '。', path
+    if row.get('status') in ('partial', 'failed', 'stopped') and isinstance(detail, str):
+        reason = detail or reason
+    return pending, reason, path
+
+
 def attachment_result(section, report):
     """Project the scoped receipt with separate claim, empty and unresolved states."""
+    from .daily_attachments import ATTACHMENT_FLOWS
+
     item = ATTACHMENT_SECTIONS[section]
     stopped = report.get('status') == 'stopped'
     pending = '已停止' if stopped else item['title'] + '结果待核对'
@@ -136,19 +143,16 @@ def attachment_result(section, report):
     if report.get('operation') != 'task_workflow' or report.get('report_saved') is not True:
         return pending, reason, None
     try:
-        workflow, step, child, row, path = _attachment_receipt(item['task'], report)
+        workflow, step, child, row, path = _scoped_daily_receipt(item['task'], ATTACHMENT_FLOWS[item['task']], report)
     except (KeyError, OSError, RuntimeError, TypeError, ValueError):
         label = '已停止' if stopped else item['title'] + '记录待核对'
         return label, '请核对本次原始报告。', None
 
     if child.get('status') == 'stopped':
         stopped, pending = True, '已停止'
-    identity = workflow.get('identity')
-    account = (isinstance(identity, dict) and identity.get('verified') is True
-               and identity.get('account_changed') is False and step.get('account_verified') is True)
     outcome, claims = row.get('attachment_outcome'), row.get('verified_claims')
     terminal = ('success', 'partial', 'failed', 'stopped')
-    checked = (account and row.get('task') == item['task']
+    checked = (_account_verified(workflow, step) and row.get('task') == item['task']
                and report.get('status') in terminal and child.get('status') in terminal
                and step.get('status') == child.get('status')
                and row.get('status') in ('ok', 'partial', 'failed', 'stopped')
