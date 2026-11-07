@@ -1415,7 +1415,13 @@ class DailyWorkflow:
             if (self.settings.daily_synthesis and self.ctx.report.operation == 'daily'
                     and type(activity) is int and activity < 500 and not self._daily_synthesis_attempted):
                 from .daily_synthesis import task_target, complete_once
-                if task_target(scene) is not None:
+
+                found = task_target(scene) is not None
+                if not found:
+                    from .daily_synthesis_search import find_hidden_card
+
+                    scene, found = find_hidden_card(self, scene, activity)
+                if found:
                     self._daily_synthesis_attempted = True
                     complete_once(self, scene)
                     return self.daily()

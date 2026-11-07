@@ -32,7 +32,7 @@ RECHECK_DELAY = .15
 MAX_PRIVATE_BYTES = 16 * 1024 * 1024
 INPUT_METHODS = frozenset(('send', 'click', 'click_held', 'move', 'key', 'type_du_save_name', 'type_redemption_code',
                           'key_hold', 'field_interact', 'field_attack', 'dialogue_burst',
-                          'field_motion', 'look', 'drag', 'scroll'))
+                          'field_motion', 'look', 'drag', 'scroll', 'scroll_down_once'))
 
 
 @dataclass

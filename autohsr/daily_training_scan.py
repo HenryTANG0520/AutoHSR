@@ -26,6 +26,7 @@ class Viewport:
     game_day: str
     cards: tuple
     centers: tuple
+    right_clipped: bool
 
     @property
     def anchor(self):
@@ -39,10 +40,10 @@ def _columns(image):
     # the activity graphics, the reward buttons and the decorated bottom edge.
     profile = np.median(view[153:215, _LEFT:_RIGHT], axis=0)
     edges = np.flatnonzero(np.diff(np.r_[False, profile >= 235, False])) + _LEFT
-    return [(int(left), int(right)) for left, right in zip(edges[::2], edges[1::2]) if 80 <= right-left <= 100]
+    return [(int(left), int(right)) for left, right in zip(edges[::2], edges[1::2])]
 
 
-def _viewport(workflow, scene, confidence):
+def visible_viewport(workflow, scene, confidence):
     if _blocked(scene) or reward_overlay(scene):
         return None
     activity = workflow._activity(scene)
@@ -52,7 +53,8 @@ def _viewport(workflow, scene, confidence):
         day = _task_game_day(scene)
     except AutomationError:
         return None
-    columns = _columns(scene.image)
+    runs = _columns(scene.image)
+    columns = [(left, right) for left, right in runs if 80 <= right-left <= 100]
     if not 1 <= len(columns) <= 4:
         return None
     width = _SIZE[0]
@@ -66,13 +68,15 @@ def _viewport(workflow, scene, confidence):
                 if card is not None and counts[card['task'], card['points']] == 1]
     if not selected:
         return None
-    return Viewport(activity, day, tuple(card for _, card in selected), tuple(x for x, _ in selected))
+    right_clipped = any(right == _RIGHT and 8 <= right-left < 80 for left, right in runs)
+    return Viewport(activity, day, tuple(card for _, card in selected), tuple(x for x, _ in selected), right_clipped)
 
 
 def stable_viewport(workflow, scenes, confidence):
-    first, second = (_viewport(workflow, scene, confidence) for scene in scenes)
+    first, second = (visible_viewport(workflow, scene, confidence) for scene in scenes)
     if (first is None or second is None or first.cards != second.cards
             or first.activity != second.activity or first.game_day != second.game_day
+            or first.right_clipped != second.right_clipped
             or any(abs(a - b) > .006 for a, b in zip(first.centers, second.centers))):
         return None
     return second
@@ -90,7 +94,8 @@ def advanced(before, after):
 
 
 def same_view(first, second):
-    return first.cards == second.cards and all(abs(a - b) <= .012 for a, b in zip(first.centers, second.centers))
+    return (first.cards == second.cards and first.right_clipped == second.right_clipped
+            and all(abs(a - b) <= .012 for a, b in zip(first.centers, second.centers)))
 
 
 def combined_cards(views):

@@ -158,6 +158,7 @@ class RunReport:
     assignment: dict = field(default_factory=dict)
     train_supply: dict = field(default_factory=dict)
     training_milestones: dict = field(default_factory=dict)
+    training_synthesis_search: dict = field(default_factory=dict)
 
     @property
     def train_supply_input_attempted(self) -> bool:
@@ -166,6 +167,8 @@ class RunReport:
     def to_dict(self) -> dict:
         from dataclasses import asdict
         data = asdict(self)
+        if not self.training_synthesis_search:
+            del data['training_synthesis_search']
         if not self.profile_login:
             del data['profile_login']
         if not self.assignment:
