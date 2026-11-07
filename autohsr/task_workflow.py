@@ -22,12 +22,14 @@ GAME_VISION_TASKS = {'workflow_game_image', 'workflow_game_text'}
 PAGE_TASK = 'workflow_open_page'
 ACTIVITY_WORKFLOW_PAGES = ('odyssey', 'reward_guide')
 BATTLEPASS_WORKFLOW_PAGES = ('battlepass_rewards', 'battlepass_tasks')
+GUIDE_WORKFLOW_SUBPAGES = ('difficulty_guide', 'universe_guide')
 MESSAGE_WORKFLOW_PAGE = 'messages'
 VISA_CHARACTERS_PAGE = 'visa_characters'
 WORLD_WORKFLOW_PAGE = 'world'
 WORKFLOW_PAGES = ('phone', 'guide', 'daily_training', 'survival_index', 'assignments', 'mail', 'battlepass',
                   *ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE)
-WORKFLOW_NAVIGATION_TARGETS = (*WORKFLOW_PAGES, *BATTLEPASS_WORKFLOW_PAGES, VISA_CHARACTERS_PAGE, WORLD_WORKFLOW_PAGE)
+WORKFLOW_NAVIGATION_TARGETS = (*WORKFLOW_PAGES, *BATTLEPASS_WORKFLOW_PAGES, *GUIDE_WORKFLOW_SUBPAGES,
+                               VISA_CHARACTERS_PAGE, WORLD_WORKFLOW_PAGE)
 WORKFLOW_FOREGROUND_TASKS = GAME_VISION_TASKS | {PAGE_TASK}
 GAME_TASKS = {'daily', 'plan', 'differential_universe', 'currency_wars_loop',
               'currency_wars_points', 'currency_wars_rewards', 'du_rewards'} | WORKFLOW_FOREGROUND_TASKS

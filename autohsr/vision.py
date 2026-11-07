@@ -61,7 +61,7 @@ class Vision:
                 scene.field_reads[COUNTEREVIDENCE] = counterevidence
         return scene
 
-    def template(self, scene: Scene, path: Path, roi=(0, 0, 1, 1), threshold=0.88, *, all_matches=False):
+    def template(self, scene: Scene, path: Path, roi=(0, 0, 1, 1), threshold=0.88, *, all_matches=False, require_unique=False):
         """Optional local UI anchor matching, resized to the 1080p baseline."""
         import cv2
         import numpy as np
@@ -93,6 +93,12 @@ class Vision:
                 # Neighboring alignments of the same icon are one observation.
                 scores[max(0, y - half_height):y + half_height + 1,
                        max(0, x - half_width):x + half_width + 1] = -np.inf
+        if require_unique:
+            # One glyph can produce a small connected plateau at higher resolutions.
+            _, _, regions, _ = cv2.connectedComponentsWithStats((scores >= threshold).astype(np.uint8))
+            if (len(regions) != 2 or regions[1, cv2.CC_STAT_WIDTH] > max(3, template.shape[1] // 4)
+                    or regions[1, cv2.CC_STAT_HEIGHT] > max(3, template.shape[0] // 4)):
+                return None
         _, confidence, _, point = cv2.minMaxLoc(scores)
         if confidence < threshold:
             return None

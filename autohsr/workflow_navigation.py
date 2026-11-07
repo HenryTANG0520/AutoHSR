@@ -26,8 +26,9 @@ from .models import FULL, AutomationError, EmptyCapture, InputInterrupted, Stopp
 from .policy import du_guide_details, has_du_field_plane_marker
 from .screenshot_tool import MAX_PIXELS
 from .storage import hold_read_sources
-from .task_workflow import (ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE,
-                            VISA_CHARACTERS_PAGE, WORKFLOW_NAVIGATION_TARGETS, WORLD_WORKFLOW_PAGE)
+from .task_workflow import (ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES, GUIDE_WORKFLOW_SUBPAGES,
+                            MESSAGE_WORKFLOW_PAGE, VISA_CHARACTERS_PAGE, WORKFLOW_NAVIGATION_TARGETS,
+                            WORLD_WORKFLOW_PAGE)
 from .team_calibration_pages import calibration_overlay
 from .vision import helper_overlay
 from .workflow_battlepass_tabs import exact_battlepass_tab, small_selection_agrees
@@ -44,6 +45,9 @@ _MAX_ACTIONS = 4
 _GUIDE_TITLES = {'行动摘要': 'guide', '每日实训': 'daily_training', '生存索引': 'survival_index',
                  '旷宇纷争': 'guide', '逐光捡金': 'guide'}
 _GUIDE_PAGES = ('guide', 'daily_training', 'survival_index')
+_EXACT_GUIDE_PAGES = (*_GUIDE_PAGES, *GUIDE_WORKFLOW_SUBPAGES)
+_EXACT_GUIDE_TITLES = ('逐光捡金', '旷宇纷争')
+_GUIDE_LAYOUT_VERSION = '4.6.0'
 _VISA_COLLECTION = 'visa_collection'
 _BATTLEPASS_LAYOUT_VERSION = '4.6.0'
 _WORLD_LAYOUT_VERSION = '4.6.0'
@@ -66,6 +70,11 @@ _TAB = {
     'daily_training': ('每日实训', 'daily_tab', (.158, .150, .222, .243), (.177, .176, .204, .224)),
     'survival_index': ('生存索引', 'survival_tab', (.217, .150, .285, .252), (.234, .177, .267, .231)),
 }
+_EXACT_GUIDE_TABS = {
+    'difficulty_guide': ('逐光捡金', 'high_guide_tab', (.349, .154, .405, .235), (.360, .175, .389, .217), .94),
+    'universe_guide': ('旷宇纷争', 'du_guide_tab', (.28, .15, .35, .24), (.299, .175, .334, .219), .85),
+}
+_UNIVERSE_MODES = (.13, .27, .29, .53)
 _CATEGORIES = ('培养目标', '位面饰品', *(item.label for item in CATEGORIES))
 _BLOCKERS = ('列车补给', '获得物品', '选择奖励', '请选择奖励', '切换账号', '退出登录',
              '点击空白处关闭', '点击任意位置关闭', '点击空白处继续', '重新连接', '网络连接失败',
@@ -114,7 +123,23 @@ def _unique(matches, region, confidence):
     return None
 
 
-def classify_page(scene, confidence, daily, *, battlepass_subpages=False):
+def _exact_guide_page(low, view, label, confidence):
+    if label == '逐光捡金':
+        from .challenge_lobby import observe
+
+        state = observe(low, confidence)
+        return 'difficulty_guide' if state is not None and state.page == 'difficulty_guide' else None
+    if not all(_unique(_matches(low, (mode,), _UNIVERSE_MODES), _UNIVERSE_MODES, confidence)
+               for mode in ('货币战争', '差分宇宙')):
+        return None
+    if du_guide_details(view) and view.has('前往参与', (.70, .75, .90, .90), exact=True):
+        return 'universe_guide'
+    from .currency_wars_navigation import page_kind
+
+    return 'universe_guide' if page_kind(low, confidence) == 'currency_guide' else None
+
+
+def classify_page(scene, confidence, daily, *, battlepass_subpages=False, exact_guide_subpages=False):
     """Classify an existing scene using the calibrated daily navigation landmarks."""
     low = trusted(scene, COLLECTION_FLOOR)
     if (calibration_overlay(low) or helper_overlay(low) or daily._login(low) or daily._in_battle(low)
@@ -130,7 +155,12 @@ def classify_page(scene, confidence, daily, *, battlepass_subpages=False):
     title = _unique(_matches(low, ('星际和平指南',), TITLE), TITLE, confidence)
     active = _unique(_matches(low, _GUIDE_TITLES, TITLE), TITLE, confidence)
     if title is not None and active is not None:
-        page = _GUIDE_TITLES[normalize(active.text)]
+        label = normalize(active.text)
+        page = _GUIDE_TITLES[label]
+        if exact_guide_subpages and label in _EXACT_GUIDE_TITLES:
+            page = _exact_guide_page(low, view, label, confidence)
+            if page is None:
+                return None
         if ((page != 'daily_training' or daily._activity(view) is not None)
                 and (page != 'survival_index' or view.has(_CATEGORIES, (.10, .22, .39, .94), exact=True))):
             pages.append(page)
@@ -205,7 +235,8 @@ class WorkflowNavigation:
 
     def _page(self, scene):
         page = classify_page(scene, self.confidence, self.daily,
-                             battlepass_subpages=self.target in BATTLEPASS_WORKFLOW_PAGES)
+                             battlepass_subpages=self.target in BATTLEPASS_WORKFLOW_PAGES,
+                             exact_guide_subpages=self.target in GUIDE_WORKFLOW_SUBPAGES)
         if (page in BATTLEPASS_WORKFLOW_PAGES
                 and not small_selection_agrees(scene.image, page.removeprefix('battlepass_'))):
             return None
@@ -243,12 +274,18 @@ class WorkflowNavigation:
         return icon if icon is not None and icon.score >= max(.94, self.confidence) and icon.within(_MAIL_CENTER) else None
 
     def _guide_control(self, scene, page):
-        label, template, box, center = _TAB[page]
-        matches = _matches(trusted(scene, COLLECTION_FLOOR), (label,), box)
-        if matches:
-            return _unique(matches, box, self.confidence)
-        minimum = .88
-        match = self.c.template(scene, template, box, threshold=minimum)
+        exact = page in GUIDE_WORKFLOW_SUBPAGES
+        if exact:
+            label, template, box, center, minimum = _EXACT_GUIDE_TABS[page]
+            path = RESOURCE_ROOT / 'assets' / 'templates' / (template + '.png')
+            match = self.c.vision.template(scene, path, box, minimum, require_unique=True) if path.is_file() else None
+        else:
+            label, template, box, center = _TAB[page]
+            matches = _matches(trusted(scene, COLLECTION_FLOOR), (label,), box)
+            if matches:
+                return _unique(matches, box, self.confidence)
+            minimum = .88
+            match = self.c.template(scene, template, box, threshold=minimum)
         if match is None and page == 'survival_index':
             minimum = .94
             match = self.c.template(scene, 'survival_tab_base', box, threshold=minimum)
@@ -269,6 +306,8 @@ class WorkflowNavigation:
         page = self._page(scene)
         if self.target == WORLD_WORKFLOW_PAGE:
             return self._world_return_page(scene, page)
+        if self.target in GUIDE_WORKFLOW_SUBPAGES:
+            return page
         if self.target == MESSAGE_WORKFLOW_PAGE:
             panel = message_panel(scene)
             if page not in (None, 'world'):
@@ -299,6 +338,14 @@ class WorkflowNavigation:
 
     def _action(self, frame):
         page = frame.page
+        if self.target in GUIDE_WORKFLOW_SUBPAGES:
+            if page == 'phone':
+                token = self._phone_control(frame.scene, 'guide')
+                return _Action('open_guide', _EXACT_GUIDE_PAGES, token) if token else None
+            if page in _EXACT_GUIDE_PAGES:
+                tab = self._guide_control(frame.scene, self.target)
+                return _Action('open_' + self.target, (self.target,), tab) if tab else None
+            return None
         if self.target == WORLD_WORKFLOW_PAGE:
             if page == 'phone':
                 return _Action('return_to_hub', (WORLD_WORKFLOW_PAGE,))
@@ -518,6 +565,8 @@ class WorkflowNavigation:
             expected, version = (_VISA_COLLECTION, VISA_CHARACTERS_PAGE), VISA_LAYOUT_VERSION
         elif self.target in BATTLEPASS_WORKFLOW_PAGES:
             expected, version = ('phone', *BATTLEPASS_WORKFLOW_PAGES), _BATTLEPASS_LAYOUT_VERSION
+        elif self.target in GUIDE_WORKFLOW_SUBPAGES:
+            expected, version = ('phone', *_EXACT_GUIDE_PAGES), _GUIDE_LAYOUT_VERSION
         elif self.target == WORLD_WORKFLOW_PAGE:
             expected, version = (WORLD_WORKFLOW_PAGE, 'phone', *_WORLD_RETURN_PANELS), _WORLD_LAYOUT_VERSION
         elif self.target in (*ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE):

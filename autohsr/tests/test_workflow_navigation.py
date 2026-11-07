@@ -2,6 +2,7 @@
 
 import ctypes
 from itertools import chain, count, repeat
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import time
@@ -69,6 +70,14 @@ def world():
 def world_hud(name='normal_hud', *tokens):
     source = Path(__file__).parent / 'fixtures' / 'workflow_world' / (name + '.png')
     return Scene([ACCOUNT, *tokens], cv2.imdecode(np.fromfile(source, np.uint8), 1))
+
+
+def exact_guide_fixture(name):
+    root = Path(__file__).parent / 'fixtures' / 'workflow_guides'
+    sources = json.loads((root / 'sources.json').read_text(encoding='utf8'))
+    evidence = next(entry for entry in sources['fixtures'] if entry['name'] == name)
+    tokens = [Token(token['text'], token['score'], tuple(token['box'])) for token in evidence['tokens']]
+    return Scene([ACCOUNT, *tokens], cv2.imdecode(np.fromfile(root / (name + '.png'), np.uint8), 1))
 
 
 class Window:
@@ -434,6 +443,49 @@ class WorkflowNavigationTests(unittest.TestCase):
         self.assertEqual(c.workflow_navigation.run().status, 'ok')
         self.assertEqual(self.sent, [_CLICK])
         self.assertEqual(c.report.workflow_navigation['actions'][0]['action'], 'open_daily_training')
+
+    def test_exact_guide_subpages_preserve_generic_guide_and_need_body_evidence(self):
+        high = exact_guide_fixture('difficulty_guide')
+        for target, frame in (('difficulty_guide', high), ('universe_guide', exact_guide_fixture('currency_guide')),
+                              ('universe_guide', identified(fixture('guide_du_capped')))):
+            with self.subTest(target=target):
+                direct = self._installed_context([frame] * 2, target=target)
+                self.assertEqual(direct.workflow_navigation.run().status, 'ok')
+                self.assertEqual(direct.report.workflow_navigation['actions'], [])
+                generic = Context('guide', [frame] * 2)
+                self.assertEqual(generic.workflow_navigation.run().status, 'ok')
+        incomplete = Scene([t for t in high.tokens if t.text != '末日幻影'], high.image)
+        context = self._installed_context([incomplete] * 2, target='difficulty_guide')
+        with self.assertRaises(AutomationError):
+            context.workflow_navigation.run()
+        self.assertFalse(context.report.workflow_navigation['page_verified'])
+        self.assertEqual(self.sent, [])
+
+    def test_exact_guide_does_not_replay_on_another_real_guide_page(self):
+        high = exact_guide_fixture('difficulty_guide')
+        wrong = exact_guide_fixture('currency_guide')
+        context = self._installed_context([self.survival, self.survival, wrong, wrong, high, high],
+                                          target='difficulty_guide')
+        with self.assertRaises(AutomationError):
+            context.workflow_navigation.run()
+        self.assertEqual(self.sent, [_CLICK])
+        [action] = context.report.workflow_navigation['actions']
+        self.assertEqual((action['input_status'], action['destination_status']), ('sent', 'unknown'))
+
+    def test_exact_guide_rejects_two_matching_tab_positions(self):
+        frame = self.survival
+        image = frame.image.copy()
+        template = cv2.imdecode(np.fromfile(RESOURCE_ROOT / 'assets/templates/du_guide_tab.png', np.uint8), 1)
+        height, width = template.shape[:2]
+        image[162:259, 538:672] = 40
+        for left in (540, 615):
+            image[182:182 + height, left:left + width] = template
+        duplicate = Scene(frame.tokens, image)
+        context = self._installed_context([frame, duplicate], target='universe_guide')
+        with self.assertRaises(AutomationError):
+            context.workflow_navigation.run()
+        self.assertEqual(context.report.workflow_navigation['actions'], [])
+        self.assertEqual(self.sent, [])
 
     def test_phone_battlepass_and_assignments_only_use_caption_once(self):
         for target, result in (('battlepass', battlepass()), ('assignments', self.assignments)):

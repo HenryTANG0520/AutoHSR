@@ -57,6 +57,8 @@ P5 的 234.6 秒鼠标位于首行「前往」按钮，235.2 秒开始显示活�
 
 保留固定 March7thAssistant 逐光捡金未选中图标的原始字节，用于识别生存索引上的相邻页签。上游作者为 moesnow 及其贡献者，游戏美术权利归 HoYoverse 及相应权利人。[来源与哈希](templates/high_guide_tab.json) · [GPL v3](upstream/March7thAssistant/LICENSE)
 
+任务流的 `workflow_guides` 夹具复用历史逐光捡金和旷宇纷争画面。保留指南页签和有限版式文字裁片，账号与其余区域遮盖。源文件、裁片、缩放方法和哈希见清单。游戏美术权利归 HoYoverse 及相应权利人。[夹具清单](../autohsr/tests/fixtures/workflow_guides/sources.json)
+
 ## 2026-11-06 差分周期结算 OCR 字段
 
 本地历史原图与国服 4.6 日期范围内的公开周期演算录像用于结算字段及相邻页面回归。仓库保存筛选后的 OCR 文字、归一化坐标与原件或解码帧 SHA-256。游戏界面权利归 HoYoverse 及相应权利人，录像权利归各上传者及相应权利人。[字段与来源](../autohsr/tests/fixtures/du_runtime/periodic_settlement_fields.json) · [原片对照](../docs/du-validation.md#2026-11-06-周期积分实增与差分领奖原片)

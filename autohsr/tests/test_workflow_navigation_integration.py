@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import cv2
+import numpy as np
 
 from autohsr import windows
 from autohsr.__main__ import main
@@ -24,7 +25,7 @@ from autohsr.tests.test_daily_event_pages import _odyssey
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, _Window, phone, visa_collection
 from autohsr.tests.test_du_team import fixture
 from autohsr.tests.test_task_workflow import condition, recipe, task
-from autohsr.tests.test_workflow_navigation import identified, world_hud
+from autohsr.tests.test_workflow_navigation import exact_guide_fixture, identified, world_hud
 from autohsr.vision import Vision
 from autohsr.windows import GameWindow, Geometry, INPUT
 from autohsr.workflow_battlepass_tabs import small_battlepass_tab
@@ -35,7 +36,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
     def run_navigation(self, *, already_open=False, late_loss=False, target='mail', version='4.6.0',
                        start_in_list=False, late_version=False, from_odyssey=False, check_publication_lock=False,
                        lose_focus_on_installation_read=False, from_phone=False, battlepass_size=None,
-                       lose_focus_after_geometry=0, duplicate_tab=False, first_escape_native_count=2):
+                       lose_focus_after_geometry=0, duplicate_tab=False, first_escape_native_count=2,
+                       upstream_screen=None):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -48,6 +50,16 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             pages = (visa_collection(), visa_collection('characters'))
         elif target == 'world':
             pages = (identified(fixture('mail_claimable')), identified(fixture('phone_mail_icon')), world_hud())
+        elif target in ('difficulty_guide', 'universe_guide'):
+            high = exact_guide_fixture('difficulty_guide')
+            if target == 'difficulty_guide':
+                path = Path(__file__).parent / 'fixtures' / 'du_runtime' / 'guide_universe_tab_clear.png'
+                survival = Vision(.65).read(cv2.imdecode(np.fromfile(path, np.uint8), 1))
+                pages = (identified(survival), high)
+            else:
+                pages = (high, exact_guide_fixture('currency_guide'))
+            if from_phone:
+                pages = (identified(fixture('phone_mail_icon')), *pages)
         elif target in ('battlepass_rewards', 'battlepass_tasks'):
             rewards = identified(fixture('bp_rewards_claimable'))
             tasks = identified(fixture('bp_tasks_claimable'))
@@ -172,7 +184,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
 
         def vision(confidence):
             engine = window.vision(confidence)
-            if target == 'world':
+            if target in ('world', 'difficulty_guide', 'universe_guide'):
                 engine.template = Vision.__new__(Vision).template
             return engine
 
@@ -192,7 +204,15 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             document = recipe(task('page', 'workflow_open_page', target=target),
                               dict(id='opened', type='if', condition=condition('page', 'page_verified', True),
                                    steps=[dict(id='verified', type='wait', seconds=0)]))
-            workflow.write_text(json.dumps(document, ensure_ascii=False), encoding='utf-8')
+            if upstream_screen is None:
+                workflow.write_text(json.dumps(document, ensure_ascii=False), encoding='utf-8')
+            else:
+                source_yaml = root / 'source.yaml'
+                source_yaml.write_text(f'name: 导航\nsteps: [{{type: switch_screen, target_screen: {upstream_screen}}}]\n',
+                                       encoding='utf-8')
+                with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as conversion_error:
+                    self.assertEqual(main(['--task-workflow-convert-yaml', str(source_yaml),
+                                           '--workflow-json-destination', str(workflow)]), 0, conversion_error.getvalue())
             user32 = SimpleNamespace(IsWindow=Mock(return_value=True), IsIconic=Mock(return_value=False),
                                      GetForegroundWindow=Mock(side_effect=lambda: foreground),
                                      GetAsyncKeyState=Mock(return_value=0), SendInput=Mock(side_effect=native_send),
@@ -251,6 +271,30 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertEqual([step['step'] for step in steps], ['page', 'opened', 'verified'])
         self.assertTrue(steps[0]['facts']['page_verified'])
         self.assertTrue(native['workflow_navigation']['page_verified'])
+
+    def test_exact_guide_switches_imported_from_yaml_only_send_guide_controls(self):
+        for upstream, target, from_phone, start, wanted in (
+                ('guide4', 'difficulty_guide', True, 'survival_index', (.372, .201)),
+                ('guide5', 'universe_guide', False, 'difficulty_guide', (.309, .190))):
+            with self.subTest(target=target):
+                sent, steps, native = self.run_navigation(target=target, from_phone=from_phone,
+                                                          upstream_screen=upstream, check_publication_lock=True)
+                self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * (1 + from_phone))
+                self.assertEqual(self.key_scans, [])
+                self.assertTrue(steps[0]['facts']['page_verified'])
+                rows = native['workflow_navigation']['actions']
+                self.assertEqual(rows[-1]['source_page'], start)
+                self.assertEqual(rows[-1]['destination_page'], target)
+                self.assertAlmostEqual(self.clicks[-1][0], wanted[0], delta=.004)
+                self.assertAlmostEqual(self.clicks[-1][1], wanted[1], delta=.004)
+
+    def test_incoming_message_import_reaches_the_existing_notification_panel(self):
+        sent, steps, native = self.run_navigation(target='messages', upstream_screen='incoming_message')
+        self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)])
+        self.assertEqual(self.key_scans, [])
+        self.assertTrue(steps[0]['facts']['page_verified'])
+        [row] = native['workflow_navigation']['actions']
+        self.assertEqual((row['action'], row['destination_page']), ('open_messages', 'messages'))
 
     def test_current_mail_page_needs_no_input(self):
         sent, steps, native = self.run_navigation(already_open=True)

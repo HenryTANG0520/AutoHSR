@@ -216,16 +216,18 @@ class WorkflowYamlTests(unittest.TestCase):
                 self.assertEqual(draft.document['steps'][0]['params']['message'], message)
 
     def test_known_switch_screen_targets_preserve_daily_page_identity(self):
-        names = ('menu', 'guide2', 'guide3', 'dispatch', 'mail', 'reward_guide', 'pass1', 'pass2', 'main')
+        names = ('menu', 'guide2', 'guide3', 'guide4', 'guide5', 'dispatch', 'mail', 'reward_guide',
+                 'pass1', 'pass2', 'main', 'incoming_message')
         steps = ''.join(f'  - type: switch_screen\n    target_screen: {name}\n' for name in names)
         original = self.write('name: 日常页面\nsteps:\n' + steps)
         saved = convert_march7th_yaml(self.source, self.target)
         self.assertEqual([node['task'] for node in saved.recipe.steps], ['workflow_open_page'] * len(names))
         self.assertEqual([node['params']['target'] for node in saved.recipe.steps],
-                         ['phone', 'daily_training', 'survival_index', 'assignments', 'mail', 'reward_guide',
-                          'battlepass_rewards', 'battlepass_tasks', 'world'])
+                         ['phone', 'daily_training', 'survival_index', 'difficulty_guide', 'universe_guide',
+                          'assignments', 'mail', 'reward_guide', 'battlepass_rewards', 'battlepass_tasks', 'world', 'messages'])
         self.assertEqual(self.source.read_bytes(), original)
-        for name in ('battlepass', 'pass3', 'start_srpass', 'guide4', 'world', 'unknown'):
+        for name in ('battlepass', 'pass3', 'start_srpass', 'guide1', 'guide', 'visa', 'achievement', 'activity',
+                     'world', 'unknown'):
             with self.subTest(name=name):
                 self.write(f'name: 精确页面\nsteps: [{{type: switch_screen, target_screen: {name}}}]\n')
                 with self.assertRaisesRegex(WorkflowError, r'步骤 0.*switch_screen'):

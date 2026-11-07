@@ -55,6 +55,7 @@ _UPSTREAM_TIMESTAMP = re.compile(
 _PAGE_TARGETS = {
     'main': 'world',
     'menu': 'phone', 'guide2': 'daily_training', 'guide3': 'survival_index',
+    'guide4': 'difficulty_guide', 'guide5': 'universe_guide', 'incoming_message': 'messages',
     'dispatch': 'assignments', 'mail': 'mail', 'reward_guide': 'reward_guide',
     'pass1': 'battlepass_rewards', 'pass2': 'battlepass_tasks',
 }
