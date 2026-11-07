@@ -134,7 +134,8 @@ def main():
                 check(prefix+"log_and_queue_kept", ui.events is events and ui.log.get("1.0", "end-1c") == log and bool(ui.log.tag_ranges("error")))
                 ui.settings_shell.back.invoke()
                 settle()
-                check(prefix+"settings_return_focus_kept", ui.active_page == "home" and root.focus_get() is ui.weekly_button)
+                check(prefix+"settings_return_focus_kept", ui.active_page == "home" and root.focus_get() is ui.table
+                      and ui.start_button.winfo_ismapped() and ui.start_button.instate(("!disabled",)))
                 check(prefix+"book_scales_uniformly", all(abs(a-b) < 3 for a,b in zip(book, (ui.guide.winfo_width()/ui.ui_scale, ui.guide.winfo_height()/ui.ui_scale))))
                 width = int(root.tk.call("font", "measure", ui.style.lookup("Accent.TButton", "font"), "开始计划"))/ui.ui_scale
                 check(prefix+"button_text_scales_with_art", abs(width-text_width) < 2)
@@ -143,9 +144,29 @@ def main():
                     ImageGrab.grab(window=root.winfo_id()).save(OUT/"maximized-home.png")
                 for page in ui.pages:
                     ui._show_page(page)
+                    if page == "settings":
+                        ui.settings_shell.choose("game")
                     root.update()
                     check_layout(root)
-                    check(prefix+page+"_reachable", ui.start_button.winfo_ismapped())
+                    if page in ("logs", "settings"):
+                        check(prefix+page+"_hides_run_action", not ui.footer_start_button.winfo_ismapped()
+                              and ui.footer_start_button.instate(("disabled",)))
+                    else:
+                        check(prefix+page+"_run_action_reachable", ui.start_button.winfo_ismapped()
+                              and ui.start_button.instate(("!disabled",)))
+                ui._show_page("settings")
+                ui.settings_shell.choose("game")
+                ui.guide.tools_button.invoke()
+                ui.tools_shelf.select("workflow")
+                root.update()
+                check(prefix+"workflow_tool_has_its_own_action", ui.footer_start_button.winfo_ismapped()
+                      and ui.footer_start_button.instate(("!disabled",))
+                      and ui.footer_start_button.cget("text") == "新建草稿")
+                ui.settings_shell.back.invoke()
+                root.update()
+                check(prefix+"tool_return_restores_settings_focus_and_hides_run",
+                      ui.settings_shell.section == "game" and root.focus_get() is ui.guide.tools_button
+                      and not ui.footer_start_button.winfo_ismapped() and ui.footer_start_button.instate(("disabled",)))
                 ui._show_page("tasks")
                 ui.dungeon_search.set("雪原")
                 root.update()
@@ -168,7 +189,7 @@ def main():
                     def stop(self):
                         self.stopped = True
                 runner = Runner()
-                ui.runner = runner
+                ui.runner = ui._native_run.runner = runner
                 ui._has_run = True
                 ui._set_busy(True, running=True)
                 ui.started_at = time.monotonic()-20
@@ -182,9 +203,17 @@ def main():
                 ui.pause_button.invoke()
                 root.update()
                 check(prefix+"pause_still_operates", ui.paused and ui.pause_button.cget("text") == "继续 F9")
+                for page in ("logs", "settings"):
+                    ui._show_page(page)
+                    if page == "settings":
+                        ui.settings_shell.choose("game")
+                    root.update()
+                    check(prefix+page+"_retains_active_stop_without_run_action",
+                          ui.stop_button.winfo_ismapped() and ui.stop_button.instate(("!disabled",))
+                          and not ui.footer_start_button.winfo_ismapped() and ui.footer_start_button.instate(("disabled",)))
                 ui.stop_button.invoke()
                 check(prefix+"stop_still_operates", runner.stopped and ui.stopping and ui.stop_requested.is_set())
-                ui.runner = None
+                ui.runner = ui._native_run.runner = None
                 ui._set_busy(False)
                 ui._show_weekly_plan()
                 root.update()
@@ -208,7 +237,7 @@ def main():
                 combo.tk.call("ttk::combobox::Unpost", str(combo))
                 settle()
                 check(prefix+"resize_after_dropdown", ui.weekly_mode_combo is not combo and ui.weekly_mode.get() == "差分宇宙")
-                ui.table.selected = "battlepass"
+                ui.table.selected = "daily"
                 ui._show_daily_tasks("battlepass")
                 root.update()
                 preserved_elements = sum(len(values) for values in root._hsr_preserved_elements.values())
@@ -234,14 +263,14 @@ def main():
                 ui.settings_shell.back.invoke()
                 root.update()
                 check(prefix+"daily_task_return_survives_resize", ui.active_page == "home"
-                      and ui.table.selected == "battlepass" and root.focus_get() is ui.table)
+                      and ui.table.selection() == ("daily",) and root.focus_get() is ui.table)
                 check(prefix+"config_unchanged", config.read_bytes() == original)
             finally:
                 ui.closing = True
                 for token in root.tk.splitlist(root.tk.call("after", "info")):
                     root.after_cancel(token)
                 root.destroy()
-    checks.extend(tooltip_checks())
+        checks.extend(tooltip_checks())
     result = dict(checks=checks, count=len(checks), game_started=False)
     (OUT/"result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), "utf-8")
     print(json.dumps(result))

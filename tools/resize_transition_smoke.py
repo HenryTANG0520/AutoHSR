@@ -44,6 +44,7 @@ def main():
             ui = Window(root, config)
             try:
                 root.update()
+                root.focus_force()
                 normal = root.geometry()
                 def text_sizes():
                     # Measure the font used by Tk, without making a fresh Font
@@ -62,7 +63,9 @@ def main():
                         ui._show_daily_tasks("mail") if view == "settings" else ui._show_page("home")
                         root.update()
                     prefix = f"{dpi}_{view}_{name}_"
-                    old_shell, old_primary = ui.shell, ui.start_button
+                    in_settings = view == "settings"
+                    old_shell, old_start = ui.shell, ui.start_button
+                    old_action = ui.settings_shell.back if in_settings else old_start
                     old_paints = []
                     presenters = {}
                     for _, widget in _widgets(old_shell):
@@ -73,7 +76,7 @@ def main():
                                 paints.append(type(widget).__name__)
                                 return present(image)
                             widget._present = track_present
-                    old_metrics = old_primary.winfo_reqwidth(), old_primary.winfo_reqheight(), font_width(old_primary)
+                    old_metrics = old_action.winfo_reqwidth(), old_action.winfo_reqheight(), font_width(old_action)
                     captions = [w for _, w in _widgets(old_shell) if w.winfo_class() == "TLabel"
                                 and w.winfo_ismapped()]
                     caption_fonts = [(w, font_width(w)) for w in captions]
@@ -81,19 +84,24 @@ def main():
                     retire = ui.responsive_layout._retire_view
                     replaced = []
                     def inspect_swap(parked_view):
-                        check(prefix+"old_action_stays_mapped", old_shell.winfo_ismapped() and old_primary.winfo_ismapped())
-                        check(prefix+"old_action_is_complete", old_primary.winfo_width() >= old_primary.winfo_reqwidth()
-                              and old_primary.winfo_height() >= old_primary.winfo_reqheight())
+                        check(prefix+"old_action_stays_mapped", old_shell.winfo_ismapped() and old_action.winfo_ismapped())
+                        check(prefix+"old_action_is_complete", old_action.winfo_width() >= old_action.winfo_reqwidth()
+                              and old_action.winfo_height() >= old_action.winfo_reqheight())
                         check(prefix+"displayed_native_metrics_stay_unchanged", old_metrics ==
-                              (old_primary.winfo_reqwidth(), old_primary.winfo_reqheight(), font_width(old_primary))
+                              (old_action.winfo_reqwidth(), old_action.winfo_reqheight(), font_width(old_action))
                               and all(font_width(widget) == width for widget, width in caption_fonts))
                         check(prefix+"old_theme_pixels_survive", all(root.tk.call("image", "type", photo) == "photo" for photo in photos))
                         check(prefix+"old_shell_remains_on_top", root.winfo_children()[-1] is old_shell)
-                        artwork_ready = (ui.settings_shell._photo is not None
-                                         and all(c.winfo_ismapped() for c in ui.daily_task_controls.values())) if view == "settings" else (
-                                         ui.guide._photo is not None and ui.table._photo is not None)
-                        check(prefix+"replacement_is_ready", ui.shell is not old_shell and ui.start_button.winfo_ismapped()
-                              and artwork_ready)
+                        content_ready = (ui.settings_shell.canvas.winfo_ismapped()
+                                         and all(c.winfo_ismapped() for c in ui.daily_task_controls.values())
+                                         if in_settings else ui.table._photo is not None)
+                        new_action = ui.settings_shell.back if in_settings else ui.start_button
+                        check(prefix+"replacement_is_ready", ui.shell is not old_shell and new_action.winfo_ismapped()
+                              and ui.guide._photo is not None and content_ready)
+                        if in_settings:
+                            check(prefix+"both_settings_layouts_hide_run_action",
+                                  all(not button.winfo_ismapped() and button.instate(("disabled",))
+                                      for button in (old_start, ui.start_button)))
                         if dpi == 1.5:
                             ImageGrab.grab(window=root.winfo_id()).save(out/(view+"-"+name+"-before-swap.png"))
                         replaced.append(True)
@@ -117,6 +125,14 @@ def main():
                           and len(root.winfo_children()) == 2
                           and [w for w in root.winfo_children() if w.winfo_ismapped()] == [ui.shell])
                     check(prefix+"native_button_entry_and_log_text_scale", all(abs(a-b) < 2 for a, b in zip(normal_text, text_sizes())))
+                    if in_settings:
+                        check(prefix+"settings_edit_focus_survives_swap",
+                              root.focus_get() is ui.daily_task_controls["mail"])
+                ui.settings_shell.back.invoke()
+                root.update()
+                check(f"{dpi}_settings_return_restores_home_action_and_focus", ui.active_page == "home"
+                      and root.focus_get() is ui.table and ui.start_button.winfo_ismapped()
+                      and ui.start_button.instate(("!disabled",)) and ui.start_button.cget("text") == "开始计划")
                 check(f"{dpi}_no_config_write", config.read_bytes() == original)
             finally:
                 ui.closing = True
