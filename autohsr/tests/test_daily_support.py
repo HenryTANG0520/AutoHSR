@@ -393,12 +393,14 @@ class DailySupportCLITests(unittest.TestCase):
         from autohsr.__main__ import main
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)/'settings.json'
+            Settings().save(path)
+            before = path.read_bytes()
             with patch('autohsr.plan_runner.PlanRunner') as runner, redirect_stdout(io.StringIO()):
                 runner.return_value.run.return_value = RunReport(status='success')
                 self.assertEqual(main(['--plan', '--support-daily-only', '--config', str(path)]), 0)
             self.assertIs(runner.call_args.args[0].support_daily_only, True)
             self.assertIs(runner.call_args.args[0].use_support, True)
-            self.assertFalse(path.exists())
+            self.assertEqual(path.read_bytes(), before)
 
     def test_reward_only_and_independent_modes_reject_the_flag_before_runner(self):
         from autohsr.__main__ import main

@@ -335,7 +335,7 @@ class DailyInterludeTests(unittest.TestCase):
             initial=SimpleNamespace(_open_calyx=lambda:page(),_disable_quick_refill=lambda s:s,
                 _available=lambda s:24,ctx=SimpleNamespace(evidence=Mock(return_value='preparation')))
             with patch('autohsr.planar_resources.inventory',return_value=0), \
-                 patch('autohsr.recovery.recovery_state',return_value={'pending':0,'corrupt':False}), \
+                 patch('autohsr.recovery.recovery_state',return_value={'pending':0,'corrupt':False,'blocked':False}), \
                  patch('autohsr.du_daily._context') as context:
                 _farm(SimpleNamespace(ctx=Mock()),marker,initial,Settings())
             context.assert_not_called()
