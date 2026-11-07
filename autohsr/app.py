@@ -3223,10 +3223,12 @@ class Runner:
                                       configured_name=configured_name,
                                       timeout=.05 if self.currency_timeout_probe else 30.) if currency_wars else
                       Vision(ocr_confidence))
+            from .workflow_identity import active as workflow_identity_active, prepare as prepare_workflow_identity
+
             daily_counterevidence = self.report.operation == 'daily' and (
                 self.settings.redemption_enabled or self.use_power_plan
                 or self.settings.battle and self.settings.use_support and self.settings.support_daily_only)
-            if (self.assignments_only or self.daily_attachment_only or workflow_foreground
+            if (workflow_identity_active() or self.assignments_only or self.daily_attachment_only or workflow_foreground
                     or daily_observation or daily_claim or daily_reply or achievement_claim
                     or redemption or daily_counterevidence):
                 from .currency_wars_identity import UID_VETO_FLOOR
@@ -3235,7 +3237,6 @@ class Runner:
             context.overclock_session = overclock_session
             context.overclock_preparation = overclock_preparation
             context.battle_budget = self.battle_budget
-            from .workflow_identity import prepare as prepare_workflow_identity
             daily_workflow = DailyWorkflow(context) if self.report.operation in ('daily', 'reward_only') else None
             if daily_workflow is not None:
                 self.report.failure_task = 'startup'

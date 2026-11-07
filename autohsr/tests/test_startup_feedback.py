@@ -91,7 +91,7 @@ class StartupFeedbackTests(unittest.TestCase):
         self.offline()
         report = PlanRunner(Settings(game_path=str(self.path), assignments=False, battle=False,
             daily=False, weekly_enabled=True), root=self.root/"runs",
-            now=datetime(2026, 10, 28, 12, tzinfo=CHINA)).run()
+            now=datetime.now(CHINA)).run()
         self.assertEqual([child["operation"] for child in report.weekly_plan["children"]], ["differential_universe"])
         self.assert_report(report)
 

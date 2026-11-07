@@ -24,7 +24,18 @@ class PlanTests(unittest.TestCase):
                           results=[dict(task="daily", status="ok", detail="实训已核实")])
         self.settings = Settings(weekly_enabled=True)
         self.now = datetime(2026, 10, 28, 12, tzinfo=CHINA)
+        self.current = self.now
         self.before_return = lambda child: None
+        owner = self
+
+        class Clock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return owner.current.astimezone(tz) if tz else owner.current.replace(tzinfo=None)
+
+        clock = patch('autohsr.weekly_plan.datetime', Clock)
+        clock.start()
+        self.addCleanup(clock.stop)
         # A fake native points child must reach the same frozen week as its
         # parent plan, even when these tests run months after the fixture date.
         for module in ('currency_wars_weekly', 'currency_wars_weekly_run', 'currency_wars_points',
@@ -45,6 +56,7 @@ class PlanTests(unittest.TestCase):
             def stop(self):
                 self.stopped = True
             def run(self):
+                self.operation = options['operation']
                 owner.calls.append((replace(settings), options))
                 if options["operation"] == "daily":
                     report = dict(owner.daily)
@@ -55,7 +67,10 @@ class PlanTests(unittest.TestCase):
                     guard = options["weekly_plan"]
                     guard.receipt = WeeklyReceipt(owner.root, "a"*24, guard.slot)
                     guard.already_complete = not guard.receipt.begin(guard.settings)
-                    report = du_report(owner.root, options["du_runs"])
+                    if guard.already_complete:
+                        report = dict(operation="differential_universe", status="success", report_saved=True)
+                    else:
+                        report = du_report(owner.root, options["du_runs"])
                 emit(dict(type="finished", report=report))
                 owner.before_return(self)
                 return report
@@ -168,6 +183,146 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(len(self.calls), 1)
         self.assertEqual(report.status, "stopped")
         self.assertTrue(report.daily_verified)
+
+    def test_optional_battlepass_partial_retains_verified_daily_and_blocks_weekly(self):
+        self.settings.battlepass = True
+        self.daily.update(status='partial', failure_task='battlepass')
+        self.daily['results'].append(dict(task='battlepass', status='partial', detail='勋礼分类未核实'))
+        report = self.runner().run()
+        self.assertEqual([options['operation'] for _, options in self.calls], ['daily'])
+        self.assertEqual((report.status, report.daily_verified, report.stamina_spent), ('partial', True, 120))
+        self.assertEqual(report.weekly_plan['daily_status'], 'partial')
+        self.assertTrue(report.weekly_plan['daily_report_saved'])
+        self.assertEqual(report.weekly_plan['daily_handoff'], 'needs_review')
+        self.assertEqual(report.weekly_plan['status'], 'not_started')
+        self.assertFalse(list(self.root.glob('weekly-plan/*/*.json')))
+
+    def test_daily_success_does_not_bypass_independent_daily_or_payment_checks(self):
+        for update in (dict(daily_verified=False), dict(stamina_pending=40), dict(immersifiers_pending=1)):
+            with self.subTest(update=update):
+                original = dict(self.daily)
+                self.daily.update(update)
+                self.calls.clear()
+                report = self.runner().run()
+                self.daily = original
+                self.assertEqual([options['operation'] for _, options in self.calls], ['daily'])
+                self.assertEqual((report.status, report.weekly_plan['daily_handoff']), ('partial', 'needs_review'))
+                self.assertEqual(report.weekly_plan['status'], 'not_started')
+
+    def test_daily_can_finish_after_week_reset_without_starting_a_weekly_child(self):
+        runner = self.runner()
+        self.before_return = lambda child: setattr(self, 'current', datetime(2026, 11, 2, 4, tzinfo=CHINA))
+        report = runner.run()
+        self.assertEqual([options['operation'] for _, options in self.calls], ['daily'])
+        self.assertTrue(report.daily_verified)
+        self.assertEqual(report.weekly_plan['week'], '2026-10-26')
+        self.assertEqual(report.weekly_plan['status'], 'needs_review')
+        self.assertIn('跨游戏周', report.error)
+        self.assertFalse(list(self.root.glob('weekly-plan/*/*.json')))
+
+    def test_pause_across_reset_rechecks_week_before_constructing_weekly_child(self):
+        runner = self.runner()
+        daily_published = threading.Event()
+        weekly_construction = []
+        original = self.factory
+
+        def emit(event):
+            if event['type'] == 'plan_daily_result':
+                runner.toggle_pause()
+                daily_published.set()
+
+        def factory(settings, send, **options):
+            if options['operation'] == 'differential_universe':
+                weekly_construction.append(True)
+            return original(settings, send, **options)
+
+        runner.emit, runner.factory = emit, factory
+        worker = threading.Thread(target=runner.run)
+        worker.start()
+        try:
+            self.assertTrue(daily_published.wait(2))
+            self.assertTrue(worker.is_alive())
+            self.current = datetime(2026, 11, 2, 4, tzinfo=CHINA)
+            self.assertFalse(runner.toggle_pause())
+            worker.join(2)
+            self.assertFalse(worker.is_alive())
+        finally:
+            if worker.is_alive():
+                runner.stop()
+                worker.join(2)
+        self.assertEqual(weekly_construction, [])
+        self.assertTrue(runner.report.daily_verified)
+        self.assertEqual(runner.report.weekly_plan['daily_handoff'], 'complete')
+        self.assertEqual(runner.report.weekly_plan['status'], 'needs_review')
+
+    def test_same_week_reuses_only_the_original_weekly_receipt(self):
+        first = self.runner().run()
+        original, = self.root.glob('weekly-plan/*/*.json')
+        source = original.read_bytes()
+        self.calls.clear()
+        self.settings.weekly_runs = 3
+        second = self.runner().run()
+        self.assertEqual([options['operation'] for _, options in self.calls], ['daily', 'differential_universe'])
+        self.assertEqual(second.weekly_plan['status'], 'already_complete')
+        self.assertEqual(second.weekly_plan['daily_handoff'], 'complete')
+        self.assertEqual(second.weekly_plan['requested_runs'], 1)
+        self.assertEqual(second.weekly_plan['new_completed_runs'], 0)
+        self.assertEqual(second.weekly_plan['original_run_dir'], first.weekly_plan['children'][-1]['run_dir'])
+        self.assertEqual(original.read_bytes(), source)
+
+    def test_reused_weekly_evidence_is_preserved_but_not_accepted_after_reset(self):
+        self.runner().run()
+        receipt, = self.root.glob('weekly-plan/*/*.json')
+        source = receipt.read_bytes()
+
+        def cross_after_read(child):
+            if child.operation == 'differential_universe':
+                self.current = datetime(2026, 11, 2, 4, tzinfo=CHINA)
+
+        self.before_return = cross_after_read
+        report = self.runner().run()
+        self.assertEqual(report.status, 'partial')
+        self.assertEqual(report.weekly_plan['status'], 'needs_review')
+        self.assertFalse(report.weekly_plan.get('reused_result', False))
+        self.assertEqual(report.weekly_plan['completed_runs'], 1)
+        self.assertEqual(report.weekly_plan['new_completed_runs'], 0)
+        self.assertEqual(receipt.read_bytes(), source)
+
+    def test_stop_during_fixed_weekly_receipt_retry_preserves_started_receipt_and_child_win(self):
+        runner = self.runner()
+        replace_path = Path.replace
+        writes = []
+
+        def stop_at_weekly_receipt(source, destination):
+            if Path(destination).parent.parent.name == 'weekly-plan':
+                writes.append(destination)
+                if len(writes) == 1:
+                    runner.stop()
+                    raise PermissionError('synthetic sharing violation')
+            return replace_path(source, destination)
+
+        with patch.object(Path, 'replace', stop_at_weekly_receipt):
+            report = runner.run()
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(report.status, 'stopped')
+        self.assertTrue(report.daily_verified)
+        self.assertEqual(report.weekly_plan['completed_runs'], 1)
+        self.assertEqual(report.weekly_plan['status'], 'needs_review')
+        receipt, = self.root.glob('weekly-plan/*/*.json')
+        self.assertEqual(json.loads(receipt.read_bytes())['state'], 'started')
+
+    def test_stop_at_partial_daily_handoff_survives_parent_report_failure(self):
+        runner = self.runner()
+        self.daily.update(status='partial', report_saved=False, report_write_error='synthetic child lock')
+        self.before_return = lambda child: runner.stop()
+        with patch('autohsr.plan_runner.replace_file', side_effect=OSError('synthetic parent lock')):
+            report = runner.run()
+        self.assertEqual([options['operation'] for _, options in self.calls], ['daily'])
+        self.assertEqual(report.status, 'stopped')
+        self.assertTrue(report.daily_verified)
+        self.assertFalse(report.report_saved)
+        self.assertEqual(report.weekly_plan['daily_handoff'], 'stopped')
+        self.assertEqual(report.weekly_plan['daily_report_write_error'], 'synthetic child lock')
 
     def test_stop_before_start_has_no_child(self):
         runner = self.runner()

@@ -289,13 +289,15 @@ class WorkflowIdentity:
             state.pending_at, state.attempts = now, 0
             state.frames, state.candidate = [], None
         state.capture_epoch = epoch
-        from .currency_wars_identity import account_key
+        from .currency_wars_identity import UID_COUNTEREVIDENCE, checked_account_key
         from .workflows import DailyWorkflow
         try:
-            key = account_key(scene, max(.85, context.settings.ocr_confidence))
+            key = checked_account_key(scene, context.settings.ocr_confidence)
         except AutomationError:
             key = None
-        fragments = any(token.within((0, .94, .35, 1)) and normalize(token.text).startswith('uid') for token in scene.tokens)
+        weak = scene.field_reads.get(UID_COUNTEREVIDENCE, ())
+        fragments = any(token is not None and token.within((0, .94, .35, 1))
+                        and normalize(token.text).startswith('uid') for token in (*scene.tokens, *weak))
         login = DailyWorkflow._login(scene)
         state.startup_page = key is None and bool(login or DailyWorkflow._supply_overlay(scene) or DailyWorkflow._login_reward_overlay(scene))
         if login and self._key is not None:

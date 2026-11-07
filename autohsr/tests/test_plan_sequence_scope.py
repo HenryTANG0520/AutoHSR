@@ -13,7 +13,8 @@ import numpy as np
 
 from autohsr.app import Context
 from autohsr.config import Settings
-from autohsr.models import AutomationError, RunReport, Stopped
+from autohsr.currency_wars_identity import UID_COUNTEREVIDENCE
+from autohsr.models import AutomationError, RunReport, Stopped, Token
 from autohsr.plan_runner import PlanRunner
 from autohsr import workflow_identity, workflow_lease
 from autohsr.tests import test_task_workflow as identity_fixtures
@@ -67,11 +68,12 @@ class PlanSequenceTests(unittest.TestCase):
             mocked.start()
             self.addCleanup(mocked.stop)
         self.settings = Settings(weekly_enabled=True, daily_synthesis=False, overlay_logs=False)
-        self.now = datetime(2026, 11, 1, 12, tzinfo=CHINA)
+        self.now = datetime.now(CHINA)
         self.accounts = ['100000000', '100000000']
         self.actions, self.children, self.events = [], [], []
         self.on_event = lambda event: None
         self.before_input = lambda child: None
+        self.read_account = lambda child: identity_fixtures.identity_scene(child.account)
 
     def emit(self, event):
         self.events.append(event)
@@ -120,8 +122,9 @@ class PlanSequenceTests(unittest.TestCase):
             def run(self):
                 workflow_lease.require_workflow_access()
                 vision = Mock()
-                vision.read.side_effect = lambda image, geometry: identity_fixtures.identity_scene(self.account)
+                vision.read.side_effect = lambda image, geometry: owner.read_account(self)
                 context = Context(self, self.raw, vision)
+                self.context = context
                 context.sleep = lambda seconds: self.checkpoint()
                 context.snapshot()
                 owner.before_input(self)
@@ -187,6 +190,42 @@ class PlanSequenceTests(unittest.TestCase):
         self.assertTrue(report.execution_identity['account_changed'])
         original = json.loads((Path(self.children[0].result['run_dir']) / 'report.json').read_text('utf-8'))
         self.assertEqual(original, self.children[0].result)
+
+    def test_weak_complete_other_account_prevents_weekly_identity_proof(self):
+        def read(child):
+            scene = identity_fixtures.identity_scene(child.account)
+            if child.operation == 'differential_universe':
+                scene.field_reads[UID_COUNTEREVIDENCE] = (Token('UID:200000000', .73, (.12, .96, .21, .99)),)
+            return scene
+
+        self.read_account = read
+        report = self.runner().run()
+        self.assertEqual(self.actions, ['daily'])
+        self.children[1].raw.click.assert_not_called()
+        self.assertTrue(report.daily_verified)
+        self.assertEqual(report.execution_identity['checked_contexts'], 1)
+        self.assertEqual(report.weekly_plan['status'], 'needs_review')
+        self.assertFalse(list(self.root.glob('weekly-plan/*/*.json')))
+
+    def test_same_epoch_hidden_uid_preserves_verified_weekly_context(self):
+        def hide_uid(child):
+            if child.operation != 'differential_universe':
+                return
+
+            def read(owner):
+                scene = identity_fixtures.identity_scene(owner.account)
+                if owner is child:
+                    scene.tokens.clear()
+                return scene
+
+            self.read_account = read
+            child.context.snapshot()
+
+        self.before_input = hide_uid
+        report = self.runner().run()
+        self.assertEqual(report.status, 'success', report.error)
+        self.assertEqual(self.actions, ['daily', 'differential_universe'])
+        self.assertEqual(report.execution_identity['checked_contexts'], 2)
 
     def test_lease_blocks_other_thread_in_child_gap_and_finished_callback(self):
         checkpoints = []

@@ -154,6 +154,28 @@ class ReceiptTests(unittest.TestCase):
         with self.assertRaises(AutomationError):
             WeeklyReceipt(self.root, "a"*24, self.slot).begin(self.settings)
 
+    def test_fixed_receipt_retry_rejects_changed_victory_evidence(self):
+        self.receipt.begin(self.settings)
+        intent = self.receipt.path.read_bytes()
+        report = du_report(self.root)
+        victory = Path(report['differential_universe']['run_results'][0]['victory_evidence'])
+        replace_path = Path.replace
+        writes = []
+
+        def locked_then_changed(source, destination):
+            if Path(destination) == self.receipt.path:
+                writes.append(destination)
+                if len(writes) == 1:
+                    raise PermissionError('synthetic sharing violation')
+            return replace_path(source, destination)
+
+        with patch.object(Path, 'replace', locked_then_changed), \
+                patch('autohsr.storage.time.sleep', side_effect=lambda _: victory.write_bytes(b'changed')):
+            with self.assertRaisesRegex(AutomationError, '原始演算证据'):
+                self.receipt.complete(report)
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(self.receipt.path.read_bytes(), intent)
+
     def test_corrupt_record_is_preserved_and_blocks(self):
         self.receipt.folder.mkdir(parents=True)
         self.receipt.path.write_text("[]", encoding="utf-8")

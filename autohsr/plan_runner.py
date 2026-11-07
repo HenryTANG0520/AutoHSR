@@ -97,9 +97,14 @@ class PlanRunner:
         if event.get("type") != "finished":
             self.emit(dict(event, phase=phase))
 
-    def _run(self, settings, *, phase, factory=None, **options):
+    def _run(self, settings, *, phase, factory=None, before_child=None, **options):
         self._checkpoint()
+        if before_child is not None:
+            before_child()
         self.emit(dict(type="plan_phase", phase=phase))
+        self._checkpoint()
+        if before_child is not None:
+            before_child()
         child = (factory or self.factory)(settings, lambda event: self._send(event, phase), **options)
         with self._lock:
             self.child = child
@@ -134,7 +139,12 @@ class PlanRunner:
 
     def _copy_daily(self,daily,*,reused=False):
         report=self.report
-        report.weekly_plan['children'].append(dict(operation='daily',run_dir=daily.get('run_dir',''),reused=reused))
+        info = report.weekly_plan
+        info['children'].append(dict(operation='daily',run_dir=daily.get('run_dir',''),reused=reused))
+        info.update(daily_status=daily.get('status', 'unknown'),
+                    daily_report_saved=daily.get('report_saved') is True)
+        if daily.get('report_write_error'):
+            info['daily_report_write_error'] = daily['report_write_error']
         for name in ('stamina_spent','stamina_limit','stamina_pending','immersifiers_spent','immersifiers_pending',
                      'battle_completed','battle_requested','daily_verified','daily_synthesis','redemption','engagement','game_day',
                      'error','input_error_field','safe_next','failure_task','support_selections'):
@@ -142,9 +152,30 @@ class PlanRunner:
         if 'power_plan' in daily:report.power_plan=deepcopy(daily['power_plan'])
         report.results.extend(TaskResult(r['task'],r['status'],r.get('detail','')) for r in daily.get('results',[]))
         if reused:
-            report.weekly_plan['daily_reused']=True
+            info.update(daily_reused=True, daily_handoff='reused')
             report.budget_scope='original_daily_run'
         self.emit(dict(type='plan_daily_result',report=daily,reused=reused))
+
+    def _daily_handoff(self, daily):
+        info = self.report.weekly_plan
+        stopped = self.stop_requested or daily.get('status') == 'stopped'
+        if stopped:
+            reason = '日常或交接已停止'
+        elif daily.get('report_saved') is not True:
+            reason = '日常原报告未完整保存'
+        elif daily.get('status') != 'success':
+            reason = '所选日常仍有未核实项'
+        elif 'daily' in info['daily_tasks'] and daily.get('daily_verified') is not True:
+            reason = '所选实训奖励尚未核实'
+        elif any(daily.get(field, 0) != 0 for field in ('stamina_pending', 'immersifiers_pending')):
+            reason = '日常仍有资源待核对'
+        else:
+            info['daily_handoff'] = 'complete'
+            return True
+        info.update(daily_handoff='stopped' if stopped else 'needs_review', daily_handoff_reason=reason)
+        self.report.status = 'stopped' if stopped else 'partial'
+        self._weekly_result('not_started', f'{reason}；周常未开始。')
+        return False
 
     def _finish_weekly_du_rewards(self, guard, settings, weekly, identity, mark):
         from .du_weekly_rewards import WeeklyRewardHandoff
@@ -214,7 +245,7 @@ class PlanRunner:
                                   differential_universe_rewards=False)
         mark = identity.mark() if self.du_claim_weekly_rewards else None
         weekly = self._run(weekly_settings, phase="weekly", operation="differential_universe",
-                           du_runs=maximum, weekly_plan=guard,
+                           du_runs=maximum, weekly_plan=guard, before_child=guard.require_current_week,
                            **(dict(du_until_points=True) if guard.until_points else {}))
         report = self.report
         info = report.weekly_plan
@@ -227,7 +258,7 @@ class PlanRunner:
             receipt = guard.receipt.data
             data = original["differential_universe"]
             objective, maximum = receipt.get("objective", "fixed_runs"), receipt["requested_runs"]
-            info.update(original_run_dir=original["run_dir"], reused_result=True, due_at=receipt["due_at"])
+            info.update(original_run_dir=original["run_dir"], due_at=receipt["due_at"])
         completed = data.get("completed_runs", 0)
         info.update(objective=objective, requested_runs=maximum, maximum_runs=maximum, completed_runs=completed,
                     new_completed_runs=0 if original is not None else completed, points_capped=None)
@@ -240,7 +271,19 @@ class PlanRunner:
             report.input_error_field = weekly.get("input_error_field", "")
             self._weekly_result("needs_review", "周常演算未完成；核对原报告后再处理。")
             return
-        state = guard.receipt.data["state"] if original is not None else guard.complete(weekly, checkpoint=self._checkpoint)
+        try:
+            if original is not None:
+                self._checkpoint()
+                guard.require_current_week()
+                state = guard.receipt.data["state"]
+                info["reused_result"] = True
+            else:
+                state = guard.complete(weekly, checkpoint=self._checkpoint)
+        except Stopped as error:
+            self.stop()
+            report.status, report.error = 'stopped', str(error)
+            self._weekly_result('needs_review', '周常回执保存前收到停止，已保留子报告。')
+            return
         if objective == "points":
             info["points_capped"] = state == "complete"
         if self.du_claim_weekly_rewards:
@@ -267,6 +310,7 @@ class PlanRunner:
                                  mode=self.settings.weekly_mode, requested_runs=self.settings.weekly_runs,
                                  daily_tasks=_daily_tasks(self.settings),
                                  status="waiting", score_rewards_verified=False, children=[])
+        report.weekly_plan['daily_handoff'] = 'not_started' if report.weekly_plan['daily_tasks'] else 'not_selected'
         if self.settings.weekly_mode == 'differential_universe':
             report.weekly_plan['objective'] = 'points' if self.du_until_points else 'fixed_runs'
         if self.du_claim_weekly_rewards:
@@ -321,9 +365,7 @@ class PlanRunner:
                 daily = self._run(self.settings, phase="daily", operation="daily", new_battle_run=self.new_battle_run,
                     **(dict(use_power_plan=True,new_power_plan=self.new_power_plan) if self.use_power_plan else {}))
                 self._copy_daily(daily)
-                if daily.get("status") != "success" or daily.get("report_saved") is not True:
-                    report.status = "stopped" if daily.get("status") == "stopped" else "partial"
-                    self._weekly_result("not_started", "日常未完整结束；周常未开始。")
+                if not self._daily_handoff(daily):
                     return report
                 if self.settings.weekly_enabled and self.settings.weekly_mode=='currency_wars':
                     from .currency_wars_weekly import saved_report
@@ -380,7 +422,8 @@ class PlanRunner:
                     replace_file(temp, directory/"report.json")
                 except OSError as exc:
                     report.report_saved = False
-                    report.status = "partial"
+                    if report.status != "stopped":
+                        report.status = "partial"
                     report.report_write_error = str(exc)
                     report.error = (report.error+"；" if report.error else "")+"计划报告保存失败。"
                 self.emit(dict(type="finished", report=report.to_dict()))

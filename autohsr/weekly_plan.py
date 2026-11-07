@@ -239,14 +239,14 @@ class WeeklyReceipt:
             raise ValueError("差分周常积分回执的账号或原意图未核实。")
         return dict(account_key=self.account, week=data["week"], maximum=data["requested_runs"], intent_id=intent)
 
-    def require_points_intent(self):
+    def require_intent(self):
         try:
             if (self._intent_sha256 is not None and self.path.resolve() == self.path
                     and hashlib.sha256(self.path.read_bytes()).hexdigest() == self._intent_sha256):
                 return
         except OSError as error:
-            raise AutomationError("差分周常原积分意图无法读取，保留待核对。") from error
-        raise AutomationError("差分周常原积分意图已变化，保留待核对。")
+            raise AutomationError("差分周常原意图无法读取，保留待核对。") from error
+        raise AutomationError("差分周常原意图已变化，保留待核对。")
 
     def _state(self, data, report):
         objective = data.get("objective", "fixed_runs")
@@ -300,11 +300,10 @@ class WeeklyReceipt:
         raw = _json_bytes(self.data)
         with self.path.open("xb") as stream:
             stream.write(raw)
-        if until_points:
-            self._intent_sha256 = hashlib.sha256(raw).hexdigest()
+        self._intent_sha256 = hashlib.sha256(raw).hexdigest()
         return True
 
-    def complete(self, report, *, before_replace=None):
+    def complete(self, report, *, before_replace=None, require_current_week=None):
         state = self._state(self.data, report) if self.data is not None and self.data["state"] == "started" else None
         if state is None:
             raise AutomationError("周常演算完成证据不足；本周记录仍待核对。")
@@ -324,6 +323,9 @@ class WeeklyReceipt:
                     finished_at=datetime.now(CHINA).isoformat())
         if points:
             data["ledger"] = _points_ledger_ref(persisted, self.points_scope(self.data))
+        sources = (report_path, *data["evidence"])
+        if points:
+            sources += (data["ledger"]["path"],)
         temp = self.path.with_suffix(".tmp")
         candidate = _json_bytes(data)
         temp.write_bytes(candidate)
@@ -332,19 +334,21 @@ class WeeklyReceipt:
         def verified_attempt():
             from .currency_wars_points import game_week
 
-            with hold_read_sources((report_path, data["ledger"]["path"], *data["evidence"])):
-                self._report(data)
+            with hold_read_sources(sources):
+                try:
+                    self._report(data)
+                except (OSError, ValueError, KeyError, TypeError) as error:
+                    raise AutomationError("差分周常原报告或原始演算证据已变化，保留原意图。") from error
                 if temp.read_bytes() != candidate:
                     raise AutomationError("差分周常待写回执已变化，保留原意图。")
-                self.require_points_intent()
-                if game_week(datetime.now(CHINA)) != self.slot.week:
+                self.require_intent()
+                if require_current_week is not None:
+                    require_current_week()
+                elif points and game_week(datetime.now(CHINA)) != self.slot.week:
                     raise AutomationError("差分周常积分回执落盘前已跨游戏周，保留原意图。")
                 yield
 
-        if points:
-            replace_file(temp, self.path, before_replace=before_replace, attempt_scope=verified_attempt)
-        else:
-            replace_file(temp, self.path, before_replace=before_replace)
+        replace_file(temp, self.path, before_replace=before_replace, attempt_scope=verified_attempt)
         self.data = data
         return state
 
@@ -376,7 +380,7 @@ class WeeklyGuard:
     def require_current_week(self):
         current = weekly_slot(self.settings)
         if not self.slot.due or current.week != self.slot.week:
-            raise AutomationError("原周常演算目标尚未到期或已跨游戏周；保留原目标和已核实局数，未新开局。")
+            raise AutomationError("原周常演算目标尚未到期或已跨游戏周；保留原目标和已核实局数，停止推进。")
 
     def prepare(self, context):
         from .du_daily import account_key
@@ -399,7 +403,7 @@ class WeeklyGuard:
             self.require_current_week()
 
         started = self.receipt.begin(self.settings, until_points=self.until_points, before_start=before_start)
-        if not started and self.receipt.data.get("objective") == "points":
+        if not started:
             before_start()
         self.already_complete = not started and self.receipt.data["state"] == "complete"
         return started
@@ -413,7 +417,7 @@ class WeeklyGuard:
     def _require_ledger(self, path):
         if self.receipt is None:
             raise AutomationError("差分周常尚未写入原积分意图。")
-        self.receipt.require_points_intent()
+        self.receipt.require_intent()
         try:
             if self._ledger is None:
                 if not path.exists():
@@ -469,4 +473,4 @@ class WeeklyGuard:
                 checkpoint()
             self.require_current_week()
 
-        return self.receipt.complete(report, before_replace=before_replace if self.until_points else None)
+        return self.receipt.complete(report, before_replace=before_replace, require_current_week=self.require_current_week)
