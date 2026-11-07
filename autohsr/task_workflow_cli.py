@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import sys
 
-from .task_workflow import WORKFLOW_PAGES, WorkflowError, compile_recipe, read
+from .task_workflow import WORKFLOW_PAGES, WorkflowError, compile_recipe, read, workflow_notification_png_path
 
 
 def add_arguments(mode, parser):
@@ -25,14 +25,18 @@ def add_arguments(mode, parser):
     parser.add_argument('--workflow-step-path', help='仅执行指定步骤子树，例如1/0；序号从0开始，不补执行前序步骤')
     parser.add_argument('--workflow-allow-notify', action='store_true',
                         help='授权本次明确选择的任务流程向已保存方案发送主动通知')
+    parser.add_argument('--workflow-notify-png', nargs=2, metavar=('PNG', 'SMTP方案'),
+                        help='为本次手动任务流明确授权 JSON 中绑定的一份本地 PNG 和已保存的 SMTP 方案')
 
 
 def validate_arguments(args, parser):
-    """Check conversion-only switches before any CLI mode reads its sources."""
+    """Check mode-specific switches before any CLI mode reads its sources."""
     if args.workflow_yaml_native_vision and args.task_workflow_convert_yaml is None:
         parser.error('--workflow-yaml-native-vision 仅用于 --task-workflow-convert-yaml。')
     if args.workflow_yaml_notify_profile is not None and args.task_workflow_convert_yaml is None:
         parser.error('--workflow-yaml-notify-profile 仅用于 --task-workflow-convert-yaml。')
+    if args.workflow_notify_png is not None and (args.task_workflow is None or not args.workflow_allow_notify):
+        parser.error('--workflow-notify-png 需要 --task-workflow 和 --workflow-allow-notify。')
 
 
 def _bundle(args, parser, raw_args):
@@ -154,9 +158,13 @@ def dispatch(args, parser, raw_args):
         return None
     allowed = {'--task-workflow', '--task-workflow-check', '--workflow-step-path'}
     if args.task_workflow is not None:
-        allowed.update(('--config', '--notify', '--no-notify', '--notify-profile', '--workflow-allow-notify'))
-    if any(arg.split('=', 1)[0] not in allowed for arg in raw_args if arg.startswith('--')):
+        allowed.update(('--config', '--notify', '--no-notify', '--notify-profile', '--workflow-allow-notify',
+                        '--workflow-notify-png'))
+    provided = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
+    if set(provided) - allowed:
         parser.error('任务流程不能混用其他运行或资源覆盖参数；每步参数在流程JSON中明确配置。')
+    if provided.count('--workflow-notify-png') > 1:
+        parser.error('本次任务流程只能授权一份本地 PNG 和一个 SMTP 方案。')
     runner = None
     try:
         document = read(selected)
@@ -167,11 +175,24 @@ def dispatch(args, parser, raw_args):
                         configuration_loaded=False, source_files_read=False)
         else:
             from .config import Settings
-            from .task_workflow_run import TaskWorkflowRunner, freeze_step_notifications, step_notification_aliases
+            from .task_workflow_run import (TaskWorkflowRunner, WorkflowNotificationImage, freeze_step_notifications,
+                                            step_notification_aliases, step_notification_images)
             aliases = step_notification_aliases(recipe)
             if aliases and not args.workflow_allow_notify:
                 parser.error('任务流程含主动通知。请核对已保存方案后明确使用 --workflow-allow-notify。')
+            images = step_notification_images(recipe)
+            if images and args.workflow_notify_png is None:
+                parser.error('任务流程含图片通知。请明确使用 --workflow-notify-png PNG SMTP方案。')
+            if args.workflow_notify_png is not None:
+                image, profile = args.workflow_notify_png
+                image = Path.cwd() / workflow_notification_png_path(image)
+                if images != {(str(image), profile)}:
+                    raise WorkflowError('本次授权须与所选步骤中声明的 PNG 路径和 SMTP 方案完全一致。')
             authorization = ({'notification_versions': freeze_step_notifications(recipe)} if aliases else {})
+            if images:
+                from .reward_guide_notify import freeze_png
+
+                authorization['notification_image'] = WorkflowNotificationImage(profile, freeze_png(image))
             settings = Settings.load(args.config)
             from .notify_cli import override as override_notify
             override_notify(args, settings)

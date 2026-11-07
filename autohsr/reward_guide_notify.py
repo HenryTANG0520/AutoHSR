@@ -1,9 +1,11 @@
-"""Send a user-selected calendar PNG through one frozen SMTP profile."""
+"""Send a user-selected local PNG through one frozen SMTP profile."""
 
 from contextlib import ExitStack
 from copy import copy
+from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO
+from pathlib import Path
 from zlib import error as DeflateError
 
 from PIL import Image
@@ -24,6 +26,13 @@ _REASONS = dict(accepted='provider_accepted', partial='provider_partial', reject
                 unknown='delivery_unknown', cancelled='stopped_before_send')
 
 
+@dataclass(frozen=True)
+class PngSource:
+    path: Path
+    revision: tuple
+    digest: bytes
+
+
 def _result(status, reason=None, *, reused=False):
     return dict(status=status, reason=reason or _REASONS[status], reused=reused)
 
@@ -36,13 +45,18 @@ def _read_bytes(path):
     return raw
 
 
-def _load_attachment(value):
+def _load_attachment(value, *, expected_source=None):
     path = _png_path(value)
     revision = file_revision(path)
     with hold_read_sources((path,)):
         if _png_path(path) != path or file_revision(path) != revision:
             raise _Rejected('attachment_changed')
+        if expected_source is not None and (expected_source.path != path or expected_source.revision != revision):
+            raise _Rejected('attachment_changed')
         raw = _read_bytes(path)
+    source = PngSource(path, revision, sha256(raw).digest())
+    if expected_source is not None and expected_source != source:
+        raise _Rejected('attachment_changed')
     try:
         image = _read_png_image(BytesIO(raw), max_height=_MAX_INPUT_EDGE * _MAX_PAGES, max_pixels=_MAX_INPUT_PIXELS)
     except _Rejected as error:
@@ -55,11 +69,55 @@ def _load_attachment(value):
     png = encoded.getvalue()
     if len(png) > MAX_PNG_ATTACHMENT_BYTES:
         raise _Rejected('attachment_limit')
-    return path, revision, sha256(raw).digest(), png, image_key.hexdigest()
+    return source, png, image_key.hexdigest()
+
+
+def freeze_png(image):
+    try:
+        source, _, _ = _load_attachment(image)
+    except (OSError, RuntimeError, TypeError, ValueError, SyntaxError, DeflateError,
+            Image.DecompressionBombError):
+        raise NotifyError('无法核实明确选择的本地 PNG。') from None
+    return source
+
+
+def _smtp_profile(profile, service):
+    try:
+        identity = alias(profile)
+        path = local_path(service.store.path(identity))
+        with hold_read_sources((path,)):
+            if local_path(service.store.path(identity)) != path:
+                raise OSError()
+            frozen = service.store.load_version(identity)
+        value, _ = frozen
+        params = value['params']
+        if value.get('id') != identity or not isinstance(params, dict):
+            raise NotifyError('通知配置身份无法核实。')
+    except (OSError, RuntimeError, TypeError, ValueError, KeyError):
+        raise _Rejected('invalid_profile') from None
+    if value.get('provider') != 'smtp':
+        raise _Rejected('unsupported_provider')
+    if params.get('ssl', True) is not True and params.get('starttls', False) is not True:
+        raise _Rejected('tls_required')
+    return path, frozen
+
+
+def freeze_smtp_profile(profile, *, service=None):
+    service = NotificationService() if service is None else service
+    try:
+        _, (_, version) = _smtp_profile(profile, service)
+    except _Rejected:
+        raise NotifyError('本地 PNG 通知需要可核实且启用 SSL 或 STARTTLS 的 SMTP 方案。') from None
+    return version
 
 
 def send_reward_guide(image, profile, *, service=None, checkpoint=lambda: None):
-    """Submit an explicit local image once per canonical PNG and profile alias."""
+    return send_local_png(image, profile, _TITLE, _BODY, service=service, checkpoint=checkpoint)
+
+
+def send_local_png(image, profile, title, body, *, service=None, checkpoint=lambda: None,
+                   expected_version=None, expected_source=None):
+    """Submit once per canonical PNG and profile alias across manual entry points."""
     stopped = submitted = False
     blocked = None
 
@@ -69,33 +127,26 @@ def send_reward_guide(image, profile, *, service=None, checkpoint=lambda: None):
             checkpoint()
         except (NotifyCancelled, Stopped, KeyboardInterrupt):
             stopped = True
-            raise NotifyCancelled('活动日历通知已停止。') from None
+            raise NotifyCancelled('图片通知已停止。') from None
 
     try:
         check()
         service = NotificationService() if service is None else service
-        identity = alias(profile)
-        profile_path = local_path(service.store.path(identity))
-        with hold_read_sources((profile_path,)):
-            if local_path(service.store.path(identity)) != profile_path:
-                raise OSError()
-            frozen = service.store.load_version(identity)
+        profile_path, frozen = _smtp_profile(profile, service)
         value, version = frozen
-        params = value['params']
-        if value.get('id') != identity or not isinstance(params, dict):
-            raise NotifyError('通知配置身份无法核实。')
     except (NotifyCancelled, KeyboardInterrupt):
         return _result('cancelled')
+    except _Rejected as error:
+        return _result('rejected', str(error))
     except (OSError, RuntimeError, TypeError, ValueError, KeyError):
         return _result('rejected', 'invalid_profile')
-    if value.get('provider') != 'smtp':
-        return _result('rejected', 'unsupported_provider')
-    if params.get('ssl', True) is not True and params.get('starttls', False) is not True:
-        return _result('rejected', 'tls_required')
+    if expected_version is not None and expected_version != version:
+        return _result('rejected', 'profile_changed')
+    identity, params = value['id'], value['params']
 
     try:
         check()
-        path, revision, source_digest, png, image_key = _load_attachment(image)
+        source, png, image_key = _load_attachment(image, expected_source=expected_source)
     except (NotifyCancelled, KeyboardInterrupt):
         return _result('cancelled')
     except _Rejected as error:
@@ -107,7 +158,7 @@ def send_reward_guide(image, profile, *, service=None, checkpoint=lambda: None):
         nonlocal submitted
         check()
         if submitted:
-            raise NotifyError('本次活动日历已进入提交，未重复发送。')
+            raise NotifyError('本次图片通知已进入提交，未重复发送。')
         submitted = True
 
     def send(provider, current, title, body):
@@ -115,7 +166,7 @@ def send_reward_guide(image, profile, *, service=None, checkpoint=lambda: None):
         check()
         if provider != 'smtp' or current != params:
             blocked = 'profile_changed'
-            raise NotifyError('活动日历的通知配置已变化。')
+            raise NotifyError('图片通知的配置已变化。')
         with ExitStack() as locks:
             blocked = 'profile_changed'
             locks.enter_context(hold_read_sources((profile_path,)))
@@ -123,9 +174,10 @@ def send_reward_guide(image, profile, *, service=None, checkpoint=lambda: None):
                 raise OSError()
             service.store.require_version(identity, version)
             blocked = 'attachment_changed'
+            path = source.path
             locks.enter_context(hold_read_sources((path,)))
-            if (_png_path(path) != path or file_revision(path) != revision
-                    or sha256(_read_bytes(path)).digest() != source_digest):
+            if (_png_path(path) != path or file_revision(path) != source.revision
+                    or sha256(_read_bytes(path)).digest() != source.digest):
                 raise OSError()
             blocked = None
             check()
@@ -135,7 +187,7 @@ def send_reward_guide(image, profile, *, service=None, checkpoint=lambda: None):
                 status = service.local_send(provider, params, title, body, png=png, before_submit=before_submit)
             if (type(status) is not str or status not in _REASONS
                     or status in ('accepted', 'partial') and not submitted):
-                raise NotifyError('活动日历未取得可核实的发送回执。')
+                raise NotifyError('图片通知未取得可核实的发送回执。')
             return status
 
     attempt = copy(service)
@@ -143,7 +195,7 @@ def send_reward_guide(image, profile, *, service=None, checkpoint=lambda: None):
     key = 'reward-guide-png-v1:' + image_key
     try:
         check()
-        receipt = attempt.deliver(frozen, _TITLE, _BODY, key, checkpoint=check)
+        receipt = attempt.deliver(frozen, title, body, key, checkpoint=check)
     except (NotifyCancelled, KeyboardInterrupt):
         return _result('unknown' if submitted else 'cancelled')
     except (NotifyError, OSError):

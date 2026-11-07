@@ -13,6 +13,7 @@ import os
 import re
 import threading
 import time
+from typing import TYPE_CHECKING
 import uuid
 
 from .config import ROOT
@@ -21,9 +22,12 @@ from .models import AutomationError, RunReport, Stopped, TaskResult
 from .storage import replace_file
 from .task_workflow import (FIELDS, GAME_TASKS, GAME_VISION_TASKS, MAX_EXECUTIONS, PAGE_TASK, TEMPLATE_TASKS,
                             VISION_TASKS, WORKFLOW_FOREGROUND_TASKS, WorkflowError, compile_recipe, execution_task,
-                            task_spec)
+                            task_spec, workflow_notification_png_path)
 from .task_workflow import execution_tasks as _tasks
 from .workflow_lease import workflow_lease
+
+if TYPE_CHECKING:
+    from .reward_guide_notify import PngSource
 
 
 def _now():
@@ -82,7 +86,8 @@ class _Control(Exception):
 class TaskWorkflowRunner:
     def __init__(self, settings, document, emit=None, *, selected_path=None, base_dir=None,
                  root=None, runner_factory=None, plan_factory=None, currency_factory=None, warp_service=None,
-                 notification_versions=None, notification_service=None, wait_for_foreground=False):
+                 notification_versions=None, notification_service=None, wait_for_foreground=False,
+                 notification_image=None):
         if type(wait_for_foreground) is not bool:
             raise WorkflowError('任务流前台等待选项无效。')
         self.settings = replace(settings)
@@ -94,6 +99,12 @@ class TaskWorkflowRunner:
                        for value in versions.values())):
             raise WorkflowError('任务流程含主动通知，须先明确授权并核实通知方案。')
         self.notification_versions = dict(versions)
+        images = step_notification_images(self.recipe)
+        if images or notification_image is not None:
+            if (not isinstance(notification_image, WorkflowNotificationImage)
+                    or images != {(str(notification_image.source.path), notification_image.profile)}):
+                raise WorkflowError('任务流程的图片通知须明确授权同一份本地 PNG 和 SMTP 方案。')
+        self.notification_image = notification_image
         self.notification_service = notification_service
         self.emit = emit or (lambda event: None)
         self.root = Path(root) if root is not None else ROOT / 'runs'
@@ -413,9 +424,11 @@ class TaskWorkflowRunner:
             from .workflow_notify import send_step
 
             profile = options['profile']
+            attachment = {'attachment': self.notification_image.source} if 'png' in options else {}
             return send_step(profile, options['message'], directory=self._directory, checkpoint=self.checkpoint,
                              run_key=self._directory.name, sequence=sequence,
-                             expected_version=self.notification_versions[profile], service=self.notification_service)
+                             expected_version=self.notification_versions[profile], service=self.notification_service,
+                             **attachment)
         if task == 'workflow_audio':
             from .workflow_audio import play
 
@@ -756,7 +769,21 @@ def step_notification_aliases(recipe):
                                if node['task'] == 'workflow_notify'))
 
 
+def step_notification_images(recipe):
+    return {(str(recipe.base_dir / workflow_notification_png_path(node['params']['png'])), node['params']['profile'])
+            for node in _tasks(recipe.steps) if node['task'] == 'workflow_notify' and 'png' in node['params']}
+
+
+@dataclass(frozen=True)
+class WorkflowNotificationImage:
+    profile: str
+    source: PngSource
+
+
 def freeze_step_notifications(recipe, *, service=None):
     from .workflow_notify import freeze_profile
+    from .reward_guide_notify import freeze_smtp_profile
 
-    return {identity: freeze_profile(identity, service=service) for identity in step_notification_aliases(recipe)}
+    smtp_profiles = {profile for _, profile in step_notification_images(recipe)}
+    return {identity: (freeze_smtp_profile if identity in smtp_profiles else freeze_profile)(
+        identity, service=service) for identity in step_notification_aliases(recipe)}

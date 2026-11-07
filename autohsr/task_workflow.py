@@ -198,7 +198,7 @@ def _params(task, params):
         'workflow_game_image': {'template', 'region', 'threshold'},
         'workflow_game_text': {'text', 'region', 'threshold', 'contains'},
         PAGE_TASK: {'target'},
-        'workflow_notify': {'profile', 'message'},
+        'workflow_notify': {'profile', 'message', 'png'},
     }[task]
     _keys(params, allowed)
     for key in ('use_power_plan', 'use_support', 'support_daily_only', 'resume_weekly_currency', 'save', 'rewards',
@@ -289,6 +289,16 @@ def _params(task, params):
             text(params.get('message'), maximum=1800)
         except NotifyError as error:
             raise WorkflowError(str(error)) from error
+        if 'png' in params:
+            workflow_notification_png_path(params['png'])
+
+
+def workflow_notification_png_path(value):
+    path = Path(_text(value, 1024))
+    if (path.suffix.casefold() != '.png' or '..' in path.parts or (path.anchor and not path.is_absolute())
+            or (path.drive and len(path.drive) != 2)):
+        raise WorkflowError('通知附件须明确指定普通本地 PNG 路径。')
+    return path
 
 
 def _profile(nodes):

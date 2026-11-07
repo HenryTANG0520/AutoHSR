@@ -1,6 +1,6 @@
 """Only synthetic credentials, local PNGs and fake SMTP connections are used."""
 
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import nullcontext, redirect_stderr, redirect_stdout
 import io
 import json
 import os
@@ -12,10 +12,12 @@ from unittest.mock import Mock, patch
 
 from PIL import Image, PngImagePlugin
 
-from autohsr import notify_runtime, reward_guide_notify
+from autohsr import notify_runtime, reward_guide_notify, workflow_notify
 from autohsr.__main__ import main
+from autohsr.config import Settings
 from autohsr.models import Stopped
 from autohsr.reward_guide_export import export_reward_guide
+from autohsr.task_workflow_run import TaskWorkflowRunner
 
 
 class RewardGuideNotifyTests(unittest.TestCase):
@@ -67,6 +69,102 @@ class RewardGuideNotifyTests(unittest.TestCase):
     def attempts(self):
         return [json.loads(path.read_text(encoding='utf8'))
                 for path in (self.service.root / 'attempts').glob('*.json')]
+
+    def workflow(self, *, profile=None):
+        profile = self.profile['id'] if profile is None else profile
+        path = self.root / 'flow.json'
+        step = dict(id='image', type='task', task='workflow_notify',
+                    params=dict(profile=profile, message='PRIVATE_WORKFLOW_MESSAGE', png=self.png.name))
+        path.write_text(json.dumps(dict(version=1, name='PNG', steps=[step])), encoding='utf8')
+        config = self.root / 'config.json'
+        Settings().save(config)
+        return ['--task-workflow', str(path), '--config', str(config), '--workflow-allow-notify',
+                '--workflow-notify-png', str(self.png), profile]
+
+    def workflow_cli(self, args, *, code=0):
+        output, errors = io.StringIO(), io.StringIO()
+        with patch.object(reward_guide_notify, 'NotificationService', return_value=self.service), \
+                patch.object(workflow_notify, 'NotificationService', return_value=self.service), \
+                patch('autohsr.task_workflow_run.ROOT', self.root), \
+                patch('autohsr.task_workflow_run.workflow_lease', side_effect=nullcontext), \
+                patch.object(TaskWorkflowRunner, '_hotkeys'), \
+                patch('autohsr.app.find_game', side_effect=AssertionError('no game window')), \
+                redirect_stdout(output), redirect_stderr(errors):
+            self.assertEqual(main(args), code, errors.getvalue())
+        return json.loads((errors if code == 2 else output).getvalue())
+
+    def test_workflow_sends_explicit_png_and_shares_calendar_attempt(self):
+        args = self.workflow()
+
+        def submit(mail, **_):
+            intents = list((self.root / 'runs').rglob('notify-1/intent.json'))
+            self.assertEqual(len(intents), 1)
+            self.assertEqual(json.loads(intents[0].read_bytes())['status'], 'pending')
+            self.assertEqual(self.attempts()[0]['actions'], [dict(phase='send', index=0, status='pending')])
+            self.assertEqual(str(mail['Subject']), 'AutoHSR · 任务流程通知')
+            self.assertIn('PRIVATE_WORKFLOW_MESSAGE', mail.get_body().get_content())
+            attachment, = mail.iter_attachments()
+            self.assertEqual(attachment.get_filename(), 'reward-guide.png')
+            self.assertEqual(attachment.get_payload(decode=True), self.png.read_bytes())
+            return {}
+
+        self.connection.send_message.side_effect = submit
+        first = self.workflow_cli(args)
+        self.assertEqual(first['workflow']['steps'][0]['notification'],
+                         dict(status='accepted', reason='provider_accepted', reused=False))
+        report, = (self.root / 'runs').rglob('notify-1/report.json')
+        for private in (self.png.name, self.profile['id'], 'PRIVATE_WORKFLOW_MESSAGE', '@example.test'):
+            self.assertNotIn(private, report.read_text('utf8'))
+        metadata = PngImagePlugin.PngInfo()
+        metadata.add_text('test', 'changed metadata')
+        Image.new('RGB', (192, 176), (31, 95, 180)).save(self.png, pnginfo=metadata)
+        self.assertTrue(self.notify()['reused'])
+        repeated = self.workflow_cli(args, code=1)
+        self.assertEqual(repeated['workflow']['steps'][0]['notification'],
+                         dict(status='unknown', reason='already_attempted', reused=True))
+        self.connection.send_message.assert_called_once()
+
+    def test_workflow_requires_matching_manual_grant_and_encrypted_smtp(self):
+        args = self.workflow()
+        with patch.object(reward_guide_notify, 'freeze_png') as png, \
+                patch.object(reward_guide_notify, 'freeze_smtp_profile') as profile:
+            with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as missing:
+                main(args[:-3])
+            self.assertEqual(missing.exception.code, 2)
+            mismatched = self.workflow_cli(args[:-1] + ['other'], code=2)
+            self.assertIn('完全一致', mismatched['error'])
+            profile.assert_not_called()
+            png.assert_not_called()
+
+        self.service.store.save(dict(id='discord-test', provider='discord', params=dict(webhook='https://example.test/hook')))
+        with patch.object(reward_guide_notify, 'freeze_png') as png:
+            rejected = self.workflow_cli(self.workflow(profile='discord-test'), code=2)
+            self.assertIn('SSL 或 STARTTLS', rejected['error'])
+            png.assert_not_called()
+        self.assertEqual(self.attempts(), [])
+        self.ssl.assert_not_called()
+
+    def test_workflow_revokes_frozen_image_or_profile_before_smtp(self):
+        args = self.workflow()
+        run = TaskWorkflowRunner.run
+
+        def replace_image(runner):
+            self.png.write_bytes(b'not the approved PNG')
+            return run(runner)
+
+        def replace_profile(runner):
+            self.service.store.save(dict(self.profile, params=dict(self.profile['params'],
+                                    To='different@example.test')), replace=True)
+            return run(runner)
+
+        for action, reason in ((replace_image, 'attachment_changed'), (replace_profile, 'profile_changed')):
+            Image.new('RGB', (192, 176), (31, 95, 180)).save(self.png)
+            with self.subTest(reason=reason), patch.object(TaskWorkflowRunner, 'run', action):
+                result = self.workflow_cli(args, code=1)
+                self.assertEqual(result['workflow']['steps'][0]['notification'],
+                                 dict(status='rejected', reason=reason, reused=False))
+        self.assertEqual(self.attempts(), [])
+        self.ssl.assert_not_called()
 
     def test_exported_png_attaches_exact_pixels_after_durable_intent_and_reuses(self):
         stitched = self.root / 'explicit-export.png'

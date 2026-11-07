@@ -1,4 +1,4 @@
-from contextlib import nullcontext, redirect_stderr
+from contextlib import nullcontext, redirect_stderr, redirect_stdout
 import io
 from itertools import product
 import json
@@ -101,6 +101,36 @@ class WorkflowToolStepTests(TestCase):
             self.assertFalse(AutoHSRWindow._start_task_workflow(ui, compile_recipe(document(notice()))))
         self.assertEqual(question.call_args.kwargs['default'], 'no')
         self.assertIn('test', question.call_args.args[1])
+        ui._start_scoped_runner.assert_not_called()
+
+    def test_image_notification_keeps_check_offline_and_requires_manual_cli(self):
+        from autohsr.workflow_bundle import BundleError, export_bundle
+
+        step = notice()
+        step['params']['png'] = 'missing.png'
+        flow = document(step, dict(id='wait', type='wait', seconds=0))
+        path = self.root / 'workflow.json'
+        path.write_text(json.dumps(flow), encoding='utf8')
+        recipe = compile_recipe(flow, base_dir=self.root)
+        plan = dict(version=1, id='test', name='test', time='08:00', target=dict(type='workflow', path=str(path)))
+        ui = SimpleNamespace(_read_settings=Mock(), _start_scoped_runner=Mock(), result_alert=Mock())
+        with patch('autohsr.reward_guide_notify._load_attachment') as read:
+            output = io.StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(main(['--task-workflow-check', str(path)]), 0)
+            self.assertFalse(json.loads(output.getvalue())['source_files_read'])
+            with self.assertRaisesRegex(WorkflowError, '本地 PNG'):
+                TaskWorkflowRunner(Settings(), flow, base_dir=self.root, notification_versions={'test': 'a' * 64})
+            selected = TaskWorkflowRunner(Settings(), flow, base_dir=self.root, selected_path='1', root=self.root)
+            self.assertEqual(selected.run().status, 'success')
+            with self.assertRaisesRegex(ScheduleError, '手动授权'):
+                NativeScheduleExecutor(Settings()).preview_budget(plan)
+            with self.assertRaises(BundleError):
+                export_bundle(path, self.root / 'flow.zip')
+            self.assertFalse(AutoHSRWindow._start_task_workflow(ui, recipe))
+            self.assertIn('命令行', ui.result_alert.set.call_args.args[0])
+            read.assert_not_called()
+        ui._read_settings.assert_not_called()
         ui._start_scoped_runner.assert_not_called()
 
     def test_stopped_imported_single_step_does_not_link_unwritten_final_report(self):

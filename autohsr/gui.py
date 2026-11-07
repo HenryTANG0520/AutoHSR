@@ -1209,11 +1209,16 @@ class AutoHSRWindow:
         return self._start_scoped_runner('兑换本次兑换码', 'redemption', factory, present)
 
     def _start_task_workflow(self, recipe, on_report=None, *, source_scope=None) -> bool:
+        from .task_workflow_run import (TaskWorkflowRunner, _tasks, freeze_step_notifications,
+                                        step_notification_aliases, step_notification_images)
+
+        if step_notification_images(recipe):
+            self.result_alert.set('图片通知须在命令行明确授权本地 PNG 和 SMTP 方案。')
+            return False
         settings = self._read_settings(operation='plan')
         if settings is None:
             return False
 
-        from .task_workflow_run import TaskWorkflowRunner, _tasks, freeze_step_notifications, step_notification_aliases
         aliases = step_notification_aliases(recipe)
         authorization = {}
         if aliases:

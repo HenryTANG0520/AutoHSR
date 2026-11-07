@@ -29,7 +29,7 @@
 | `workflow_game_image` | 当前游戏画面模板判断 | 必填 `template`，可选 `region`、`threshold`。默认阈值 0.88 |
 | `workflow_game_text` | 当前游戏画面 OCR 判断 | 必填 `text`，可选 `region`、`threshold`、`contains`。默认精确匹配，阈值 0.65 |
 | `workflow_open_page` | 已知日常页面切换 | 必填 `target`，可选值见下方。只切换页面并核实到达 |
-| `workflow_notify` | 已保存通知方案 | 必填 `profile`、`message`。只在明确授权的手动运行中发送文本，同一运行出现待核对的提交后停止后续主动通知 |
+| `workflow_notify` | 已保存通知方案 | 必填 `profile`、`message`。可选 `png`，显式绑定本地 PNG 和 SMTP 方案时仅通过命令行手动运行。同一运行出现待核对的提交后停止后续主动通知 |
 
 记录任务目前只接显式本地JSON；真实缓存／链接获取继续使用[独立工具入口](warp-records.md)，没有在流程中隐式扫描。XLSX仍使用已固定的可选加载引擎，见[统计与Excel](warp-statistics-xlsx.md)。
 
@@ -117,6 +117,14 @@ python -m autohsr --screen-check-pages phone mail odyssey reward_guide
 短信通知的入口来源与其他页面不同，桌面和 CLI 均需单独选择。CLI 可用 `--screen-check-plan messages` 预览，或用 `--screen-check-pages messages` 执行。
 
 音频支持 1 或 2 声道、8 或 16 位、8～48 kHz，文件最多 32 MiB、时长最多 120 秒。播放完成来自 Windows 驱动反馈。主动通知在桌面运行时显示本次最多步骤数和方案别名，授权后沿用冻结的方案版本。CLI 显式使用 `--workflow-allow-notify`。每次流程最多 20 个主动通知步骤。应用内定时暂未开放这项授权。通知正文留在流程文件及明确发往的渠道，运行回执只记结果及必要的匿名事实。[通知设置](notifications.md)
+
+图片通知可在 `workflow_notify` 的 `params` 中填写 `{"profile":"my-smtp","message":"本次流程的图片","png":"selected.png"}`。JSON 中的相对路径以流程文件所在目录为准。运行时还须明确提供同一份 PNG 的路径和同一个已保存的 SMTP 方案。
+
+```powershell
+python -m autohsr --task-workflow 'D:\Workflows\demo.json' --workflow-allow-notify --workflow-notify-png 'D:\Workflows\selected.png' my-smtp
+```
+
+每次命令只能授权一个 PNG 与 SMTP 方案组合，以所选子树的启用步骤为准。命令行相对路径以当前目录为准。离线检查只解析字段和路径语法。执行时先核实启用 SSL 或 STARTTLS 的 SMTP 方案及普通本地 PNG，提交前再核对原配置版本和图片来源。所选图片步骤在桌面运行入口会提示改用命令行。[图片格式及去重规则](notifications.md#活动日历-smtp-附件) · [三月七通知步骤](march7th-workflow-yaml.md)
 
 `daily` 节点显式填写 `"params": {"tasks": ["assignments"]}` 时，只处理已有的持续委托奖励。列车补给和登录附加奖励会阻止本步继续。核实当前账号、可用按钮和大于零的累积时长后，最多尝试一次领取。领取反馈中断或账号改变时，保留原证据待核对。回到委托页后，在两张新画面上复核同账号的原委托状态和累积时长归零。详见[每日流程](../DAILY_FLOW.md#执行顺序)。
 
