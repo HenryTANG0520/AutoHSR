@@ -25,7 +25,7 @@ from autohsr.tests.test_daily_event_pages import _odyssey
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, _Window, phone, visa_collection
 from autohsr.tests.test_du_team import fixture
 from autohsr.tests.test_task_workflow import condition, recipe, task
-from autohsr.tests.test_workflow_navigation import exact_guide_fixture, identified, world_hud
+from autohsr.tests.test_workflow_navigation import badge, exact_guide_fixture, identified, world_hud
 from autohsr.vision import Vision
 from autohsr.windows import GameWindow, Geometry, INPUT
 from autohsr.workflow_battlepass_tabs import small_battlepass_tab
@@ -37,7 +37,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                        start_in_list=False, late_version=False, from_odyssey=False, check_publication_lock=False,
                        lose_focus_on_installation_read=False, from_phone=False, battlepass_size=None,
                        lose_focus_after_geometry=0, duplicate_tab=False, first_escape_native_count=2,
-                       upstream_screen=None):
+                       upstream_screen=None, guide_overlay=None, overlay_on_target=False):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -58,6 +58,11 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 pages = (identified(survival), high)
             else:
                 pages = (high, exact_guide_fixture('currency_guide'))
+            if guide_overlay is not None:
+                source, destination = pages
+                obscured = destination if overlay_on_target else source
+                overlay = Scene([*obscured.tokens, guide_overlay], obscured.image)
+                pages = (source, overlay) if overlay_on_target else (overlay, destination)
             if from_phone:
                 pages = (identified(fixture('phone_mail_icon')), *pages)
         elif target in ('battlepass_rewards', 'battlepass_tasks'):
@@ -250,7 +255,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             code = main(['--task-workflow', str(workflow), '--config', str(config)])
             interrupted = (late_loss or late_version or lose_focus_on_installation_read
                            or lose_focus_after_geometry or version != '4.6.0'
-                           or duplicate_tab or first_escape_native_count != 2)
+                           or duplicate_tab or first_escape_native_count != 2 or guide_overlay is not None)
             self.assertEqual(code, 1 if interrupted else 0, err.getvalue())
             if lose_focus_after_geometry:
                 self.assertTrue(focus_changed)
@@ -287,6 +292,23 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 self.assertEqual(rows[-1]['destination_page'], target)
                 self.assertAlmostEqual(self.clicks[-1][0], wanted[0], delta=.004)
                 self.assertAlmostEqual(self.clicks[-1][1], wanted[1], delta=.004)
+
+    def test_exact_guide_stops_on_route_blockers_before_the_tab_or_at_destination(self):
+        for blocker in (badge('确认购买并支付', .50, .44), badge('跳过当前剧情', .50, .44),
+                        badge('旅情事记', .09, .054)):
+            for on_target in (False, True):
+                with self.subTest(blocker=blocker.text, on_target=on_target):
+                    sent, steps, native = self.run_navigation(target='universe_guide', from_phone=True,
+                                                              guide_overlay=blocker, overlay_on_target=on_target)
+                    self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * (1 + on_target))
+                    self.assertEqual([step['step'] for step in steps], ['page'])
+                    self.assertNotIn('page_verified', steps[0]['facts'])
+                    record = native['workflow_navigation']
+                    self.assertFalse(record['page_verified'])
+                    self.assertEqual([(row['action'], row['input_status'], row['destination_status'])
+                                      for row in record['actions']],
+                                     ([('open_guide', 'sent', 'verified'), ('open_universe_guide', 'sent', 'unknown')]
+                                      if on_target else [('open_guide', 'sent', 'unknown')]))
 
     def test_incoming_message_import_reaches_the_existing_notification_panel(self):
         sent, steps, native = self.run_navigation(target='messages', upstream_screen='incoming_message')

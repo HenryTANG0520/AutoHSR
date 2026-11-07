@@ -54,11 +54,12 @@ _WORLD_LAYOUT_VERSION = '4.6.0'
 _WORLD_RETURN_PANELS = (*_GUIDE_PAGES, 'assignments', 'mail', 'battlepass')
 _WORLD_PHONE_ROI = (.005, .041, .042, .105)
 _WORLD_PHONE_CENTER = (.018, .067, .028, .083)
-_WORLD_STOP = ('跳过剧情', '跳过当前剧情', '退出剧情', '自动播放', '对话记录', '跳过对话', '确认跳过',
-               '挑战失败', '战斗胜利', '点击进入', '开始游戏', '账号登录', '扫码登录', '验证码',
-               '购买确认', '确认付款', '确认领取', '领取成功', '奖励详情', '开启无名勋礼')
-_WORLD_MODAL_PHRASES = ('确认购买', '是否购买', '确认支付', '请支付', '确认付款', '确认领取', '跳过当前剧情')
-_WORLD_ACTIVITY = ('旅情事记', '巡星之礼', '奖励指南')
+_ROUTE_STOP = ('跳过剧情', '跳过当前剧情', '退出剧情', '自动播放', '对话记录', '跳过对话', '确认跳过',
+               '购买确认', '确认付款', '确认领取')
+_WORLD_STOP = (*_ROUTE_STOP, '挑战失败', '战斗胜利', '点击进入', '开始游戏', '账号登录', '扫码登录', '验证码',
+               '领取成功', '奖励详情', '开启无名勋礼')
+_ROUTE_MODAL_PHRASES = ('确认购买', '是否购买', '确认支付', '请支付', '确认付款', '确认领取', '跳过当前剧情')
+_ROUTE_ACTIVITY = ('旅情事记', '巡星之礼', '奖励指南')
 _PHONE_CAPTIONS = {
     'guide': (('指南', '星际和平指南'), (.655, .713, .742, .763)),
     'assignments': (('委托',), (.884, .357, .921, .398)),
@@ -139,12 +140,20 @@ def _exact_guide_page(low, view, label, confidence):
     return 'universe_guide' if page_kind(low, confidence) == 'currency_guide' else None
 
 
+def _route_blocked(scene, stop_labels=_ROUTE_STOP):
+    return (scene.has(stop_labels, exact=True) or _has_split_label(scene, stop_labels, FULL)
+            or scene.has(_ROUTE_MODAL_PHRASES, _DIALOG_AREA)
+            or _has_split_label(scene, _ROUTE_MODAL_PHRASES, _DIALOG_AREA, exact=False)
+            or scene.has(_ROUTE_ACTIVITY, TITLE, exact=True) or _has_split_label(scene, _ROUTE_ACTIVITY, TITLE))
+
+
 def classify_page(scene, confidence, daily, *, battlepass_subpages=False, exact_guide_subpages=False):
     """Classify an existing scene using the calibrated daily navigation landmarks."""
     low = trusted(scene, COLLECTION_FLOOR)
     if (calibration_overlay(low) or helper_overlay(low) or daily._login(low) or daily._in_battle(low)
             or battlepass_modal(low) or low.has(_BLOCKERS, exact=True) or low.has(_DIALOG, _DIALOG_AREA, exact=True)
-            or _has_split_label(low, _BLOCKERS, FULL) or _has_split_label(low, _DIALOG, _DIALOG_AREA)):
+            or _has_split_label(low, _BLOCKERS, FULL) or _has_split_label(low, _DIALOG, _DIALOG_AREA)
+            or (exact_guide_subpages and _route_blocked(low))):
         raise AutomationError('当前有登录、战斗、弹窗或遮挡，日常页面导航已停止。')
     if low.has(('加载中', '正在加载', '登录中'), exact=True):
         return None
@@ -245,10 +254,7 @@ class WorkflowNavigation:
     def _world_return_page(self, scene, page):
         low = trusted(scene, COLLECTION_FLOOR)
         header = ''.join(token.text for token in low.tokens if token.within(TITLE))
-        if (low.has(_WORLD_STOP, exact=True) or _has_split_label(low, _WORLD_STOP, FULL)
-                or low.has(_WORLD_MODAL_PHRASES, _DIALOG_AREA)
-                or _has_split_label(low, _WORLD_MODAL_PHRASES, _DIALOG_AREA, exact=False)
-                or low.has(_WORLD_ACTIVITY, TITLE, exact=True) or _has_split_label(low, _WORLD_ACTIVITY, TITLE)
+        if (_route_blocked(low, _WORLD_STOP)
                 or has_du_field_plane_marker(header) or du_guide_details(low) or message_panel(low)):
             raise AutomationError('当前有剧情、玩法或未核实的遮挡，返回大世界已停止。')
         if page != WORLD_WORKFLOW_PAGE:
