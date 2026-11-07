@@ -41,6 +41,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
+        guide_target = target in ('difficulty_guide', 'universe_guide', 'daily_training', 'survival_index')
         if target == 'messages':
             from autohsr.tests.test_daily_message_world import bright_sequence, world_pair
 
@@ -50,14 +51,18 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             pages = (visa_collection(), visa_collection('characters'))
         elif target == 'world':
             pages = (identified(fixture('mail_claimable')), identified(fixture('phone_mail_icon')), world_hud())
-        elif target in ('difficulty_guide', 'universe_guide'):
-            high = exact_guide_fixture('difficulty_guide')
-            if target == 'difficulty_guide':
-                path = Path(__file__).parent / 'fixtures' / 'du_runtime' / 'guide_universe_tab_clear.png'
-                survival = Vision(.65).read(cv2.imdecode(np.fromfile(path, np.uint8), 1))
-                pages = (identified(survival), high)
+        elif guide_target:
+            if target == 'universe_guide':
+                pages = (exact_guide_fixture('difficulty_guide'), exact_guide_fixture('currency_guide'))
             else:
-                pages = (high, exact_guide_fixture('currency_guide'))
+                path = Path(__file__).parent / 'fixtures' / 'du_runtime' / 'guide_universe_tab_clear.png'
+                survival = identified(Vision(.65).read(cv2.imdecode(np.fromfile(path, np.uint8), 1)))
+                if target == 'difficulty_guide':
+                    pages = (survival, exact_guide_fixture('difficulty_guide'))
+                else:
+                    training = identified(fixture('daily_survival_badge'))
+                    daily = Scene(training.tokens, cv2.resize(training.image, (1920, 1080)))
+                    pages = (survival, daily) if target == 'daily_training' else (daily, survival)
             if guide_overlay is not None:
                 source, destination = pages
                 obscured = destination if overlay_on_target else source
@@ -189,7 +194,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
 
         def vision(confidence):
             engine = window.vision(confidence)
-            if target in ('world', 'difficulty_guide', 'universe_guide'):
+            if target == 'world' or guide_target:
                 engine.template = Vision.__new__(Vision).template
             return engine
 
@@ -232,7 +237,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 ('autohsr.workflow_lease.NAME', 'Local\\AutoHSR.WorkflowNavigationQA.' + uuid4().hex),
             ):
                 stack.enter_context(patch(name, value))
-            if target != 'world':
+            if target != 'world' and not guide_target:
                 stack.enter_context(patch('autohsr.app.Context.template', return_value=None))
             for name, kwargs in (
                 ('autohsr.app.C.get_last_error', dict(return_value=0)),
@@ -309,6 +314,26 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                                       for row in record['actions']],
                                      ([('open_guide', 'sent', 'verified'), ('open_universe_guide', 'sent', 'unknown')]
                                       if on_target else [('open_guide', 'sent', 'unknown')]))
+
+    def test_daily_guide_rejects_payment_and_story_overlays_on_the_route_or_current_page(self):
+        for target in ('survival_index', 'daily_training'):
+            sent, _, native = self.run_navigation(target=target, from_phone=True)
+            self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * 2)
+            self.assertTrue(native['workflow_navigation']['page_verified'])
+            for blocker in (badge('确认购买并支付', .50, .44), badge('跳过当前剧情', .50, .44)):
+                for current_page in (False, True):
+                    with self.subTest(target=target, blocker=blocker.text, current_page=current_page):
+                        sent, steps, native = self.run_navigation(target=target, from_phone=True,
+                                                                  already_open=current_page, guide_overlay=blocker,
+                                                                  overlay_on_target=current_page)
+                        self.assertEqual(sent, [] if current_page else [(0xC001, 0x0002, 0x0004)])
+                        self.assertEqual([step['step'] for step in steps], ['page'])
+                        self.assertNotIn('page_verified', steps[0]['facts'])
+                        record = native['workflow_navigation']
+                        self.assertFalse(record['page_verified'])
+                        self.assertEqual([(row['action'], row['input_status'], row['destination_status'])
+                                          for row in record['actions']],
+                                         [] if current_page else [('open_guide', 'sent', 'unknown')])
 
     def test_incoming_message_import_reaches_the_existing_notification_panel(self):
         sent, steps, native = self.run_navigation(target='messages', upstream_screen='incoming_message')
