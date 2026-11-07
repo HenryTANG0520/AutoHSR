@@ -43,6 +43,8 @@ VISION_TASKS = {'workflow_image', 'workflow_text'} | GAME_VISION_TASKS
 TEMPLATE_TASKS = {'workflow_image', 'workflow_game_image'}
 TASKS = GAME_TASKS | VISION_TASKS | {'warp_analysis', 'warp_export', 'workflow_audio', 'workflow_notify'}
 DAILY_TASKS = ('assignments', 'battle', 'daily', 'redemption', 'mail', 'battlepass')
+ASSIGNMENT_STEP = 'assignments'
+ASSIGNMENT_FLOW = '仅领取持续委托'
 FIELDS = {'status': str, 'daily_verified': bool, 'completed_runs': int,
           'victories': int, 'defeats': int, 'points_verified': bool, 'rewards_verified': bool,
           'du_rewards_verified': bool, 'image_found': bool, 'text_found': bool, 'page_verified': bool}
@@ -50,6 +52,15 @@ FIELDS = {'status': str, 'daily_verified': bool, 'completed_runs': int,
 
 class WorkflowError(ValueError):
     pass
+
+
+def assignment_runner(settings, emit, *, root=None):
+    from .task_workflow_run import TaskWorkflowRunner
+
+    document = dict(version=1, name=ASSIGNMENT_FLOW, steps=[
+        dict(id=ASSIGNMENT_STEP, type='task', task='daily', params={'tasks': [ASSIGNMENT_STEP]}),
+    ])
+    return TaskWorkflowRunner(settings, document, emit, root=root)
 
 
 def _pairs(pairs):

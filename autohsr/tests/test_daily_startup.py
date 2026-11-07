@@ -129,6 +129,7 @@ class ColdStartEntryTests(TestCase):
                 (['--daily-event-claim', '3'], 'runner', 1),
                 (['--achievement-bulk-claim'], 'runner', 1),
                 (['--daily-message-reply', REPLY_NODE, REPLY_CHOICE], 'runner', 1),
+                (['--assignments-only'], 'attachment', 2),
                 (['--daily-attachment-only', 'mail'], 'attachment', 2),
                 (['--daily-attachment-only', 'battlepass'], 'attachment', 2),
                 (['--redeem-codes', '--redemption-code', 'TESTCODE'], 'runner', 2),

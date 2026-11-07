@@ -8,7 +8,8 @@ import tkinter as tk
 from unittest.mock import Mock, patch
 
 from ux_smoke import Settings, Window, module
-from autohsr.desktop_daily import ASSIGNMENT_FLOW, ASSIGNMENTS, DRAFT, OPEN_TARGET, PREVIEW, DailyPanel, assignment_runner
+from autohsr.desktop_daily import ASSIGNMENTS, DRAFT, OPEN_TARGET, PREVIEW, DailyPanel
+from autohsr.task_workflow import ASSIGNMENT_FLOW, assignment_runner
 from autohsr.desktop_dialogs import _work_area
 from autohsr.dungeon_ui import show_advanced
 from autohsr.power_plan_ui import result_text, rows, show as show_power_plan

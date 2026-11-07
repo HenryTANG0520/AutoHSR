@@ -9,6 +9,7 @@ from tkinter import ttk
 
 from . import theme
 from .dungeons import BY_KEY
+from .task_workflow import ASSIGNMENT_FLOW, ASSIGNMENT_STEP
 
 
 ASSIGNMENTS = 'assignments_only'
@@ -17,8 +18,6 @@ BATTLEPASS = 'battlepass_only'
 OPEN_TARGET = 'build_target_read'
 PREVIEW = 'build_target_preview'
 DRAFT = 'build_target_plan'
-ASSIGNMENT_STEP = 'assignments'
-ASSIGNMENT_FLOW = '仅领取持续委托'
 ATTACHMENT_SECTIONS = {
     MAIL: dict(task='mail', title='邮件附件', action='仅领取邮件附件',
                hint='请先进入游戏。只处理当前邮箱已有附件。',
@@ -32,16 +31,6 @@ ATTACHMENT_SECTIONS = {
 }
 HOME_TITLES = {ASSIGNMENTS: '持续委托', **{key: item['title'] for key, item in ATTACHMENT_SECTIONS.items()}}
 _REPORT_LIMIT = 64 * 1024 * 1024
-
-
-def assignment_runner(settings, emit, *, root=None):
-    """Use the native single-step workflow to retain its account/input scope."""
-    from .task_workflow_run import TaskWorkflowRunner
-
-    document = dict(version=1, name=ASSIGNMENT_FLOW, steps=[
-        dict(id=ASSIGNMENT_STEP, type='task', task='daily', params={'tasks': ['assignments']}),
-    ])
-    return TaskWorkflowRunner(settings, document, emit, root=root)
 
 
 def _verified_file(path, digest, limit):

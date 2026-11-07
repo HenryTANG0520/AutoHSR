@@ -16,8 +16,9 @@ from autohsr import windows
 from autohsr.__main__ import main
 from autohsr.app import Context
 from autohsr.config import Settings
-from autohsr.desktop_daily import ASSIGNMENT_FLOW, assignment_result
+from autohsr.desktop_daily import assignment_result
 from autohsr.models import AutomationError, InputInterrupted, Scene
+from autohsr.task_workflow import ASSIGNMENT_FLOW
 from autohsr.tests.test_core import assignments_scene, token
 from autohsr.tests.test_daily_startup import phone, supply
 from autohsr.tests.test_du_team import fixture
@@ -30,7 +31,8 @@ OTHER = 'UID:100000001'
 
 
 class AssignmentOnlyTests(unittest.TestCase):
-    def invoke(self, start='phone', *, event=None, workflow=True, active_scene=None, overrides=None):
+    def invoke(self, start='phone', *, event=None, workflow=True, active_scene=None, overrides=None,
+               standalone=False):
         folder = TemporaryDirectory(prefix='autohsr-assignment-only-')
         self.addCleanup(folder.cleanup)
         root = Path(folder.name)
@@ -193,6 +195,8 @@ class AssignmentOnlyTests(unittest.TestCase):
             for name in ('battle', 'daily', 'mail', 'battlepass'):
                 stack.enter_context(patch.object(DailyWorkflow, name, side_effect=AssertionError('extra daily task')))
             args = ['--task-workflow', str(document)] if workflow else ['--run']
+            if standalone:
+                args = ['--assignments-only']
             code = main(args + ['--config', str(config)])
         self.assertEqual(config.read_bytes(), original)
         self.assertFalse((root / 'runs' / 'battle-session.json').exists())
@@ -299,14 +303,25 @@ class AssignmentOnlyTests(unittest.TestCase):
         self.assertNotIn('assignment', result.report)
 
     def test_single_assignment_tree_claims_and_closes_its_own_display(self):
-        result = self.invoke()
-        self.assertEqual(result.code, 0, result.report)
-        self.assertEqual(result.sent, ['委托', '领取奖励', '点击空白处关闭'])
-        entry, = result.report['workflow']['steps']
-        self.assertTrue(entry['account_verified'])
-        original = json.loads(Path(entry['source']['path']).read_text('utf8'))
-        self.assertEqual(entry['assignment'], dict(outcome='claimed', submission='verified'))
-        self.assertEqual(original['assignment'], entry['assignment'])
-        self.assertEqual(assignment_result(result.report)[0], '已核实领取委托奖励')
-        self.assertEqual([row['task'] for row in original['results']], ['assignments'])
-        self.assertEqual((original['stamina_spent'], original['immersifiers_spent']), (0, 0))
+        for standalone in (False, True):
+            with self.subTest(standalone=standalone):
+                result = self.invoke(standalone=standalone)
+                self.assertEqual(result.code, 0, result.report)
+                self.assertEqual(result.sent, ['委托', '领取奖励', '点击空白处关闭'])
+                entry, = result.report['workflow']['steps']
+                self.assertTrue(entry['account_verified'])
+                original = json.loads(Path(entry['source']['path']).read_text('utf8'))
+                self.assertEqual(entry['assignment'], dict(outcome='claimed', submission='verified'))
+                self.assertEqual(original['assignment'], entry['assignment'])
+                self.assertEqual(assignment_result(result.report)[0], '已核实领取委托奖励')
+                self.assertEqual([row['task'] for row in original['results']], ['assignments'])
+                self.assertEqual((original['stamina_spent'], original['immersifiers_spent']), (0, 0))
+
+    def test_standalone_cli_refuses_mixed_or_duplicate_options_before_loading(self):
+        with patch('autohsr.config.Settings.load') as load, redirect_stderr(io.StringIO()):
+            for extra in (['--stamina', '10'], ['--plan'], ['--assignments-only'],
+                          ['--config', 'one.json', '--config', 'two.json']):
+                with self.subTest(extra=extra), self.assertRaises(SystemExit) as error:
+                    main(['--assignments-only', *extra])
+                self.assertEqual(error.exception.code, 2)
+            load.assert_not_called()

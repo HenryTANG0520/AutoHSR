@@ -80,6 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument('--build-target', action='store_true', help='核实用户指定的培养材料来源并生成单项体力草稿；只读')
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
     mode.add_argument("--run", action="store_true", help="按配置执行每日任务；F10 紧急停止")
+    mode.add_argument('--assignments-only', action='store_true', help='独立核对并领取持续委托奖励')
     mode.add_argument('--daily-attachment-only', choices=('mail', 'battlepass'),
                       help='在已打开的游戏窗口独立核对邮件附件或无名勋礼免费领奖')
     mode.add_argument("--plan", action="store_true", help="执行日常和到期周常计划；不登记定时任务")
@@ -184,6 +185,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.daily_message_reply is not None:
         from .daily_message_reply_cli import run as run_daily_message_reply
         return run_daily_message_reply(args, raw_args, parser)
+    standalone_daily = args.assignments_only or bool(args.daily_attachment_only)
+    if args.assignments_only:
+        flags = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
+        if (flags.count('--assignments-only') != 1 or len(flags) != len(set(flags))
+                or set(flags) - {'--assignments-only', '--config', '--game-path'}):
+            parser.error('独立委托仅可附带 --config 和 --game-path。')
     if args.daily_attachment_only:
         attachment_flags = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
         if attachment_flags.count('--daily-attachment-only') != 1 or set(attachment_flags) - {
@@ -369,7 +376,7 @@ def main(argv: list[str] | None = None) -> int:
             tests = unittest.defaultTestLoader.discover(str(test_path))
             result = unittest.TextTestRunner(verbosity=2).run(tests)
         return 0 if result.wasSuccessful() else 1
-    if not args.daily_attachment_only and not any((args.check, args.scan_dungeons, build_target, args.daily_reward_observe, args.launch, args.run, args.plan,
+    if not standalone_daily and not any((args.check, args.scan_dungeons, build_target, args.daily_reward_observe, args.launch, args.run, args.plan,
                 args.redeem_codes, args.challenge_prepare, args.challenge_result, args.team_preset_calibration,
                 args.challenge_lobby, args.challenge_preset_observe, args.du_rewards_only,
                 args.currency_wars_check, args.currency_wars_prepare, args.currency_wars_locate,
@@ -401,7 +408,7 @@ def main(argv: list[str] | None = None) -> int:
         gui_main(args.config, admin_task=True) if args.admin_task else gui_main(args.config)
         return 0
     try:
-        require_config = explicit_config and any((args.run, args.plan, args.launch, args.daily_attachment_only,
+        require_config = explicit_config and any((args.run, args.plan, args.launch, standalone_daily,
                                                    args.redeem_codes, args.du_rewards_only,
                                                    args.differential_universe, args.challenge_prepare))
         load_options = {"require_existing": True} if require_config else {}
@@ -488,7 +495,8 @@ def main(argv: list[str] | None = None) -> int:
         challenge_observer = args.challenge_result or args.challenge_preset_observe
         check_only = (args.check or args.scan_dungeons or args.read_build_target or args.daily_reward_observe
                       or challenge_observer or args.challenge_lobby or args.team_preset_calibration)
-        settings.validate('build_target_preview' if args.preview_build_target or args.build_target else 'du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "check" if check_only else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or overclock_entry or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "power_plan" if args.power_plan else "daily")
+        if not args.assignments_only:
+            settings.validate('build_target_preview' if args.preview_build_target or args.build_target else 'du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "check" if check_only else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or overclock_entry or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "power_plan" if args.power_plan else "daily")
         from .app import Runner, inspect_game, launch_game
         if args.check:
             print(_json(inspect_game(settings)))
@@ -502,10 +510,13 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(event, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
         wrap_notifications = None
         if not (build_target or args.daily_reward_observe or challenge_observer or args.challenge_lobby
-                or args.team_preset_calibration or overclock_entry or args.daily_attachment_only):
+                or args.team_preset_calibration or overclock_entry or standalone_daily):
             from .notify_runtime import hooks as notification_hooks
             emit, wrap_notifications = notification_hooks(settings, emit)
-        if args.daily_attachment_only:
+        if args.assignments_only:
+            from .task_workflow import assignment_runner
+            runner = assignment_runner(settings, emit)
+        elif args.daily_attachment_only:
             from .daily_attachments import attachment_runner
             runner = attachment_runner(settings, emit, task=args.daily_attachment_only)
         elif args.challenge_result:

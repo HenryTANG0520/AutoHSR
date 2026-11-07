@@ -1219,7 +1219,7 @@ class AutoHSRWindow:
             return False
 
         def factory(emit):
-            from .desktop_daily import assignment_runner
+            from .task_workflow import assignment_runner
             return assignment_runner(settings, emit)
 
         return self._start_scoped_runner('领取委托奖励', 'task_workflow', factory, on_report)
