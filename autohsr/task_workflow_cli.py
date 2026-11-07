@@ -38,7 +38,7 @@ def add_arguments(mode, parser):
     parser.add_argument('--workflow-notify-png', nargs=2, metavar=('PNG', 'SMTP方案'),
                         help='为本次手动任务流明确授权 JSON 中绑定的一份本地 PNG 和已保存的 SMTP 方案')
     parser.add_argument('--workflow-allow-capture-notify', action='store_true',
-                        help='允许本次任务流发送所选游戏截图至步骤指定的已保存 SMTP 方案')
+                        help='允许本次任务流发送所选游戏截图至步骤指定的已保存 SMTP 或 Telegram 方案')
 
 
 def validate_arguments(args, parser):

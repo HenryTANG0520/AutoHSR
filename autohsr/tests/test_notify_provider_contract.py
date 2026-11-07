@@ -1,12 +1,13 @@
 """Notification protocol contracts use synthetic calls without any transport."""
 import json
 import unittest
+from unittest.mock import Mock
 from urllib.parse import parse_qs, urlsplit
 from urllib.request import Request
 
 from autohsr.notify_http import Reply
 from autohsr.notify_profiles import NotifyError, profile
-from autohsr.notify_providers import _call, acknowledgement, calls
+from autohsr.notify_providers import _call, acknowledgement, calls, execute
 
 
 class GoCqNotificationTests(unittest.TestCase):
@@ -91,6 +92,23 @@ class KookNotificationTests(unittest.TestCase):
 
 
 class HttpNotificationContractTests(unittest.TestCase):
+    def test_telegram_photo_rejects_unsafe_or_unsupported_requests_before_dispatch(self):
+        base = dict(token='synthetic-token', userid='-10012345')
+        for params, caption, size in (
+                (dict(base, api_url='http://localhost'), '图片', (32, 32)),
+                (dict(base, api_url='https://example.test/api?unexpected=1'), '图片', (32, 32)),
+                (base, '𠮷' * 513, (32, 32)),
+                (base, '图片', (321, 16)),
+                (base, '图片', (5001, 5000))):
+            with self.subTest(params=params, size=size):
+                request, dispatch = Mock(), Mock()
+                with self.assertRaises(NotifyError):
+                    execute(dict(provider='telegram', params=params), '', caption, 'fixture',
+                            request=request, dispatch=dispatch, acknowledged=Mock(), checkpoint=Mock(),
+                            telegram_photo=(b'\x89PNG\r\n\x1a\nfixture', size))
+                request.assert_not_called()
+                dispatch.assert_not_called()
+
     def test_onebot_and_gocq_success_requires_consistent_ok_and_zero(self):
         for provider in ('onebot', 'gocqhttp'):
             with self.subTest(provider=provider):

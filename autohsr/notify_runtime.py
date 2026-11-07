@@ -154,7 +154,7 @@ class NotificationService:
         self.request = request
         self.local_send = local_send
 
-    def deliver(self, frozen, title, body, report_key, *, checkpoint=lambda: None):
+    def deliver(self, frozen, title, body, report_key, *, checkpoint=lambda: None, telegram_photo=None):
         value, version = frozen
         identity, provider = value['id'], value['provider']
         key = hashlib.sha256((report_key + ':' + identity).encode('utf8')).hexdigest()
@@ -201,7 +201,8 @@ class NotificationService:
                 _write(path, data)
             try:
                 status = execute(value, title, body, key, request=self.request, checkpoint=checkpoint,
-                                 dispatch=dispatch, acknowledged=acknowledged, local_send=self.local_send)
+                                 dispatch=dispatch, acknowledged=acknowledged, local_send=self.local_send,
+                                 telegram_photo=telegram_photo)
             except NotifyCancelled:
                 status = 'unknown' if any(a['phase'] == 'send' and a['status'] == 'pending' for a in data['actions']) else 'cancelled'
             except Exception:

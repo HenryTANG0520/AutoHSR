@@ -109,7 +109,7 @@ class TaskWorkflowRunner:
                 raise WorkflowError('任务流程的图片通知须明确授权同一份本地 PNG 和 SMTP 方案。')
         self.notification_image = notification_image
         if type(allow_capture_notify) is not bool or bool(step_notification_captures(self.recipe)) != allow_capture_notify:
-            raise WorkflowError('须明确授权本次任务流向已保存的 SMTP 方案发送游戏截图。')
+            raise WorkflowError('须明确授权本次任务流向已保存的截图通知方案发送游戏截图。')
         self.notification_service = notification_service
         self.emit = emit or (lambda event: None)
         self.root = Path(root) if root is not None else ROOT / 'runs'
@@ -897,8 +897,9 @@ class WorkflowNotificationImage:
 
 def freeze_step_notifications(recipe, *, service=None):
     from .workflow_notify import freeze_profile
-    from .reward_guide_notify import freeze_smtp_profile
+    from .reward_guide_notify import freeze_capture_profile, freeze_smtp_profile
 
-    smtp_profiles = {profile for _, profile in step_notification_images(recipe)} | step_notification_captures(recipe)
-    return {identity: (freeze_smtp_profile if identity in smtp_profiles else freeze_profile)(
-        identity, service=service) for identity in step_notification_aliases(recipe)}
+    checks = {profile: freeze_capture_profile for profile in step_notification_captures(recipe)}
+    checks.update({profile: freeze_smtp_profile for _, profile in step_notification_images(recipe)})
+    return {identity: checks.get(identity, freeze_profile)(identity, service=service)
+            for identity in step_notification_aliases(recipe)}

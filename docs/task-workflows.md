@@ -34,7 +34,7 @@
 | `workflow_game_text` | 当前游戏画面 OCR 判断 | 必填 `text`，可选 `region`、`threshold`、`contains`。默认精确匹配，阈值 0.65 |
 | `workflow_game_capture` | 导出当前游戏窗口的选区 | 必填 `region`，不自动启动游戏，PNG 保存在本次运行目录 |
 | `workflow_open_page` | 已知日常页面切换 | 必填 `target`，可选值见下方。只切换页面并核实到达 |
-| `workflow_notify` | 已保存通知方案 | 必填 `profile`、`message`。可用 `capture_from` 附上本次游戏截图，或通过 CLI 授权 `png` 本地文件。附件使用 SMTP。同一运行出现待核对的提交后停止后续主动通知 |
+| `workflow_notify` | 已保存通知方案 | 必填 `profile`、`message`。可用 `capture_from` 通过 SMTP 或 Telegram 发送本次游戏截图，也可通过 CLI 授权 SMTP 发送预选 `png`。同一运行出现待核对的提交后停止后续主动通知 |
 
 记录任务目前只接显式本地JSON；真实缓存／链接获取继续使用[独立工具入口](warp-records.md)，没有在流程中隐式扫描。XLSX仍使用已固定的可选加载引擎，见[统计与Excel](warp-statistics-xlsx.md)。
 
@@ -59,7 +59,7 @@
 
 按客户区比例填写 `[左, 上, 右, 下]`，每个值在 0 和 1 之间，实际选区至少为 16×16 像素。文件名为 `capture.png`，与本步 `source.path` 指向的原始报告同目录。后续条件可读取 `captured=true`，报告另保存原画面尺寸、像素选区和 PNG 的 SHA-256。
 
-截图默认只留在本机。选区内可见的文字和标识会原样保留。若导出后失焦，或回执核验发现文件被替换，本步不给出成功结果，已创建的本地文件可能仍在运行目录。只有另行授权的[截图通知](#发送本次游戏截图)可以把这张图附到邮件。
+截图默认只留在本机。选区内可见的文字和标识会原样保留。若导出后失焦，或回执核验发现文件被替换，本步不给出成功结果，已创建的本地文件可能仍在运行目录。[截图通知](#发送本次游戏截图)须另行授权。
 
 ### Windows 后台页面导航试验
 
@@ -222,13 +222,13 @@ python -m autohsr --task-workflow 'D:\Workflows\demo.json' --workflow-allow-noti
 
 在通知步骤的参数中填写 `{"profile":"my-smtp","message":"本次截图","capture_from":"capture"}`。被引用的截图步骤须在同一分支前方启用，循环内使用本轮的截图。单步运行时应选择同时包含截图和通知的范围。截图发生在导出步骤执行时。
 
-桌面手动运行会列出接收截图的 SMTP 方案并请求授权。CLI 须显式启用截图通知。
+桌面手动运行会列出接收截图的方案并请求授权。支持启用 TLS 的 SMTP 和 HTTPS Telegram。CLI 须显式启用截图通知。
 
 ```powershell
 python -m autohsr --task-workflow 'D:\Workflows\demo.json' --workflow-allow-notify --workflow-allow-capture-notify
 ```
 
-实际提交前再次核对原 PNG 的哈希、文件版本和 SMTP 方案版本。截图缺失或变化时停止本步，邮件不会改成只发送文字。PNG 附件最多 8 MiB、1200 万像素，宽度最多 4096 像素。回执关联截图步骤、执行序号和哈希。每个通知步骤独立记账，所用画面相同时也可以分别发送。本地预选 PNG 保留原有去重规则。
+实际提交前再次核对原 PNG 的哈希、文件版本和方案版本。截图缺失或变化时停止本步。PNG 最多 8 MiB、1200 万像素，宽度最多 4096 像素。Telegram 另检查标题与正文合计长度、宽高之和和宽高比例。回执关联截图步骤、执行序号和哈希。每个通知步骤独立记账，所用画面相同时也可以分别发送。本地预选 PNG 保留原有去重规则。[Telegram 截图通知](notifications.md#telegram-截图通知)
 
 `daily` 节点显式填写 `"params": {"tasks": ["assignments"]}` 时，只处理已有的持续委托奖励。列车补给和登录附加奖励会阻止本步继续。核实当前账号、可用按钮和大于零的累积时长后，最多尝试一次领取。领取反馈中断或账号改变时，保留原证据待核对。回到委托页后，在两张新画面上复核同账号的原委托状态和累积时长归零。详见[每日流程](../DAILY_FLOW.md#执行顺序)。
 

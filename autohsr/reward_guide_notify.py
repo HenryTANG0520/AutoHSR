@@ -1,6 +1,6 @@
 """Send a user-selected local PNG through one frozen SMTP profile."""
 
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from copy import copy
 from dataclasses import dataclass
 from hashlib import sha256
@@ -70,19 +70,19 @@ def _load_attachment(value, *, expected_source=None, min_edge=64):
     png = encoded.getvalue()
     if len(png) > MAX_PNG_ATTACHMENT_BYTES:
         raise _Rejected('attachment_limit')
-    return source, png, image_key.hexdigest()
+    return source, png, image_key.hexdigest(), image.size
 
 
 def freeze_png(image, *, min_edge=64):
     try:
-        source, _, _ = _load_attachment(image, min_edge=min_edge)
+        source, _, _, _ = _load_attachment(image, min_edge=min_edge)
     except (OSError, RuntimeError, TypeError, ValueError, SyntaxError, DeflateError,
             Image.DecompressionBombError):
         raise NotifyError('无法核实明确选择的本地 PNG。') from None
     return source
 
 
-def _smtp_profile(profile, service):
+def _png_profile(profile, service, *, capture=False):
     try:
         identity = alias(profile)
         path = local_path(service.store.path(identity))
@@ -96,6 +96,14 @@ def _smtp_profile(profile, service):
             raise NotifyError('通知配置身份无法核实。')
     except (OSError, RuntimeError, TypeError, ValueError, KeyError):
         raise _Rejected('invalid_profile') from None
+    if value.get('provider') == 'telegram' and capture:
+        from .notify_providers import telegram_photo_address
+
+        try:
+            telegram_photo_address(params)
+        except NotifyError:
+            raise _Rejected('tls_required') from None
+        return path, frozen
     if value.get('provider') != 'smtp':
         raise _Rejected('unsupported_provider')
     if params.get('ssl', True) is not True and params.get('starttls', False) is not True:
@@ -106,9 +114,18 @@ def _smtp_profile(profile, service):
 def freeze_smtp_profile(profile, *, service=None):
     service = NotificationService() if service is None else service
     try:
-        _, (_, version) = _smtp_profile(profile, service)
+        _, (_, version) = _png_profile(profile, service)
     except _Rejected:
         raise NotifyError('本地 PNG 通知需要可核实且启用 SSL 或 STARTTLS 的 SMTP 方案。') from None
+    return version
+
+
+def freeze_capture_profile(profile, *, service=None):
+    service = NotificationService() if service is None else service
+    try:
+        _, (_, version) = _png_profile(profile, service, capture=True)
+    except _Rejected:
+        raise NotifyError('截图通知需要可核实的 SMTP 或 HTTPS Telegram 方案。') from None
     return version
 
 
@@ -133,7 +150,7 @@ def send_local_png(image, profile, title, body, *, service=None, checkpoint=lamb
     try:
         check()
         service = NotificationService() if service is None else service
-        profile_path, frozen = _smtp_profile(profile, service)
+        profile_path, frozen = _png_profile(profile, service, capture=workflow_step_key is not None)
         value, version = frozen
     except (NotifyCancelled, KeyboardInterrupt):
         return _result('cancelled')
@@ -147,8 +164,8 @@ def send_local_png(image, profile, title, body, *, service=None, checkpoint=lamb
 
     try:
         check()
-        source, png, image_key = _load_attachment(image, expected_source=expected_source,
-                                                  min_edge=64 if workflow_step_key is None else 16)
+        source, png, image_key, size = _load_attachment(image, expected_source=expected_source,
+                                                        min_edge=64 if workflow_step_key is None else 16)
     except (NotifyCancelled, KeyboardInterrupt):
         return _result('cancelled')
     except _Rejected as error:
@@ -163,12 +180,10 @@ def send_local_png(image, profile, title, body, *, service=None, checkpoint=lamb
             raise NotifyError('本次图片通知已进入提交，未重复发送。')
         submitted = True
 
-    def send(provider, current, title, body):
+    @contextmanager
+    def verified_sources():
         nonlocal blocked
         check()
-        if provider != 'smtp' or current != params:
-            blocked = 'profile_changed'
-            raise NotifyError('图片通知的配置已变化。')
         with ExitStack() as locks:
             blocked = 'profile_changed'
             locks.enter_context(hold_read_sources((profile_path,)))
@@ -183,6 +198,14 @@ def send_local_png(image, profile, title, body, *, service=None, checkpoint=lamb
                 raise OSError()
             blocked = None
             check()
+            yield
+
+    def send(provider, current, title, body):
+        nonlocal blocked
+        if provider != 'smtp' or current != params:
+            blocked = 'profile_changed'
+            raise NotifyError('图片通知的配置已变化。')
+        with verified_sources():
             if service.local_send is None:
                 status = send_smtp_png(params, title, body, png, before_submit=before_submit)
             else:
@@ -192,13 +215,23 @@ def send_local_png(image, profile, title, body, *, service=None, checkpoint=lamb
                 raise NotifyError('图片通知未取得可核实的发送回执。')
             return status
 
+    def request(call):
+        with verified_sources():
+            before_submit()
+            return service.request(call)
+
     attempt = copy(service)
-    attempt.local_send = send
+    options = {}
+    if value['provider'] == 'telegram':
+        attempt.request = request
+        options['telegram_photo'] = (png, size)
+    else:
+        attempt.local_send = send
     key = ('reward-guide-png-v1:' + image_key if workflow_step_key is None
            else f'workflow-capture-png-v1:{workflow_step_key}')
     try:
         check()
-        receipt = attempt.deliver(frozen, title, body, key, checkpoint=check)
+        receipt = attempt.deliver(frozen, title, body, key, checkpoint=check, **options)
     except (NotifyCancelled, KeyboardInterrupt):
         return _result('unknown' if submitted else 'cancelled')
     except (NotifyError, OSError):

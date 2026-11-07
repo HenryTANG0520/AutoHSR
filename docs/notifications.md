@@ -100,7 +100,7 @@
 
 | provider | 必填或接收对象要求 | 其他允许参数与默认行为 |
 | --- | --- | --- |
-| `telegram` | `token`、`userid` | `api_url`（默认Telegram官方API主机，支持主机名或URL）、整数`thread_id`；`sendMessage`文字 |
+| `telegram` | `token`、`userid` | `api_url`（默认Telegram官方API主机，支持主机名或URL）、整数`thread_id`；`sendMessage` 文字及手动任务流的 `sendPhoto` 截图 |
 | `matrix` | `homeserver`、`access_token`、`room_id` | `device_id`、`user_id`仅接受配置，未实现设备／E2EE流程；发送前必须取得未加密房间检查的404及`M_NOT_FOUND` |
 | `onebot` | `endpoint`，`user_id / group_id`至少一个 | `token`可选Bearer；`/send_msg`文字段，两目标依次发送 |
 | `smtp` | `host`；发件`From`或`user`，收件`To`或`user` | `user`、`password`、`From`、`To`（地址字符串或最多50项列表）、`port`、`ssl=true`、`starttls=false`；STARTTLS优先，端口未设时分别587／SSL 465／明文25；认证需密码 |
@@ -126,7 +126,7 @@
 
 数字型接收ID只在`userid / user_id / group_id / agentid / appid / qq / target_id`字段接受JSON整数并转成文字。其余连接参数为单行字符串；布尔字段不能用`"true"`替代。整数校验及最终请求以[当前适配源码](../autohsr/notify_providers.py)为准，SMTP端口额外限制1～65535。
 
-常规任务通知的截图及图片上传、Bark 密文、Matrix E2EE 和设备会话、QQ 机器人事件／接收 ID 发现、上游 PAC 与代理高级项、上游通知等级／图片开关和整套自动合并机制、任务树内任意通知步骤仍待接入。部分文本可采用 Markdown 或 HTML 承载。
+常规结束通知的截图、手动任务流中 SMTP 和 Telegram 以外的图片渠道、Bark 密文、Matrix E2EE 和设备会话、QQ 机器人事件／接收 ID 发现、上游 PAC 与代理高级项、上游通知等级／图片开关和自动合并机制仍待接入。部分文本可采用 Markdown 或 HTML 承载。
 
 ### 活动日历 SMTP 附件
 
@@ -146,13 +146,19 @@ python -m autohsr --reward-guide-notify calendar.png --reward-guide-notify-profi
 
 手动任务流也可另行授权，把本次运行生成的游戏截图附到 SMTP 通知。此类截图的选区至少为 16×16 像素，发送前需核对文件与原截图回执。提交按本次流程的通知步骤分别记账。[发送本次游戏截图](task-workflows.md#发送本次游戏截图)
 
+### Telegram 截图通知
+
+在手动任务流的截图通知步骤中选择已保存的 Telegram 方案。一次请求通过 `sendPhoto` 提交 PNG、标题与正文，沿用方案的会话和可选话题。自定义 API 地址须用 HTTPS，且不带查询参数。标题和正文合计最多 1024 个 UTF-16 代码单元，图片宽高之和最多 10000 像素，长边最多为短边的 20 倍。[三月七 Telegram 适配](https://github.com/moesnow/March7thAssistant/blob/26bee153544db44a882313f361b5ddbcefb001fa/module/notification/telegram.py) · [Telegram Bot API](https://core.telegram.org/bots/api#sendphoto)
+
+只有 Telegram 回执含消息编号和照片标识时，助手才记录受理。回执含糊或请求超时后保留待核对，并停止本次后续主动通知。附件提交前会重验本机文件和方案。自动结束通知继续发送文本。[发送本次游戏截图](task-workflows.md#发送本次游戏截图)
+
 ## 一次提交、意图与回执
 
 每份原报告按本地来源标识生成键，再与配置名称组合成通知键；原始run路径只参与本地哈希，不进入发送文本。`notifications.local/attempts/<键>.json`记录版本、消息哈希、动作及结果，`.lock`保护同键并发。此目录与凭据一起忽略，不改写原游戏报告。
 
 授权取token、Matrix房间检查和每个实际发送动作都先写`pending`意图，落盘成功后才调用传输；动作回执及最终结果分别持久化。同报告同配置再次出现时复用原结果，`pending`返回`unknown`，不重发；版本改变返回`unknown / profile_changed`。旧回执损坏／缺字段不重建发送记录，已失败、取消和未知也不自动重试。最终回执写入失败返回`unknown / receipt_write_failed`，保留原意图。显式`--notify-test`每次生成独立测试键，因此再次执行本身就是另一次真实发送请求。
 
-HTTP每次调用单次提交，不跟随重定向；socket操作timeout为15秒，分块读取循环检查从请求开始计时的30秒观察截止，响应最大1 MiB，请求体最大64 KiB。30秒不是整个调用的硬性总时限，DNS解析或最后一次阻塞读取可能使实际返回更晚。多目标按顺序发送，遇首个非`accepted`停止该配置后续目标；一个配置出错后仍可继续其他已选配置。SMTP为每个socket操作15秒超时，不是整个邮件会话总限；Toast子进程timeout为15秒。暂停／停止仅在动作边界检查，不重发或强行撤销已提交请求。
+HTTP 每次调用单次提交，不跟随重定向。每次 socket 操作超时为 15 秒，分块读取检查从请求开始计时的 30 秒观察截止。响应最大 1 MiB，普通请求体最大 64 KiB，Telegram 图片请求另允许最多 8 MiB 的 PNG 及表单字段。DNS 解析或最后一次阻塞读取可能使实际耗时超过 30 秒。多目标按顺序发送，遇首个非 `accepted` 停止该配置后续目标。一个配置出错后仍可继续其他已选配置。SMTP 的每次 socket 操作超时为 15 秒，Toast 子进程超时为 15 秒。暂停或停止在动作边界检查，已提交请求保持原回执。
 
 | 结果 | 精确含义 |
 | --- | --- |

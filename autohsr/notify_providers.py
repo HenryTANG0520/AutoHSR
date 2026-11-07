@@ -1,7 +1,6 @@
-"""Text adapters for the pinned March7thAssistant notification registry.
+"""Adapters for the pinned March7thAssistant notification registry.
 
-No provider module is imported from upstream. Images, encrypted Matrix rooms,
-Bark ciphertext and QQ event discovery are separate, still-unimplemented paths.
+No provider module is imported from upstream.
 """
 from copy import deepcopy
 import base64
@@ -11,6 +10,7 @@ import json
 import re
 import time
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit, parse_qsl
+from uuid import uuid4
 
 from .notify_http import Call, Reply, headers, json_body, url
 from .notify_profiles import NotifyError, NotifyCancelled, PROVIDERS, MAX_BYTES, text
@@ -152,17 +152,54 @@ def _replace(value, title, content, depth=0):
     return value
 
 
+def _telegram_address(params, method):
+    base = params.get('api_url', 'api.telegram.org').rstrip('/')
+    if '://' not in base:
+        base = 'https://' + base
+    return base + '/bot' + quote(params['token'], safe=':') + '/' + method
+
+
+def telegram_photo_address(params):
+    address = url(_telegram_address(params, 'sendPhoto'))
+    parsed = urlsplit(address)
+    if parsed.scheme != 'https' or parsed.query:
+        raise NotifyError('Telegram 截图通知需要无查询参数的 HTTPS 地址。')
+    return address
+
+
+def _telegram_photo(params, caption, photo):
+    from .notify_local import MAX_PNG_ATTACHMENT_BYTES
+
+    png, (width, height) = photo
+    if (not isinstance(png, bytes) or not png.startswith(b'\x89PNG\r\n\x1a\n')
+            or len(png) > MAX_PNG_ATTACHMENT_BYTES or min(width, height) < 16
+            or width + height > 10000 or max(width, height) > 20 * min(width, height)):
+        raise NotifyError('截图超出 Telegram 的图片限制。')
+    if len(caption.encode('utf-16-le')) > 2048:
+        raise NotifyError('Telegram 图片说明超过 1024 字符。')
+    address = telegram_photo_address(params)
+    boundary = 'AutoHSR-' + uuid4().hex
+    marker = ('--' + boundary).encode('ascii')
+    fields = {'chat_id': _string(params, 'userid'), 'caption': caption}
+    if 'thread_id' in params:
+        fields['message_thread_id'] = str(params['thread_id'])
+    chunks = []
+    for name, value in fields.items():
+        chunks.extend((marker, f'\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n'.encode('ascii'),
+                       value.encode('utf8'), b'\r\n'))
+    chunks.extend((marker, b'\r\nContent-Disposition: form-data; name="photo"; filename="capture.png"\r\n'
+                   b'Content-Type: image/png\r\n\r\n', png, b'\r\n', marker, b'--\r\n'))
+    return Call(address, 'POST', b''.join(chunks), {'Content-Type': 'multipart/form-data; boundary=' + boundary})
+
+
 def calls(provider, p, title, content, identity, *, token=None):
     message = title + ('\n' + content if content else '')
     make = lambda address, **options: _call(address, p, **options)
     if provider == 'telegram':
-        base = p.get('api_url', 'api.telegram.org').rstrip('/')
-        if '://' not in base:
-            base = 'https://' + base
         data = dict(chat_id=_string(p, 'userid'), text=message)
         if 'thread_id' in p:
             data['message_thread_id'] = p['thread_id']
-        return [make(base + '/bot' + quote(p['token'], safe=':') + '/sendMessage', body=data)]
+        return [make(_telegram_address(p, 'sendMessage'), body=data)]
     if provider in ('onebot', 'gocqhttp'):
         endpoint = p['endpoint'].rstrip('/')
         if provider == 'gocqhttp' and '://' not in endpoint:
@@ -346,9 +383,28 @@ def acknowledgement(provider, reply):
     return 'accepted'  # Generic webhook/Discord: HTTP acceptance, not human delivery.
 
 
-def execute(profile, title, content, identity, *, request, checkpoint, dispatch, acknowledged, local_send=None):
+def execute(profile, title, content, identity, *, request, checkpoint, dispatch, acknowledged, local_send=None,
+            telegram_photo=None):
     provider, p = profile['provider'], profile['params']
     validate(provider, p)
+    if telegram_photo is not None:
+        if provider != 'telegram':
+            raise NotifyError('截图传输与已核实的通知渠道不符。')
+        call = _telegram_photo(p, title + ('\n' + content if content else ''), telegram_photo)
+        checkpoint()
+        dispatch('send', 0)
+        reply = request(call)
+        status = acknowledgement(provider, reply)
+        if status == 'accepted':
+            result = json_body(reply).get('result')
+            photos = result.get('photo') if isinstance(result, dict) else None
+            if (not isinstance(result, dict) or type(result.get('message_id')) is not int
+                    or result['message_id'] <= 0 or not isinstance(photos, list)
+                    or not any(isinstance(photo, dict) and isinstance(photo.get('file_id'), str)
+                               and photo['file_id'] for photo in photos)):
+                status = 'unknown'
+        acknowledged(0, status)
+        return status
     token = None
     if provider in ('smtp', 'winotify'):
         from .notify_local import send

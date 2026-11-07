@@ -1,5 +1,7 @@
 """Formal CLI through the native Runner and workflow branching, using a fake window."""
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
+from email import policy
+from email.parser import BytesParser
 from hashlib import sha256
 import io
 import json
@@ -19,6 +21,7 @@ from autohsr.__main__ import main
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, Scene, Token
+from autohsr.notify_http import Reply
 from autohsr.schedule_dispatch import _dependency_paths
 from autohsr.task_workflow import WorkflowError, compile_recipe, task_spec
 from autohsr.task_workflow_run import TaskWorkflowRunner
@@ -319,3 +322,54 @@ class WorkflowGameScreenIntegrationTests(unittest.TestCase):
             main(['--task-workflow', str(path), '--workflow-allow-notify'])
         self.assertEqual(rejected.exception.code, 2)
         self.assertIn('--workflow-allow-capture-notify', errors.getvalue())
+
+    def test_telegram_screenshot_submits_the_png_and_requires_photo_acknowledgement(self):
+        request = Mock()
+        service = notify_runtime.NotificationService(root=self.root / 'private-telegram', request=request)
+        profile = 'fixture-telegram'
+        service.store.save(dict(id=profile, provider='telegram',
+                                params=dict(token='123456:fixture-token', userid='-100987654', thread_id=24,
+                                            api_url='https://example.test/telegram')))
+        for module in (workflow_notify, reward_guide_notify):
+            self.enterContext(patch.object(module, 'NotificationService', return_value=service))
+        accepted = Reply(200, b'{"ok":true,"result":{"message_id":41,"photo":[{"file_id":"fixture-photo"}]}}')
+
+        def inspect_request(call):
+            self.assertEqual(call.url, 'https://example.test/telegram/bot123456:fixture-token/sendPhoto')
+            self.assertEqual(call.method, 'POST')
+            pending, = (service.root / 'attempts').glob('*.json')
+            raw = pending.read_bytes()
+            self.assertNotIn(b'fixture-token', raw)
+            self.assertNotIn(b'-100987654', raw)
+            self.assertEqual(json.loads(raw)['actions'], [dict(phase='send', index=0, status='pending')])
+            header = f"Content-Type: {call.headers['Content-Type']}\r\n\r\n".encode('ascii')
+            message = BytesParser(policy=policy.default).parsebytes(header + call.data)
+            parts = {part.get_param('name', header='Content-Disposition'): part
+                     for part in message.iter_parts()}
+            self.assertEqual(parts['chat_id'].get_payload(decode=True), b'-100987654')
+            self.assertEqual(parts['message_thread_id'].get_payload(decode=True), b'24')
+            self.assertEqual(parts['caption'].get_payload(decode=True).decode('utf-8'),
+                             'AutoHSR · 任务流程通知\n截图说明')
+            self.assertEqual(parts['photo'].get_filename(), 'capture.png')
+            with Image.open(io.BytesIO(parts['photo'].get_payload(decode=True))) as image:
+                np.testing.assert_array_equal(np.asarray(image), self.present[10:70, 30:120, ::-1])
+            return accepted
+
+        notify = task('telegram', 'workflow_notify', profile=profile, message='截图说明', capture_from='look')
+        flags = ('--workflow-allow-notify', '--workflow-allow-capture-notify')
+        request.side_effect = inspect_request
+        report, _ = self.run_cli([self.present] * 3, expect=0, region=[.15, .1, .6, .7],
+                                 extra_steps=(notify,), flags=flags)
+        self.assertEqual(report['workflow']['steps'][-1]['notification']['status'], 'accepted')
+        self.assertNotIn('fixture-token', json.dumps(report))
+        self.assertNotIn('fixture-photo', json.dumps(report))
+
+        request.reset_mock(side_effect=True)
+        request.return_value = Reply(200, b'{"ok":true,"result":{"message_id":42}}')
+        report, _ = self.run_cli([self.present] * 3, expect=1, region=[.15, .1, .6, .7],
+                                 extra_steps=(dict(notify, on_failure='continue'), dict(notify, id='next')),
+                                 flags=flags)
+        first, second = report['workflow']['steps'][-2:]
+        self.assertEqual(first['notification']['status'], 'unknown')
+        self.assertIn('待核对', second['error'])
+        request.assert_called_once()

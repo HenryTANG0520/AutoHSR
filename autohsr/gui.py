@@ -1390,7 +1390,7 @@ class AutoHSRWindow:
             count = recipe.profile['notification_calls']
             prompt = f'本次流程最多执行 {count} 个主动通知步骤，使用以下已保存方案。\n\n' + '\n'.join(aliases)
             if captures:
-                prompt += ('\n\n以下 SMTP 方案还会发送任务流选区中的游戏画面。'
+                prompt += ('\n\n以下通知方案还会发送任务流选区中的游戏画面。'
                            '请核对选区，画面中的文字和标识也会发送。\n' + '\n'.join(sorted(captures)))
             if not messagebox.askyesno('授权本次流程的主动通知', prompt, parent=self.root, default='no'):
                 return False
