@@ -114,3 +114,53 @@ class ReportHistoryTests(unittest.TestCase):
         self.assertTrue(ui.report_button.instate(('disabled',)))
         self.assertTrue(ui.screenshot_button.instate(('disabled',)))
         self.assertEqual(saved.read_text(encoding='utf-8'), '{"status":"success"}')
+
+    def test_currency_observation_screenshot_survives_history_reload(self):
+        ui = self.window()
+        directory = self.folder / 'runs' / 'observation'
+        screenshot = directory / '123456_000001_currency_wars_observation.png'
+        report = dict(operation='currency_wars', status='success', report_saved=True, run_dir=str(directory),
+                      currency_wars=dict(mode='read_only_calibration', screenshot=str(screenshot)))
+        saved = self.report('observation', json.dumps(report), 100)
+        screenshot.touch()
+        ui.output_tabs.select(ui.report_text.frame.master)
+        ui.active_operation = 'currency_wars'
+        for load in (lambda: ui._finish(report), ui._discover_report):
+            with self.subTest(load=load):
+                load()
+                ui._refresh_record_controls()
+                self.assertEqual(ui.last_report_file, saved)
+                self.assertEqual(ui._record_screenshot(), screenshot)
+                self.assertTrue(ui.screenshot_button.instate(('!disabled',)))
+                with patch('autohsr.gui.os.startfile') as open_file:
+                    ui._open_record_screenshot()
+                    open_file.assert_called_once_with(str(screenshot))
+
+    def test_currency_history_does_not_bind_other_run_or_detection_images(self):
+        ui = self.window()
+        directory = self.folder / 'runs' / 'observation'
+        report = dict(operation='currency_wars', status='success', report_saved=True, run_dir=str(directory),
+                      currency_wars=dict(mode='read_only_calibration'))
+        saved = self.report('observation', json.dumps(report), 100)
+        other = self.report('older', '{"status":"success"}', 50).with_name('other.png')
+        detection = self.folder / 'detection.png'
+        non_png = directory / 'observation.txt'
+        observation = directory / '123456_000001_currency_wars_observation.png'
+        for path in (other, detection, non_png, observation):
+            path.touch()
+        ui.inspection_screenshot = detection
+        ui.output_tabs.select(ui.report_text.frame.master)
+        for image, claimed_run in (
+            (other, directory), (detection, directory), (non_png, directory), ('relative.png', directory),
+            (directory / 'missing.png', directory), (observation, other.parent),
+        ):
+            with self.subTest(image=image, claimed_run=claimed_run):
+                report['currency_wars']['screenshot'] = str(image)
+                report['run_dir'] = str(claimed_run)
+                saved.write_text(json.dumps(report), encoding='utf-8')
+                ui._discover_report()
+                ui._refresh_record_controls()
+                self.assertEqual(ui.last_report_file, saved)
+                self.assertIsNone(ui._record_screenshot())
+                self.assertEqual(ui.inspection_screenshot, detection)
+                self.assertTrue(ui.screenshot_button.instate(('disabled',)))

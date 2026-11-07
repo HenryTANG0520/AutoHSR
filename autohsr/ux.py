@@ -78,6 +78,28 @@ def report_context(report: dict, path: Path | None = None) -> str:
     return f"上次记录 · {when} · {operation} · {kind} · {day}"
 
 
+def currency_run_screenshot(report: dict, directory: Path, runs: Path) -> Path | None:
+    """Resolve a screenshot explicitly recorded by this currency run."""
+    operation = report.get("operation")
+    data = report.get("currency_wars")
+    if not isinstance(operation, str) or not operation.startswith("currency_wars") or not isinstance(data, dict):
+        return None
+    value, source = data.get("screenshot"), report.get("run_dir")
+    if not isinstance(value, str) or not isinstance(source, str) or not source:
+        return None
+    image = Path(value)
+    if not image.is_absolute() or image.suffix.lower() != ".png":
+        return None
+    try:
+        directory = directory.resolve()
+        if (directory.parent == runs.resolve() and Path(source).resolve() == directory
+                and image.parent.resolve() == directory and not image.is_symlink() and image.is_file()):
+            return directory / image.name
+    except (OSError, RuntimeError, ValueError):
+        pass
+    return None
+
+
 def failure_evidence(report: dict, runs: Path) -> tuple[Path | None, Path | None]:
     """Locate existing failure evidence and the current plan's failed child report."""
     if report.get("status") in ("success", "completed", "done"):

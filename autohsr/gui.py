@@ -17,7 +17,9 @@ from typing import Any
 
 from .config import CONFIG_PATH, ROOT, Settings, SettingsError
 from .desktop_daily import ASSIGNMENTS, ATTACHMENT_SECTIONS, HOME_TITLES
-from .ux import failure_evidence, report_context, recovery_text, exit_text, immersifier_text, issue_text, standard_activity, standard_run_verified, universe_result, planned_battle_metrics, reported_battle_metrics, plan_result
+from .ux import (currency_run_screenshot, failure_evidence, report_context, recovery_text, exit_text, immersifier_text,
+                 issue_text, standard_activity, standard_run_verified, universe_result, planned_battle_metrics,
+                 reported_battle_metrics, plan_result)
 from . import theme
 from .currency_feedback import observation as currency_observation_text, result as currency_result
 from .currency_controls_ui import CONTROL_OPERATIONS
@@ -864,8 +866,9 @@ class AutoHSRWindow:
             self.last_run_dir = history_path.parent if history_path is not None else Path(run_dir)
             if not unsaved and not unfinished:
                 self.last_report_file = self.last_run_dir / "report.json"
-            self.last_screenshot, self.failure_report_file = failure_evidence(
-                dict(report, run_dir=str(self.last_run_dir)), ROOT / "runs")
+            runs = ROOT / "runs"
+            failure, self.failure_report_file = failure_evidence(dict(report, run_dir=str(self.last_run_dir)), runs)
+            self.last_screenshot = currency_run_screenshot(report, self.last_run_dir, runs) or failure
         caption = report_context(report, history_path or self.last_report_file)
         if history_path is None:
             caption = caption.replace("上次记录", "本次记录", 1)
@@ -2101,8 +2104,6 @@ class AutoHSRWindow:
             self.currency_observation.set(detail)
             self.currency_result_report = json.loads(json.dumps(report, ensure_ascii=False))
             self.currency_record_button.configure(state="normal")
-            if (report.get("currency_wars") or {}).get("screenshot"):
-                self.last_screenshot = Path(report["currency_wars"]["screenshot"])
         if differential_universe or rewards_only:
             if rewards_only:
                 from .du_rewards_feedback import rewards_result
