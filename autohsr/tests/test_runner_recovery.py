@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 from autohsr.app import Runner
 from autohsr.config import Settings
 from autohsr.models import AutomationError, Scene, TaskResult
+from autohsr.workflows import DailyWorkflow
 
 
 class RunnerRecoveryTests(unittest.TestCase):
@@ -27,7 +28,12 @@ class RunnerRecoveryTests(unittest.TestCase):
         stack.enter_context(patch('autohsr.app.Vision'))
         stack.enter_context(patch('autohsr.app.Context', return_value=context))
         find = stack.enter_context(patch('autohsr.app.find_game', return_value=window))
-        stack.enter_context(patch('autohsr.workflows.DailyWorkflow', return_value=workflow))
+
+        def initialize(instance, _context):
+            vars(instance).update(vars(workflow))
+
+        # Runner can import navigation here. Keep the class binding stable.
+        stack.enter_context(patch.object(DailyWorkflow, '__init__', initialize))
         stack.enter_context(patch('autohsr.windows.kernel32', SimpleNamespace(CreateMutexW=Mock(return_value=1), CloseHandle=Mock(return_value=True))))
         return context, find
 
