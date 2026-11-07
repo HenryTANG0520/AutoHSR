@@ -5,3 +5,4 @@ assets/upstream/March7thAssistant/redemption_codes.json -text
 assets/upstream/openpyxl-LICENSE -text
 assets/upstream/et_xmlfile-LICENSE -text
 assets/upstream/et_xmlfile-PYTHON-LICENSE -text
+tools/release-licenses/**/LICENSE -text

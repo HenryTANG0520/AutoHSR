@@ -65,6 +65,10 @@ try {
         --collect-all rapidocr_onnxruntime --collect-all onnxruntime `
         --add-data "$taskRuntimeAssets;assets" --add-data 'LICENSE;.' launcher.py
     if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed. See output above.' }
+    $taskSourceRevision = (& git rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or $taskSourceRevision -notmatch '^[0-9a-f]{40}$') { throw 'Cannot resolve the source revision for packaged documentation.' }
+    & $taskVenvPython (Join-Path $PSScriptRoot 'stage_release_metadata.py') $taskStagingOutput $taskSourceRevision
+    if ($LASTEXITCODE -ne 0) { throw 'Release documentation and license staging failed. See output above.' }
     New-Item -ItemType Directory -Path $taskOutputDirectory -Force | Out-Null
     $taskStagingPrefix = $taskStagingOutput.TrimEnd('\') + '\'
     $taskMainExecutable = Join-Path $taskStagingOutput 'AutoHSR.exe'
@@ -77,23 +81,6 @@ try {
         $taskTargetPath = Join-Path $taskOutputDirectory $taskRelativePath
         New-Item -ItemType Directory -Path (Split-Path -Parent $taskTargetPath) -Force | Out-Null
         Copy-Item -LiteralPath $taskPackageFile.FullName -Destination $taskTargetPath -Force
-    }
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE') -Destination (Join-Path $taskOutputDirectory 'LICENSE') -Force
-    $taskSourceRevision = (& git rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0 -or $taskSourceRevision -notmatch '^[0-9a-f]{40}$') { throw 'Cannot resolve the source revision for packaged documentation.' }
-    $taskSourceUrl = 'https://github.com/HenryTANG0520/AutoHSR/blob/' + $taskSourceRevision + '/'
-    foreach ($taskDocument in @('README.md', 'DAILY_FLOW.md', 'VALIDATION.md', 'CURRENCY_WARS.md', 'CURRENCY_WARS_GUIDE.md', 'LICENSE_NOTICE.md')) {
-        $taskDocumentPath = Join-Path $projectRoot $taskDocument
-        if (Test-Path -LiteralPath $taskDocumentPath -PathType Leaf) {
-            $taskDocumentText = (Get-Content -LiteralPath $taskDocumentPath -Raw -Encoding UTF8).Replace('](assets/', '](_internal/assets/').Replace('](runs/', '](../../runs/').Replace('](dist/AutoHSR/runs/', '](runs/').Replace('](autohsr/', '](' + $taskSourceUrl + 'autohsr/').Replace('](AGENTS.md)', '](' + $taskSourceUrl + 'AGENTS.md)')
-            Set-Content -LiteralPath (Join-Path $taskOutputDirectory $taskDocument) -Value $taskDocumentText -Encoding UTF8
-        }
-    }
-    $taskDocsDirectory = Join-Path $taskOutputDirectory 'docs'
-    New-Item -ItemType Directory -Path $taskDocsDirectory -Force | Out-Null
-    foreach ($taskModeDocument in Get-ChildItem -LiteralPath (Join-Path $projectRoot 'docs') -File -Filter '*.md') {
-        $taskModeDocumentText = (Get-Content -LiteralPath $taskModeDocument.FullName -Raw -Encoding UTF8).Replace('](../assets/', '](../_internal/assets/').Replace('](../runs/', '](../../../runs/').Replace('](../autohsr/', '](' + $taskSourceUrl + 'autohsr/')
-        Set-Content -LiteralPath (Join-Path $taskDocsDirectory $taskModeDocument.Name) -Value $taskModeDocumentText -Encoding UTF8
     }
     Write-Host "Build complete: $(Join-Path $taskOutputDirectory 'AutoHSR.exe')"
 } finally {
