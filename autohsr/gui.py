@@ -336,7 +336,9 @@ class AutoHSRWindow:
         target.focus_set()
 
     def _configure_primary_action(self):
-        if self.detail_content is not None or self.book_editor is not None or self.active_page == 'logs':
+        ordinary_settings = self.active_page == 'settings' and self.daily_section is None and not self._in_tools()
+        if (self.detail_content is not None or self.book_editor is not None
+                or self.active_page == 'logs' or ordinary_settings):
             self.start_button = self.footer_start_button
             self.start_button.pack_forget()
             self.start_button.configure(state='disabled')
@@ -784,8 +786,8 @@ class AutoHSRWindow:
             else:
                 button.pack_forget()
         independent_page = currency_page or getattr(self, "action_page", "") == "differential_universe"
-        if (self.detail_content is not None or self.book_editor is not None or self.active_page == 'logs'
-                or self.daily_section is not None or self._in_tools()
+        if (self.detail_content is not None or self.book_editor is not None or self.active_page in ('logs', 'settings')
+                or self.daily_section is not None
                 or self.active_page == "tasks" and self.dungeon_home_return):
             self._configure_primary_action()
         else:
