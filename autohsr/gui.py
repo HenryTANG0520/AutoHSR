@@ -93,6 +93,7 @@ class AutoHSRWindow:
         self._active_weekly_mode = self._weekly_currency_stage = None
         self._f9_local_pressed = False
         self._selected_tool = 'warp'
+        self._tools_return_section = None
         self.daily_section = None
         self.dungeon_home_return = None
         self.book_editor = None
@@ -277,6 +278,8 @@ class AutoHSRWindow:
             self.settings_return_focus = theme.focus_widget(self.root)
         self.daily_section = None
         self.daily_view.grid_remove()
+        if name != "settings":
+            self._tools_return_section = None
         if name != "tasks":
             self.dungeon_home_return = None
         self.active_page = name
@@ -460,6 +463,10 @@ class AutoHSRWindow:
         if not from_settings:
             self._show_page('settings')
             self.settings_return_focus = return_focus
+        elif not self._in_tools():
+            selection = self.settings_tabs.select()
+            self._tools_return_section = next(key for key, section in self.settings_sections.items()
+                                              if str(section) == selection)
         self.settings_shell.choose('tools')
 
     def _show_daily_tasks(self, task=None):
@@ -474,6 +481,13 @@ class AutoHSRWindow:
 
     def _leave_settings(self):
         if self.active_page != "settings":
+            return
+        if self._in_tools() and self._tools_return_section is not None:
+            section = self._tools_return_section
+            self._tools_return_section = None
+            self.settings_tabs.select(self.settings_sections[section])
+            self.root.update_idletasks()
+            self.guide.tools_button.focus_set()
             return
         target = getattr(self, "settings_return_page", "home")
         action = getattr(self, "settings_return_action", self.action_page)

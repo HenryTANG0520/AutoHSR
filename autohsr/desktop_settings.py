@@ -231,6 +231,8 @@ def build_settings(ui):
         if tabs is ui.settings_tabs:
             key = next((key for key, section in ui.settings_sections.items() if tabs.select() == str(section)), None)
             if key is not None:
+                if key != 'tools':
+                    ui._tools_return_section = None
                 ui.settings_shell.select(key)
                 ui._tool_action_changed()
                 if not ui._loading:

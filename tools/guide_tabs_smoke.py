@@ -78,6 +78,34 @@ def main():
                 root.update()
                 check(f'{scale}_shortcut_returns_to_origin',ui.active_page == 'logs'
                       and root.focus_get() is ui.guide.tools_button)
+                ui._show_page('home')
+                root.update()
+                ui.guide.tools_button.invoke()
+                root.update()
+                ui.settings_shell.back.invoke()
+                root.update()
+                check(f'{scale}_home_shortcut_returns_directly_to_home',
+                      ui.active_page == 'home' and root.focus_get() is ui.guide.tools_button)
+                for section, escape in (('recognition', False), ('weekly', True)):
+                    ui.guide.buttons['settings'].invoke()
+                    ui.settings_shell.choose(section)
+                    root.update()
+                    ui.guide.tools_button.invoke()
+                    root.update()
+                    check(f'{scale}_{section}_shortcut_opens_tools', ui._in_tools())
+                    if escape:
+                        ui.settings_shell.back.focus_set()
+                        ui.settings_shell.back.event_generate('<Escape>')
+                    else:
+                        ui.settings_shell.back.invoke()
+                    root.update()
+                    check(f'{scale}_{section}_returns_to_origin_category_and_shortcut',
+                          ui.active_page == 'settings' and ui.settings_tabs.select() == str(ui.settings_sections[section])
+                          and root.focus_get() is ui.guide.tools_button)
+                    ui.settings_shell.back.invoke()
+                    root.update()
+                    check(f'{scale}_{section}_second_return_preserves_home_history',
+                          ui.active_page == 'home' and root.focus_get() is ui.guide.buttons['settings'])
                 for key in ('logs','settings'):
                     variants=[ImageTk.getimage(ui.guide.photos[key,selected,hover]).tobytes() for selected,hover in ((False,False),(False,True),(True,False),(True,True))]
                     check(f'{scale}_{key}_distinct_hover_and_selection',len(set(variants))==4)

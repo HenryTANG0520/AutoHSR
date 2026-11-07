@@ -172,7 +172,7 @@ class ResponsiveLayout:
                        if hasattr(getattr(ui, name), 'snapshot_draft')}
         navigation = {key: getattr(ui, key, None) for key in
             ("active_page", "action_page", "last_universe_page", "settings_return_page", "settings_return_action",
-             "daily_section", "settings_return_daily_section", "dungeon_home_return")}
+             "daily_section", "settings_return_daily_section", "dungeon_home_return", "_tools_return_section")}
         mode_views = {key: deck["shown"] for key, deck in ui.mode_decks.items()}
         cards = deepcopy(ui.table.records), ui.table.offset, ui.table.selected
         browser = (ui.dungeon_search.get(), ui.dungeon_target_caption.get(),
