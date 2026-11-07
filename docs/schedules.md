@@ -16,6 +16,14 @@ Windows 登录约 15 秒后启动助手到托盘。已有有效的管理员启�
 
 登录触发采用 Windows 任务计划程序。设计参考 [三月七的调度实现](https://github.com/moesnow/March7thAssistant/blob/26bee153544db44a882313f361b5ddbcefb001fa/utils/schedule.py) 与 [Windows 登录触发器说明](https://learn.microsoft.com/en-us/windows/win32/taskschd/logontrigger)。
 
+## 任务完成后的操作
+
+在「设置 → 运行偏好」可分别启用「完成后播放提示音」和「完成后退出游戏」。两项默认关闭，保存后用于手动开始的日常和日常与周常计划，CLI 的 `--run` 和 `--plan` 也读取保存的设置。仅补领奖、只接续原货币战争周常、定时和任务流子步骤使用各自的原流程。
+
+整个任务成功、原报告保存且资源无待核对后才执行。退出游戏时，助手只向本次持续绑定的星铁窗口发送一次正常关闭请求，并等待同一进程退出。若窗口变更、另一个任务已开始或收到了停止请求，会跳过关闭。若游戏仍在运行，界面会显示退出待核对。
+
+结束操作写入同目录的 `completion.json`，任务报告 `report.json` 保留原结果。已有回执时不会重发。提示音采用 Windows 当前声音方案中的系统信息提示。[三月七完成动作实现](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/game/__init__.py#L232-L259) · [Windows 系统声音](https://learn.microsoft.com/en-us/windows/win32/multimedia/using-playsound-to-play-system-sounds)
+
 ## 时间、资源和执行边界
 
 调度使用固定北京时间（UTC+8），星期一至日为1～7。只考虑当前分钟的计划点，启用／启动所在分钟跳过；程序未运行、系统睡眠或暂停期间错过的计划不补跑。连续计时时，回拨到早于最近已见分钟的时隙也跳过，当前任务的超时和停止检查继续生效。恢复时跳过所在分钟的新触发，已认领的任务可按原范围继续。系统恢复后的自然开拓力增加不构成新的预算授权。

@@ -341,6 +341,9 @@ def build_settings(ui):
     toggle(row("run", 0, "游戏内日志字幕"), ui.overlay_logs, "overlay_control")
     toggle(row("run", 1, "关闭窗口时驻留托盘"), ui.close_to_tray, "tray_control")
     note("run", 2, text="保存后生效。可从系统托盘重新打开或退出助手。")
+    toggle(row("run", 3, "完成后播放提示音"), ui.finish_sound, "finish_sound_control")
+    toggle(row("run", 4, "完成后退出游戏"), ui.finish_close_game, "finish_close_control")
+    note("run", 5, text="保存后生效，仅用于手动开始的日常或计划，整轮成功并保存报告后执行。")
 
     for index, (name, variable, limits, control) in enumerate((
             ("操作间隔（秒）", ui.action_delay, "0.3～5", "action_delay_entry"),

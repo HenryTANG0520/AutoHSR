@@ -44,6 +44,8 @@ class Settings:
     auto_launch: bool = True  # Legacy field; daily startup now always checks/launches.
     overlay_logs: bool = True
     close_to_tray: bool = False
+    finish_sound: bool = False
+    finish_close_game: bool = False
     daily_synthesis: bool = True
     action_delay: float = 1.0
     battle_timeout: float = 900
@@ -105,6 +107,9 @@ class Settings:
         self.challenge_plan=deepcopy(self.challenge_plan)
 
     def validate(self, operation: str = "daily") -> None:
+        for name in ("finish_sound", "finish_close_game"):
+            if type(getattr(self, name)) is not bool:
+                raise SettingsError(name, "完成后操作开关必须为布尔值。")
         from .challenge_cli import validate_settings as validate_challenge
         validate_challenge(self, requested=operation == 'challenge_prepare')
         from .redemption_settings import validate_settings as validate_redemption

@@ -181,13 +181,16 @@ class AutoHSRWindow:
         self.auto_launch = tk.BooleanVar(value=self.settings.auto_launch)
         self.overlay_logs = tk.BooleanVar(value=self.settings.overlay_logs)
         self.close_to_tray = tk.BooleanVar(value=self.settings.close_to_tray)
+        self.finish_sound = tk.BooleanVar(value=self.settings.finish_sound)
+        self.finish_close_game = tk.BooleanVar(value=self.settings.finish_close_game)
         self.daily_synthesis = tk.BooleanVar(value=self.settings.daily_synthesis)
         self.tasks = {name: tk.BooleanVar(value=getattr(self.settings, name)) for name in TASK_NAMES}
         if not self.settings.allow_stamina_spend:
             self.tasks["battle"].set(False)
         self.form_variables = [self.game_path, self.target_name, self.target_location, self.stamina_limit,
                                self.rounds, self.dungeon_category, self.challenge_count, self.use_support,
-                               self.auto_launch, self.overlay_logs, self.close_to_tray, self.daily_synthesis,
+                               self.auto_launch, self.overlay_logs, self.close_to_tray, self.finish_sound,
+                               self.finish_close_game, self.daily_synthesis,
                                *self.tasks.values()]
         from .power_plan_ui import variables
         variables(self)
@@ -727,7 +730,8 @@ class AutoHSRWindow:
         self.daily_panel.set_busy(self.busy)
         for name in ('currency_source_combo','currency_zone_combo','currency_level_combo','du_runs_combo','du_resume_combo','du_mode_combo','du_operation_combo',
                      'weekly_mode_combo', 'weekly_day_combo', 'weekly_runs_combo', 'currency_strategy_combo',
-                     'weekly_enabled_combo', 'overlay_control', 'tray_control', 'synthesis_control', 'power_mode_combo',
+                     'weekly_enabled_combo', 'overlay_control', 'tray_control', 'finish_sound_control',
+                     'finish_close_control', 'synthesis_control', 'power_mode_combo',
                      'power_repeat_combo','power_fill_combo','echo_enabled_combo','support_toggle'):
             if hasattr(self,name):
                 getattr(self,name).configure(state='disabled' if self.busy else 'readonly')
@@ -975,6 +979,8 @@ class AutoHSRWindow:
                           daily_synthesis=self.daily_synthesis.get())
             if save:
                 values["close_to_tray"] = self.close_to_tray.get()
+                values["finish_sound"] = self.finish_sound.get()
+                values["finish_close_game"] = self.finish_close_game.get()
                 values.update(self.redemption_panel.settings_values())
                 values.update(self.notifications_panel.settings_values())
             elif operation in ('daily', 'plan', 'redemption') and not resume_weekly_currency:
@@ -1725,9 +1731,12 @@ class AutoHSRWindow:
             try:
                 from .app import Runner
                 wrap = lambda runner: runner
+                completion = lambda runner: runner
                 if operation in ('daily', 'plan') and not resume_weekly_currency:
+                    from .completion_runtime import hooks as completion_hooks
                     from .notify_runtime import hooks
                     send, wrap = hooks(settings, send)
+                    send, completion = completion_hooks(settings, send)
                 if operation == "plan":
                     from .plan_runner import PlanRunner
                     runner = PlanRunner(settings, send, new_battle_run=new_battle_run, root=ROOT/"runs",
@@ -1747,7 +1756,7 @@ class AutoHSRWindow:
                         **(dict(currency_timeout_probe=True) if currency_timeout_probe else {}),
                         **(dict(currency_source_slot=currency_source_slot,currency_zone=currency_zone) if deploy_test else {}),
                         **(dict(currency_target_level=currency_target_level,currency_start_from_lobby=currency_start_from_lobby) if flow_test else {}))
-                runner = wrap(runner)
+                runner = wrap(completion(runner))
                 report = native.run(runner)
                 emit({"type": "finished", "report": report.to_dict() if hasattr(report, "to_dict") else report})
             except Exception as exc:

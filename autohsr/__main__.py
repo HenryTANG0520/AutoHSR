@@ -595,10 +595,14 @@ def main(argv: list[str] | None = None) -> int:
             if kind != "finished":
                 print(json.dumps(event, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
         wrap_notifications = None
+        wrap_completion = None
         if not (build_target or args.daily_reward_observe or challenge_observer or args.challenge_lobby
                 or args.team_preset_calibration or overclock_entry or standalone_daily):
             from .notify_runtime import hooks as notification_hooks
             emit, wrap_notifications = notification_hooks(settings, emit)
+        if (args.run and not args.reward_only) or (args.plan and not args.resume_weekly_currency):
+            from .completion_runtime import hooks as completion_hooks
+            emit, wrap_completion = completion_hooks(settings, emit)
         if args.assignments_only:
             from .task_workflow import assignment_runner
             runner = assignment_runner(settings, emit)
@@ -656,6 +660,8 @@ def main(argv: list[str] | None = None) -> int:
                                     du_resume_active=args.resume_active_du,
                                     du_periodic_rank=args.du_periodic_rank) if args.differential_universe else {}),
                             **(dict(du_until_points=True) if args.du_until_points else {}))
+        if wrap_completion is not None:
+            runner = wrap_completion(runner)
         if wrap_notifications is not None:
             runner = wrap_notifications(runner)
         try:

@@ -3219,6 +3219,8 @@ class Runner:
                 self._window.guard()
             else:
                 self._window.focus()
+            from .completion_runtime import bind_window
+            bind_window(self._window)
             if self.settings.overlay_logs and not self._foreground_only:
                 from .overlay import OverlayService
                 self._overlay = OverlayService()
