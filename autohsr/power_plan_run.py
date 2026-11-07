@@ -15,7 +15,7 @@ def account(ctx,scene):
     if (not isinstance(scene,Scene) or scene is not ctx.last_scene or ctx.scene_epoch!=ctx.runner.input_epoch
             or scene.captured_at<=0 or not 0<=time.monotonic()-scene.captured_at<=8):
         raise AutomationError('体力计划画面代次已变化，需要重新识别。')
-    label = complete_uid_label(scene)
+    label = complete_uid_label(scene, reject_weak=True)
     if label is None or not max(.85, ctx.settings.ocr_confidence) <= label.score <= 1:
         raise AutomationError('体力计划当前账号未核实。')
     try:

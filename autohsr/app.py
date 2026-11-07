@@ -3223,9 +3223,12 @@ class Runner:
                                       configured_name=configured_name,
                                       timeout=.05 if self.currency_timeout_probe else 30.) if currency_wars else
                       Vision(ocr_confidence))
+            daily_counterevidence = self.report.operation == 'daily' and (
+                self.settings.redemption_enabled or self.use_power_plan
+                or self.settings.battle and self.settings.use_support and self.settings.support_daily_only)
             if (self.assignments_only or self.daily_attachment_only or workflow_foreground
                     or daily_observation or daily_claim or daily_reply or achievement_claim
-                    or redemption or self.report.operation == 'daily' and self.settings.redemption_enabled):
+                    or redemption or daily_counterevidence):
                 from .currency_wars_identity import UID_VETO_FLOOR
                 vision.uid_counterevidence_floor = UID_VETO_FLOOR
             context = Context(self, self._window, vision)

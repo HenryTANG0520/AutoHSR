@@ -18,6 +18,7 @@ from autohsr import windows
 from autohsr.__main__ import main
 from autohsr.app import Runner
 from autohsr.config import Settings
+from autohsr.currency_wars_identity import UID_COUNTEREVIDENCE, UID_VETO_FLOOR
 from autohsr.daily_support import ACTIVITY, FULL
 from autohsr.models import Token
 from autohsr.power_plan_store import read, read_ref
@@ -332,6 +333,79 @@ class DailyPlanContinuityTests(unittest.TestCase):
                         self.assertEqual(settled['power_plan']['weekly_echo']['completed'], 1)
                         borrowed, = [item for item in report['support_selections'] if item['state'] == 'borrowed']
                         self.assertEqual((borrowed['selected']['friend'], borrowed['attempts']), ('离线指定甲', 1))
+
+    def test_mixed_plan_with_support_and_weak_account_conflict(self):
+        class MixedWorld(FiftyPointWorld):
+            def scene(self, settings):
+                page = super().scene(settings)
+                if settings.target_name == PLANAR and self.opened_guide == 3 and self.mode == self.boundary:
+                    page.field_reads[UID_COUNTEREVIDENCE] = (Token('UID:987654321', .75, (.02, .95, .21, .98)),)
+                return page
+
+        for mode in ('--run', '--plan'):
+            for boundary in (None, 'team', 'success'):
+                with self.subTest(mode=mode, boundary=boundary):
+                    folder = self.root / f'{mode}-{boundary}'
+                    folder.mkdir()
+                    settings = replace(Settings.load(FIFTY_POINT), ocr_confidence=.85, stamina_limit=80, rounds=2,
+                                       power_plan=[row(count=1), row('planar', 2, PLANAR, '永恒圣城')])
+                    settings.save(folder / 'config.json')
+                    world = MixedWorld(boundary)
+                    world.stamina, world.tokens = 80, 1
+                    starts, readers = [], []
+
+                    @contextmanager
+                    def native(root, settings, value):
+                        with native_payment_window(root, settings, value, starts, [], payment_target=PLANAR,
+                                                   on_click=world.click_support) as (window, find):
+                            yield window, find
+                            readers.extend(ctx.vision for ctx in window.contexts)
+
+                    def run(*extra):
+                        with patch(__name__ + '.runtime', native):
+                            return self.cli(folder, world, None, mode=mode, extra=extra, screens=FiftyPointScreens)
+
+                    code, report, _ = run()
+                    ledger = folder / 'runs' / 'battle-session.json'
+                    saved = read(ledger)
+                    self.assertEqual(world.support_clicks, ['支援', '好友', '确认'])
+                    self.assertEqual([record['state'] for record in report['support_selections']],
+                                     ['needed', 'borrowed', 'completed', 'completed'])
+                    expected = [(ECHO, 30), (FIRST, 10)]
+                    if boundary != 'team':
+                        expected.append((PLANAR, 40))
+                    self.assertEqual(starts, expected)
+                    if boundary == 'success':
+                        self.assertEqual((code, saved['spent'], saved['pending'], saved['immersifiers_pending']),
+                                         (1, 40, 40, 1))
+                        self.assertIn('账号未核实', report['error'])
+                        self.assertEqual(saved['power_plan']['done'], [1, 0])
+                        original = ledger.read_bytes()
+                        blocked, _, finds = run('--new-battle-run')
+                        self.assertEqual((blocked, finds), (1, 0))
+                        self.assertEqual(ledger.read_bytes(), original)
+                    elif boundary == 'team':
+                        self.assertEqual((code, saved['spent'], saved['pending'], saved['immersifiers_pending']),
+                                         (1, 40, 0, 0))
+                        self.assertIn('账号未核实', report['error'])
+                    else:
+                        self.assertEqual((code, saved['completed'], saved['spent'], saved['immersifiers_spent'],
+                                          saved['pending'], saved['immersifiers_pending']), (0, 4, 80, 1, 0, 0))
+                        self.assertEqual(world.payments[-1], (PLANAR, 2, 40, 1))
+                        charges = saved['power_plan']['charges']
+                        self.assertEqual([(c['row'], c['count'], c['stamina'], c['immersifiers']) for c in charges],
+                                         [(-2, 1, 30, 0), (0, 1, 10, 0), (1, 2, 40, 1)])
+                        original_report = Path(saved['run_dir']) / 'report.json'
+                        original = original_report.read_bytes()
+                        world.stamina, world.tokens = 80, 1
+                        code, resumed, _ = run()
+                        self.assertEqual((code, resumed['battle_completed'], resumed['stamina_spent']), (0, 0, 0))
+                        self.assertEqual(resumed['power_plan']['before'], [1, 2])
+                        self.assertEqual(starts, expected)
+                        self.assertEqual(original_report.read_bytes(), original)
+                    self.assertTrue(readers)
+                    self.assertTrue(all(getattr(reader, 'uid_counterevidence_floor', None) == UID_VETO_FLOOR
+                                        for reader in readers))
 
     def test_low_balance_without_a_unique_account_cannot_defer_to_default_fill(self):
         later = row('cavern', 1, CAVERN, '残响回廊')

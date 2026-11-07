@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import re
 from time import monotonic
 
-from .currency_wars_identity import account_key
+from .currency_wars_identity import UID_COUNTEREVIDENCE, account_key
 from .du_daily import CHINA, game_day
 from .models import AutomationError, Stopped, normalize
 
@@ -17,8 +17,10 @@ COLUMNS = (.15, .325, .50, .675)
 FULL = '本日活跃度已满'
 
 
-def complete_uid_label(scene):
-    """Read one complete label, checking competing OCR before confidence filtering."""
+def complete_uid_label(scene, *, reject_weak=False):
+    """Read one complete label, with an optional veto for weaker complete reads."""
+    if reject_weak and scene.field_reads.get(UID_COUNTEREVIDENCE):
+        return None
     fragments = [token for token in scene.tokens if token.within((0,.94,.35,1))
                  and normalize(token.text).startswith('uid')]
     if len(fragments) == 1 and re.fullmatch(r'uid[0-9]{8,10}', normalize(fragments[0].text)):
@@ -27,7 +29,7 @@ def complete_uid_label(scene):
 
 
 def _account(scene, confidence):
-    if complete_uid_label(scene) is None:
+    if complete_uid_label(scene, reject_weak=True) is None:
         raise AutomationError('每日实训支援当前账号未核实，未发送输入。')
     try:
         return account_key(scene, confidence)
