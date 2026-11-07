@@ -119,6 +119,19 @@ class DesktopSelectedPageCheckTests(TestCase):
         self.assertIn('漫游签证支援区 · 到页已核实', self.panel.result_detail['text'])
         self.assertIn('礼物提示可见。领取与到账待核对。', self.panel.result_detail['text'])
 
+    def test_daily_training_receipt_displays_only_verified_card_fields(self):
+        self.select_pages('daily_training')
+        self.preview()
+        self.assertTrue(self.panel.start())
+        training = dict(activity=400, visible_tasks=[
+            dict(task='photo', progress=0, target=1, points=100, state='pending'),
+            dict(task='spend_power', progress=120, target=120, points=200, state='claimable'),
+        ])
+        self.deliver(dict(status='success', pages=[dict(page('daily_training'), training_observation=training)]))
+        self.assertEqual(self.panel.result_detail['text'].splitlines()[1:], [
+            '当前活跃 400/500', '拍照1次 · 0/1 · +100 · 待完成', '累计消耗120点开拓力 · 120/120 · +200 · 可领取',
+        ])
+
     def test_running_disables_edits_and_only_projects_anonymous_pages(self):
         self.select_pages('phone', 'mail', 'odyssey')
         recipe = self.preview()

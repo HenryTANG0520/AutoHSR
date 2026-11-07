@@ -5,6 +5,7 @@ from datetime import date
 from .currency_wars_prepare import trusted
 from .daily_support import read_state
 from .daily_synthesis import _task_game_day, task_target
+from .daily_training_cards import TRAINING_CARD_VERSION, stable_cards, valid_cards
 from .daily_training_rewards import _band, _blocked, _reached_points
 from .free_rewards import reward_overlay
 from .models import AutomationError
@@ -35,7 +36,7 @@ def _read(workflow, scene, confidence):
     return activity, support, synthesis, milestones
 
 
-def observe_training(workflow, scenes, confidence):
+def observe_training(workflow, scenes, confidence, *, client_version=None):
     try:
         first_day, second_day = (_task_game_day(scene) for scene in scenes)
     except AutomationError:
@@ -47,17 +48,22 @@ def observe_training(workflow, scenes, confidence):
     activity, support, synthesis, milestones = _read(workflow, second, confidence)
     if activity is None or activity != first_activity:
         return None
-    return dict(game_day=second_day, activity=activity,
-                support_task=support if support == first_support else 'unknown',
-                synthesis_task=synthesis if synthesis == first_synthesis else 'unknown',
-                milestones=milestones if milestones == first_milestones else None)
+    result = dict(game_day=second_day, activity=activity,
+                  support_task=support if support == first_support else 'unknown',
+                  synthesis_task=synthesis if synthesis == first_synthesis else 'unknown',
+                  milestones=milestones if milestones == first_milestones else None)
+    if client_version == TRAINING_CARD_VERSION:
+        cards = stable_cards(scenes, activity, confidence)
+        if cards:
+            result['visible_tasks'] = cards
+    return result
 
 
 def training_observation_receipt(navigation):
     if navigation.get('target') != 'daily_training' or navigation.get('page_verified') is not True:
         return None
     value = navigation.get('training_observation')
-    if not isinstance(value, dict) or value.keys() != _FIELDS:
+    if not isinstance(value, dict) or value.keys() not in (_FIELDS, _FIELDS | {'visible_tasks'}):
         return None
     day, activity = value['game_day'], value['activity']
     support, synthesis = value['support_task'], value['synthesis_task']
@@ -66,6 +72,9 @@ def training_observation_receipt(navigation):
             or type(synthesis) is not str or synthesis not in _SYNTHESIS_STATES
             or (support == 'activity_full') != (activity == 500)
             or (synthesis == 'activity_full') != (activity == 500)):
+        return None
+    if 'visible_tasks' in value and (navigation.get('client_version') != TRAINING_CARD_VERSION
+                                    or not valid_cards(value['visible_tasks'], activity)):
         return None
     try:
         if date.fromisoformat(day).isoformat() != day:

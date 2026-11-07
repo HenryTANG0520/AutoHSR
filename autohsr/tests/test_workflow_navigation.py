@@ -90,6 +90,7 @@ class Window:
         self.guard = Mock(return_value=_GEOMETRY)
         self.require_foreground = Mock()
         self.current_window_key = Mock(return_value='synthetic-game-window')
+        self.current_executable = Mock(side_effect=OSError('no fixture installation'))
         self.focus = Mock(side_effect=AssertionError('navigation must not focus a window'))
 
 
@@ -153,8 +154,9 @@ class WorkflowNavigationTests(unittest.TestCase):
         self.addCleanup(native.stop)
         ticks = count(100_000)
         clock = patch.object(time, 'monotonic', side_effect=lambda: next(ticks) / 1000.)
-        clock.start()
+        fake_monotonic = clock.start()
         self.addCleanup(clock.stop)
+        self.enterContext(patch('autohsr.daily_synthesis.monotonic', fake_monotonic))
         self.daily = identified(fixture('daily_survival_badge'))
         self.mail = identified(fixture('mail_claimable'))
         self.assignments = identified(fixture('assignments_after_claim'))

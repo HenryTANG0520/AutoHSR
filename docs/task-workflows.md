@@ -154,6 +154,8 @@ python -m autohsr --screen-check-pages phone mail odyssey reward_guide
 
 `support_task` 区分支援胜利任务的 `needed`、`completed`、`activity_full` 和 `unknown`。`synthesis_task` 区分已核实的单次合成任务 `available`、`activity_full` 和 `unknown`。卡片隐藏、证据冲突或无匹配时保留 `unknown`。同一数据也附在任务流的 `workflow_open_page` 步骤回执中。实训观察用于判断下一步，实际领奖、合成和开战仍使用各自入口。
 
+核实客户端为 4.6.0 时，`visible_tasks` 还会列出当前可见并通过双帧复核的任务卡。每项提供固定任务键 `task`、实际进度 `progress`、完成目标 `target`、活跃度奖励 `points` 和状态 `state`。状态包括待完成 `pending`、可领任务点数 `claimable`、已领 `claimed`、已完成 `completed`、活跃已满 `activity_full`。例如拍照一次的任务键为 `photo`，目标为 1，奖励为 100 活跃度。工具页把这些卡片显示在实训核对结果下方。卡片须在两张画面的同一栏，标题、进度、点数及状态均一致。结果仅覆盖当前视区，证据不足时省略对应卡片。其他版本及旧回执仍使用原有活跃度和档位字段。[每日实训卡片依据](../DAILY_FLOW.md#每日实训卡片)
+
 三月七在单页失败后尝试返回主界面，再核对余下页面。AutoHSR 中，若最后一步在写入启动意图时中断、父报告最终保存成功，先前核实页的回执仍可查看。本步到页和动作次数保留待核对，后续页标为未执行。人工恢复到已知页面后，可以显式选中仍需核对的页面另开一批，新一批按当次窗口和账号重新取证。[三月七失败处理](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/base/screen_test.py#L33-L42)
 
 原页面核对保存为部分完成且还有未启动页面时，也可以使用 CLI 续查。选择本机 `runs` 中该批次的原 `report.json`，保留同目录的 `workflow.json`、`steps.jsonl` 和各子报告。程序交叉核对原顺序、已核实前缀和执行日志，只选尚无启动意图的后续页面。曾发生换号、主动停止、原报告和日志不一致时会拒绝续查。

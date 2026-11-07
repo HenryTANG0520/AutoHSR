@@ -700,6 +700,19 @@ class WorkflowNavigation:
         self._final_guard(pair)
         return result
 
+    def _training_installation(self):
+        from .daily_training_cards import TRAINING_CARD_VERSION
+
+        try:
+            installation = read_event_installation(self.window)
+        except Stopped:
+            raise
+        except AutomationError:
+            return  # Legacy activity and milestone observations do not require a version.
+        if installation.version == TRAINING_CARD_VERSION:
+            self._installation = installation
+            self.record['client_version'] = installation.version
+
     def require_claim_handoff(self, frame):
         """Keep the independently captured claim frames in the verified navigation scope."""
         self._guard()
@@ -764,6 +777,8 @@ class WorkflowNavigation:
             if self._installation.version != version:
                 raise AutomationError('当前客户端尚未校准所选页面导航。')
             self.record['client_version'] = self._installation.version
+        elif self.target == 'daily_training':
+            self._training_installation()
         pair = self._pair(expected=expected)
         if self._observe_only and not self._satisfies(pair[-1].page):
             raise AutomationError('请先手动回到大世界，续查未发送导航输入。')
@@ -786,7 +801,8 @@ class WorkflowNavigation:
                 from .daily_training_observe import observe_training
 
                 with _seal(pair):
-                    observation = observe_training(self.daily, (pair[0].scene, pair[1].scene), self.confidence)
+                    observation = observe_training(self.daily, (pair[0].scene, pair[1].scene), self.confidence,
+                                                   client_version=self.record.get('client_version'))
                     self._final_guard(pair)
                 if observation is not None:
                     self.record['training_observation'] = observation

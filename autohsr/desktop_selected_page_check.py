@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from . import theme
+from .daily_training_cards import STATUS_LABELS, TASKS, valid_cards
 from .task_workflow import (ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, VISA_CHARACTERS_PAGE,
                             WORKFLOW_PAGES, Recipe, WorkflowError)
 
@@ -65,6 +66,17 @@ def result_text(recipe, report):
             label = '礼物提示可见' if gift.get('indicator') == 'visible' else '礼物提示待核对'
             text += f'\n{label}。领取与到账待核对。'
         lines.append(text)
+        training = row.get('training_observation')
+        if target == 'daily_training' and state == 'verified' and isinstance(training, dict):
+            activity = training.get('activity')
+            if type(activity) is int and 0 <= activity <= 500:
+                lines.append(f'当前活跃 {activity}/500')
+                cards = training.get('visible_tasks')
+                if valid_cards(cards, activity):
+                    for card in cards:
+                        title = TASKS[card['task']][0]
+                        lines.append(f"{title} · {card['progress']}/{card['target']} · "
+                                     f"+{card['points']} · {STATUS_LABELS[card['state']]}")
     return _TITLES[status], '\n'.join(lines)
 
 

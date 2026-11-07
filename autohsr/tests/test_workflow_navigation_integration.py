@@ -339,7 +339,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             args = ['--screen-check-pages', target] if selected_page else [command, str(workflow)]
             code = main([*args, '--config', str(config)])
             interrupted = (late_loss or late_version or lose_focus_on_installation_read
-                           or lose_focus_after_geometry or version != '4.6.0'
+                           or lose_focus_after_geometry or (target != 'daily_training' and version != '4.6.0')
                            or duplicate_tab or first_escape_native_count != 2 or guide_overlay is not None
                            or achievement_page_kind != 'overview' or redemption_state != 'form' or expect_visa_stop
                            or ((observe_only or resume) and not already_open))
@@ -495,13 +495,16 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         from autohsr.tests.test_daily_support import training as support_card
         from autohsr.tests.test_reward_only_milestones import training
 
-        labels = support_card().tokens[7:]
+        labels = [token for token in support_card().tokens[7:] if not token.within((.15, .375, .30, .81))]
         labels.extend((
+            badge('拍照1次', .22, .48), badge('进度0/1', .196, .40),
+            badge('+100', .22, .64), badge('进行中', .22, .76),
             badge('使用1次万能合成机', .728, .48), badge('+100', .728, .64), badge('前往', .728, .76),
         ))
         page = training(400, gifts=(400,), claimed=(100, 200, 300), labels=labels)
         page.image[:, :120] = 95
-        sent, steps, native = self.run_navigation(target='daily_training', already_open=True, training_page=page)
+        sent, steps, native = self.run_navigation(target='daily_training', already_open=True, training_page=page,
+                                                  check_publication_lock=True)
         self.assertEqual(sent, [])
         observation = native['workflow_navigation']['training_observation']
         self.assertEqual(steps[0]['training_observation'], observation)
@@ -509,17 +512,27 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertEqual(observation['support_task'], 'needed')
         self.assertEqual(observation['synthesis_task'], 'available')
         self.assertEqual(observation['milestones'], dict(claimed=[100, 200, 300], claimable=[400]))
+        self.assertEqual(observation['visible_tasks'][0],
+                         dict(task='photo', progress=0, target=1, points=100, state='pending'))
+        self.assertEqual(native['workflow_navigation']['client_version'], '4.6.0')
         self.assertFalse(native['daily_verified'])
         sent, rows, _ = self.run_navigation(target='daily_training', already_open=True,
                                             training_page=page, selected_page=True)
         self.assertEqual(sent, [])
         self.assertEqual(rows, [dict(target='daily_training', status='verified', actions_sent=0,
                                      actions_unconfirmed=0, training_observation=observation)])
-        sent, steps, native = self.run_navigation(target='daily_training', already_open=True, late_loss=True,
+        for changed in (dict(late_loss=True), dict(late_version=True)):
+            with self.subTest(changed=changed):
+                sent, steps, native = self.run_navigation(target='daily_training', already_open=True,
+                                                          training_page=page, **changed)
+                self.assertEqual(sent, [])
+                self.assertNotIn('training_observation', steps[0])
+                self.assertNotIn('training_observation', native['workflow_navigation'])
+        sent, steps, native = self.run_navigation(target='daily_training', already_open=True, version='4.7.0',
                                                   training_page=page)
         self.assertEqual(sent, [])
-        self.assertNotIn('training_observation', steps[0])
-        self.assertNotIn('training_observation', native['workflow_navigation'])
+        self.assertEqual(steps[0]['training_observation']['activity'], 400)
+        self.assertNotIn('visible_tasks', native['workflow_navigation']['training_observation'])
 
     def test_incoming_message_import_reaches_the_existing_notification_panel(self):
         sent, steps, native = self.run_navigation(target='messages', upstream_screen='incoming_message')
