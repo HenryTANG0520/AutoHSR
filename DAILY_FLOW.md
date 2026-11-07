@@ -88,7 +88,7 @@
 
 已打开漫游签证时，支援观察仅核对当前页。收集展示核对标题、副标题、规则入口及三枚页签。角色展示还需两帧均看到右侧「支援角色」和「星海同行」，才记录 `support_section=visible`。可领取和到账各自保留 `claimable_state=unknown`、`claim_receipt_status=not_observed`。公开 4.6 静态图用于版式校准，CLI 与桌面收据使用假窗口回归。实际支援领取按钮、来源回执与回到同页后的状态待实机校准。原图与 OCR 留在本地运行目录。[版式来源](autohsr/tests/fixtures/daily_visa/sources.json)
 
-如需从已打开的收集展示切换角色展示，可在任务流编辑器选择「切换到游戏页面 → 漫游签证角色展示」，或在 JSON 使用 `visa_characters`。该步骤只提交一次有证据的页签点击，随后核对角色展示到页。已在角色展示时可零输入核对。[任务流配置](docs/task-workflows.md#漫游签证角色展示)
+任务流「切换到游戏页面 → 漫游签证角色展示」或 JSON 目标 `visa_characters` 可从手机主菜单直接走到支援区。从已打开的收集展示开始时只提交一次页签点击，已在角色展示时零输入核对。每段到页单独记入回执。[任务流配置](docs/task-workflows.md#漫游签证角色展示)
 
 #### 支援奖励取证
 

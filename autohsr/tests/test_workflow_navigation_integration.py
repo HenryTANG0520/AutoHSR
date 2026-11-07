@@ -94,7 +94,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                                Token('奖励', .78, (.501, .109, .527, .143)))
             pages = (source, achievement)
         elif target == 'visa_characters':
-            pages = (visa_collection(), visa_collection('characters'))
+            pages = visa_pages or (visa_collection(), visa_collection('characters'))
         elif target == 'visa_collection':
             pages = visa_pages or (support_phone(), support_phone(menu=True), visa_collection())
         elif target == 'world':
@@ -705,6 +705,33 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertEqual(result['actions'], [
             dict(action='open_visa_characters', source_page='visa_collection', expected_pages=['visa_characters'],
                  input_status='sent', destination_status='verified', destination_page='visa_characters')])
+
+    def test_opens_character_showcase_from_phone_without_an_extra_task(self):
+        entry = (support_phone(), support_phone(menu=True))
+        destination = visa_collection('characters')
+        for pages, expected in (
+            ((*entry, visa_collection(), destination), ['visa_more_menu', 'visa_collection', 'visa_characters']),
+            ((*entry, destination), ['visa_more_menu', 'visa_characters']),
+        ):
+            with self.subTest(expected=expected):
+                sent, steps, native = self.run_navigation(target='visa_characters', visa_pages=pages)
+                self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * len(expected))
+                self.assertTrue(steps[0]['facts']['page_verified'])
+                actions = native['workflow_navigation']['actions']
+                self.assertEqual([action['destination_page'] for action in actions], expected)
+                self.assertTrue(all(action['destination_status'] == 'verified' for action in actions))
+
+    def test_character_showcase_stops_on_unverified_visa_or_reward_overlay(self):
+        collection = visa_collection()
+        overlay = Token('支援奖励详情', .90, (.35, .25, .50, .30))
+        for middle in (visa_collection('battle-record'), Scene([*collection.tokens, overlay], collection.image)):
+            with self.subTest(tokens=[item.text for item in middle.tokens[-2:]]):
+                sent, steps, native = self.run_navigation(target='visa_characters', expect_visa_stop=True,
+                    visa_pages=(support_phone(), support_phone(menu=True), middle, visa_collection('characters')))
+                self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * 2)
+                self.assertNotIn('page_verified', steps[0]['facts'])
+                actions = native['workflow_navigation']['actions']
+                self.assertEqual([action['destination_status'] for action in actions], ['verified', 'unknown'])
 
     def test_character_switch_already_open_is_zero_input_and_wrong_version_stops(self):
         for version, verified in (('4.6.0', True), ('4.7.0', False)):

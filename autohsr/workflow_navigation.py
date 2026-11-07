@@ -357,10 +357,10 @@ class WorkflowNavigation:
         if self.target == REDEMPTION_FORM_PAGE:
             return self._read_redemption_page(scene)
         page = self._page(scene)
-        if self.target == VISA_COLLECTION_PAGE:
+        if self.target in (VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE):
             low = trusted(scene, COLLECTION_FLOOR)
             if _route_blocked(low, _VISA_CLAIM_PROMPTS, _VISA_CLAIM_PROMPTS):
-                raise AutomationError('当前有漫游签证领奖提示，收集展示导航已停止。')
+                raise AutomationError('当前有漫游签证领奖提示，页面导航已停止。')
             if low.has(_LOADING, exact=True) or _has_split_label(low, _LOADING, FULL):
                 return None
             if visa_overview(scene, self.confidence):
@@ -392,10 +392,6 @@ class WorkflowNavigation:
             return page if page == 'phone' else None
         if page is not None or self._installation is None or self.target in BATTLEPASS_WORKFLOW_PAGES:
             return page
-        if self.target == VISA_CHARACTERS_PAGE:
-            if visa_overview(scene, self.confidence):
-                return VISA_COLLECTION_PAGE
-            return VISA_CHARACTERS_PAGE if visa_support_section(scene, self.confidence) else None
         options = dict(client_version=self._installation.version, confidence=self.confidence)
         if self.target == 'reward_guide':
             from .daily_reward_guide_pages import reward_guide_page
@@ -441,19 +437,19 @@ class WorkflowNavigation:
         if self.target == ACHIEVEMENT_OVERVIEW_PAGE:
             token = phone_achievement_target(frame.scene, self.confidence) if page == 'phone' else None
             return _Action('open_achievements', (self.target,), token) if token else None
-        if self.target == VISA_COLLECTION_PAGE:
+        if self.target in (VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE):
             if page == 'phone':
                 token = support_more_target(frame.scene, self.confidence)
                 return _Action('open_more', (_VISA_MORE_MENU,), token) if token else None
             if page == _VISA_MORE_MENU:
                 token = support_visa_target(frame.scene, self.confidence)
-                return _Action('open_visa_collection', (VISA_COLLECTION_PAGE,), token) if token else None
+                destinations = ((VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE) if self.target == VISA_CHARACTERS_PAGE
+                                else (VISA_COLLECTION_PAGE,))
+                return _Action('open_visa_collection', destinations, token) if token else None
+            if self.target == VISA_CHARACTERS_PAGE and page == VISA_COLLECTION_PAGE and self._installation is not None:
+                tab = visa_character_tab(frame.scene, client_version=self._installation.version, confidence=self.confidence)
+                return _Action('open_' + VISA_CHARACTERS_PAGE, (VISA_CHARACTERS_PAGE,), tab) if tab is not None else None
             return None
-        if self.target == VISA_CHARACTERS_PAGE:
-            if page != VISA_COLLECTION_PAGE or self._installation is None:
-                return None
-            tab = visa_character_tab(frame.scene, client_version=self._installation.version, confidence=self.confidence)
-            return _Action('open_' + VISA_CHARACTERS_PAGE, (VISA_CHARACTERS_PAGE,), tab) if tab is not None else None
         if self.target in BATTLEPASS_WORKFLOW_PAGES:
             if page == 'phone':
                 token = self._phone_control(frame.scene, 'battlepass')
@@ -662,7 +658,7 @@ class WorkflowNavigation:
         elif self.target == VISA_COLLECTION_PAGE:
             expected, version = ('phone', VISA_COLLECTION_PAGE), VISA_LAYOUT_VERSION
         elif self.target == VISA_CHARACTERS_PAGE:
-            expected, version = (VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE), VISA_LAYOUT_VERSION
+            expected, version = ('phone', VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE), VISA_LAYOUT_VERSION
         elif self.target in BATTLEPASS_WORKFLOW_PAGES:
             expected, version = ('phone', *BATTLEPASS_WORKFLOW_PAGES), _BATTLEPASS_LAYOUT_VERSION
         elif self.target in GUIDE_WORKFLOW_SUBPAGES:
