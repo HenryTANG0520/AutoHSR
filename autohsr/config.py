@@ -194,9 +194,16 @@ class Settings:
         replace_file(temp,path)
 
     @classmethod
-    def load(cls, path: Path = CONFIG_PATH, *, reward_only: bool = False) -> Settings:
-        exists = path.exists()
-        data = json.loads(path.read_text(encoding="utf-8")) if exists else {}
+    def load(cls, path: Path = CONFIG_PATH, *, reward_only: bool = False,
+             require_existing: bool = False) -> Settings:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError as error:
+            if require_existing:
+                raise SettingsError("config", "明确指定的配置文件不存在，未启动游戏。") from error
+            data, exists = {}, False
+        else:
+            exists = True
         unknown = set(data) - set(cls.__dataclass_fields__)
         if unknown:
             raise ValueError(f"配置中存在未知字段：{', '.join(sorted(unknown))}")

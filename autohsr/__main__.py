@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--no-admin-launch", action="store_true", help="跳过管理员启动入口，仅打开当前权限的 GUI 以排查或移除授权")
     mode.add_argument("--admin-task", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--admin-owner", help=argparse.SUPPRESS)
-    parser.add_argument("--config", type=Path, default=CONFIG_PATH, help="配置 JSON 路径")
+    parser.add_argument("--config", type=Path, help="配置 JSON 路径，省略时使用默认配置")
     parser.add_argument("--replay-ocr", action="store_true", help="仅配合 --currency-wars-replay，对样本 PNG 重新执行隔离 OCR")
     parser.add_argument("--game-path", help="命令行模式：StarRail.exe 路径")
     parser.add_argument("--target", help="命令行模式：副本中文名称")
@@ -160,6 +160,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    explicit_config = args.config is not None
+    if not explicit_config:
+        args.config = CONFIG_PATH
     if args.daily_synthesis is not None and (not (args.run or args.plan) or args.reward_only or args.resume_weekly_currency):
         parser.error('实训合成开关仅用于 --run/--plan 的本次日常，不能用于仅补领奖或只接续周常。')
     if args.observe_daily_event_return and args.daily_event_claim is None:
@@ -398,7 +401,10 @@ def main(argv: list[str] | None = None) -> int:
         gui_main(args.config, admin_task=True) if args.admin_task else gui_main(args.config)
         return 0
     try:
-        settings = Settings.load(args.config, reward_only=True) if args.reward_only else Settings.load(args.config)
+        load_options = {"require_existing": True} if explicit_config and (args.run or args.plan) else {}
+        if args.reward_only:
+            load_options["reward_only"] = True
+        settings = Settings.load(args.config, **load_options)
         if args.daily_synthesis is not None:
             if args.daily_synthesis and not settings.daily:
                 raise ValueError('启用本次实训合成需要开启每日实训。')

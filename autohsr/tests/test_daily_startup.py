@@ -102,6 +102,19 @@ def supply(*, revealed=False):
 
 
 class ColdStartEntryTests(TestCase):
+    def test_explicit_missing_config_rejects_daily_before_runner_or_launch(self):
+        with TemporaryDirectory() as tmp:
+            absent = Path(tmp) / 'absent config.json'
+            for mode, option in (('--run', ['--config', str(absent)]),
+                                 ('--plan', ['--config=' + str(absent)])):
+                with self.subTest(mode=mode), redirect_stderr(io.StringIO()) as errors, \
+                        patch('autohsr.app.Runner') as runner, patch('autohsr.app.launch_game') as launch:
+                    self.assertEqual(main([mode, *option]), 2)
+                    self.assertIn('明确指定的配置文件不存在', json.loads(errors.getvalue())['error'])
+                    runner.assert_not_called()
+                    launch.assert_not_called()
+            self.assertFalse(absent.exists())
+
     def invoke(self, frames, *, plan=False, rewards=False, cold=True, stop=None, battle=False):
         temporary = TemporaryDirectory(prefix='hsr-cold-')
         self.addCleanup(temporary.cleanup)
