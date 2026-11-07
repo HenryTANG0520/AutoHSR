@@ -188,7 +188,11 @@ def main():
                 ui.settings_shell.choose('game')
                 for page in ("logs", "settings"):
                     ui._show_page(page)
-                    assert ui.start_button.cget("text") == expected
+                    root.update()
+                    assert ui.action_page == "differential_universe"
+                    assert bool(ui.footer_start_button.winfo_ismapped()) == (page == "settings")
+                    if page == "settings":
+                        assert ui.start_button.cget("text") == expected
                     assert str(ui.reward_button.cget("state")) == "disabled"
                 interactions.append("records_and_settings_preserve_operation")
                 ui._show_page("home")
@@ -202,15 +206,9 @@ def main():
                 board.activate()
                 assert ui.summary.get() == summary
                 root.update()
-                assert ui.summary_dialog.winfo_exists()
-                from tkinter.scrolledtext import ScrolledText
-                def text_widgets(widget):
-                    for child in widget.winfo_children():
-                        if isinstance(child, ScrolledText):
-                            yield child
-                        yield from text_widgets(child)
-                assert any("完整的详细结果：battlepass" in text.get("1.0", "end") for text in text_widgets(ui.summary_dialog))
-                ui.summary_dialog.destroy()
+                assert ui.detail_view.winfo_ismapped()
+                assert "完整的详细结果：battlepass" in ui.detail_text.get("1.0", "end")
+                ui._leave_detail()
                 board.move(-9)
                 root.update()
                 assert board.selection() == ("assignments",) and "assignments" in board.hitboxes

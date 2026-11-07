@@ -128,7 +128,7 @@ def build_fields(ui, parent):
     advanced = ui.dungeon_advanced_fields = ttk.Frame(parent, style="Panel.TFrame")
     advanced.grid(row=5, column=0, sticky="ew", pady=(d(3), 0))
     advanced.columnconfigure(0, weight=1)
-    ttk.Separator(advanced).grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, d(9)))
+    ttk.Separator(advanced).grid(row=0, column=0, sticky="ew", pady=(0, d(9)))
     safety = ttk.Frame(advanced, style="Panel.TFrame")
     safety.grid(row=1, column=0, sticky="ew")
     ttk.Label(safety, text="开拓力上限", style="Muted.TLabel").pack(side="left")
@@ -144,7 +144,7 @@ def build_fields(ui, parent):
     ui.setting_controls.extend((budget, support, ui.dungeon_support_button))
     ui.stamina_controls.extend((budget, support, ui.dungeon_support_button))
     presets = ttk.Frame(advanced, style="Panel.TFrame")
-    presets.grid(row=1, column=1, sticky="e", padx=(d(10), 0))
+    presets.grid(row=2, column=0, sticky="w", pady=(d(6), 0))
     for label, command in (("设为 1 次", lambda: ui._preset(selected_category(ui).cost, 1)),
                            ("填满预算", lambda: use_budget(ui))):
         button = ttk.Button(presets, text=label, style="Compact.TButton", command=command)
@@ -152,7 +152,7 @@ def build_fields(ui, parent):
         ui.setting_controls.append(button)
         ui.stamina_controls.append(button)
     hint = ui.dungeon_hint_label = wrapped_label(advanced, textvariable=ui.battle_hint, style="Warning.TLabel")
-    hint.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(d(5), 0))
+    hint.grid(row=3, column=0, sticky="ew", pady=(d(5), 0))
     def show_hint(*_):
         hint.grid() if ui.battle_hint.get() else hint.grid_remove()
     hint_token = ui.battle_hint.trace_add("write", show_hint)

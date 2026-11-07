@@ -76,8 +76,8 @@ def main():
                         check(prefix+'_draft_edits_keep_original_scope', ui.table.records == rows and '上限 2 局' in ui.weekly_status.get())
                         ui.table.selected = 'daily'
                         ui.table.activate(); root.update()
-                        check(prefix+'_card_opens_original_detail_without_running', ui.summary_dialog.winfo_exists() and not ui.busy and not ui.worker)
-                        ui.summary_dialog.destroy(); root.update()
+                        check(prefix+'_card_opens_original_detail_without_running', ui.detail_view.winfo_ismapped() and not ui.busy and not ui.worker)
+                        ui._leave_detail(); root.update()
                         for state in ('zoomed', 'normal', 'zoomed', 'normal'):
                             root.state(state); root.update(); ui.responsive_layout.fit(); root.update()
                             check(prefix+'_'+state+'_layout_preserves_scope', ui.table.records == rows and ui.start_button.cget('text') == '继续周常')

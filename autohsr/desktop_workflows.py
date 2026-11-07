@@ -237,7 +237,9 @@ class _WorkflowPanel(_Panel):
         return not self._busy and not getattr(self.ui, "closing", False)
 
     def primary_action(self):
-        return "另存为", self.save_as, self.draft is not None and not self._busy
+        if self.draft is None:
+            return "新建草稿", self.new, not self._busy
+        return "另存为", self.save_as, not self._busy
 
     def focus_entry(self):
         if self._busy:
@@ -249,6 +251,7 @@ class _WorkflowPanel(_Panel):
         idle = not self._busy
         has_draft = self.draft is not None
         saved = self._source_file is not None
+        self.new_button.grid() if has_draft else self.new_button.grid_remove()
         _set_enabled(self.new_button, idle)
         _set_enabled(self.open_button, idle)
         _set_enabled(self.import_bundle_button, self._bundle_idle)

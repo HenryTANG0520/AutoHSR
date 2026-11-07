@@ -330,8 +330,8 @@ def main():
             for page_name in ('settings','logs','currency_wars'):
                 ui._show_page(page_name);pump(root)
                 primaries=[ui.footer_start_button,*[deck['hero'].primary for deck in ui.mode_decks.values()]]
-                check('one_primary_action_on_'+page_name,sum(bool(widget.winfo_ismapped()) for widget in primaries)==1
-                    and ui.start_button.winfo_ismapped())
+                expected = 0 if page_name == 'logs' else 1
+                check('primary_actions_on_'+page_name, sum(bool(widget.winfo_ismapped()) for widget in primaries) == expected)
             root.geometry('1100x800')
             for tab in ui.currency_sections:
                 select(tab);layout(root)

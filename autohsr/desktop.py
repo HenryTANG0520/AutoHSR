@@ -79,6 +79,7 @@ def build_window(ui, task_names, server_names, *, scale=None):
     build_currency(ui)
     _logs(ui)
     _settings(ui)
+    _details(ui)
     _footer(ui)
     ui._show_page("home")
 
@@ -194,6 +195,21 @@ def _logs(ui):
 def _settings(ui):
     from .desktop_settings import build_settings
     build_settings(ui)
+
+
+def _details(ui):
+    d = lambda n: round(n * ui.ui_scale)
+    view = ui.detail_view = ttk.Frame(ui.guide.content, style="Card.TFrame", padding=d(16))
+    view.columnconfigure(0, weight=1)
+    view.rowconfigure(1, weight=1)
+    ui.detail_title = ttk.Label(view, style="CardTitle.TLabel")
+    ui.detail_title.grid(row=0, column=0, sticky="w")
+    ui.detail_back = ttk.Button(view, text="返回", command=ui._leave_detail)
+    ui.detail_back.grid(row=0, column=1, sticky="e")
+    ui.detail_text = ui._text(view)
+    ui.detail_text.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(d(10), 0))
+    view.grid(row=0, column=0, sticky="nsew")
+    view.grid_remove()
 
 
 def _footer(ui):

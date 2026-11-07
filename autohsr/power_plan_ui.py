@@ -326,21 +326,15 @@ class PowerPlanEditor(ttk.Frame):
         ui._form_changed()
 
     def dialog(self, value, accept, *, echo=False, fallback=False, return_focus=None, title=None, confirm_text=None, focus_count=False):
-        from .desktop_dialogs import DetailClose,DetailSurface,FRAME,FOOTER_HEIGHT,PAPER,TRANSPARENT,place_dialog
-        ui=self.ui; window=ui.power_dialog=tk.Toplevel(ui.root); window.withdraw();window.transient(ui.root)
-        title=title or ('历战优先' if echo else '补刷副本' if fallback else '编辑副本' if value else '添加副本');window.title(title)
+        from .book_editor import BookEditor
+        ui=self.ui
+        if ui.book_editor is not None:
+            return
+        title=title or ('历战优先' if echo else '补刷副本' if fallback else '编辑副本' if value else '添加副本')
+        window=BookEditor(ui,title,origin=return_focus or theme.focus_widget(ui.root) or self.table)
         d=lambda n:round(n*ui.ui_scale)
-        window._hsr_scale=ui.ui_scale;window.overrideredirect(True);window.configure(bg=TRANSPARENT)
-        import sys
-        if sys.platform=='win32':window.wm_attributes('-transparentcolor',TRANSPARENT)
-        plate=DetailSurface(window,ui.ui_scale,title);plate.place(x=0,y=0,relwidth=1,relheight=1)
-        window.tk.call('lower',str(plate))
-        ui.style.configure('Power.Dialog.TFrame',background=PAPER)
-        ui.style.configure('Power.Dialog.TLabel',background=PAPER,font=theme.native_font(window,12),foreground=theme.TEXT)
-        frame=ttk.Frame(window,padding=(0,d(12)),style='Power.Dialog.TFrame')
-        window.columnconfigure(0,weight=1);window.rowconfigure(0,minsize=d(82));window.rowconfigure(1,weight=1)
-        window.rowconfigure(2,minsize=d(FOOTER_HEIGHT+FRAME))
-        frame.grid(row=1,column=0,sticky='nsew',padx=(d(43),d(35)),pady=(d(8),d(12)))
+        ui.style.configure('Power.Dialog.TLabel',background=theme.CARD,font=theme.native_font(window,12),foreground=theme.TEXT)
+        frame=window.body
         frame.columnconfigure(1,weight=1)
         category=tk.StringVar(value=BY_KEY[value['category']].label if value else CATEGORIES[0].label)
         target=tk.StringVar(value=value['target'] if value else '')
@@ -372,15 +366,8 @@ class PowerPlanEditor(ttk.Frame):
                 except SettingsError:count_caption.set('最多次数')
         fields[0].bind('<<ComboboxSelected>>',targets);fields[1].bind('<<ComboboxSelected>>',locations);targets()
         error=tk.StringVar();theme.wrapped_label(frame,textvariable=error,style='Power.Dialog.TLabel').grid(row=4,column=0,columnspan=2,sticky='ew')
-        def close():
-            focused=theme.focus_widget(ui.root)
-            owned_focus=focused is not None and focused.winfo_toplevel() is window
-            ui.power_dialog=None;window.destroy()
-            origin=return_focus or self.table
-            if origin.winfo_exists() and origin.winfo_ismapped():
-                (origin.focus_force if owned_focus else origin.focus_set)()
-            return 'break'
         def apply():
+            if ui.busy:return
             try:
                 maximum=9999
                 if fallback:
@@ -398,26 +385,12 @@ class PowerPlanEditor(ttk.Frame):
                     raise ValueError('请从目录选择副本及明确地点。')
                 accept(item,day.get()) if echo else accept(item)
             except (ValueError,TypeError) as exc:error.set(str(exc));return
-            close()
-        cancel=DetailClose(window,ui.ui_scale,close,text='取消')
-        confirm=DetailClose(window,ui.ui_scale,apply,text=confirm_text or ('加入计划' if value is None else '应用'),symbol='confirm')
+            window.close()
         if focus_count:
             def confirm_count(_):
                 apply()
                 return 'break'
             fields[3].bind('<Return>',confirm_count)
-        def layout(event):
-            if event.widget is not window:return
-            available=event.width-d(98);width=min(d(288),available//2)
-            center=(event.width+d(FRAME))/2;y=event.height-d(FRAME+FOOTER_HEIGHT/2)
-            cancel.place(x=center-d(8)-width,y=y,width=width,height=d(46.4),anchor='w')
-            confirm.place(x=center+d(8),y=y,width=width,height=d(46.4),anchor='w')
-        window.bind('<Configure>',layout,add='+')
-        window.protocol('WM_DELETE_WINDOW',close);window.bind('<Escape>',lambda _:close())
-        window.update_idletasks()
-        height=frame.winfo_reqheight()+d(82+FOOTER_HEIGHT+FRAME+20)
-        place_dialog(window,ui.root,(d(774.4),height),(d(460),d(300)),padding=d(12))
-        window.deiconify();window.wait_visibility();window.grab_set()
         initial=fields[3] if focus_count else fields[1]
-        initial.focus_force()
+        window.open(initial,apply,confirm_text or ('加入计划' if value is None else '应用'))
         if focus_count:initial.selection_range(0,'end')

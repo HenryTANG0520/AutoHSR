@@ -119,10 +119,9 @@ def main():
                 ui._finish(dict(operation="daily", status="success", report_saved=True, results=[]))
                 ui.du_record_button.invoke()
                 root.update()
-                detail = next(w for frame in ui.summary_dialog.winfo_children() for w in frame.winfo_children()
-                              if w.winfo_class() == "Text")
+                detail = ui.detail_text
                 check(f"{scale}_detail_keeps_own_run", "raw-report-evidence" in detail.get("1.0", "end"))
-                ui.summary_dialog.destroy()
+                ui._leave_detail()
                 check(f"{scale}_config_unchanged", config.read_bytes() == original)
             finally:
                 ui.closing = True

@@ -420,6 +420,8 @@ def apply_theme(root, scale):
     root.option_add("*TCombobox*Listbox.selectForeground",TEXT)
     for name,fill,ink,tab,option,background in (
         ("TButton",CARD,TEXT,False,False,CARD),("Panel.TButton",CARD,TEXT,False,False,PANEL),
+        ("RailShortcut.TButton",CARD,TEXT,False,False,RAIL),
+        ("CardConfirm.TButton","#e8dfca",TEXT,False,False,CARD),
         ("Compact.TButton",CARD,TEXT,False,False,CARD),("Accent.TButton",CARD,TEXT,False,False,BG),
         ("Settings.TButton",CARD,TEXT,False,False,SETTING_VALUE),
         ("Poster.TButton",CARD,TEXT,False,False,PANEL),
@@ -429,7 +431,7 @@ def apply_theme(root, scale):
         ("Selected.Option.TButton",RAIL,GOLD,False,True,PANEL)):
         _button(root,style,scale,name,fill,ink,tab=tab,option=option,background=background)
     style.configure("Nav.TButton",padding=(d(14),d(1)),font=native_font(root, 14))
-    style.configure("Selected.Nav.TButton",padding=(d(19),d(1)),font=native_font(root, 14))
+    style.configure("Selected.Nav.TButton",padding=(d(14),d(1)),font=native_font(root, 14))
     style.configure("Option.TButton",anchor="w",padding=(d(22),d(17)),font=native_font(root, 13))
     style.configure("Selected.Option.TButton",anchor="w",padding=(d(22),d(17)),font=native_font(root, 13))
     style.configure("Compact.TButton",padding=(d(6),d(4)))

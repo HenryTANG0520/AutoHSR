@@ -54,10 +54,9 @@ def main():
                     root.geometry("%dx%d" % size)
                     root.update()
                     setting = ui.nav_buttons["settings"]
-                    check(prefix+size_name+"_settings_is_named_and_separate", setting.cget("text") == "设置"
-                          and setting.master is ui.guide and str(setting.cget("compound")) == "left"
-                          and contained(setting)
-                          and setting.winfo_rootx() >= ui.guide.tabs.winfo_rootx()+ui.guide.tabs.winfo_width()+round(48*scale))
+                    check(prefix+size_name+"_settings_is_named_and_in_guide_tabs", setting.cget("text") == "设置"
+                          and setting.master is ui.guide.tabs and str(setting.cget("compound")) == "none"
+                          and contained(setting) and setting.cget("image"))
                     text = drawn_text(ui.table)
                     check(prefix+size_name+"_cards_show_names_target_and_cost", all(x in text for x in
                           ("持续委托", "日常副本", "每日实训", ui.target_name.get(), ui.target_location.get(), "开拓力"))
@@ -117,9 +116,9 @@ def main():
                 ui._show_page("home")
                 ui.table.item("mail",values=("邮件附件","未执行","窗口未能核实。"),has_result=True)
                 click_card(root,ui.table,"mail")
-                dialog = ui.summary_dialog
+                dialog = ui.detail_view
                 check(prefix+"finished_card_opens_its_result_without_changing_plan", not ui.tasks["mail"].get()
-                      and dialog.title() == "邮件附件" and content_widget(dialog).get("1.0","end-1c") == "未执行\n窗口未能核实。")
+                      and ui.detail_title.cget("text") == "邮件附件" and content_widget(dialog).get("1.0","end-1c") == "未执行\n窗口未能核实。")
                 close_button(dialog).invoke()
                 root.update()
                 check(prefix+"configuration_is_not_implicitly_saved", config.read_bytes() == original)

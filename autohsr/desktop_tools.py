@@ -13,8 +13,7 @@ class ToolsShelf(ttk.Frame):
         super().__init__(parent)
         self.ui = ui
         self.columnconfigure(0, weight=1)
-        nav = ttk.Frame(self)
-        nav.grid(row=0, column=0, sticky='ew', pady=(0, round(10 * ui.ui_scale)))
+        nav = self.nav = ui.settings_shell.tools_nav
         self.panels = {}
         self.buttons = {}
         self.selected = None
@@ -34,7 +33,7 @@ class ToolsShelf(ttk.Frame):
             self.buttons[key].bind('<Right>', lambda _, index=index: self._move(index + 1))
             panel = build(self, ui)
             panel.bind('<Configure>', ui.settings_shell.queue_layout, add='+')
-            panel.grid(row=1, column=0, sticky='new')
+            panel.grid(row=0, column=0, sticky='new')
             panel.grid_remove()
             self.panels[key] = panel
             setattr(ui, key + '_panel', panel)

@@ -94,6 +94,9 @@ class AutoHSRWindow:
         self._f9_local_pressed = False
         self._selected_tool = 'warp'
         self.daily_section = None
+        self.book_editor = None
+        self.detail_content = None
+        self.detail_return_focus = None
         self.stop_requested = threading.Event()
         from .desktop_jobs import NativeRunSlot
         self._native_run = NativeRunSlot(self.events, self.stop_requested)
@@ -142,6 +145,8 @@ class AutoHSRWindow:
         root.bind_all("<FocusOut>", lambda _: setattr(self, "_f9_local_pressed", False), add="+")
         root.bind_all("<F10>", lambda _: self._stop())
         root.bind("<Escape>", self._page_escape, add="+")
+        root.bind("<Tab>", self._editor_tab, add="+")
+        root.bind("<Shift-Tab>", lambda event: self._editor_tab(event, backward=True), add="+")
         self._drain_job = root.after(100, self._drain)
         root.bind('<Destroy>', self._cancel_drain, add='+')
         self._log("准备就绪。")
@@ -254,7 +259,11 @@ class AutoHSRWindow:
         build_window(self, TASK_NAMES, {}, scale=scale)
 
     def _show_page(self, name):
+        if self.book_editor is not None:
+            return
         from .desktop import PAGE_TITLES
+        self.detail_content = self.detail_return_focus = None
+        self.detail_view.grid_remove()
         self.save_label.pack_forget()
         if name == "settings" and getattr(self, "active_page", "home") != "settings":
             self.settings_return_page = getattr(self, "active_page", "home")
@@ -282,7 +291,7 @@ class AutoHSRWindow:
     def _focus_settings_entry(self):
         """Move focus out of hidden pages without overriding an explicit target."""
         self.input_focus.cancel_if_obsolete()
-        if self.active_page != "settings":
+        if self.active_page != "settings" or self.detail_content is not None or self.book_editor is not None:
             return
         if self.input_focus.owns_current_page():
             return
@@ -315,6 +324,12 @@ class AutoHSRWindow:
         target.focus_set()
 
     def _configure_primary_action(self):
+        if self.detail_content is not None or self.book_editor is not None or self.active_page == 'logs':
+            self.start_button = self.footer_start_button
+            self.start_button.pack_forget()
+            self.start_button.configure(state='disabled')
+            self.header.position_plan()
+            return
         if self.daily_section is not None or self._in_tools():
             if self.daily_section is not None:
                 label, command, enabled = self.daily_panel.primary_label, self.daily_panel.invoke_primary, True
@@ -357,6 +372,10 @@ class AutoHSRWindow:
     _workflow_action_changed = _tool_action_changed
 
     def _show_daily_panel(self, section, *, focus=True):
+        if self.book_editor is not None:
+            return
+        if self.detail_content is not None:
+            self._leave_detail(restore_focus=False)
         page = 'home' if section in HOME_TITLES else 'tasks'
         if self.active_page != page:
             self._show_page(page)
@@ -460,10 +479,19 @@ class AutoHSRWindow:
         else:
             self.nav_buttons[target].focus_set()
 
+    def _editor_tab(self, event, *, backward=False):
+        if self.book_editor is not None and event.widget.winfo_toplevel() is self.root:
+            return self.book_editor.traverse(event, backward=backward)
+
     def _page_escape(self, event):
         # Tcl-created combobox popdowns and separate dialogs own their Escape.
         if not isinstance(event.widget, tk.Misc) or event.widget.winfo_toplevel() is not self.root:
             return
+        if self.book_editor is not None:
+            return self.book_editor.close()
+        if self.detail_content is not None:
+            self._leave_detail()
+            return 'break'
         if self.daily_section is not None:
             self._leave_daily_panel()
             return 'break'
@@ -716,7 +744,7 @@ class AutoHSRWindow:
             else:
                 button.pack_forget()
         independent_page = currency_page or getattr(self, "action_page", "") == "differential_universe"
-        if self.daily_section is not None or self._in_tools():
+        if self.detail_content is not None or self.book_editor is not None or self.active_page == 'logs' or self.daily_section is not None or self._in_tools():
             self._configure_primary_action()
         else:
             if getattr(self, "action_page", "") == "differential_universe":
@@ -725,7 +753,7 @@ class AutoHSRWindow:
                          or any(v.get() for v in self.tasks.values()))
             self.start_button.configure(state="normal" if not self.busy and can_start else "disabled")
         self.reward_button.configure(state="normal" if not self.busy and not independent_page else "disabled")
-        daily_page = self.daily_section is None and self.active_page in ("home", "tasks")
+        daily_page = self.detail_content is None and self.book_editor is None and self.daily_section is None and self.active_page in ("home", "tasks")
         if daily_page and not self.busy:
             self.reward_button.pack(side="left", padx=(0, round(8*self.ui_scale)))
         else:
@@ -1847,39 +1875,35 @@ class AutoHSRWindow:
 
     def _show_summary(self, content=None, *, title="运行详情", return_focus=None) -> None:
         content = self.summary.get() if content is None else content
-        if not content:
+        if not content or self.book_editor is not None:
             return
-        previous = getattr(self, "summary_dialog", None)
-        had_focus = theme.focus_widget(self.root) is not None
-        origin = return_focus or theme.focus_widget(self.root)
-        if previous is not None and previous.winfo_exists():
-            if origin is not None and origin.winfo_toplevel() is previous:
-                origin = previous.return_focus
-            previous.destroy()
-        dialog = self.summary_dialog = tk.Toplevel(self.root)
-        dialog.withdraw()
-        dialog.return_focus = origin
-        dialog.title(title)
-        dialog.transient(self.root)
-        text = self._text(dialog)
-        self._replace_text(text, content)
-        def dismiss(_=None):
-            focused = theme.focus_widget(self.root)
-            owned_focus = focused is not None and focused.winfo_toplevel() is dialog
-            dialog.destroy()
-            if not self.closing and origin is not None and origin.winfo_exists() and origin.winfo_ismapped():
-                # A borderless owned window has no OS titlebar to reactivate its
-                # owner. Only transfer foreground focus when it was ours.
-                origin.focus_force() if owned_focus else origin.focus_set()
-            return "break"
-        from .desktop_dialogs import DetailClose, arrange_details
-        close = DetailClose(dialog, self.ui_scale, dismiss)
-        dialog.protocol("WM_DELETE_WINDOW", dismiss)
-        dialog.bind("<Escape>", dismiss)
-        dialog.bind("<Alt-F4>", dismiss)
-        arrange_details(dialog, self.root, text, close, title, content, self.ui_scale)
-        dialog.deiconify()
-        text.focus_force() if had_focus else text.focus_set()
+        if self.detail_content is None:
+            self.detail_return_focus = return_focus or theme.focus_widget(self.root)
+        self.detail_content = title, content
+        self.detail_title.configure(text=title)
+        if self.detail_text.get("1.0", "end-1c") != content:
+            self._replace_text(self.detail_text, content)
+        source = self.daily_view if self.daily_section is not None else self.pages[self.active_page]
+        source.grid_remove()
+        self.detail_view.grid()
+        self._refresh_controls()
+        self.detail_text.focus_set()
+
+    def _leave_detail(self, *, restore_focus=True):
+        if self.detail_content is None:
+            return
+        focus = self.detail_return_focus
+        self.detail_content = self.detail_return_focus = None
+        self.detail_view.grid_remove()
+        source = self.daily_view if self.daily_section is not None else self.pages[self.active_page]
+        source.grid()
+        self._configure_primary_action()
+        self._refresh_controls()
+        if restore_focus:
+            self.root.update_idletasks()
+            if focus is None or not focus.winfo_exists() or not focus.winfo_ismapped():
+                focus = self.nav_buttons[self.active_page]
+            focus.focus_set()
 
     def _restore(self) -> None:
         if not self.closing:
@@ -2086,21 +2110,11 @@ class AutoHSRWindow:
             messagebox.showerror("无法打开", str(exc), parent=self.root)
 
     def _show_inspection(self) -> None:
-        if self.busy and not self.paused:
+        if self.book_editor is not None or (self.busy and not self.paused):
             return
-        details = tk.Toplevel(self.root)
-        details.title("AutoHSR · 窗口识别详情")
-        details.geometry("760x520")
-        details.minsize(580, 360)
-        details.configure(bg=self.BG)
-        details.transient(self.root)
-        frame = ttk.Frame(details, style="Panel.TFrame", padding=14)
-        frame.pack(fill="both", expand=True, padx=14, pady=14)
-        ttk.Label(frame, text="窗口识别详情", style="Section.TLabel").pack(anchor="w", pady=(0, 10))
-        text = self._text(frame)
-        text.pack(fill="both", expand=True)
-        self._replace_text(text, self.inspection_text.get("1.0", "end-1c"))
-        ttk.Button(frame, text="关闭", command=details.destroy).pack(anchor="e", pady=(10, 0))
+        self._show_page("logs")
+        self.output_tabs.select(self.inspection_text.frame.master)
+        self.inspection_text.focus_set()
 
     def _drain(self) -> None:
         self._drain_job = None
@@ -2228,13 +2242,8 @@ class AutoHSRWindow:
     def _close(self) -> None:
         if self.closing:
             return
-        support_dialog = getattr(self, 'support_dialog', None)
-        if support_dialog is not None and support_dialog.winfo_exists():
-            support_dialog.lift()
-            return
-        dialog = getattr(self, 'power_dialog', None)
-        if dialog is not None and dialog.winfo_exists():
-            dialog.lift()
+        if self.book_editor is not None:
+            self.book_editor.initial.focus_set()
             return
         if not self.busy and self.dirty:
             from .desktop_dialogs import ask_save_changes

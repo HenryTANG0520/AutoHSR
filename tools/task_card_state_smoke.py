@@ -117,10 +117,10 @@ def main():
                         x1,y1,x2,y2 = board.hitboxes[key]
                         board.event_generate("<Button-1>", x=round((x1+x2)/2*ui.ui_scale), y=round((y1+y2)/2*ui.ui_scale))
                         root.update()
-                        dialog = getattr(ui,"summary_dialog",None)
-                        check(prefix+key+"_one_click_opens_this_result", dialog is not None and dialog.winfo_exists()
-                              and dialog.title() == board.names[key] and ui.active_page == active_page)
-                        text = next(w for frame in dialog.winfo_children() for w in frame.winfo_children() if w.winfo_class() == "Text")
+                        dialog = ui.detail_view
+                        check(prefix+key+"_one_click_opens_this_result", dialog.winfo_ismapped()
+                              and ui.detail_title.cget("text") == board.names[key] and ui.active_page == active_page)
+                        text = ui.detail_text
                         check(prefix+key+"_reason_and_overall_outcome_are_preserved", "未执行" in text.get("1.0","end")
                               and (outcome != "stopped" or "计划已停止" in text.get("1.0","end"))
                               and (outcome != "failed" or all(value in text.get("1.0","end") for value in ("窗口未能核实", "10 开拓力待核对")))
@@ -128,8 +128,8 @@ def main():
                               and text.get("1.0","end").count("未执行") == 1
                               and ui.summary.get() == summary and len(starts) == before+1)
                         if scale == 1.25 and key == "battle":
-                            ImageGrab.grab(window=dialog.winfo_id()).save(OUT/(outcome+"-detail.png"))
-                        dialog.destroy()
+                            ImageGrab.grab(window=root.winfo_id()).save(OUT/(outcome+"-detail.png"))
+                        ui._leave_detail()
                     ui._task(dict(task="mail",status="skipped",detail="前一步页面未核实，未继续发送输入。"), log=False)
                     check(prefix+"actual_skip_remains_an_execution_result", ui.table.item("mail","values")[1] == "跳过"
                           and ui.table.action_label("mail") == "查看结果")

@@ -35,7 +35,7 @@ def main():
                         check_layout(root)
                         check(f'{scale}_{size}_support_entry_visible',ui.support_config_button.winfo_ismapped() and ui.support_toggle.winfo_ismapped())
                     ui.support_config_button.invoke();root.update();editor=ui.support_editor
-                    check_layout(root);check_layout(editor.window)
+                    check_layout(root);check_layout(root)
                     check(f'{scale}_dialog_grab_and_chinese_roles',editor.window.grab_current() is editor.window and '黄泉' in editor.labels and len(editor.labels)==105)
                     check(f'{scale}_unselected_actions_are_disabled',all(editor.buttons[name].instate(('disabled',)) for name in ('更新选中','移除','上移','下移')))
                     check(f'{scale}_empty_list_explains_automatic_choice',editor.empty.winfo_ismapped() and editor.empty.cget('text')=='自动选择好友')
@@ -43,7 +43,7 @@ def main():
                     check(f'{scale}_role_search_filters_names',tuple(editor.role.cget('values'))==('黄泉',))
                     check(f'{scale}_typed_candidate_hides_automatic_placeholder',not editor.empty.winfo_ismapped())
                     editor.character.set('黄泉');editor.friend.set('示例好友甲');editor.apply();root.update()
-                    check(f'{scale}_one_apply_adds_unsubmitted_role',ui.support_dialog is None and values(ui)['support_preferences']==[dict(character='Acheron',friend='示例好友甲')])
+                    check(f'{scale}_one_apply_adds_unsubmitted_role',ui.book_editor is None and values(ui)['support_preferences']==[dict(character='Acheron',friend='示例好友甲')])
                     check(f'{scale}_apply_keeps_task_switches_and_file',ui.use_support.get() and config.read_bytes()==original_config)
                     ui.use_support.set(False);show(ui);root.update();editor=ui.support_editor
                     editor.character.set('符玄');editor.friend.set('');editor.add();root.update()
@@ -54,13 +54,13 @@ def main():
                     editor.character.set('黄泉');editor.friend.set('示例好友甲');editor.add();root.update()
                     check(f'{scale}_duplicate_rejected',len(editor.rows)==2 and '重复' in editor.error.get())
                     editor.selected();editor.pages.set('21');editor.apply();root.update()
-                    check_layout(editor.window)
-                    check(f'{scale}_page_limit_keeps_dialog',ui.support_dialog is editor.window and '1～20' in editor.error.get())
+                    check_layout(root)
+                    check(f'{scale}_page_limit_keeps_dialog',ui.book_editor is editor.window and '1～20' in editor.error.get())
                     editor.pages.set('3');editor.fallback.set('另借其他好友');editor.selected();editor.apply();root.update()
                     check(f'{scale}_apply_keeps_support_off',not ui.use_support.get() and values(ui)['support_scroll_pages']==3 and values(ui)['support_fallback']=='friend')
                     draft=ui.support_rows.get();show(ui);root.update();editor=ui.support_editor
                     editor.character.set('不存在的角色');editor.apply();root.update()
-                    check(f'{scale}_unknown_role_cannot_apply',ui.support_dialog is editor.window and ui.support_rows.get()==draft)
+                    check(f'{scale}_unknown_role_cannot_apply',ui.book_editor is editor.window and ui.support_rows.get()==draft)
                     editor.close();root.update();check(f'{scale}_cancel_keeps_draft',ui.support_rows.get()==draft)
                     show(ui);root.update();editor=ui.support_editor
                     editor.friend.set('  示例好友乙  ');editor.add();root.update()
@@ -69,7 +69,7 @@ def main():
                     check(f'{scale}_long_nickname_is_rejected',len(editor.rows)==3 and '40' in editor.error.get())
                     while editor.rows:editor.table.selection_set('0');editor.remove();root.update()
                     editor.apply();root.update()
-                    check(f'{scale}_empty_candidates_cannot_use_fallback',ui.support_dialog is editor.window and '未指定候选' in editor.error.get())
+                    check(f'{scale}_empty_candidates_cannot_use_fallback',ui.book_editor is editor.window and '未指定候选' in editor.error.get())
                     editor.close();root.update()
                     ui.use_support.set(True);frozen=ui._read_settings(operation='plan')
                     check(f'{scale}_daily_snapshot_uses_preferences',frozen.support_preferences==values(ui)['support_preferences'] and frozen.support_fallback=='friend')
@@ -84,7 +84,7 @@ def main():
                     show(ui);root.update();editor=ui.support_editor
                     check(f'{scale}_invalid_original_is_repairable',not editor.rows and '原候选格式无效' in editor.error.get())
                     editor.character.set('符玄');editor.pages.set('2');editor.apply();root.update()
-                    check(f'{scale}_repair_requires_apply',ui.support_dialog is None and values(ui)['support_preferences']==[dict(character='FuXuan',friend='')])
+                    check(f'{scale}_repair_requires_apply',ui.book_editor is None and values(ui)['support_preferences']==[dict(character='FuXuan',friend='')])
                     parents=[]
                     def child_factory(settings,emit,**options):
                         calls.append(copy.deepcopy(settings));directory=local/'runs'/f'child-{len(calls)}';directory.mkdir(parents=True)
@@ -104,11 +104,11 @@ def main():
                     ui.use_support.set(False)
                     ui._save_settings();root.update();saved=Settings.load(config)
                     check(f'{scale}_explicit_save_persists',saved.support_preferences==[dict(character='FuXuan',friend='')] and saved.support_scroll_pages==2 and saved.support_fallback=='friend' and not saved.use_support and not ui.dirty)
-                    ui.busy=True;show(ui);check(f'{scale}_busy_refuses_editor',ui.support_dialog is None);ui.busy=False
+                    ui.busy=True;show(ui);check(f'{scale}_busy_refuses_editor',ui.book_editor is None);ui.busy=False
                     check(f'{scale}_no_callback_errors',not errors)
                 finally:
                     ui.closing=True
-                    if getattr(ui,'support_dialog',None) is not None:ui.support_dialog.destroy()
+                    if ui.book_editor is not None:ui.book_editor.destroy()
                     for token in root.tk.splitlist(root.tk.call('after','info')):
                         if str(root.tk.call('after','info',token)[0]).endswith('_drain'):root.after_cancel(token)
                     root.destroy()

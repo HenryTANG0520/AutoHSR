@@ -133,7 +133,7 @@ def main():
                 root.update()
                 check(prefix+"logs_return_keeps_previous_operation_and_log_focus", ui.active_page == "logs"
                       and ui.action_page == "currency_wars" and root.focus_get() is ui.log
-                      and ui.start_button.cget("text") == "只读识别当前画面")
+                      and not ui.footer_start_button.winfo_ismapped())
 
                 for section in ("daily", "weekly"):
                     ui._show_page("currency_wars")

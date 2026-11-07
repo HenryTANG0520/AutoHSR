@@ -60,10 +60,10 @@ def main():
                 ui._finish(dict(operation="daily", status="success", daily_verified=True, report_saved=True, results=[]))
                 ui.currency_record_button.invoke()
                 root.update()
-                text = next(w for frame in ui.summary_dialog.winfo_children() for w in frame.winfo_children() if w.winfo_class() == "Text")
+                text = ui.detail_text
                 check(f"{scale}_raw_record_is_immutable_and_keeps_its_own_operation", "own-currency-report" in text.get("1.0", "end")
                       and "mutated-outside-ui" not in text.get("1.0", "end") and "unit_verifying" in text.get("1.0", "end"))
-                ui.summary_dialog.destroy()
+                ui._leave_detail()
                 ui._finish(dict(operation="currency_wars", status="failed", report_saved=False,
                     error="报告未写入磁盘", safe_next="检查运行目录后重试识别。"))
                 root.update()

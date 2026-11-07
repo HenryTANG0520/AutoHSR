@@ -164,6 +164,8 @@ class ResponsiveLayout:
         paths = {widget: path for path, widget in previous.items()}
         focus = paths.get(focus_widget(root))
         return_focus = paths.get(getattr(ui, "settings_return_focus", None))
+        detail = ui.detail_content
+        detail_return = paths.get(ui.detail_return_focus)
         settings_scroll = ui.settings_shell.canvas.yview()[0]
         tool_drafts = {name: getattr(ui, name).snapshot_draft()
                        for name in ('workflow_panel', 'schedule_panel', 'daily_panel')
@@ -240,6 +242,9 @@ class ResponsiveLayout:
                 ui._show_save_feedback()
             for path, index in notebooks.items():
                 current[path].select(index)
+            if detail is not None:
+                title, content = detail
+                ui._show_summary(content, title=title, return_focus=current.get(detail_return))
             for path, (value, _, tags) in texts.items():
                 widget = current[path]
                 if widget.get('1.0', 'end-1c') != value:
@@ -283,6 +288,9 @@ class ResponsiveLayout:
                 root._hsr_images.clear()
             self._restore_view(old_view)
             self._restore_navigation(navigation)
+            if detail is not None:
+                title, content = detail
+                ui._show_summary(content, title=title, return_focus=previous.get(detail_return))
             for widget in previous.values():
                 if isinstance(widget, (Surface, SceneButton)):
                     widget._suspended = False

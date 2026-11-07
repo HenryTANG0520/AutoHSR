@@ -87,9 +87,9 @@ def main():
                     root.update()
                 ui.summary_label.activate()
                 root.update()
-                details = next(w for frame in ui.summary_dialog.winfo_children() for w in frame.winfo_children() if w.winfo_class() == "Text")
+                details = ui.detail_text
                 check(prefix+"full_cost_and_recovery_are_still_one_click_away", "下一步" in details.get("1.0", "end") and "40" in details.get("1.0", "end"))
-                ui.summary_dialog.destroy()
+                ui._leave_detail()
                 ui._set_busy(True, running=True)
                 ui.current_task.set("周常 · 差分宇宙 · 已完成 0/2 局")
                 root.update()

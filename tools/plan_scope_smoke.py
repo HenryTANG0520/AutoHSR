@@ -90,15 +90,11 @@ def main():
                             ImageGrab.grab(window=root.winfo_id()).save(OUT/'not-due.png')
                         ui._show_summary()
                         root.update()
-                        text = ui.summary_detail_text.get('1.0','end-1c') if hasattr(ui,'summary_detail_text') else None
-                        dialog = ui.summary_dialog
-                        if text is None:
-                            text = next(w for f in dialog.winfo_children() for w in f.winfo_children()
-                                        if w.winfo_class()=='Text').get('1.0','end-1c')
+                        text = ui.detail_text.get('1.0','end-1c')
                         check(prefix+'one_click_details_keep_schedule', '2026-10-29 11:00' in text and '周常未到期' in text)
                         if scale == 1.25:
-                            ImageGrab.grab(window=dialog.winfo_id()).save(OUT/'not-due-detail.png')
-                        root.tk.call(dialog.protocol('WM_DELETE_WINDOW'))
+                            ImageGrab.grab(window=root.winfo_id()).save(OUT/'not-due-detail.png')
+                        ui._leave_detail()
                         root.update()
                         now = datetime(2026,10,29,11,0,tzinfo=weekly_plan.CHINA)
                         pump(root, lambda: '到期，运行时核对' in ui.weekly_status.get())

@@ -10,7 +10,6 @@ from unittest.mock import call, patch
 from PIL import ImageGrab
 from ux_smoke import ROOT, Settings, Window, module
 from autohsr.config import SettingsError
-from autohsr.desktop_dialogs import DetailClose
 
 OUT = ROOT/"runs/input-focus-ui"
 
@@ -128,9 +127,8 @@ def main():
                 ui._input_failed(SettingsError("battle_timeout", "战斗超时应为60～3600。"))
                 ui._show_summary("保留当前输入后继续修改。", title="提示")
                 root.update()
-                dialog = ui.summary_dialog
-                check(prefix+"detail_keeps_keyboard_ownership", root.focus_get().winfo_toplevel() is dialog)
-                next(w for w in dialog.winfo_children() if isinstance(w, DetailClose)).invoke()
+                check(prefix+"detail_keeps_keyboard_ownership", root.focus_get() is ui.detail_text)
+                ui.detail_back.invoke()
                 root.update()
                 ui._input_failed(SettingsError("battle_timeout", "战斗超时应为60～3600。"))
                 ui._set_busy(True)

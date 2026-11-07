@@ -33,7 +33,7 @@ class SettingsShell(ttk.Frame):
         self.columnconfigure(0, weight=1)
         # A pending scale change can briefly leave less space than the menu
         # needs. Keep the viewport mapped so an open dropdown retains its grab.
-        self.rowconfigure(2, weight=1, minsize=1)
+        self.rowconfigure(3, weight=1, minsize=1)
         menu = ttk.Frame(self)
         menu.grid(row=0, column=0, sticky="ew", pady=(0, d(8)))
         self.buttons = {}
@@ -50,8 +50,12 @@ class SettingsShell(ttk.Frame):
         self.heading = ttk.Label(self, style="Settings.Heading.TLabel")
         self.heading.grid(row=1, column=0, sticky="ew", pady=(0, d(6)))
 
+        self.tools_nav = ttk.Frame(self)
+        self.tools_nav.grid(row=2, column=0, sticky="ew", pady=(0, d(10)))
+        self.tools_nav.grid_remove()
+
         viewport = ttk.Frame(self)
-        viewport.grid(row=2, column=0, sticky="nsew")
+        viewport.grid(row=3, column=0, sticky="nsew")
         viewport.columnconfigure(0, weight=1)
         viewport.columnconfigure(1, minsize=d(14))
         viewport.rowconfigure(0, weight=1, minsize=1)
@@ -61,7 +65,7 @@ class SettingsShell(ttk.Frame):
         self.scrollbar = ttk.Scrollbar(viewport, orient="vertical", command=self.canvas.yview)
         self.scrollbar.grid(row=0, column=1, sticky="ns")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
-        self.content = ttk.Notebook(self.canvas, style="Settings.TNotebook")
+        self.content = ttk.Notebook(self.canvas, style="Settings.TNotebook", takefocus=False)
         self.form_window = self.canvas.create_window(0, 0, window=self.content, anchor="nw")
         self.canvas.bind("<Configure>", self.queue_layout, add="+")
         self.bind("<Map>", self.queue_layout, add="+")
@@ -83,6 +87,9 @@ class SettingsShell(ttk.Frame):
         if self.section != key:
             self.canvas.yview_moveto(0)
         self.section = key
+        tools = getattr(self.ui, 'tools_shelf', None)
+        if tools is not None and tools.nav.master is self:
+            tools.nav.grid() if key == 'tools' else tools.nav.grid_remove()
         self.heading.configure(text=next(group for name, _, group in SECTIONS if name == key))
         for name, button in self.buttons.items():
             button.configure(style="Settings.Selected.Nav.TButton" if name == key else "Settings.Nav.TButton")

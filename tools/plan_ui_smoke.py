@@ -159,8 +159,8 @@ def main():
                 ui.table.selected = "battle"
                 ui.table.activate()
                 root.update()
-                check("task_details_do_not_replace_overall_outcome", ui.summary_dialog.winfo_exists() and ui.summary.get() == summary)
-                root.tk.call(ui.summary_dialog.protocol("WM_DELETE_WINDOW"))
+                check("task_details_do_not_replace_overall_outcome", ui.detail_view.winfo_ismapped() and ui.summary.get() == summary)
+                ui._leave_detail()
                 root.update()
                 ui.overlay_logs.set(not ui.overlay_logs.get())
                 check("display_preferences_keep_daily_results", ui.table.action_label("battle") == "查看结果")

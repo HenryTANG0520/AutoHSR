@@ -106,9 +106,9 @@ def main():
                 ImageGrab.grab(window=root.winfo_id()).save(OUT/"failure-reason.png")
                 ui.summary_label.activate()
                 root.update()
-                check("full_costs_and_next_step_still_available", ui.summary_dialog.winfo_exists() and
+                check("full_costs_and_next_step_still_available", ui.detail_view.winfo_ismapped() and
                       "120" in ui.summary.get() and "下一步" in ui.summary.get())
-                ui.summary_dialog.destroy()
+                ui._leave_detail()
                 exchange = dict(mode="standard_development", start_verified=True, action_status="transition_verified",
                                 exchange=dict(status="verifying"), actions=[dict(status="verified", movement_verified=False)])
                 ui._currency_observed(exchange)

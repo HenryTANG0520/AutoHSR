@@ -85,11 +85,8 @@ def main():
                       and ui.game_path_entry.selection_present())
                 ui._show_summary("保留本次费用", return_focus=ui.game_path_entry)
                 root.update()
-                dialog = ui.summary_dialog
-                ui._show_page("settings")
-                root.update()
-                check(f"{scale}_entry_focus_does_not_take_over_details", root.focus_get().winfo_toplevel() is dialog)
-                root.tk.call(dialog.protocol("WM_DELETE_WINDOW"))
+                check(f"{scale}_entry_focus_does_not_take_over_details", root.focus_get() is ui.detail_text)
+                ui.detail_back.invoke()
                 root.update()
                 check(f"{scale}_details_return_to_the_original_field", root.focus_get() == ui.game_path_entry)
                 ui._set_busy(True)
@@ -299,8 +296,9 @@ def main():
                         button.invoke()
                         root.update()
                         check_layout(root)
+                        expected = ui.tools_shelf.primary_action()[0] if name == "tools" else "开始计划"
                         check(f"{scale}_{size}_{name}_reachable", ui.settings_tabs.select() == str(ui.settings_sections[name])
-                              and ui.start_button.cget("text") == "开始计划" and ui.guide.winfo_ismapped()
+                              and ui.start_button.cget("text") == expected and ui.guide.winfo_ismapped()
                               and ui.settings_shell.back.winfo_ismapped())
                         if scale == 1.5:
                             ImageGrab.grab(window=root.winfo_id()).save(OUT/(name+"-"+size+".png"))

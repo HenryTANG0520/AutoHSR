@@ -26,6 +26,13 @@ def main():
                     check(f'{scale}_{size}_five_contiguous_tabs',all(b.master is ui.guide.tabs for b in buttons) and all(a.winfo_x()+a.winfo_width()==b.winfo_x() and a.winfo_y()==b.winfo_y() and a.winfo_height()==b.winfo_height() for a,b in zip(buttons,buttons[1:])))
                     check(f'{scale}_{size}_tabs_fit_before_seal',ui.guide.tabs.winfo_x()+ui.guide.tabs.winfo_width()<ui.guide.winfo_width()-ui.guide.art_right-round(140*scale))
                     check(f'{scale}_{size}_all_tabs_are_icons',all(str(b.cget('compound'))=='none' and b.cget('image') for b in buttons))
+                    geometry = [(button.winfo_x(), button.winfo_width()) for button in buttons]
+                    for key in keys:
+                        ui.guide.select(key)
+                        root.update_idletasks()
+                        check(f'{scale}_{size}_{key}_selection_preserves_tab_width',
+                              geometry == [(button.winfo_x(), button.winfo_width()) for button in buttons])
+                    ui.guide.select(ui.active_page)
                     shortcut = ui.guide.tools_button
                     check(f'{scale}_{size}_tools_fits_between_tabs_and_seal',
                           ui.guide.tabs.winfo_x()+ui.guide.tabs.winfo_width() <= shortcut.winfo_x()
@@ -56,6 +63,15 @@ def main():
                 next_focus = str(root.tk.call('tk_focusNext', ui.tools_shelf.buttons['redemption']))
                 check(f'{scale}_tool_tab_reaches_selected_content',
                       next_focus.startswith(str(ui.redemption_panel) + '.'))
+                ui.tools_shelf.select('workflow', focus_entry=False)
+                root.update()
+                fixed = ui.tools_shelf.nav.winfo_rooty()
+                ui.settings_shell.canvas.yview_moveto(1)
+                root.update()
+                check(f'{scale}_tool_navigation_stays_visible_during_scroll',
+                      ui.tools_shelf.nav.winfo_ismapped() and ui.tools_shelf.nav.winfo_rooty() == fixed)
+                check(f'{scale}_workflow_empty_state_can_start',
+                      ui.start_button.cget('text') == '新建草稿' and not ui.start_button.instate(('disabled',)))
                 ui.guide.tools_button.invoke()
                 root.update()
                 ui._leave_settings()

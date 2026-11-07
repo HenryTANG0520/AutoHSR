@@ -270,7 +270,7 @@ class Guide(Surface):
             for event in ("<FocusIn>","<FocusOut>"):
                 button.bind(event,lambda _event:self._refresh_tabs(),add="+")
             Tooltip(button,label)
-        self.tools_button = ttk.Button(self, text="工具", style="Panel.TButton",
+        self.tools_button = ttk.Button(self, text="工具", style="RailShortcut.TButton",
                                        command=lambda:ui._show_tools(self.tools_button))
         self.tools_button.bind("<Return>",lambda _event:self._activate(self.tools_button))
         self.bind("<Configure>",self._position,add="+")
