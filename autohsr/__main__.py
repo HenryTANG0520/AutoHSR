@@ -41,6 +41,9 @@ def main(argv: list[str] | None = None) -> int:
     add_notification_arguments(mode, parser)
     from .schedule_cli import add_arguments as add_schedule_arguments
     add_schedule_arguments(mode, parser)
+    from .game_update_status import CHANNELS as GAME_UPDATE_CHANNELS
+    mode.add_argument("--game-update-check", choices=GAME_UPDATE_CHANNELS,
+                      help="只读核对本地星铁版本与官方更新、预下载包清单")
     mode.add_argument("--currency-wars-replay", type=Path, help="离线回放 .sample.json；不访问游戏或加载每日配置")
     mode.add_argument("--currency-wars-check", action="store_true", help="货币战争只读识别与证据保存；自动玩法尚未开放")
     mode.add_argument("--currency-wars-prepare", action="store_true", help="启动或复用游戏，进入已有登录及主界面；不开始对局")
@@ -180,6 +183,10 @@ def main(argv: list[str] | None = None) -> int:
         from .build_target_compose import run as run_build_target_compose
 
         return run_build_target_compose(args, raw_args, parser)
+    if args.game_update_check is not None:
+        from .game_update_status import run as run_game_update_check
+
+        return run_game_update_check(args, raw_args, parser)
     if args.build_target_output is not None:
         parser.error('--build-target-output 仅配合 --compose-build-target。')
     if args.reward_guide_capture is not None:

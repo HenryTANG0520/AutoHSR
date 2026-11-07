@@ -1,12 +1,12 @@
 """Local identity/version evidence; never exported as model input."""
 from __future__ import annotations
 
-import configparser
 import hashlib
 import re
 from pathlib import Path
 
 from .currency_wars_prepare import trusted
+from .game_installation import installed_client
 from .models import AutomationError, Scene, normalize
 
 
@@ -38,36 +38,6 @@ def checked_account_key(scene, confidence):
     candidates = Scene([*scene.tokens, *low]) if low else scene
     account_key(candidates, min(UID_VETO_FLOOR, confidence))
     return account_key(scene, max(.85, confidence))
-
-
-def installed_client(executable):
-    """The launcher config describes game version; EXE FileVersion is Unity."""
-    try:
-        if not isinstance(executable,(str,Path)):
-            raise ValueError('missing process path')
-        executable = Path(executable).resolve(strict=True)
-        if executable.name.casefold() != 'starrail.exe' or not executable.is_file():
-            raise ValueError('unexpected executable')
-        path = executable.parent/'config.ini'
-        if path.stat().st_size > 65536:
-            raise ValueError('oversize config')
-        raw = path.read_bytes()
-        parser = configparser.ConfigParser(interpolation=None,strict=True)
-        encoding = 'utf-16' if raw.startswith((b'\xff\xfe',b'\xfe\xff')) else 'utf-8-sig'
-        parser.read_string(raw.decode(encoding))
-        sections = [section for section in parser.sections() if section.casefold() == 'general']
-        if len(sections) != 1 or 'game_version' in parser.defaults():
-            raise ValueError('ambiguous version section')
-        full = parser.get(sections[0],'game_version',raw=True).strip()
-        match = re.fullmatch(r'([1-9][0-9]?)\.([0-9]{1,2})\.[0-9]{1,4}',full)
-        if not match:
-            raise ValueError('invalid version')
-        return dict(version=match[1]+'.'+str(int(match[2])), full_version=full,
-                    executable=str(executable), source=str(path),
-                    sha256=hashlib.sha256(raw).hexdigest(), kind='launcher_game_version')
-    except (OSError,ValueError,UnicodeError,configparser.Error):
-        # Do not include config content/keys in exception text.
-        raise AutomationError('客户端安装版本未核实；不使用EXE引擎版本代替。') from None
 
 
 def bind_account(store, scene, run_dir, epoch, confidence=.85):
