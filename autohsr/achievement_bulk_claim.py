@@ -35,6 +35,8 @@ _TERMINAL = 'achievement-bulk-terminal.json'
 _MAX_CAPTURES = 12
 _MAX_EVIDENCE = 64 * 1024 * 1024
 _JOURNAL_FILES = (*_FILES.values(), *_SEND_FILES.values())
+# Runner keeps the timestamp and adds an eight-character mkdtemp suffix on collision.
+_RUN_NAME = re.compile(r'[0-9]{8}_[0-9]{6}_[0-9]{6}(?P<suffix>_[a-z0-9_]{8})?')
 
 
 def initial_record():
@@ -143,8 +145,8 @@ def preflight(root):
         raw = _bounded(marker, 4096)
         pending = strict_json(raw)
         run = pending['run']
-        if (pending != {'operation': OPERATION, 'run': run}
-                or not re.fullmatch(r'\d{8}_\d{6}_\d{6}', run)):
+        name = _RUN_NAME.fullmatch(run)
+        if pending != {'operation': OPERATION, 'run': run} or name is None:
             raise ValueError()
         directory = root / run
         if directory.resolve(strict=True) != directory:
@@ -168,13 +170,18 @@ def preflight(root):
         journal = checked if completed else {}
         if terminal != dict(marker=sha256(raw).hexdigest(), report=sha256(report).hexdigest(), journal=journal):
             raise ValueError()
+        if name['suffix']:
+            origin = Path(saved['run_dir'])
+            if (not origin.is_absolute() or origin.anchor.startswith('\\') or origin.name != run
+                    or origin.resolve(strict=True) != directory):
+                raise ValueError()
         if completed:
             for rows in record['samples'].values():
                 _verify_files(directory, rows)
         if _bounded(marker, 4096) != raw:
             raise ValueError()
         marker.unlink()
-    except (AutomationError, OSError, ValueError, KeyError, TypeError, RecursionError):
+    except (AutomationError, OSError, ValueError, KeyError, TypeError, RuntimeError):
         raise AutomationError('已有未决成就领奖意图，请人工核对原运行；未访问游戏。') from None
 
 

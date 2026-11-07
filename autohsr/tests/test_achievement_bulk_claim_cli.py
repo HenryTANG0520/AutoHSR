@@ -2,12 +2,14 @@
 
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 import ctypes
+from datetime import datetime
 from hashlib import sha256
 import io
 from itertools import count
 import json
 import os
 from pathlib import Path
+from shutil import copytree
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
@@ -70,6 +72,14 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
         self.config = self.root / 'config.json'
         Settings(overlay_logs=True, auto_launch=True, ocr_confidence=.93).save(self.config)
         self.original_config = self.config.read_bytes()
+
+    def collide_run_directory(self):
+        stamp = datetime(2026, 11, 7, 12)
+        existing = self.root / 'runs' / stamp.strftime('%Y%m%d_%H%M%S_%f')
+        existing.mkdir(parents=True)
+        clock = self.enterContext(patch('autohsr.app.datetime', wraps=datetime))
+        clock.now.return_value = stamp
+        return existing.name + '_'
 
     def run_cli(self, *, after_claim=None, short_at=None, lose_foreground=False, stop_confirm=False,
                 wallet=False, marked=False, change_receipt=False, publish=None, wait_for_foreground=False,
@@ -387,6 +397,71 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
         self.assertIn('已有未决成就领奖意图', repeated['error'])
         self.find_game.assert_not_called()
         self.assertFalse(self.events)
+
+    def test_suffixed_terminal_recovers_and_preserves_original_report(self):
+        prefix = self.collide_run_directory()
+        code, report = self.run_cli(marked=True)
+        self.assertEqual((code, report['status']), (0, 'success'), report['error'])
+        directory = Path(report['run_dir'])
+        self.assertTrue(directory.name.startswith(prefix))
+        saved = {path: path.read_bytes() for path in directory.iterdir() if path.is_file()}
+
+        _, repeated = self.run_cli(lose_foreground=True)
+        self.find_game.assert_called_once()
+        self.assertEqual(self.events, [])
+        self.assertNotIn('已有未决成就领奖意图', repeated['error'])
+        self.assertFalse((directory.parent / 'achievement-bulk-pending.json').exists())
+        self.assertEqual({path: path.read_bytes() for path in saved}, saved)
+
+    def test_suffixed_preflight_rejects_unbound_or_unresolved_evidence(self):
+        prefix = self.collide_run_directory()
+        code, report = self.run_cli(marked=True)
+        self.assertEqual((code, report['status']), (0, 'success'), report['error'])
+        directory = Path(report['run_dir'])
+        marker = directory.parent / 'achievement-bulk-pending.json'
+        original_marker = marker.read_bytes()
+        saved = directory / 'report.json'
+        original_report = saved.read_bytes()
+        terminal = directory / 'achievement-bulk-terminal.json'
+        original_terminal = terminal.read_bytes()
+
+        lookalike = 'qa0abc13' if directory.name == prefix + 'qa0abc12' else 'qa0abc12'
+        for tail, bind_report in (('bad-tail', True), (lookalike, False)):
+            with self.subTest(tail=tail):
+                alternate = directory.with_name(prefix + tail)
+                copytree(directory, alternate)
+                fake_marker = json.dumps(dict(operation=OPERATION, run=alternate.name)).encode()
+                marker.write_bytes(fake_marker)
+                fake_report = json.dumps(dict(report, run_dir=str(alternate))).encode() if bind_report else original_report
+                (alternate / saved.name).write_bytes(fake_report)
+                fake_terminal = dict(json.loads(original_terminal), marker=sha256(fake_marker).hexdigest(),
+                                     report=sha256(fake_report).hexdigest())
+                (alternate / terminal.name).write_bytes(json.dumps(fake_terminal).encode())
+                self.assert_preflight_blocked(marker, fake_marker)
+
+        marker.write_bytes(original_marker)
+        saved.write_bytes(original_report + b'\n')
+        self.assert_preflight_blocked(marker, original_marker)
+
+        outside = self.root / 'elsewhere' / directory.name
+        outside.mkdir(parents=True)
+        wrong_origin = json.dumps(dict(report, run_dir=str(outside))).encode()
+        saved.write_bytes(wrong_origin)
+        terminal.write_bytes(json.dumps(dict(json.loads(original_terminal),
+                                              report=sha256(wrong_origin).hexdigest())).encode())
+        self.assert_preflight_blocked(marker, original_marker)
+
+        saved.write_bytes(original_report)
+        terminal.unlink()
+        self.assert_preflight_blocked(marker, original_marker)
+
+    def assert_preflight_blocked(self, marker, expected):
+        code, blocked = self.run_cli(marked=True)
+        self.assertEqual((code, blocked['status']), (1, 'failed'))
+        self.assertIn('已有未决成就领奖意图', blocked['error'])
+        self.find_game.assert_not_called()
+        self.assertEqual(self.events, [])
+        self.assertEqual(marker.read_bytes(), expected)
 
     def test_confirmation_send_changed_before_publication_stays_pending(self):
         changed = {}
