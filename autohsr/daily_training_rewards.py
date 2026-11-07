@@ -1,4 +1,4 @@
-"""Verified lower daily-training milestones for the explicit reward-only run."""
+"""Verified daily-training milestones for activity below the daily maximum."""
 
 import re
 
@@ -145,5 +145,5 @@ def claim_reached_milestones(workflow, scene, activity):
     if confirmed:
         detail += '，本次核实' + '、'.join(str(points) for points in sorted(confirmed)) + '档已领'
     if pending is not None:
-        detail += f'，{pending}档本次领取反馈待核对'
+        raise AutomationError(detail + f'，{pending}档本次领取反馈待核对。')
     return workflow._result('daily', 'partial', detail + '，尚未确认每日任务完成。', scene)

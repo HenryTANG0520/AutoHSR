@@ -1377,10 +1377,6 @@ class DailyWorkflow:
         activity = self._activity(scene)
         self.ctx.report.engagement = activity
         if activity != 500:
-            if self.ctx.report.operation == 'reward_only' and type(activity) is int and 100 <= activity < 500:
-                from .daily_training_rewards import claim_reached_milestones
-
-                return claim_reached_milestones(self, scene, activity)
             if (self.settings.daily_synthesis and self.ctx.report.operation == 'daily'
                     and type(activity) is int and activity < 500 and not self._daily_synthesis_attempted):
                 from .daily_synthesis import task_target, complete_once
@@ -1388,6 +1384,10 @@ class DailyWorkflow:
                     self._daily_synthesis_attempted = True
                     complete_once(self, scene)
                     return self.daily()
+            if self.ctx.report.operation in ('daily', 'reward_only') and type(activity) is int and 100 <= activity < 500:
+                from .daily_training_rewards import claim_reached_milestones
+
+                return claim_reached_milestones(self, scene, activity)
             detail = "未能识别当前实训活跃值" if activity is None else f"实训活跃值为{activity}/500"
             return self._result("daily", "partial", f"{detail}，尚未确认每日任务完成。", scene)
         for _ in range(6):

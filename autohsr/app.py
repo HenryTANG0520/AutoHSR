@@ -3232,12 +3232,9 @@ class Runner:
                       Vision(ocr_confidence))
             from .workflow_identity import active as workflow_identity_active, prepare as prepare_workflow_identity
 
-            daily_counterevidence = self.report.operation == 'daily' and (
-                self.settings.redemption_enabled or self.use_power_plan
-                or self.settings.battle and self.settings.use_support and self.settings.support_daily_only)
-            if (workflow_identity_active() or self.assignments_only or self.daily_attachment_only or workflow_foreground
+            if (workflow_identity_active() or workflow_foreground
                     or daily_observation or daily_claim or daily_reply or achievement_claim
-                    or redemption or daily_counterevidence):
+                    or redemption or self.report.operation in ('daily', 'reward_only')):
                 from .currency_wars_identity import UID_VETO_FLOOR
                 vision.uid_counterevidence_floor = UID_VETO_FLOOR
             context = Context(self, self._window, vision)

@@ -1,4 +1,4 @@
-"""Reward-only CLI and task-flow paths through the native sender with simulated frames."""
+"""Daily and reward-only entry points through the native sender with simulated frames."""
 
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 import ctypes
@@ -61,7 +61,7 @@ def item_overlay(*, account=ACCOUNT):
 
 
 class RewardOnlyMilestonesTests(unittest.TestCase):
-    def invoke(self, *phases, short_reward=False, workflow=False):
+    def invoke(self, *phases, short_reward=False, workflow=False, ordinary=False, mail=False):
         clicks = []
         releases = []
         phone = phone_scene()
@@ -103,8 +103,9 @@ class RewardOnlyMilestonesTests(unittest.TestCase):
         with TemporaryDirectory() as temporary, ExitStack() as stack:
             root = Path(temporary).resolve()
             config = root / 'config.json'
-            Settings(assignments=True, battle=True, allow_stamina_spend=True, daily_synthesis=True,
-                     mail=True, battlepass=True, redemption_enabled=True,
+            Settings(assignments=not ordinary, battle=not ordinary, allow_stamina_spend=not ordinary,
+                     daily_synthesis=not ordinary, mail=mail or not ordinary,
+                     battlepass=not ordinary, redemption_enabled=not ordinary,
                      overlay_logs=False).save(config)
             saved = config.read_bytes()
             ledger = root / 'runs' / 'battle-session.json'
@@ -132,7 +133,7 @@ class RewardOnlyMilestonesTests(unittest.TestCase):
             for name in ('assignments', 'battle', 'mail', 'battlepass', 'redemption'):
                 stack.enter_context(patch.object(DailyWorkflow, name, side_effect=AssertionError('extra task')))
             stack.enter_context(patch.object(Context, 'sleep', lambda context, _duration: context.checkpoint()))
-            args = ['--run', '--reward-only']
+            args = ['--run'] if ordinary else ['--run', '--reward-only']
             if workflow:
                 path = root / 'training.json'
                 path.write_text(json.dumps(dict(version=1, name='Training rewards',
@@ -155,12 +156,12 @@ class RewardOnlyMilestonesTests(unittest.TestCase):
                     self.assertEqual(report[name], child[name])
                 self.assertTrue(report['report_saved'])
                 report = child
-            self.assertEqual(report['operation'], 'reward_only')
+            self.assertEqual(report['operation'], 'daily' if ordinary else 'reward_only')
             self.assertEqual(config.read_bytes(), saved)
             self.assertEqual(ledger.read_bytes(), b'untouched reward-only test sentinel')
             self.assertFalse((root / 'runs' / 'daily-synthesis').exists())
             self.assertTrue(report['report_saved'])
-            self.assertEqual([item['task'] for item in report['results']], ['daily'])
+            self.assertEqual([item['task'] for item in report['results']], ['daily', 'mail'] if mail else ['daily'])
             self.assertEqual([report[name] for name in ('stamina_spent', 'stamina_pending',
                                                        'immersifiers_spent', 'immersifiers_pending',
                                                        'battle_completed')], [0] * 5)
@@ -191,6 +192,22 @@ class RewardOnlyMilestonesTests(unittest.TestCase):
         self.assertAlmostEqual(clicks[1][0], CENTERS[400], places=2)
         self.assertAlmostEqual(clicks[2][0], .50, places=2)
         self.assertIn('400档已领', report['results'][0]['detail'])
+
+    def test_ordinary_daily_claims_reached_gift_and_blocks_mail_if_feedback_is_unknown(self):
+        old = training(400, gifts=(300, 400), claimed=(100, 200))
+        settled = training(400, claimed=(100, 200, 300, 400))
+        code, report, clicks = self.invoke((old,), (item_overlay(),), (settled,), ordinary=True)
+        self.assertEqual((code, report['status'], report['engagement'], report['daily_verified']),
+                         (1, 'partial', 400, False))
+        self.assertEqual(len(clicks), 3)
+        self.assertAlmostEqual(clicks[1][0], CENTERS[400], places=2)
+        self.assertIn('300、400档已领', report['results'][0]['detail'])
+
+        code, report, clicks = self.invoke((old,), (old,), ordinary=True, mail=True)
+        self.assertEqual((code, report['status'], report['failure_task']), (1, 'partial', 'daily'))
+        self.assertEqual(len(clicks), 2)
+        self.assertIn('400档本次领取反馈待核对', report['results'][0]['detail'])
+        self.assertEqual(report['results'][1]['status'], 'skipped')
 
     def test_five_claimed_milestones_still_complete_without_reward_input(self):
         full = training(500, claimed=tuple(CENTERS))
