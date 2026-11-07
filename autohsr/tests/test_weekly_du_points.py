@@ -481,14 +481,14 @@ class WeeklyDuPointsTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(), original)
         self.assertEqual(sent, [])
 
-    def test_legacy_fixed_receipt_is_reused_without_claiming_points(self):
+    def test_bound_fixed_receipt_is_reused_without_claiming_points(self):
         self.runs.mkdir()
         slot = weekly_slot(self.settings, self.now)
         receipt = WeeklyReceipt(self.runs, account_key(self.home()), slot)
-        receipt.begin(self.settings)
-        receipt.complete(du_report(self.runs, self.settings.weekly_runs))
+        receipt.begin(self.settings, fixed_run_dir=self.runs / 'child')
+        receipt.complete(du_report(self.runs, self.settings.weekly_runs, receipt=receipt))
         original = receipt.path.read_bytes()
-        self.assertNotIn('objective', json.loads(original))
+        self.assertEqual(json.loads(original)['objective'], 'fixed_runs')
         with self.runtime([self.home()] * 3) as (_, sent):
             code, report = self.cli()
         self.assertEqual(code, 0, report.get('error'))

@@ -71,11 +71,11 @@ class PlanTests(unittest.TestCase):
                 else:
                     guard = options["weekly_plan"]
                     guard.receipt = WeeklyReceipt(owner.root, "a"*24, guard.slot)
-                    guard.already_complete = not guard.receipt.begin(guard.settings)
+                    guard.already_complete = not guard.receipt.begin(guard.settings, fixed_run_dir=owner.root / 'child')
                     if guard.already_complete:
                         report = dict(operation="differential_universe", status="success", report_saved=True)
                     else:
-                        report = du_report(owner.root, options["du_runs"])
+                        report = du_report(owner.root, options["du_runs"], receipt=guard.receipt)
                 emit(dict(type="finished", report=report))
                 owner.before_return(self)
                 return report

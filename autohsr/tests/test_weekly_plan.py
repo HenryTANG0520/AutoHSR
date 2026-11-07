@@ -5,9 +5,10 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
+from uuid import uuid4
 
 from autohsr.config import Settings
-from autohsr.models import AutomationError
+from autohsr.models import AutomationError, RunReport, Scene, Token
 from autohsr.weekly_plan import CHINA, WeeklyGuard, WeeklyReceipt, plan_caption, weekly_slot
 
 
@@ -15,20 +16,22 @@ def when(value):
     return datetime.fromisoformat(value).replace(tzinfo=CHINA)
 
 
-def du_report(root, requested=1):
+def du_report(root, requested=1, *, receipt=None):
     folder = Path(root)/"child"
     folder.mkdir(exist_ok=True)
     rows = []
     for i in range(requested):
-        row = dict(status="completed", counted=True, difficulty_verified=True)
+        row = dict(status="completed", counted=True, difficulty_verified=True, run_id=str(uuid4()), origin="fresh")
         for field in ("started_evidence", "victory_evidence", "return_evidence"):
             path = folder/f"{i}-{field}.png"
-            path.write_bytes(b"synthetic offline evidence")
+            path.write_bytes(f"synthetic offline evidence {i} {field}".encode())
             row[field] = str(path)
         rows.append(row)
     report = dict(operation="differential_universe", status="success", report_saved=True,
                   run_dir=str(folder), differential_universe=dict(mode="周期演算", requested_runs=requested,
                   completed_runs=requested, run_results=rows))
+    if receipt is not None:
+        report["weekly_plan"] = dict(fixed_du_scope=receipt.fixed_scope(receipt.data))
     (folder/"report.json").write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
     return report
 
@@ -101,21 +104,21 @@ class ReceiptTests(unittest.TestCase):
         self.receipt = WeeklyReceipt(self.root, "a"*24, self.slot)
 
     def test_verified_completion_deduplicates_and_accounts_are_separate(self):
-        self.assertTrue(self.receipt.begin(self.settings))
-        self.receipt.complete(du_report(self.root))
+        self.assertTrue(self.receipt.begin(self.settings, fixed_run_dir=self.root / "child"))
+        self.receipt.complete(du_report(self.root, receipt=self.receipt))
         self.assertFalse(WeeklyReceipt(self.root, "a"*24, self.slot).begin(self.settings))
 
 
-        self.assertTrue(WeeklyReceipt(self.root, "b"*24, self.slot).begin(self.settings))
+        self.assertTrue(WeeklyReceipt(self.root, "b"*24, self.slot).begin(self.settings, fixed_run_dir=self.root / "other-child"))
 
     def test_schedule_edit_cannot_start_again_in_same_week(self):
-        self.receipt.begin(self.settings)
-        self.receipt.complete(du_report(self.root))
+        self.receipt.begin(self.settings, fixed_run_dir=self.root / "child")
+        self.receipt.complete(du_report(self.root, receipt=self.receipt))
         edited = replace(self.settings, weekly_day=2, weekly_runs=3)
         self.assertFalse(WeeklyReceipt(self.root, "a"*24, weekly_slot(edited, when("2026-10-28T12:00:00"))).begin(edited))
 
     def test_unknown_intent_blocks_current_and_future_week(self):
-        self.receipt.begin(self.settings)
+        self.receipt.begin(self.settings, fixed_run_dir=self.root / "child")
         before = self.receipt.path.read_bytes()
         for now in ("2026-10-28T13:00:00", "2026-11-02T04:00:00"):
             with self.assertRaisesRegex(AutomationError, "待核对"):
@@ -123,41 +126,96 @@ class ReceiptTests(unittest.TestCase):
         self.assertEqual(before, self.receipt.path.read_bytes())
 
     def test_next_week_has_new_receipt_after_verified_completion(self):
-        self.receipt.begin(self.settings)
-        self.receipt.complete(du_report(self.root))
+        self.receipt.begin(self.settings, fixed_run_dir=self.root / "child")
+        self.receipt.complete(du_report(self.root, receipt=self.receipt))
         before = self.receipt.path.read_bytes()
         next_week = WeeklyReceipt(self.root, "a"*24, weekly_slot(self.settings, when("2026-11-02T04:00:00")))
-        self.assertTrue(next_week.begin(self.settings))
+        self.assertTrue(next_week.begin(self.settings, fixed_run_dir=self.root / "next-child"))
         self.assertEqual(self.receipt.path.read_bytes(), before)
 
+    def test_fixed_receipt_cannot_be_relabelled_to_another_account_or_week(self):
+        self.receipt.begin(self.settings, fixed_run_dir=self.root / "child")
+        self.receipt.complete(du_report(self.root, receipt=self.receipt))
+        before = self.receipt.path.read_bytes()
+        other = WeeklyReceipt(self.root, "b"*24, self.slot)
+        later = WeeklyReceipt(self.root, "a"*24, weekly_slot(self.settings, when("2026-11-02T04:00:00")))
+        for target in (other, later):
+            with self.subTest(account=target.account, week=target.slot.week):
+                target.folder.mkdir(parents=True, exist_ok=True)
+                relabelled = dict(json.loads(before), account_key=target.account, week=target.slot.week,
+                                  due_at=target.slot.due_at.isoformat())
+                target.path.write_text(json.dumps(relabelled), encoding="utf-8")
+                unchanged = target.path.read_bytes()
+                with self.assertRaisesRegex(AutomationError, "待核对"):
+                    target.begin(self.settings, fixed_run_dir=self.root / "new-child")
+                self.assertEqual(target.path.read_bytes(), unchanged)
+        self.assertEqual(self.receipt.path.read_bytes(), before)
+
+    def test_unbound_fixed_history_blocks_new_week_without_rewriting_history(self):
+        self.receipt.begin(self.settings, fixed_run_dir=self.root / "child")
+        self.receipt.complete(du_report(self.root, receipt=self.receipt))
+        for state in ("complete", "started"):
+            with self.subTest(state=state):
+                legacy = dict(self.receipt.data, version=1, state=state)
+                for name in ("account_key", "run_dir", "intent_id", "objective"):
+                    legacy.pop(name)
+                self.receipt.path.write_text(json.dumps(legacy), encoding="utf-8")
+                unchanged = self.receipt.path.read_bytes()
+                later = WeeklyReceipt(self.root, "a"*24, weekly_slot(self.settings, when("2026-11-02T04:00:00")))
+                with self.assertRaisesRegex(AutomationError, "待核对"):
+                    later.begin(self.settings, fixed_run_dir=self.root / "new-child")
+                self.assertEqual(self.receipt.path.read_bytes(), unchanged)
+                self.assertFalse(later.path.exists())
+
+    def test_fixed_completion_rejects_repeated_runs_paths_or_evidence(self):
+        settings = replace(self.settings, weekly_runs=2)
+        self.receipt.begin(settings, fixed_run_dir=self.root / "child")
+        before = self.receipt.path.read_bytes()
+        for overlap in ("run_id", "path", "content"):
+            with self.subTest(overlap=overlap):
+                report = du_report(self.root, 2, receipt=self.receipt)
+                first, second = report["differential_universe"]["run_results"]
+                if overlap == "run_id":
+                    second["run_id"] = first["run_id"]
+                elif overlap == "path":
+                    second["victory_evidence"] = first["victory_evidence"]
+                else:
+                    for key in ("started_evidence", "victory_evidence", "return_evidence"):
+                        Path(second[key]).write_bytes(Path(first[key]).read_bytes())
+                (Path(report["run_dir"]) / "report.json").write_text(json.dumps(report), encoding="utf-8")
+                with self.assertRaises(AutomationError):
+                    self.receipt.complete(report)
+                self.assertEqual(self.receipt.path.read_bytes(), before)
+        self.assertEqual(self.receipt.complete(du_report(self.root, 2, receipt=self.receipt)), "complete")
+
     def test_victory_counter_alone_cannot_complete(self):
-        self.receipt.begin(self.settings)
-        report = du_report(self.root)
+        self.receipt.begin(self.settings, fixed_run_dir=self.root / "child")
+        report = du_report(self.root, receipt=self.receipt)
         report["differential_universe"]["run_results"][0].pop("victory_evidence")
         with self.assertRaises(AutomationError):
             self.receipt.complete(report)
         self.assertEqual(json.loads(self.receipt.path.read_text("utf-8"))["state"], "started")
 
     def test_failed_or_unsaved_reports_cannot_complete(self):
-        self.receipt.begin(self.settings)
+        self.receipt.begin(self.settings, fixed_run_dir=self.root / "child")
         for field, value in (("status", "partial"), ("status", "stopped"), ("report_saved", False)):
-            report = du_report(self.root)
+            report = du_report(self.root, receipt=self.receipt)
             report[field] = value
             with self.assertRaises(AutomationError):
                 self.receipt.complete(report)
 
     def test_missing_or_changed_original_evidence_blocks_replay(self):
-        self.receipt.begin(self.settings)
-        report = du_report(self.root)
+        self.receipt.begin(self.settings, fixed_run_dir=self.root / "child")
+        report = du_report(self.root, receipt=self.receipt)
         self.receipt.complete(report)
         Path(report["differential_universe"]["run_results"][0]["victory_evidence"]).write_bytes(b"changed")
         with self.assertRaises(AutomationError):
             WeeklyReceipt(self.root, "a"*24, self.slot).begin(self.settings)
 
     def test_fixed_receipt_retry_rejects_changed_victory_evidence(self):
-        self.receipt.begin(self.settings)
+        self.receipt.begin(self.settings, fixed_run_dir=self.root / "child")
         intent = self.receipt.path.read_bytes()
-        report = du_report(self.root)
+        report = du_report(self.root, receipt=self.receipt)
         victory = Path(report['differential_universe']['run_results'][0]['victory_evidence'])
         replace_path = Path.replace
         writes = []
@@ -180,20 +238,20 @@ class ReceiptTests(unittest.TestCase):
         self.receipt.folder.mkdir(parents=True)
         self.receipt.path.write_text("[]", encoding="utf-8")
         with self.assertRaises(AutomationError):
-            self.receipt.begin(self.settings)
+            self.receipt.begin(self.settings, fixed_run_dir=self.root / "child")
         self.assertEqual(self.receipt.path.read_text("utf-8"), "[]")
 
     def test_failed_receipt_save_does_not_erase_intent(self):
-        self.receipt.begin(self.settings)
+        self.receipt.begin(self.settings, fixed_run_dir=self.root / "child")
         original = self.receipt.path.read_bytes()
         with patch("autohsr.weekly_plan.replace_file", side_effect=OSError("locked")):
             with self.assertRaises(OSError):
-                self.receipt.complete(du_report(self.root))
+                self.receipt.complete(du_report(self.root, receipt=self.receipt))
         self.assertEqual(self.receipt.path.read_bytes(), original)
 
     def test_json_coordinate_conversion_does_not_discard_verified_report(self):
-        self.receipt.begin(self.settings)
-        report = du_report(self.root)
+        self.receipt.begin(self.settings, fixed_run_dir=self.root / "child")
+        report = du_report(self.root, receipt=self.receipt)
         report["differential_universe"]["actions"] = [dict(box=(.1, .2, .3, .4))]
         (Path(report["run_dir"])/"report.json").write_text(json.dumps(report), encoding="utf-8")
         self.receipt.complete(report)
@@ -228,22 +286,42 @@ class GuardTests(unittest.TestCase):
             guard = WeeklyGuard(Path(tmp), settings, weekly_slot(settings))
             calls = []
             context = Mock()
-            context.snapshot.side_effect = lambda: calls.append("snapshot") or object()
+            context.settings = settings
+            context.report = RunReport(run_dir=str(Path(tmp) / 'child'))
+            scene = Scene([Token('UID:100000000', .99, (.01, .96, .12, .99))])
+            context.snapshot.side_effect = lambda: calls.append("snapshot") or scene
             with patch("autohsr.workflows.DailyWorkflow") as workflow, \
                     patch("autohsr.du_daily.account_key", side_effect=lambda _: calls.append("account") or "a"*24):
                 workflow.return_value.ensure_main.side_effect = lambda: calls.append("navigate")
                 self.assertTrue(guard.prepare(context))
             self.assertEqual(calls, ["navigate", "snapshot", "account"])
             self.assertTrue(guard.receipt.path.exists())
+            self.assertEqual(context.report.weekly_plan["fixed_du_scope"], guard.receipt.fixed_scope(guard.receipt.data))
 
     def test_unknown_account_cannot_create_weekly_intent(self):
         with tempfile.TemporaryDirectory() as tmp:
             settings = Settings(weekly_enabled=True)
             guard = WeeklyGuard(Path(tmp), settings, weekly_slot(settings))
-            with patch("autohsr.workflows.DailyWorkflow"), \
-                    patch("autohsr.du_daily.account_key", side_effect=AutomationError("unknown")):
+            context = Mock(settings=settings)
+            context.snapshot.return_value = Scene([])
+            with patch("autohsr.workflows.DailyWorkflow"):
                 with self.assertRaisesRegex(AutomationError, "未核实当前账号"):
-                    guard.prepare(Mock())
+                    guard.prepare(context)
+            self.assertFalse(list(Path(tmp).rglob("*.json")))
+
+    def test_fixed_receipt_rejects_conflicting_account_regions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings(weekly_enabled=True)
+            guard = WeeklyGuard(Path(tmp), settings, weekly_slot(settings))
+            context = Mock(settings=settings)
+            context.report = RunReport(run_dir=str(Path(tmp) / 'child'))
+            context.snapshot.return_value = Scene([
+                Token('UID:100000000', .99, (.01, .942, .12, .99)),
+                Token('UID:200000000', .99, (.24, .96, .34, .99)),
+            ])
+            with patch("autohsr.workflows.DailyWorkflow"):
+                with self.assertRaisesRegex(AutomationError, "未核实当前账号"):
+                    guard.prepare(context)
             self.assertFalse(list(Path(tmp).rglob("*.json")))
 
 

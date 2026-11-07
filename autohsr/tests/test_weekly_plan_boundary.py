@@ -61,7 +61,8 @@ class WeeklyBoundaryTests(unittest.TestCase):
     def test_intent_rechecks_after_existing_receipt_scan_and_preserves_original_files(self):
         previous=weekly_slot(self.settings,datetime(2026,10,28,12,tzinfo=CHINA))
         old=WeeklyReceipt(self.root,account_key(self.scene),previous)
-        old.begin(self.settings);old.complete(du_report(self.root))
+        old.begin(self.settings, fixed_run_dir=self.root / 'child')
+        old.complete(du_report(self.root, receipt=old))
         saved={p:p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
         original=WeeklyReceipt._report
         def read(receipt,data):
@@ -76,7 +77,8 @@ class WeeklyBoundaryTests(unittest.TestCase):
 
     def test_current_week_completed_receipt_is_read_only_and_does_not_call_before_start(self):
         receipt=WeeklyReceipt(self.root,account_key(self.scene),self.slot)
-        receipt.begin(self.settings);receipt.complete(du_report(self.root))
+        receipt.begin(self.settings, fixed_run_dir=self.root / 'child')
+        receipt.complete(du_report(self.root, receipt=receipt))
         saved={p:p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
         callback=Mock(side_effect=AssertionError('no new intent'))
         self.assertFalse(WeeklyReceipt(self.root,account_key(self.scene),self.slot).begin(self.settings,before_start=callback))

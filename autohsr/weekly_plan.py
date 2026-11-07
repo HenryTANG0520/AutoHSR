@@ -41,7 +41,7 @@ def claim_account_key(scene, confidence):
         checked_account_key(scene, confidence)
         return account_key(scene)
     except (AutomationError, GuidePointsUnverified) as error:
-        raise AutomationError("差分周常领奖未核实唯一的当前账号。") from error
+        raise AutomationError("差分周常未核实唯一的当前账号。") from error
 
 
 def validate_schedule(settings):
@@ -114,7 +114,12 @@ def _verified_du_runs(report, requested):
 
 def verified_du_report(report, requested):
     data = _verified_du_runs(report, requested)
-    return data is not None and report.get("status") == "success" and data["completed_runs"] == requested
+    if data is None or report.get("status") != "success" or data["completed_runs"] != requested:
+        return False
+    ids = [run.get("run_id") for run in data["run_results"]]
+    return (all(isinstance(key, str) and re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", key)
+                for key in ids)
+            and len(set(ids)) == requested and all(run.get("origin") == "fresh" for run in data["run_results"]))
 
 
 def _points_report_state(report, maximum, week):
@@ -199,16 +204,25 @@ def _points_ledger_ref(report, scope):
     return dict(path=str(path), sha256=digest)
 
 
-def evidence_hashes(report, *, include_points=False):
+def evidence_hashes(report, *, include_points=False, unique_runs=False):
     directory = Path(report["run_dir"]).resolve()
     hashes = {}
+    run_hashes = set()
     du = report["differential_universe"]
     for run in du["run_results"]:
+        trio = []
         for field in ("started_evidence", "victory_evidence", "return_evidence"):
             path = Path(run[field]).resolve()
             if not path.is_relative_to(directory):
                 raise ValueError("演算证据不在原始运行目录中。")
-            hashes[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
+            if unique_runs and str(path) in hashes:
+                raise AutomationError("固定局数的演算证据路径重复，保留原意图。")
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            hashes[str(path)] = digest
+            trio.append(digest)
+        if unique_runs and tuple(trio) in run_hashes:
+            raise AutomationError("固定局数的演算证据内容重复，保留原意图。")
+        run_hashes.add(tuple(trio))
     if include_points:
         points = _points_image_hashes(du, directory)
         if hashes.keys() & points.keys():
@@ -239,6 +253,18 @@ class WeeklyReceipt:
             raise ValueError("差分周常积分回执的账号或原意图未核实。")
         return dict(account_key=self.account, week=data["week"], maximum=data["requested_runs"], intent_id=intent)
 
+    def fixed_scope(self, data):
+        directory = Path(data.get("run_dir", ""))
+        intent = data.get("intent_id")
+        if (data.get("version") != 2 or data.get("objective") != "fixed_runs"
+                or data.get("mode") != "differential_universe" or data.get("account_key") != self.account
+                or not isinstance(intent, str) or not re.fullmatch(r"[a-f0-9]{32}", intent)
+                or directory.resolve() != directory or directory == self.root
+                or not directory.is_relative_to(self.root)):
+            raise AutomationError("固定局数周回执缺少可核实的账号、游戏周或原生运行归属。")
+        return dict(account_key=self.account, week=data["week"], requested_runs=data["requested_runs"],
+                    run_dir=str(directory), intent_id=intent)
+
     def require_intent(self):
         try:
             if (self._intent_sha256 is not None and self.path.resolve() == self.path
@@ -253,7 +279,11 @@ class WeeklyReceipt:
         if objective == "points":
             return _points_report_state(report, data["requested_runs"], data["week"])
         if objective == "fixed_runs" and verified_du_report(report, data["requested_runs"]):
-            return "complete"
+            owner = self.fixed_scope(data)
+            binding = report.get("weekly_plan")
+            if (isinstance(binding, dict) and binding.get("fixed_du_scope") == owner
+                    and report.get("run_dir") == owner["run_dir"]):
+                return "complete"
 
     def _report(self, data):
         path = Path(data["report"]).resolve()
@@ -268,16 +298,17 @@ class WeeklyReceipt:
         points = data.get("objective") == "points"
         if points and data.get("ledger") != _points_ledger_ref(report, self.points_scope(data)):
             raise ValueError("差分周常原生账本未核实。")
-        if data["evidence"] != evidence_hashes(report, include_points=points):
+        if data["evidence"] != evidence_hashes(report, include_points=points, unique_runs=not points):
             raise ValueError("原始演算证据已变化。")
         return report
 
-    def begin(self, settings, *, until_points=False, before_start=None):
+    def begin(self, settings, *, until_points=False, before_start=None, fixed_run_dir=None):
         self.folder.mkdir(parents=True, exist_ok=True)
         for path in sorted(self.folder.glob("*.json")):
             try:
                 data = json.loads(path.read_text("utf-8"))
-                if (data.get("version") != 1 or data.get("week") != path.stem
+                version = 1 if data.get("objective") == "points" else 2
+                if (data.get("version") != version or data.get("week") != path.stem
                         or data.get("state") not in ("complete", "exhausted")):
                     raise ValueError("完成证据不完整。")
                 original = self._report(data)
@@ -291,11 +322,15 @@ class WeeklyReceipt:
             return False
         if before_start is not None:
             before_start()
-        self.data = dict(version=1, week=self.slot.week, state="started",
+        self.data = dict(version=1 if until_points else 2, week=self.slot.week, state="started",
                          mode=settings.weekly_mode, requested_runs=settings.weekly_runs,
                          due_at=self.slot.due_at.isoformat(), started_at=datetime.now(CHINA).isoformat())
         if until_points:
             self.data.update(objective="points", account_key=self.account, intent_id=uuid.uuid4().hex)
+        else:
+            self.data.update(objective="fixed_runs", account_key=self.account, intent_id=uuid.uuid4().hex,
+                             run_dir=str(fixed_run_dir or ""))
+            self.fixed_scope(self.data)
         # Write intent before the workflow can enter a game. No replacement on retry.
         raw = _json_bytes(self.data)
         with self.path.open("xb") as stream:
@@ -319,7 +354,8 @@ class WeeklyReceipt:
         if not points and persisted != json.loads(json.dumps(report)):
             raise AutomationError("周常原始报告未完整保存；本周记录仍待核对。")
         data = dict(self.data, state=state, report=str(report_path),
-                    report_sha256=hashlib.sha256(raw).hexdigest(), evidence=evidence_hashes(persisted, include_points=points),
+                    report_sha256=hashlib.sha256(raw).hexdigest(),
+                    evidence=evidence_hashes(persisted, include_points=points, unique_runs=not points),
                     finished_at=datetime.now(CHINA).isoformat())
         if points:
             data["ledger"] = _points_ledger_ref(persisted, self.points_scope(self.data))
@@ -392,7 +428,7 @@ class WeeklyGuard:
         scene = context.snapshot()
         try:
             account = (claim_account_key(scene, max(.85, context.settings.ocr_confidence))
-                       if self.strict_points_account else account_key(scene))
+                       if self.strict_points_account or not self.until_points else account_key(scene))
         except AutomationError as exc:
             raise AutomationError("周常未核实当前账号；未开始演算。") from exc
         self.require_current_week()
@@ -402,7 +438,10 @@ class WeeklyGuard:
             context.checkpoint()
             self.require_current_week()
 
-        started = self.receipt.begin(self.settings, until_points=self.until_points, before_start=before_start)
+        started = self.receipt.begin(self.settings, until_points=self.until_points, before_start=before_start,
+                                     fixed_run_dir=context.report.run_dir)
+        if started and not self.until_points:
+            context.report.weekly_plan["fixed_du_scope"] = self.receipt.fixed_scope(self.receipt.data)
         if not started:
             before_start()
         self.already_complete = not started and self.receipt.data["state"] == "complete"

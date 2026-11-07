@@ -133,7 +133,9 @@ class PlanSequenceTests(unittest.TestCase):
                 if self.operation == 'differential_universe':
                     guard = options['weekly_plan']
                     guard.receipt = WeeklyReceipt(owner.root, 'a' * 24, guard.slot)
-                    guard.already_complete = not guard.receipt.begin(guard.settings)
+                    guard.already_complete = not guard.receipt.begin(guard.settings, fixed_run_dir=self.result['run_dir'])
+                    self.result['weekly_plan'] = dict(fixed_du_scope=guard.receipt.fixed_scope(guard.receipt.data))
+                    (Path(self.result['run_dir']) / 'report.json').write_text(json.dumps(self.result), encoding='utf-8')
                 emit(dict(type='finished', report=self.result))
                 return self.result
         return Child()
