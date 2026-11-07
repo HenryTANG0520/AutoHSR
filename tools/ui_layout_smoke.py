@@ -7,6 +7,7 @@ import sys
 import tempfile
 import tkinter as tk
 from tkinter import ttk
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from autohsr import windows  # Establish DPI awareness before Tk; no game access.
@@ -211,17 +212,56 @@ def main():
                 assert ui.training_meter.verified
                 interactions.append("unrelated_operation_does_not_clear_daily_proof")
                 ui._show_page("differential_universe")
-                expected = ui.start_button.cget("text")
+                ui._show_page("logs")
+                root.update()
+                assert ui.action_page == "differential_universe"
+                assert not ui.footer_start_button.winfo_ismapped()
+                assert ui.footer_start_button.instate(("disabled",))
+                assert str(ui.reward_button.cget("state")) == "disabled"
+                interactions.append("records_hide_run_action_and_preserve_operation")
+
+                ui._show_page("differential_universe")
+                show_mode_view(ui, "differential_universe", "hero")
                 ui.settings_shell.choose('game')
-                for page in ("logs", "settings"):
-                    ui._show_page(page)
+                root.update()
+                origin = ui.start_button
+                expected = origin.cget("text")
+                root.focus_force()
+                origin.focus_set()
+                root.update()
+                ui._show_page("settings")
+                root.update()
+                assert ui.action_page == "differential_universe"
+                assert not ui.footer_start_button.winfo_ismapped()
+                assert ui.footer_start_button.instate(("disabled",))
+                assert str(ui.reward_button.cget("state")) == "disabled"
+                interactions.append("ordinary_settings_hide_run_action_and_preserve_operation")
+
+                ui.guide.tools_button.invoke()
+                ui.tools_shelf.select("workflow")
+                root.update()
+                assert ui.footer_start_button.winfo_ismapped()
+                assert ui.footer_start_button.instate(("!disabled",))
+                assert ui.footer_start_button.cget("text") == "新建草稿"
+                ui.settings_shell.back.invoke()
+                root.update()
+                assert ui.settings_tabs.select() == str(ui.settings_sections["game"])
+                assert root.focus_get() is ui.guide.tools_button
+                assert not ui.footer_start_button.winfo_ismapped()
+                assert ui.footer_start_button.instate(("disabled",))
+                interactions.append("tools_show_own_action_and_return_to_settings")
+
+                with patch.object(ui, "_start") as start:
+                    ui.settings_shell.back.invoke()
                     root.update()
-                    assert ui.action_page == "differential_universe"
-                    assert bool(ui.footer_start_button.winfo_ismapped()) == (page == "settings")
-                    if page == "settings":
-                        assert ui.start_button.cget("text") == expected
-                    assert str(ui.reward_button.cget("state")) == "disabled"
-                interactions.append("records_and_settings_preserve_operation")
+                    assert (ui.active_page, ui.action_page) == ("differential_universe", "differential_universe")
+                    assert ui.start_button is origin and root.focus_get() is origin
+                    assert ui.start_button.winfo_ismapped() and ui.start_button.instate(("!disabled",))
+                    assert ui.start_button.cget("text") == expected
+                    start.assert_not_called()
+                    ui.start_button.invoke()
+                    start.assert_called_once_with(differential_universe=True)
+                interactions.append("settings_return_restores_play_page_focus_and_run_scope")
                 ui._show_page("home")
                 board = ui.table
                 for key in ui.tasks:
