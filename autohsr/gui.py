@@ -2227,14 +2227,15 @@ class AutoHSRWindow:
         for _, path in sorted(reports, reverse=True):
             try:
                 report = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                report = None
-            if (not isinstance(report, dict)
-                    or any(not isinstance(report.get(field, ""), str) for field in text_fields)
-                    or type(report.get("report_saved", True)) is not bool):
+                if (not isinstance(report, dict)
+                        or any(not isinstance(report.get(field, ""), str) for field in text_fields)
+                        or type(report.get("report_saved", True)) is not bool):
+                    skipped += 1
+                    continue
+                self._record_run(report, history_path=path)
+            except (OSError, ValueError, RecursionError):
                 skipped += 1
                 continue
-            self._record_run(report, history_path=path)
             if skipped:
                 self.history_context.set(f"已跳过 {skipped} 份无效报告 · {self.history_context.get()}")
             return

@@ -47,6 +47,7 @@ class ReportHistoryTests(unittest.TestCase):
         for index, raw in enumerate((
             '{"status":', '[]', '{"source":17}', '{"operation":[]}', '{"game_day":17}',
             '{"reset_day":[]}', '{"report_saved":"false"}',
+            '{"results":' + '[' * 1200 + ']' * 1200 + '}',
         ), start=1):
             path = self.report(f'invalid-{index}', raw, 200 + index)
             invalid_reports[path] = path.read_bytes()
@@ -57,7 +58,7 @@ class ReportHistoryTests(unittest.TestCase):
         self.assertEqual(ui.last_run_dir, valid.parent)
         self.assertEqual(ui.last_screenshot, screenshot)
         self.assertEqual(json.loads(ui.report_text.get('1.0', 'end')), legacy)
-        self.assertIn('已跳过 7 份无效报告', ui.history_context.get())
+        self.assertIn('已跳过 8 份无效报告', ui.history_context.get())
         self.assertIn('文件时间', ui.history_context.get())
         self.assertIn('游戏日未核实', ui.history_context.get())
         self.assertTrue(ui.report_button.instate(('!disabled',)))
