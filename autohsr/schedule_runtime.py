@@ -424,6 +424,7 @@ class Scheduler:
     def _work(self, job):
         status, reason, pending_attempt = 'unknown', 'execution_unverified', False
         stop_observed = False
+        completion_runner = report = completion_deadline = None
         try:
             for index in range(job.plan['repeat']['count']):
                 stop_observed = False
@@ -446,6 +447,8 @@ class Scheduler:
                 self._checkpoint(job)
                 runner = self.executor.create(deepcopy(job.plan['target']), deepcopy(job.manifest),
                                               lambda event: self._child_event(job, event))
+                if job.plan.get('completion'):
+                    completion_runner = runner
                 if any(not callable(getattr(runner, name, None)) for name in ('run', 'stop', 'toggle_pause')):
                     raise ScheduleError('计划执行器未返回可控制的原生运行入口。')
                 with job.controls:
@@ -458,6 +461,7 @@ class Scheduler:
                 job.deadline = self.monotonic() + timeout if timeout else None
                 self._event('running', job, index=index, requested=job.plan['repeat']['count'])
                 report = runner.run()
+                completion_deadline = job.deadline
                 # Stop intent must survive source validation and receipt-write
                 # failures. Observe it before discarding the runner reference;
                 # it controls future work, not the verification of this result.
@@ -520,10 +524,18 @@ class Scheduler:
                     runner.stop()
                 except Exception:
                     status, reason = 'unknown', 'stop_unverified'
-            self._finish(job, status, reason)
-            self._release(job)
+            try:
+                self._finish(job, status, reason, completion_runner, report, completion_deadline)
+            finally:
+                try:
+                    if completion_runner is not None:
+                        discard = getattr(completion_runner, 'discard_completion', None)
+                        if callable(discard):
+                            discard()
+                finally:
+                    self._release(job)
 
-    def _finish(self, job, status, reason):
+    def _finish(self, job, status, reason, completion_runner=None, report=None, completion_deadline=None):
         try:
             self.store.finish(job.claim, status, reason)
         except Exception:
@@ -531,7 +543,28 @@ class Scheduler:
         outcome = dict(id=job.plan['id'], revision=job.revision, slot=job.slot.isoformat(),
                        status=status, reason=reason, completed=job.completed,
                        requested=job.plan['repeat']['count'])
+        if status == 'success' and completion_runner is not None:
+            def stopped():
+                with self._lock:
+                    return (job.cancel.is_set() or not self._running or self._paused
+                            or (completion_deadline is not None and self.monotonic() >= completion_deadline))
+
+            try:
+                _, revision = self.store.load(job.plan['id'])
+                if revision == job.revision and not stopped():
+                    result = completion_runner.finish_completion(report, stopped)
+                    completion = {}
+                    if isinstance(result, dict):
+                        allowed = dict(sound=('requested', 'failed', 'skipped', 'unknown'),
+                                       close_game=('ok', 'failed', 'partial', 'skipped'))
+                        completion = {key: result[key] for key, states in allowed.items() if result.get(key) in states}
+                else:
+                    completion = {'status': 'skipped'}
+                outcome['completion'] = completion or {'status': 'unknown'}
+            except Exception:
+                outcome['completion'] = {'status': 'unknown'}
         with self._lock:
             self._last = outcome
         self._event('finished', job, status=status, reason=reason, completed=job.completed,
-                    requested=job.plan['repeat']['count'])
+                    requested=job.plan['repeat']['count'],
+                    **({'completion': outcome['completion']} if 'completion' in outcome else {}))

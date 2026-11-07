@@ -102,11 +102,20 @@ def loads(raw, *, maximum=MAX_BYTES):
         raise ScheduleError('计划JSON无效或超过大小限制。') from None
 
 
+def completion_options(value):
+    _keys(value, ('sound', 'close_game'))
+    if any(type(flag) is not bool for flag in value.values()):
+        raise ScheduleError('结束操作须使用布尔值。', 'completion')
+    if not any(value.values()):
+        return {}
+    return dict(sound=value.get('sound', False), close_game=value.get('close_game', False))
+
+
 def validate(value):
     """Return a canonical private definition; saving it never arms execution."""
     value = json_copy(value)
     _keys(value, ('version', 'id', 'name', 'time', 'weekdays', 'target', 'repeat',
-                  'conflict', 'timeout_seconds'), ('version', 'id', 'name', 'time', 'target'))
+                  'conflict', 'timeout_seconds', 'completion'), ('version', 'id', 'name', 'time', 'target'))
     if type(value['version']) is not int or value['version'] != 1:
         raise ScheduleError('计划版本须为1。', 'version')
     identity(value['id']); _text(value['name'])
@@ -145,6 +154,9 @@ def validate(value):
         raise ScheduleError('计划冲突策略须为skip或stop_owned。', 'conflict')
     value['conflict'] = conflict
     value['timeout_seconds'] = _integer(value.get('timeout_seconds', 0), 0, 604800, 'timeout_seconds')
+    completion = completion_options(value.pop('completion', {}))
+    if completion:
+        value['completion'] = completion
     return json_copy(value)
 
 
@@ -195,7 +207,10 @@ def preview(value, now, *, count=5):
     for _ in range(count):
         cursor = next_due(plan, cursor)
         times.append(cursor.isoformat())
-    return dict(id=plan['id'], name=plan['name'], revision=revision(plan), timezone='Asia/Shanghai',
+    result = dict(id=plan['id'], name=plan['name'], revision=revision(plan), timezone='Asia/Shanghai',
                 next_times=times, repeat=deepcopy(plan['repeat']), conflict=plan['conflict'],
                 timeout_seconds=plan['timeout_seconds'], saved_does_not_enable=True,
                 missed_policy='skip', startup_minute='skip', system_tasks_registered=False)
+    if 'completion' in plan:
+        result['completion'] = deepcopy(plan['completion'])
+    return result

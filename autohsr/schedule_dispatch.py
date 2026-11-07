@@ -16,7 +16,7 @@ import re
 
 from .config import ROOT, Settings
 from .daily_observe import EVENT_CLAIM_OPERATION
-from .schedule_plan import ScheduleError, ScheduleSourceUnverified, revision, validate as validate_plan
+from .schedule_plan import ScheduleError, ScheduleSourceUnverified, completion_options, revision, validate as validate_plan
 from .storage import hold_read_sources
 from .task_workflow import GAME_TASKS, MAX_BYTES, compile_recipe, execution_tasks, loads, step_path, task_spec
 
@@ -157,6 +157,8 @@ class NativeScheduleExecutor:
         recipe, source = self._recipe(target)
         tasks = list(execution_tasks(recipe.steps))
         game = any(node['task'] in GAME_TASKS for node in tasks)
+        if plan.get('completion', {}).get('close_game') and not game:
+            raise ScheduleError('仅包含游戏任务的计划可在完成后退出游戏。', 'completion')
         if game and plan['repeat']['count'] != 1:
             raise ScheduleError('游戏计划重复须由同一任务树核对整批预算，不能分次建立新预算。')
         configured = []
@@ -187,7 +189,7 @@ class NativeScheduleExecutor:
         plan = validate_plan(plan)
         checked = self._checked_target(plan)
         _, recipe, _, game, configured = checked
-        return self._budget(plan, recipe, game, configured), self._manifest(checked)['sha256']
+        return self._budget(plan, recipe, game, configured), self._manifest(checked, plan.get('completion'))['sha256']
 
     @staticmethod
     def _budget(plan, recipe, game, configured):
@@ -206,15 +208,19 @@ class NativeScheduleExecutor:
             elif task == 'plan' and current.weekly_enabled and current.weekly_mode == 'differential_universe':
                 du_runs = max(du_runs, current.weekly_runs)
         count = plan['repeat']['count']
-        return dict(id=plan['id'], revision=revision(plan), repeat_count=count, contains_game_tasks=game,
+        result = dict(id=plan['id'], revision=revision(plan), repeat_count=count, contains_game_tasks=game,
                     whole_batch=dict(workflow_steps=recipe.profile['executions'] * count,
                                      daily_stamina_max=stamina * count, daily_synthesis_max=synthesis * count,
                                      du_runs_max=du_runs * count))
+        if 'completion' in plan:
+            result['completion'] = deepcopy(plan['completion'])
+        return result
 
     def freeze(self, plan):
-        return self._manifest(self._checked_target(plan))
+        plan = validate_plan(plan)
+        return self._manifest(self._checked_target(plan), plan.get('completion'))
 
-    def _manifest(self, checked):
+    def _manifest(self, checked, completion):
         target, recipe, source, game, configured = checked
         dependencies = {}
         for path, maximum in _dependency_paths(configured):
@@ -233,6 +239,8 @@ class NativeScheduleExecutor:
         data = dict(schema=1, target=target, source=source, base_dir=str(recipe.base_dir),
                     settings=asdict(self.settings), dependencies=list(dependencies.values()),
                     notification_versions=versions, profile=recipe.profile, game=game)
+        if completion:
+            data['completion'] = deepcopy(completion)
         data['sha256'] = hashlib.sha256(_json(data)).hexdigest()
         return data
 
@@ -240,7 +248,7 @@ class NativeScheduleExecutor:
         expected = {'schema', 'target', 'source', 'base_dir', 'settings', 'dependencies',
                     'notification_versions', 'profile', 'game', 'sha256'}
         try:
-            if (not isinstance(manifest, dict) or set(manifest) != expected or
+            if (not isinstance(manifest, dict) or set(manifest) - {'completion'} != expected or
                     type(manifest['schema']) is not int or manifest['schema'] != 1):
                 raise ValueError()
             raw = {key: value for key, value in manifest.items() if key != 'sha256'}
@@ -254,6 +262,11 @@ class NativeScheduleExecutor:
             if type(manifest['game']) is not bool or manifest['game'] != any(
                     node['task'] in GAME_TASKS for node in execution_tasks(recipe.steps)):
                 raise ValueError()
+            if 'completion' in manifest:
+                completion = completion_options(manifest['completion'])
+                if (not completion or completion != manifest['completion']
+                        or (completion['close_game'] and not manifest['game'])):
+                    raise ValueError()
             for entry in manifest['dependencies']:
                 if _fingerprint(entry['path'], maximum=entry['size']) != entry:
                     raise ValueError()
@@ -314,22 +327,46 @@ class NativeScheduleExecutor:
         if native:
             configured = ((node, *runner.specs[node['id']]) for node in execution_tasks(recipe.steps))
             bound_paths = tuple(dict.fromkeys(path for path, _ in _dependency_paths(configured)))
-        return VerifiedScheduleRunner(wrap(runner), source_scope=lambda: self._source_scope(manifest, bound_paths))
+        actions = None
+        if 'completion' in manifest:
+            from .completion_runtime import CompletionActions
+            actions = CompletionActions(emit=emit, **manifest['completion'])
+        return VerifiedScheduleRunner(wrap(runner), source_scope=lambda: self._source_scope(manifest, bound_paths),
+                                      completion=actions)
 
 
 class VerifiedScheduleRunner:
     """Reference the original saved report without rewriting its facts or bytes."""
-    def __init__(self, runner, *, source_scope=nullcontext):
+    def __init__(self, runner, *, source_scope=nullcontext, completion=None):
         self.runner = runner
         self._source_scope = source_scope
         self.schedule_source = None
         self.schedule_stopped = False
+        self.completion = completion
 
     def __getattr__(self, name):
         return getattr(self.runner, name)
 
     def run(self):
-        with self._source_scope():
+        try:
+            return self._run_verified()
+        except BaseException:
+            self.discard_completion()
+            raise
+
+    def discard_completion(self):
+        if self.completion is not None:
+            self.completion.release()
+
+    def finish_completion(self, report, stopped):
+        if self.completion is None or self.schedule_source is None:
+            return None
+        return self.completion.finish(report, stopped=stopped, operations=('task_workflow',),
+                                      report_digest=self.schedule_source['sha256'])
+
+    def _run_verified(self):
+        scope = self.completion.capture() if self.completion is not None else nullcontext()
+        with self._source_scope(), scope:
             report = self.runner.run()
         from .run_control import stop_requested
         self.schedule_stopped = stop_requested(self.runner, report)

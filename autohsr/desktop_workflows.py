@@ -970,6 +970,8 @@ def build_workflow_panel(parent, ui):
 
 _TARGET_TYPES = {"正式任务": "task", "任务流": "workflow"}
 _CONFLICTS = {"跳过本次": "skip", "停止定时任务": "stop_owned"}
+_COMPLETION_CHOICES = {"保留原状": (False, False), "播放提示音": (True, False),
+                       "退出本次游戏": (False, True), "退出并提示": (True, True)}
 _BUDGET_FIELDS = (("workflow_steps", "执行步数", "步"), ("daily_stamina_max", "开拓力", "点"),
                   ("du_runs_max", "差分局数", "局"), ("daily_synthesis_max", "实训合成", "次"))
 _SCHEDULE_REASONS = {"plan_changed": "计划版本已变化", "timeout": "达到超时上限", "controller_stopped": "已停止计时",
@@ -1003,7 +1005,7 @@ class _SchedulePanel(_Panel):
         self.controls = {}
         self.saved_labels = {}
         self.values = {key: tk.StringVar(self) for key in ("id", "name", "time", "target_type", "task",
-                       "path", "step_path", "count", "interval", "conflict", "timeout")}
+                       "path", "step_path", "count", "interval", "conflict", "timeout", "completion")}
         self.days = tuple(tk.BooleanVar(self, value=True) for _ in range(7))
         self.task_names = {_TASK_NAMES.get(task, task): task for task in sorted(TASKS)}
         self.selected = tk.StringVar(self)
@@ -1060,6 +1062,7 @@ class _SchedulePanel(_Panel):
         self._field(repeat, 0, 3, "conflict", "任务冲突", choices=tuple(_CONFLICTS))
         t.wrapped_label(repeat, text="冲突时仅可停止本调度器拥有的任务。", style="Settings.Note.TLabel").grid(
             row=1, column=0, columnspan=4, sticky="ew", pady=(self._size(3), 0))
+        self._field(repeat, 2, 0, "completion", "整批成功后", choices=tuple(_COMPLETION_CHOICES))
 
         actions = self._group(6, 1)
         self.preview_button = self._button(actions, "预览预算", self.preview, 0)
@@ -1110,12 +1113,15 @@ class _SchedulePanel(_Panel):
                               target=dict(type="task", task="daily", params={}),
                               repeat=dict(count=1, interval_seconds=0), conflict="skip", timeout_seconds=0)
         target = values["target"]
+        completion = values.get("completion", {})
         fields = {key: values[key] for key in ("name", "id", "time")}
         fields.update(target_type=_choice(_TARGET_TYPES, target["type"]),
                       task=_choice(self.task_names, target.get("task", "daily")), path=target.get("path", ""),
                       step_path=target.get("step_path", ""), count=values["repeat"]["count"],
                       interval=values["repeat"]["interval_seconds"], timeout=values["timeout_seconds"],
-                      conflict=_choice(_CONFLICTS, values["conflict"]))
+                      conflict=_choice(_CONFLICTS, values["conflict"]),
+                      completion=_choice(_COMPLETION_CHOICES,
+                                         (completion.get("sound", False), completion.get("close_game", False))))
         for key, value in fields.items():
             self.values[key].set(str(value))
         for index, variable in enumerate(self.days, 1):
@@ -1226,10 +1232,14 @@ class _SchedulePanel(_Panel):
         conflict = _CONFLICTS.get(values["conflict"])
         if conflict is None:
             raise ScheduleError("请选择任务冲突处理方式。", "conflict")
+        completion = _COMPLETION_CHOICES.get(values["completion"])
+        if completion is None:
+            raise ScheduleError("请选择整批成功后的操作。", "completion")
         plan = validate_schedule(dict(version=1, id=values["id"], name=values["name"], time=values["time"],
             weekdays=[index for index, day in enumerate(self.days, 1) if day.get()], target=target,
             repeat=dict(count=self._integer("count", "重复次数"), interval_seconds=self._integer("interval", "重复间隔")),
-            conflict=conflict, timeout_seconds=self._integer("timeout", "超时")))
+            conflict=conflict, timeout_seconds=self._integer("timeout", "超时"),
+            completion=dict(sound=completion[0], close_game=completion[1])))
         validate_target(plan["target"])
         return plan
 
@@ -1280,6 +1290,8 @@ class _SchedulePanel(_Panel):
             self._error("预算预览失败", error)
         else:
             budget = "单次触发整批上限 · " + " · ".join(fields)
+            if plan.get("completion"):
+                budget += "\n整批成功后 · " + self.values["completion"].get()
             synthesis = maximum.get("daily_synthesis_max")
             if type(synthesis) is int and synthesis > 0:
                 budget += f"\n满足实训条件时合成奇巧零食，最多消耗两种普通材料各 {synthesis} 个"
@@ -1386,6 +1398,17 @@ class _SchedulePanel(_Panel):
             result = _RUN_STATES.get(last.get("status"), "待核对")
             reason = _SCHEDULE_REASONS.get(last.get("reason"), "")
             status += f"\n{label} · {result}" + (f" · {reason}" if reason else "")
+            completion = last.get("completion") or {}
+            if completion.get("status") in ("skipped", "unknown"):
+                status += "\n结束操作已跳过" if completion["status"] == "skipped" else "\n结束操作待核对"
+            closed = {"ok": "本次游戏进程已退出", "failed": "退出游戏请求失败",
+                      "partial": "游戏退出待核对", "skipped": "已跳过退出游戏"}.get(completion.get("close_game"))
+            if closed:
+                status += "\n" + closed
+            sound = {"requested": "已请求播放提示音", "failed": "提示音播放失败",
+                     "skipped": "已跳过提示音", "unknown": "提示音待核对"}.get(completion.get("sound"))
+            if sound:
+                status += "\n" + sound
         return status
 
     def primary_action(self):
