@@ -111,7 +111,7 @@ def build_fields(ui, parent):
     numbers = ui.dungeon_count_controls = ttk.Frame(parent, style="Panel.TFrame")
     numbers.grid(row=3, column=0, sticky="ew")
     numbers.columnconfigure(2, weight=1)
-    ttk.Label(numbers, text="次数", style="Muted.TLabel").grid(row=0, column=0, sticky="w", padx=(0, d(8)))
+    ttk.Label(numbers, text="计划次数", style="Muted.TLabel").grid(row=0, column=0, sticky="w", padx=(0, d(8)))
     for column, label, delta in ((1, "−", -1), (5, "+", 1)):
         button = ttk.Button(numbers, text=label, width=3, command=lambda step=delta: change_count(ui, step))
         button.grid(row=0, column=column, padx=(0, d(6)) if column == 1 else (d(6), 0))
@@ -330,6 +330,7 @@ def refresh_count(ui):
             _show_editor(ui)
         ui.battle_checkbox.configure(text='执行体力计划' if planned else '加入计划')
         if planned:
+            ui.battle_checkbox.grid()
             from .power_plan_ui import preview,has_planar
             joined=ui.tasks['battle'].get() and ui.settings.allow_stamina_spend
             ui.dungeon_target_caption.set(preview(ui)+('' if joined else ' · 未加入'))
@@ -353,12 +354,19 @@ def refresh_count(ui):
         cost = count * category.cost
         suffix = " · 每周最多领取 3 次，以游戏剩余次数为准" if category.weekly_limit else ""
         if category.key == "planar":
-            ui.battle_cost.set(f"{count} 次 · 最多 {cost} 开拓力 · 已有沉浸器优先 · 上限 {ui.stamina_limit.get()}")
+            cost_text = f"{count} 次 · 最多 {cost} 开拓力 · 已有沉浸器优先 · 上限 {ui.stamina_limit.get()}"
         else:
-            ui.battle_cost.set(f"{count} 次 × {category.cost} 开拓力 = 预计 {cost} 开拓力 · 上限 {ui.stamina_limit.get()}" + suffix)
+            cost_text = f"{count} 次 × {category.cost} 开拓力 = 预计 {cost} 开拓力 · 上限 {ui.stamina_limit.get()}" + suffix
     except ValueError:
-        ui.battle_cost.set(f"请输入 1～{maximum} 次；每次 {category.cost} 开拓力。")
+        cost_text = f"请输入 1～{maximum} 次；每次 {category.cost} 开拓力。"
     joined = ui.tasks["battle"].get() and ui.settings.allow_stamina_spend
-    if not joined:
-        ui.battle_cost.set("本次不刷本")
-    ui.dungeon_target_caption.set(("已选 · " if joined else "未加入 · ")+(ui.target_name.get() or "名称待填写")+" · "+(ui.target_location.get() or "地点待填写"))
+    name, location = ui.target_name.get().strip(), ui.target_location.get().strip()
+    if len(name) < 2 or not location:
+        ui.battle_checkbox.grid_remove()
+        ui.dungeon_target_caption.set("请从列表选择副本，或手动填写名称和地点"
+                                      if ui.settings.allow_stamina_spend else "开拓力刷本未授权")
+        ui.battle_cost.set("选定副本后显示预计费用" if joined else "本次不刷本")
+        return
+    ui.battle_checkbox.grid()
+    ui.dungeon_target_caption.set(f"{'已选' if joined else '未加入'} · {name} · {location}")
+    ui.battle_cost.set(cost_text if joined else "本次不刷本")

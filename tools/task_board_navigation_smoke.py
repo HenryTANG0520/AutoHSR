@@ -21,7 +21,12 @@ def click(board, box):
 
 def main():
     checks = 0
+    selection_checks = []
     for scale in (1., 1.25, 1.5, 2.):
+        def check_selection(name, condition):
+            assert condition, (scale, name)
+            selection_checks.append(f"{scale:g}_{name}")
+
         with tempfile.TemporaryDirectory() as folder, patch.object(module, "ROOT", Path(folder)):
             local = Path(folder)
             config = local / "fresh.json"
@@ -49,23 +54,66 @@ def main():
                     ui.start_button.focus_set()
                     ui.start_button.invoke()
                     root.update()
-                    assert ui.active_page == "tasks" and not ui.busy and ui.dungeon_home_return
+                    assert ui.active_page == "tasks" and not ui.busy and ui.dungeon_home_return == "start"
                     assert ui.start_button.cget("text") == "返回每日"
                     assert root.focus_get() is ui.dungeon_list
+
+                    def pending_selection():
+                        return ("请从列表选择副本" in ui.dungeon_target_caption.get()
+                                and ui.battle_cost.get() == "选定副本后显示预计费用"
+                                and not ui.battle_checkbox.winfo_ismapped()
+                                and not any(ui.dungeon_list.matches(row) for row in ui.dungeon_list.rows))
+
+                    def open_dungeon_card():
+                        board.selected = "battle"
+                        board.focus_set()
+                        root.update()
+                        board.event_generate("<Return>")
+                        root.update()
+
+                    check_selection("start_opens_unselected_dungeon", pending_selection())
                     ui.dungeon_list.event_generate("<Escape>")
                     root.update()
                     assert ui.active_page == "home" and root.focus_get() is ui.start_button
                     assert ui._form_signature() == plan and config.read_bytes() == saved
+
+                    open_dungeon_card()
+                    check_selection("card_opens_unselected_dungeon", ui.dungeon_home_return == "card"
+                                    and root.focus_get() is ui.dungeon_list and pending_selection())
                     ui.start_button.invoke()
                     root.update()
-                    # Selecting the first displayed mission confirms target and location.
-                    ui.dungeon_list.choose(0)
+                    check_selection("card_cancel_restores_focus_and_draft", ui.active_page == "home"
+                                    and root.focus_get() is board and ui._form_signature() == plan
+                                    and config.read_bytes() == saved)
+
+                    ui.start_button.invoke()
+                    root.update()
+                    dungeons = ui.dungeon_list
+                    first, second = [row for row in dungeons.rows if row.name == ui.target_name.get()][:2]
+                    dungeons.choose(dungeons.rows.index(second))
                     root.update()
                     assert ui.active_page == "home" and not ui.busy and not ui._battle_setup_needed()
                     assert ui.target_location.get() and ui.dirty and config.read_bytes() == saved
                     assert ui.start_button.cget("text") == "开始计划"
                     assert root.focus_get() is ui.start_button
+                    check_selection("start_choice_uses_exact_same_name_row", ui.target_name.get() == second.name
+                                    and ui.target_location.get() == second.location and first.location != second.location)
                     checks += 16
+
+                    open_dungeon_card()
+                    check_selection("valid_choice_and_estimate_visible_on_reopen", ui.dungeon_home_return == "card"
+                                    and ui.dungeon_target_caption.get() == f"已选 · {second.name} · {second.location}"
+                                    and ui.battle_checkbox.winfo_ismapped() and ui.battle_checkbox.instate(("selected",))
+                                    and dungeons.matches(second) and not dungeons.matches(first)
+                                    and "24 次" in ui.battle_cost.get() and "预计 240 开拓力" in ui.battle_cost.get())
+                    ui.challenge_count.set("2")
+                    dungeons.choose(dungeons.rows.index(first))
+                    root.update()
+                    check_selection("card_choice_updates_location_and_restores_focus", ui.active_page == "home"
+                                    and root.focus_get() is board and not ui.busy
+                                    and ui.dungeon_target_caption.get() == f"已选 · {first.name} · {first.location}"
+                                    and "2 次" in ui.battle_cost.get() and "预计 20 开拓力" in ui.battle_cost.get()
+                                    and config.read_bytes() == saved)
 
                     board.selected = "daily"
                     board.activate()
@@ -150,7 +198,8 @@ def main():
                 finally:
                     root.destroy()
 
-    result = dict(checks=checks, scales=[100, 125, 150, 200], game_started=False)
+    result = dict(checks=checks + len(selection_checks), selection_checks=selection_checks,
+                  scales=[100, 125, 150, 200], game_started=False)
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False))
