@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from contextlib import ExitStack, nullcontext
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -48,6 +49,8 @@ class RunnerRecoveryTests(unittest.TestCase):
                 raise AutomationError('模拟开始挑战后识别中断')
             workflow.battle = battle
             settings = Settings(assignments=False, battle=True, daily=False, mail=False, battlepass=False, stamina_limit=10)
+            clock = self.enterContext(patch('autohsr.app.datetime', wraps=datetime))
+            clock.now.return_value = datetime(2026, 11, 7, 12, 0)
             first = Runner(settings).run()
             self.assertEqual(first.status, 'partial')
             self.assertEqual((first.stamina_spent, first.stamina_pending), (0, 10))
@@ -55,6 +58,10 @@ class RunnerRecoveryTests(unittest.TestCase):
             before = path.read_bytes()
             stored = json.loads(before)
             self.assertEqual(stored['pending'], 10)
+            first_directory = Path(first.run_dir)
+            original_report = (first_directory / 'report.json').read_bytes()
+            original_log = (first_directory / 'run.log').read_bytes()
+            directories = {first_directory}
             for explicit in (False, True):
                 with self.subTest(explicit=explicit):
                     second = Runner(settings, new_battle_run=explicit).run()
@@ -62,6 +69,13 @@ class RunnerRecoveryTests(unittest.TestCase):
                     self.assertIn('新一轮', second.error)
                     self.assertEqual(find.call_count, 1)
                     self.assertEqual(path.read_bytes(), before)
+                    self.assertEqual((first_directory / 'report.json').read_bytes(), original_report)
+                    self.assertEqual((first_directory / 'run.log').read_bytes(), original_log)
+                    current = Path(second.run_dir)
+                    self.assertEqual(current.parent, first_directory.parent)
+                    self.assertNotIn(current, directories)
+                    self.assertEqual(json.loads((current / 'report.json').read_bytes())['status'], 'failed')
+                    directories.add(current)
 
     def test_optional_failure_preserves_core_verification_in_saved_report(self):
         with tempfile.TemporaryDirectory() as folder:

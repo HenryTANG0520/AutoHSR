@@ -8,6 +8,7 @@ import json
 import logging
 from pathlib import Path
 import re
+from tempfile import mkdtemp
 import threading
 import time
 from datetime import datetime
@@ -2976,7 +2977,11 @@ class Runner:
         from .workflows import DailyWorkflow
         from .windows import kernel32
         directory = ROOT / "runs" / datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        directory.mkdir(parents=True)
+        try:
+            directory.mkdir(parents=True)
+        except FileExistsError:
+            # Allocation precedes the native lock, so never reuse a same-tick directory.
+            directory = Path(mkdtemp(prefix=directory.name + "_", dir=directory.parent))
         self.report.run_dir = str(directory)
         self.report.started_at = datetime.now().astimezone().isoformat()
         self.report.source = str(ROOT)
