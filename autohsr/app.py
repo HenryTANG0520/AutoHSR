@@ -2589,9 +2589,15 @@ class Runner:
             self.report.results.append(result)
             self.emit(dict(type="task", **result.__dict__))
             self.log(f"{result.task}：{result.detail}")
-            if name == 'redemption' and result.status != 'ok':
+            if name in ('assignments', 'redemption', 'mail', 'battlepass') and result.status != 'ok':
+                if name == 'redemption':
+                    skipped_detail = '兑换页面或附件尚未核实，未继续输入。'
+                else:
+                    self.report.safe_next = (SAFE_NEXT if attachment else
+                                             '请核对当前领奖页面及本次回执。已核实的实训和消耗记录已保留。')
+                    skipped_detail = '前一步免费领奖尚未核实，未继续输入。'
                 for remaining in selected[index + 1:]:
-                    skipped = TaskResult(remaining, 'skipped', '兑换页面或附件尚未核实，未继续输入。')
+                    skipped = TaskResult(remaining, 'skipped', skipped_detail)
                     self.report.results.append(skipped)
                     self.emit(dict(type='task', **skipped.__dict__))
                 break
