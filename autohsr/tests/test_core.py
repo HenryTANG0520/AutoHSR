@@ -1949,8 +1949,10 @@ class DailyBadgeTests(unittest.TestCase):
                 context = FakeContext([self.badge_scene(value)])
                 self.completed(context)
                 context.template_matches["daily_activity_badge"] = [(0.177, 0.28, 0.99)]
+                context.vision = SimpleNamespace(template=Mock(return_value=[]))
                 self.assertEqual(DailyWorkflow(context).daily().status, expected)
                 self.assertEqual(context.report.daily_verified, value == 500)
+                self.assertEqual(context.clicks, [])
 
     def test_full_badge_with_four_checkmarks_still_does_not_complete(self) -> None:
         context = FakeContext([self.badge_scene(500, full_text=True)])
