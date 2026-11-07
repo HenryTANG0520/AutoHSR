@@ -339,6 +339,8 @@ def build_settings(ui):
     note("weekly", 7, variable=ui.weekly_boundary)
 
     toggle(row("run", 0, "游戏内日志字幕"), ui.overlay_logs, "overlay_control")
+    toggle(row("run", 1, "关闭窗口时驻留托盘"), ui.close_to_tray, "tray_control")
+    note("run", 2, text="保存后生效。可从系统托盘重新打开或退出助手。")
 
     for index, (name, variable, limits, control) in enumerate((
             ("操作间隔（秒）", ui.action_delay, "0.3～5", "action_delay_entry"),

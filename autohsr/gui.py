@@ -99,6 +99,7 @@ class AutoHSRWindow:
         self.daily_section = None
         self.dungeon_home_return = None
         self.book_editor = None
+        self._tray = None
         self.detail_content = None
         self.detail_return_focus = None
         self.stop_requested = threading.Event()
@@ -129,7 +130,7 @@ class AutoHSRWindow:
         root.geometry("1180x820")
         root.minsize(1100, 760)
         root.configure(bg=self.BG)
-        root.protocol("WM_DELETE_WINDOW", self._close)
+        root.protocol("WM_DELETE_WINDOW", self._request_close)
         self._variables()
         from .desktop_focus import InputFocus
         self.input_focus = InputFocus(self)
@@ -179,12 +180,15 @@ class AutoHSRWindow:
         self.use_support = tk.BooleanVar(value=self.settings.use_support)
         self.auto_launch = tk.BooleanVar(value=self.settings.auto_launch)
         self.overlay_logs = tk.BooleanVar(value=self.settings.overlay_logs)
+        self.close_to_tray = tk.BooleanVar(value=self.settings.close_to_tray)
         self.daily_synthesis = tk.BooleanVar(value=self.settings.daily_synthesis)
         self.tasks = {name: tk.BooleanVar(value=getattr(self.settings, name)) for name in TASK_NAMES}
         if not self.settings.allow_stamina_spend:
             self.tasks["battle"].set(False)
         self.form_variables = [self.game_path, self.target_name, self.target_location, self.stamina_limit,
-                               self.rounds, self.dungeon_category, self.challenge_count, self.use_support, self.auto_launch, self.overlay_logs, self.daily_synthesis, *self.tasks.values()]
+                               self.rounds, self.dungeon_category, self.challenge_count, self.use_support,
+                               self.auto_launch, self.overlay_logs, self.close_to_tray, self.daily_synthesis,
+                               *self.tasks.values()]
         from .power_plan_ui import variables
         variables(self)
         from .support_ui import variables as support_variables
@@ -722,7 +726,7 @@ class AutoHSRWindow:
         self.daily_panel.set_busy(self.busy)
         for name in ('currency_source_combo','currency_zone_combo','currency_level_combo','du_runs_combo','du_resume_combo','du_mode_combo','du_operation_combo',
                      'weekly_mode_combo', 'weekly_day_combo', 'weekly_runs_combo', 'currency_strategy_combo',
-                     'weekly_enabled_combo', 'overlay_control', 'synthesis_control', 'power_mode_combo',
+                     'weekly_enabled_combo', 'overlay_control', 'tray_control', 'synthesis_control', 'power_mode_combo',
                      'power_repeat_combo','power_fill_combo','echo_enabled_combo','support_toggle'):
             if hasattr(self,name):
                 getattr(self,name).configure(state='disabled' if self.busy else 'readonly')
@@ -969,6 +973,7 @@ class AutoHSRWindow:
             values = dict(game_path=self.game_path.get().strip(), overlay_logs=self.overlay_logs.get(),
                           daily_synthesis=self.daily_synthesis.get())
             if save:
+                values["close_to_tray"] = self.close_to_tray.get()
                 values.update(self.redemption_panel.settings_values())
                 values.update(self.notifications_panel.settings_values())
             elif operation in ('daily', 'plan', 'redemption') and not resume_weekly_currency:
@@ -2035,7 +2040,7 @@ class AutoHSRWindow:
             focus.focus_set()
 
     def _restore(self) -> None:
-        if not self.closing:
+        if not self.closing and not (self._tray is not None and self._tray.parked):
             self.root.deiconify()
             self.root.lift()
 
@@ -2387,6 +2392,28 @@ class AutoHSRWindow:
             self.root.after_cancel(self._drain_job)
             self._drain_job = None
 
+    def _park_in_tray(self) -> None:
+        if self._tray is None:
+            from .desktop_tray import DesktopTray
+            self._tray = DesktopTray(self)
+        if not self._tray.park():
+            self._restore()
+            self.result_alert.set("无法进入系统托盘。助手仍处于打开状态。")
+
+    def _request_close(self) -> None:
+        if self.closing:
+            return
+        if self.settings.close_to_tray and self.book_editor is None:
+            self._park_in_tray()
+        else:
+            self._close()
+
+    def _restore_from_tray(self) -> None:
+        if self._tray is not None and self._tray.parked:
+            self._tray.restore()
+        elif not self.busy or self.paused:
+            self._restore()
+
     def _close(self) -> None:
         if self.closing:
             return
@@ -2408,16 +2435,21 @@ class AutoHSRWindow:
             self.root.destroy()
 
 
-def main(config_path: Path = CONFIG_PATH, *, admin_task: bool = False, on_ready=None) -> None:
+def main(config_path: Path = CONFIG_PATH, *, admin_task: bool = False, start_in_tray: bool = False,
+         on_ready=None) -> None:
     # Establish DPI awareness before Tk creates a window.
     from . import windows  # noqa: F401
     from contextlib import nullcontext
     from .admin_launch import TaskSession, when_window_ready
     with TaskSession() if admin_task else nullcontext() as session:
         root = tk.Tk()
+        if start_in_tray:
+            root.withdraw()
         ui = AutoHSRWindow(root, config_path)
         if session is not None:
-            session.attach(root, lambda: ui._restore() if not ui.busy or ui.paused else None)
+            session.attach(root, ui._restore_from_tray)
         if on_ready is not None:
             when_window_ready(root, lambda: on_ready('window'))
+        if start_in_tray:
+            ui._park_in_tray()
         root.mainloop()

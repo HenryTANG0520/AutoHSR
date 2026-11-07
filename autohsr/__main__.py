@@ -111,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--admin-launch", choices=("status", "enable", "disable"),
                       help="查询、启用或移除当前账户及本目录的管理员免重复确认启动；不启动游戏")
     mode.add_argument("--no-admin-launch", action="store_true", help="跳过管理员启动入口，仅打开当前权限的 GUI 以排查或移除授权")
+    parser.add_argument("--start-in-tray", action="store_true", help="以当前权限将助手启动到系统托盘，不启动游戏")
     mode.add_argument("--admin-task", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--admin-owner", help=argparse.SUPPRESS)
     parser.add_argument("--config", type=Path, help="配置 JSON 路径，省略时使用默认配置")
@@ -182,6 +183,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--currency-fast-mode',action=argparse.BooleanOptionalAction,default=None,
                         help='速通装备：普通装备仅在标准首领节点分配，命名核心仍优先；可用 --no-currency-fast-mode 关闭，接续沿用本局，不保存设置')
     args = parser.parse_args(raw_args)
+    if args.start_in_tray:
+        flags = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
+        if flags.count('--start-in-tray') != 1 or set(flags) - {'--start-in-tray', '--config', '--no-admin-launch'}:
+            parser.error('--start-in-tray 仅可与 --config、--no-admin-launch 搭配。')
     explicit_config = args.config is not None
     if not explicit_config:
         args.config = CONFIG_PATH
@@ -452,7 +457,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             if args.admin_task and not is_admin():
                 raise AdminLaunchError("管理员启动任务未获得管理员权限，未打开任务界面。")
-            if not args.admin_task and not args.no_admin_launch and args.config.resolve() == CONFIG_PATH.resolve():
+            if (not args.admin_task and not args.no_admin_launch and not args.start_in_tray
+                    and args.config.resolve() == CONFIG_PATH.resolve()):
                 if handoff():
                     if desktop_ready is not None:
                         desktop_ready('admin_task')
@@ -472,6 +478,8 @@ def main(argv: list[str] | None = None) -> int:
         from .gui import main as gui_main
         if desktop_ready is not None:
             gui_main(args.config, on_ready=desktop_ready)
+        elif args.start_in_tray:
+            gui_main(args.config, start_in_tray=True)
         else:
             gui_main(args.config, admin_task=True) if args.admin_task else gui_main(args.config)
         return 0
