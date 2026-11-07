@@ -238,7 +238,7 @@ class Guide(Surface):
         self.selected_page="home"
         self.hovered_page=None
         definitions=(("home","每日实训","tab-daily.png"),("tasks","生存索引","tab-survival.png"),
-                     ("universe","差分宇宙 / 货币战争","tab-universe.png"),
+                     ("universe","旷宇纷争","tab-universe.png"),
                      ("logs","记录",None),("settings","设置",None))
         for col,(key,label,filename) in enumerate(definitions):
             for selected in (False,True):
@@ -262,12 +262,28 @@ class Guide(Surface):
                              compound="none",style="Nav.TButton",command=command)
             button.grid(row=0,column=col,padx=0)
             self.buttons[key]=button
+            button.bind("<Left>",lambda _event,col=col:self._focus_tab(col-1))
+            button.bind("<Right>",lambda _event,col=col:self._focus_tab(col+1))
+            button.bind("<Return>",lambda _event,button=button:self._activate(button))
             button.bind("<Enter>",lambda _event,key=key:self._hover(key),add="+")
             button.bind("<Leave>",lambda _event:self._hover(None),add="+")
             for event in ("<FocusIn>","<FocusOut>"):
                 button.bind(event,lambda _event:self._refresh_tabs(),add="+")
-            Tooltip(button,"旷宇纷争" if key=="universe" else label)
+            Tooltip(button,label)
+        self.tools_button = ttk.Button(self, text="工具", style="Panel.TButton",
+                                       command=lambda:ui._show_tools(self.tools_button))
+        self.tools_button.bind("<Return>",lambda _event:self._activate(self.tools_button))
         self.bind("<Configure>",self._position,add="+")
+
+    def _focus_tab(self,index):
+        buttons = tuple(self.buttons.values())
+        buttons[index % len(buttons)].focus_set()
+        return "break"
+
+    @staticmethod
+    def _activate(button):
+        button.invoke()
+        return "break"
 
     def select(self,page):
         self.selected_page="universe" if page in ("differential_universe","currency_wars") else page
@@ -289,6 +305,7 @@ class Guide(Surface):
         d=lambda n:round(n*self.scale)
         w,h=self.winfo_width()-self.art_left-self.art_right,self.winfo_height()
         self.tabs.place(x=self.art_left+d(110),y=d(24))
+        self.tools_button.place(x=self.art_left+w-d(170),y=d(57),anchor="e")
         self.content.place(x=self.art_left+d(90),y=d(90),width=max(1,w-d(173)),height=max(1,h-d(130)))
 
     def paint_paper(self, p, surface):

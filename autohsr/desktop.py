@@ -28,6 +28,12 @@ def build_window(ui, task_names, server_names, *, scale=None):
         window.geometry(f"{width}x{height}")
         window.minsize(min(d(1100), width), min(d(800), height))
     window.title("AutoHSR · 开拓指南")
+    if scale is None and window.tk.call("tk", "windowingsystem") == "win32":
+        from .config import RESOURCE_ROOT
+
+        icon = RESOURCE_ROOT / "assets" / "ui" / "autohsr.ico"
+        if icon.is_file():
+            window.iconbitmap(default=str(icon))
     window.configure(bg=t.BG)
     ui.style = t.apply_theme(window, s)
     root = ui.shell = tk.Frame(window, bg=t.BG)

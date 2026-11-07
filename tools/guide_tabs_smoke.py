@@ -26,6 +26,15 @@ def main():
                     check(f'{scale}_{size}_five_contiguous_tabs',all(b.master is ui.guide.tabs for b in buttons) and all(a.winfo_x()+a.winfo_width()==b.winfo_x() and a.winfo_y()==b.winfo_y() and a.winfo_height()==b.winfo_height() for a,b in zip(buttons,buttons[1:])))
                     check(f'{scale}_{size}_tabs_fit_before_seal',ui.guide.tabs.winfo_x()+ui.guide.tabs.winfo_width()<ui.guide.winfo_width()-ui.guide.art_right-round(140*scale))
                     check(f'{scale}_{size}_all_tabs_are_icons',all(str(b.cget('compound'))=='none' and b.cget('image') for b in buttons))
+                    shortcut = ui.guide.tools_button
+                    check(f'{scale}_{size}_tools_fits_between_tabs_and_seal',
+                          ui.guide.tabs.winfo_x()+ui.guide.tabs.winfo_width() <= shortcut.winfo_x()
+                          and shortcut.winfo_x()+shortcut.winfo_width() < ui.guide.winfo_width()-ui.guide.art_right-round(159*scale))
+                root.focus_force()
+                ui.guide.buttons['home'].focus_set()
+                ui.guide.buttons['home'].event_generate('<Left>')
+                check(f'{scale}_keyboard_moves_between_icons',root.focus_get() is ui.guide.buttons['settings']
+                      and ui.active_page == 'home')
                 ui.guide.buttons['logs'].invoke();root.update()
                 check(f'{scale}_records_selects_its_tab',ui.active_page=='logs' and ui.guide.buttons['logs'].cget('style')=='Selected.Nav.TButton')
                 ui.guide.buttons['settings'].invoke();root.update()
@@ -33,6 +42,26 @@ def main():
                       and ui.settings_shell.master is ui.guide.content and ui.guide.selected_page=='settings')
                 ui._leave_settings();root.update()
                 check(f'{scale}_settings_returns_to_records',ui.active_page=='logs' and str(root.tk.call('focus','-lastfor',root))==str(ui.guide.buttons['settings']))
+                ui.guide.tools_button.invoke()
+                root.update()
+                check(f'{scale}_shortcut_opens_tools_under_settings',ui._in_tools()
+                      and ui.guide.selected_page == 'settings'
+                      and ui.start_button.cget('text') == ui.tools_shelf.primary_action()[0])
+                first = ui.tools_shelf.buttons['warp']
+                first.focus_set()
+                first.event_generate('<Right>')
+                root.update()
+                check(f'{scale}_tool_keyboard_changes_selection_and_keeps_focus',
+                      ui._selected_tool == 'redemption' and root.focus_get() is ui.tools_shelf.buttons['redemption'])
+                next_focus = str(root.tk.call('tk_focusNext', ui.tools_shelf.buttons['redemption']))
+                check(f'{scale}_tool_tab_reaches_selected_content',
+                      next_focus.startswith(str(ui.redemption_panel) + '.'))
+                ui.guide.tools_button.invoke()
+                root.update()
+                ui._leave_settings()
+                root.update()
+                check(f'{scale}_shortcut_returns_to_origin',ui.active_page == 'logs'
+                      and root.focus_get() is ui.guide.tools_button)
                 for key in ('logs','settings'):
                     variants=[ImageTk.getimage(ui.guide.photos[key,selected,hover]).tobytes() for selected,hover in ((False,False),(False,True),(True,False),(True,True))]
                     check(f'{scale}_{key}_distinct_hover_and_selection',len(set(variants))==4)

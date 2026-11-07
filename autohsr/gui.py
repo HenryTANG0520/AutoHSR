@@ -418,6 +418,13 @@ class AutoHSRWindow:
             self.settings_return_action = action
             self.settings_return_focus = return_focus or (self.weekly_button if origin in ('home', 'tasks', 'logs') else focus)
 
+    def _show_tools(self, return_focus):
+        from_settings = self.active_page == 'settings'
+        if not from_settings:
+            self._show_page('settings')
+            self.settings_return_focus = return_focus
+        self.settings_shell.choose('tools')
+
     def _show_daily_tasks(self, task=None):
         self.action_page = "home"
         self._show_page("settings")

@@ -1,5 +1,9 @@
 # AutoHSR resource attribution
 
+## 2026-11-07 AutoHSR 程序图标
+
+`assets/ui/autohsr.ico` 是本项目绘制的指南书与星轨图标，使用深靛与金色配色。通过 [图标绘制脚本](../tools/prepare_app_icon.py) 从几何图形生成，包含 16、20、24、32、48、64、128、256 像素帧。源图及脚本沿用项目 GPL-3.0-only 许可。ICO 的 SHA-256 为 `bad5232b4758204f9675a6ba4b51f14e451fb798a7bcec26ae7c5f1b937621b7`。
+
 ## 2026-11-07 巡星之礼活动导航
 
 三个模板来自星阳希公开 4.6 活动实录 P5 的 108.0 秒，640×360 原解码 BGR SHA-256 为 `868522d5495e8531dc7b84c40545efa12d5fca141afa1547bd039da2de5f8f55`。PNG 直接编码裁片，无缩放。三份回放分别取 122.5、90.0、127.9 秒，仅保留 `[104,8,177,36]` 和 `[15,62,82,329]` 两块，其余像素清零。模板和回放均不含 UID。游戏美术权利归 HoYoverse 及相应权利人，原视频归上传者及相应权利人。[P5 原片](https://www.bilibili.com/video/BV1JZaV6XEH3/?p=5) · [回放文件](../autohsr/tests/fixtures/daily_event_navigation)

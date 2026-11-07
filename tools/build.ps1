@@ -62,6 +62,7 @@ try {
     }
     # Build elsewhere: Explorer or a process can keep the output directory itself open.
     & $taskVenvPython -m PyInstaller --noconfirm --onedir --windowed --name AutoHSR --distpath $taskStagingRoot `
+        --icon (Join-Path $taskRuntimeAssets 'ui\autohsr.ico') `
         --collect-all rapidocr_onnxruntime --collect-all onnxruntime `
         --add-data "$taskRuntimeAssets;assets" --add-data 'LICENSE;.' launcher.py
     if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed. See output above.' }
