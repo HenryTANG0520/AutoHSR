@@ -24,12 +24,18 @@ def complete_uid(token):
     return None
 
 
+def account_key_from_uid(uid):
+    if type(uid) is not str or not re.fullmatch(r'[0-9]{8,10}', uid):
+        raise ValueError('请输入 8～10 位数字 UID。')
+    return hashlib.sha256(('autohsr-currency-account-v1:'+uid).encode('ascii')).hexdigest()
+
+
 def account_key(scene, confidence=.85):
     values = [match[1] for token in trusted(scene, confidence).tokens if (match := complete_uid(token))]
     if len(values) != 1:
         failure = AccountNotObserved if not values else AutomationError
         raise failure('当前账号标识未完整核实，未沿用旧对局事实。')
-    return hashlib.sha256(('autohsr-currency-account-v1:'+values[0]).encode('ascii')).hexdigest()
+    return account_key_from_uid(values[0])
 
 
 def checked_account_key(scene, confidence):

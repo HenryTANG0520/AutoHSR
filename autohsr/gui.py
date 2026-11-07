@@ -976,6 +976,8 @@ class AutoHSRWindow:
     def _read_settings(self, save=False, operation="daily", *, resume_weekly_currency=False,
                        overrides=None, quiet=False) -> Settings | None:
         try:
+            if self._config_load_failed and not save:
+                raise ValueError('配置读取失败。请重新载入有效方案，或确认并保存当前设置后再运行。')
             use_power = (not resume_weekly_currency and operation in ('daily','plan') and self.tasks['battle'].get()
                          and self.settings.allow_stamina_spend and self.power_mode.get() == '体力计划')
             values = dict(game_path=self.game_path.get().strip(), overlay_logs=self.overlay_logs.get(),

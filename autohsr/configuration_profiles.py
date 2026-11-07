@@ -1,5 +1,6 @@
 """Installation-local configuration copies without account or credential changes."""
 
+from dataclasses import replace
 from pathlib import Path
 import re
 
@@ -89,7 +90,7 @@ class ConfigurationProfiles:
         except FileExistsError:
             raise ProfileError('已有同名方案。') from None
         try:
-            settings.save(path)
+            replace(settings, profile_account_key='').save(path)
         except BaseException:
             # Remove only an empty directory just created by this invocation.
             try:

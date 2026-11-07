@@ -104,13 +104,23 @@ def sequence_identity(directory, *, required=True, publish=None):
             yield identity
 
 
+def _identity_for(context):
+    return _scope.get() or getattr(context, '_profile_identity', None)
+
+
 def wrap_window(context, window):
-    current = _scope.get()
+    if _scope.get() is None and getattr(context.settings, 'profile_account_key', ''):
+        runner = context.runner
+        current = getattr(runner, '_profile_identity', None)
+        if not isinstance(current, WorkflowIdentity):
+            current = runner._profile_identity = WorkflowIdentity(context.report.run_dir, required=True)
+        context._profile_identity = current
+    current = _identity_for(context)
     return _Window(window, context, current) if current is not None else window
 
 
 def observe(context, scene):
-    current = _scope.get()
+    current = _identity_for(context)
     if current is None:
         return True
     current._capture_serial += 1
@@ -123,12 +133,12 @@ def active():
 
 def native_window(context, *, require_verified=False):
     """Resolve the real sender for a native protocol with its own input guard."""
-    current = _scope.get()
+    current = _identity_for(context)
     window = context.window
     if current is None:
         return window
     if (type(window) is not _Window or window._context is not context or window._scope is not current
-            or _scope_thread.get() != threading.get_ident()):
+            or (_scope.get() is not None and _scope_thread.get() != threading.get_ident())):
         raise AutomationError('本次原生输入未绑定当前任务流程的账号作用域。')
     if require_verified:
         current.require(context)
@@ -138,7 +148,7 @@ def native_window(context, *, require_verified=False):
 
 
 def prepare(context):
-    current = _scope.get()
+    current = _identity_for(context)
     if current is None:
         return
     # Real Context.snapshot already waits for two frames. The loop also allows
@@ -170,6 +180,7 @@ class WorkflowIdentity:
         self._states = []
         self._proofs = []
         self._conflict = False
+        self._profile_mismatch = False
         self._storage_failed = False
         self._capture_serial = 0
         self._private_digest = None
@@ -180,12 +191,14 @@ class WorkflowIdentity:
             runner = state.runner_ref() if state.runner_ref is not None else None
             if runner is not None:
                 state.current_epoch = runner.input_epoch
-        verified = bool(self._key and not self._conflict and not self._storage_failed and not self._evidence_invalid and
+        verified = bool(self._key and not self._conflict and not self._profile_mismatch
+                        and not self._storage_failed and not self._evidence_invalid and
                         all(state.verified_epoch is not None and state.verified_epoch == state.current_epoch for state in self._states))
         return dict(required=self.required, bound=self._key is not None, verified=verified,
                     checked_contexts=len({proof['run_dir'] for proof in self._proofs}),
                     observations=len(self._proofs), account_changed=self._conflict,
-                    status='not_required' if not self.required else 'changed' if self._conflict else
+                    status='not_required' if not self.required else 'profile_mismatch' if self._profile_mismatch else
+                    'changed' if self._conflict else
                     'evidence_invalid' if self._evidence_invalid else
                     'storage_failed' if self._storage_failed else 'verified' if verified else
                     'needs_recheck' if self._key is not None else 'not_observed')
@@ -200,7 +213,8 @@ class WorkflowIdentity:
                 raise AutomationError('账号核验缺少当前原生运行目录。')
             if self._first_runner is None:
                 self._first_runner = runner
-            state = _State(self, directory, startup=self._key is None and runner is self._first_runner)
+            state = _State(self, directory, startup=self._key is None and runner is self._first_runner
+                           and not getattr(context.settings, 'profile_account_key', ''))
             try:
                 state.runner_ref = weakref.ref(runner)
             except TypeError:
@@ -247,7 +261,7 @@ class WorkflowIdentity:
             self.publish(self.public())
             raise AutomationError('前序账号证据缺失或内容改变；原记录保留，未沿用旧结果继续输入。') from None
 
-    def _commit(self, state, key):
+    def _commit(self, state, key, expected):
         self._integrity()
         sources = []
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -266,29 +280,35 @@ class WorkflowIdentity:
                                 capture_serial=frame['capture_serial']))
         proof = dict(run_dir=state.run_dir, input_epoch=state.frames[-1]['epoch'], sources=sources)
         conflict = self._key is not None and self._key != key
-        data = dict(schema=1, account_key=self._key or key, proofs=self._proofs + ([] if conflict else [proof]),
+        mismatch = bool(expected and key != expected)
+        rejected = conflict or mismatch
+        data = dict(schema=1, account_key=self._key or expected or key, proofs=self._proofs + ([] if rejected else [proof]),
                     account_changed=conflict)
-        if conflict:
+        if rejected:
             data['conflicting_observation'] = dict(account_key=key, **proof)
+        if mismatch:
+            data['profile_mismatch'] = True
         self._persist(data)
-        if conflict:
-            self._conflict = True
-        else:
+        self._conflict, self._profile_mismatch = conflict, mismatch
+        if not rejected:
             self._key = key
             self._proofs.append(proof)
             state.verified_epoch = proof['input_epoch']
             state.startup = False
         self.publish(self.public())
+        if mismatch:
+            raise AutomationError('当前账号与所选配置方案不一致，请核对登录账号和方案。')
         if conflict:
             raise AutomationError('当前账号与本次任务流程已绑定账号不同；未继续输入或沿用前一账号结果。')
 
     def _check(self):
-        if self._conflict or self._storage_failed or self._evidence_invalid:
+        if self._conflict or self._profile_mismatch or self._storage_failed or self._evidence_invalid:
             raise AutomationError('本次流程账号核验已停止；未重试输入或更换绑定账号。')
 
     def observe(self, context, scene, *, capture_serial=0):
         self._check()
         state = self.state(context)
+        expected = getattr(context.settings, 'profile_account_key', '')
         epoch = context.runner.input_epoch
         state.current_epoch = epoch
         now = time.monotonic()
@@ -316,13 +336,15 @@ class WorkflowIdentity:
                         and normalize(token.text).startswith('uid') for token in (*scene.tokens, *weak))
         login = DailyWorkflow._login(scene)
         state.startup_page = key is None and bool(login or DailyWorkflow._supply_overlay(scene) or DailyWorkflow._login_reward_overlay(scene))
-        if login and self._key is not None:
+        if login and (expected or self._key is not None):
             state.verified_epoch = None
             state.frames, state.candidate = [], None
+            if expected:
+                raise AutomationError('所选方案已绑定账号，请先登录并进入游戏主界面。')
             raise AutomationError('已绑定流程返回登录页；未自动登录或切换账号。')
         if key is None and not fragments and state.verified_epoch == epoch:
             return True  # Native page/input checks still apply when UID is hidden.
-        if key is not None and key == self._key and state.verified_epoch == epoch:
+        if key is not None and key == self._key and state.verified_epoch == epoch and (not expected or expected == key):
             return True
         if state.verified_epoch is not None:
             state.verified_epoch = None
@@ -356,9 +378,9 @@ class WorkflowIdentity:
             state.frames = state.frames[-1:]
             return False
         try:
-            self._commit(state, key)
+            self._commit(state, key, expected)
         except Exception:
-            if not self._conflict:
+            if not self._conflict and not self._profile_mismatch:
                 self._storage_failed = True
                 self.publish(self.public())
             raise
@@ -368,9 +390,11 @@ class WorkflowIdentity:
         self._check()
         state = self.state(context)
         state.current_epoch = context.runner.input_epoch
-        if state.verified_epoch == context.runner.input_epoch and self._key is not None:
+        expected = getattr(context.settings, 'profile_account_key', '')
+        if (state.verified_epoch == context.runner.input_epoch and self._key is not None
+                and (not expected or expected == self._key)):
             return
-        if self._key is None and state.startup and state.startup_page:
+        if not expected and self._key is None and state.startup and state.startup_page:
             return
         raise InputInterrupted('当前输入代次的账号尚未重新核实；旧目标已丢弃。')
 

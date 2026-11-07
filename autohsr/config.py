@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import sys
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field
@@ -94,6 +95,7 @@ class Settings:
     redemption_catalog: str = ''
     redemption_claim_mail: bool = True
     challenge_plan: dict = field(default_factory=dict)
+    profile_account_key: str = field(default="", repr=False)
 
     def __post_init__(self):
         from copy import deepcopy
@@ -107,6 +109,9 @@ class Settings:
         self.challenge_plan=deepcopy(self.challenge_plan)
 
     def validate(self, operation: str = "daily") -> None:
+        if type(self.profile_account_key) is not str or (self.profile_account_key and
+                not re.fullmatch(r'[0-9a-f]{64}', self.profile_account_key)):
+            raise SettingsError('profile_account_key', '方案账号绑定无效，请在游戏连接页重新设置。')
         for name in ("finish_sound", "finish_close_game"):
             if type(getattr(self, name)) is not bool:
                 raise SettingsError(name, "完成后操作开关必须为布尔值。")
@@ -199,7 +204,10 @@ class Settings:
 
     def save(self, path: Path = CONFIG_PATH) -> None:
         self.validate("save")
-        payload = json.dumps(asdict(self), ensure_ascii=False, indent=2)
+        data = asdict(self)
+        if not self.profile_account_key:
+            del data['profile_account_key']
+        payload = json.dumps(data, ensure_ascii=False, indent=2)
         created = None
         try:
             with NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,

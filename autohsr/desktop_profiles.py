@@ -15,7 +15,8 @@ class DesktopProfiles:
         self.feedback = tk.StringVar(master=ui.root, value=self._current_note())
 
     def _current_note(self):
-        return f'当前方案 · {self.catalog.label_for(self.ui.config_path)}'
+        binding = '已绑定账号' if self.ui.settings.profile_account_key else '未绑定账号'
+        return f'当前方案 · {self.catalog.label_for(self.ui.config_path)} · {binding}'
 
     def names(self):
         try:
@@ -61,13 +62,7 @@ class DesktopProfiles:
         if label == self.catalog.label_for(self.ui.config_path):
             self.feedback.set(self._current_note())
             return
-        ui = self.ui
-        if ui.dirty or ui.workflow_panel.dirty or ui.schedule_panel.dirty:
-            self.feedback.set('请先保存当前设置及正在编辑的任务流或定时计划。')
-            return
-        state = ui.desktop_schedule.runtime.snapshot()
-        if state['enabled_ids'] or not ui.desktop_schedule.runtime.wait_idle(0):
-            self.feedback.set('请先停止或停用当前配置的定时计划。')
+        if not self._ready_for_change():
             return
         try:
             path, settings = self.catalog.read(label)
@@ -75,3 +70,39 @@ class DesktopProfiles:
             self.feedback.set('所选方案无法读取，请检查后重试。')
             return
         self.activate(path, settings)
+
+    def _ready_for_change(self):
+        if not self._idle():
+            return False
+        ui = self.ui
+        if ui.dirty or ui.workflow_panel.dirty or ui.schedule_panel.dirty:
+            self.feedback.set('请先保存当前设置及正在编辑的任务流或定时计划。')
+            return False
+        state = ui.desktop_schedule.runtime.snapshot()
+        if state['enabled_ids'] or not ui.desktop_schedule.runtime.wait_idle(0):
+            self.feedback.set('请先停止或停用当前配置的定时计划。')
+            return False
+        return True
+
+    def bind_account(self):
+        if not self._ready_for_change():
+            return
+        ui = self.ui
+        if ui._config_load_failed:
+            self.feedback.set('请先载入有效方案，或确认并保存当前设置。')
+            return
+        label = self.catalog.label_for(ui.config_path)
+        uid = simpledialog.askstring('设置方案账号',
+            f'请输入「{label}」使用的 8～10 位 UID。留空并确定可解除绑定。', show='*', parent=ui.root)
+        if uid is None or not self._ready_for_change():
+            return
+        uid = uid.strip()
+        from .currency_wars_identity import account_key_from_uid
+        try:
+            key = account_key_from_uid(uid) if uid else ''
+        except ValueError as error:
+            self.feedback.set(str(error))
+            return
+        if key == ui.settings.profile_account_key or ui._read_settings(
+                save=True, operation='save', overrides={'profile_account_key': key}) is not None:
+            self.feedback.set(self._current_note())

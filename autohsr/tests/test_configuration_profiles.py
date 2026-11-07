@@ -6,6 +6,7 @@ from unittest.mock import Mock
 
 from autohsr.config import Settings
 from autohsr.configuration_profiles import ConfigurationProfiles, DEFAULT_LABEL, ProfileError
+from autohsr.currency_wars_identity import account_key_from_uid
 from autohsr.desktop_profiles import DesktopProfiles
 
 
@@ -33,6 +34,16 @@ class ConfigurationProfilesTests(TestCase):
         self.assertEqual(self.catalog.read(DEFAULT_LABEL), (self.default, Settings()))
         self.assertFalse(self.catalog.root.exists())
         self.assertFalse(self.default.exists())
+
+    def test_copy_requires_its_own_binding_and_config_contains_no_raw_uid(self):
+        key = account_key_from_uid('100000000')
+        Settings(profile_account_key=key).save(self.default)
+        original = self.default.read_bytes()
+        target = self.catalog.copy('独立账号', self.default)
+        self.assertEqual(self.catalog.read(DEFAULT_LABEL)[1].profile_account_key, key)
+        self.assertEqual(self.catalog.read('独立账号')[1].profile_account_key, '')
+        self.assertNotIn(b'100000000', original)
+        self.assertEqual(self.default.read_bytes(), original)
 
     def test_refuses_unsafe_duplicate_and_corrupt_profiles(self):
         for label in ('../别处', r'C:\别处', 'CON', '默认配置', '结尾.', ' 方案'):

@@ -8,7 +8,11 @@
 
 切换前要结束运行和编辑，保存更改并停用当前方案中已启用的计划。切换时重新载入目标设置，保留窗口位置，并回到游戏连接页。通过常规入口重新打开助手时使用默认配置。
 
-方案名称仅用于区分设置。登录由玩家单独完成，日常资源账本仍按实际核实的账号和游戏日记账。方案不保存登录凭据，也不会复制原方案的定时计划。
+「设置方案账号」可为当前方案绑定 UID。输入内容遮盖显示，留空并确定可解除绑定。绑定变更与方案切换使用相同的空闲、保存和计划停用条件。副本需要单独绑定账号，定时计划也需单独创建。
+
+绑定后，请先登录该账号并进入游戏主界面。执行器用两张当前画面核对 UID，账号不符时停止。日常先只读预查旧账，核验账号后才建立体力预算。暂停或失焦后，恢复操作前重新核验。定时任务沿用启用时冻结的绑定。
+
+方案和本机定时回执保存 UID 的 SHA-256 指纹，用于和实际画面比较。公开运行报告只显示核验状态。登录由玩家单独完成，日常账本仍按实际核实的账号和游戏日记账。
 
 ## 独立计划与CW序列（2026-11-01）
 
@@ -42,7 +46,7 @@
 
 ## 私人证据与界面协议
 
-实现为[共享执行租约](../autohsr/workflow_lease.py)、[账号作用域](../autohsr/workflow_identity.py)、[Context接入](../autohsr/app.py)、[预算只读预检](../autohsr/recovery.py)及各原生流程执行器。它不增加Settings字段，也不向配置、模型局面或新增界面状态中加入UID、账号指纹或安装路径。
+实现为[共享执行租约](../autohsr/workflow_lease.py)、[账号作用域](../autohsr/workflow_identity.py)、[Context接入](../autohsr/app.py)、[预算只读预检](../autohsr/recovery.py)及各原生流程执行器。运行时观察不会写回配置。模型局面和界面核验状态均不含 UID 或账号指纹。
 
 拥有身份作用域的外层运行目录中的`identity/state.json`记录本地账号指纹、原生运行目录、代次、捕获时间／序号及PNG来源与SHA-256。PNG仅裁剪底部UID区域，文件名使用随机值；它们是私人运行证据，不是公开素材或训练数据，继续随`runs/`忽略。不同账号的冲突观察单独保留，原绑定与原proofs不变。私人状态及来源读取有16 MiB上限；写入或替换失败不授权输入。
 
@@ -56,7 +60,7 @@
 | `checked_contexts` | 有账号证明的原生运行目录数 |
 | `observations` | 完整两帧证明数量，包括暂停后重核 |
 | `account_changed` | 两帧确认不同账号；未读到UID不设为true |
-| `status` | `not_required/not_observed/verified/needs_recheck/changed/evidence_invalid/storage_failed` |
+| `status` | `not_required/not_observed/verified/needs_recheck/changed/profile_mismatch/evidence_invalid/storage_failed` |
 
 任务树发送`type='workflow_identity'`匿名事件；独立Plan／CW在初始化和其自有作用域的观察发布时发送`type='execution_identity'`。加入外层时保留外层发布器，总报告结束前再刷新其匿名快照；界面不应把`bound=true`替代当前`verified=true`。任务树游戏子步骤另有`account_verified`；未核实时保留partial与原子报告。CW原报告已有的本地归属字段仍保持原含义，不用新状态包替代其当前账号／游戏周／局数及资源核验。
 

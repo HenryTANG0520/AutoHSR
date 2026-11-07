@@ -15,6 +15,7 @@ from autohsr import windows
 from autohsr.__main__ import main
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
+from autohsr.currency_wars_identity import account_key_from_uid
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, RunReport, Scene, Stopped, TaskResult
 from autohsr.workflows import DailyWorkflow
 from autohsr.tests.test_core import FakeContext, token
@@ -173,13 +174,15 @@ class ColdStartEntryTests(TestCase):
             self.assertFalse(absent.exists())
             self.assertFalse((root / 'schedules').exists())
 
-    def invoke(self, frames, *, plan=False, rewards=False, cold=True, stop=None, battle=False):
+    def invoke(self, frames, *, plan=False, rewards=False, cold=True, stop=None, battle=False, profile_uid='',
+               scheduled=False):
         temporary = TemporaryDirectory(prefix='hsr-cold-')
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
         config = root / 'config.json'
         Settings(assignments=False, battle=battle, daily=not battle, daily_synthesis=False,
-                 overlay_logs=False, mail=False, battlepass=False).save(config)
+                 overlay_logs=False, mail=False, battlepass=False,
+                 profile_account_key=account_key_from_uid(profile_uid) if profile_uid else '').save(config)
         initial_config = config.read_bytes()
         geometry = windows.Geometry(0, 0, 960, 540)
         window = windows.GameWindow.__new__(windows.GameWindow)
@@ -279,7 +282,19 @@ class ColdStartEntryTests(TestCase):
             args = ['--plan' if plan else '--run', '--config', str(config)]
             if rewards:
                 args.append('--reward-only')
-            code = main(args)
+            if scheduled:
+                from autohsr.schedule_dispatch import NativeScheduleExecutor
+                from autohsr.schedule_plan import validate
+                executor = NativeScheduleExecutor(Settings.load(config), base_dir=root, run_root=root / 'runs')
+                schedule = validate(dict(version=1, id='bound-daily', name='Fixture', time='07:00',
+                                         target=dict(type='task', task='daily')))
+                frozen = executor.freeze(schedule)
+                executor.settings = replace(executor.settings, profile_account_key='')
+                result = executor.create(schedule['target'], frozen, lambda _event: None).run().to_dict()
+                code = int(result['status'] != 'success')
+                print(json.dumps(result))
+            else:
+                code = main(args)
         self.assertEqual(launch.call_count, int(cold))
         self.assertEqual(config.read_bytes(), initial_config)
         saved = json.loads(output.getvalue())
@@ -302,6 +317,42 @@ class ColdStartEntryTests(TestCase):
         self.assertEqual(result.executed, ['daily'])
         self.assertEqual(result.sent, [])
         self.assertGreaterEqual(result.captures, 4)
+
+    def test_bound_profile_allows_two_matching_reads_and_publishes_only_status(self):
+        key = account_key_from_uid('100000000')
+        result = self.invoke([phone()], cold=False, profile_uid='100000000')
+        self.assertEqual(result.code, 0)
+        self.assertGreaterEqual(result.captures, 2)
+        self.assertEqual(result.executed, ['daily'])
+        self.assertEqual(result.report['execution_identity']['status'], 'verified')
+        self.assertNotIn(key, json.dumps(result.report))
+
+    def test_bound_profile_blocks_wrong_account_before_budget_or_input(self):
+        for plan in (False, True):
+            with self.subTest(plan=plan), patch('autohsr.recovery.BattleBudget.begin') as begin:
+                result = self.invoke([phone()], cold=False, profile_uid='200000000', plan=plan, battle=True)
+                self.assertEqual(result.code, 1)
+                self.assertEqual(result.executed, [])
+                self.assertEqual(result.sent, [])
+                self.assertEqual(result.report['execution_identity']['status'], 'profile_mismatch')
+                begin.assert_not_called()
+
+    def test_bound_profile_login_requires_player_and_sends_no_input(self):
+        result = self.invoke([login()], profile_uid='100000000')
+        self.assertEqual(result.code, 1)
+        self.assertIn('已绑定账号', result.report['error'])
+        self.assertEqual(result.executed, [])
+        self.assertEqual(result.sent, [])
+
+    def test_scheduled_daily_uses_frozen_binding_after_configuration_changes(self):
+        with patch('autohsr.recovery.BattleBudget.begin') as begin:
+            result = self.invoke([phone()], cold=False, profile_uid='200000000', battle=True, scheduled=True)
+        self.assertEqual(result.code, 1)
+        self.assertEqual(result.report['workflow']['identity']['status'], 'profile_mismatch')
+        self.assertEqual(result.executed, [])
+        self.assertEqual(result.sent, [])
+        self.assertNotIn(account_key_from_uid('200000000'), json.dumps(result.report))
+        begin.assert_not_called()
 
     def test_repeated_black_and_unknown_splash_expire_without_input(self):
         for frame in (EmptyCapture('blank'), page(token('启动画面', .5, .5))):

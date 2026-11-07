@@ -3004,6 +3004,7 @@ class Runner:
             # Allocation precedes the native lock, so never reuse a same-tick directory.
             directory = Path(mkdtemp(prefix=directory.name + "_", dir=directory.parent))
         self.report.run_dir = str(directory)
+        self._profile_identity = None
         self.report.started_at = datetime.now().astimezone().isoformat()
         self.report.source = str(ROOT)
         self._logger = logging.getLogger(f"autohsr.{directory.name}")
@@ -3196,7 +3197,7 @@ class Runner:
                 from .recovery import BattleBudget
                 self.battle_budget = BattleBudget(ROOT / "runs", self.settings, self.report)
                 from .workflow_identity import active as workflow_identity_active
-                defer_battle_budget = workflow_identity_active()
+                defer_battle_budget = workflow_identity_active() or bool(self.settings.profile_account_key)
                 begin = self.battle_budget.preflight if defer_battle_budget else self.battle_budget.begin
                 begin(new_run=self.new_battle_run,**(dict(protect_pending=True) if self.use_power_plan else {}))
             self.checkpoint()
@@ -3258,7 +3259,7 @@ class Runner:
                       Vision(ocr_confidence))
             from .workflow_identity import active as workflow_identity_active, prepare as prepare_workflow_identity
 
-            if (workflow_identity_active() or workflow_foreground
+            if (workflow_identity_active() or self.settings.profile_account_key or workflow_foreground
                     or daily_observation or daily_claim or daily_reply or achievement_claim
                     or redemption or self.report.operation in ('daily', 'reward_only')):
                 from .currency_wars_identity import UID_VETO_FLOOR
@@ -3611,6 +3612,8 @@ class Runner:
                 if monitor_started:
                     monitor.join(timeout=1)
             self.report.finished_at = datetime.now().astimezone().isoformat()
+            if self._profile_identity is not None:
+                self.report.execution_identity = self._profile_identity.public()
             if self.battle_budget:
                 try:
                     self.battle_budget.finish()
