@@ -20,6 +20,7 @@ from .daily_observe import SCREEN_OPERATION
 from .daily_message_observe import message_panel, phone_message_entry
 from .daily_message_world import world_message_target
 from .daily_reward_observe import phone_achievement_target, support_more_target, support_visa_target
+from .daily_training_scan import MAX_SCROLLS, SCAN_ACTION
 from .daily_visa_pages import (VISA_LAYOUT_VERSION, refine_small_visa_title, visa_character_tab, visa_overview,
                               visa_support_section)
 from .dungeons import CATEGORIES
@@ -29,7 +30,7 @@ from .policy import du_guide_details, has_du_field_plane_marker
 from .screenshot_tool import MAX_PIXELS
 from .storage import hold_read_sources
 from .task_workflow import (ACHIEVEMENT_OVERVIEW_PAGE, ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES,
-                            GUIDE_WORKFLOW_SUBPAGES, MESSAGE_WORKFLOW_PAGE, REDEMPTION_FORM_PAGE,
+                            GUIDE_WORKFLOW_SUBPAGES, MESSAGE_WORKFLOW_PAGE, REDEMPTION_FORM_PAGE, TRAINING_SCAN_PAGE,
                             VISA_CHARACTERS_PAGE, VISA_COLLECTION_PAGE, WORKFLOW_NAVIGATION_TARGETS,
                             WORLD_WORKFLOW_PAGE)
 from .team_calibration_pages import calibration_overlay
@@ -243,6 +244,8 @@ class WorkflowNavigation:
         self.key = self.geometry = self.account = None
         self.intent = self.arrival = None
         self._installation = None
+        self._scan_view = None
+        self._scan_day = None
         self.started = False
 
     @property
@@ -511,17 +514,21 @@ class WorkflowNavigation:
                 return _Action('open_reward_guide', ('reward_guide',), token) if token else None
             token = odyssey_list_entry(frame.scene, **options)
             return _Action('open_odyssey', ('odyssey',), token) if token else None
+        target = self._destination()
         if page == 'phone':
-            target = 'guide' if self.target in _GUIDE_PAGES else self.target
+            target = 'guide' if target in _GUIDE_PAGES else target
             token = self._phone_control(frame.scene, target)
             return _Action('open_' + target, _GUIDE_PAGES if target == 'guide' else (target,), token) if token else None
-        if page in _GUIDE_PAGES and self.target in _TAB:
-            token = self._guide_control(frame.scene, self.target)
-            return _Action('open_' + self.target, (self.target,), token) if token else None
+        if page in _GUIDE_PAGES and target in _TAB:
+            token = self._guide_control(frame.scene, target)
+            return _Action('open_' + target, (target,), token) if token else None
         return _Action('return_to_hub', ('world', 'phone')) if page in TARGETS and page not in ACTIVITY_WORKFLOW_PAGES else None
 
+    def _destination(self):
+        return 'daily_training' if self.target == TRAINING_SCAN_PAGE else self.target
+
     def _satisfies(self, page):
-        return page == self.target or self.target == 'guide' and page in _GUIDE_PAGES
+        return page == self._destination() or self.target == 'guide' and page in _GUIDE_PAGES
 
     def _account(self, scene):
         account = checked_account_key(scene, self.confidence)
@@ -622,6 +629,11 @@ class WorkflowNavigation:
         self._control()
 
     def _planned(self, pair):
+        if self._scan_view is not None:
+            if (self.target != TRAINING_SCAN_PAGE or self.background
+                    or pair[-1].page != 'daily_training' or self._training_view(pair) != self._scan_view):
+                raise AutomationError('实训巡查的当前卡片区已变化。')
+            return _Action(SCAN_ACTION, ('daily_training',), self._scan_view.anchor)
         first, second = map(self._action, pair)
         if first is None or second is None or first.name != second.name or first.pages != second.pages:
             raise AutomationError('日常页面导航缺少双帧一致的唯一入口。')
@@ -660,7 +672,9 @@ class WorkflowNavigation:
         source = hold_read_sources((installation,)) if installation is not None else nullcontext()
         with _seal(pair), source:
             self._verify(pair)
-            if planned.token is None:
+            if planned.name == SCAN_ACTION:
+                self.window.scroll_down_once(*planned.token.center, self.geometry, before_submit=before_submit)
+            elif planned.token is None:
                 if planned.name not in ('open_phone', 'return_to_hub'):
                     raise AutomationError('日常页面导航缺少受支持的原生输入。')
                 options = {'require_release': True} if self.target == WORLD_WORKFLOW_PAGE else {}
@@ -680,16 +694,18 @@ class WorkflowNavigation:
                 self._verify(self.arrival)
                 self._final_guard(self.arrival)
                 observation = self.record.get('training_observation')
-                if observation is not None:
+                if observation is not None or self._scan_day is not None:
                     from .du_daily import game_day
 
-                    if observation['game_day'] != game_day():
+                    observed_day = observation['game_day'] if observation is not None else self._scan_day
+                    if observed_day != game_day():
                         raise AutomationError('每日实训观察已跨游戏日，请重新核对。')
                 gift = self.record.get('support_gift_observation')
                 if gift is not None and self._support_gift(self.arrival) != gift:
                     raise AutomationError('漫游签证礼物提示在报告提交前已变化。')
         except AutomationError:
             self.record.pop('training_observation', None)
+            self.record.pop('training_scan', None)
             self.record.pop('support_gift_observation', None)
             raise
 
@@ -712,6 +728,58 @@ class WorkflowNavigation:
         if installation.version == TRAINING_CARD_VERSION:
             self._installation = installation
             self.record['client_version'] = installation.version
+
+    def _training_view(self, pair):
+        from .daily_training_scan import stable_viewport
+
+        return stable_viewport(self.daily, tuple(frame.scene for frame in pair), self.confidence)
+
+    def _scan_training(self, pair):
+        from .daily_training_observe import observe_training
+        from .daily_training_scan import advanced, combined_cards, same_view
+
+        with _seal(pair):
+            observation = observe_training(self.daily, tuple(frame.scene for frame in pair), self.confidence)
+            view = self._training_view(pair)
+            self._final_guard(pair)
+        if observation is None:
+            raise AutomationError('实训巡查缺少同一游戏日的活跃度，未滚动。')
+        self._scan_day = observation['game_day']
+        activity = observation['activity']
+        views = []
+        state = 'unverified'
+        if view is not None and (view.game_day, view.activity) == (self._scan_day, activity):
+            views.append(view)
+            for _ in range(MAX_SCROLLS):
+                self._scan_view = view
+                try:
+                    self.intent = pair, self._planned(pair)
+                    sent_at = self.c.workflow_navigation_input(pair[-1].scene, SCAN_ACTION)
+                    if self.intent is not None or type(sent_at) is not float or not math.isfinite(sent_at):
+                        raise AutomationError('实训巡查未收到本次滚动的原生提交反馈。')
+                finally:
+                    self._scan_view = None
+                new = None
+                for _ in range(3):
+                    pair = self._pair(after=sent_at, expected=('daily_training',))
+                    with _seal(pair):
+                        self._verify(pair)
+                        new = self._training_view(pair)
+                        self._final_guard(pair)
+                    self.arrival = pair
+                    if new is not None and (new.game_day, new.activity) != (self._scan_day, activity):
+                        raise AutomationError('实训巡查期间游戏日或活跃度已变化。')
+                    if new is not None and advanced(view, new):
+                        break
+                self.record['actions'][-1].update(destination_status='verified', destination_page='daily_training')
+                if new is None or not advanced(view, new):
+                    state = 'no_movement' if new is not None and same_view(view, new) else 'unverified'
+                    break
+                views.append(new)
+                view = new
+            else:
+                state = 'limit'
+        self.record['training_scan'] = dict(state=state, views=len(views), cards=combined_cards(views), activity=activity)
 
     def require_claim_handoff(self, frame):
         """Keep the independently captured claim frames in the verified navigation scope."""
@@ -760,7 +828,7 @@ class WorkflowNavigation:
             expected, version = ('world', 'phone', VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE), VISA_LAYOUT_VERSION
         elif self.target in BATTLEPASS_WORKFLOW_PAGES:
             expected, version = ('phone', *BATTLEPASS_WORKFLOW_PAGES), _BATTLEPASS_LAYOUT_VERSION
-        elif self.target in GUIDE_WORKFLOW_SUBPAGES:
+        elif self.target in (*GUIDE_WORKFLOW_SUBPAGES, TRAINING_SCAN_PAGE):
             expected, version = ('phone', *_EXACT_GUIDE_PAGES), _GUIDE_LAYOUT_VERSION
         elif self.target == WORLD_WORKFLOW_PAGE:
             expected, version = (WORLD_WORKFLOW_PAGE, 'phone', *_WORLD_RETURN_PANELS), _WORLD_LAYOUT_VERSION
@@ -806,6 +874,8 @@ class WorkflowNavigation:
                     self._final_guard(pair)
                 if observation is not None:
                     self.record['training_observation'] = observation
+            elif self.target == TRAINING_SCAN_PAGE:
+                self._scan_training(pair)
             elif self.target == VISA_CHARACTERS_PAGE:
                 with _seal(pair):
                     self.record['support_gift_observation'] = self._support_gift(pair)

@@ -23,7 +23,8 @@ from .models import AutomationError, RunReport, Stopped, TaskResult
 from .storage import replace_file
 from .task_workflow import (ASSIGNMENT_REWARDS_TASK, FIELDS, FREE_ATTACHMENT_TASK, GAME_TASKS, GAME_VISION_TASKS,
                             MAX_EXECUTIONS, PAGE_TASK, TEMPLATE_TASKS,
-                            TRAINING_REWARDS_TASK, VISA_CHARACTERS_PAGE, VISION_TASKS, WORKFLOW_FOREGROUND_TASKS, WorkflowError,
+                            TRAINING_REWARDS_TASK, TRAINING_SCAN_PAGE, VISA_CHARACTERS_PAGE, VISION_TASKS,
+                            WORKFLOW_FOREGROUND_TASKS, WorkflowError,
                             compile_recipe, execution_task, task_spec, workflow_notification_png_path)
 from .task_workflow import execution_tasks as _tasks
 from .workflow_lease import workflow_lease
@@ -527,6 +528,13 @@ class TaskWorkflowRunner:
                 observation = training_observation_receipt(result['workflow_navigation'])
                 if observation is not None:
                     entry['training_observation'] = deepcopy(observation)
+            if node['task'] == PAGE_TASK and result['status'] == 'success' and options['workflow_page'] == TRAINING_SCAN_PAGE:
+                from .daily_training_scan import scan_receipt
+
+                scan = scan_receipt(result['workflow_navigation'])
+                if scan is None:
+                    raise WorkflowError('实训巡查缺少已保存的卡片回执。')
+                entry['training_scan'] = deepcopy(scan)
             if node['task'] == PAGE_TASK and result['status'] == 'success' and options['workflow_page'] == VISA_CHARACTERS_PAGE:
                 from .support_gift_observe import gift_receipt
 

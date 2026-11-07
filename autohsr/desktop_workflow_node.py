@@ -8,7 +8,7 @@ from tkinter import ttk
 from . import theme
 from .task_workflow import (
     BACKGROUND_NAVIGATION_PAGES, DAILY_TASKS, FIELDS, FREE_ATTACHMENT_TASK, GAME_VISION_TASKS, MAX_WAIT_SECONDS,
-    PAGE_TASK, TASKS, TEMPLATE_TASKS,
+    PAGE_TASK, TASKS, TEMPLATE_TASKS, TRAINING_SCAN_PAGE,
     WorkflowError,
     _condition, _integer, _params, _screen_condition, _text, _wait_seconds, loads,
 )
@@ -41,6 +41,7 @@ _PAGES = {
     "difficulty_guide": "逐光捡金", "universe_guide": "旷宇纷争",
     "messages": "短信通知", "visa_collection": "漫游签证收集展示", "visa_characters": "漫游签证角色展示",
     "achievement_overview": "成就总览", "redemption_form": "兑换码表单",
+    TRAINING_SCAN_PAGE: "实训任务巡查",
 }
 _DAILY_NAMES = {
     "assignments": "持续委托", "battle": "日常副本（使用体力）", "daily": "每日实训",

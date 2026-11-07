@@ -1,6 +1,7 @@
 """Exercise the task-tree page adapter with a simulated Win32 foreground."""
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 import ctypes
+from dataclasses import replace
 from hashlib import sha256
 import io
 import json
@@ -63,11 +64,12 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                        upstream_screen=None, guide_overlay=None, overlay_on_target=False,
                        achievement_page_kind="overview", redemption_state="form", current_redemption_form=False,
                        visa_pages=None, expect_visa_stop=False, observe_only=False, resume=False,
-                       training_page=None, selected_page=False):
+                       training_page=None, selected_page=False, scan_pages=None, scan_reject=False,
+                       scan_account_changed=False):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
-        guide_target = target in ('difficulty_guide', 'universe_guide', 'daily_training', 'survival_index')
+        guide_target = target in ('difficulty_guide', 'universe_guide', 'daily_training', 'daily_training_scan', 'survival_index')
         if target == 'messages':
             from autohsr.tests.test_daily_message_world import bright_sequence, world_pair
 
@@ -124,6 +126,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             pages = (identified(fixture('mail_claimable')), identified(fixture('phone_mail_icon')), world_hud())
             if resume:
                 pages = (world_hud() if already_open else source, source)
+        elif scan_pages is not None:
+            pages = tuple(Scene(page.tokens, cv2.resize(page.image, (1920, 1080))) for page in scan_pages)
         elif guide_target:
             if target == 'universe_guide':
                 pages = (exact_guide_fixture('difficulty_guide'), exact_guide_fixture('currency_guide'))
@@ -183,9 +187,12 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
 
         def frames():
             while True:
-                yield pages[-1] if already_open and not resume else pages[min(completed_inputs + start_in_list, len(pages) - 1)]
+                index = min(completed_inputs + start_in_list, len(pages) - 1)
+                yield pages[-1] if already_open and not resume and scan_pages is None else pages[index]
 
         window = _Window(frames())
+        if scan_pages is not None:
+            window.scroll_down_once = GameWindow.scroll_down_once.__get__(window)
         if target in ('world', 'visa_characters'):
             window.key = GameWindow.key.__get__(window)
         if battlepass_size is not None:
@@ -261,6 +268,10 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 self.key_accepts.append(accepted)
             else:
                 sent.append(tuple(events[index].mi.dwFlags for index in range(length)))
+                if length == 2 and events[1].mi.dwFlags == 0x0800:
+                    self.assertEqual(events[1].mi.mouseData, (-120) & 0xFFFFFFFF)
+                    if scan_reject:
+                        return 1
                 self.clicks.append((events[0].mi.dx / 65535, events[0].mi.dy / 65535))
                 completed_inputs += 1
             return accepted
@@ -338,7 +349,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             command = '--screen-check-resume' if resume else '--task-workflow'
             args = ['--screen-check-pages', target] if selected_page else [command, str(workflow)]
             code = main([*args, '--config', str(config)])
-            interrupted = (late_loss or late_version or lose_focus_on_installation_read
+            interrupted = (late_loss or late_version or scan_reject or scan_account_changed or lose_focus_on_installation_read
                            or lose_focus_after_geometry or (target != 'daily_training' and version != '4.6.0')
                            or duplicate_tab or first_escape_native_count != 2 or guide_overlay is not None
                            or achievement_page_kind != 'overview' or redemption_state != 'form' or expect_visa_stop
@@ -533,6 +544,48 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertEqual(sent, [])
         self.assertEqual(steps[0]['training_observation']['activity'], 400)
         self.assertNotIn('visible_tasks', native['workflow_navigation']['training_observation'])
+
+    def test_training_scan_scrolls_once_per_settled_view_and_combines_cards(self):
+        source = identified(fixture('daily_survival_badge'))
+        image = source.image.copy()
+        shift = 172
+        image[264:596, 184:1104-shift] = source.image[264:596, 184+shift:1104]
+        image[264:596, 906:1100] = source.image[264:596, 184:378]
+        tokens = []
+        for token in source.tokens:
+            if not .37 <= token.center[1] <= .82:
+                tokens.append(token)
+            elif .32 <= token.center[0] <= .825:
+                x1, y1, x2, y2 = token.box
+                tokens.append(replace(token, box=(x1-shift/1280, y1, x2-shift/1280, y2)))
+        tokens.extend((badge('拍照1次', .78, .46), badge('进度0/1', .748, .40),
+                       badge('+100', .78, .65), badge('本日活跃度已满', .78, .76)))
+        changed = Scene(tokens, image)
+        sent, pages, _ = self.run_navigation(target='daily_training_scan', already_open=True, selected_page=True,
+                                              scan_pages=(source, changed), check_publication_lock=True)
+        self.assertEqual(sent, [(0xC001, 0x0800)] * 2)
+        self.assertEqual(pages[0]['actions_sent'], 2)
+        scan = pages[0]['training_scan']
+        self.assertEqual((scan['state'], scan['views'], scan['activity']), ('no_movement', 2, 500))
+        self.assertEqual([card['task'] for card in scan['cards']],
+                         ['assignments', 'defeat_enemies', 'spend_power', 'support_win', 'photo'])
+
+    def test_training_scan_short_native_input_keeps_the_attempt_without_replay(self):
+        source = identified(fixture('daily_survival_badge'))
+        sent, pages, _ = self.run_navigation(target='daily_training_scan', already_open=True, selected_page=True,
+                                              scan_pages=(source,), scan_reject=True)
+        self.assertEqual(sent, [(0xC001, 0x0800)])
+        self.assertEqual((pages[0]['actions_sent'], pages[0]['actions_unconfirmed']), (0, 1))
+        self.assertNotIn('training_scan', pages[0])
+
+    def test_training_scan_stops_on_account_change_after_scroll(self):
+        source = identified(fixture('daily_survival_badge'))
+        other = replace(source, tokens=[OTHER if token == ACCOUNT else token for token in source.tokens])
+        sent, pages, _ = self.run_navigation(target='daily_training_scan', already_open=True, selected_page=True,
+                                              scan_pages=(source, other), scan_account_changed=True)
+        self.assertEqual(sent, [(0xC001, 0x0800)])
+        self.assertEqual((pages[0]['actions_sent'], pages[0]['status']), (1, 'unknown'))
+        self.assertNotIn('training_scan', pages[0])
 
     def test_incoming_message_import_reaches_the_existing_notification_panel(self):
         sent, steps, native = self.run_navigation(target='messages', upstream_screen='incoming_message')

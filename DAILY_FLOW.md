@@ -233,6 +233,8 @@ P178 的 18.138125、18.438250 秒前帧与 19.205125、19.505188 秒后帧通�
 
 三月七先把 OCR 分栏合并，再按任务标题和进度判断待办。AutoHSR 在 4.6.0 简中布局中按同一列分别核对标题、进度、奖励点数与按钮状态，连续两张一致画面才在工具与任务流回执中报告该卡。32 种卡片标题及进度、点数来自同一固定版本的实训池、任务标题、完成条件及奖励数据。部分同标题副本任务有 100 与 200 两种奖励，以当前卡片实读为准。刷本和领奖继续使用原有独立入口，拍照待取证后接入。[三月七实训源码](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/daily/tasks.py) · [固定版本表](https://gitlab.com/Dimbreath/turnbasedgamedata/-/tree/74a7b96fba32f00cf495a5c00b0311bd02207aaf/ExcelOutput) · [回执字段](docs/task-workflows.md#核对所选页面)
 
+工具「核对所选页面 → 实训任务巡查」可明确要求查看右侧卡片。原「每日实训」核对只观察当前视区。巡查参考三月七的滚轮用法，核实卡片内部后每次只发送一格，并重新核对新的视区。结果列出已读卡片及停止原因。真实客户端滚动反馈待实机核对。[巡查入口和回执](docs/task-workflows.md#实训任务巡查) · [三月七滚动入口](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/daily/tasks.py#L50-L53)
+
 ### 拍照实训取证
 
 固定 4.6.0 数据中保留了要求拍照一次、奖励 100 活跃度的条目。当前账号当日任务可通过实训卡回执中的 `photo` 核对。现有脱敏手机图可见右侧相机入口，仍缺同一游戏日内从普通相机快门回到同一卡的完成画面。玩法中的「拍摄结束」及带笑点、评价的画面属于独立玩法。[三月七拍照流程](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/daily/photo.py) · [脱敏手机帧](autohsr/tests/fixtures/du_runtime/phone_mail_icon.png)

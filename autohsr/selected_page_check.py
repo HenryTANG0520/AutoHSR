@@ -6,10 +6,11 @@ from pathlib import Path
 import re
 
 from .config import ROOT
+from .daily_training_scan import MAX_SCROLLS, SCAN_ACTION, scan_receipt
 from .storage import hold_read_sources
 from .task_workflow import (ACHIEVEMENT_OVERVIEW_PAGE, ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES, MAX_BYTES,
                             MESSAGE_WORKFLOW_PAGE, PAGE_TASK, REDEMPTION_FORM_PAGE, SCREEN_CHECK_EXTRA_PAGES,
-                            SCREEN_CHECK_PAGES, VISA_CHARACTERS_PAGE, VISA_COLLECTION_PAGE, WORKFLOW_PAGES,
+                            SCREEN_CHECK_PAGES, TRAINING_SCAN_PAGE, VISA_CHARACTERS_PAGE, VISA_COLLECTION_PAGE, WORKFLOW_PAGES,
                             WORLD_WORKFLOW_PAGE, Recipe, WorkflowError, _pairs, compile_recipe)
 from .task_workflow_run import _bytes as _workflow_bytes
 from .workflow_navigation import _GUIDE_PAGES, _MAX_ACTIONS, _REDEMPTION_MORE, _VISA_MORE_MENU
@@ -30,6 +31,7 @@ _EXTRA_ACTIONS = {
     ACHIEVEMENT_OVERVIEW_PAGE: ('open_achievements',),
     REDEMPTION_FORM_PAGE: ('open_redemption_more', 'open_redemption_form'),
     WORLD_WORKFLOW_PAGE: ('return_to_hub',),
+    TRAINING_SCAN_PAGE: ('return_to_hub', 'open_guide', 'open_daily_training', SCAN_ACTION),
     **{page: ('open_battlepass', 'open_' + page) for page in BATTLEPASS_WORKFLOW_PAGES},
 }
 
@@ -42,7 +44,7 @@ def _document(targets):
     if MESSAGE_WORKFLOW_PAGE in targets and len(targets) != 1:
         raise WorkflowError('短信通知须单独核对，请从已有未读角标的大世界或已打开的通知面板开始。')
     if len(targets) != 1 and any(target in SCREEN_CHECK_EXTRA_PAGES for target in targets):
-        raise WorkflowError('大世界、漫游签证、成就总览、兑换码表单和指定无名勋礼页签须单独核对。')
+        raise WorkflowError('实训任务巡查、大世界、漫游签证、成就总览、兑换码表单和指定无名勋礼页签须单独核对。')
     activity = tuple(page for page in ACTIVITY_WORKFLOW_PAGES if page in targets)
     if activity and tuple(targets[-len(activity):]) != activity:
         raise WorkflowError('活动页面须放在末尾，并按巡星之礼、奖励指南的顺序排列。')
@@ -92,7 +94,8 @@ def _absolute(value):
 
 
 def _action_counts(actions, target):
-    if not isinstance(actions, list) or len(actions) > _MAX_ACTIONS:
+    limit = _MAX_ACTIONS + MAX_SCROLLS if target == TRAINING_SCAN_PAGE else _MAX_ACTIONS
+    if not isinstance(actions, list) or len(actions) > limit:
         raise ValueError('invalid navigation actions')
     allowed_actions, allowed_pages = _ACTIONS, _NAVIGATION_PAGES
     if target in _EXTRA_ACTIONS:
@@ -148,7 +151,7 @@ def _project_child(row, step, parent_dir, read_source):
         return
     row.update(actions_sent=sent, actions_unconfirmed=unconfirmed)
     facts = step.get('facts')
-    accepted = _GUIDE_PAGES if target == 'guide' else (target,)
+    accepted = _GUIDE_PAGES if target == 'guide' else ('daily_training',) if target == TRAINING_SCAN_PAGE else (target,)
     if (step.get('status') == child['status'] == 'success' and step.get('account_verified') is True
             and isinstance(facts, dict) and facts.get('status') == 'success' and facts.get('page_verified') is True
             and navigation['page_verified'] is True and (not actions or last in accepted)):
@@ -159,6 +162,10 @@ def _project_child(row, step, parent_dir, read_source):
             observation = training_observation_receipt(navigation)
             if observation is not None and step.get('training_observation') == observation:
                 row['training_observation'] = observation
+        if target == TRAINING_SCAN_PAGE:
+            scan = scan_receipt(navigation)
+            if scan is not None and step.get('training_scan') == scan:
+                row['training_scan'] = scan
         if target == VISA_CHARACTERS_PAGE:
             from .support_gift_observe import gift_receipt
 

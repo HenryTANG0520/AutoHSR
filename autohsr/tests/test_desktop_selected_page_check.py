@@ -132,6 +132,20 @@ class DesktopSelectedPageCheckTests(TestCase):
             '当前活跃 400/500', '拍照1次 · 0/1 · +100 · 待完成', '累计消耗120点开拓力 · 120/120 · +200 · 可领取',
         ])
 
+    def test_training_scan_is_explicit_and_shows_why_it_stopped(self):
+        self.select_pages('daily_training_scan')
+        self.assertTrue(self.panel.page_check.checks['daily_training'].instate(('disabled',)))
+        self.assertEqual(targets(self.preview()), ('daily_training_scan',))
+        self.assertTrue(self.panel.start())
+        scan = dict(state='no_movement', views=2, activity=500, cards=[
+            dict(task='photo', progress=0, target=1, points=100, state='activity_full'),
+        ])
+        row = dict(page('daily_training_scan', sent=2), training_scan=scan)
+        self.deliver(dict(status='success', pages=[row]))
+        self.assertEqual(self.panel.result_detail['text'].splitlines()[1:], [
+            '当前活跃 500/500', '列表未再移动', '拍照1次 · 0/1 · +100 · 活跃已满',
+        ])
+
     def test_running_disables_edits_and_only_projects_anonymous_pages(self):
         self.select_pages('phone', 'mail', 'odyssey')
         recipe = self.preview()

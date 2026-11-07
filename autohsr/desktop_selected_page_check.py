@@ -6,7 +6,8 @@ from tkinter import ttk
 
 from . import theme
 from .daily_training_cards import STATUS_LABELS, TASKS, valid_cards
-from .task_workflow import (ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, VISA_CHARACTERS_PAGE,
+from .daily_training_scan import MAX_SCROLLS
+from .task_workflow import (ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, TRAINING_SCAN_PAGE, VISA_CHARACTERS_PAGE,
                             WORKFLOW_PAGES, Recipe, WorkflowError)
 
 
@@ -16,8 +17,10 @@ _PAGE_LABELS = {
     'assignments': '委托', 'mail': '邮件', 'battlepass': '无名勋礼', 'odyssey': '巡星之礼', 'reward_guide': '奖励指南',
     MESSAGE_WORKFLOW_PAGE: '短信通知',
     VISA_CHARACTERS_PAGE: '漫游签证支援区',
+    TRAINING_SCAN_PAGE: '实训任务巡查',
 }
-_EXCLUSIVE = (MESSAGE_WORKFLOW_PAGE, VISA_CHARACTERS_PAGE)
+_EXCLUSIVE = (MESSAGE_WORKFLOW_PAGE, VISA_CHARACTERS_PAGE, TRAINING_SCAN_PAGE)
+_SCAN_STATES = {'no_movement': '列表未再移动', 'limit': '已达滚动上限', 'unverified': '后续视区待核对'}
 _TITLES = {'success': '所选页面已核实', 'partial': '所选页面核对未完整结束',
            'failed': '核对未完成', 'stopped': '已停止', 'unknown': '结果待核对'}
 _ROW_STATUS = {'verified': '到页已核实', 'unknown': '到页待核对', 'not_run': '未执行'}
@@ -66,13 +69,16 @@ def result_text(recipe, report):
             label = '礼物提示可见' if gift.get('indicator') == 'visible' else '礼物提示待核对'
             text += f'\n{label}。领取与到账待核对。'
         lines.append(text)
-        training = row.get('training_observation')
-        if target == 'daily_training' and state == 'verified' and isinstance(training, dict):
+        training = row.get('training_scan' if target == TRAINING_SCAN_PAGE else 'training_observation')
+        if target in ('daily_training', TRAINING_SCAN_PAGE) and state == 'verified' and isinstance(training, dict):
             activity = training.get('activity')
             if type(activity) is int and 0 <= activity <= 500:
                 lines.append(f'当前活跃 {activity}/500')
-                cards = training.get('visible_tasks')
-                if valid_cards(cards, activity):
+                is_scan = target == TRAINING_SCAN_PAGE
+                if is_scan and training.get('state') in _SCAN_STATES:
+                    lines.append(_SCAN_STATES[training['state']])
+                cards = training.get('cards' if is_scan else 'visible_tasks')
+                if valid_cards(cards, activity, limit=4 * (MAX_SCROLLS + 1) if is_scan else 4):
                     for card in cards:
                         title = TASKS[card['task']][0]
                         lines.append(f"{title} · {card['progress']}/{card['target']} · "
@@ -94,7 +100,7 @@ class SelectedPageCheckFields(ttk.Frame):
         pad = round(8 * scale)
         self.variables = {}
         self.checks = {}
-        targets = tuple(target for target in (*WORKFLOW_PAGES, VISA_CHARACTERS_PAGE) if target in _PAGE_LABELS)
+        targets = tuple(target for target in (*WORKFLOW_PAGES, VISA_CHARACTERS_PAGE, TRAINING_SCAN_PAGE) if target in _PAGE_LABELS)
         for index, target in enumerate(targets):
             variable = self.variables[target] = tk.BooleanVar(self)
             control = self.checks[target] = ttk.Checkbutton(
@@ -133,6 +139,8 @@ class SelectedPageCheckFields(ttk.Frame):
             text = '请从有未读角标的大世界或已打开的短信通知面板开始。'
         elif VISA_CHARACTERS_PAGE in selected:
             text = '可从大世界、手机或已打开的漫游签证开始。'
+        elif TRAINING_SCAN_PAGE in selected:
+            text = '从当前实训位置向右核对卡片。可先打开手机或每日实训。'
         else:
             text = '勾选后请预览实际顺序。'
         self.order.configure(text=text)

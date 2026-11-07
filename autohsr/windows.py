@@ -314,11 +314,8 @@ class GameWindow:
         g = self.guard(expected)
         if not (0 <= x < 1 and 0 <= y < 1):
             raise AutomationError("点击坐标超出游戏客户区。")
-        vx, vy = user32.GetSystemMetrics(76), user32.GetSystemMetrics(77)
-        vw, vh = user32.GetSystemMetrics(78), user32.GetSystemMetrics(79)
-        px, py = g.left + round(x * (g.width - 1)), g.top + round(y * (g.height - 1))
-        move_flag, down_flag, up_flag = _CLICK_FLAGS
-        move = INPUT(type=0, mi=MOUSEINPUT(round((px-vx)*65535/(vw-1)), round((py-vy)*65535/(vh-1)), 0, move_flag, 0, 0))
+        _, down_flag, up_flag = _CLICK_FLAGS
+        move = GameWindow._absolute_move(x, y, g)
         down = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, down_flag, 0, 0))
         up = INPUT(type=0, mi=MOUSEINPUT(0, 0, 0, up_flag, 0, 0))
         events = [move, down, up]
@@ -351,10 +348,23 @@ class GameWindow:
         g = self.guard(expected)
         if not (0 <= x < 1 and 0 <= y < 1):
             raise AutomationError("移动坐标超出游戏客户区。")
+        self.send([GameWindow._absolute_move(x, y, g)], expected)
+
+    @staticmethod
+    def _absolute_move(x: float, y: float, g: Geometry) -> INPUT:
         vx, vy = user32.GetSystemMetrics(76), user32.GetSystemMetrics(77)
         vw, vh = user32.GetSystemMetrics(78), user32.GetSystemMetrics(79)
         px, py = g.left + round(x*(g.width-1)), g.top + round(y*(g.height-1))
-        self.send([INPUT(type=0, mi=MOUSEINPUT(round((px-vx)*65535/(vw-1)), round((py-vy)*65535/(vh-1)), 0, 0xC001, 0, 0))], expected)
+        return INPUT(type=0, mi=MOUSEINPUT(round((px-vx)*65535/(vw-1)), round((py-vy)*65535/(vh-1)),
+                                          0, _CLICK_FLAGS[0], 0, 0))
+
+    def scroll_down_once(self, x: float, y: float, expected: Geometry, *, before_submit) -> None:
+        g = self.guard(expected)
+        if not (0 <= x < 1 and 0 <= y < 1):
+            raise AutomationError("滚动坐标超出游戏客户区。")
+        move = GameWindow._absolute_move(x, y, g)
+        wheel = INPUT(type=0, mi=MOUSEINPUT(0, 0, (-120) & 0xFFFFFFFF, 0x0800, 0, 0))
+        self.send([move, wheel], expected, before_submit=before_submit)
 
     def key(self, name: str, *, expected: Geometry | None = None, before_submit=None, require_release=False) -> None:
         vk = {"esc": 0x1B, "f": 0x46, "f1": 0x70, "f2": 0x71, "f4": 0x73, "v": 0x56, "space": 0x20,

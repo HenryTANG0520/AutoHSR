@@ -134,7 +134,7 @@ def stable_cards(scenes, activity, confidence):
     return [card for before, card in zip(first, second) if card is not None and before == card]
 
 
-def valid_cards(cards, activity):
-    return (isinstance(cards, list) and 0 < len(cards) <= len(COLUMNS)
+def valid_cards(cards, activity, *, limit=len(COLUMNS)):
+    return (isinstance(cards, list) and 0 < len(cards) <= limit
             and all(_valid(card, activity) for card in cards)
             and len({(card['task'], card['points']) for card in cards}) == len(cards))
