@@ -11,10 +11,14 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
+import cv2
+import numpy as np
+
 from autohsr import windows
 from autohsr.__main__ import main
 from autohsr.app import Runner
 from autohsr.config import Settings
+from autohsr.daily_support import ACTIVITY, FULL
 from autohsr.models import Token
 from autohsr.power_plan_store import read, read_ref
 from autohsr.recovery import BattleBudget
@@ -31,6 +35,8 @@ FILL = '藏珍之蕾'
 CAVERN = '侵蚀隧洞'
 CALYX = '以太之蕾'
 PLANAR = '浴火钢心'
+CRIMSON = '欢愉之蕾'
+FIFTY_POINT = Path(__file__).parent / 'fixtures/daily_support_fifty_point_settings.json'
 runtime = fake_runtime
 
 
@@ -84,8 +90,70 @@ class NativeTrainingScreens(support.Screens):
         return None
 
 
+class FiftyPointWorld(support.World):
+    def __init__(self, boundary):
+        super().__init__('needed_400')
+        self.stamina, self.weekly_left = 50, 1
+        self.boundary = boundary
+        self.support_clicks = []
+        self.after_payment = self.settle_support
+        badge = FIFTY_POINT.parent / 'dungeons' / 'planar_support_badge.png'
+        self.badge = cv2.imdecode(np.frombuffer(badge.read_bytes(), dtype=np.uint8), cv2.IMREAD_COLOR)
+
+    @staticmethod
+    def settle_support(world):
+        if world.settings.target_name == ECHO:
+            assert world.borrowed
+            world.borrowed = False
+            world.card = 'full_completed_third'
+
+    def scene(self, settings):
+        if self.mode in ('picker', 'selected'):
+            rows = [('离线相近甲', .203, True)]
+            if self.boundary != 'friend_missing':
+                rows.append(('离线指定甲', .332, True))
+            page = support.core.support_picker(rows, marker='green' if self.mode == 'selected' else None)
+            page.tokens.append(Token('UID:' + self.uid, .99, (.01, .96, .22, .99)))
+        else:
+            page = super().scene(settings)
+        if self.mode in ('picker', 'selected') and page.image is None:
+            page.image = np.full((540, 960, 3), 80, dtype=np.uint8)
+        if self.mode == 'selected' or self.mode == 'team' and self.borrowed:
+            mark = page.find('支援', (.80, .48, .95, .60), exact=True)
+            height, width = page.image.shape[:2]
+            x1, y1, x2, y2 = (round(value * size) for value, size in zip(mark.box, (width, height) * 2))
+            page.image[y1:y2, x1:x2] = cv2.resize(self.badge, (x2-x1, y2-y1))
+        if self.mode == 'training' and self.card == 'full_completed_third':
+            # Keep the historical card fields, with synthetic sub-cap activity.
+            page.tokens = [replace(token, text='400') if token.within(ACTIVITY) else
+                           replace(token, text='领取') if token.text == FULL else token
+                           for token in page.tokens]
+        return page
+
+    def click_support(self, target):
+        if target.text not in ('支援', '好友', '确认'):
+            return False
+        assert self.settings.target_name == ECHO
+        self.support_clicks.append(target.text)
+        if target.text == '支援':
+            assert self.mode == 'team'
+            self.mode = 'picker'
+        elif target.text == '好友':
+            assert self.mode == 'picker' and abs(target.center[1] - .332) < .001
+            self.mode = 'selected'
+        else:
+            assert self.mode == 'selected'
+            self.mode, self.borrowed = 'team', True
+        return True
+
+
+class FiftyPointScreens(NativeTrainingScreens):
+    def _icon(self, scene, name, roi, threshold=.88):
+        return (.18, .29, .98) if self.ctx.world.mode == 'training' and name == 'daily_activity_badge' else None
+
+
 @contextmanager
-def native_payment_window(root, settings, world, starts, vetoes, *, payment_target=CAVERN):
+def native_payment_window(root, settings, world, starts, vetoes, *, payment_target=CAVERN, on_click=None):
     """Keep the actual Win32 guard, key query, callback and packet assembly."""
     with fake_runtime(root, settings, world) as (screen, find):
         geometry = windows.Geometry(8, 12, 960, 540)
@@ -128,7 +196,8 @@ def native_payment_window(root, settings, world, starts, vetoes, *, payment_targ
             driver.last_scene = screen.scene
             if active.text == '开始挑战':
                 starts.append((world.settings.target_name, window.owner.report.stamina_pending))
-            driver.click(screen.scene, active)
+            if on_click is None or not on_click(active):
+                driver.click(screen.scene, active)
             return count - 1 if is_later_payment() and world.boundary == 'partial_send' else count
 
         window.click = click
@@ -159,7 +228,7 @@ class DailyPlanContinuityTests(unittest.TestCase):
             mocked.start()
             self.addCleanup(mocked.stop)
 
-    def cli(self, folder, world, later, *, mode, extra=()):
+    def cli(self, folder, world, later, *, mode, extra=(), screens=NativeTrainingScreens):
         folder.mkdir(exist_ok=True)
         config = folder / 'config.json'
         if not config.exists():
@@ -179,7 +248,7 @@ class DailyPlanContinuityTests(unittest.TestCase):
                 return child
 
             with (patch('autohsr.app.Runner', side_effect=native), patch('autohsr.plan_runner.ROOT', folder),
-                  patch('autohsr.workflows.DailyWorkflow', NativeTrainingScreens), redirect_stdout(output),
+                  patch('autohsr.workflows.DailyWorkflow', screens), redirect_stdout(output),
                   redirect_stderr(io.StringIO())):
                 code = main([mode, '--config', str(config), '--power-plan', '--support-daily-only', *extra])
         self.assertEqual(config.read_bytes(), saved)
@@ -200,6 +269,69 @@ class DailyPlanContinuityTests(unittest.TestCase):
         journal = read(folder / 'runs' / 'battle-session.json')
         self.assertEqual((journal['completed'], journal['spent'], journal['pending']), (2, 40, 0))
         self.assertEqual(journal['power_plan']['done'], [1, 0])
+
+    def test_fifty_point_combination_and_same_day_recovery(self):
+        for mode in ('--run', '--plan'):
+            for boundary in (None, 'friend_missing', 'late_epoch', 'partial_send'):
+                with self.subTest(mode=mode, boundary=boundary):
+                    folder = self.root / f'{mode}-{boundary}'
+                    folder.mkdir()
+                    (folder / 'config.json').write_bytes(FIFTY_POINT.read_bytes())
+                    world = FiftyPointWorld(boundary)
+                    starts, vetoes = [], []
+
+                    def native(root, settings, value):
+                        return native_payment_window(root, settings, value, starts, vetoes,
+                                                     payment_target=CRIMSON, on_click=world.click_support)
+
+                    def run(*extra):
+                        with patch(__name__ + '.runtime', native):
+                            return self.cli(folder, world, None, mode=mode, extra=extra, screens=FiftyPointScreens)
+
+                    code, report, _ = run()
+                    journal = folder / 'runs' / 'battle-session.json'
+                    first = read(journal)
+                    states = [record['state'] for record in report['support_selections']]
+                    if boundary == 'friend_missing':
+                        self.assertEqual((code, states, starts, world.support_clicks),
+                                         (1, ['needed', 'unverified'], [], ['支援']))
+                        self.assertEqual((first['spent'], first['pending']), (0, 0))
+                        world.boundary = None
+                        code, report, _ = run()
+                    else:
+                        self.assertEqual(states, ['needed', 'borrowed', 'completed', 'completed'], report['error'])
+                        self.assertEqual(world.support_clicks, ['支援', '好友', '确认'])
+                        training = [item for item in report['support_selections'] if item['mode'] == 'daily_training']
+                        self.assertEqual([item['activity'] for item in training], [400, 400, 400])
+                        self.assertEqual({item['game_day'] for item in training}, {NOW.date().isoformat()})
+                    if boundary in ('late_epoch', 'partial_send'):
+                        self.assertEqual((code, first['spent'], report['power_plan']['done']), (1, 40, [1, 0]))
+                        self.assertEqual([charge['row'] for charge in first['power_plan']['charges']], [-2, 0])
+                        if boundary == 'partial_send':
+                            self.assertEqual(first['pending'], 10)
+                            original = journal.read_bytes()
+                            blocked, _, finds = run('--new-battle-run')
+                            self.assertEqual((blocked, finds), (1, 0))
+                            self.assertEqual(journal.read_bytes(), original)
+                            continue
+                        self.assertEqual((first['pending'], vetoes), (0, ['epoch']))
+                        self.assertEqual(starts, [(ECHO, 30), (FIRST, 10)])
+                        world.boundary = None
+                        code, report, _ = run('--new-battle-run')
+                        self.assertEqual(report['power_plan']['before'], [1, 0])
+                    self.assertEqual(code, 0, report['error'])
+                    self.assertEqual(starts, [(ECHO, 30), (FIRST, 10), (CRIMSON, 10)])
+                    self.assertEqual((world.stamina, report['stamina_pending']), (0, 0))
+                    self.assertEqual([entry[:3] for entry in world.payments],
+                                     [(ECHO, 1, 30), (FIRST, 1, 10), (CRIMSON, 1, 10)])
+                    settled = read(journal)
+                    if boundary != 'late_epoch':
+                        self.assertEqual((settled['limit'], settled['spent'], report['power_plan']['done']),
+                                         (50, 50, [1, 1]))
+                        self.assertEqual([charge['row'] for charge in settled['power_plan']['charges']], [-2, 0, 1])
+                        self.assertEqual(settled['power_plan']['weekly_echo']['completed'], 1)
+                        borrowed, = [item for item in report['support_selections'] if item['state'] == 'borrowed']
+                        self.assertEqual((borrowed['selected']['friend'], borrowed['attempts']), ('离线指定甲', 1))
 
     def test_low_balance_without_a_unique_account_cannot_defer_to_default_fill(self):
         later = row('cavern', 1, CAVERN, '残响回廊')

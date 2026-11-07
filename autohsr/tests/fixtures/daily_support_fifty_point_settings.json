@@ -1,0 +1,32 @@
+{
+  "assignments": false,
+  "daily": false,
+  "daily_synthesis": false,
+  "mail": false,
+  "battlepass": false,
+  "redemption_enabled": false,
+  "notification_enabled": false,
+  "weekly_enabled": false,
+  "overlay_logs": false,
+  "battle": true,
+  "allow_stamina_spend": true,
+  "stamina_limit": 50,
+  "rounds": 1,
+  "power_plan_enabled": true,
+  "power_plan_keep": false,
+  "power_plan_fill": false,
+  "power_plan": [
+    {"category": "calyx_golden", "target": "回忆之蕾", "location": "绘世学院", "count": 1},
+    {"category": "calyx_crimson", "target": "欢愉之蕾", "location": "「世界尽头」酒馆", "count": 1}
+  ],
+  "echo_of_war_enabled": true,
+  "echo_of_war_start_day": 1,
+  "echo_of_war_target": "毁灭的开端",
+  "echo_of_war_location": "支援舱段",
+  "differential_universe_team": "哈哈哈哈",
+  "use_support": true,
+  "support_daily_only": true,
+  "support_fallback": "stop",
+  "support_scroll_pages": 1,
+  "support_preferences": [{"character": "", "friend": "离线指定甲"}]
+}
