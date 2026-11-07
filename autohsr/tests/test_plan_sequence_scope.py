@@ -191,6 +191,21 @@ class PlanSequenceTests(unittest.TestCase):
         original = json.loads((Path(self.children[0].result['run_dir']) / 'report.json').read_text('utf-8'))
         self.assertEqual(original, self.children[0].result)
 
+    def test_saved_daily_with_a_different_run_dir_does_not_inherit_account_proof(self):
+        def replace_source(child):
+            if child.operation == 'daily':
+                directory = self.root / 'unrelated'
+                directory.mkdir()
+                child.result['run_dir'] = str(directory)
+                (directory / 'report.json').write_text(json.dumps(child.result), encoding='utf-8')
+
+        self.before_input = replace_source
+        report = self.runner().run()
+        self.assertEqual(self.actions, ['daily'])
+        self.assertEqual(len(self.children), 1)
+        self.assertTrue(report.daily_verified)
+        self.assertEqual(report.weekly_plan['daily_handoff'], 'needs_review')
+
     def test_weak_complete_other_account_prevents_weekly_identity_proof(self):
         def read(child):
             scene = identity_fixtures.identity_scene(child.account)

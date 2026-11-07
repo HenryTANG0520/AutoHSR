@@ -5,6 +5,7 @@ from contextlib import ExitStack
 from dataclasses import replace
 from copy import deepcopy
 from datetime import datetime
+import hashlib
 import json
 from pathlib import Path
 import threading
@@ -50,6 +51,7 @@ class PlanRunner:
             raise ValueError("请选择日常任务或加入周常。")
         self.emit = emit or (lambda event: None)
         self.factory = runner_factory or Runner
+        self._native_factory = runner_factory is None
         self.root = Path(root) if root is not None else ROOT/"runs"
         self.slot = weekly_slot(self.settings, now)
         self.new_battle_run = new_battle_run
@@ -154,7 +156,35 @@ class PlanRunner:
         if reused:
             info.update(daily_reused=True, daily_handoff='reused')
             report.budget_scope='original_daily_run'
-        self.emit(dict(type='plan_daily_result',report=daily,reused=reused))
+        self.emit(dict(type='plan_daily_result',report=deepcopy(daily),reused=reused))
+
+    def _require_daily_source(self, daily, identity, mark):
+        info = self.report.weekly_plan
+        try:
+            directory = Path(daily['run_dir'])
+            root = self.root.resolve()
+            resolved = directory.resolve(strict=True)
+            path = resolved / 'report.json'
+            if (not directory.is_absolute() or resolved != directory or resolved == root
+                    or not resolved.is_relative_to(root) or resolved == Path(self.report.run_dir).resolve()
+                    or path.resolve(strict=True) != path or daily.get('operation') != 'daily'):
+                raise AutomationError('日常原报告不在本次原生运行目录。')
+            with path.open('rb') as stream:
+                raw = stream.read(64 * 1024 * 1024 + 1)
+            if len(raw) > 64 * 1024 * 1024 or json.loads(raw) != json.loads(json.dumps(daily)):
+                raise AutomationError('日常原报告与本次子任务结果不一致。')
+            if self._native_factory or identity.public()['bound']:
+                identity.require_step(mark)
+                if not identity.has_step_proof(mark, run_dir=daily['run_dir']):
+                    raise AutomationError('日常原报告缺少属于本次子运行的账号证据。')
+            source = dict(path=str(path), sha256=hashlib.sha256(raw).hexdigest())
+            if info.get('daily_source', source) != source:
+                raise AutomationError('日常原报告在交接期间已变化。')
+        except (AutomationError, OSError, ValueError, KeyError, TypeError) as error:
+            info.update(daily_handoff='needs_review', daily_handoff_reason='日常原报告或账号来源待核对')
+            raise AutomationError('日常原报告或账号来源待核对，未推进周常。') from error
+        info['daily_source'] = source
+        return source
 
     def _daily_handoff(self, daily):
         info = self.report.weekly_plan
@@ -233,7 +263,7 @@ class PlanRunner:
                 info['score_rewards_receipt_state'] = 'stopped'
             self._weekly_result('needs_review', '原周常目标已完成，周期领奖收尾待核对。')
 
-    def _run_weekly_du(self, identity):
+    def _run_weekly_du(self, identity, *, require_daily_source=None):
         self.emit(dict(type="task", task="weekly", status="running", detail="核对本周演算记录"))
         guard = WeeklyGuard(self.root, self.settings, self.slot, until_points=self.du_until_points,
                             **(dict(strict_points_account=True) if self.du_claim_weekly_rewards else {}))
@@ -244,8 +274,14 @@ class PlanRunner:
                                   differential_universe_daily=False, differential_universe_save=False,
                                   differential_universe_rewards=False)
         mark = identity.mark() if self.du_claim_weekly_rewards else None
+
+        def before_child():
+            guard.require_current_week()
+            if require_daily_source is not None:
+                require_daily_source()
+
         weekly = self._run(weekly_settings, phase="weekly", operation="differential_universe",
-                           du_runs=maximum, weekly_plan=guard, before_child=guard.require_current_week,
+                           du_runs=maximum, weekly_plan=guard, before_child=before_child,
                            **(dict(du_until_points=True) if guard.until_points else {}))
         report = self.report
         info = report.weekly_plan
@@ -329,6 +365,7 @@ class PlanRunner:
             publish_identity(identity.public())
             self._checkpoint()
             daily_reference=None
+            require_daily_source = None
             if self.settings.weekly_enabled and self.settings.weekly_mode=='currency_wars':
                 from .currency_wars_weekly import preflight,read_ref
                 try:existing=preflight(self.root,self.resume_weekly_currency)
@@ -362,14 +399,17 @@ class PlanRunner:
                         _,original=read_ref(self.root,daily_reference);self._copy_daily(original,reused=True)
             daily_selected = bool(report.weekly_plan['daily_tasks'])
             if daily_selected:
+                daily_mark = identity.mark()
                 daily = self._run(self.settings, phase="daily", operation="daily", new_battle_run=self.new_battle_run,
                     **(dict(use_power_plan=True,new_power_plan=self.new_power_plan) if self.use_power_plan else {}))
                 self._copy_daily(daily)
                 if not self._daily_handoff(daily):
                     return report
-                if self.settings.weekly_enabled and self.settings.weekly_mode=='currency_wars':
-                    from .currency_wars_weekly import saved_report
-                    daily_reference=saved_report(self.root,daily,'daily')
+                if self.settings.weekly_enabled and self.slot.due:
+                    def require_daily_source():
+                        return self._require_daily_source(daily, identity, daily_mark)
+
+                    daily_reference = require_daily_source()
             self._checkpoint()
             report.status = "success"
             if not self.settings.weekly_enabled:
@@ -379,7 +419,8 @@ class PlanRunner:
             elif self.settings.weekly_mode == "currency_wars":
                 from .currency_wars_weekly_run import CurrencyWeekRunner
                 weekly=self._run(self.settings,phase='weekly',factory=CurrencyWeekRunner,slot=self.slot,root=self.root,
-                                 runner_factory=self.factory,resume=self.resume_weekly_currency,daily=daily_reference)
+                                 runner_factory=self.factory,resume=self.resume_weekly_currency,daily=daily_reference,
+                                 before_child=require_daily_source)
                 data=weekly.get('currency_wars',{});report.currency_wars=data
                 report.weekly_plan['children'].append(dict(operation='currency_wars_weekly',run_dir=weekly.get('run_dir','')))
                 report.weekly_plan.update(score_rewards_verified=(weekly.get('status')=='success' and weekly.get('report_saved') is True
@@ -398,7 +439,7 @@ class PlanRunner:
                                         reason+('日常结果已保留。' if daily_reference is not None else '')+
                                         ('原目标已保留。' if data.get('loop_id') else ''))
             else:
-                self._run_weekly_du(identity)
+                self._run_weekly_du(identity, require_daily_source=require_daily_source)
         except Stopped as exc:
             self.stop()
             report.status, report.error = "stopped", str(exc)

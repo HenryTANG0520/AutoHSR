@@ -26,6 +26,7 @@ class PlanTests(unittest.TestCase):
         self.now = datetime(2026, 10, 28, 12, tzinfo=CHINA)
         self.current = self.now
         self.before_return = lambda child: None
+        self.persist_daily = True
         owner = self
 
         class Clock(datetime):
@@ -60,6 +61,10 @@ class PlanTests(unittest.TestCase):
                 owner.calls.append((replace(settings), options))
                 if options["operation"] == "daily":
                     report = dict(owner.daily)
+                    if owner.persist_daily:
+                        directory = Path(tempfile.mkdtemp(dir=owner.root))
+                        report['run_dir'] = str(directory)
+                        (directory / 'report.json').write_text(json.dumps(report), encoding='utf-8')
                 elif options['operation'] == 'currency_wars_points':
                     report = dict(operation='currency_wars_points', status='partial', report_saved=True,
                                   error='模拟积分未核实', results=[])
@@ -158,11 +163,42 @@ class PlanTests(unittest.TestCase):
 
     def test_currency_requires_saved_original_daily_before_starting_weekly(self):
         self.settings.weekly_mode = "currency_wars"
+        self.persist_daily = False
         report = self.runner().run()
         self.assertEqual(len(self.calls), 1)
         self.assertEqual(report.status, "partial")
         self.assertTrue(report.daily_verified)
         self.assertEqual(report.weekly_plan["status"], "needs_review")
+
+    def test_daily_source_is_checked_again_after_weekly_phase_event(self):
+        runner = self.runner()
+        path = None
+
+        def emit(event):
+            nonlocal path
+            if event['type'] == 'plan_daily_result':
+                path = Path(event['report']['run_dir']) / 'report.json'
+            elif event['type'] == 'plan_phase' and event['phase'] == 'weekly':
+                path.write_text('{"status":"partial","report_saved":false}', encoding='utf-8')
+
+        runner.emit = emit
+        report = runner.run()
+        self.assertEqual([options['operation'] for _, options in self.calls], ['daily'])
+        self.assertEqual((report.status, report.weekly_plan['daily_handoff']), ('partial', 'needs_review'))
+        self.assertTrue(report.daily_verified)
+        self.assertEqual(report.stamina_spent, 120)
+        self.assertFalse(list(self.root.glob('weekly-plan/*/*.json')))
+
+    def test_due_differential_requires_daily_report_inside_plan_runs_root(self):
+        self.persist_daily = False
+        with tempfile.TemporaryDirectory() as outside:
+            path = Path(outside) / 'report.json'
+            self.daily['run_dir'] = outside
+            path.write_text(json.dumps(self.daily), encoding='utf-8')
+            report = self.runner().run()
+            self.assertEqual([options['operation'] for _, options in self.calls], ['daily'])
+            self.assertEqual(report.weekly_plan['daily_handoff'], 'needs_review')
+            self.assertEqual(json.loads(path.read_bytes()), self.daily)
 
     def test_daily_failure_or_unsaved_report_does_not_start_weekly(self):
         for values in (dict(status="partial"), dict(status="stopped"), dict(report_saved=False)):
