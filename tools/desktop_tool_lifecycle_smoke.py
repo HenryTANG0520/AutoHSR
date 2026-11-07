@@ -77,6 +77,7 @@ class Host:
         self._clock = self._freeze_clock = self._refresh_weekly_caption = Mock()
         self._refresh_controls = self._refresh_recovery = self._restore = self._log = Mock()
         self._reset_run_evidence = Mock()
+        self._battle_setup_needed = Mock(return_value=False)
         self._record_run = Mock()
 
     def _set_busy(self, busy, running=False):

@@ -40,14 +40,14 @@ def panel_origin_and_width(image):
 def paper_color_errors(image, reference):
     """Compare visible chart ink with the source, independent of asset masks.
 
-    The three regions avoid the live timer, cards, pagination and ornaments.
+    The sampled regions stay clear of the regrouped cards, timer and ornaments.
     Permit the same four reference-pixel layout tolerance as the geometry check.
     These samples prove local color/placement only, not whole-screen parity.
     """
     pixels = np.asarray(image.convert("RGB").resize(
         (reference.width, round(image.height*reference.width/image.width)), Image.Resampling.LANCZOS)).astype(int)
     source = np.asarray(reference.convert("RGB")).astype(int)
-    regions = ((260,897,565,960), (575,892,1000,915), (1350,951,1620,962))
+    regions = ((260,897,565,960), (1350,951,1620,962))
     errors = []
     for x1,y1,x2,y2 in regions:
         expected = source[y1:y2,x1:x2]
@@ -94,16 +94,13 @@ def main():
                     root.update()
                     screenshot = ImageGrab.grab(window=root.winfo_id())
                     rectangles = paper_rectangles(screenshot)
-                    check(f"{scale}_{size}_reference_card_proportion", len(rectangles) >= 3 and
+                    check(f"{scale}_{size}_reference_card_proportion", len(rectangles) == ui.table.visible_count and
                           all(abs(w/h-ratio) < .015 for _, _, w, h in rectangles))
                     if scene_reference and size == "default":
                         factor = screenshot.width/scene_reference.width
                         tolerance = 4*ui.ui_scale
                         check(f"{scale}_reference_panel_position", all(abs(a-b*factor) <= tolerance
                               for a,b in zip(panel_origin_and_width(screenshot), scene_panel)))
-                        check(f"{scale}_reference_card_positions_and_sizes", len(rectangles) == len(scene_cards) and
-                              all(abs(a-b*factor) <= tolerance for actual,expected in zip(sorted(rectangles),scene_cards)
-                                  for a,b in zip(actual,expected)))
                         colors = paper_color_errors(screenshot, scene_reference)
                         for region, error in enumerate(colors):
                             check(f"{scale}_reference_paper_color_{region}", error < 4.5)
@@ -112,24 +109,7 @@ def main():
                                       paper_color_errors=colors if scene_reference and size == "default" else None))
                     if scale == 1.5 and size == "default":
                         screenshot.save(OUT/"home.png")
-                board = ui.table
-                keys = list(board.names)
-                partial = keys[board.offset+board.visible_count]
-                x1, y1, x2, y2 = board.hitboxes[partial]
-                first = board.hitboxes[keys[0]]
-                check(f"{scale}_next_card_is_visible", 0 < x2-x1 < .75*(first[2]-first[0]))
-                root.focus_force()
-                root.update()
-                before = ui.tasks[partial].get()
-                board.event_generate("<Button-1>", x=round((x1+x2)/2*ui.ui_scale), y=round(90*ui.ui_scale))
-                root.update()
-                x1, y1, x2, y2 = board.hitboxes[partial]
-                check(f"{scale}_partial_card_reveals_its_action_before_editing", ui.active_page == "home"
-                      and ui.tasks[partial].get() == before and x2-x1 >= board.card_width-1)
-                board.event_generate("<Button-1>", x=round((x1+x2)/2*ui.ui_scale), y=round((y2-30)*ui.ui_scale))
-                root.update()
-                check(f"{scale}_revealed_card_performs_its_named_action", ui.tasks[partial].get() and
-                      (ui.active_page == "settings" if before else ui.active_page == "home"))
+                check(f"{scale}_home_uses_primary_cards", ui.table.card_keys == ("battle", "daily", "weekly"))
                 ui._show_page("home")
                 check(f"{scale}_summary_hidden_when_empty", not ui.summary_label.winfo_ismapped())
                 ui.result_alert.set("示例：待核对消耗")

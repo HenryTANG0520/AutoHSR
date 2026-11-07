@@ -226,9 +226,9 @@ def main():
                 board = ui.table
                 for key in ui.tasks:
                     board.item(key, values=(key, "部分完成", "完整的详细结果："+key), has_result=True)
-                board.move(9)
+                board.selected = "daily"
                 root.update()
-                assert board.selection() == ("battlepass",) and "battlepass" in board.hitboxes
+                assert board.selection() == ("daily",) and "battlepass" not in board.hitboxes
                 summary = ui.summary.get()
                 board.activate()
                 assert ui.summary.get() == summary
@@ -238,8 +238,8 @@ def main():
                 ui._leave_detail()
                 board.move(-9)
                 root.update()
-                assert board.selection() == ("assignments",) and "assignments" in board.hitboxes
-                interactions.append("all_five_cards_and_full_details_reachable")
+                assert board.selection() == ("battle",) and "battle" in board.hitboxes
+                interactions.append("main_cards_and_secondary_task_results_reachable")
                 # Long reports remain in scrollable outputs, leaving controls reachable.
                 ui.du_observation.set("长结果\n"*200)
                 ui.currency_observation.set("长结果\n"*200)

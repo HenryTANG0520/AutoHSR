@@ -55,8 +55,8 @@ def main():
             try:
                 root.update()
                 root.focus_force()
-                ui.weekly_button.focus_set()
-                ui.weekly_button.invoke()
+                ui.table.focus_set()
+                ui._show_weekly_plan(return_focus=ui.table)
                 root.update()
                 check(f"{scale}_weekly_entry_focuses_visible_choice", root.focus_get() == ui.weekly_enabled_combo
                       and root.focus_get().winfo_viewable() and not ui.weekly_enabled.get())
@@ -70,7 +70,7 @@ def main():
                 ui.weekly_enabled_combo.event_generate("<KeyPress-Escape>")
                 root.update()
                 check(f"{scale}_entry_escape_returns_to_origin", ui.active_page == "home"
-                      and root.focus_get() == ui.weekly_button)
+                      and root.focus_get() == ui.table)
                 ui.guide.buttons["settings"].focus_set()
                 ui.guide.buttons["settings"].invoke()
                 root.update()
@@ -102,61 +102,34 @@ def main():
                 ui._leave_settings()
                 root.update()
                 check(f"{scale}_pending_entry_focus_cannot_follow_return", ui.active_page == "home"
-                      and root.focus_get() == ui.weekly_button and not ui.dirty and config.read_bytes() == original)
+                      and root.focus_get() == ui.table and not ui.dirty and config.read_bytes() == original)
+                board = ui.table
+                board.selected = "daily"
+                board.activate()
+                root.update()
+                check(f"{scale}_daily_card_opens_task_choices", ui.active_page == "settings"
+                      and ui.settings_tabs.select() == str(ui.settings_sections["daily"])
+                      and not ui.dungeon_list.winfo_ismapped()
+                      and ui.start_button.cget("text") == "开始计划")
                 for task in ("assignments", "daily", "mail", "battlepass"):
-                    initial_value = ui.tasks[task].get()
-                    board = ui.table
-                    board._reveal(list(board.names).index(task))
-                    board.redraw()
-                    root.update()
-                    offset = board.offset
-                    x1, y1, x2, y2 = board.hitboxes[task]
-                    board.event_generate("<Button-1>", x=round((x1+x2)/2*ui.ui_scale),
-                                         y=round((y1+y2)/2*ui.ui_scale))
-                    root.update()
-                    if not initial_value:
-                        check(f"{scale}_{task}_card_joins_before_adjustment", ui.tasks[task].get()
-                              and ui.active_page == "home" and ui.dirty and config.read_bytes() == original)
-                        board.event_generate("<Button-1>", x=round((x1+x2)/2*ui.ui_scale),
-                                             y=round((y1+y2)/2*ui.ui_scale))
-                        root.update()
                     control = ui.daily_task_controls[task]
-                    check(f"{scale}_{task}_card_opens_task_choices", ui.active_page == "settings"
-                          and ui.settings_tabs.select() == str(ui.settings_sections["daily"])
-                          and root.focus_get() == control and not ui.dungeon_list.winfo_ismapped()
-                          and ui.start_button.cget("text") == "开始计划")
                     original_value = ui.tasks[task].get()
                     choose(root, control, 1 if original_value else 0)
                     check(f"{scale}_{task}_choice_updates_plan", ui.tasks[task].get() != original_value
-                          and ui.dirty == (ui.tasks[task].get() != initial_value)
-                          and ui.table.item(task, "values")[1] == ("未加入" if original_value else "待执行"))
+                          and ui.dirty
+                          and board.item(task, "values")[1] == ("未加入" if original_value else "待执行"))
                     choose(root, control, 0 if original_value else 1)
-                    if not initial_value:
-                        choose(root, control, 1)
-                    ui.settings_shell.back.invoke()
-                    root.update()
-                    # Retained focus is meaningful even if another desktop
-                    # application temporarily owns the foreground during a test.
-                    returned_focus = str(root.tk.call("focus","-lastfor",root)) == str(ui.table)
-                    if not (ui.active_page == "home" and returned_focus and ui.table.selected == task
-                            and ui.table.offset == offset and not ui.dirty):
-                        print(dict(scale=scale,task=task,page=ui.active_page,focus=str(root.focus_get()),
-                              stored_focus=str(root.tk.call("focus","-lastfor",root)),table=str(ui.table),
-                              selected=ui.table.selected,offset=ui.table.offset,old_offset=offset,dirty=ui.dirty),flush=True)
-                    check(f"{scale}_{task}_return_restores_card", ui.active_page == "home"
-                          and returned_focus and ui.table.selected == task
-                          and ui.table.offset == offset and not ui.dirty)
+                ui.settings_shell.back.invoke()
+                root.update()
+                returned_focus = str(root.tk.call("focus", "-lastfor", root)) == str(board)
+                check(f"{scale}_return_restores_daily_card", ui.active_page == "home"
+                      and returned_focus and board.selected == "daily" and not ui.dirty)
                 ui.tasks["battle"].set(False)
                 ui.table.selected = "battle"
                 ui.table.activate()
                 root.update()
-                check(f"{scale}_disabled_battle_joins_the_draft", ui.active_page == "home"
-                      and ui.tasks["battle"].get() and ui.table.action_label("battle") == "更换副本")
-                ui.table.activate()
-                root.update()
-                check(f"{scale}_enabled_battle_still_opens_dungeon", ui.active_page == "tasks"
-                      and root.focus_get() == ui.dungeon_list)
-                ui.battle_checkbox.invoke()
+                check(f"{scale}_disabled_battle_opens_dungeon_without_enabling", ui.active_page == "tasks"
+                      and not ui.tasks["battle"].get() and root.focus_get() == ui.dungeon_list)
                 ui._show_daily_tasks("battle")
                 root.update()
                 check(f"{scale}_battle_checkbox_and_settings_stay_in_sync", ui.daily_task_controls["battle"].get() == "关闭")
@@ -213,7 +186,7 @@ def main():
                 ui.weekly_time_entry.event_generate("<KeyPress-Escape>")
                 root.update()
                 check(f"{scale}_escape_returns_to_daily", ui.active_page == "home"
-                      and root.focus_get() == ui.weekly_button and ui.start_button.cget("text") == "开始计划")
+                      and root.focus_get() == ui.table and ui.start_button.cget("text") == "开始计划")
                 for origin in ("home", "tasks", "differential_universe", "currency_wars", "logs"):
                     ui._show_page(origin)
                     root.update()

@@ -249,6 +249,8 @@ def select_mission(ui, mission):
     if ui.input_error_field in ("target_name", "target_location", "challenge_count", "stamina_limit"):
         ui._clear_input_error()
     ui._form_changed()
+    if ui.dungeon_home_return:
+        ui._return_from_dungeon()
 
 
 def update_options(ui):

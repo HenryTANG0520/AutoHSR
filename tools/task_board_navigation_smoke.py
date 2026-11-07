@@ -1,125 +1,139 @@
-"""Offline card browsing checks: mapped transparent windows, no desktop input."""
+"""Check home hierarchy and card navigation without accessing a game."""
 import json
 from pathlib import Path
 import tempfile
 import tkinter as tk
 from unittest.mock import patch
 
-from ux_smoke import ROOT, Settings, Window, module
+from ux_smoke import ROOT, Settings, Window, module, pump
+from autohsr.desktop_daily import MAIL, BATTLEPASS
 
-OUT = ROOT / 'runs/task-board-navigation'
+OUT = ROOT / "runs/task-board-navigation"
+
+
+def click(board, box):
+    x1, y1, x2, y2 = box
+    x, y = round((x1+x2)/2*board.scale), round((y1+y2)/2*board.scale)
+    board.event_generate("<Button-1>", x=x, y=y)
+    board.event_generate("<ButtonRelease-1>", x=x, y=y)
 
 
 def main():
-    checks, errors = [], []
-    def check(name, value):
-        assert value, (name, errors)
-        checks.append(name)
-    OUT.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory() as folder:
-        local = Path(folder)
-        config = local / 'config.json'
-        Settings(overlay_logs=False).save(config)
-        saved = config.read_bytes()
-        with patch.object(module, 'ROOT', local), patch.object(Window, '_start', side_effect=AssertionError('No backend allowed')):
-            for scale in (1., 1.25, 1.5, 2.):
-                root = tk.Tk()
-                root.withdraw()
-                root.attributes('-alpha', 0)
-                root.attributes('-disabled', True)
-                root.tk.call('tk', 'scaling', scale * 96 / 72)
-                root.report_callback_exception = lambda kind, value, trace: errors.append(str(value))
+    checks = 0
+    for scale in (1., 1.25, 1.5, 2.):
+        with tempfile.TemporaryDirectory() as folder, patch.object(module, "ROOT", Path(folder)):
+            local = Path(folder)
+            config = local / "fresh.json"
+            root = tk.Tk()
+            root.tk.call("tk", "scaling", scale * 96 / 72)
+            root.report_callback_exception = lambda _, error, trace: (_ for _ in ()).throw(error.with_traceback(trace))
+            with patch("autohsr.app.Runner", side_effect=AssertionError("game backend is forbidden")):
                 ui = Window(root, config)
                 try:
-                    for size, dimensions in (('default', (1536, 864)), ('minimum', (1100, 800))):
-                        root.geometry(f'{round(dimensions[0]*scale)}x{round(dimensions[1]*scale)}')
-                        root.deiconify()
-                        ui._show_page('home')
-                        root.update()
-                        board = ui.table
+                    root.geometry("%dx%d" % root.minsize())
+                    root.update()
+                    board = ui.table
+                    assert board.card_keys == ("battle", "daily", "weekly")
+                    assert "mail" in board.records and "battlepass" in board.records
+                    assert all(not ui.daily_entry_buttons[key].winfo_ismapped() for key in (MAIL, BATTLEPASS))
+                    assert not ui.reward_button.winfo_ismapped()
+                    assert ui.start_button.cget("text") == "开始计划"
+                    assert board.action_label("battle") == "选择副本"
+                    assert "副本待配置" in ui.daily_caption.get()
+                    assert ui._read_settings(save=True).target_location == ""
+                    assert Settings.load(config).target_location == ""
+                    saved = config.read_bytes()
+                    ui.start_button.invoke()
+                    root.update()
+                    assert ui.active_page == "tasks" and not ui.busy and ui.dungeon_home_return
+                    assert ui.start_button.cget("text") == "返回每日"
+                    # Selecting the first displayed mission confirms target and location.
+                    ui.dungeon_list.choose(0)
+                    root.update()
+                    assert ui.active_page == "home" and not ui.busy and not ui._battle_setup_needed()
+                    assert ui.target_location.get() and ui.dirty and config.read_bytes() == saved
+                    assert ui.start_button.cget("text") == "开始计划"
+                    checks += 12
+
+                    board.selected = "daily"
+                    board.activate()
+                    root.update()
+                    assert ui.active_page == "settings"
+                    assert ui.daily_entry_buttons[MAIL].winfo_ismapped()
+                    ui.daily_entry_buttons[MAIL].invoke()
+                    assert ui.daily_section == MAIL and not ui.busy
+                    ui.daily_back_button.invoke()
+                    assert ui.active_page == "settings" and ui.daily_section is None
+                    ui._leave_settings()
+                    root.update()
+                    assert ui.active_page == "home"
+                    board.move(10)
+                    pump(root, lambda: board._slide_job is None)
+                    board.activate()
+                    root.update()
+                    assert ui.active_page == "settings"
+                    assert ui.settings_tabs.select() == str(ui.settings_sections["weekly"])
+                    ui._leave_settings()
+                    root.update()
+                    assert ui.active_page == "home" and board.selection() == ("weekly",)
+                    ui._set_busy(True, True)
+                    board.activate()
+                    root.update()
+                    assert ui.active_page == "home" and ui.stop_button.winfo_ismapped()
+                    ui._set_busy(False)
+                    checks += 9
+
+                    plan = ui._form_signature()
+                    for keys in ((), ("battle",), ("battle", "daily"), ("battle", "daily", "weekly"),
+                                 ("battle", "daily", "weekly", "mail"),
+                                 ("battle", "daily", "weekly", "mail", "battlepass")):
+                        count = len(keys)
+                        board.card_keys = keys
                         board.offset = 0
                         board.selection_remove()
+                        board._cancel_slide()
                         root.update()
-                        before = {key: value.get() for key, value in ui.tasks.items()}
-                        signature = ui._form_signature()
-                        prefix = f'{scale}_{size}_'
-                        keys = list(board.names)
-                        visible = board.visible_count
-                        board._set_hover(keys[2])
-                        board.event_generate('<MouseWheel>', delta=-120)
-                        root.update()
-                        check(prefix+'one_wheel_reveals_next_card', board.offset == 1 and keys[visible] in board.hitboxes and board.hitboxes[keys[visible]][2]-board.hitboxes[keys[visible]][0] >= board.card_width-1)
-                        check(prefix+'scroll_removes_old_card_hover', board.hover is None)
-                        board.event_generate('<MouseWheel>', delta=120)
-                        root.update()
-                        check(prefix+'reverse_wheel_returns_first_page', board.offset == 0)
-                        board.event_generate('<MouseWheel>', delta=0)
-                        root.update()
-                        check(prefix+'zero_wheel_does_not_move', board.offset == 0)
-                        partial = keys[visible]
-                        x1, y1, x2, y2 = board.hitboxes[partial]
-                        board.event_generate('<Button-1>', x=round((x1+x2)/2*scale), y=round((y1+y2)/2*scale))
-                        root.update()
-                        check(prefix+'partial_card_reveals_without_editing', board.offset == 1 and board.selected == partial and ui.active_page == 'home' and before == {key: value.get() for key, value in ui.tasks.items()})
-                        board.event_generate('<MouseWheel>', delta=120)
-                        root.update()
-                        board.selected = keys[1]
-                        board.event_generate('<MouseWheel>', delta=-120)
-                        root.update()
-                        check(prefix+'visible_selection_survives_browsing', board.selected == keys[1])
-                        board.event_generate('<MouseWheel>', delta=120)
-                        root.update()
-                        board.selected = keys[0]
-                        board.event_generate('<MouseWheel>', delta=-120)
-                        root.update()
-                        check(prefix+'hidden_selection_cannot_own_enter', board.selected is None)
-                        calls = []
-                        with patch.object(ui, '_show_task_setup', side_effect=calls.append):
-                            board.event_generate('<Return>')
-                            # Disabled windows do not receive native keyboard focus;
-                            # invoke the bound action locally to check its target.
-                            if not calls:
-                                board.activate()
-                            root.update()
-                        check(prefix+'enter_acts_on_visible_head', calls == [keys[1]] and board.selected == keys[1])
-                        for _ in range(len(keys)+2):
-                            board.event_generate('<MouseWheel>', delta=-120)
-                        root.update()
-                        check(prefix+'wheel_stops_at_last_full_page', board.offset == len(keys)-visible)
-                        board.move(-len(keys))
-                        root.update()
-                        check(prefix+'keyboard_reveals_first_selected_card', board.offset == 0 and board.selected == keys[0])
-                        x1, y1, x2, y2 = board.hitboxes['next']
-                        board.event_generate('<Button-1>', x=round((x1+x2)/2*scale), y=round((y1+y2)/2*scale))
-                        root.update()
-                        check(prefix+'arrow_browses_and_clears_hidden_selection', board.offset == 1 and board.selected is None)
-                        board.move(len(keys))
-                        root.update()
-                        check(prefix+'keyboard_reveals_last_selected_card', board.selected == keys[-1] and board.offset == len(keys)-visible)
-                        # A resized page can leave an old selection outside the
-                        # fully visible range. First activation must reveal it.
-                        board.offset = 0
-                        board.selected = keys[-1]
-                        board.redraw()
-                        root.update()
-                        calls = []
-                        with patch.object(ui, '_show_task_setup', side_effect=calls.append):
+                        if not count:
                             board.activate()
-                            root.update()
-                        check(prefix+'offscreen_activation_reveals_without_action', not calls and board.offset == len(keys)-visible and board.selected == keys[-1])
-                        check(prefix+'browsing_never_changes_plan', signature == ui._form_signature() and before == {key: value.get() for key, value in ui.tasks.items()} and not ui.dirty)
-                        check(prefix+'browsing_never_saves', config.read_bytes() == saved)
-                    check(f'{scale}_no_callback_errors', not errors)
+                        board.move(50)
+                        pump(root, lambda: board._slide_job is None)
+                        assert board.offset == max(0, count-board.visible_count)
+                        assert board.selection() == ((keys[-1],) if keys else ())
+                        assert (keys[-1] in board.hitboxes) if keys else not board.hitboxes
+                        board.move(-50)
+                        pump(root, lambda: board._slide_job is None)
+                        assert board.offset == 0
+                        checks += 4
+                    assert "next" in board.hitboxes
+                    click(board, board.hitboxes["next"])
+                    assert board._slide_job is not None
+                    pump(root, lambda: board._slide_job is None)
+                    assert board.offset == 1
+                    board.event_generate("<MouseWheel>", delta=120)
+                    pump(root, lambda: board._slide_job is None)
+                    assert board.offset == 0
+                    board.event_generate("<Button-1>", x=round(150*scale), y=round(50*scale))
+                    board.event_generate("<ButtonRelease-1>", x=round(80*scale), y=round(50*scale))
+                    assert board._slide_job is not None and board.offset == 1
+                    root.focus_force()
+                    board.focus_set()
+                    board.event_generate("<Escape>")
+                    assert board._slide_job is None and board._position == board.offset
+                    board.scroll(1)
+                    assert board._slide_job is not None
+                    ui._show_page("logs")
+                    root.update()
+                    assert board._slide_job is None and board._position == board.offset
+                    assert plan == ui._form_signature() and config.read_bytes() == saved
+                    checks += 8
                 finally:
-                    ui.closing = True
-                    for token in root.tk.splitlist(root.tk.call('after', 'info')):
-                        if str(root.tk.call('after', 'info', token)[0]).endswith('_drain'):
-                            root.after_cancel(token)
                     root.destroy()
-    result = dict(checks=checks, count=len(checks), os_input=False, desktop_capture=False, game_started=False, native_pixels_verified=False)
-    (OUT / 'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), 'utf-8')
+
+    result = dict(checks=checks, scales=[100, 125, 150, 200], game_started=False)
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

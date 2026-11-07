@@ -46,11 +46,11 @@ def main():
                 root.update()
                 check(prefix+"saved_plan_has_no_save_or_ready_prompt", not ui.save_button.winfo_ismapped()
                       and not ui.save_label.winfo_ismapped() and not ui.activity_label.winfo_ismapped())
-                check(prefix+"daily_start_and_reward_are_reachable", ui.start_button.winfo_ismapped()
-                      and ui.start_button.cget("text") == "开始计划" and ui.reward_button.winfo_ismapped())
+                check(prefix+"home_promotes_daily_start", ui.start_button.winfo_ismapped()
+                      and ui.start_button.cget("text") == "开始计划" and not ui.reward_button.winfo_ismapped())
                 if scale == 1.5:
                     ImageGrab.grab(window=root.winfo_id()).save(OUT/"home.png")
-                ui.weekly_button.invoke()
+                ui._show_weekly_plan()
                 root.update()
                 check(prefix+"weekly_has_its_start_without_reward_action", not ui.reward_button.winfo_ismapped()
                       and ui.start_button.winfo_ismapped() and ui.start_button.cget("text") == "开始计划")
@@ -68,7 +68,7 @@ def main():
                 check(prefix+"reverted_draft_removes_save", not ui.dirty and not ui.save_button.winfo_ismapped()
                       and not ui.input_error.get() and config.read_bytes() == original)
                 ui.overlay_logs.set(not ui.overlay_logs.get())
-                ui._show_page("home")
+                ui._show_daily_tasks()
                 root.update()
                 check(prefix+"dirty_daily_groups_save_before_reward", ui.save_button.winfo_ismapped()
                       and ui.reward_button.winfo_ismapped() and ui.save_button.winfo_rootx() < ui.reward_button.winfo_rootx())
@@ -101,8 +101,11 @@ def main():
                 for page in ("tasks", "differential_universe", "currency_wars", "logs", "settings"):
                     ui._show_page(page)
                     root.update()
-                    check(prefix+page+"_has_contextual_reward_and_clears_old_save_acknowledgement",
-                          bool(ui.reward_button.winfo_ismapped()) == (page == "tasks") and not ui.save_label.winfo_ismapped())
+                    if page == "settings":
+                        ui.settings_tabs.select(ui.settings_sections["game"])
+                        root.update()
+                    check(prefix+page+"_hides_reward_and_old_save_acknowledgement",
+                          not ui.reward_button.winfo_ismapped() and not ui.save_label.winfo_ismapped())
                 ui._show_page("home")
                 ui.status.set("● 检测已停止")
                 root.update()

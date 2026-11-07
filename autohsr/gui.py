@@ -94,6 +94,7 @@ class AutoHSRWindow:
         self._f9_local_pressed = False
         self._selected_tool = 'warp'
         self.daily_section = None
+        self.dungeon_home_return = False
         self.book_editor = None
         self.detail_content = None
         self.detail_return_focus = None
@@ -162,7 +163,8 @@ class AutoHSRWindow:
     def _variables(self) -> None:
         self.game_path = tk.StringVar(value=self.settings.game_path)
         self.target_name = tk.StringVar(value=self.settings.target_name)
-        self.target_location = tk.StringVar(value=self.settings.target_location)
+        self.target_location = tk.StringVar(value=self.settings.target_location
+                                            if self.config_path.is_file() and not self._config_load_failed else "")
         self.stamina_limit = tk.StringVar(value=str(self.settings.stamina_limit))
         self.rounds = tk.StringVar(value=str(self.settings.rounds))
         from .dungeons import category_for, count_limit
@@ -204,6 +206,7 @@ class AutoHSRWindow:
         self.readiness = tk.StringVar(value="窗口：未检测")
         self.history_context = tk.StringVar(value="暂无历史运行记录")
         self.recovery_hint = tk.StringVar()
+        self._reward_recovery_needed = False
         self.action_delay = tk.StringVar(value=str(self.settings.action_delay))
         self.battle_timeout = tk.StringVar(value=str(self.settings.battle_timeout))
         self.ocr_confidence = tk.StringVar(value=str(self.settings.ocr_confidence))
@@ -274,6 +277,8 @@ class AutoHSRWindow:
             self.settings_return_focus = theme.focus_widget(self.root)
         self.daily_section = None
         self.daily_view.grid_remove()
+        if name != "tasks":
+            self.dungeon_home_return = False
         self.active_page = name
         self.input_focus.cancel_if_obsolete()
         self.page_title.set(PAGE_TITLES[name])
@@ -343,6 +348,12 @@ class AutoHSRWindow:
                                         state='normal' if enabled and not self.busy else 'disabled')
             self.header.position_plan()
             return
+        if self.active_page == "tasks" and self.dungeon_home_return:
+            self.start_button = self.footer_start_button
+            self.start_button.pack(side="left", padx=(round(8*self.ui_scale), 0))
+            self.start_button.configure(text="返回每日", command=self._return_from_dungeon, state="normal")
+            self.header.position_plan()
+            return
         currency = getattr(self, "action_page", "home") == "currency_wars"
         differential_universe = getattr(self, "action_page", "home") == "differential_universe"
         deck = self.mode_decks.get(self.active_page)
@@ -378,9 +389,11 @@ class AutoHSRWindow:
             return
         if self.detail_content is not None:
             self._leave_detail(restore_focus=False)
-        page = 'home' if section in HOME_TITLES else 'tasks'
+        page = 'settings' if section in HOME_TITLES else 'tasks'
         if self.active_page != page:
             self._show_page(page)
+        if page == 'settings':
+            self.settings_tabs.select(self.settings_sections['daily'])
         self.daily_section = section
         self.pages[page].grid_remove()
         self.daily_panel.show(section)
@@ -394,6 +407,8 @@ class AutoHSRWindow:
     def _leave_daily_panel(self):
         target = self.daily_entry_buttons.get(self.daily_section, self.build_target_button)
         self._show_page(self.active_page)
+        if self.active_page == 'settings':
+            self.settings_tabs.select(self.settings_sections['daily'])
         self.root.after_idle(target.focus_set)
 
     def _run_daily_panel(self, operation, *, build_target_selection=None):
@@ -437,7 +452,8 @@ class AutoHSRWindow:
         if origin != 'settings':
             self.settings_return_page = origin
             self.settings_return_action = action
-            self.settings_return_focus = return_focus or (self.weekly_button if origin in ('home', 'tasks', 'logs') else focus)
+            origin_focus = {"home": self.table, "tasks": self.weekly_button, "logs": self.weekly_button}.get(origin, focus)
+            self.settings_return_focus = return_focus or origin_focus
 
     def _show_tools(self, return_focus):
         from_settings = self.active_page == 'settings'
@@ -508,6 +524,8 @@ class AutoHSRWindow:
             if self.dungeon_advanced_visible:
                 show_advanced(self, False, focus=True)
                 return "break"
+            if self.dungeon_home_return:
+                return self._return_from_dungeon()
         deck = self.mode_decks.get(self.active_page)
         if deck is not None and deck["shown"] != "hero":
             from .desktop_modes import show_mode_view
@@ -529,6 +547,9 @@ class AutoHSRWindow:
         redeem = self.redemption_panel.daily_enabled
         count = sum(variable.get() for variable in self.tasks.values()) + int(redeem)
         redemption = ' · 兑换码' if redeem else ''
+        if self._battle_setup_needed():
+            self.daily_caption.set(f'日常 · {count} 项 · 副本待配置' + redemption)
+            return
         if self.power_mode.get() == '体力计划' and self.tasks['battle'].get():
             from .power_plan_ui import preview
             self.daily_caption.set(f'日常 · {count} 项 · {preview(self)} · 共用 {self.stamina_limit.get()} 开拓力' + redemption)
@@ -661,6 +682,7 @@ class AutoHSRWindow:
             amounts = (f"上次已确认 {state['spent']} 开拓力，待核对 {pending}"
                        f"{immersifier_text(state)}。")
             hint = amounts + (hint or "上次刷本未完整结束。可先仅补领奖，刷本需确认新增预算。")
+        self._reward_recovery_needed = state["blocked"] and not state["corrupt"]
         self.recovery_hint.set(hint or "")
         from .weekly_feedback import pending_currency_week
         self._weekly_currency_recovery = pending_currency_week(ROOT / 'runs')
@@ -746,7 +768,9 @@ class AutoHSRWindow:
             else:
                 button.pack_forget()
         independent_page = currency_page or getattr(self, "action_page", "") == "differential_universe"
-        if self.detail_content is not None or self.book_editor is not None or self.active_page == 'logs' or self.daily_section is not None or self._in_tools():
+        if (self.detail_content is not None or self.book_editor is not None or self.active_page == 'logs'
+                or self.daily_section is not None or self._in_tools()
+                or self.active_page == "tasks" and self.dungeon_home_return):
             self._configure_primary_action()
         else:
             if getattr(self, "action_page", "") == "differential_universe":
@@ -755,7 +779,10 @@ class AutoHSRWindow:
                          or any(v.get() for v in self.tasks.values()))
             self.start_button.configure(state="normal" if not self.busy and can_start else "disabled")
         self.reward_button.configure(state="normal" if not self.busy and not independent_page else "disabled")
-        daily_page = self.detail_content is None and self.book_editor is None and self.daily_section is None and self.active_page in ("home", "tasks")
+        daily_settings = (self.active_page == "settings" and
+                          self.settings_tabs.select() == str(self.settings_sections["daily"]))
+        daily_page = (self.detail_content is None and self.book_editor is None and self.daily_section is None
+                      and (daily_settings or self.active_page == "home" and self._reward_recovery_needed))
         if daily_page and not self.busy:
             self.reward_button.pack(side="left", padx=(0, round(8*self.ui_scale)))
         else:
@@ -1489,6 +1516,9 @@ class AutoHSRWindow:
         operation = "currency_wars_loop" if currency_loop else "currency_wars_points" if currency_points else "currency_wars_rewards" if currency_rewards else "dungeon_catalogue" if catalogue else "currency_wars_standard" if currency_standard else "currency_wars_prepare" if currency_prepare else "currency_wars_flow_test" if flow_test else "currency_wars_node_test" if node_test else "currency_wars_deploy_test" if deploy_test else "currency_wars_drag_test" if drag_test else "currency_wars" if currency_wars else "differential_universe" if differential_universe else "du_rewards" if du_rewards else "reward_only" if reward_only else "daily"
         if run_plan and operation == "daily":
             operation = "plan"
+        if operation in ("daily", "plan") and not resume_weekly_currency and self._battle_setup_needed():
+            self._show_task_setup("battle")
+            return
         settings = self._read_settings(operation=operation, **({'resume_weekly_currency': True} if resume_weekly_currency else {}))
         if settings is None:
             return
@@ -1910,21 +1940,41 @@ class AutoHSRWindow:
 
     def _show_task_setup(self, task):
         if task == "battle":
+            if not self.settings.allow_stamina_spend:
+                self._show_daily_tasks(task)
+                return
             if self.power_mode.get() == '体力计划':
                 from .power_plan_ui import show
                 show(self)
                 return
+            from .dungeon_ui import show_browser
             self._show_page("tasks")
-            if self.tasks[task].get():
-                from .dungeon_ui import show_browser
-                show_browser(self)
-                self.dungeon_list.reveal_selection()
-                control = self.dungeon_list
-            else:
-                control = self.battle_checkbox
-            self.root.after_idle(control.focus_set)
+            self.dungeon_home_return = True
+            if self._battle_setup_needed():
+                self.dungeon_search.set("")
+            show_browser(self)
+            self.dungeon_list.reveal_selection()
+            self._configure_primary_action()
+            self._refresh_controls()
+            self.root.after_idle(self.dungeon_list.focus_set)
         else:
             self._show_daily_tasks(task)
+
+    def _battle_setup_needed(self):
+        if not self.settings.allow_stamina_spend or not self.tasks["battle"].get():
+            return False
+        if self.power_mode.get() == '体力计划':
+            from .power_plan_ui import display_rows
+            if not display_rows(self) and not self.echo_enabled.get():
+                return True
+            if not self.power_fill.get():
+                return False
+        return len(self.target_name.get().strip()) < 2 or not self.target_location.get().strip()
+
+    def _return_from_dungeon(self):
+        self._show_page("home")
+        self.root.after_idle(self.table.focus_set)
+        return "break"
 
     def _show_task_detail(self, _: tk.Event | None = None) -> None:
         selected = self.table.selection()
@@ -2105,6 +2155,7 @@ class AutoHSRWindow:
         self._set_busy(False)
         self.focus_waiting = False
         self._refresh_recovery()
+        self._refresh_controls()
         label = plan_label or STATUS_NAMES.get(status, status)
         if standard_completed and status == "success":
             label = "开发局结算已核实"

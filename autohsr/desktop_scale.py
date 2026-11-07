@@ -172,7 +172,7 @@ class ResponsiveLayout:
                        if hasattr(getattr(ui, name), 'snapshot_draft')}
         navigation = {key: getattr(ui, key, None) for key in
             ("active_page", "action_page", "last_universe_page", "settings_return_page", "settings_return_action",
-             "daily_section", "settings_return_daily_section")}
+             "daily_section", "settings_return_daily_section", "dungeon_home_return")}
         mode_views = {key: deck["shown"] for key, deck in ui.mode_decks.items()}
         cards = deepcopy(ui.table.records), ui.table.offset, ui.table.selected
         browser = (ui.dungeon_search.get(), ui.dungeon_target_caption.get(),
@@ -236,6 +236,7 @@ class ResponsiveLayout:
             ui.settings_return_focus = current.get(return_focus)
             if (ui.table.records, ui.table.offset, ui.table.selected) != cards:
                 ui.table.records, ui.table.offset, ui.table.selected = cards
+                ui.table._cancel_slide()
                 ui.table.redraw()
             ui.recovery_hint.set(ui.recovery_hint.get())
             if save_visible and not ui.busy:

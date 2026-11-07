@@ -8,7 +8,7 @@ import types
 from unittest.mock import patch
 
 from PIL import ImageGrab
-from ux_smoke import ROOT, Settings, Window, module
+from ux_smoke import ROOT, Settings, Window, module, pump
 from home_feedback_smoke import drawn_text
 from summary_dialog_smoke import contained, content_widget, close_button
 
@@ -17,11 +17,14 @@ OUT = ROOT/"runs/entry-clarity-ui"
 
 def click_card(root, board, key):
     root.focus_force()
-    board._reveal(list(board.names).index(key))
+    board._reveal(board.card_keys.index(key))
+    pump(root, lambda: board._slide_job is None)
     board.redraw()
     root.update()
     x1, y1, x2, y2 = board.hitboxes[key]
-    board.event_generate("<Button-1>", x=round((x1+x2)/2*board.scale), y=round((y2-30)*board.scale))
+    x, y = round((x1+x2)/2*board.scale), round((y2-30)*board.scale)
+    board.event_generate("<Button-1>", x=x, y=y)
+    board.event_generate("<ButtonRelease-1>", x=x, y=y)
     root.update()
 
 
@@ -59,8 +62,8 @@ def main():
                           and contained(setting) and setting.cget("image"))
                     text = drawn_text(ui.table)
                     check(prefix+size_name+"_cards_show_names_target_and_cost", all(x in text for x in
-                          ("持续委托", "日常副本", "每日实训", ui.target_name.get(), ui.target_location.get(), "开拓力"))
-                          and not any(x in text for x in ("委托设置", "副本设置", "实训设置", "领取现有")))
+                          ("日常副本", "每日计划", ui.target_name.get(), ui.target_location.get(), "开拓力"))
+                          and not any(x in text for x in ("持续委托", "邮件附件", "无名勋礼", "领取现有")))
                     if scale in (1., 1.25):
                         ImageGrab.grab(window=root.winfo_id()).save(OUT/f"{scale}-{size_name}-home.png")
                 for page in ("home", "tasks", "differential_universe", "currency_wars", "logs"):
@@ -79,25 +82,19 @@ def main():
                           and str(root.tk.call("focus","-lastfor",root)) == str(setting))
                 ui._show_page("home")
                 root.update()
-                check(prefix+"unselected_task_offers_join", not ui.tasks["mail"].get() and ui.table.action_label("mail") == "加入计划")
-                click_card(root,ui.table,"mail")
-                check(prefix+"one_click_adds_only_this_task_to_the_draft", ui.tasks["mail"].get()
-                      and not ui.tasks["battlepass"].get() and ui.active_page == "home" and ui.dirty
-                      and ui.table.action_label("mail") == "调整任务" and ui.save_button.winfo_ismapped()
-                      and not ui.busy and config.read_bytes() == original)
-                click_card(root,ui.table,"mail")
-                check(prefix+"adjust_opens_the_corresponding_choice", ui.active_page == "settings"
+                check(prefix+"mail_has_no_top_level_card", not ui.tasks["mail"].get() and "mail" not in ui.table.card_keys)
+                click_card(root, ui.table, "daily")
+                check(prefix+"daily_card_opens_task_choices_without_editing", ui.active_page == "settings"
                       and ui.settings_tabs.select() == str(ui.settings_sections["daily"])
-                      and root.focus_get() is ui.daily_task_controls["mail"])
-                ui.tasks["mail"].set(False)
+                      and ui.daily_task_controls["mail"].winfo_ismapped() and not ui.dirty)
                 ui._leave_settings()
                 root.update()
-                check(prefix+"return_retains_card_position", ui.table.selected == "mail" and root.focus_get() is ui.table)
+                check(prefix+"return_retains_card_position", ui.table.selected == "daily" and root.focus_get() is ui.table)
                 ui._set_busy(True)
-                check(prefix+"running_cards_offer_inspection_instead_of_editing", ui.table.action_label("mail") == "查看安排")
-                click_card(root,ui.table,"mail")
-                check(prefix+"running_plan_cannot_be_changed_from_a_card", not ui.tasks["mail"].get()
-                      and ui.daily_task_controls["mail"].instate(("disabled",)))
+                check(prefix+"running_card_explains_lock", ui.table.action_label("daily") == "设置已锁定")
+                click_card(root, ui.table, "daily")
+                check(prefix+"running_plan_cannot_be_changed_from_a_card", ui.active_page == "home"
+                      and not ui.tasks["mail"].get() and ui.daily_task_controls["mail"].instate(("disabled",)))
                 ui._set_busy(False)
                 ui._leave_settings()
                 ui.settings.allow_stamina_spend = False
@@ -106,7 +103,7 @@ def main():
                 check(prefix+"unapproved_spend_never_offers_join", ui.table.action_label("battle") == "查看限制")
                 click_card(root,ui.table,"battle")
                 check(prefix+"resource_gate_is_preserved", not ui.tasks["battle"].get()
-                      and ui.battle_checkbox.instate(("disabled",)) and ui.active_page == "tasks")
+                      and ui.daily_task_controls["battle"].instate(("disabled",)) and ui.active_page == "settings")
                 ui.settings.allow_stamina_spend = True
                 ui.tasks["battle"].set(True)
                 ui._show_page("home")
@@ -115,10 +112,11 @@ def main():
                       and root.focus_get() is ui.dungeon_list and ui.table.action_label("battle") == "更换副本")
                 ui._show_page("home")
                 ui.table.item("mail",values=("邮件附件","未执行","窗口未能核实。"),has_result=True)
-                click_card(root,ui.table,"mail")
+                click_card(root, ui.table, "daily")
                 dialog = ui.detail_view
-                check(prefix+"finished_card_opens_its_result_without_changing_plan", not ui.tasks["mail"].get()
-                      and ui.detail_title.cget("text") == "邮件附件" and content_widget(dialog).get("1.0","end-1c") == "未执行\n窗口未能核实。")
+                check(prefix+"finished_daily_card_preserves_secondary_result", not ui.tasks["mail"].get()
+                      and ui.detail_title.cget("text") == "每日计划 · 任务结果"
+                      and "窗口未能核实。" in content_widget(dialog).get("1.0", "end-1c"))
                 close_button(dialog).invoke()
                 root.update()
                 check(prefix+"configuration_is_not_implicitly_saved", config.read_bytes() == original)

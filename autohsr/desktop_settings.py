@@ -233,6 +233,8 @@ def build_settings(ui):
             if key is not None:
                 ui.settings_shell.select(key)
                 ui._tool_action_changed()
+                if not ui._loading:
+                    ui._refresh_controls()
     tabs.bind("<<NotebookTabChanged>>", selected)
     ui.settings_shell.select("game")
 
@@ -260,14 +262,15 @@ def build_settings(ui):
         ui.setting_controls.append(field)
         return field
 
-    def buttons(target, actions):
+    def buttons(target, actions, *, editable=True):
         frame = ttk.Frame(target.value, style="Settings.Value.TFrame", padding=d(8))
         frame.grid(row=0, column=0)
         result = []
         for index, (name, command) in enumerate(actions):
             button = ttk.Button(frame, text=name, command=command, style="Settings.TButton")
             button.grid(row=0, column=index, padx=(d(8) if index else 0, 0))
-            ui.setting_controls.append(button)
+            if editable:
+                ui.setting_controls.append(button)
             result.append(button)
         return result
 
@@ -306,6 +309,13 @@ def build_settings(ui):
                    ui.daily_synthesis, "synthesis_control")
             index += 1
     note("daily", index, text="仅实训未完成时合成；仅补领奖时不合成。")
+    from .desktop_daily import ASSIGNMENTS, HOME_TITLES
+    entries = buttons(row("daily", index + 1, "单项领取", wide=True), (
+        (label, lambda section=section: ui._show_daily_panel(section))
+        for section, label in HOME_TITLES.items()
+    ), editable=False)
+    ui.daily_entry_buttons = dict(zip(HOME_TITLES, entries))
+    ui.assignment_button = ui.daily_entry_buttons[ASSIGNMENTS]
 
     from .power_plan_ui import PowerPlanEditor
     ui.settings_sections['power'].rowconfigure(0, weight=1)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import time
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
@@ -192,6 +193,8 @@ class Header(Surface):
         if getattr(self.ui, "action_page", "home") in ("home", "tasks"):
             d = lambda n: round(n*self.scale)
             self.plan.place(x=d(200), y=d(18), width=max(1, self.winfo_width()-d(550)), height=d(46))
+            home = getattr(self.ui, "active_page", "home") == "home"
+            self.ui.weekly_button.grid_remove() if home else self.ui.weekly_button.grid()
         else:
             self.plan.place_forget()
 
@@ -420,26 +423,37 @@ class TrainingMeter(Surface):
             p.text((x,75),str(i*100),18,t.TEXT,"mt")
 
 
-TITLES={"assignments":"持续委托","battle":"日常副本","daily":"每日实训",
-        "mail":"邮件附件","battlepass":"无名勋礼"}
+TITLES={"assignments":"持续委托","battle":"日常副本","daily":"每日计划",
+        "mail":"邮件附件","battlepass":"无名勋礼","weekly":"周常计划"}
 
 
 class TaskBoard(Surface):
-    """Live paper cards; every task remains accessible by pointer and keyboard."""
+    """Keep the complete task result model behind the main cards."""
     def __init__(self,parent,scale,ui,names):
         super().__init__(parent,scale,height=round(350*scale),takefocus=True)
         self.ui,self.names=ui,names
         self.records={key:dict(values=(label,"等待",""),tags=(),has_result=False,metrics=None) for key,label in names.items()}
+        self.card_keys=("battle","daily","weekly")
         self.offset,self.selected,self.hover=0,None,None
+        self._position=0.
+        self._slide_job=None
+        self._press=None
         self.hitboxes={}
-        self.visible_count=4
-        self.watch(ui.challenge_count,ui.battle_cost,ui.target_name,ui.target_location,*ui.tasks.values())
-        self.bind("<Button-1>",self._click)
+        self.visible_count=3
+        self.watch(ui.challenge_count,ui.battle_cost,ui.target_name,ui.target_location,
+                   ui.weekly_status,ui.weekly_enabled,ui.activity,*ui.tasks.values())
+        self.bind("<Button-1>",self._begin_pointer)
+        self.bind("<ButtonRelease-1>",self._end_pointer)
+        self.bind("<Unmap>",self._cancel_slide,add="+")
+        self.bind("<Destroy>",self._cancel_slide,add="+")
+        self.bind("<Escape>",self._escape_slide,add="+")
         self.bind("<Motion>",lambda e:self._set_hover(self._target(e)))
         self.bind("<Leave>",lambda _:self._set_hover(None))
         self.bind("<MouseWheel>",lambda e:self.scroll(1 if e.delta<0 else -1 if e.delta>0 else 0))
-        for key,delta in (("Right",1),("Left",-1),("Home",-9),("End",9)):
+        for key,delta in (("Right",1),("Left",-1)):
             self.bind("<"+key+">",lambda _,delta=delta:self.move(delta))
+        self.bind("<Home>",lambda _:self.move(-len(self.card_keys)))
+        self.bind("<End>",lambda _:self.move(len(self.card_keys)))
         self.bind("<Return>",lambda _:self.activate())
         self.bind("<space>",lambda _:self.activate())
         self.bind("<FocusIn>",self.redraw,add="+")
@@ -448,8 +462,8 @@ class TaskBoard(Surface):
     def item(self,iid,option=None,**kwargs):
         if kwargs:
             self.records[iid].update(kwargs)
-            if kwargs.get("values",("",""))[1]=="进行中":
-                self._reveal(list(self.names).index(iid))
+            if kwargs.get("values",("",""))[1]=="进行中" and iid in self.card_keys:
+                self._reveal(self.card_keys.index(iid))
             self.redraw()
         return self.records[iid][option] if option else dict(self.records[iid])
 
@@ -461,12 +475,45 @@ class TaskBoard(Surface):
         self.redraw()
 
     def _reveal(self,index):
-        self.offset=max(0,min(len(self.names)-self.visible_count,
-                             min(self.offset,index) if index<self.offset else max(self.offset,index-self.visible_count+1)))
+        self._slide_to(min(self.offset,index) if index<self.offset else max(self.offset,index-self.visible_count+1))
+
+    def _cancel_slide(self, _event=None):
+        if self._slide_job is not None:
+            self.after_cancel(self._slide_job)
+            self._slide_job=None
+        self._position=float(self.offset)
+        self._press=None
+
+    def _escape_slide(self, _event):
+        self._cancel_slide()
+        self.redraw()
+
+    def _slide_to(self, target):
+        target=max(0,min(len(self.card_keys)-self.visible_count,target))
+        if target==self.offset:
+            return
+        start=self._position
+        self._cancel_slide()
+        self.offset=target
+        if not self.winfo_ismapped():
+            self._position=float(target)
+            return
+        started=time.monotonic()
+
+        def step():
+            self._slide_job=None
+            elapsed=min(1.,(time.monotonic()-started)/.16)
+            self._position=start+(target-start)*(1-(1-elapsed)**3)
+            self.redraw()
+            if elapsed<1.:
+                self._slide_job=self.after(16,step)
+        step()
 
     def move(self,delta):
-        keys=list(self.names)
-        index=max(0,min(len(keys)-1,(keys.index(self.selected) if self.selected else self.offset)+delta))
+        keys=self.card_keys
+        if not keys:
+            return "break"
+        index=max(0,min(len(keys)-1,(keys.index(self.selected) if self.selected in keys else self.offset)+delta))
         self.selected=keys[index]
         self._reveal(index)
         self.redraw()
@@ -474,58 +521,68 @@ class TaskBoard(Surface):
 
     def scroll(self,delta):
         previous=self.offset
-        self.offset=max(0,min(len(self.names)-self.visible_count,self.offset+delta))
+        self._slide_to(self.offset+delta)
         if self.offset!=previous:
             self.hover=None
             self.configure(cursor="")
-        visible=list(self.names)[self.offset:self.offset+self.visible_count]
+        visible=self.card_keys[self.offset:self.offset+self.visible_count]
         if self.selected not in visible:
             self.selected=None
         self.redraw()
         return "break"
 
     def activate(self):
-        self.selected=self.selected or list(self.names)[self.offset]
-        index=list(self.names).index(self.selected)
+        if not self.card_keys or self._slide_job is not None:
+            return "break"
+        if self.selected not in self.card_keys:
+            self.selected=self.card_keys[self.offset]
+        index=self.card_keys.index(self.selected)
         if not self.offset<=index<self.offset+self.visible_count:
             self._reveal(index)
             self.redraw()
             return "break"
-        if self.records[self.selected]["has_result"]:
+        if self.selected=="weekly":
+            if not self.ui.busy:
+                self.ui._show_weekly_plan(return_focus=self)
+        elif self.selected=="daily":
+            results = self._daily_results()
+            if results:
+                self.ui._show_summary(results, title="每日计划 · 任务结果", return_focus=self)
+            elif not self.ui.busy:
+                self.ui._show_task_setup("daily")
+        elif self.records[self.selected]["has_result"] and not (self.selected=="battle" and self.ui._battle_setup_needed()):
             self.ui._show_task_detail()
-        elif self.can_join(self.selected):
-            self.ui.tasks[self.selected].set(True)
-        else:
+        elif not self.ui.busy:
             self.ui._show_task_setup(self.selected)
         self.redraw()
         return "break"
 
     def action_label(self, key):
-        if self.records[key]['values'][1] == '本次不执行':
-            return '查看安排'
+        if key == "weekly":
+            return "设置已锁定" if self.ui.busy else "周常设置"
+        if key == "daily":
+            if self._daily_results():
+                return "查看结果"
+            return "设置已锁定" if self.ui.busy else "每日任务"
+        if key == "battle" and not self.ui.busy:
+            if not self.ui.settings.allow_stamina_spend:
+                return "查看限制"
+            if self.ui._battle_setup_needed() or not self.ui.tasks[key].get():
+                return "配置体力计划" if self.ui.power_mode.get() == '体力计划' else "选择副本"
         if self.records[key]["has_result"]:
             return "查看进度" if self.records[key]["values"][1] == "进行中" else "查看结果"
         if self.ui.busy:
-            return "查看安排"
-        if self.can_join(key):
-            return "加入计划"
+            return "设置已锁定"
         if key == "battle":
             if self.ui.power_mode.get() == '体力计划':
                 return '调整计划'
             return "更换副本" if self.ui.tasks[key].get() else "查看限制"
-        return "调整任务"
-
-    def can_join(self, key):
-        return (not self.ui.busy and not self.records[key]["has_result"]
-                and not self.ui.tasks[key].get()
-                and (key != "battle" or self.ui.settings.allow_stamina_spend))
+        return "每日任务"
 
     def resource_metrics(self, key):
-        if self.records[key]["values"][1] in ("未加入", "跳过", "未执行", "本次不执行"):
+        if key != "battle" or self.ui._battle_setup_needed():
             return None
-        if key == "daily":
-            return ("500", "活跃目标") if self.ui.tasks[key].get() or self.records[key]["has_result"] else None
-        if key != "battle":
+        if self.records[key]["values"][1] in ("未加入", "跳过", "未执行", "本次不执行"):
             return None
         if self.records[key]["has_result"]:
             return self.records[key]["metrics"] or ("— 次", "等待消耗记录")
@@ -538,6 +595,12 @@ class TaskBoard(Surface):
         from .ux import planned_battle_metrics
         return planned_battle_metrics(selected_category(self.ui), self.ui.challenge_count.get(), self.ui.tasks[key].get())
 
+    def _daily_results(self):
+        return "\n\n".join(f"{label} · {status}" + (f"\n{detail}" if detail else "")
+                           for key, record in self.records.items()
+                           if key != "battle" and record["has_result"]
+                           for label, status, detail in (record["values"],))
+
     def _target(self,e):
         x,y=e.x/self.scale,e.y/self.scale
         return next((key for key,(x1,y1,x2,y2) in self.hitboxes.items() if x1<=x<=x2 and y1<=y<=y2),None)
@@ -548,9 +611,22 @@ class TaskBoard(Surface):
             self.configure(cursor="hand2" if key else "")
             self.redraw()
 
-    def _click(self,e):
-        key=self._target(e)
+    def _begin_pointer(self,e):
         self.focus_set()
+        self._press=(e.x,self._target(e))
+
+    def _end_pointer(self,e):
+        if self._press is None:
+            return
+        start,key=self._press
+        self._press=None
+        delta=e.x-start
+        if abs(delta)>=24*self.scale:
+            self.scroll(-1 if delta>0 else 1)
+        elif key==self._target(e) and self._slide_job is None:
+            self._click(key)
+
+    def _click(self,key):
         if key in ("previous","next"):
             self.scroll(-1 if key=="previous" else 1)
         elif key:
@@ -558,7 +634,7 @@ class TaskBoard(Surface):
             x1, _, x2, _ = self.hitboxes[key]
             if x2-x1 < self.card_width-1:
                 # A peek at the next card does not expose its action label yet.
-                self._reveal(list(self.names).index(key))
+                self._reveal(self.card_keys.index(key))
                 self.redraw()
             else:
                 self.activate()
@@ -566,22 +642,32 @@ class TaskBoard(Surface):
     def paint(self,p):
         w,h=p.width,p.height
         self.ui.guide.paint_paper(p, self)
-        self.visible_count=4 if w>=850 else 3
-        self.offset=min(self.offset,len(self.names)-self.visible_count)
+        self.visible_count=min(len(self.card_keys),3 if w>=760 else 2)
+        limit=max(0,len(self.card_keys)-self.visible_count)
+        if self.offset>limit:
+            self.offset=limit
+            self._cancel_slide()
         self.hitboxes={}
+        if self.selected not in self.card_keys:
+            self.selected=None
+        if not self.card_keys:
+            return
         # Reference card: 290 x 480, a 372px paper section and 45px gaps.
         # Keep that aspect when space changes, and expose the next card's edge.
-        width=min(w/(self.visible_count*335/290+40/290), (h-32)*290/480)
+        width=max(1,min(w/(self.visible_count*335/290+40/290), (h-32)*290/480))
         self.card_width=width
         unit=width/290
         q=lambda value:value*unit
         gap=q(45)
-        keys=list(self.names)[self.offset:self.offset+self.visible_count+1]
-        for i,key in enumerate(keys):
-            x=2+i*(width+gap)
+        step = max(width+gap, (w-48)/self.visible_count) if limit else width+gap
+        left = 2 if limit else max(2, (w-width-step*(self.visible_count-1))/2)
+        for i,key in enumerate(self.card_keys):
+            x=left+(i-self._position)*step
             if x>=w:
                 break
             right=x+width
+            if right<=0:
+                continue
             card_bottom=q(372)
             bottom=q(480)
             selected=key in (self.selected,self.hover)
@@ -590,30 +676,53 @@ class TaskBoard(Surface):
             p.box((x+q(14),q(64),right-q(14),card_bottom-q(16)),"white")
             p.asset("card-frame.png",(x,1,right,card_bottom))
             p.asset("card-watermark.png",(x+q(36),q(107),x+q(248),q(276)))
-            _,state,_=self.records[key]["values"]
-            excluded = state == "未加入"
+            if key=="weekly":
+                recovery = getattr(self.ui, "_weekly_currency_recovery", None)
+                state = ("进行中" if self.ui.busy and self.ui.plan_phase=="weekly" else
+                         "可接续" if recovery and recovery.get("resume") else
+                         "已启用" if self.ui.weekly_enabled.get() else "已停用")
+            elif key=="daily":
+                count=sum(value.get() for name,value in self.ui.tasks.items() if name!="battle")
+                count+=int(self.ui.redemption_panel.daily_enabled)
+                statuses={record["values"][1] for name,record in self.records.items()
+                          if name!="battle" and record["has_result"]}
+                state=("进行中" if "进行中" in statuses else "待核对" if statuses & {"失败","部分完成"} else
+                       "已结束" if statuses else "待执行" if count else "已停用")
+            else:
+                _,state,_=self.records[key]["values"]
+                if key=="battle" and not self.ui.settings.allow_stamina_spend:
+                    state="未授权"
+                elif state=="未加入":
+                    state="已停用"
+                elif key=="battle" and self.ui._battle_setup_needed():
+                    state="待配置"
+            excluded = state in ("已停用","未授权")
             status_width=t.bitmap_font(q(23)*p.factor).getlength(state)/p.factor+q(48)
             p.box((x+1,q(16),x+min(width-q(16),status_width),q(47)),"#dedede" if excluded else "#e9dbbd",0,"#bdbdbd" if excluded else "#d7bd8b")
             p.text((x+q(24),q(20)),state,q(23),"#747474" if excluded else "#6b624d")
             p.text((x+q(24),q(80)),TITLES[key],q(28),"#717171" if excluded else "#111111")
-            if key == "battle" and not self.records[key]["has_result"]:
+            if key=="weekly" and state!="已停用":
+                note=self.ui.weekly_status.get()
+                p.text((x+q(24),q(136)),p.wrap(note,width-q(48),q(21),3),q(21),"#494442")
+            elif key=="daily":
+                note=f"已选 {count} 项" if count else "未选择每日任务"
+                p.text((x+q(24),q(136)),note,q(22),"#494442")
+            if key == "battle" and (not self.records[key]["has_result"] or state=="待配置"):
                 if self.ui.power_mode.get() == '体力计划':
                     from .power_plan_ui import display_rows
                     values=display_rows(self.ui)
                     name=values[0]['target']+(' 等' if len(values)>1 else '') if values else '历战优先' if self.ui.echo_enabled.get() else '添加副本'
                     location=self.ui.power_repeat.get()+(' · 默认补刷' if self.ui.power_fill.get() else '')
                 else:
-                    name,location=self.ui.target_name.get() or '名称待填写',self.ui.target_location.get() or '地点待填写'
+                    name,location=(('选择副本与地点','') if state=="待配置" else
+                                   (self.ui.target_name.get(),self.ui.target_location.get()))
                 p.text((x+q(24),q(133)),p.wrap(name,width-q(48),q(22),2),q(22),"#494442")
                 p.text((x+q(24),q(195)),p.wrap(location,width-q(48),q(18),2),q(18),t.MUTED)
             metrics = self.resource_metrics(key)
             if metrics is not None:
                 value, sub = metrics
                 p.box((x+q(17),q(278),right-q(18),card_bottom-q(22)),"#f4f4f4")
-                if key=="daily":
-                    p.asset("activity.png",(x+q(55),q(262),x+q(119),q(352)))
-                else:
-                    p.asset("stamina.png",(x+q(62),q(288),x+q(108),q(334)))
+                p.asset("stamina.png",(x+q(62),q(288),x+q(108),q(334)))
                 p.text((x+q(126),q(282)),value,q(30),"#494442")
                 for line, text in enumerate(p.wrap(sub,q(149),q(16),2).splitlines()):
                     p.text((x+q(126),q(316+18*line)),text,q(16),t.MUTED)
@@ -622,14 +731,16 @@ class TaskBoard(Surface):
             p.text((x+width/2,q(426)),self.action_label(key),q(25),"#d8ba78","mm")
             if selected:
                 p.box((x-1,0,right+1,bottom),None,q(7),t.GOLD,2)
-            self.hitboxes[key]=(x,0,min(right,w),bottom)
-        visible_end=min(len(self.names),self.offset+self.visible_count)
+            self.hitboxes[key]=(max(x,0),0,min(right,w),bottom)
+        if not limit:
+            return
+        visible_end=min(len(self.card_keys),self.offset+self.visible_count)
         for key,x,symbol in (("previous",w-103,"‹"),("next",w-15,"›")):
-            enabled=self.offset>0 if key=="previous" else self.offset<len(self.names)-self.visible_count
+            enabled=self.offset>0 if key=="previous" else self.offset<limit
             p.text((x,h-13),symbol,24,t.TEXT if enabled else "#bcbcbc","mm")
             if enabled:
                 self.hitboxes[key]=(x-16,h-29,x+16,h)
-        p.text((w-59,h-12),f"{self.offset+1}–{visible_end} / {len(self.names)}",12,t.MUTED,"mm")
+        p.text((w-59,h-12),f"{self.offset+1}–{visible_end} / {len(self.card_keys)}",12,t.MUTED,"mm")
 
 
 class PlanRibbon(Surface):

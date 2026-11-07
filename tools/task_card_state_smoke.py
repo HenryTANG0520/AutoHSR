@@ -111,21 +111,23 @@ def main():
                     summary, active_page = ui.summary.get(), ui.active_page
                     for key in ("battle", "daily"):
                         board = ui.table
-                        board._reveal(list(board.names).index(key))
+                        board._reveal(board.card_keys.index(key))
                         board.redraw()
                         root.update()
                         x1,y1,x2,y2 = board.hitboxes[key]
                         board.event_generate("<Button-1>", x=round((x1+x2)/2*ui.ui_scale), y=round((y1+y2)/2*ui.ui_scale))
+                        board.event_generate("<ButtonRelease-1>", x=round((x1+x2)/2*ui.ui_scale), y=round((y1+y2)/2*ui.ui_scale))
                         root.update()
                         dialog = ui.detail_view
                         check(prefix+key+"_one_click_opens_this_result", dialog.winfo_ismapped()
-                              and ui.detail_title.cget("text") == board.names[key] and ui.active_page == active_page)
+                              and ui.detail_title.cget("text") == (board.names[key] if key == "battle" else "每日计划 · 任务结果")
+                              and ui.active_page == active_page)
                         text = ui.detail_text
                         check(prefix+key+"_reason_and_overall_outcome_are_preserved", "未执行" in text.get("1.0","end")
                               and (outcome != "stopped" or "计划已停止" in text.get("1.0","end"))
                               and (outcome != "failed" or all(value in text.get("1.0","end") for value in ("窗口未能核实", "10 开拓力待核对")))
                               and (outcome != "exception" or "结果处理意外中断" in text.get("1.0","end"))
-                              and text.get("1.0","end").count("未执行") == 1
+                              and (key == "daily" or text.get("1.0","end").count("未执行") == 1)
                               and ui.summary.get() == summary and len(starts) == before+1)
                         if scale == 1.25 and key == "battle":
                             ImageGrab.grab(window=root.winfo_id()).save(OUT/(outcome+"-detail.png"))

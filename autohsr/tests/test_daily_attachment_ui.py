@@ -186,8 +186,10 @@ class AttachmentRoutesTests(unittest.TestCase):
                     self.assertLessEqual(ui.daily_entry_buttons[MAIL].master.winfo_reqwidth(), paper_width)
                     selected = {name: field.get() for name, field in ui.tasks.items()}
                     self.assertIs(ui.daily_entry_buttons[ASSIGNMENTS], ui.assignment_button)
+                    self.assertFalse(ui.daily_entry_buttons[MAIL].winfo_ismapped())
+                    ui._show_daily_tasks()
                     ui.daily_entry_buttons[MAIL].invoke()
-                    self.assertEqual(ui.active_page, 'home')
+                    self.assertEqual(ui.active_page, 'settings')
                     self.assertEqual(ui.page_title.get(), '邮件附件')
                     self.assertEqual(ui.start_button.cget('text'), '仅领取邮件附件')
                     self.assertFalse(ui.reward_button.winfo_manager())
