@@ -40,11 +40,11 @@ def main():
             if self.options['operation'] == 'currency_wars_points':
                 return dict(operation='currency_wars_points',status='partial',report_saved=True,results=[],error='模拟积分未核实')
             guard = self.options['weekly_plan']
-            guard.receipt = weekly_plan.WeeklyReceipt(guard.root, 'a'*24, guard.slot)
-            guard.already_complete = not guard.receipt.begin(guard.settings)
             folder = guard.root/('synthetic-'+str(len(calls)))
             folder.mkdir(parents=True)
-            return du_report(folder, self.options['du_runs'])
+            guard.receipt = weekly_plan.WeeklyReceipt(guard.root, 'a'*24, guard.slot)
+            guard.already_complete = not guard.receipt.begin(guard.settings, fixed_run_dir=folder/'child')
+            return du_report(folder, self.options['du_runs'], receipt=guard.receipt)
         def stop(self):
             pass
         def toggle_pause(self):
@@ -53,8 +53,10 @@ def main():
     fake = types.ModuleType('autohsr.app')
     fake.Runner = Child
     with patch.dict(sys.modules, {'autohsr.app':fake}), patch.object(weekly_plan, 'datetime', Clock):
-        from autohsr import plan_runner
-        with patch.object(plan_runner, 'datetime', Clock):
+        from autohsr import currency_wars_weekly_run, plan_runner
+        with (patch.object(plan_runner, 'datetime', Clock),
+              patch.object(currency_wars_weekly_run, 'datetime', Clock),
+              patch.object(currency_wars_weekly_run, 'local_now', lambda: now)):
             for scale in (1.,1.25,1.5,2.):
                 now = datetime(2026,10,29,10,0,tzinfo=weekly_plan.CHINA)
                 prefix = str(scale)+'_'
