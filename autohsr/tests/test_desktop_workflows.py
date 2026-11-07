@@ -169,9 +169,12 @@ class DesktopToolTests(unittest.TestCase):
 
     def open_workflow(self):
         self.ui.workflow_panel = panel = tools.build_workflow_panel(None, self.ui)
-        self.assertFalse(panel.primary_action()[2])
+        self.assertEqual(panel.primary_action(), ("新建草稿", panel.new, True))
+        self.assertTrue(panel.run_button.instate(("disabled",)))
         self.open_dialog.return_value = str(self.source)
-        panel.open()
+        panel.open_button.options["command"]()
+        self.assertEqual(panel.draft.source, self.source)
+        self.assertEqual(panel.primary_action(), ("另存为", panel.save_as, True))
         return panel
 
     def new_schedule(self):
@@ -184,7 +187,9 @@ class DesktopToolTests(unittest.TestCase):
 
     def test_new_workflow_requires_verified_save_and_an_explicit_run(self):
         self.ui.workflow_panel = panel = tools.build_workflow_panel(None, self.ui)
-        panel.new_button.options['command']()
+        self.assertEqual(panel.primary_action(), ("新建草稿", panel.new, True))
+        panel.primary_action()[1]()
+        self.assertEqual(panel.primary_action(), ("另存为", panel.save_as, True))
         self.open_dialog.assert_not_called()
         self.save_dialog.assert_not_called()
         self.assertIsNone(panel.draft.source)
@@ -228,6 +233,28 @@ class DesktopToolTests(unittest.TestCase):
         current.run_saved()
         self.ui._start_task_workflow.assert_called_once()
         self.assertEqual(self.ui._start_task_workflow.call_args.args[0].document, edited)
+
+    def test_busy_workflow_blocks_new_and_save_primary_actions(self):
+        self.ui.workflow_panel = panel = tools.build_workflow_panel(None, self.ui)
+        self.ui.busy = True
+        panel.refresh()
+        self.assertEqual(panel.primary_action(), ("新建草稿", panel.new, False))
+        panel.primary_action()[1]()
+        self.assertIsNone(panel.draft)
+
+        self.ui.busy = False
+        panel.primary_action()[1]()
+        self.assertIsNotNone(panel.draft)
+        self.ui.busy = True
+        panel.refresh()
+        self.assertEqual(panel.primary_action(), ("另存为", panel.save_as, False))
+        target = self.root / "busy-copy.json"
+        self.save_dialog.return_value = str(target)
+        panel.primary_action()[1]()
+        self.assertIsNone(panel.draft.source)
+        self.assertFalse(target.exists())
+        self.save_dialog.assert_not_called()
+        self.ui._start_task_workflow.assert_not_called()
 
     def test_workflow_step_preview_selects_the_explicit_branch_and_survives_rebuild(self):
         self.source.write_text(json.dumps(branch_workflow(), ensure_ascii=False), encoding="utf8")
