@@ -1163,12 +1163,13 @@ class DailyWorkflow:
         self._click(scene, target)
         self._wait(lambda s: not s.has(("挑战成功", "战斗失败", "退出关卡", "再来一次")), description="确认退出关卡")
 
-    def _start_challenge(self, scene, target, *, plan_cost, support_decision):
+    def _start_challenge(self, scene, target, *, plan_cost, immersifiers, support_decision):
         with support_decision.inputs(self.ctx, scene=scene) if support_decision is not None else nullcontext():
             if plan_cost is None:
                 self._click(scene, target)
             else:
-                self.ctx.power_plan_battle_input(scene, target, plan_cost, support_decision=support_decision)
+                self.ctx.power_plan_battle_input(scene, target, plan_cost, immersifiers=immersifiers,
+                                                 support_decision=support_decision)
                 self._pause()
                 self._snapshot()
 
@@ -1270,13 +1271,14 @@ class DailyWorkflow:
                     if available < paid_stamina:
                         return self._result('battle', 'partial',
                             f'队伍页当前开拓力 {available} 低于原费用 {paid_stamina}，未开始挑战。', scene)
-            if budget is not None and not ordinary_plan:
+            guarded_plan_payment = plan is not None and (ordinary_plan or support_decision is not None)
+            if budget is not None and not guarded_plan_payment:
                 if paid_immersifiers:
                     budget.reserve(paid_stamina, immersifiers=paid_immersifiers)
                 else:
                     budget.reserve(paid_stamina)
-            self._start_challenge(scene, start, plan_cost=paid_stamina if ordinary_plan else None,
-                                  support_decision=support_decision)
+            self._start_challenge(scene, start, plan_cost=paid_stamina if guarded_plan_payment else None,
+                                  immersifiers=paid_immersifiers, support_decision=support_decision)
             if category.key == "planar":
                 self._enter_planar_battle()
             scene = self._battle_result()

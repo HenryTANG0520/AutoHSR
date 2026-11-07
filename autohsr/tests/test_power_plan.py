@@ -105,8 +105,8 @@ class FakeContext:
             if self.world.after_payment:self.world.after_payment(self.world)
         else:raise AssertionError('unexpected fixture click '+target.text)
 
-    def power_plan_battle_input(self, scene, target, cost, *, support_decision=None):
-        self.battle_budget.reserve(cost)
+    def power_plan_battle_input(self, scene, target, cost, *, immersifiers=0, support_decision=None):
+        self.battle_budget.reserve(cost, immersifiers=immersifiers)
         self.click(scene, target)
 
     def wait(self,predicate,**kwargs):

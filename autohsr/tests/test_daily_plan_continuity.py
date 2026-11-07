@@ -30,6 +30,7 @@ FIRST = '回忆之蕾'
 FILL = '藏珍之蕾'
 CAVERN = '侵蚀隧洞'
 CALYX = '以太之蕾'
+PLANAR = '浴火钢心'
 runtime = fake_runtime
 
 
@@ -84,7 +85,7 @@ class NativeTrainingScreens(support.Screens):
 
 
 @contextmanager
-def native_payment_window(root, settings, world, starts, vetoes):
+def native_payment_window(root, settings, world, starts, vetoes, *, payment_target=CAVERN):
     """Keep the actual Win32 guard, key query, callback and packet assembly."""
     with fake_runtime(root, settings, world) as (screen, find):
         geometry = windows.Geometry(8, 12, 960, 540)
@@ -109,7 +110,7 @@ def native_payment_window(root, settings, world, starts, vetoes):
                 active = None
 
         def is_later_payment():
-            return active is not None and active.text == '开始挑战' and world.settings.target_name == CAVERN
+            return active is not None and active.text == '开始挑战' and world.settings.target_name == payment_target
 
         def key_state(_):
             if is_later_payment() and world.boundary == 'late_epoch' and not vetoes:
@@ -304,9 +305,6 @@ class DailyPlanContinuityTests(unittest.TestCase):
                             self.assertEqual(journal.read_bytes(), original)
 
     def test_unsent_receipt_write_failure_keeps_the_original_pending_intent(self):
-        later = row('cavern', 1, CAVERN, '残响回廊')
-        world = BalanceWorld(CAVERN, 'late_epoch')
-        starts, vetoes = [], []
         write = BattleBudget._write
 
         def fail_unsent(budget, *args, **kwargs):
@@ -314,16 +312,26 @@ class DailyPlanContinuityTests(unittest.TestCase):
                 raise OSError('fixture unsent receipt write failed')
             return write(budget, *args, **kwargs)
 
-        def native(root, settings, value):
-            return native_payment_window(root, settings, value, starts, vetoes)
+        for later, tokens in ((row('cavern', 1, CAVERN, '残响回廊'), 0),
+                              (row('planar', 2, PLANAR, '永恒圣城'), 1)):
+            with self.subTest(category=later['category']):
+                folder = self.root / later['category']
+                world = BalanceWorld(later['target'], 'late_epoch')
+                world.tokens = tokens
+                starts, vetoes = [], []
 
-        with patch(__name__ + '.runtime', native), patch.object(BattleBudget, '_write', fail_unsent):
-            code, report, _ = self.cli(self.root, world, later, mode='--run')
-        self.assertEqual((code, vetoes, starts), (1, ['epoch'], [(ECHO, 30), (FIRST, 10)]))
-        self.assertEqual((report['stamina_spent'], report['stamina_pending']), (40, 40))
-        saved = read(self.root / 'runs' / 'battle-session.json')
-        self.assertEqual(saved['power_plan']['intent']['stamina'], 40)
-        self.assertEqual(saved['power_plan']['done'], [1, 0])
+                def native(root, settings, value):
+                    return native_payment_window(root, settings, value, starts, vetoes, payment_target=later['target'])
+
+                with patch(__name__ + '.runtime', native), patch.object(BattleBudget, '_write', fail_unsent):
+                    code, report, _ = self.cli(folder, world, later, mode='--run')
+                self.assertEqual((code, vetoes, starts), (1, ['epoch'], [(ECHO, 30), (FIRST, 10)]))
+                self.assertEqual((report['stamina_spent'], report['stamina_pending'],
+                                  report['immersifiers_pending']), (40, 40, tokens))
+                saved = read(folder / 'runs' / 'battle-session.json')
+                intent = saved['power_plan']['intent']
+                self.assertEqual((intent['stamina'], intent['immersifiers']), (40, tokens))
+                self.assertEqual(saved['power_plan']['done'], [1, 0])
 
     def test_followup_week_veto_after_payment_callback_is_recorded_as_unsent(self):
         from autohsr import du_periodic_points
@@ -393,6 +401,76 @@ class DailyPlanContinuityTests(unittest.TestCase):
                 unsent, = [result for result in journal['power_plan']['results'] if result.get('reason') == 'payment_not_sent']
                 self.assertEqual((unsent['row'], unsent['requested'], unsent['completed']), (1, 1, 0))
                 self.assertTrue(read_ref(folder / 'runs', unsent['evidence']).is_file())
+
+    def test_planar_support_day_rollover_retires_both_unsent_resources(self):
+        for mode, count, pending_stamina in (('--run', 1, 0), ('--plan', 2, 40)):
+            with self.subTest(mode=mode, count=count):
+                folder = self.root / mode
+                world = BalanceWorld(PLANAR, None)
+                world.tokens = 1
+                starts, vetoes = [], []
+                day = NOW.date().isoformat()
+                require_week = windows.require_followup_week
+
+                @contextmanager
+                def native(root, settings, value):
+                    with native_payment_window(root, settings, value, starts, vetoes,
+                                               payment_target=PLANAR) as (window, find):
+                        def cross_day_at_planar_payment():
+                            nonlocal day
+                            require_week()
+                            report = window.owner.report
+                            if world.settings.target_name == PLANAR and report.immersifiers_pending == 1:
+                                self.assertEqual(report.stamina_pending, pending_stamina)
+                                day = (NOW + timedelta(days=1)).date().isoformat()
+                                vetoes.append('day')
+
+                        with (patch.object(windows, 'require_followup_week', cross_day_at_planar_payment),
+                              patch('autohsr.daily_support.game_day', side_effect=lambda _now: day)):
+                            yield window, find
+
+                later = row('planar', count, PLANAR, '永恒圣城')
+                with patch(__name__ + '.runtime', native):
+                    code, report, _ = self.cli(folder, world, later, mode=mode)
+                self.assert_stopped_with_prior_proof(folder, world, code, report)
+                self.assertEqual((starts, vetoes), ([(ECHO, 30), (FIRST, 10)], ['day']))
+                self.assertEqual((report['immersifiers_spent'], report['immersifiers_pending']), (0, 0))
+                journal = read(folder / 'runs' / 'battle-session.json')
+                self.assertIsNone(journal['power_plan']['intent'])
+                unsent, = [result for result in journal['power_plan']['results'] if result.get('reason') == 'payment_not_sent']
+                self.assertEqual((unsent['row'], unsent['requested'], unsent['completed']), (1, count, 0))
+                self.assertTrue(read_ref(folder / 'runs', unsent['evidence']).is_file())
+                original_report = Path(journal['run_dir']) / 'report.json'
+                original = original_report.read_bytes()
+                code, resumed, _ = self.cli(folder, world, later, mode=mode, extra=('--new-battle-run',))
+                self.assertEqual(code, 0, resumed['error'])
+                self.assertEqual(resumed['power_plan']['before'], [1, 0])
+                self.assertEqual(world.payments.count((PLANAR, count, pending_stamina, 1)), 1)
+                self.assertEqual(original_report.read_bytes(), original)
+
+    def test_planar_short_submission_keeps_mixed_payment_pending(self):
+        world = BalanceWorld(PLANAR, 'partial_send')
+        world.tokens = 1
+        starts, vetoes = [], []
+        later = row('planar', 2, PLANAR, '永恒圣城')
+
+        def native(root, settings, value):
+            return native_payment_window(root, settings, value, starts, vetoes, payment_target=PLANAR)
+
+        with patch(__name__ + '.runtime', native):
+            code, report, _ = self.cli(self.root, world, later, mode='--run')
+        self.assertEqual((code, report['status']), (1, 'partial'))
+        self.assertEqual((report['stamina_spent'], report['stamina_pending'], report['immersifiers_pending']), (40, 40, 1))
+        self.assertEqual(report['power_plan']['done'], [1, 0])
+        self.assertEqual(starts, [(ECHO, 30), (FIRST, 10), (PLANAR, 40)])
+        self.assertNotIn(FILL, world.opened)
+        journal = self.root / 'runs' / 'battle-session.json'
+        original = journal.read_bytes()
+        intent = read(journal)['power_plan']['intent']
+        self.assertEqual((intent['count'], intent['stamina'], intent['immersifiers']), (2, 40, 1))
+        code, _, finds = self.cli(self.root, world, later, mode='--run', extra=('--new-battle-run',))
+        self.assertEqual((code, finds), (1, 0))
+        self.assertEqual(journal.read_bytes(), original)
 
     def test_single_round_conflicting_result_keeps_intent_and_stops_before_fill(self):
         class WaveWorld(BalanceWorld):

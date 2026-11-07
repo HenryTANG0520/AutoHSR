@@ -190,29 +190,32 @@ class PowerRun:
         self.data['intent']=dict(id=len(self.data['charges']),row=row,count=count,stamina=cost,immersifiers=immersifiers,
             before_completed=self.report.battle_completed,account=self.data['account'],epoch=self.ctx.runner.input_epoch,before=evidence)
 
-    def require_ordinary_intent(self, ctx, intent):
+    def require_payment_intent(self, ctx, intent):
         if (self.ctx is not ctx or ctx.battle_budget is not self.budget or not self.budget.active
                 or self.budget.power_plan is not self or ctx.report is not self.report or self.report.power_plan is not self.data
                 or intent is None or self.data['intent'] is not intent
                 or intent['row'] != self.data['active_row'] or intent['id'] != len(self.data['charges'])
                 or intent['account'] != self.data['account'] or self.report.battle_completed != intent['before_completed']
-                or intent['immersifiers'] or self.report.immersifiers_pending
+                or self.report.immersifiers_pending != intent['immersifiers']
                 or self.report.stamina_pending != intent['stamina']):
             raise AutomationError('体力计划本批支付意图已变化，保留待核对记录。')
 
     def record_unsent(self, ctx, intent, detail):
         """Retire only the current intent that was vetoed before native submission."""
         from .power_plan_store import read, read_ref
-        self.require_ordinary_intent(ctx, intent)
+        self.require_payment_intent(ctx, intent)
         saved = read(self.budget.path)
         if (saved.get('run_dir') != self.report.run_dir or saved.get('power_plan') != self.data
-                or saved.get('pending') != intent['stamina'] or saved.get('immersifiers_pending') != 0
+                or saved.get('pending') != intent['stamina']
+                or saved.get('immersifiers_pending') != intent['immersifiers']
+                or saved.get('immersifiers_spent') != self.report.immersifiers_spent
                 or saved.get('spent') != self.report.stamina_spent or saved.get('completed') != self.report.battle_completed):
             raise AutomationError('体力计划原支付记录已变化，保留待核对状态。')
         read_ref(self.root, intent['before'])
         previous_status = self.data['run_status']
         self.data.update(intent=None, run_status='partial')
         self.report.stamina_pending = 0
+        self.report.immersifiers_pending = 0
         results = self.data['results']
         results.append(dict(row=intent['row'], requested=intent['count'], completed=0, stamina=0, immersifiers=0,
                             status='partial', reason='payment_not_sent', detail=detail, evidence=intent['before']))
@@ -222,6 +225,7 @@ class PowerRun:
             results.pop()
             self.data.update(intent=intent, run_status=previous_status)
             self.report.stamina_pending = intent['stamina']
+            self.report.immersifiers_pending = intent['immersifiers']
             raise
 
     def confirm(self,cost,immersifiers):

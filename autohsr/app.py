@@ -974,7 +974,7 @@ class Context:
         finally:
             self.last_scene, self._scroll_anchor = None, None
 
-    def power_plan_battle_input(self, scene: Scene, target: Token, cost: int, *, support_decision=None):
+    def power_plan_battle_input(self, scene: Scene, target: Token, cost: int, *, immersifiers=0, support_decision=None):
         from .policy import guard_click, replenishment_dialog
         from .power_plan_run import PowerRun
         from .workflows import BOTTOM, TITLE, DailyWorkflow
@@ -982,45 +982,52 @@ class Context:
         self._require_gameplay_input()
         budget = getattr(self, 'battle_budget', None)
         plan = getattr(budget, 'power_plan', None)
+        planar = self.settings.dungeon_category == 'planar'
         if (self.report.operation != 'daily' or not self.settings.allow_stamina_spend
-                or self.settings.dungeon_category == 'planar' or not isinstance(plan, PowerRun) or plan.ctx is not self):
-            raise AutomationError('普通体力计划支付缺少本次副本和预算。')
+                or planar and support_decision is None or not isinstance(plan, PowerRun) or plan.ctx is not self):
+            raise AutomationError('体力计划支付缺少本次副本和预算。')
         self.checkpoint()
         epoch, captured_at, geometry = self.scene_epoch, scene.captured_at, scene.geometry
         tokens = tuple(scene.tokens)
         starts = [token for token in tokens if token.within(BOTTOM) and normalize(token.text) == '开始挑战']
-        if geometry is None or not scene.has('队伍', TITLE) or starts != [target]:
-            raise AutomationError('普通体力计划未核实队伍和唯一的开始挑战按钮。')
+        if planar:
+            from .planar_team import preparation, selection
+            team_ready = preparation(scene) and not selection(scene) and not DailyWorkflow._planar_picker(scene)
+        else:
+            team_ready = scene.has('队伍', TITLE)
+        if geometry is None or not team_ready or starts != [target]:
+            raise AutomationError('体力计划未核实队伍和唯一的开始挑战按钮。')
 
         def require_current():
             if self.runner.stop_requested:
-                raise Stopped('普通体力计划支付前已停止。')
+                raise Stopped('体力计划支付前已停止。')
             if scene is not self.last_scene or self.scene_epoch != epoch or self.runner.input_epoch != epoch:
-                raise InputInterrupted('普通体力计划支付前输入代次或画面已变化。')
+                raise InputInterrupted('体力计划支付前输入代次或画面已变化。')
             if (scene.geometry != geometry or scene.captured_at != captured_at or not 0 <= time.monotonic()-captured_at <= 8
                     or tuple(scene.tokens) != tokens):
-                raise AutomationError('普通体力计划支付前队伍画面或文字已变化。')
+                raise AutomationError('体力计划支付前队伍画面或文字已变化。')
 
         require_current()
         guard_click(scene, target)
         if replenishment_dialog(scene):
             raise AutomationError('开拓力补充或兑换界面只允许取消。')
-        visible, balance = DailyWorkflow._team_stamina(scene, self.settings.ocr_confidence)
-        if visible and plan.require_balance(self, scene, balance) < cost:
-            raise AutomationError('队伍页当前开拓力低于原费用，未开始挑战。')
+        if not planar:
+            visible, balance = DailyWorkflow._team_stamina(scene, self.settings.ocr_confidence)
+            if visible and plan.require_balance(self, scene, balance) < cost:
+                raise AutomationError('队伍页当前开拓力低于原费用，未开始挑战。')
         self.log(f'点击：{target.text}')
-        budget.reserve(cost)
+        budget.reserve(cost, immersifiers=immersifiers)
         intent = plan.data['intent']
         ready_to_send = False
 
         def before_send():
             nonlocal ready_to_send
             if ready_to_send:
-                raise AutomationError('普通体力计划本批已通过发送，支付待核对。')
+                raise AutomationError('体力计划本批已通过发送，支付待核对。')
             self.window.guard(geometry)
-            plan.require_ordinary_intent(self, intent)
+            plan.require_payment_intent(self, intent)
             if intent['epoch'] != epoch:
-                raise InputInterrupted('普通体力计划支付意图的输入代次已变化。')
+                raise InputInterrupted('体力计划支付意图的输入代次已变化。')
             if intent['row'] == -2:
                 from .echo_weekly import require_week
                 require_week(plan.data['weekly_echo'])
@@ -1048,13 +1055,13 @@ class Context:
                     self._focus_interrupted()
                 if isinstance(error, Stopped):
                     raise
-                raise AutomationError(f'普通体力计划本批已尝试提交，支付待核对。{error}') from error
+                raise AutomationError(f'体力计划本批已尝试提交，支付待核对。{error}') from error
             plan.record_unsent(self, intent, str(error))
             if isinstance(error, Stopped):
                 raise
-            raise AutomationError(f'普通体力计划本批开始挑战未发送。{error}') from error
+            raise AutomationError(f'体力计划本批开始挑战未发送。{error}') from error
         if not ready_to_send:
-            raise AutomationError('普通体力计划缺少原生发送回执，本批支付待核对。')
+            raise AutomationError('体力计划缺少原生发送回执，本批支付待核对。')
         self.last_scene = None
         self.sleep(self.settings.action_delay)
 
