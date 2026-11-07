@@ -366,6 +366,8 @@ class DailyPlanContinuityTests(unittest.TestCase):
                             return self.cli(folder, world, None, mode=mode, extra=extra, screens=FiftyPointScreens)
 
                     code, report, _ = run()
+                    account_error = ('账号未核实' if mode == '--run'
+                                     else '当前账号标识未在有限新鲜观察内完整核实')
                     ledger = folder / 'runs' / 'battle-session.json'
                     saved = read(ledger)
                     self.assertEqual(world.support_clicks, ['支援', '好友', '确认'])
@@ -378,7 +380,7 @@ class DailyPlanContinuityTests(unittest.TestCase):
                     if boundary == 'success':
                         self.assertEqual((code, saved['spent'], saved['pending'], saved['immersifiers_pending']),
                                          (1, 40, 40, 1))
-                        self.assertIn('账号未核实', report['error'])
+                        self.assertIn(account_error, report['error'])
                         self.assertEqual(saved['power_plan']['done'], [1, 0])
                         original = ledger.read_bytes()
                         blocked, _, finds = run('--new-battle-run')
@@ -387,7 +389,7 @@ class DailyPlanContinuityTests(unittest.TestCase):
                     elif boundary == 'team':
                         self.assertEqual((code, saved['spent'], saved['pending'], saved['immersifiers_pending']),
                                          (1, 40, 0, 0))
-                        self.assertIn('账号未核实', report['error'])
+                        self.assertIn(account_error, report['error'])
                     else:
                         self.assertEqual((code, saved['completed'], saved['spent'], saved['immersifiers_spent'],
                                           saved['pending'], saved['immersifiers_pending']), (0, 4, 80, 1, 0, 0))
