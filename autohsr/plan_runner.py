@@ -61,6 +61,7 @@ class PlanRunner:
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._paused = False
+        self._started = False
         self.report = RunReport(operation="plan")
 
     @property
@@ -337,6 +338,10 @@ class PlanRunner:
             self._weekly_result("complete", f"本周 {maximum} 局周期演算已完成；周积分奖励未核实。")
 
     def run(self):
+        with self._lock:
+            if self._started:
+                raise AutomationError('同一份运行计划只能执行一次。')
+            self._started = True
         started = datetime.now(CHINA)
         directory = self.root/(started.strftime("%Y%m%d_%H%M%S_%f")+"_plan_"+uuid.uuid4().hex[:8])
         directory.mkdir(parents=True)

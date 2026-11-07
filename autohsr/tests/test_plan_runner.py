@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from autohsr.config import Settings
+from autohsr.models import AutomationError
 from autohsr.plan_runner import PlanRunner
 from autohsr.weekly_plan import CHINA, WeeklyReceipt
 from autohsr.tests.test_weekly_plan import du_report
@@ -111,6 +112,42 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(report.weekly_plan["mode"], "differential_universe")
         self.assertEqual(report.weekly_plan["daily_tasks"], ["assignments", "battle", "daily"])
         self.assertEqual(self.calls[0][0].stamina_limit, 240)
+
+    def test_same_plan_cannot_restart_during_or_after_its_original_execution(self):
+        runner = self.runner()
+        entered, release = threading.Event(), threading.Event()
+        reports = []
+
+        def hold_daily(child):
+            if child.operation == 'daily':
+                entered.set()
+                if not release.wait(5):
+                    raise AssertionError('test did not release the daily child')
+
+        self.before_return = hold_daily
+        worker = threading.Thread(target=lambda: reports.append(runner.run()))
+        worker.start()
+        try:
+            self.assertTrue(entered.wait(3))
+            directories = set(self.root.iterdir())
+            with self.assertRaisesRegex(AutomationError, '只能执行一次'):
+                runner.run()
+            self.assertEqual(set(self.root.iterdir()), directories)
+            self.assertEqual(len(self.calls), 1)
+        finally:
+            release.set()
+            worker.join(5)
+        self.assertFalse(worker.is_alive())
+        report, = reports
+        self.assertEqual(report.status, 'success')
+        path = Path(report.run_dir) / 'report.json'
+        original = path.read_bytes()
+        directories = set(self.root.iterdir())
+        with self.assertRaisesRegex(AutomationError, '只能执行一次'):
+            runner.run()
+        self.assertEqual(set(self.root.iterdir()), directories)
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual([options['operation'] for _, options in self.calls], ['daily', 'differential_universe'])
 
     def test_future_weekly_only_freezes_empty_daily_scope_without_a_child(self):
         self.settings = replace(self.settings, assignments=False, battle=False, daily=False,
