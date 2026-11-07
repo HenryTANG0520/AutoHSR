@@ -564,6 +564,19 @@ class DesktopToolTests(unittest.TestCase):
         self.assertEqual(self.ui.scheduler.snapshot()["enabled_ids"], [])
         self.assertFalse((self.ui.schedule_store.root / "slots").exists())
 
+    def test_schedule_material_budget_is_visible_for_a_zero_stamina_plan(self):
+        self.source.write_text(json.dumps(dict(version=1, name='实训计划', steps=[
+            dict(id='training', type='task', task='daily', params=dict(tasks=['daily'])),
+        ]), ensure_ascii=False), encoding='utf-8')
+        panel = self.new_schedule()
+        panel.values['count'].set('1')
+        panel.preview()
+        self.assertIn('开拓力 0 点', panel.budget.get())
+        self.assertIn('实训合成 1 次', panel.budget.get())
+        self.assertIn('两种普通材料各 1 个', panel.budget.get())
+        self.assertEqual(self.ui.enabled, [])
+        self.ui.factory.assert_not_called()
+
     def test_schedule_settings_edit_and_incomplete_budget_require_a_new_preview(self):
         panel = self.new_schedule()
         panel.preview()

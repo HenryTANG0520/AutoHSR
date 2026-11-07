@@ -188,13 +188,16 @@ class NativeScheduleExecutor:
 
     @staticmethod
     def _budget(plan, recipe, game, configured):
-        stamina = du_runs = 0
+        stamina = synthesis = du_runs = 0
         # The compiled subtree reserves at most one daily and one DU owner
         # per possible path. Distinct enabled owners can only be alternatives.
         for node, current, options in configured:
             task = node['task']
-            if task in ('daily', 'plan') and current.battle and current.allow_stamina_spend:
-                stamina = max(stamina, current.stamina_limit)
+            if task in ('daily', 'plan'):
+                if current.battle and current.allow_stamina_spend:
+                    stamina = max(stamina, current.stamina_limit)
+                if current.daily and current.daily_synthesis:
+                    synthesis = 1
             if task == 'differential_universe':
                 du_runs = max(du_runs, options['du_runs'])
             elif task == 'plan' and current.weekly_enabled and current.weekly_mode == 'differential_universe':
@@ -202,7 +205,8 @@ class NativeScheduleExecutor:
         count = plan['repeat']['count']
         return dict(id=plan['id'], revision=revision(plan), repeat_count=count, contains_game_tasks=game,
                     whole_batch=dict(workflow_steps=recipe.profile['executions'] * count,
-                                     daily_stamina_max=stamina * count, du_runs_max=du_runs * count))
+                                     daily_stamina_max=stamina * count, daily_synthesis_max=synthesis * count,
+                                     du_runs_max=du_runs * count))
 
     def freeze(self, plan):
         return self._manifest(self._checked_target(plan))

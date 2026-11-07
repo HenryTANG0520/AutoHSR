@@ -409,7 +409,8 @@ class WorkflowLiveConditionTests(unittest.TestCase):
         budget, digest = executor.preview_activation(plan)
         manifest = executor.freeze(plan)
         self.assertTrue(budget['contains_game_tasks'])
-        self.assertEqual(budget['whole_batch'], dict(workflow_steps=3, daily_stamina_max=0, du_runs_max=0))
+        self.assertEqual(budget['whole_batch'],
+                         dict(workflow_steps=3, daily_stamina_max=0, daily_synthesis_max=0, du_runs_max=0))
         self.assertEqual(manifest['sha256'], digest)
         entry, = manifest['dependencies']
         self.assertEqual(Path(entry['path']), self.template)

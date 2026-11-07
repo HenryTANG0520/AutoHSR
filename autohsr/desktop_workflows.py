@@ -962,7 +962,7 @@ def build_workflow_panel(parent, ui):
 _TARGET_TYPES = {"正式任务": "task", "任务流": "workflow"}
 _CONFLICTS = {"跳过本次": "skip", "停止定时任务": "stop_owned"}
 _BUDGET_FIELDS = (("workflow_steps", "执行步数", "步"), ("daily_stamina_max", "开拓力", "点"),
-                  ("du_runs_max", "差分局数", "局"))
+                  ("du_runs_max", "差分局数", "局"), ("daily_synthesis_max", "实训合成", "次"))
 _SCHEDULE_REASONS = {"plan_changed": "计划版本已变化", "timeout": "达到超时上限", "controller_stopped": "已停止计时",
                      "receipt_write_failed": "回执写入待核对", "report_unverified": "运行回执待核对",
                      "disabled_before_start": "启动前已停用", "cancelled_before_run": "启动前已停止"}
@@ -1270,7 +1270,11 @@ class _SchedulePanel(_Panel):
             self._forget_preview()
             self._error("预算预览失败", error)
         else:
-            self.budget.set("单次触发整批上限 · " + " · ".join(fields))
+            budget = "单次触发整批上限 · " + " · ".join(fields)
+            synthesis = maximum.get("daily_synthesis_max")
+            if type(synthesis) is int and synthesis > 0:
+                budget += f"\n满足实训条件时合成奇巧零食，最多消耗两种普通材料各 {synthesis} 个"
+            self.budget.set(budget)
             self.preview_status.set(status)
             self.preview_stamp = (result["revision"], settings_key) if complete else None
             self.status.set("" if complete else "预算字段待核对")

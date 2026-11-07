@@ -301,8 +301,20 @@ class ScheduleDispatchTests(unittest.TestCase):
         plan = self.plan(target)
         budget = self.executor.preview_budget(plan)
         self.assertTrue(budget['contains_game_tasks'])
-        self.assertEqual(budget['whole_batch'], dict(workflow_steps=1, daily_stamina_max=0, du_runs_max=0))
+        self.assertEqual(budget['whole_batch'],
+                         dict(workflow_steps=1, daily_stamina_max=0, daily_synthesis_max=0, du_runs_max=0))
         self.executor.revalidate(self.executor.freeze(plan))
+        self.factory.assert_not_called()
+
+    def test_preview_reports_material_use_separately_from_stamina(self):
+        target = dict(type='task', task='daily', params=dict(tasks=['daily']))
+        plan = self.plan(target)
+        for enabled in (True, False):
+            with self.subTest(synthesis_enabled=enabled):
+                self.executor.settings.daily_synthesis = enabled
+                batch = self.executor.preview_budget(plan)['whole_batch']
+                self.assertEqual(batch['daily_stamina_max'], 0)
+                self.assertEqual(batch['daily_synthesis_max'], int(enabled))
         self.factory.assert_not_called()
 
     def test_preview_counts_the_whole_local_repeat_and_reads_no_dependencies(self):
@@ -323,7 +335,7 @@ class ScheduleDispatchTests(unittest.TestCase):
             budget = self.executor.preview_budget(saved)
         self.assertEqual(budget, dict(id=plan['id'], revision=expected, repeat_count=3,
                                       contains_game_tasks=False, whole_batch=dict(
-                                          workflow_steps=30, daily_stamina_max=0, du_runs_max=0)))
+                                          workflow_steps=30, daily_stamina_max=0, daily_synthesis_max=0, du_runs_max=0)))
         self.assertFalse((store.root / 'slots').exists())
         self.assertFalse((self.root / 'runs').exists())
         self.executor.busy_probe.assert_not_called()
@@ -344,15 +356,18 @@ class ScheduleDispatchTests(unittest.TestCase):
                  steps=branch('first', 80, 2), else_steps=branch('second', 140, 5)),
         ])
         budget = self.executor.preview_budget(self.plan())
-        self.assertEqual(budget['whole_batch'], dict(workflow_steps=4, daily_stamina_max=140, du_runs_max=5))
+        self.assertEqual(budget['whole_batch'],
+                         dict(workflow_steps=4, daily_stamina_max=140, daily_synthesis_max=0, du_runs_max=5))
         self.assertTrue(budget['contains_game_tasks'])
         self.assertEqual(budget['repeat_count'], 1)
         target = dict(type='workflow', path='workflow.json', step_path='1/0')
         selected = self.executor.preview_budget(self.plan(target))
-        self.assertEqual(selected['whole_batch'], dict(workflow_steps=1, daily_stamina_max=80, du_runs_max=0))
+        self.assertEqual(selected['whole_batch'],
+                         dict(workflow_steps=1, daily_stamina_max=80, daily_synthesis_max=0, du_runs_max=0))
         local = self.executor.preview_budget(self.plan(dict(target, step_path='0'), repeat=dict(count=3)))
         self.assertFalse(local['contains_game_tasks'])
-        self.assertEqual(local['whole_batch'], dict(workflow_steps=3, daily_stamina_max=0, du_runs_max=0))
+        self.assertEqual(local['whole_batch'],
+                         dict(workflow_steps=3, daily_stamina_max=0, daily_synthesis_max=0, du_runs_max=0))
         self.factory.assert_not_called()
 
     def test_preview_weekly_plan_uses_configured_whole_du_batch_and_daily_cap(self):
@@ -361,11 +376,13 @@ class ScheduleDispatchTests(unittest.TestCase):
         settings.stamina_limit, settings.weekly_runs = 120, 7
         plan = self.plan(dict(type='task', task='plan'))
         budget = self.executor.preview_budget(plan)
-        self.assertEqual(budget['whole_batch'], dict(workflow_steps=1, daily_stamina_max=120, du_runs_max=7))
+        self.assertEqual(budget['whole_batch'],
+                         dict(workflow_steps=1, daily_stamina_max=120, daily_synthesis_max=1, du_runs_max=7))
         self.assertEqual(self.executor.freeze(plan)['profile']['du_runs'], 10)
         settings.weekly_enabled = settings.allow_stamina_spend = False
         budget = self.executor.preview_budget(plan)
-        self.assertEqual(budget['whole_batch'], dict(workflow_steps=1, daily_stamina_max=0, du_runs_max=0))
+        self.assertEqual(budget['whole_batch'],
+                         dict(workflow_steps=1, daily_stamina_max=0, daily_synthesis_max=1, du_runs_max=0))
         self.factory.assert_not_called()
 
     def test_preview_refuses_a_saved_definition_with_a_now_invalid_target(self):
