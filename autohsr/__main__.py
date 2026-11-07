@@ -100,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--build-target-output', type=Path, metavar='NEW_JSON',
                         help='配合 --compose-build-target 保存新体力计划，省略时只预览')
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
+    mode.add_argument("--enter-profile", action="store_true", help="进入游戏并核对当前方案账号")
     mode.add_argument("--run", action="store_true", help="按配置执行每日任务；F10 紧急停止")
     mode.add_argument('--assignments-only', action='store_true', help='独立核对并领取持续委托奖励')
     mode.add_argument('--daily-attachment-only', choices=('mail', 'battlepass'),
@@ -447,7 +448,7 @@ def main(argv: list[str] | None = None) -> int:
             tests = unittest.defaultTestLoader.discover(str(test_path))
             result = unittest.TextTestRunner(verbosity=2).run(tests)
         return 0 if result.wasSuccessful() else 1
-    if not standalone_daily and not any((args.check, args.scan_dungeons, build_target, args.daily_reward_observe, args.launch, args.run, args.plan,
+    if not standalone_daily and not any((args.check, args.scan_dungeons, build_target, args.daily_reward_observe, args.launch, args.enter_profile, args.run, args.plan,
                 args.redeem_codes, args.challenge_prepare, args.challenge_result, args.team_preset_calibration,
                 args.challenge_lobby, args.challenge_preset_observe, args.du_rewards_only,
                 args.currency_wars_check, args.currency_wars_prepare, args.currency_wars_locate,
@@ -494,7 +495,7 @@ def main(argv: list[str] | None = None) -> int:
             gui_main(args.config, admin_task=True) if args.admin_task else gui_main(args.config)
         return 0
     try:
-        require_config = explicit_config and any((args.run, args.plan, args.launch, standalone_daily,
+        require_config = explicit_config and any((args.run, args.plan, args.launch, args.enter_profile, standalone_daily,
                                                    args.redeem_codes, args.du_rewards_only,
                                                    args.differential_universe, args.challenge_prepare))
         load_options = {"require_existing": True} if require_config else {}
@@ -582,7 +583,7 @@ def main(argv: list[str] | None = None) -> int:
         check_only = (args.check or args.scan_dungeons or args.read_build_target or args.daily_reward_observe
                       or challenge_observer or args.challenge_lobby or args.team_preset_calibration)
         if not args.assignments_only:
-            settings.validate('build_target_preview' if args.preview_build_target or args.build_target else 'du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "check" if check_only else "launch" if args.launch else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or overclock_entry or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "power_plan" if args.power_plan else "daily")
+            settings.validate('build_target_preview' if args.preview_build_target or args.build_target else 'du_rewards' if args.du_rewards_only else 'challenge_prepare' if args.challenge_prepare else 'redemption' if args.redeem_codes else "check" if check_only else "launch" if (args.launch or args.enter_profile) else "currency_wars" if args.currency_wars_check or args.currency_wars_prepare or args.currency_wars_locate or args.currency_wars_configure or overclock_entry or args.currency_wars_standard or args.currency_wars_loop or args.currency_wars_points or args.currency_wars_rewards else "differential_universe" if args.differential_universe else "power_plan" if args.power_plan else "daily")
         from .app import Runner, inspect_game, launch_game
         if args.check:
             print(_json(inspect_game(settings)))
@@ -596,14 +597,17 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(event, ensure_ascii=False, default=str), file=sys.stderr, flush=True)
         wrap_notifications = None
         wrap_completion = None
-        if not (build_target or args.daily_reward_observe or challenge_observer or args.challenge_lobby
+        if not (args.enter_profile or build_target or args.daily_reward_observe or challenge_observer or args.challenge_lobby
                 or args.team_preset_calibration or overclock_entry or standalone_daily):
             from .notify_runtime import hooks as notification_hooks
             emit, wrap_notifications = notification_hooks(settings, emit)
         if (args.run and not args.reward_only) or (args.plan and not args.resume_weekly_currency):
             from .completion_runtime import hooks as completion_hooks
             emit, wrap_completion = completion_hooks(settings, emit)
-        if args.assignments_only:
+        if args.enter_profile:
+            from .profile_login import ENTER_OPERATION
+            runner = Runner(settings, emit, operation=ENTER_OPERATION)
+        elif args.assignments_only:
             from .task_workflow import assignment_runner
             runner = assignment_runner(settings, emit)
         elif args.daily_attachment_only:

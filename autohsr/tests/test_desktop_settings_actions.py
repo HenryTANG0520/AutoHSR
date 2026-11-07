@@ -49,6 +49,22 @@ class DesktopSettingsActionTests(unittest.TestCase):
         self.assertFalse(self.ui.start_button.winfo_manager())
         self.assertTrue(self.ui.start_button.instate(("disabled",)))
 
+    def test_enter_game_routes_enabled_profile_to_independent_account_check(self):
+        ui = self.ui
+        ui.settings.profile_account_key = 'a' * 64
+        ui.settings.profile_cached_login = True
+        ui._show_page('settings')
+        with patch.object(ui, '_start_scoped_runner') as start:
+            ui.launch_button.invoke()
+        start.assert_called_once()
+        title, operation, _factory, present = start.call_args.args
+        self.assertEqual(operation, 'profile_enter')
+        present(dict(status='success', profile_login=dict(account_verified=True)))
+        self.assertIn('账号已与配置方案核实', ui.readiness.get())
+        present(dict(status='failed', error='模拟账号不匹配'))
+        self.assertEqual(ui.result_alert.get(), '模拟账号不匹配')
+        self.assertEqual(self.config.read_bytes(), self.original)
+
     def test_ordinary_settings_keep_save_and_return_to_each_original_action(self):
         ui = self.ui
         ui.overlay_logs.set(not ui.overlay_logs.get())

@@ -9,6 +9,10 @@ from .redemption_server import require_binding, resolve
 from .workflow_identity import native_window
 
 
+ENTER_OPERATION = 'profile_enter'
+ENTER_SUCCESS = '当前账号已与配置方案核实。'
+ENTER_SAFE_NEXT = '请核对当前登录账号与所选方案，再尝试进入。'
+
 # These are the two Windows client keys, not HoYoPlay's shared account storage.
 GAME_KEYS = {'cn': r'Software\miHoYo\崩坏：星穹铁道', 'global': r'Software\Cognosphere\Star Rail'}
 LAST_UID = 'App_LastUserID_h2841727341'

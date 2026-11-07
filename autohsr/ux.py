@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 
 OPERATIONS = {"plan": "日常与周常计划", "daily": "每日", "reward_only": "仅补领奖", "enter_game": "进入游戏", "check": "窗口检测",
+              "profile_enter": "进入并核对方案账号",
               "currency_wars": "货币战争只读识别", "currency_wars_drag_test": "货币战争单次换位",
               "currency_wars_deploy_test": "货币战争单次部署", "currency_wars_node_test": "货币战争节点战斗",
               "currency_wars_flow_test": "货币战争流程推进验证",

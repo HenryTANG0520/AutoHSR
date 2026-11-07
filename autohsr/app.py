@@ -3001,6 +3001,7 @@ class Runner:
     def run(self) -> RunReport:
         from .currency_wars_overclock import OPERATION as OVERCLOCK_CONFIGURE
         from .currency_wars_overclock_session import FLOW_OPERATION, PREP_OPERATION, START_OPERATION, OverclockSession
+        from .profile_login import ENTER_OPERATION, ENTER_SAFE_NEXT, ENTER_SUCCESS
         from .workflow_lease import NATIVE_NAME
         from .workflows import DailyWorkflow
         from .windows import kernel32
@@ -3038,6 +3039,7 @@ class Runner:
         monitor = None
         monitor_started = False
         defer_battle_budget = False
+        profile_enter = self.report.operation == ENTER_OPERATION
         build_target_read = self.report.operation == 'build_target_read'
         build_target_plan = self.report.operation == 'build_target_plan'
         build_target_preview = self.report.operation == 'build_target_preview' or build_target_plan
@@ -3064,8 +3066,10 @@ class Runner:
         guard_publication = self._foreground_only or build_target_preview
         build_target_safe_next = ('请核对当前培养目标或打开同一材料的获得途径。'
                                   if build_target_preview else '请在当前账号的生存索引核对培养目标页。材料详情与副本来源待校准。')
-        if build_target or foreground_scope:
+        if build_target or foreground_scope or profile_enter:
             self.report.failure_task = self.report.operation
+        if profile_enter:
+            self.report.profile_login = dict(enter_submitted=False, account_verified=False)
         try:
             if challenge_result:
                 from .challenge_result import SAFE_NEXT
@@ -3122,6 +3126,10 @@ class Runner:
                 raise AutomationError("另一个 AutoHSR 任务正在运行，请先停止后重试。")
             from .workflow_lease import require_workflow_access
             require_workflow_access()
+            if profile_enter:
+                self.report.safe_next = ENTER_SAFE_NEXT
+                if not self.settings.profile_account_key:
+                    raise SettingsError('profile_account_key', '请先为当前配置方案绑定账号。')
             if achievement_claim:
                 from .achievement_bulk_claim import preflight as achievement_preflight
                 achievement_preflight(directory.parent.resolve())
@@ -3138,13 +3146,14 @@ class Runner:
             redemption = self.report.operation == 'redemption'
             challenge_prepare = self.report.operation == 'challenge_prepare'
             du_rewards = self.report.operation == 'du_rewards'
-            if not (guide_only or currency_wars) and self.report.operation not in ("daily", "reward_only", "redemption", "challenge_prepare", "du_rewards", "differential_universe"):
+            if not (guide_only or currency_wars or profile_enter) and self.report.operation not in ("daily", "reward_only", "redemption", "challenge_prepare", "du_rewards", "differential_universe"):
                 raise AutomationError("未知运行类型，未访问游戏。")
-            self.settings.validate('build_target_preview' if build_target_preview else 'du_rewards' if du_rewards else 'challenge_prepare' if challenge_prepare else "check" if guide_only else "currency_wars" if currency_wars else "differential_universe" if differential_universe else 'redemption' if redemption else "power_plan" if self.use_power_plan else "daily")
+            self.settings.validate('launch' if profile_enter else 'build_target_preview' if build_target_preview else 'du_rewards' if du_rewards else 'challenge_prepare' if challenge_prepare else "check" if guide_only else "currency_wars" if currency_wars else "differential_universe" if differential_universe else 'redemption' if redemption else "power_plan" if self.use_power_plan else "daily")
             if challenge_prepare and self.settings.challenge_plan['mode'] != self._challenge_prepare_mode:
                 raise SettingsError('challenge_plan', '高难计划模式已改变，请重新开始备战。')
-            if self.report.operation != 'currency_wars' and not (challenge_observer or daily_observation
-                                                                or daily_claim or daily_reply or achievement_claim):
+            check_play_state = self.report.operation != 'currency_wars' and not (
+                profile_enter or challenge_observer or daily_observation or daily_claim or daily_reply or achievement_claim)
+            if check_play_state:
                 from .du_reward_store import preflight
                 preflight(directory.parent)
                 from .du_archive_store import preflight as archive_preflight
@@ -3170,8 +3179,7 @@ class Runner:
                     require_no_active_match(saved, purpose='超频模式配置')
                 else:
                     require_no_active_match(saved, defeat_root=directory.parent)
-            if self.report.operation != 'currency_wars' and not (challenge_observer or daily_observation
-                                                                or daily_claim or daily_reply or achievement_claim):
+            if check_play_state:
                 from .currency_wars_weekly_reward_store import RewardStore
                 rewards=RewardStore(directory.parent)
                 saved_rewards=rewards.preflight(self.currency_rewards_resume if self.report.operation=='currency_wars_rewards' else False)
@@ -3198,7 +3206,7 @@ class Runner:
                     require_session_access(saved,self.currency_resume)
                 configured_name=resolve_name(self.settings,self.currency_remembrance_name,saved,resume=self.currency_resume)
                 resolve_fast_mode(self.settings,self.currency_fast_mode,saved,resume=self.currency_resume)
-            if (not self.daily_attachment_only and not guide_only and not currency_wars and not differential_universe
+            if (not profile_enter and not self.daily_attachment_only and not guide_only and not currency_wars and not differential_universe
                     and not redemption and not challenge_prepare and not du_rewards and self.settings.battle
                     and self.settings.allow_stamina_spend):
                 from .recovery import BattleBudget
@@ -3239,7 +3247,7 @@ class Runner:
                 self._window.focus()
             from .completion_runtime import bind_window
             bind_window(self._window)
-            if self.settings.overlay_logs and not self._foreground_only:
+            if self.settings.overlay_logs and not (self._foreground_only or profile_enter):
                 from .overlay import OverlayService
                 self._overlay = OverlayService()
                 try:
@@ -3275,10 +3283,10 @@ class Runner:
             context.overclock_session = overclock_session
             context.overclock_preparation = overclock_preparation
             context.battle_budget = self.battle_budget
-            daily_workflow = DailyWorkflow(context) if self.report.operation in ('daily', 'reward_only') else None
-            if daily_workflow is not None:
+            daily_workflow = DailyWorkflow(context) if self.report.operation in ('daily', 'reward_only', ENTER_OPERATION) else None
+            if daily_workflow is not None and not profile_enter:
                 self.report.failure_task = 'startup'
-            cached_login = (self.report.operation == 'daily' and not self.assignments_only
+            cached_login = (self.report.operation in ('daily', ENTER_OPERATION) and not self.assignments_only
                             and not self.daily_attachment_only and self.settings.profile_cached_login)
             with context.daily_startup(daily_workflow, cold_start) if daily_workflow is not None else nullcontext():
                 if cached_login:
@@ -3286,8 +3294,13 @@ class Runner:
                     context._cached_profile_login = CachedProfileLogin(context, daily_workflow)
                 if not (build_target or self._foreground_only):
                     prepare_workflow_identity(context)
-                    if cached_login:
+                    if cached_login or profile_enter:
                         self.report.profile_login['account_verified'] = True
+                if profile_enter:
+                    self.report.status = 'success'
+                    self.report.failure_task = self.report.safe_next = ''
+                    self.report.results.append(TaskResult(ENTER_OPERATION, 'ok', ENTER_SUCCESS))
+                    return self.report
                 if defer_battle_budget:
                     self.battle_budget.begin(new_run=self.new_battle_run,
                         **(dict(protect_pending=True) if self.use_power_plan else {}))
@@ -3552,7 +3565,7 @@ class Runner:
             self.report.error = str(error)
             self.report.safe_next = ("货币战争操作已停止；核对画面和本次动作记录后重新识别。" if self.report.operation.startswith("currency_wars") else
                                      build_target_safe_next if build_target else
-                                     self.report.safe_next if foreground_scope else
+                                     self.report.safe_next if foreground_scope or profile_enter else
                                      self.report.safe_next if self.daily_attachment_only else
                                      '独立委托已停止。请查看本次截图及当前领取状态。' if self.assignments_only else
                                      '差分领奖已停止；保留原意图及已核实领取，不重放未知动作；本次未开始演算。' if self.report.operation == 'du_rewards' else
@@ -3593,7 +3606,7 @@ class Runner:
             self.report.error = str(error)
             self.report.safe_next = ("积分领奖未完成；保留原报告和领奖记录，未知领取不重发；仅已核实步骤可明确接续。" if self.report.operation=='currency_wars_rewards' else
                                      build_target_safe_next if build_target else
-                                     self.report.safe_next if foreground_scope else
+                                     self.report.safe_next if foreground_scope or profile_enter else
                                      self.report.safe_next if self.daily_attachment_only else
                                      '差分领奖未完整核实；保留原意图和已核实领取，未知动作不重放；本次未开始演算。' if self.report.operation == 'du_rewards' else
                                      '高难备战未完整核实；查看原层数选择和页面证据，不自动重发；本次未开战。' if self.report.operation == 'challenge_prepare' else
@@ -3607,7 +3620,7 @@ class Runner:
             elif self.report.failure_task == 'startup':
                 self.report.safe_next = "请手动进入游戏主界面后重试当前任务。"
             self.log(str(error), "error")
-            if context and context.last_scene and not (daily_observation or daily_claim or daily_reply
+            if context and context.last_scene and not (profile_enter or daily_observation or daily_claim or daily_reply
                                                        or workflow_foreground or achievement_claim):
                 try:
                     context.evidence(context.last_scene, "failure")
@@ -3722,6 +3735,12 @@ class Runner:
                                       or attempted_reward_entry or attempted_attachment or attempted_achievement
                                       or self.report.train_supply_input_attempted
                                       or self.report.workflow_navigation.get('actions') else "failed")
+                if profile_enter:
+                    if status_before_save_failure == 'stopped':
+                        self.report.status = 'stopped'
+                    elif self.report.profile_login['account_verified']:
+                        self.report.status = 'partial'
+                    self.report.failure_task = ENTER_OPERATION
                 if daily_observation or daily_claim or daily_reply or achievement_claim:
                     if self.stop_requested or status_before_save_failure == 'stopped':
                         self.report.status = 'stopped'
@@ -3740,6 +3759,7 @@ class Runner:
                             pass
                 self.report.error = (self.report.error + "；" if self.report.error else "") + f"报告保存失败：{error}"
                 self.report.safe_next = ("报告未保存；保留动作记录和截图，人工核对后重新识别。" if self.report.operation.startswith("currency_wars") else
+                                         '方案账号回执未保存，请核对本次日志。' if profile_enter else
                                          build_target_safe_next if build_target else
                                          self.report.safe_next if foreground_scope else
                                          self.report.safe_next if self.daily_attachment_only else

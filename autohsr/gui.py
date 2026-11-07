@@ -1461,6 +1461,24 @@ class AutoHSRWindow:
         settings = self._read_settings(operation=action)
         if settings is None:
             return
+        if action == 'launch' and settings.profile_cached_login:
+            from .profile_login import ENTER_OPERATION, ENTER_SUCCESS, ENTER_SAFE_NEXT
+
+            def factory(emit):
+                from .app import Runner
+                return Runner(settings, emit, operation=ENTER_OPERATION)
+
+            def present(report):
+                verified = (report.get('status') == 'success'
+                            and report.get('profile_login', {}).get('account_verified') is True)
+                message = ENTER_SUCCESS if verified else report.get('error') or ENTER_SAFE_NEXT
+                self.readiness.set(message)
+                self._log(message, 'info' if verified else 'warning')
+                if not verified:
+                    self.result_alert.set(message)
+
+            self._start_scoped_runner('进入并核对方案账号', ENTER_OPERATION, factory, present)
+            return
         self.summary.set("")
         self.result_alert.set("")
         self.stop_requested.clear()

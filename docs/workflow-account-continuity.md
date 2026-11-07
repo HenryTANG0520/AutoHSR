@@ -22,6 +22,8 @@
 
 运行回执中的 `enter_submitted` 和 `account_verified` 分别记录进入请求是否提交、游戏内账号是否核实。此功能使用游戏记住的会话，无法替代手动切换账号。三月七另提供注册表会话备份及切换，详见其[账号管理源码](https://github.com/moesnow/March7thAssistant/blob/v2026.11.7/app/tools/account_manager.py)。
 
+启用后，「设置 → 游戏连接 → 进入游戏」可单独核对账号。成功后停在当前游戏界面，日常仍由首页发起。源码 CLI 可用 `python -m autohsr --config 路径 --enter-profile`，绑定方案关闭自动进入时，此命令仍可核对已登录的画面。原有的 `--launch` 保持仅启动游戏程序。
+
 ## 独立计划与CW序列（2026-11-01）
 
 [PlanRunner](../autohsr/plan_runner.py)、[CW循环](../autohsr/currency_wars_loop.py)及[CW周常](../autohsr/currency_wars_weekly_run.py)现在分别在整段执行期间持有共享的`sequence_lease()`和`sequence_identity()`。执行权覆盖日常→周常、逐局之间、积分→循环→领奖的间隙，并保持到总报告保存及最终`finished`回调结束；子Runner原有输入互斥和页面／预算门禁继续生效。另一线程或独立控制器不能趁子Runner已经退出而接管这段尚未结束的序列。

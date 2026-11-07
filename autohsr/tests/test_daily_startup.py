@@ -175,7 +175,7 @@ class ColdStartEntryTests(TestCase):
             self.assertFalse((root / 'schedules').exists())
 
     def invoke(self, frames, *, plan=False, rewards=False, cold=True, stop=None, battle=False, profile_uid='',
-               scheduled=False, cached_uid=''):
+               scheduled=False, cached_uid='', enter_profile=False):
         temporary = TemporaryDirectory(prefix='hsr-cold-')
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
@@ -284,7 +284,7 @@ class ColdStartEntryTests(TestCase):
             launch = stack.enter_context(patch('autohsr.app.launch_game', return_value='synthetic launch'))
             cache = stack.enter_context(patch('autohsr.profile_login._cached_key',
                 return_value=account_key_from_uid(cached_uid) if cached_uid else ''))
-            args = ['--plan' if plan else '--run', '--config', str(config)]
+            args = ['--enter-profile' if enter_profile else '--plan' if plan else '--run', '--config', str(config)]
             if rewards:
                 args.append('--reward-only')
             if scheduled:
@@ -390,6 +390,36 @@ class ColdStartEntryTests(TestCase):
                 self.assertEqual(result.code, 1)
                 self.assertEqual(result.cached_reads, 0)
                 self.assertEqual(result.sent, [])
+
+    def test_enter_profile_stops_after_account_proof_without_play_state_or_completion(self):
+        with ExitStack() as stack:
+            for name in ('autohsr.recovery.BattleBudget', 'autohsr.du_reward_store.preflight',
+                         'autohsr.du_archive_store.preflight', 'autohsr.currency_wars_weekly.native_gate',
+                         'autohsr.notify_runtime.hooks', 'autohsr.completion_runtime.hooks'):
+                stack.enter_context(patch(name, side_effect=AssertionError('unexpected task or completion')))
+            result = self.invoke([login(), login(), phone()], enter_profile=True, battle=True,
+                                 profile_uid='100000000', cached_uid='100000000')
+        self.assertEqual(result.code, 0)
+        self.assertEqual(result.executed, [])
+        self.assertEqual(result.sent, [('点击进入', (0, 0, 0))])
+        self.assertEqual(result.report['operation'], 'profile_enter')
+        self.assertEqual(result.report['profile_login'], dict(enter_submitted=True, account_verified=True))
+        self.assertFalse(result.report['daily_verified'])
+        self.assertEqual(result.report['stamina_spent'], 0)
+
+    def test_enter_profile_observes_existing_session_with_auto_enter_off(self):
+        result = self.invoke([phone()], cold=False, enter_profile=True, profile_uid='100000000')
+        self.assertEqual(result.code, 0)
+        self.assertEqual(result.sent, [])
+        self.assertEqual(result.cached_reads, 0)
+        self.assertEqual(result.report['profile_login'], dict(enter_submitted=False, account_verified=True))
+
+    def test_enter_profile_without_binding_stops_before_capture(self):
+        result = self.invoke([login()], cold=False, enter_profile=True)
+        self.assertEqual(result.code, 1)
+        self.assertEqual(result.captures, 0)
+        self.assertEqual(result.sent, [])
+        self.assertEqual(result.report['input_error_field'], 'profile_account_key')
 
     def test_scheduled_daily_uses_frozen_binding_after_configuration_changes(self):
         with patch('autohsr.recovery.BattleBudget.begin') as begin:
