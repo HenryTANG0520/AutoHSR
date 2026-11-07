@@ -64,6 +64,42 @@ class WorkflowNodeFormTests(unittest.TestCase):
                                               params={"tasks": ["assignments"]}, on_failure="stop"))
         self.cancelled.assert_not_called()
 
+    def test_daily_scope_combines_tasks_and_keeps_advanced_parameters(self):
+        self.form.open(dict(type="task", task="daily", params={"tasks": ["assignments"], "use_support": False}))
+        self.form.daily_buttons["mail"].invoke()
+        self.form.daily_buttons["battlepass"].invoke()
+        self.assertEqual(self.submitted()["params"], {"tasks": ["assignments", "mail", "battlepass"],
+                                                      "use_support": False})
+        self.form.daily_config_button.invoke()
+        self.assertTrue(self.form.daily_buttons["battle"].instate(("disabled",)))
+        self.assertEqual(self.submitted()["params"], {"use_support": False})
+        self.form.daily_config_button.invoke()
+        self.applied.reset_mock()
+        self.form.apply_button.invoke()
+        self.assertIn("至少一项", self.form.error.get())
+        self.applied.assert_not_called()
+        self.form.daily_buttons["battlepass"].invoke()
+        self.assertEqual(self.submitted()["params"], {"tasks": ["battlepass"], "use_support": False})
+
+    def test_daily_scope_tracks_json_and_leaves_an_invalid_edit_intact(self):
+        form = self.form
+        form.open()
+        self.write_params('{"tasks": ["daily", "mail"], "stamina_limit": 10}')
+        form._sync_parameter_controls(None)
+        self.assertTrue(form.daily_tasks["daily"].get())
+        self.assertFalse(form.daily_tasks["assignments"].get())
+        form.values["task"].set(_TASK_NAMES["workflow_open_page"])
+        self.assertFalse(form.daily_scope.grid_info())
+        form.values["task"].set(_TASK_NAMES["daily"])
+        self.assertTrue(form.daily_tasks["mail"].get())
+        self.assertEqual(self.submitted()["params"], {"tasks": ["daily", "mail"], "stamina_limit": 10})
+        for invalid in ('{"tasks":', '{"tasks": ["mail", "mail"]}', '{"tasks": ["unknown"]}'):
+            self.write_params(invalid)
+            form._sync_parameter_controls(None)
+            self.assertTrue(form.daily_config_button.instate(("disabled",)))
+            form.daily_buttons["assignments"].invoke()
+            self.assertEqual(form.parameters.get("1.0", "end-1c"), invalid)
+
     def test_page_picker_writes_the_selected_native_target(self):
         self.form.open()
         self.form.values["task"].set(_TASK_NAMES["workflow_open_page"])

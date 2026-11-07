@@ -7,7 +7,7 @@ from tkinter import ttk
 
 from . import theme
 from .task_workflow import (
-    FIELDS, GAME_VISION_TASKS, MAX_WAIT_SECONDS, PAGE_TASK, TASKS, TEMPLATE_TASKS, WorkflowError,
+    DAILY_TASKS, FIELDS, GAME_VISION_TASKS, MAX_WAIT_SECONDS, PAGE_TASK, TASKS, TEMPLATE_TASKS, WorkflowError,
     _condition, _integer, _params, _screen_condition, _text, _wait_seconds, loads,
 )
 
@@ -39,6 +39,10 @@ _PAGES = {
     "difficulty_guide": "逐光捡金", "universe_guide": "旷宇纷争",
     "messages": "短信通知", "visa_collection": "漫游签证收集展示", "visa_characters": "漫游签证角色展示",
     "achievement_overview": "成就总览", "redemption_form": "兑换码表单",
+}
+_DAILY_NAMES = {
+    "assignments": "持续委托", "battle": "日常副本（使用体力）", "daily": "每日实训",
+    "redemption": "兑换码", "mail": "邮件附件", "battlepass": "无名勋礼",
 }
 _NUMBERS = {
     "wait": ("seconds", f"等待秒数（0～{MAX_WAIT_SECONDS}）", 0, MAX_WAIT_SECONDS),
@@ -114,27 +118,42 @@ class WorkflowNodeForm(ttk.Frame):
         self._field(self._task_frame, 0, 1, "on_failure", "失败时", tuple(_FAILURE.values()))
 
         self._parameters_frame = self._section(6)
+        self.daily_scope = ttk.Frame(self._parameters_frame)
+        self.daily_scope.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, self._pad))
+        self.daily_scope.columnconfigure((0, 1), weight=1)
+        self.daily_config = tk.BooleanVar(self)
+        self.daily_config_button = ttk.Checkbutton(self.daily_scope, text="使用配置中的每日任务",
+                                                   variable=self.daily_config, command=self._select_daily_scope)
+        self.daily_config_button.grid(row=0, column=0, columnspan=2, sticky="w")
+        self.daily_tasks = {task: tk.BooleanVar(self) for task in DAILY_TASKS}
+        self.daily_buttons = {}
+        for index, (task, variable) in enumerate(self.daily_tasks.items()):
+            row, column = divmod(index, 2)
+            button = ttk.Checkbutton(self.daily_scope, text=_DAILY_NAMES[task], variable=variable,
+                                     command=self._select_daily_scope)
+            button.grid(row=row + 1, column=column, sticky="w")
+            self.daily_buttons[task] = button
         self._parameters_label = tk.StringVar(self)
         theme.wrapped_label(self._parameters_frame, textvariable=self._parameters_label, style="Settings.Note.TLabel").grid(
-            row=0, column=0, sticky="ew")
+            row=1, column=0, sticky="ew")
         self.template_button = ttk.Button(self._parameters_frame, style="Compact.TButton", command=self.capture_template,
                                           text="采集模板…" if on_capture_template else "先选择另存位置")
-        self.template_button.grid(row=0, column=1, sticky="e")
+        self.template_button.grid(row=1, column=1, sticky="e")
         self.page_target = tk.StringVar(self)
         self.page_picker = ttk.Combobox(self._parameters_frame, width=13, textvariable=self.page_target,
                                        values=tuple(_PAGES.values()), state="readonly", style="Settings.TCombobox")
-        self.page_picker.grid(row=0, column=1, sticky="e")
+        self.page_picker.grid(row=1, column=1, sticky="e")
         self.page_picker.bind("<<ComboboxSelected>>", self._select_page)
         editor = ttk.Frame(self._parameters_frame)
         editor.columnconfigure(0, weight=1)
-        editor.grid(row=1, column=0, columnspan=2, sticky="ew")
+        editor.grid(row=2, column=0, columnspan=2, sticky="ew")
         self.parameters = tk.Text(editor, width=1, height=4, wrap="word", undo=True, relief="flat", bd=0,
                                   padx=self._pad, pady=self._pad, background=theme.FIELD, foreground=theme.TEXT,
                                   insertbackground=theme.TEXT, font=theme.native_font(self, 11))
         scroll = ttk.Scrollbar(editor, orient="vertical", command=self.parameters.yview)
         self.parameters.configure(yscrollcommand=scroll.set)
         self.parameters.grid(row=0, column=0, sticky="ew")
-        self.parameters.bind("<<Modified>>", self._sync_page_json)
+        self.parameters.bind("<<Modified>>", self._sync_parameter_controls)
         scroll.grid(row=0, column=1, sticky="ns")
 
         self._number_frames = {}
@@ -343,6 +362,50 @@ class WorkflowNodeForm(ttk.Frame):
             self._parameters_frame.grid()
         self._show_template()
         self._show_page_picker()
+        self._show_daily_scope()
+
+    def _daily_params(self):
+        try:
+            params = self._read_parameters()
+        except WorkflowError:
+            return None
+        if not isinstance(params, dict):
+            return None
+        tasks = params.get("tasks", [])
+        if (not isinstance(tasks, list) or any(not isinstance(task, str) or task not in DAILY_TASKS for task in tasks)
+                or len(set(tasks)) != len(tasks)):
+            return None
+        return params
+
+    def _show_daily_scope(self):
+        if self._parameter_key != ("task", "daily"):
+            self.daily_scope.grid_remove()
+            return
+        self.daily_scope.grid()
+        params = self._daily_params()
+        inherit = params is not None and "tasks" not in params
+        selected = params.get("tasks", []) if params is not None else []
+        self.daily_config.set(inherit)
+        self.daily_config_button.configure(state="disabled" if params is None else "normal")
+        for task, button in self.daily_buttons.items():
+            self.daily_tasks[task].set(task in selected)
+            button.configure(state="disabled" if inherit or params is None else "normal")
+
+    def _select_daily_scope(self):
+        if self._parameter_key != ("task", "daily"):
+            return
+        params = self._daily_params()
+        if params is None:
+            return
+        if self.daily_config.get():
+            params.pop("tasks", None)
+        else:
+            params["tasks"] = [task for task, variable in self.daily_tasks.items() if variable.get()]
+        self.parameters.edit_separator()
+        self.parameters.replace("1.0", "end", json.dumps(params, ensure_ascii=False, indent=2))
+        self.parameters.edit_separator()
+        self._show_daily_scope()
+        self.error.set("")
 
     def _show_page_picker(self):
         if self._parameter_key != ("task", PAGE_TASK):
@@ -356,10 +419,11 @@ class WorkflowNodeForm(ttk.Frame):
         target = params.get("target") if isinstance(params, dict) else None
         self.page_target.set(_PAGES.get(target, "") if isinstance(target, str) else "")
 
-    def _sync_page_json(self, _event):
+    def _sync_parameter_controls(self, _event):
         if self.parameters.edit_modified():
             self.parameters.edit_modified(False)
             self._show_page_picker()
+            self._show_daily_scope()
 
     def _select_page(self, _event):
         target = _key(_PAGES, self.page_target.get())
@@ -509,6 +573,8 @@ class WorkflowNodeForm(ttk.Frame):
             if task is None or policy is None:
                 raise WorkflowError("请选择正式任务和失败策略。")
             params = self._read_parameters()
+            if task == "daily" and isinstance(params, dict) and params.get("tasks") == []:
+                raise WorkflowError("请勾选至少一项每日任务，或使用配置中的每日任务。")
             _params(task, params)
             fields.update(task=task, params=params, on_failure=policy)
         return fields
