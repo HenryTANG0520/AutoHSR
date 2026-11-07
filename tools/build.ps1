@@ -1,9 +1,13 @@
 [CmdletBinding()]
-param()
+param([switch]$UpdaterOnly, [string]$PythonPath)
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $taskVenvPython = Join-Path $projectRoot '.venv\Scripts\python.exe'
+if ($PythonPath) {
+    if (-not $UpdaterOnly) { throw 'PythonPath is only for an isolated updater build.' }
+    $taskVenvPython = [IO.Path]::GetFullPath($PythonPath)
+}
 $taskOutputDirectory = [IO.Path]::GetFullPath((Join-Path $projectRoot 'dist\AutoHSR'))
 $taskStagingRoot = [IO.Path]::GetFullPath((Join-Path $projectRoot ('build\package-' + [guid]::NewGuid().ToString('N'))))
 $taskStagingOutput = Join-Path $taskStagingRoot 'AutoHSR'
@@ -17,7 +21,8 @@ if (-not $taskOutputDirectory.StartsWith($projectRoot.TrimEnd('\') + '\', [Strin
 if (-not $taskStagingRoot.StartsWith((Join-Path $projectRoot 'build') + '\', [StringComparison]::OrdinalIgnoreCase)) {
     throw 'The resolved package staging directory is outside the project build directory.'
 }
-foreach ($taskRequiredName in @('.venv\Scripts\python.exe', 'launcher.py', 'LICENSE', 'requirements.txt')) {
+if (-not (Test-Path -LiteralPath $taskVenvPython -PathType Leaf)) { throw 'Existing project Python is required.' }
+foreach ($taskRequiredName in @('launcher.py', 'update_launcher.py', 'LICENSE', 'requirements.txt')) {
     if (-not (Test-Path -LiteralPath (Join-Path $projectRoot $taskRequiredName) -PathType Leaf)) {
         throw "Required file was not found: $taskRequiredName. Run setup.ps1 first."
     }
@@ -26,8 +31,28 @@ if (-not (Test-Path -LiteralPath (Join-Path $projectRoot 'assets') -PathType Con
     throw 'The assets directory is missing.'
 }
 
+function Build-IndependentUpdater([string]$targetDirectory) {
+    $taskUpdaterWork = Join-Path $taskStagingRoot 'updater-work'
+    & $taskVenvPython -m PyInstaller --log-level WARN --noconfirm --onefile --console --name AutoHSRUpdater --distpath $targetDirectory --workpath $taskUpdaterWork --specpath $taskStagingRoot update_launcher.py
+    if ($LASTEXITCODE -ne 0) { throw 'Independent updater build failed. See output above.' }
+    $taskUpdater = Join-Path $targetDirectory 'AutoHSRUpdater.exe'
+    & $taskUpdater --protocol-check
+    if ($LASTEXITCODE -ne 0) { throw 'Independent updater protocol check failed.' }
+}
+
 Push-Location -LiteralPath $projectRoot
 try {
+    & $taskVenvPython -c 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec(''PyInstaller'') else 1)'
+    if ($LASTEXITCODE -ne 0) {
+        throw 'PyInstaller is not installed in the existing project environment. Build stopped; no dependencies installed.'
+    }
+    if ($UpdaterOnly) {
+        $taskUpdaterOnlyOutput = Join-Path $taskStagingRoot 'updater'
+        New-Item -ItemType Directory -Path $taskUpdaterOnlyOutput -Force | Out-Null
+        Build-IndependentUpdater $taskUpdaterOnlyOutput
+        Write-Host "Independent updater verified: $(Join-Path $taskUpdaterOnlyOutput 'AutoHSRUpdater.exe')"
+        return
+    }
     foreach ($taskSavedName in @('config.json', 'runs')) {
         $taskSavedPath = Join-Path $taskOutputDirectory $taskSavedName
         if (Test-Path -LiteralPath $taskSavedPath) {
@@ -37,10 +62,6 @@ try {
             }
             Copy-Item -LiteralPath $taskSavedPath -Destination $taskBackupDirectory -Recurse
         }
-    }
-    & $taskVenvPython -c 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec(''PyInstaller'') else 1)'
-    if ($LASTEXITCODE -ne 0) {
-        throw 'PyInstaller is not installed in the existing project environment. Build stopped; no dependencies installed.'
     }
     # Private audit captures stay beside the source, outside the runtime bundle.
     $taskAssetSourceRoot = Join-Path $projectRoot 'assets'
@@ -66,6 +87,11 @@ try {
         --collect-all rapidocr_onnxruntime --collect-all onnxruntime `
         --add-data "$taskRuntimeAssets;assets" --add-data 'LICENSE;.' launcher.py
     if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed. See output above.' }
+    $taskInternalDirectory = Join-Path $taskStagingOutput '_internal'
+    Build-IndependentUpdater $taskInternalDirectory
+    $taskVersion = (& $taskVenvPython -c 'from autohsr import __version__; print(__version__)').Trim()
+    if ($LASTEXITCODE -ne 0 -or $taskVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'Cannot resolve the portable version.' }
+    [IO.File]::WriteAllText((Join-Path $taskInternalDirectory 'autohsr-version.txt'), $taskVersion, [Text.Encoding]::ASCII)
     $taskSourceRevision = (& git rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0 -or $taskSourceRevision -notmatch '^[0-9a-f]{40}$') { throw 'Cannot resolve the source revision for packaged documentation.' }
     & $taskVenvPython (Join-Path $PSScriptRoot 'stage_release_metadata.py') $taskStagingOutput $taskSourceRevision

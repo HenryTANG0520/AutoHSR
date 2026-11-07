@@ -1,6 +1,7 @@
 """Install a verified portable runtime without moving the user's data."""
 
 import http.client
+from contextlib import nullcontext
 import json
 import os
 from pathlib import Path
@@ -13,7 +14,7 @@ from zipfile import BadZipFile, ZipFile
 from . import __version__
 from .app_update import (UpdateError, _MAX_ARCHIVE, _sha256_stream, compare_release, official_release,
                          release_from_checksum)
-from .app_update_windows import install_lock, require_closed
+from .app_update_windows import handoff_lock, install_lock, require_closed
 from .storage import hold_read_sources
 
 
@@ -271,20 +272,22 @@ def run(args, raw_args, parser):
         root = (args.app_update_target if installing else argument).resolve(strict=True)
         if not root.is_dir():
             raise UpdateError('installation_path_unverified')
-        if installing:
-            if args.app_update_checksum is None:
-                release = official_release()
+        status_only = flag == '--app-update-status'
+        with nullcontext() if status_only else handoff_lock(root):
+            if installing:
+                if args.app_update_checksum is None:
+                    release = official_release()
+                else:
+                    with args.app_update_checksum.open('rb') as stream:
+                        raw = stream.read(1025)
+                    if len(raw) > 1024:
+                        raise UpdateError('release_checksum_unverified')
+                    release = release_from_checksum(raw)
+                if compare_release(release, __version__) == 'local_ahead':
+                    raise UpdateError('release_older_than_installed')
+                result = install(argument, root, release)
             else:
-                with args.app_update_checksum.open('rb') as stream:
-                    raw = stream.read(1025)
-                if len(raw) > 1024:
-                    raise UpdateError('release_checksum_unverified')
-                release = release_from_checksum(raw)
-            if compare_release(release, __version__) == 'local_ahead':
-                raise UpdateError('release_older_than_installed')
-            result = install(argument, root, release)
-        else:
-            result = maintenance(root, flag.rsplit('-', 1)[1])
+                result = maintenance(root, flag.rsplit('-', 1)[1])
         report = dict(status='success', **result)
     except KeyboardInterrupt:
         report = dict(status='stopped')

@@ -50,6 +50,9 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--app-update-status", type=Path, metavar="DIR", help="核对便携版更新事务")
     mode.add_argument("--app-update-rollback", type=Path, metavar="DIR", help="恢复便携版的更新前运行文件")
     mode.add_argument("--app-update-accept", type=Path, metavar="DIR", help="确认保留当前运行文件并清理更新备份")
+    mode.add_argument("--app-update-handoff", type=Path, metavar="DIR", help="交给独立更新器下载、安装并核验新版")
+    mode.add_argument("--app-update-probe", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--app-update-no-restart", action="store_true", help="更新探针通过后不重开桌面")
     parser.add_argument("--app-update-target", type=Path, metavar="DIR", help="指定助手便携版安装目录")
     parser.add_argument("--app-update-checksum", type=Path, metavar="SHA256", help="离线安装时指定发布方的校验文件")
     mode.add_argument("--currency-wars-replay", type=Path, help="离线回放 .sample.json；不访问游戏或加载每日配置")
@@ -199,6 +202,12 @@ def main(argv: list[str] | None = None) -> int:
         from .app_update import run as run_app_update
 
         return run_app_update(args, raw_args, parser)
+    if args.app_update_no_restart and args.app_update_handoff is None:
+        parser.error('--app-update-no-restart 仅配合 --app-update-handoff。')
+    if args.app_update_handoff is not None or args.app_update_probe is not None:
+        from .app_update_dispatch import run as run_app_update_dispatch
+
+        return run_app_update_dispatch(args, raw_args, parser)
     if (args.app_update_target is not None or args.app_update_checksum is not None) and args.app_update_install is None:
         parser.error('助手更新目标与校验文件仅配合 --app-update-install。')
     if any(value is not None for value in (args.app_update_install, args.app_update_status,

@@ -8,15 +8,23 @@ import os
 from pathlib import Path
 
 from .app_update import UpdateError
-from .workflow_lease import _kernel
+
+
+def _kernel():
+    kernel = C.WinDLL('kernel32', use_last_error=True)
+    kernel.CreateMutexW.argtypes = [C.c_void_p, W.BOOL, W.LPCWSTR]
+    kernel.CreateMutexW.restype = W.HANDLE
+    kernel.CloseHandle.argtypes = [W.HANDLE]
+    kernel.CloseHandle.restype = W.BOOL
+    return kernel
 
 
 @contextmanager
-def install_lock(root):
+def _lock(root, purpose):
     key = sha256(os.path.normcase(str(root)).encode('utf-8')).hexdigest()
     kernel = _kernel()
     C.set_last_error(0)
-    handle = kernel.CreateMutexW(None, False, 'Local\\AutoHSR.Install.' + key)
+    handle = kernel.CreateMutexW(None, False, f'Local\\AutoHSR.{purpose}.' + key)
     duplicate = C.get_last_error() == 183
     try:
         if not handle or duplicate:
@@ -25,6 +33,14 @@ def install_lock(root):
     finally:
         if handle:
             kernel.CloseHandle(handle)
+
+
+def install_lock(root):
+    return _lock(root, 'Install')
+
+
+def handoff_lock(root):
+    return _lock(root, 'UpdateHandoff')
 
 
 class _Process(C.Structure):

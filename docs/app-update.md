@@ -28,4 +28,16 @@ python -m autohsr --app-update-rollback 'D:\Apps\AutoHSR'
 python -m autohsr --app-update-accept 'D:\Apps\AutoHSR'
 ```
 
-三月七在发现新版后将下载和安装交给独立更新器。AutoHSR 的手动 CLI 已实现安装与回滚。桌面发起后退出、独立更新器接管和新版重启核验待接入。[三月七固定更新入口](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/version/app_update.py)
+## 独立更新器交接
+
+```powershell
+python -m autohsr --app-update-handoff 'D:\Apps\AutoHSR'
+```
+
+带版本标记的便携包支持自动交接。命令核对正式发布版本，只有正式版更高才发起更新。打包版使用独立更新器的副本，源码入口使用独立 Python 进程。旧发布包若没有版本标记，可先使用上面的手动安装入口。
+
+更新器下载并校验 ZIP 后，最多等目标助手自行退出 120 秒。它替换运行文件，再从新安装启动探针，核对版本并加载 GUI 模块和 Tcl 运行时。探针失败会恢复旧运行文件，确认通过后默认尝试启动桌面。可用 `--app-update-no-restart` 保留探针检查并跳过桌面启动。
+
+交接命令返回本次任务编号。进度证据保存在安装目录的 `runs/app-update/<编号>/`。结束后查看 `result.json`，其中 `runtime_verified` 表示启动探针通过，`desktop_restart: launched` 表示已创建桌面进程。新版仍需人工核对界面，退出后可执行验收并释放旧运行文件。打包版的任务目录可在更新器退出后清理其临时副本。
+
+三月七同样在确认新版后交给独立更新器。AutoHSR 目前通过 CLI 发起交接，桌面操作入口待接入。[三月七固定更新入口](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/version/app_update.py)
