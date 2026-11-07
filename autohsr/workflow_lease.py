@@ -73,3 +73,20 @@ def require_workflow_access():
         raise AutomationError('任务流程持有执行权；请先停止流程再启动其他游戏任务。')
     if error not in (0, 2):
         raise AutomationError('无法核实任务流程的执行权，未访问游戏。')
+
+
+@contextmanager
+def native_idle_lease():
+    """Exclude task sequences and native runs while handing off to a launcher."""
+    with workflow_lease():
+        kernel = _kernel()
+        C.set_last_error(0)
+        handle = kernel.CreateMutexW(None, False, NATIVE_NAME)
+        duplicate = C.get_last_error() == 183
+        try:
+            if not handle or duplicate:
+                raise AutomationError('已有游戏任务正在运行，或无法核实运行状态。')
+            yield
+        finally:
+            if handle:
+                kernel.CloseHandle(handle)
