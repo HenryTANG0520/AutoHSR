@@ -7,8 +7,9 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
+from .du_daily import game_day
 from .models import AutomationError
-from .storage import replace_file
+from .storage import hold_read_sources, replace_file
 
 
 def reward_only_settings(settings):
@@ -60,7 +61,75 @@ def _historical_battle(data, path):
                 immersifiers_spent=tokens_spent, immersifiers_pending=tokens_pending)
 
 
-def recovery_state(runs: Path, *, direct_report: bool = False) -> dict:
+_OTHER_DAILY_RESULT = object()
+
+
+def _settled_daily_battle_day(journal, raw, ledger):
+    """Prove that an ordinary battle settled and only the optional battlepass was partial."""
+    if (ledger['status'] != 'partial' or ledger.get('power_plan') or ledger['spent'] <= 0
+            or ledger['pending'] != 0 or ledger.get('immersifiers_pending') != 0
+            or type(ledger.get('completed')) is not int or ledger['completed'] <= 0):
+        return _OTHER_DAILY_RESULT
+    try:
+        root = journal.parent.resolve(strict=True)
+        run_dir = Path(ledger['run_dir'])
+        directory = run_dir.resolve(strict=True)
+        report_path = directory / 'report.json'
+        if (not run_dir.is_absolute() or directory.parent != root
+                or journal.resolve(strict=True) != root / journal.name
+                or report_path.resolve(strict=True) != report_path):
+            return None
+        with hold_read_sources((journal, report_path)):
+            if journal.read_text(encoding='utf-8') != raw:
+                return None
+            report = json.loads(report_path.read_text(encoding='utf-8'))
+        if (not isinstance(report, dict) or report.get('operation') != 'daily'
+                or report.get('budget_scope') != 'run' or report.get('status') != 'partial'
+                or report.get('report_saved') is not True or report.get('report_write_error')
+                or report.get('power_plan')):
+            return None
+        reported_directory = Path(report['run_dir'])
+        if not reported_directory.is_absolute() or reported_directory.resolve(strict=True) != directory:
+            return None
+        fields = {
+            'stamina_limit': 'limit', 'stamina_spent': 'spent', 'stamina_pending': 'pending',
+            'immersifiers_spent': 'immersifiers_spent', 'immersifiers_pending': 'immersifiers_pending',
+            'battle_completed': 'completed', 'battle_requested': 'requested',
+        }
+        for report_key, ledger_key in fields.items():
+            reported, recorded = report[report_key], ledger[ledger_key]
+            if (type(reported) is not type(recorded) or reported != recorded
+                    or (type(reported) is not int and (report_key != 'battle_requested' or reported is not None))):
+                return None
+        results = report['results']
+        if not isinstance(results, list) or any(
+                not isinstance(entry, dict) or type(entry.get('task')) is not str
+                or type(entry.get('status')) is not str for entry in results):
+            return None
+        statuses = {entry['task']: entry['status'] for entry in results}
+        if len(statuses) != len(results):
+            return None
+        started, finished = (datetime.fromisoformat(report[key]) for key in ('started_at', 'finished_at'))
+        updated = datetime.fromisoformat(ledger['updated_at'])
+        if not (started <= finished <= updated):
+            return None
+        day = game_day(finished)
+        if game_day(started) != day or game_day(updated) != day or report.get('game_day') not in ('unverified', day):
+            return None
+        if (report.get('daily_verified') is not True or report.get('error') != ''
+                or report.get('failure_task')
+                or statuses.pop('battlepass', None) != 'partial'
+                or statuses.get('battle') != 'ok' or statuses.get('daily') != 'ok'
+                or any(status != 'ok' for status in statuses.values())):
+            return _OTHER_DAILY_RESULT
+        return day
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError, OverflowError):
+        # Unverifiable evidence keeps the original recovery rules in force.
+        return None
+    return None
+
+
+def recovery_state(runs: Path, *, direct_report: bool = False, now: datetime | None = None) -> dict:
     """Read the canonical journal or reports in the caller's budget scope.
 
     A DU batch owns a direct daily report. The ordinary runs root owns reports
@@ -69,7 +138,8 @@ def recovery_state(runs: Path, *, direct_report: bool = False) -> dict:
     path = runs / "battle-session.json"
     if path.exists():
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            raw = path.read_text(encoding="utf-8")
+            data = json.loads(raw)
             if (not isinstance(data, dict) or data.get("version") != 1
                     or type(data.get("spent")) is not int or data["spent"] < 0
                     or type(data.get("pending")) is not int or data["pending"] < 0
@@ -81,9 +151,18 @@ def recovery_state(runs: Path, *, direct_report: bool = False) -> dict:
                     or data.get('immersifiers_spent', 0) + data.get('immersifiers_pending', 0) > 12
                     or data.get("status") not in ("active", "success", "partial", "failed", "stopped")):
                 raise ValueError("invalid battle journal")
-            return {**data, "blocked": data["pending"] > 0 or data.get('immersifiers_pending', 0) > 0
-                    or (data["status"] != "success" and (data["spent"] > 0 or data.get('immersifiers_spent', 0) > 0)),
-                    "source": str(path), "corrupt": False}
+            blocked = (data["pending"] > 0 or data.get('immersifiers_pending', 0) > 0
+                       or (data["status"] != "success" and (data["spent"] > 0 or data.get('immersifiers_spent', 0) > 0)))
+            state = {**data, "blocked": blocked, "source": str(path), "corrupt": False}
+            if blocked and not direct_report:
+                current = now if now is not None else datetime.now().astimezone()
+                day = _settled_daily_battle_day(path, raw, data)
+                if day is None:
+                    state["daily_battle_receipt_unverified"] = True
+                elif day is not _OTHER_DAILY_RESULT:
+                    state["blocked"] = day >= game_day(current)
+                    state["settled_daily_battle_day"] = day
+            return state
         except (OSError, ValueError, TypeError):
             return dict(blocked=True, corrupt=True, spent=0, pending=0, source=str(path),
                         reason="刷本记录无法读取；先保留记录并人工核对，不得重建预算。")
@@ -118,6 +197,10 @@ def new_budget_block_reason(state) -> str | None:
         return state["reason"]
     if state["pending"] != 0 or state.get("immersifiers_pending", 0) != 0:
         return "上次刷本支付仍待核对；未开启新一轮刷本。可先仅补领奖，并保留原账单人工核对。"
+    if state.get("daily_battle_receipt_unverified") is True:
+        return "上次日常体力账与最终报告尚未核实，未开启新一轮刷本。"
+    if state["blocked"] and state.get("settled_daily_battle_day"):
+        return "该次日常刷本已结算。勋礼待核对可另行处理，进入下一游戏日后可开始新一轮刷本。"
     return None
 
 
