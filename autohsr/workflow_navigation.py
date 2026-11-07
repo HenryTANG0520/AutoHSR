@@ -16,6 +16,7 @@ from .currency_wars_prepare import trusted
 from .daily_event_navigation import odyssey_list_entry, reward_guide_entry
 from .daily_event_observe import read_event_installation
 from .daily_event_pages import _VERSION, phone_journey_event_entry, read_gift_of_odyssey
+from .daily_observe import SCREEN_OPERATION
 from .daily_message_observe import message_panel, phone_message_entry
 from .daily_message_world import world_message_target
 from .daily_reward_observe import phone_achievement_target, support_more_target, support_visa_target
@@ -255,9 +256,20 @@ class WorkflowNavigation:
                 and type(claim) is DailyEventClaim and claim.context is c
                 and claim.record is c.report.daily_event_claim and claim._navigation is self)
 
+    def _bound_to_guide_capture(self):
+        c = self.c
+        if c.report.operation != SCREEN_OPERATION or self.target != 'reward_guide':
+            return False
+        from .reward_guide_capture import RewardGuideCapture
+
+        capture = getattr(c.runner, 'reward_guide_capture', None)
+        return (type(capture) is RewardGuideCapture and capture.navigate_first is True
+                and capture._navigation is self)
+
     def authorizes_input(self, action):
         return not self._observe_only and (self.c.report.operation == OPERATION
-                or action in ('open_journey_events', 'open_odyssey') and self._bound_to_event_claim())
+                or action in ('open_journey_events', 'open_odyssey') and self._bound_to_event_claim()
+                or action in ('open_journey_events', 'open_reward_guide') and self._bound_to_guide_capture())
 
     def _control(self):
         c = self.c
@@ -266,7 +278,8 @@ class WorkflowNavigation:
         if c.runner.input_epoch != self.epoch:
             raise InputInterrupted('日常页面导航的输入代次已变化。')
         if (c.window is not self.window or c.capture_occlusion_count != self.occlusions
-                or (c.report.operation != OPERATION and not self._bound_to_event_claim())
+                or (c.report.operation != OPERATION and not self._bound_to_event_claim()
+                    and not self._bound_to_guide_capture())
                 or getattr(c, 'workflow_navigation', None) is not self
                 or c.report.workflow_navigation is not self.record or self.record.get('target') != self.target):
             raise AutomationError('日常页面导航的窗口、入口或遮挡状态已变化。')
@@ -669,6 +682,17 @@ class WorkflowNavigation:
                 or frame.sequence <= self.arrival[-1].sequence or frame.captured_at < self.arrival[-1].captured_at):
             raise AutomationError('巡星之礼领卡画面与本次到页的账号或窗口来源不一致。')
 
+    def require_guide_handoff(self, reader, pair, installation):
+        self._guard()
+        first, second = pair
+        if (not self._bound_to_guide_capture() or not self.record['page_verified'] or self.arrival is None
+                or installation is None or installation != self._installation
+                or reader.context is not self.c or reader.window is not self.window
+                or reader.key != self.key or reader.epoch != self.epoch or reader.occlusions != self.occlusions
+                or reader.geometry != self.geometry or first.account != self.account or second.account != self.account
+                or first.sequence <= self.arrival[-1].sequence or first.captured_at < self.arrival[-1].captured_at):
+            raise AutomationError('奖励指南采集与本次到页的账号或窗口来源不一致。')
+
     def run(self):
         if self.started or getattr(self.c.runner, '_foreground_only', False) is not True:
             raise AutomationError('日常页面导航需要独立的当前前台运行。')
@@ -699,6 +723,8 @@ class WorkflowNavigation:
             version = _VERSION
             if self._bound_to_event_claim():
                 expected = ('phone', 'activity_list', 'odyssey')
+            elif self._bound_to_guide_capture():
+                expected = ('phone', 'activity_list', 'odyssey', 'reward_guide')
         if version is not None:
             self._installation = read_event_installation(self.window)
             if self._installation.version != version:

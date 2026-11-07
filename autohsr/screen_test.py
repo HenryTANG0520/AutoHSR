@@ -158,11 +158,16 @@ class ScreenTestObserver:
         context.screen_test_observer = self
         context.report.screen_test = self.record
         try:
+            capture = getattr(context.runner, 'reward_guide_capture', None)
+            if capture is not None and capture.navigate_first is True:
+                capture.navigate(context)
             self._reader = _CurrentFrames(context)
             first = self._reader.capture()
             context.sleep(.15)
             pair = first, self._reader.capture()
             observation = self._read_pair(pair)
+            if capture is not None:
+                capture.require_handoff(self._reader, pair, self._guide_installation)
         except Stopped:
             self.invalidate('stopped', _STOPPED)
             raise Stopped(_STOPPED) from None

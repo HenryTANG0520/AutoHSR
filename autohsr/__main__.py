@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     from .notify_cli import add_arguments as add_notify_arguments
     add_notify_arguments(mode, parser)
     from .reward_guide_cli import add_capture_argument, add_notification_arguments, run_capture, run_notification
-    add_capture_argument(mode)
+    add_capture_argument(mode, parser)
     add_notification_arguments(mode, parser)
     from .schedule_cli import add_arguments as add_schedule_arguments
     add_schedule_arguments(mode, parser)
@@ -184,6 +184,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error('--build-target-output 仅配合 --compose-build-target。')
     if args.reward_guide_capture is not None:
         return run_capture(args, raw_args, parser)
+    if args.navigate_reward_guide:
+        parser.error('--navigate-reward-guide 仅配合 --reward-guide-capture。')
     if args.reward_guide_notify is not None or args.reward_guide_notify_profile is not None:
         return run_notification(args, raw_args, parser)
     validate_workflow_arguments(args, parser)

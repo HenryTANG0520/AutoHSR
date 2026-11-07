@@ -7,26 +7,29 @@ from pathlib import Path
 _NOTIFY_IMAGE = '--reward-guide-notify'
 _NOTIFY_PROFILE = '--reward-guide-notify-profile'
 _CAPTURE = '--reward-guide-capture'
+_NAVIGATE = '--navigate-reward-guide'
 
 
-def add_capture_argument(mode):
+def add_capture_argument(mode, parser):
     mode.add_argument(_CAPTURE, type=Path, metavar='NEW_PNG',
                       help='从已在前台的奖励指南核对当前列表并导出一张新 PNG')
+    parser.add_argument(_NAVIGATE, action='store_true',
+                        help='配合 --reward-guide-capture，从前台手机或活动页打开指南后导出')
 
 
 def run_capture(args, raw_args, parser):
     flags = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
     if (flags.count(_CAPTURE) != 1 or len(flags) != len(set(flags))
-            or set(flags) - {_CAPTURE, '--config', '--game-path'}):
-        parser.error('奖励指南单屏导出为独立入口，仅可附带 --config 和 --game-path。')
+            or set(flags) - {_CAPTURE, _NAVIGATE, '--config', '--game-path'}):
+        parser.error('奖励指南单屏导出仅可附带本次导航、--config 和 --game-path。')
 
     from .config import Settings
     from .reward_guide_capture import RewardGuideCapture, _receipt, capture_reward_guide
     from .reward_guide_export import _Rejected
 
     try:
-        capture = RewardGuideCapture(args.reward_guide_capture)
-        settings = Settings.load(args.config)
+        capture = RewardGuideCapture(args.reward_guide_capture, navigate_first=args.navigate_reward_guide)
+        settings = Settings.load(args.config, require_existing=args.navigate_reward_guide and '--config' in flags)
         if args.game_path is not None:
             settings.game_path = args.game_path
     except _Rejected as error:
@@ -39,9 +42,9 @@ def run_capture(args, raw_args, parser):
         try:
             receipt = capture_reward_guide(settings, capture)
         except KeyboardInterrupt:
-            receipt = capture.receipt or _receipt('stopped')
+            receipt = capture.with_navigation(capture.receipt or _receipt('stopped'))
         except (OSError, RuntimeError, ValueError):
-            receipt = capture.receipt or _receipt('unverified')
+            receipt = capture.with_navigation(capture.receipt or _receipt('unverified'))
     print(json.dumps(receipt, ensure_ascii=False, indent=2))
     if receipt['status'] in ('stopped', 'publish_unverified'):
         return 130

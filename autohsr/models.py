@@ -189,6 +189,7 @@ class RunReport:
         from .task_workflow import GAME_VISION_TASKS, PAGE_TASK
         if self.operation not in GAME_VISION_TASKS:
             del data['workflow_screen']
-        if self.operation != PAGE_TASK and not (self.operation == 'daily_event_claim' and self.workflow_navigation):
+        if self.operation != PAGE_TASK and not (
+                self.operation in ('daily_event_claim', 'screen_test') and self.workflow_navigation):
             del data['workflow_navigation']
         return data

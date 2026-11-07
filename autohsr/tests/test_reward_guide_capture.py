@@ -20,9 +20,11 @@ from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.daily_observe import SCREEN_OPERATION
 from autohsr.models import FocusLost
+from autohsr.tests.test_daily_event_navigation import activity_frame
 from autohsr.tests.test_daily_reward_guide_pages import guide_scene
-from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, _Window
+from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, _Window, phone
 from autohsr.vision import Vision
+from autohsr.windows import GameWindow
 
 
 def _frame(name, account=ACCOUNT):
@@ -50,16 +52,20 @@ class RewardGuideCaptureTests(unittest.TestCase):
     def args(self, *extra):
         return ['--reward-guide-capture', str(self.target), '--config', str(self.config), *extra]
 
-    def cli(self, frames, *, code=0, foreground=True, busy=False, before_crop=None, final=None, desktop_wait=None):
+    def cli(self, frames, *, code=0, foreground=True, busy=False, before_crop=None, final=None, desktop_wait=None,
+            navigate=False, send_count=3):
         window = _Window(frames)
         window.current_executable = Mock(return_value=self.exe)
         window.capture = Mock(wraps=window.capture)
+        window.require_foreground = GameWindow.require_foreground.__get__(window)
         if not foreground:
             window.guard.side_effect = FocusLost('private-synthetic-focus')
         find = Mock(return_value=window)
         kernel = SimpleNamespace(CreateMutexW=Mock(return_value=1), CloseHandle=Mock())
-        user32 = SimpleNamespace(GetAsyncKeyState=Mock(return_value=0),
-                                 SendInput=Mock(side_effect=AssertionError('no native input')))
+        native_send = Mock(return_value=send_count) if navigate else Mock(side_effect=AssertionError('no native input'))
+        user32 = SimpleNamespace(GetAsyncKeyState=Mock(return_value=0), SendInput=native_send,
+                                 GetForegroundWindow=Mock(return_value=window.hwnd),
+                                 GetSystemMetrics={76: 0, 77: 0, 78: 1920, 79: 1080}.__getitem__)
         ticks = count(100., .001)
         clock = SimpleNamespace(monotonic=lambda: next(ticks))
         original_save, original_publish = Runner._save_run_report, reward_guide_capture._publish
@@ -97,6 +103,7 @@ class RewardGuideCaptureTests(unittest.TestCase):
             for name, replacement in (
                     ('autohsr.app.ROOT', self.root), ('autohsr.app.time', clock),
                     ('autohsr.challenge_pages.time', clock), ('autohsr.workflow_screen.time', clock),
+                    ('autohsr.workflow_navigation.time', clock),
                     ('autohsr.windows.kernel32', kernel), ('autohsr.windows.user32', user32),
                     ('autohsr.app.find_game', find), ('autohsr.app.Vision', Mock(side_effect=vision)),
                     ('autohsr.app.C.get_last_error', Mock(return_value=183 if busy else 0)),
@@ -114,23 +121,28 @@ class RewardGuideCaptureTests(unittest.TestCase):
             stack.enter_context(patch.object(reward_guide_capture, '_publish', side_effect=publish))
             stack.enter_context(redirect_stdout(output))
             stack.enter_context(redirect_stderr(logs))
-            if desktop_wait is None:
-                self.assertEqual(main(self.args()), code, output.getvalue() + logs.getvalue())
-            else:
+            if desktop_wait is not None:
                 wait = Mock(side_effect=lambda _: desktop_wait(window, user32))
                 stack.enter_context(patch('autohsr.screenshot_tool.time',
                                           SimpleNamespace(monotonic=clock.monotonic, sleep=wait)))
+            if desktop_wait is None or navigate:
+                extra = ('--navigate-reward-guide',) if navigate else ()
+                self.assertEqual(main(self.args(*extra)), code, output.getvalue() + logs.getvalue())
+            else:
                 capture = reward_guide_capture.RewardGuideCapture(self.target)
                 runner = Runner(Settings.load(self.config), operation=SCREEN_OPERATION,
                                 reward_guide_capture=capture, observation_wait_for_foreground=True)
                 print(json.dumps(capture.result(runner.run())))
+            if desktop_wait is not None:
                 wait.assert_called_once()
 
         result = json.loads(output.getvalue())
         if final is not None:
             self.assertIs(state.get('final_checked'), True)
-        self.assertEqual(set(result), {'status', 'input_sent', 'visible_section', 'width', 'height'})
-        self.assertIs(result['input_sent'], False)
+        keys = {'status', 'input_sent', 'visible_section', 'width', 'height'}
+        self.assertEqual(set(result), keys | ({'navigation'} if navigate else set()))
+        if not navigate:
+            self.assertIs(result['input_sent'], False)
         self.assertEqual(logs.getvalue(), '')
         for private in (str(self.root), self.target.name, ACCOUNT.text, OTHER.text, 'private-'):
             self.assertNotIn(private, output.getvalue())
@@ -139,7 +151,10 @@ class RewardGuideCaptureTests(unittest.TestCase):
         self.assertFalse(list(self.root.glob('.autohsr-reward-guide-*.tmp')))
         window.focus.assert_not_called()
         window.scroll.assert_not_called()
-        user32.SendInput.assert_not_called()
+        if navigate:
+            self.assertEqual(native_send.call_count, len(result['navigation']['actions']))
+        else:
+            native_send.assert_not_called()
         return result, window, find
 
     def test_two_verified_frames_export_only_the_second_native_content_box(self):
@@ -152,6 +167,53 @@ class RewardGuideCaptureTests(unittest.TestCase):
             self.assertEqual(image.format, 'PNG')
             self.assertEqual(image.info, {})
             np.testing.assert_array_equal(np.asarray(image)[:, :, ::-1], second.image[342:945, 378:1404])
+
+    def test_explicit_navigation_opens_guide_from_phone_then_exports_fresh_frames(self):
+        banners = [activity_frame(), activity_frame()]
+        for banner in banners:
+            banner.tokens.append(ACCOUNT)
+        export_pair = _pair()
+        result, window, _ = self.cli([phone(), phone(), *banners, *_pair(), *export_pair], navigate=True)
+        self.assertEqual((result['status'], result['input_sent'], window.capture.call_count), ('ok', True, 8))
+        self.assertTrue(result['navigation']['page_verified'])
+        self.assertEqual([row['action'] for row in result['navigation']['actions']],
+                         ['open_journey_events', 'open_reward_guide'])
+        with Image.open(self.target) as exported:
+            np.testing.assert_array_equal(np.asarray(exported)[:, :, ::-1],
+                                          export_pair[1].image[342:945, 378:1404])
+
+    def test_explicit_navigation_on_open_page_exports_without_input(self):
+        result, _, _ = self.cli([*_pair(), *_pair()], navigate=True)
+        self.assertEqual((result['status'], result['input_sent']), ('ok', False))
+        self.assertEqual(result['navigation'], dict(page_verified=True, actions=[]))
+
+    def test_navigated_capture_waits_for_manual_foreground_handoff(self):
+        def handoff(window, user32):
+            window.capture.assert_not_called()
+            user32.SendInput.assert_not_called()
+            window.guard.side_effect = None
+
+        result, _, _ = self.cli([*_pair(), *_pair()], navigate=True, foreground=False, desktop_wait=handoff)
+        self.assertEqual((result['status'], result['input_sent']), ('ok', False))
+
+    def test_account_change_between_verified_arrival_and_export_suppresses_the_png(self):
+        banners = [activity_frame(), activity_frame()]
+        for banner in banners:
+            banner.tokens.append(ACCOUNT)
+        frames = [*banners, *_pair(), _frame('viewport-7014.png', OTHER), _frame('viewport-7026.png', OTHER)]
+        result, _, _ = self.cli(frames, code=1, navigate=True)
+        self.assertEqual((result['status'], result['input_sent']), ('unverified', True))
+        self.assertTrue(result['navigation']['page_verified'])
+        self.assertFalse(self.target.exists())
+
+    def test_unconfirmed_navigation_keeps_the_receipt_without_retrying_or_exporting(self):
+        result, window, _ = self.cli([phone(), phone()], code=1, navigate=True, send_count=0)
+        self.assertEqual((result['status'], result['input_sent'], window.capture.call_count), ('unverified', None, 2))
+        self.assertFalse(result['navigation']['page_verified'])
+        [attempt] = result['navigation']['actions']
+        self.assertEqual((attempt['action'], attempt['input_status'], attempt['destination_status']),
+                         ('open_journey_events', 'unconfirmed', 'unknown'))
+        self.assertFalse(self.target.exists())
 
     def test_second_explicit_export_uses_its_own_verified_pair_and_destination(self):
         first_target = self.target
