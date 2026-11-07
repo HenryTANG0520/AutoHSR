@@ -15,7 +15,7 @@
 | task | 正式实现 | params与默认行为 |
 | --- | --- | --- |
 | `daily` | `Runner(operation='daily')` | 不填`tasks`时沿用当前日常开关；可明确指定`assignments/battle/daily/redemption/mail/battlepass`子集。可覆盖`stamina_limit/rounds/target_name/target_location/dungeon_category/challenge_count/use_support/support_daily_only`；`use_power_plan`默认false |
-| `daily_training_rewards` | `Runner(operation='reward_only')` | 无参数，仅补领已完成的每日实训点数与已达档位。材料、开拓力、沉浸器预算均为零 |
+| `daily_training_rewards` | `Runner(operation='reward_only')` | 补领已完成的每日实训点数与已达档位，可设 `reached_only: true`。材料、开拓力、沉浸器预算均为零 |
 | `daily_assignment_rewards` | 日常 Runner 的独立持续委托范围 | 无参数。可与仅补领实训和其他独立领奖顺序执行 |
 | `daily_free_attachment` | 日常 Runner 的独立领奖范围 | 必填 `target`，选择 `mail`（邮件附件）或 `battlepass`（勋礼经验与免费等级奖励） |
 | `plan` | `PlanRunner` | 沿用现有日常→到期周常。`use_power_plan`、`resume_weekly_currency`默认false，`support_daily_only`可覆盖本次日常。原周目标及接续规则保持 |
@@ -44,11 +44,11 @@
 
 ### 仅补领每日实训
 
-能力 ID 为 `daily_training_rewards`。任务流步骤接受省略的 `params` 或空对象 `{}`，其他字段均拒绝。普通 `daily` 节点的 `tasks: ["daily"]` 继续沿用保存的 `daily_synthesis`。独立领奖节点使用仅补领奖设置副本，关闭合成与已有资源消耗，跳过刷本、附加任务、合成恢复和旧账核销。它仍会发出导航和领奖输入，沿用原生仅补领奖的启动、页面和输入门禁，以及任务流的执行权与账号连续性。
+能力 ID 为 `daily_training_rewards`。任务流步骤可省略 `params`，或提供可选布尔值 `reached_only`，默认 `false`。普通 `daily` 节点的 `tasks: ["daily"]` 继续沿用保存的 `daily_synthesis`。独立领奖节点使用仅补领奖设置副本，关闭合成与已有资源消耗，跳过刷本、附加任务、合成恢复和旧账核销。它仍会发出导航和领奖输入，沿用原生仅补领奖的启动、页面和输入门禁，以及任务流的执行权与账号连续性。
 
 P1 底栏「仅补领奖」和 `--run --reward-only` 继续直达同一原生入口。任务流和应用内定时的任务下拉框显示「仅补领每日实训」。定时可直接选此任务，也可选包含此节点的已保存任务流。两者使用同一参数校验和回执。此节点占用一次日常执行名额，因此同一路径只允许一个 `daily_training_rewards`、`daily` 或 `plan` 节点。定时的批内重复上限为一次，单任务预览的体力预算为零。现有父层结束通知仍按其独立设置生效。[应用内定时](schedules.md)
 
-任务流保留子报告与账号核验状态。实训未到 500 时，即使已核实部分档位领取，状态仍为 `partial`。只有 500 活跃且五档均核实已领取时才给出 `daily_verified=true`。本能力可作为后续 P1 模块的执行落点。持久化模块开关及授权策略留待中央评审。
+只有 500 活跃且五档均核实已领取时，原生报告才给出 `daily_verified=true`。活跃度为 100 至 499 时，连续两帧核实同账号、同一活跃值、已达档位全部已领且实训页无可见待领点数，原报告会附上 `training_milestones`。若任务流明确设置 `"params": {"reached_only": true}`，并验证该回执来自本次已保存的同账号子报告，步骤可记为 `success` 并继续委托、邮件等后续步骤。该步骤保留 `native_status: "partial"` 和 `daily_verified: false`。未达首档、档位缺失、反馈不明或来源异常时仍按失败策略处理。
 
 | 最小回归 | 核对项 |
 | --- | --- |

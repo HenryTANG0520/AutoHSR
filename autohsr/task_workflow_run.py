@@ -508,6 +508,14 @@ class TaskWorkflowRunner:
                 if node['task'] == PAGE_TASK and result['workflow_navigation'].get('target') != options['workflow_page']:
                     raise WorkflowError('已核实页面与本步骤请求的目标不符。')
             entry['source'] = self._source(result, expected, native_points=native_points)
+            training = None
+            if node['task'] == TRAINING_REWARDS_TASK:
+                from .daily_training_rewards import reached_milestones_receipt
+
+                training = reached_milestones_receipt(result)
+                if training is not None and not self._identity.has_step_proof(
+                        identity_mark, run_dir=result.get('run_dir') or ''):
+                    raise WorkflowError('实训已达档位缺少本次同账号的原始回执。')
             attachment = None
             if scoped_attachment:
                 from .daily_attachments import attachment_receipt
@@ -549,6 +557,11 @@ class TaskWorkflowRunner:
                     entry['assignment'] = assignment
             entry['facts'] = {'status': result['status']} if scoped_reward else self._facts(result)
             entry['status'] = result['status']
+            if training is not None:
+                entry['training_milestones'] = training
+                if node.get('params', {}).get('reached_only') is True:
+                    entry.update(status='success', native_status=result['status'])
+                    entry['facts']['status'] = entry['status']
             if native_points and result['status'] == 'success':
                 week = entry['periodic_points_goal']['observations'][-1]['game_week']
                 self._du_points_step = entry, node.get('on_failure', 'stop'), FollowupWeek(week)

@@ -61,7 +61,7 @@ def item_overlay(*, account=ACCOUNT):
 
 
 class RewardOnlyMilestonesTests(unittest.TestCase):
-    def invoke(self, *phases, short_reward=False, workflow=False, ordinary=False, mail=False):
+    def invoke(self, *phases, short_reward=False, workflow=False, ordinary=False, mail=False, reached_only=False):
         clicks = []
         releases = []
         phone = phone_scene()
@@ -136,8 +136,10 @@ class RewardOnlyMilestonesTests(unittest.TestCase):
             args = ['--run'] if ordinary else ['--run', '--reward-only']
             if workflow:
                 path = root / 'training.json'
-                path.write_text(json.dumps(dict(version=1, name='Training rewards',
-                                                steps=[dict(id='claim', type='task', task='daily_training_rewards')])),
+                step = dict(id='claim', type='task', task='daily_training_rewards')
+                if reached_only:
+                    step['params'] = dict(reached_only=True)
+                path.write_text(json.dumps(dict(version=1, name='Training rewards', steps=[step])),
                                 encoding='utf8')
                 args = ['--task-workflow', str(path)]
             output = io.StringIO()
@@ -150,8 +152,13 @@ class RewardOnlyMilestonesTests(unittest.TestCase):
                 source = Path(step['source']['path'])
                 with source.open(encoding='utf8') as stream:
                     child = json.load(stream)
-                self.assertEqual(step['facts'], dict(status=child['status'], daily_verified=child['daily_verified']))
-                for name in ('status', 'engagement', 'daily_verified', 'stamina_spent', 'stamina_pending',
+                expected_status = 'success' if reached_only and child.get('training_milestones') else child['status']
+                self.assertEqual(step['facts'], dict(status=expected_status, daily_verified=child['daily_verified']))
+                self.assertEqual(report['status'], expected_status)
+                if expected_status != child['status']:
+                    self.assertEqual(step['native_status'], 'partial')
+                    self.assertEqual(step['training_milestones'], child['training_milestones'])
+                for name in ('engagement', 'daily_verified', 'stamina_spent', 'stamina_pending',
                              'immersifiers_spent', 'immersifiers_pending'):
                     self.assertEqual(report[name], child[name])
                 self.assertTrue(report['report_saved'])
@@ -181,6 +188,31 @@ class RewardOnlyMilestonesTests(unittest.TestCase):
         code, report, clicks = self.invoke((full,), workflow=True)
         self.assertEqual((code, report['status'], report['engagement']), (0, 'success', 500))
         self.assertEqual(len(clicks), 1)
+
+    def test_explicit_reached_scope_requires_every_reached_tier_and_stable_return(self):
+        old = training(420, gifts=(400,), claimed=(100, 200, 300))
+        settled = training(420, claimed=(100, 200, 300, 400))
+        code, report, clicks = self.invoke((old,), (settled,), workflow=True, reached_only=True)
+        self.assertEqual((code, report['status'], report['daily_verified']), (0, 'partial', False))
+        self.assertEqual(report['training_milestones'], dict(activity=420, verified=[100, 200, 300, 400]))
+        self.assertEqual(len(clicks), 2)
+
+        code, report, clicks = self.invoke((settled,), workflow=True, reached_only=True)
+        self.assertEqual((code, report['status'], len(clicks)), (0, 'partial', 1))
+        self.assertIn('training_milestones', report)
+
+        incomplete = training(420, claimed=(100, 300, 400))
+        contradicts = training(420, claimed=(100, 200, 300, 400), gifts=(500,))
+        uncertain_gift = training(420, claimed=(100, 200, 300, 400), gifts=(500,))
+        uncertain_gift.tokens = [field for field in uncertain_gift.tokens if field.text != '500']
+        pending = training(420, claimed=(100, 200, 300, 400), labels=(token('领取奖励', .7, .59),))
+        for name, frames in (('missing tier', (incomplete,)), ('unreached gift', (contradicts,)),
+                             ('uncertain gift', (uncertain_gift,)), ('pending task points', (pending,)),
+                             ('changed tier', (settled, settled, incomplete))):
+            with self.subTest(case=name):
+                code, report, clicks = self.invoke(frames, workflow=True, reached_only=True)
+                self.assertEqual((code, report['status'], len(clicks)), (1, 'partial', 1))
+                self.assertNotIn('training_milestones', report)
 
     def test_partial_activity_claims_the_visible_reached_gift_and_requires_return(self):
         old = training(400, gifts=(100, 200, 300, 400))

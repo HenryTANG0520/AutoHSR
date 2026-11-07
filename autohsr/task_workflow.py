@@ -204,7 +204,7 @@ def _params(task, params):
                   'dungeon_category', 'challenge_count', 'use_support', 'support_daily_only', 'redemption_source',
                   'redemption_server', 'redemption_codes', 'redemption_catalog', 'redemption_claim_mail'},
         'plan': {'use_power_plan', 'resume_weekly_currency', 'support_daily_only'},
-        TRAINING_REWARDS_TASK: set(),
+        TRAINING_REWARDS_TASK: {'reached_only'},
         ASSIGNMENT_REWARDS_TASK: set(),
         FREE_ATTACHMENT_TASK: {'target'},
         'differential_universe': {'runs', 'mode', 'team', 'save', 'rewards', 'resume_active', 'periodic_rank',
@@ -225,7 +225,7 @@ def _params(task, params):
     }[task]
     _keys(params, allowed)
     for key in ('use_power_plan', 'use_support', 'support_daily_only', 'resume_weekly_currency', 'save', 'rewards',
-                'resume_active', 'resume', 'until_points', 'continue_after_defeat', 'use_cassettes'):
+                'resume_active', 'resume', 'until_points', 'continue_after_defeat', 'use_cassettes', 'reached_only'):
         if key in params:
             _boolean(params[key])
     for key in ('target_name', 'target_location', 'team'):

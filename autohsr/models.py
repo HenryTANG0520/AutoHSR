@@ -156,6 +156,7 @@ class RunReport:
     workflow_navigation: dict = field(default_factory=dict)
     assignment: dict = field(default_factory=dict)
     train_supply: dict = field(default_factory=dict)
+    training_milestones: dict = field(default_factory=dict)
 
     @property
     def train_supply_input_attempted(self) -> bool:
@@ -168,6 +169,8 @@ class RunReport:
             del data['assignment']
         if not self.train_supply:
             del data['train_supply']
+        if not self.training_milestones:
+            del data['training_milestones']
         if self.operation != 'challenge_result':
             del data['challenge_result']
         if self.operation != 'team_preset_calibration':

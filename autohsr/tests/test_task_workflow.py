@@ -86,7 +86,8 @@ class WorkflowTests(unittest.TestCase):
         for conflicting in (legacy, task('plan', 'plan'), task('more', 'daily_training_rewards')):
             with self.subTest(conflicting=conflicting), self.assertRaises(WorkflowError):
                 compile_recipe(recipe(rewards, conflicting))
-        for params in (dict(daily_synthesis=True), dict(stamina_limit=0), dict(tasks=['daily'])):
+        for params in (dict(daily_synthesis=True), dict(stamina_limit=0), dict(tasks=['daily']),
+                       dict(reached_only=1), dict(reached_only='true')):
             with self.subTest(params=params), self.assertRaises(WorkflowError):
                 compile_recipe(recipe(task('invalid', 'daily_training_rewards', **params)))
 
@@ -728,6 +729,35 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(report.stamina_pending, 10)
         self.assertTrue(report.workflow['input_blocked'])
         self.assertEqual(report.workflow['steps'][1]['status'], 'success')
+
+    def test_only_explicit_complete_reached_scope_advances_to_the_next_reward(self):
+        receipt = dict(activity=400, verified=[100, 200, 300, 400])
+        for scope, native_receipt, error, should_continue in (
+                (True, receipt, '', True), (False, receipt, '', False),
+                (True, None, '', False), (True, dict(receipt, verified=[100, 200, 400]), '', False),
+                (True, dict(receipt, activity=399), '', False), (True, receipt, '反馈待核对', False)):
+            with self.subTest(scope=scope, receipt=native_receipt, error=error):
+                self.calls.clear()
+                self.responses = [
+                    dict(status='partial', engagement=400, training_milestones=native_receipt,
+                         results=[dict(task='daily', status='partial', detail='当前活跃度400')], error=error),
+                    dict(stamina_spent=0, daily_verified=False, battle_completed=0,
+                         assignment=dict(outcome='empty', submission='not_attempted')),
+                ]
+                training = task('training', 'daily_training_rewards', reached_only=scope)
+                following = task('assignments', ASSIGNMENT_REWARDS_TASK)
+                report = self.runner(recipe(training, following)).run()
+                self.assertEqual(report.status, 'success' if should_continue else 'partial')
+                self.assertFalse(report.daily_verified)
+                self.assertEqual(report.engagement, 400)
+                self.assertEqual(len(self.calls), 2 if should_continue else 1)
+                self.assertEqual(report.workflow['input_blocked'], not should_continue)
+                step = report.workflow['steps'][0]
+                if should_continue:
+                    self.assertEqual(step['native_status'], 'partial')
+                    self.assertEqual(step['training_milestones'], receipt)
+                    self.assertIs(step['facts']['daily_verified'], False)
+                    self.assertEqual(report.workflow['steps'][1]['assignment']['outcome'], 'empty')
 
     def test_failure_default_stops_without_retry(self):
         self.responses = [dict(status='failed')]

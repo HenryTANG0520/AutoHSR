@@ -25,7 +25,7 @@ def _blocked(scene):
             or scene.has(_MODAL, (.25, .18, .75, .86), exact=True) or replenishment_dialog(scene))
 
 
-def _markers(workflow, scene, name, confidence):
+def _markers(workflow, scene, name, confidence, *, strict):
     path = RESOURCE_ROOT / 'assets' / 'templates' / (name + '.png')
     if not path.is_file():
         return None
@@ -39,12 +39,14 @@ def _markers(workflow, scene, name, confidence):
             caption = (x - .02, y + .025, x + .02, y + .066)
             numbers = [t for t in scene.tokens if t.within(caption) and re.fullmatch(r'[0-9]{1,3}', t.text.strip())]
             if len(numbers) != 1 or numbers[0].text.strip() != str(points) or not confidence <= numbers[0].score <= 1:
+                if strict:
+                    return None
                 continue
             result[points] = x, y
     return result
 
 
-def _band(workflow, scene, activity, confidence):
+def _band(workflow, scene, activity, confidence, *, strict=False):
     if (_blocked(scene) or reward_overlay(scene) or scene.has(_CLOSE, exact=True)
             or scene.has('本日活跃度已满', (.14, .68, .89, .87), exact=True)
             or any(_unique(scene, (label,), TITLE, confidence) is None for label in ('星际和平指南', '每日实训'))):
@@ -53,8 +55,8 @@ def _band(workflow, scene, activity, confidence):
     if (len(numbers) != 1 or int(numbers[0].text.strip()) != activity or not confidence <= numbers[0].score <= 1
             or workflow._icon(scene, 'daily_activity_badge', (.13, .23, .225, .37), threshold=.85) is None):
         return None
-    gifts = _markers(workflow, scene, 'daily_reward', confidence)
-    checks = _markers(workflow, scene, 'daily_completed', confidence)
+    gifts = _markers(workflow, scene, 'daily_reward', confidence, strict=strict)
+    checks = _markers(workflow, scene, 'daily_completed', confidence, strict=strict)
     if gifts is None or checks is None:
         return None
     claimed = frozenset(checks)
@@ -96,13 +98,42 @@ def _after_claim(workflow, require_source, activity, confidence, points, previou
     return None
 
 
+def _reached_points(activity):
+    return list(range(100, activity + 1, 100))
+
+
+def reached_milestones_receipt(report):
+    """Recognize a native partial result that fulfilled the narrower reward scope."""
+    activity = report.get('engagement')
+    if (report.get('operation') != 'reward_only' or report.get('status') != 'partial'
+            or report.get('daily_verified') is not False or report.get('error') != ''
+            or report.get('failure_task') != '' or type(activity) is not int or not 100 <= activity < 500):
+        return None
+    receipt = report.get('training_milestones')
+    if not isinstance(receipt, dict) or set(receipt) != {'activity', 'verified'}:
+        return None
+    verified = receipt['verified']
+    if (type(receipt['activity']) is int and receipt['activity'] == activity
+            and isinstance(verified, list) and all(type(points) is int for points in verified)
+            and verified == _reached_points(activity)):
+        return dict(activity=activity, verified=verified.copy())
+    return None
+
+
+def _all_reached_claimed(scene, band, reached):
+    return (band == ({}, reached)
+            and not scene.has(('领取', '领取奖励', '一键领取'), (.14, .41, .88, .90), exact=True))
+
+
 def claim_reached_milestones(workflow, scene, activity):
     context = workflow.ctx
     confidence = max(.85, workflow.settings.ocr_confidence)
     band = _band(workflow, scene, activity, confidence)
     confirmed = set()
     pending = None
-    if band is not None and band[0]:
+    reached = frozenset(_reached_points(activity))
+    reward_only = context.report.operation == 'reward_only'
+    if band is not None and (band[0] or reward_only and _all_reached_claimed(scene, band, reached)):
         window, geometry = context.window, scene.geometry
         epoch = context.scene_epoch
         occlusions = context.capture_occlusion_count
@@ -135,6 +166,16 @@ def claim_reached_milestones(workflow, scene, activity):
                     break
                 confirmed.update(after[1] - previous)
                 pending, band = None, after
+            scene = context.last_scene
+            if reward_only and pending is None and _all_reached_claimed(scene, band, reached):
+                require_source(scene)
+                sequence = context.capture_sequence
+                if _band(workflow, scene, activity, confidence, strict=True) == band:
+                    current = workflow._snapshot()
+                    require_source(current)
+                    if (context.capture_sequence == sequence + 1 and _all_reached_claimed(
+                            current, _band(workflow, current, activity, confidence, strict=True), reached)):
+                        context.report.training_milestones = dict(activity=activity, verified=sorted(reached))
         except Stopped:
             raise
         except AutomationError as error:
