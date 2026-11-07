@@ -178,7 +178,10 @@ def _calyx_locations(scene, page, fragments, heading):
                   key=lambda token: token.box[1])
     locations = []
     seen, repeated = set(), set()
-    unreadable = 0
+    source_rows = (SOURCE_BODY[0], heading.box[3], SOURCE_BODY[2], SOURCE_BODY[3])
+    # A split prefix establishes at least one unresolved row. Preserve full
+    # rows for preview, but do not certify the list for a manual draft.
+    unreadable = int(_has_split_label(fragments, ('拟造花萼',), source_rows, exact=False))
     locked = 0
     for token in rows:
         match = CALYX_SOURCE.fullmatch(token.text.strip())

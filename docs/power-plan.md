@@ -183,6 +183,8 @@
 
 `suggestion_reason` 说明建议轮数为空的原因。培养材料槽缺少逐件实名时为 `material_shortfall_unbound`，单项具名缺口为零时为 `material_shortfall_zero`，正缺口但单轮保底待核实时为 `unverified_per_round_minimum`。花萼可能奖励为 `possible_rewards_only`，结算累计为 `settled_batch_only`，合成配方为 `recipe_only`。等级行迹需求已满足和当前画面未核实分别记录 `level_trace_requirements_met`、`no_current_evidence`。
 
+固定三月七先执行明确填写次数的体力计划，再把培养目标的副本类型和名称交给默认清体力流程。后者按当前可用体力、单次费用和配置批量分配次数。掉落索引只将物品名称关联到副本，没有同难度的基础单轮产量字段。[执行入口](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/power/power.py#L13-L35) · [轮次计算](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/power/power.py#L134-L207) · [掉落索引](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/instance_drops.json#L100-L109)
+
 以下源码工具复放实际批量和合成算例。实际记录的建议次数为空。合成算例校验同材料、关卡地点、难度、版本及基础加成条件齐备时的向上取整、零缺口和超草稿额度。配置限制复用原花萼费用和六轮上限。计算结果属于开发验证，正式草稿仍由明确选择的入口发布。
 
 ```powershell
@@ -210,6 +212,8 @@ $draft = .\.venv\Scripts\python.exe -m autohsr --build-target --material '漫游
 ```
 
 命令输出的 `status=success` 与 `build_target.draft.state=prepared` 表示草稿已发布。`build_target.draft.file` 指向 `run_dir` 内的新建 `power-plan.json`，内容只有一条分类、名称、地点和次数。`count_source=manual` 表示轮次为用户手填，`stamina_required` 是按目录费用算出的预计开拓力。草稿阶段开战、支付及游戏输入均为零。该草稿的材料缺口、单轮产量和实际预算留空。
+
+若「获得途径」内的花萼前缀被拆成同一行相邻字框，预览保留已核实的完整来源，至少记一项未核实来源，草稿保持待核对。跨行片段不拼接成来源。
 
 本次 `report.json` 先保存 `partial/staged` 审计回执，记录所选条目、草稿 SHA-256 和所引用的原始截图。最终草稿随后在同一 NTFS 运行目录独占发布，磁盘回执保留在 `staged` 阶段。同名文件保留原样，截图或回执发生变化、停止或发布失败时，命令返回失败或停止并保留已有记录。旧同名文件即使字节相同，也可能让 `staged` 回执与现有文件哈希一致。应核对本次命令的 `success/prepared` 输出和当前草稿哈希来确认本次发布。
 

@@ -795,6 +795,28 @@ class BuildTargetPreviewTests(unittest.TestCase):
         self.assertEqual(preview['state'], 'unverified')
         self.assertEqual(preview['candidates'], [])
 
+    def test_split_calyx_prefix_blocks_manual_draft_but_preserves_visible_source(self):
+        original = [*self.material(), self.route('城郊雪原', .48)]
+        for fragments in (
+            [token('拟造', .45, .56, width=.036), token('花萼〖城郊雪原〗', .545, .56, width=.144)],
+            [token('拟', .434, .56, width=.02), token('造花', .467, .56, width=.036),
+             token('萼〖流云渡〗', .548, .56, width=.112)],
+        ):
+            with self.subTest(parts=[part.text for part in fragments]):
+                frame = [*original, *fragments]
+                report = self.draft_cli([frame, frame], code=1)
+                self.assertNotIn('draft', report['build_target'])
+                self.assertFalse((Path(report['run_dir']) / 'power-plan.json').exists())
+                preview = self.native([frame, frame]).build_target['preview']
+                self.assertEqual(preview['source_locations'], ['城郊雪原'])
+                self.assertEqual(preview['unmatched_calyx_rows'], 1)
+                self.assertEqual(preview['candidates'][0]['manual_draft_blocker'], 'incomplete_source')
+                self.assertIsNone(preview['count'])
+        off_row = [*original, token('拟造', .45, .55, width=.036),
+                   token('花萼〖城郊雪原〗', .545, .60, width=.144)]
+        report = self.draft_cli([off_row, off_row])
+        self.assertEqual(report['build_target']['draft']['items'][0]['location'], '城郊雪原')
+
     def test_source_with_same_line_lock_marker_is_excluded(self):
         for marker in ([token('尚未解锁', .74, .48, width=.06)],
                        [token('尚未', .72, .48, width=.039), token('解锁', .766, .48, width=.039)]):
