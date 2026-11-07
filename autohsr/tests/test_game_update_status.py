@@ -57,6 +57,23 @@ class GameUpdateStatusTests(TestCase):
         _, report = self.invoke('global', json.dumps(feed).encode())
         self.assertEqual((report['update'], report['pre_download']), ('local_ahead', 'local_at_or_ahead'))
 
+    def test_download_sizes_use_exact_source_patch_or_full_game_and_exclude_voice(self):
+        feed = package_feed(release='4.7.0', upcoming='4.8.0')
+        package = feed['data']['game_packages'][0]
+        package['main']['major']['game_pkgs'] = [dict(size='800')]
+        package['main']['patches'] = [dict(version='4.6.0', game_pkgs=[dict(size='20'), dict(size=30)],
+                                            audio_pkgs=[dict(size='1000')])]
+        package['pre_download']['major']['game_pkgs'] = [dict(size='900')]
+        code, report = self.invoke('cn', json.dumps(feed).encode())
+        self.assertEqual(code, 0)
+        self.assertEqual(report['update_package'], dict(kind='patch', files=2, download_bytes=50))
+        self.assertEqual(report['pre_download_package'], dict(kind='full', files=1, download_bytes=900))
+        package['main']['patches'][0]['game_pkgs'][1]['size'] = True
+        code, report = self.invoke('cn', json.dumps(feed).encode())
+        self.assertEqual(code, 0)
+        self.assertEqual(report['update'], 'available')
+        self.assertNotIn('update_package', report)
+
     def test_wrong_channel_or_incomplete_feed_cannot_report_no_update(self):
         duplicate = json.dumps(package_feed()).replace('"retcode": 0', '"retcode": 2, "retcode": 0')
         incomplete = package_feed()

@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import time
 
 from .game_installation import installed_client, version_parts
 from .game_update_status import check_game_update
@@ -42,6 +43,10 @@ class LauncherOffer:
     action: str
     target: str
     source: _Source = field(repr=False)
+
+
+class InstallationSourceChanged(AutomationError):
+    pass
 
 
 def _source(game_path, channel):
@@ -146,8 +151,46 @@ def verify_installation(offer):
     path = offer.source.client['executable']
     current = installed_client(path)
     if resolve(path) != offer.source.server or current['executable'] != path:
-        raise AutomationError('星铁安装来源已变化，请重新检查。')
+        raise InstallationSourceChanged('星铁安装来源已变化，请重新检查。')
     installed = current['full_version']
     reached = version_parts(installed) >= version_parts(offer.target)
     return dict(status='success' if reached else 'partial', installed_version=installed,
                 target=offer.target, channel=offer.channel)
+
+
+def track_installation(offer, *, stop, emit, timeout=7200, interval=5):
+    """Follow one fixed update target without further launcher or network actions."""
+    if offer.action != 'update':
+        raise ValueError('预下载完成状态需在官方启动器核对。')
+    deadline = time.monotonic() + timeout
+    candidate = None
+    target = dict(target=offer.target, channel=offer.channel)
+    while not stop.is_set():
+        if time.monotonic() >= deadline:
+            emit(dict(target, status='partial', tracking='timeout'))
+            return
+        try:
+            report = verify_installation(offer)
+        except InstallationSourceChanged:
+            if not stop.is_set():
+                emit(dict(target, status='failed', tracking='source_changed'))
+            return
+        except (AutomationError, OSError):
+            candidate = None
+            report = dict(target, status='partial', tracking='version_unavailable')
+        else:
+            installed = report['installed_version']
+            reached = report['status'] == 'success'
+            verified = reached and candidate == installed
+            candidate = installed if reached else None
+            report = dict(report, status='success' if verified else 'partial',
+                          tracking='verified' if verified else 'confirming' if reached else 'waiting')
+        if stop.is_set():
+            return
+        if time.monotonic() >= deadline:
+            emit(dict(target, status='partial', tracking='timeout'))
+            return
+        emit(report)
+        if report['tracking'] == 'verified':
+            return
+        stop.wait(min(interval, max(0, deadline - time.monotonic())))

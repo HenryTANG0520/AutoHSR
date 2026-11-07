@@ -97,6 +97,67 @@ class LauncherOfferTests(TestCase):
         self.assertEqual(launcher.handoff(offer, cancelled=cancelled)['status'], 'stopped')
         self.open.assert_not_called()
 
+    def test_tracking_requires_consecutive_target_reads_and_never_opens_launcher(self):
+        offer = self.offer()
+        self.feed.reset_mock()
+        now = 0
+        frames = iter(('4.6.0', '4.7.0', None, '4.7.0', '4.7.0'))
+        native_verify = launcher.verify_installation
+
+        def verify(_offer):
+            version = next(frames)
+            if version is None:
+                raise AutomationError('temporary read failure')
+            self.write_version(version)
+            return native_verify(_offer)
+
+        def wait(seconds):
+            nonlocal now
+            now += seconds
+
+        updates = []
+        stop = SimpleNamespace(is_set=lambda: False, wait=wait)
+        with (patch.object(launcher.time, 'monotonic', side_effect=lambda: now),
+              patch.object(launcher, 'verify_installation', side_effect=verify)):
+            launcher.track_installation(offer, stop=stop, emit=updates.append)
+        self.assertEqual([item['tracking'] for item in updates],
+                         ['waiting', 'confirming', 'version_unavailable', 'confirming', 'verified'])
+        self.assertEqual(updates[-1]['status'], 'success')
+        self.feed.assert_not_called()
+        self.open.assert_not_called()
+
+    def test_tracking_ends_for_changed_source_or_elapsed_deadline(self):
+        offer = self.offer()
+        for changed in (False, True):
+            with self.subTest(changed=changed):
+                now = 0
+                updates = []
+
+                def wait(seconds):
+                    nonlocal now
+                    now += seconds
+
+                stop = SimpleNamespace(is_set=lambda: False, wait=wait)
+                verify = (Mock(side_effect=launcher.InstallationSourceChanged()) if changed
+                          else Mock(return_value=dict(status='partial', installed_version='4.6.0',
+                                                      target=offer.target, channel='cn')))
+                with (patch.object(launcher.time, 'monotonic', side_effect=lambda: now),
+                      patch.object(launcher, 'verify_installation', verify)):
+                    launcher.track_installation(offer, stop=stop, emit=updates.append, timeout=9)
+                expected = ['source_changed'] if changed else ['waiting', 'waiting', 'timeout']
+                self.assertEqual([item['tracking'] for item in updates], expected)
+
+    def test_tracking_cancellation_releases_wait_without_another_read(self):
+        offer = self.offer()
+        updates = []
+        stop = Mock()
+        stop.is_set.side_effect = [False, False, True]
+        with patch.object(launcher, 'verify_installation', wraps=launcher.verify_installation) as verify:
+            launcher.track_installation(offer, stop=stop, emit=updates.append)
+        verify.assert_called_once_with(offer)
+        stop.wait.assert_called_once()
+        self.assertEqual([item['tracking'] for item in updates], ['waiting'])
+
 
 class ShellRequestTests(TestCase):
     def test_native_call_uses_one_fixed_game_argument_per_channel(self):

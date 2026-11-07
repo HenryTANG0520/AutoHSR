@@ -90,11 +90,32 @@ def _packages(channel, raw):
     if major is None:
         if patches:
             raise ValueError('incomplete pre-download package')
-        return release, None
+        return release, None, package
     preload = major['version']
     if version_parts(preload) <= release_number:
         raise ValueError('pre-download version does not advance the release')
-    return release, preload
+    return release, preload, package
+
+
+def _package_size(entry, installed):
+    """Report game archive sizes only when the complete selected list is valid."""
+    patches = entry.get('patches', [])
+    if not isinstance(patches, list) or any(not isinstance(item, dict) for item in patches):
+        return None
+    matching = [item for item in patches if item.get('version') == installed]
+    if len(matching) > 1:
+        return None
+    selected = matching[0] if matching else entry['major']
+    files = selected.get('game_pkgs')
+    if not isinstance(files, list) or not 1 <= len(files) <= 128:
+        return None
+    sizes = []
+    for item in files:
+        raw_size = item.get('size') if isinstance(item, dict) else None
+        if type(raw_size) not in (int, str) or not re.fullmatch(r'[1-9][0-9]{0,14}', str(raw_size)):
+            return None
+        sizes.append(int(raw_size))
+    return dict(kind='patch' if matching else 'full', files=len(sizes), download_bytes=sum(sizes))
 
 
 def check_game_update(game_path, channel):
@@ -113,7 +134,7 @@ def check_game_update(game_path, channel):
     except (OSError, http.client.HTTPException, ValueError):
         return dict(report, reason='package_feed_unavailable')
     try:
-        release, upcoming = _packages(channel, raw)
+        release, upcoming, package = _packages(channel, raw)
     except (KeyError, IndexError, TypeError, ValueError, RecursionError):
         return dict(report, reason='package_feed_unverified')
     try:
@@ -130,8 +151,13 @@ def check_game_update(game_path, channel):
             preload = 'local_at_or_ahead'
         else:
             preload = 'advertised'
-    return dict(report, status='success', release_version=release, update=update, pre_download=preload,
-                pre_download_version=upcoming)
+    result = dict(report, status='success', release_version=release, update=update, pre_download=preload,
+                  pre_download_version=upcoming)
+    for eligible, source, name in ((update == 'available', 'main', 'update_package'),
+                                   (preload == 'advertised', 'pre_download', 'pre_download_package')):
+        if eligible and (size := _package_size(package[source], initial['full_version'])) is not None:
+            result[name] = size
+    return result
 
 
 def run(args, raw_args, parser):
