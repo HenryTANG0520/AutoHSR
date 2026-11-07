@@ -1416,6 +1416,9 @@ class DailyWorkflow:
 
     def mail(self) -> TaskResult:
         from .free_rewards import mailbox,mail_claimed,claim_enabled,reward_overlay
+        scoped = self.daily_attachment_only == 'mail'
+        if scoped:
+            from .daily_attachments import MAIL, confirmed, mail_attachments_cleared
         scene=self._snapshot()
         if not mailbox(scene):
             scene = self._open_phone_item(("邮件","邮箱"), ("邮件","邮箱"), "phone_mail")
@@ -1426,11 +1429,13 @@ class DailyWorkflow:
                 return self._result("mail", "ok", "邮件没有可领取的附件。", scene)
             return self._result("mail", "partial", "未识别到全部领取按钮或无附件状态。", scene)
         enabled=claim_enabled(scene,claim)
-        if enabled is False or mail_claimed(scene):
+        cleared = (mail_attachments_cleared(scene, max(.85, self.settings.ocr_confidence)) if scoped
+                   else enabled is False or mail_claimed(scene))
+        if cleared:
             return self._result('mail','ok','已复核邮箱全部领取按钮为禁用状态，无可领取附件。',scene)
         if enabled is not True:
             return self._result('mail','partial','邮箱全部领取按钮的可用状态尚未核实。',scene)
-        if self.daily_attachment_only:
+        if scoped:
             self.ctx.evidence(scene, 'mail_before_claim')
         self._click(scene, claim)
         after=self._wait(reward_overlay,description='核实邮件附件奖励展示')
@@ -1439,13 +1444,14 @@ class DailyWorkflow:
             ('点击空白处关闭','点击任意位置关闭','点击空白处继续'),exact=True),description='等待邮件奖励关闭提示')
         self._dismiss_reward(after)
         after=self._wait(mailbox,description='返回邮箱复核附件')
-        claim=after.find('全部领取',(.12,.83,.35,.97),exact=True)
-        if mail_claimed(after):
-            if self.daily_attachment_only:
-                from .daily_attachments import MAIL, confirmed
-                confirmed(self.ctx, MAIL, after)
-            return self._result("mail", "ok", "已核实邮件附件奖励展示及全部领取按钮禁用。", after)
-        return self._result("mail", "partial", "已点击邮件全部领取，但尚未核实全部附件领取状态。", after)
+        if scoped:
+            first = after, self.ctx.capture_sequence
+            self.ctx.sleep(.15)
+            after = self._snapshot()
+            confirmed(self.ctx, MAIL, after, previous=first)
+        elif not mail_claimed(after):
+            return self._result("mail", "partial", "已点击邮件全部领取，但尚未核实全部附件领取状态。", after)
+        return self._result("mail", "ok", "已核实邮件附件奖励展示及全部领取按钮禁用。", after)
 
     def battlepass(self) -> TaskResult:
         from .free_rewards import (battlepass_page,battlepass_modal,battlepass_tab,

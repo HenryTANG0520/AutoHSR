@@ -61,6 +61,7 @@ class AttachmentTests(unittest.TestCase):
         sent = []
         claim_guards = 0
         last_stage = None
+        mail_return_captures = 0
         missing_window = Mock(side_effect=AutomationError('游戏窗口未打开。'))
 
         class TestContext(Context):
@@ -84,7 +85,7 @@ class AttachmentTests(unittest.TestCase):
                 return super().evidence(scene, name)
 
         def capture():
-            nonlocal current
+            nonlocal current, mail_return_captures
             if mode in ('reward', 'old-reward'):
                 scene = Scene([token('获得物品', .50, .11), token('点击空白处关闭', .50, .87)])
             elif mode == 'supply':
@@ -111,6 +112,19 @@ class AttachmentTests(unittest.TestCase):
                 scene.tokens.append(token('选择奖励', .50, .45))
             if mode == 'mail_claimable' and event == 'duplicate':
                 scene.tokens.append(token('全部领取', .30, .91))
+            if mode == 'mail_claimable' and event == 'neutral_bulk_button':
+                # Neutralize the bulk button fill while keeping the source arrow.
+                scene.image[955:1010, 360:570] = (120, 120, 120)
+            if mode == 'mail_claimed' and last_stage == 'mail':
+                mail_return_captures += 1
+                if event == 'selected_attachment_remains':
+                    claimable = fixture('mail_claimable')
+                    scene.tokens.remove(scene.find('删除', (.8, .83, .98, .97), exact=True))
+                    scene.tokens.append(claimable.find('领取', (.8, .83, .98, .97), exact=True))
+                    scene.image[910:1040, 1510:1850] = claimable.image[910:1040, 1510:1850]
+                if event == 'return_temporarily_disabled' and mail_return_captures > 2:
+                    # The close click and the first mailbox wait consume the first two reads.
+                    scene = fixture('mail_claimable')
             tokens = [value for value in scene.tokens if not value.text.lower().startswith('uid')]
             if mode not in ('reward', 'old-reward', 'supply'):
                 tokens.append(token(ACCOUNT, .08, .97, .99))
@@ -159,7 +173,8 @@ class AttachmentTests(unittest.TestCase):
                 if event != 'interrupted':
                     mode = 'reward'
             elif active == '点击空白处关闭':
-                mode = 'mail_claimed' if last_stage == 'mail' else 'bp_rewards_settled'
+                if event != 'close_stuck':
+                    mode = 'mail_claimed' if last_stage == 'mail' else 'bp_rewards_settled'
             elif active == '一键领取' and mode == 'bp_tasks_claimable':
                 mode = 'bp_tasks_settled'
             elif active == '本期任务':
@@ -223,6 +238,19 @@ class AttachmentTests(unittest.TestCase):
         self.assertEqual((empty.code, empty.sent), (0, []))
         self.assertEqual(empty.child['results'][0]['attachment_outcome'], 'empty')
         self.assertEqual(empty.child['results'][0]['verified_claims'], [])
+
+    def test_neutral_bulk_button_does_not_prove_a_mailbox_is_empty(self):
+        result = self.invoke('mail', 'mail_claimable', event='neutral_bulk_button')
+        self.assertEqual((result.code, result.sent), (1, []))
+        self.assertEqual(result.child['results'][0]['attachment_outcome'], 'unknown')
+
+    def test_ambiguous_or_unstable_mail_return_never_repeats_inputs(self):
+        for event in ('selected_attachment_remains', 'return_temporarily_disabled', 'close_stuck'):
+            with self.subTest(event=event):
+                result = self.invoke('mail', 'mail_claimable', event=event)
+                self.assertEqual((result.code, result.sent), (1, ['全部领取', '点击空白处关闭']))
+                self.assertEqual(result.child['results'][0]['attachment_outcome'], 'unknown')
+                self.assertEqual(result.child['results'][0]['verified_claims'], [])
 
     def test_battlepass_confirms_weekly_experience_and_free_levels_separately(self):
         claimed = self.invoke('battlepass', 'phone-battlepass')

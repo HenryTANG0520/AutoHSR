@@ -5,7 +5,7 @@ from time import monotonic
 
 from .currency_wars_identity import UID_COUNTEREVIDENCE, checked_account_key
 from .free_rewards import (battlepass_modal, battlepass_page, battlepass_progress, battlepass_tab,
-                           claim_enabled, mail_entry, mailbox, reward_overlay, task_category)
+                           claim_enabled, mail_claimed, mail_entry, mailbox, reward_overlay, task_category)
 from .models import AutomationError, InputInterrupted, Stopped, TaskResult, Token, normalize
 from .workflow_identity import active
 
@@ -17,6 +17,8 @@ BATTLEPASS_STAGES = {'本周任务': 'battlepass_weekly_tasks', '本期任务': 
 SAFE_NEXT = '请核对本次免费领取和原始报告。结果待核对时保留当前画面。'
 _CLOSE_LABELS = ('点击空白处关闭', '点击任意位置关闭', '点击空白处继续')
 _OVERLAY_STAGES = {MAIL, BATTLEPASS_STAGES['rewards']}
+_MAIL_BULK_AREA = (.12, .83, .35, .97)
+_MAIL_SINGLE_AREA = (.80, .83, .98, .97)
 
 
 def attachment_settings(settings, task):
@@ -95,6 +97,13 @@ def _unique(scene, target, labels, area, confidence):
     return len(matches) == 1 and matches[0] == target and confidence <= target.score <= 1
 
 
+def mail_attachments_cleared(scene, confidence):
+    bulk = scene.find('全部领取', _MAIL_BULK_AREA, exact=True)
+    return (bulk is not None and _unique(scene, bulk, ('全部领取',), _MAIL_BULK_AREA, confidence)
+            and not scene.has(('领取', '领取附件'), _MAIL_SINGLE_AREA, exact=True)
+            and mail_claimed(scene))
+
+
 def _action(ctx, scene, target):
     from .workflows import DailyWorkflow
 
@@ -118,7 +127,7 @@ def _action(ctx, scene, target):
         if _unique(scene, target, ('点击进入', '点击进入游戏', '开始游戏'), (0, 0, 1, 1), confidence):
             return 'navigate', None
     elif task == 'mail' and mailbox(scene) and battlepass_page(scene) is None:
-        if (_unique(scene, target, ('全部领取',), (.12, .83, .35, .97), confidence)
+        if (_unique(scene, target, ('全部领取',), _MAIL_BULK_AREA, confidence)
                 and claim_enabled(scene, target) is True):
             return 'claim', MAIL
     elif task == 'battlepass' and (kind := battlepass_page(scene)) is not None and not mailbox(scene):
@@ -192,19 +201,32 @@ def require_key(ctx, name):
         raise AutomationError('独立免费领奖只允许从已核实的非战斗界面返回。')
 
 
-def confirmed(ctx, stage, scene):
+def confirmed(ctx, stage, scene, *, previous=None):
     pending = getattr(ctx, '_pending_attachment_claim', None)
+    confidence = max(.85, ctx.settings.ocr_confidence)
 
     def check():
         observe(ctx, scene)
         if (pending is None or pending.stage != stage or ctx.last_scene is not scene
                 or getattr(ctx, '_pending_attachment_claim', None) is not pending
                 or ctx.capture_sequence <= pending.sequence or not 0 <= monotonic() - scene.captured_at <= 8
-                or _account(scene, max(.85, ctx.settings.ocr_confidence)) != pending.account
+                or _account(scene, confidence) != pending.account
                 or stage in _OVERLAY_STAGES and not pending.close_started):
             raise AutomationError('免费领取缺少本次提交或返回依据，保留结果待核对。')
+        if stage == MAIL:
+            if previous is None:
+                raise AutomationError('邮件附件缺少首次回页证据。')
+            first, sequence = previous
+            if (first is scene or first.geometry is None or first.geometry != scene.geometry
+                    or not pending.sequence < sequence == ctx.capture_sequence - 1
+                    or not 0 <= monotonic() - first.captured_at <= 8 or first.captured_at >= scene.captured_at
+                    or _account(first, confidence) != pending.account
+                    or not all(mail_attachments_cleared(frame, confidence) for frame in (first, scene))):
+                raise AutomationError('两张邮件回页尚未核实附件均已清除，保留本次领取待核对。')
 
     check()
+    if stage == MAIL:
+        ctx.evidence(previous[0], stage + '_first_settled')
     ctx.evidence(scene, stage + '_settled')
     ctx.checkpoint()
     check()
