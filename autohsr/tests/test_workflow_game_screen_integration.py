@@ -1,5 +1,6 @@
 """Formal CLI through the native Runner and workflow branching, using a fake window."""
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
+from hashlib import sha256
 import io
 import json
 from pathlib import Path
@@ -58,11 +59,13 @@ class WorkflowGameScreenIntegrationTests(unittest.TestCase):
         self.present = self.absent.copy()
         self.present[20:36, 40:59] = pattern[:, :, ::-1]
 
-    def run_cli(self, frames, *, expect, before_publish=None, text=None):
+    def run_cli(self, frames, *, expect, before_publish=None, text=None, region=None, after_publish=None):
         workflow = self.root / 'workflow.json'
         operation = 'workflow_game_image' if text is None else 'workflow_game_text'
         params = dict(template=self.template.name) if text is None else dict(text=text, region=[0, 0, 1, .9])
         field = 'image_found' if text is None else 'text_found'
+        if region is not None:
+            operation, params, field = 'workflow_game_capture', dict(region=region), 'captured'
         steps = [
             dict(task('look', operation, **params), on_failure='continue'),
             dict(id='choose', type='if', condition=condition('look', field, True),
@@ -78,7 +81,10 @@ class WorkflowGameScreenIntegrationTests(unittest.TestCase):
         def publish(runner, *args, **kwargs):
             if before_publish is not None:
                 before_publish(window, runner)
-            return real_save(runner, *args, **kwargs)
+            result = real_save(runner, *args, **kwargs)
+            if after_publish is not None:
+                after_publish(Path(runner.report.run_dir))
+            return result
 
         out, err = io.StringIO(), io.StringIO()
         kernel = SimpleNamespace(CreateMutexW=Mock(return_value=1), CloseHandle=Mock())
@@ -120,7 +126,8 @@ class WorkflowGameScreenIntegrationTests(unittest.TestCase):
         raw = original.read_text(encoding='utf-8')
         self.assertNotIn('135792468', raw)
         self.assertNotIn('fake-native-window', raw)
-        self.assertFalse(list(original.parent.glob('*.png')))
+        if region is None:
+            self.assertFalse(list(original.parent.glob('*.png')))
         return report, json.loads(raw)
 
     def test_native_template_match_and_nonmatch_are_separate_successes(self):
@@ -210,3 +217,40 @@ class WorkflowGameScreenIntegrationTests(unittest.TestCase):
         self.assertEqual(relative, 'assets/0001.png')
         self.assertEqual((imported / relative).read_bytes(), self.template.read_bytes())
         self.assertEqual(json.loads(workflow.read_text(encoding='utf-8')), document)
+
+    def test_game_capture_exports_the_explicit_crop_and_verifies_it_before_branching(self):
+        report, native = self.run_cli([self.absent, self.absent, self.present], expect=0,
+                                      region=[.15, .1, .6, .7])
+        steps = report['workflow']['steps']
+        self.assertEqual([step['step'] for step in steps], ['look', 'choose', 'match'])
+        self.assertEqual(steps[0]['facts'], dict(status='success', captured=True))
+        capture = steps[0]['capture']
+        self.assertEqual(capture, native['workflow_screen'])
+        self.assertEqual(capture['source_size'], [200, 100])
+        self.assertEqual(capture['box'], [30, 10, 120, 70])
+        path = Path(native['run_dir']) / capture['file']
+        self.assertEqual(capture['sha256'], sha256(path.read_bytes()).hexdigest())
+        with Image.open(path) as image:
+            np.testing.assert_array_equal(np.asarray(image), self.present[10:70, 30:120, ::-1])
+        self.assertEqual((native['stamina_spent'], native['stamina_pending']), (0, 0))
+
+    def test_game_capture_rejects_replaced_png_and_withdraws_late_focus_loss(self):
+        def replace_capture(directory):
+            Image.new('RGB', (90, 60), 'red').save(directory / 'capture.png')
+
+        def lose_focus(window, _runner):
+            window.guard.side_effect = FocusLost('synthetic late loss of focus')
+
+        for hooks in (dict(after_publish=replace_capture), dict(before_publish=lose_focus)):
+            with self.subTest(hooks=list(hooks)):
+                report, _ = self.run_cli([self.present] * 3, expect=1, region=[.15, .1, .6, .7], **hooks)
+                steps = report['workflow']['steps']
+                self.assertNotIn('capture', steps[0])
+                self.assertNotIn('captured', steps[0]['facts'])
+                self.assertEqual([step['step'] for step in steps], ['look', 'choose'])
+
+    def test_game_capture_requires_a_valid_explicit_region(self):
+        for params in ({}, {'region': [0, 0, 1, True]}, {'region': [.2, 0, .2, 1]},
+                       {'region': [0, 0, 1, 1], 'path': 'arbitrary.png'}):
+            with self.subTest(params=params), self.assertRaises(WorkflowError):
+                compile_recipe(recipe(task('look', 'workflow_game_capture', **params)))

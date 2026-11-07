@@ -23,6 +23,7 @@ _FIELDS = {
     "victories": "胜利局数", "defeats": "失败局数", "points_verified": "积分已核实",
     "rewards_verified": "奖励已核实", "du_rewards_verified": "差分奖励已核实",
     "image_found": "图片已匹配", "text_found": "文字已匹配", "page_verified": "游戏页面已核实",
+    "captured": "截图已导出",
 }
 _OPERATORS = {"eq": "等于", "ne": "不等于", "lt": "小于", "le": "小于或等于", "gt": "大于", "ge": "大于或等于"}
 _VALUE_LABELS = {
@@ -77,6 +78,7 @@ def _default_params(task):
         "workflow_image": {"image": "截图.png", "template": "模板.png"},
         "workflow_game_image": {"template": "模板.png"},
         "workflow_game_text": {"text": "要查找的文字"},
+        "workflow_game_capture": {"region": []},
         "workflow_open_page": {"target": "phone"},
         "workflow_text": {"image": "截图.png", "text": "要查找的文字"},
         "workflow_notify": {"profile": "default", "message": "本步骤已到达。"},

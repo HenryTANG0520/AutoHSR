@@ -41,6 +41,7 @@ _TASK_NAMES = {"daily": "每日任务", "plan": "日常与到期周常", "differ
                "currency_wars_rewards": "货币战争积分领奖", "workflow_audio": "播放本地音频",
                "workflow_image": "从图片查找模板", "workflow_text": "从图片查找文字",
                "workflow_game_image": "从游戏画面查找模板", "workflow_game_text": "从游戏画面查找文字",
+               "workflow_game_capture": "导出游戏截图选区",
                "workflow_open_page": "切换到游戏页面",
                "workflow_notify": "发送主动通知"}
 

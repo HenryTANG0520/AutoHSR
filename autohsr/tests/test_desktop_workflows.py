@@ -113,6 +113,7 @@ class FakeUI:
                                                busy_probe=lambda: False)
         self.schedule_store = ScheduleStore(root / "schedules")
         self.scheduler = Scheduler(self.schedule_store, self.executor, clock=self._schedule_now)
+        self.desktop_schedule = Mock(can_restore_on_logon=Mock(return_value=False), login_results={})
         self.enabled = []
         self._workflow_action_changed = Mock()
         self._start_task_workflow = Mock(return_value=True)

@@ -198,8 +198,8 @@ class RunReport:
             del data['daily_event_claim']
         if self.operation != 'screen_test':
             del data['screen_test']
-        from .task_workflow import GAME_VISION_TASKS, PAGE_TASK
-        if self.operation not in GAME_VISION_TASKS:
+        from .task_workflow import PAGE_TASK, WORKFLOW_SCREEN_TASKS
+        if self.operation not in WORKFLOW_SCREEN_TASKS:
             del data['workflow_screen']
         if self.operation != PAGE_TASK and not (
                 self.operation in ('daily_event_claim', 'screen_test') and self.workflow_navigation):

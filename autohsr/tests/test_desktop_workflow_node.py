@@ -142,6 +142,15 @@ class WorkflowNodeFormTests(unittest.TestCase):
         self.assertEqual(self.submitted(), dict(type="task", name=None, enabled=False, task="daily_training_rewards",
                                                 params={}, on_failure="stop"))
 
+    def test_game_capture_requires_an_explicit_region(self):
+        self.form.open()
+        self.form.values["task"].set(_TASK_NAMES["workflow_game_capture"])
+        self.form.apply_button.invoke()
+        self.assertIn("region", self.form.error.get())
+        self.applied.assert_not_called()
+        self.write_params('{"region":[0.15,0.1,0.6,0.7]}')
+        self.assertEqual(self.submitted()["params"], {"region": [0.15, 0.1, 0.6, 0.7]})
+
     def test_edit_locks_node_type_and_can_clear_optional_values(self):
         node = dict(id="original", type="task", name="旧名称", enabled=True, task="daily",
                     params={"tasks": ["assignments"], "use_support": False}, on_failure="continue")

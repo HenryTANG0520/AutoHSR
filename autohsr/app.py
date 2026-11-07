@@ -23,8 +23,9 @@ from .vision import Vision, save_scene,helper_overlay
 from .ocr_isolation import IsolatedVision
 from .windows import find_game, is_admin, is_elevated, launch
 from .storage import file_revision, hold_read_sources, replace_file
-from .task_workflow import (BACKGROUND_NAVIGATION_PAGES, GAME_VISION_TASKS, PAGE_TASK, TEMPLATE_TASKS,
-                            WORKFLOW_FOREGROUND_TASKS, WORKFLOW_NAVIGATION_TARGETS, WORLD_WORKFLOW_PAGE)
+from .task_workflow import (BACKGROUND_NAVIGATION_PAGES, GAME_CAPTURE_TASK, GAME_VISION_TASKS, PAGE_TASK, TEMPLATE_TASKS,
+                            WORKFLOW_FOREGROUND_TASKS, WORKFLOW_NAVIGATION_TARGETS, WORKFLOW_SCREEN_TASKS,
+                            WORLD_WORKFLOW_PAGE)
 
 
 def launch_game(settings: Settings) -> str:
@@ -207,8 +208,8 @@ class Context:
     def _require_gameplay_input(self):
         if self.report.operation == PAGE_TASK:
             raise AutomationError('任务流页面切换只允许专用的已核实导航输入。')
-        if self.report.operation in GAME_VISION_TASKS:
-            raise AutomationError('任务流的游戏图文条件只允许观察当前画面。')
+        if self.report.operation in WORKFLOW_SCREEN_TASKS:
+            raise AutomationError('任务流的截图和游戏图文条件只允许观察当前画面。')
         archive = getattr(self, 'du_archive_workflow', None)
         if archive is not None and (getattr(archive, 'c', None) is not self or getattr(archive, 'finished', False) is not True):
             raise AutomationError('差分存档流程尚未核实返回，仅允许本次持久保存意图输入。')
@@ -2345,7 +2346,7 @@ class Runner:
         self.reward_guide_capture = reward_guide_capture
         if operation in WORKFLOW_FOREGROUND_TASKS and (new_battle_run or use_power_plan or new_power_plan or weekly_plan is not None):
             raise ValueError('任务流的页面观察或切换不能建立刷本或周常预算。')
-        if operation in GAME_VISION_TASKS:
+        if operation in WORKFLOW_SCREEN_TASKS:
             from .task_workflow import _params
             _params(operation, workflow_screen_query)
         elif workflow_screen_query is not None:
@@ -3067,7 +3068,7 @@ class Runner:
         daily_reply = observation_operation == MESSAGE_REPLY_OPERATION
         observation_name = {MESSAGE_OPERATION: '短信', EVENT_OPERATION: '巡星之礼',
                             SCREEN_OPERATION: '当前页面'}.get(observation_operation, '')
-        workflow_screen = self.report.operation in GAME_VISION_TASKS
+        workflow_screen = self.report.operation in WORKFLOW_SCREEN_TASKS
         workflow_page = self.report.operation == PAGE_TASK
         workflow_foreground = self.report.operation in WORKFLOW_FOREGROUND_TASKS
         foreground_scope = (challenge_observer or challenge_navigation or daily_reward
@@ -3358,20 +3359,25 @@ class Runner:
                 self.report.status = 'success' if result.status == 'ok' else 'partial'
                 self.report.failure_task = '' if result.status == 'ok' else self.report.operation
             elif workflow_screen:
-                from .workflow_screen import observe_game
+                from .workflow_screen import capture_region, observe_game
                 operation = self.report.operation
                 self.emit(dict(type='task', task=operation, status='running', detail='观察当前游戏画面'))
                 window_key = context.window.current_window_key()
-                observation = observe_game(context, self.workflow_screen_query)
-                field = 'image_found' if operation in TEMPLATE_TASKS else 'text_found'
-                if set(observation) != {field} or type(observation[field]) is not bool:
-                    raise AutomationError('游戏图文结果未核实。')
+                if operation == GAME_CAPTURE_TASK:
+                    observation = capture_region(context, self.workflow_screen_query['region'], directory)
+                    detail = '已导出当前游戏选区的 PNG。'
+                else:
+                    observation = observe_game(context, self.workflow_screen_query)
+                    field = 'image_found' if operation in TEMPLATE_TASKS else 'text_found'
+                    if set(observation) != {field} or type(observation[field]) is not bool:
+                        raise AutomationError('游戏图文结果未核实。')
+                    detail = '已核实当前游戏画面的判断结果。'
                 self.report.workflow_screen = observation
                 scene = context.last_scene
                 workflow_screen_source = (context, scene, context.window)
                 self._workflow_screen_window = (self._window, scene.geometry, scene.captured_at,
                                                 context.scene_epoch, window_key)
-                self.report.results.append(TaskResult(operation, 'ok', '已核实当前游戏画面的判断结果。'))
+                self.report.results.append(TaskResult(operation, 'ok', detail))
                 self.report.status = 'success'
                 self.report.failure_task = ''
             elif workflow_page:

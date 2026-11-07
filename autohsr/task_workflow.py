@@ -21,6 +21,8 @@ MAX_EXECUTIONS = 10000
 MAX_STEP_NOTIFICATIONS = 20
 MAX_WAIT_SECONDS = 3600
 GAME_VISION_TASKS = {'workflow_game_image', 'workflow_game_text'}
+GAME_CAPTURE_TASK = 'workflow_game_capture'
+WORKFLOW_SCREEN_TASKS = GAME_VISION_TASKS | {GAME_CAPTURE_TASK}
 PAGE_TASK = 'workflow_open_page'
 TRAINING_REWARDS_TASK = 'daily_training_rewards'
 ASSIGNMENT_REWARDS_TASK = 'daily_assignment_rewards'
@@ -46,7 +48,7 @@ WORKFLOW_NAVIGATION_TARGETS = (*WORKFLOW_PAGES, *BATTLEPASS_WORKFLOW_PAGES, *GUI
 SCREEN_CHECK_EXTRA_PAGES = (VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE, ACHIEVEMENT_OVERVIEW_PAGE,
                             *BATTLEPASS_WORKFLOW_PAGES, REDEMPTION_FORM_PAGE, WORLD_WORKFLOW_PAGE, TRAINING_SCAN_PAGE)
 SCREEN_CHECK_PAGES = (*WORKFLOW_PAGES, *SCREEN_CHECK_EXTRA_PAGES)
-WORKFLOW_FOREGROUND_TASKS = GAME_VISION_TASKS | {PAGE_TASK}
+WORKFLOW_FOREGROUND_TASKS = WORKFLOW_SCREEN_TASKS | {PAGE_TASK}
 GAME_TASKS = {'daily', TRAINING_REWARDS_TASK, ASSIGNMENT_REWARDS_TASK, FREE_ATTACHMENT_TASK, EVENT_CLAIM_OPERATION,
               'plan', 'differential_universe', 'currency_wars_loop',
               'currency_wars_points', 'currency_wars_rewards', 'du_rewards'} | WORKFLOW_FOREGROUND_TASKS
@@ -58,7 +60,8 @@ ASSIGNMENT_STEP = 'assignments'
 ASSIGNMENT_FLOW = '仅领取持续委托'
 FIELDS = {'status': str, 'daily_verified': bool, 'completed_runs': int,
           'victories': int, 'defeats': int, 'points_verified': bool, 'rewards_verified': bool,
-          'du_rewards_verified': bool, 'image_found': bool, 'text_found': bool, 'page_verified': bool}
+          'du_rewards_verified': bool, 'image_found': bool, 'text_found': bool, 'page_verified': bool,
+          'captured': bool}
 
 
 class WorkflowError(ValueError):
@@ -224,6 +227,7 @@ def _params(task, params):
         'workflow_text': {'image', 'text', 'region', 'threshold', 'contains'},
         'workflow_game_image': {'template', 'region', 'threshold'},
         'workflow_game_text': {'text', 'region', 'threshold', 'contains'},
+        GAME_CAPTURE_TASK: {'region'},
         PAGE_TASK: {'target', 'observe_only', 'background'},
         'workflow_notify': {'profile', 'message', 'png'},
     }[task]
@@ -305,6 +309,12 @@ def _params(task, params):
             value = params['threshold']
             if type(value) not in (int, float) or not .5 <= value <= 1:
                 raise WorkflowError('识别阈值须在 0.5～1 之间。')
+    elif task == GAME_CAPTURE_TASK:
+        region = params.get('region')
+        if (not isinstance(region, list) or len(region) != 4
+                or any(type(value) not in (int, float) or not 0 <= value <= 1 for value in region)
+                or not (region[0] < region[2] and region[1] < region[3])):
+            raise WorkflowError('截图步骤的 region 须填写有效的四个归一化选区坐标。')
     elif task == PAGE_TASK:
         if params.get('target') not in WORKFLOW_NAVIGATION_TARGETS:
             raise WorkflowError('请选择任务流支持的游戏页面。')
@@ -630,7 +640,7 @@ def task_spec(settings: Settings, node, base_dir):
         if task == 'currency_wars_rewards':
             options['currency_rewards_resume'] = params.get('resume', False)
         current.validate('currency_wars')
-    elif task in GAME_VISION_TASKS:
+    elif task in WORKFLOW_SCREEN_TASKS:
         if 'template' in params:
             from .workflow_vision import game_template_path
             params['template'] = str(game_template_path(params['template'], base_dir))

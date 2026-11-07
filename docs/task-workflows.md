@@ -32,6 +32,7 @@
 | `workflow_text` | 本地 OCR 判断 | 必填 `image`、`text`，可选 `region`、`threshold`、`contains`。默认精确匹配，阈值 0.65 |
 | `workflow_game_image` | 当前游戏画面模板判断 | 必填 `template`，可选 `region`、`threshold`。默认阈值 0.88 |
 | `workflow_game_text` | 当前游戏画面 OCR 判断 | 必填 `text`，可选 `region`、`threshold`、`contains`。默认精确匹配，阈值 0.65 |
+| `workflow_game_capture` | 导出当前游戏窗口的选区 | 必填 `region`，不自动启动游戏，PNG 保存在本次运行目录 |
 | `workflow_open_page` | 已知日常页面切换 | 必填 `target`，可选值见下方。只切换页面并核实到达 |
 | `workflow_notify` | 已保存通知方案 | 必填 `profile`、`message`。可选 `png`，显式绑定本地 PNG 和 SMTP 方案时仅通过命令行手动运行。同一运行出现待核对的提交后停止后续主动通知 |
 
@@ -42,6 +43,23 @@
 游戏图文步骤读取已经登录且处于前台的游戏客户区。两张连续新画面都必须核实同一窗口、账号、输入代次及一致的识别结果。登录、遮挡、失焦、账号变化或两次识别不一致时，匹配字段留空。步骤占用正式执行权，只观察画面，回执只写布尔结果，账号证据仍按原规则留在本机。定时触发时也需要游戏已在前台，并受含游戏任务的单次重复限制。
 
 页面切换与实时图文共享前台及账号门禁。目标为 `phone` 手机、`guide` 指南、`daily_training` 每日实训、`survival_index` 生存索引、`assignments` 委托、`mail` 邮件、`battlepass` 无名勋礼、`odyssey` 巡星之礼、`reward_guide` 奖励指南和 `messages` 短信通知。泛指南目标保留当前指南子页。已经在目标页时零输入。每次点击或返回都要求当前页面和可用入口有证据，再双帧核对新页面。遇到登录、弹窗、战斗、失焦或不认识的页面时保留已有动作回执。只有已核实到达的结果才提供 `page_verified=true`。导航不领取奖励、不开战，也不建立资源预算。活动与短信通知目标目前支持已校准的 4.6.0 版式。短信从带可见未读角标的大世界或已打开的通知双栏开始，最多提交一次气泡点击。[活动页面导航](daily-event-observation.md#独立导航) · [短信导航](../DAILY_FLOW.md#短信只读校准)
+
+### 导出游戏截图选区
+
+在桌面任务流中添加「导出游戏截图选区」，或在 JSON 中使用以下步骤。运行时须已登录并将游戏放在前台。
+
+```json
+{
+  "id": "capture",
+  "type": "task",
+  "task": "workflow_game_capture",
+  "params": {"region": [0.15, 0.1, 0.6, 0.7]}
+}
+```
+
+按客户区比例填写 `[左, 上, 右, 下]`，每个值在 0 和 1 之间，实际选区至少为 16×16 像素。文件名为 `capture.png`，与本步 `source.path` 指向的原始报告同目录。后续条件可读取 `captured=true`，报告另保存原画面尺寸、像素选区和 PNG 的 SHA-256。
+
+截图只留在本机。选区内可见的文字和标识会原样保留。若导出后失焦，或回执核验发现文件被替换，本步不给出成功结果，已创建的本地文件可能仍在运行目录。通知附件目前需手动指定本地文件。
 
 ### Windows 后台页面导航试验
 
@@ -247,7 +265,7 @@ UTF-8 JSON顶层为`version:1`、`name`、`steps`；不接受重复JSON键、NaN
 
 条件形如`{"step":"daily","field":"daily_verified","op":"eq","value":true}`。只能引用树中前面出现的步骤结果；所引用分支本次没执行、步骤被禁用而字段未知、类型不一致时停止，不将缺值视作false。`step:"@last"`表示最近一次实际执行的task结果，可用于有界观察循环；普通控制步骤不会替换它。
 
-条件字段包括 `status`、`daily_verified`、`completed_runs`、`victories`、`defeats`、`points_verified`、`rewards_verified`、`du_rewards_verified`、`image_found`、`text_found` 和 `page_verified`。`du_rewards_verified` 对应本次明确请求的红点。图文及页面字段对应已成功核实的观察或切换步骤。只有对应子报告确实存在且含该字段时才可比较，日常实训也须有执行证据。计数支持 `eq/ne/lt/le/gt/ge`，状态和布尔值支持 `eq/ne`。`completed_runs` 对应差分已完成数或货币战争已结束数，货币战争胜负另有 `victories` 和 `defeats`。
+条件字段包括 `status`、`daily_verified`、`completed_runs`、`victories`、`defeats`、`points_verified`、`rewards_verified`、`du_rewards_verified`、`image_found`、`text_found`、`page_verified` 和 `captured`。`du_rewards_verified` 对应本次明确请求的红点。图文及页面字段对应已成功核实的观察或切换步骤。`captured` 须另核对本次 PNG。只有对应子报告确实存在且含该字段时才可比较，日常实训也须有执行证据。计数支持 `eq/ne/lt/le/gt/ge`，状态和布尔值支持 `eq/ne`。`completed_runs` 对应差分已完成数或货币战争已结束数，货币战争胜负另有 `victories` 和 `defeats`。
 
 上限为1 MiB定义、256个节点、12层、最多10000次展开执行；禁用节点也计执行数量。每个可能路径最多一份日常预算、一个差分批次、一个CW批次；循环乘算，互斥分支取最大值。不能用两个daily步骤或for循环重复创建240预算。`plan`保守预留日常、差分与CW各一个所有者，不能再叠加独立同类任务；其10局预留值仅为静态最大值，不是实际请求或完成数。
 

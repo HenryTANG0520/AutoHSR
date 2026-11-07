@@ -21,7 +21,7 @@ from .daily_observe import EVENT_CLAIM_OPERATION
 from .du_points_followup import FollowupWeek, followup_week_scope
 from .models import AutomationError, RunReport, Stopped, TaskResult
 from .storage import replace_file
-from .task_workflow import (ASSIGNMENT_REWARDS_TASK, FIELDS, FREE_ATTACHMENT_TASK, GAME_TASKS, GAME_VISION_TASKS,
+from .task_workflow import (ASSIGNMENT_REWARDS_TASK, FIELDS, FREE_ATTACHMENT_TASK, GAME_CAPTURE_TASK, GAME_TASKS, GAME_VISION_TASKS,
                             MAX_EXECUTIONS, PAGE_TASK, TEMPLATE_TASKS,
                             TRAINING_REWARDS_TASK, TRAINING_SCAN_PAGE, VISA_CHARACTERS_PAGE, VISION_TASKS,
                             WORKFLOW_FOREGROUND_TASKS, WorkflowError,
@@ -300,6 +300,11 @@ class TaskWorkflowRunner:
             if facts['status'] == 'success' and isinstance(navigation, dict) and navigation.get('page_verified') is True:
                 facts['page_verified'] = True
             return facts
+        if operation == GAME_CAPTURE_TASK:
+            capture = result.get('workflow_screen')
+            if facts['status'] == 'success' and isinstance(capture, dict) and capture.get('captured') is True:
+                facts['captured'] = True
+            return facts
         if result.get('operation') == 'du_rewards':
             value = result.get('du_rewards', {}).get('rewards_verified')
             if type(value) is bool:
@@ -513,6 +518,13 @@ class TaskWorkflowRunner:
                         result['workflow_navigation'].get('control_mode') != 'background'):
                     raise WorkflowError('页面回执没有核实本次使用后台窗口。')
             entry['source'] = self._source(result, expected, native_points=native_points)
+            if node['task'] == GAME_CAPTURE_TASK and result['status'] == 'success':
+                from .workflow_screen import verified_capture
+
+                capture = verified_capture(result, options['workflow_screen_query']['region'])
+                if capture is None:
+                    raise WorkflowError('游戏截图的本地 PNG 与本次原始回执不符。')
+                entry['capture'] = deepcopy(capture)
             if node['task'] == EVENT_CLAIM_OPERATION:
                 from .daily_event_claim_flow import claim_receipt
 
