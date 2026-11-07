@@ -503,6 +503,13 @@ class TaskWorkflowRunner:
                 if node['task'] == PAGE_TASK and result['workflow_navigation'].get('target') != options['workflow_page']:
                     raise WorkflowError('已核实页面与本步骤请求的目标不符。')
             entry['source'] = self._source(result, expected, native_points=native_points)
+            assignment = None
+            if options.get('assignments_only'):
+                from .daily_assignment_scope import assignment_receipt
+
+                assignment = assignment_receipt(result)
+                if assignment is not None and assignment['outcome'] == 'unknown':
+                    entry['assignment'] = assignment
             if entry['type'] == 'screen_condition' and result['status'] == 'success':
                 path = entry['source']['path']
                 if path in self._screen_sources:
@@ -518,6 +525,9 @@ class TaskWorkflowRunner:
                 if game:
                     self._identity.require_step(identity_mark)
                     entry['account_verified'] = True
+                if (assignment is not None and assignment['outcome'] != 'unknown'
+                        and self._identity.has_step_proof(identity_mark, run_dir=result.get('run_dir', ''))):
+                    entry['assignment'] = assignment
             entry['facts'] = self._facts(result)
             entry['status'] = result['status']
             if native_points and result['status'] == 'success':

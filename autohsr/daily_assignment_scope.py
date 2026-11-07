@@ -19,6 +19,21 @@ CLOSE_LABELS = ('点击空白处关闭', '点击任意位置关闭', '点击空�
 PAYMENT = ('购买', '续购', '续费', '订购', '支付', '付款')
 
 
+def assignment_receipt(report):
+    """Project a native independent assignment result without account data."""
+    value = report.get('assignment')
+    if (report.get('operation') != 'daily' or report.get('report_saved') is not True
+            or not isinstance(value, dict) or value.keys() != {'outcome', 'submission'}):
+        return None
+    state = value['outcome'], value['submission']
+    if report.get('status') == 'success' and state in (('claimed', 'verified'), ('empty', 'not_attempted')):
+        return dict(value)
+    if report.get('status') in ('partial', 'failed', 'stopped') and state in (
+            ('unknown', 'not_attempted'), ('unknown', 'attempted')):
+        return dict(value)
+    return None
+
+
 @dataclass(frozen=True)
 class _Attempt:
     epoch: int
@@ -131,6 +146,8 @@ def before_submit(ctx, scene, target, intent):
         if ctx.scene_epoch != epoch or ctx.runner.input_epoch != epoch:
             raise InputInterrupted('独立委托输入前代次已变，已丢弃旧目标。')
         ctx._assignment_reward_attempt = updated
+        if intent == CLAIM:
+            ctx.report.assignment['submission'] = 'attempted'
 
     return submit
 
@@ -151,13 +168,21 @@ def run(flow):
         scene = flow._wait(ready, timeout=8, description='核实持续委托页')
     account = _account(scene, confidence)
     count = flow._assignment_count(scene)
+    epoch, sequence = ctx.runner.input_epoch, ctx.capture_sequence
     if _settled(flow, scene, confidence):
-        return flow._result('assignments', 'ok', '持续委托暂无可收取奖励，已核对原委托进行中。', scene)
+        def empty(page):
+            return (page is not scene and ctx.capture_sequence > sequence and ctx.scene_epoch == epoch
+                    and ctx.runner.input_epoch == epoch and _settled(flow, page, confidence)
+                    and flow._assignment_count(page) == count and _account(page, confidence) == account)
+
+        second = flow._wait(empty, timeout=8, description='复核持续委托暂无可领')
+        result = flow._result('assignments', 'ok', '持续委托暂无可收取奖励，已核对原委托进行中。', second)
+        ctx.report.assignment['outcome'] = 'empty'
+        return result
     claim = _target(scene, CLAIM, confidence)
     if claim is None:
         raise AutomationError('未同时核实唯一可用的持续委托领取按钮和正数累积时长。')
 
-    epoch, sequence = ctx.runner.input_epoch, ctx.capture_sequence
     ctx.evidence(scene, 'assignments_before_claim')
     ctx.click(scene, claim, assignment_intent=CLAIM)
 
@@ -188,5 +213,7 @@ def run(flow):
     ctx.evidence(first, 'assignments_first_settled')
     second = flow._wait(lambda page: page is not first and ctx.capture_sequence > first_sequence and settled(page),
                         timeout=8, description='复核两张委托回页画面')
-    return flow._result('assignments', 'ok',
-                        f'已提交一次领取，两张画面确认累积时长归零，原有 {count[0]}/{count[1]} 项委托持续进行。', second)
+    result = flow._result('assignments', 'ok',
+                          f'已提交一次领取，两张画面确认累积时长归零，原有 {count[0]}/{count[1]} 项委托持续进行。', second)
+    ctx.report.assignment.update(outcome='claimed', submission='verified')
+    return result

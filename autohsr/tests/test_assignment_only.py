@@ -16,6 +16,7 @@ from autohsr import windows
 from autohsr.__main__ import main
 from autohsr.app import Context
 from autohsr.config import Settings
+from autohsr.desktop_daily import ASSIGNMENT_FLOW, assignment_result
 from autohsr.models import AutomationError, InputInterrupted, Scene
 from autohsr.tests.test_core import assignments_scene, token
 from autohsr.tests.test_daily_startup import phone, supply
@@ -38,7 +39,7 @@ class AssignmentOnlyTests(unittest.TestCase):
                  daily_synthesis=False, overlay_logs=False).save(config)
         original = config.read_bytes()
         document = root / 'only-assignments.json'
-        document.write_text(json.dumps(dict(version=1, name='委托',
+        document.write_text(json.dumps(dict(version=1, name=ASSIGNMENT_FLOW,
             steps=[dict(id='assignments', type='task', task='daily', params=dict(tasks=['assignments']))])),
             encoding='utf8')
         mode = start
@@ -75,6 +76,9 @@ class AssignmentOnlyTests(unittest.TestCase):
                 self.checkpoint()
 
             def wait(self, predicate, timeout=30, description='界面'):
+                nonlocal mode
+                if event == 'accrual_after_empty' and description == '复核持续委托暂无可领':
+                    mode = 'active'
                 for _ in range(5):
                     scene = self.snapshot()
                     if predicate(scene):
@@ -206,6 +210,8 @@ class AssignmentOnlyTests(unittest.TestCase):
         result = self.invoke(event='interrupt_after_claim')
         self.assertEqual(result.sent, ['委托', '领取奖励'])
         self.assertEqual(result.report['status'], 'partial')
+        step, = result.report['workflow']['steps']
+        self.assertEqual(step['assignment'], dict(outcome='unknown', submission='attempted'))
 
     def test_final_native_guard_blocks_stale_epoch_conflicting_account_and_focus_loss(self):
         for event in ('epoch_before_native', 'other_uid_before_native', 'focus_before_native'):
@@ -213,6 +219,9 @@ class AssignmentOnlyTests(unittest.TestCase):
                 result = self.invoke(event=event)
                 self.assertEqual(result.sent, ['委托'])
                 self.assertEqual(result.report['status'], 'partial')
+                step, = result.report['workflow']['steps']
+                saved = json.loads(Path(step['source']['path']).read_text('utf8'))
+                self.assertEqual(saved['assignment'], dict(outcome='unknown', submission='not_attempted'))
 
     def test_f10_at_final_native_guard_blocks_claim(self):
         result = self.invoke(event='stop_before_native')
@@ -258,9 +267,19 @@ class AssignmentOnlyTests(unittest.TestCase):
         settled = self.invoke('disabled')
         self.assertEqual(settled.sent, [])
         self.assertEqual(settled.code, 0, settled.report)
+        step, = settled.report['workflow']['steps']
+        self.assertEqual(step['assignment'], dict(outcome='empty', submission='not_attempted'))
+        self.assertEqual(assignment_result(settled.report)[0], '暂无可领委托奖励')
         legacy = self.invoke('legacy')
         self.assertEqual(legacy.sent, [])
         self.assertEqual(legacy.report['status'], 'partial')
+
+    def test_empty_assignment_needs_a_second_consistent_frame(self):
+        result = self.invoke('disabled', event='accrual_after_empty')
+        self.assertEqual(result.sent, [])
+        self.assertEqual(result.report['status'], 'partial')
+        step, = result.report['workflow']['steps']
+        self.assertEqual(step['assignment'], dict(outcome='unknown', submission='not_attempted'))
 
     def test_dark_or_duplicate_claim_is_not_submitted(self):
         dark = assignments_scene(claim='enabled')
@@ -277,6 +296,7 @@ class AssignmentOnlyTests(unittest.TestCase):
         result = self.invoke('supply', workflow=False)
         self.assertEqual(result.code, 0, result.report)
         self.assertEqual(result.sent[:2], ['点击领取今日补给', '点击领取今日补给'])
+        self.assertNotIn('assignment', result.report)
 
     def test_single_assignment_tree_claims_and_closes_its_own_display(self):
         result = self.invoke()
@@ -285,5 +305,8 @@ class AssignmentOnlyTests(unittest.TestCase):
         entry, = result.report['workflow']['steps']
         self.assertTrue(entry['account_verified'])
         original = json.loads(Path(entry['source']['path']).read_text('utf8'))
+        self.assertEqual(entry['assignment'], dict(outcome='claimed', submission='verified'))
+        self.assertEqual(original['assignment'], entry['assignment'])
+        self.assertEqual(assignment_result(result.report)[0], '已核实领取委托奖励')
         self.assertEqual([row['task'] for row in original['results']], ['assignments'])
         self.assertEqual((original['stamina_spent'], original['immersifiers_spent']), (0, 0))

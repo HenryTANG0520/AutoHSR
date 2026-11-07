@@ -2451,6 +2451,8 @@ class Runner:
         self._emit = emit or (lambda event: None)
         self._overlay = None
         self.report = RunReport()
+        if self.assignments_only:
+            self.report.assignment = dict(outcome='unknown', submission='not_attempted')
         self._stop = threading.Event()
         self._pause = threading.Event()
         self._resume_focus = False

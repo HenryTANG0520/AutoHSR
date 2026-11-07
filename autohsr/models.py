@@ -154,10 +154,13 @@ class RunReport:
     screen_test: dict = field(default_factory=dict)
     workflow_screen: dict = field(default_factory=dict)
     workflow_navigation: dict = field(default_factory=dict)
+    assignment: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         from dataclasses import asdict
         data = asdict(self)
+        if not self.assignment:
+            del data['assignment']
         if self.operation != 'challenge_result':
             del data['challenge_result']
         if self.operation != 'team_preset_calibration':

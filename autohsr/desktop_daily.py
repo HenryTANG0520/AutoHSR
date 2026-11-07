@@ -71,7 +71,14 @@ def assignment_result(report):
                 verified = (step.get('account_verified') is True and step.get('status') == 'success'
                             and child.get('status') == 'success')
                 if verified and len(rows) == 1 and rows[0].get('status') == 'ok':
-                    return '委托状态已核实', rows[0]['detail'], path
+                    if 'assignment' not in child:
+                        return '委托状态已核实', rows[0]['detail'], path
+                    from .daily_assignment_scope import assignment_receipt
+
+                    receipt = assignment_receipt(child)
+                    if receipt is not None:
+                        title = '已核实领取委托奖励' if receipt['outcome'] == 'claimed' else '暂无可领委托奖励'
+                        return title, rows[0]['detail'], path
                 incomplete = len(rows) == 1 and rows[0].get('status') in ('partial', 'failed', 'stopped')
                 title = '已停止' if report.get('status') == 'stopped' else '委托结果待核对'
                 detail = rows[0].get('detail') if incomplete else report.get('error')
