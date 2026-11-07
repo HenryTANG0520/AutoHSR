@@ -169,7 +169,8 @@ class _WorkflowPanel(_Panel):
 
         bundle_line = ttk.Frame(self)
         bundle_line.grid(row=3, column=0, sticky="ew", pady=(0, self._size(5)))
-        ttk.Label(bundle_line, text="导入导出", style="Settings.Note.TLabel", width=9).grid(row=0, column=0, sticky="w")
+        ttk.Label(bundle_line, text="导入导出", style="Settings.Note.TLabel").grid(
+            row=0, column=0, sticky="w", padx=(0, self._size(7)))
         self.import_bundle_button = self._button(bundle_line, "导入素材包…", self.import_bundle, 1)
         self.export_bundle_button = self._button(bundle_line, "导出素材包…", self.export_bundle, 2)
         self.import_native_yaml_button = self._button(bundle_line, "导入 YAML 图文…", self.import_native_yaml, 3)

@@ -449,17 +449,45 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
         self.assertIs(self.panel.draft, original)
         self.assertIn("步骤 0", self.panel.status.get())
 
-    def test_material_row_fits_within_existing_toolbar_width_at_both_scales(self):
+    def test_material_buttons_fit_and_invoke_at_existing_toolbar_width_at_both_scales(self):
         for scale in (1.0, 1.2):
-            with self.subTest(scale=scale):
+            with self.subTest(scale=scale), ExitStack() as cleanup:
                 self.ui.ui_scale = scale
                 tools.t.apply_theme(self.root, scale)
                 panel = tools.build_workflow_panel(self.root, self.ui)
+                cleanup.callback(panel.destroy)
+                cleanup.enter_context(patch.object(self.ui, "workflow_panel", panel))
                 self.root.update_idletasks()
+                width = panel.new_button.master.winfo_reqwidth()
+                panel.place(x=0, y=0, width=width, height=panel.winfo_reqheight())
+                self.root.update_idletasks()
+
                 row = panel.import_bundle_button.master
-                self.assertIs(panel.export_bundle_button.master, row)
-                self.assertLessEqual(row.winfo_reqwidth(), panel.new_button.master.winfo_reqwidth())
-                panel.destroy()
+                self.assertEqual(row.winfo_width(), width)
+                buttons = panel.import_bundle_button, panel.export_bundle_button, panel.import_native_yaml_button
+                right = 0
+                for button in buttons:
+                    self.assertIs(button.master, row)
+                    self.assertGreaterEqual(button.winfo_x(), right)
+                    self.assertEqual(button.winfo_width(), button.winfo_reqwidth())
+                    self.assertEqual(button.winfo_height(), button.winfo_reqheight())
+                    self.assertLessEqual(button.winfo_y() + button.winfo_height(), row.winfo_height())
+                    right = button.winfo_x() + button.winfo_width()
+                    self.assertLessEqual(right, width)
+                self.assertLessEqual(row.winfo_reqwidth(), width)
+
+                self.open_dialog.reset_mock()
+                self.save_dialog.reset_mock()
+                panel.import_bundle_button.invoke()
+                self.open_dialog.assert_called_once()
+                self.assertEqual(self.open_dialog.call_args.kwargs["filetypes"], tools._ZIP_FILES)
+                panel.import_native_yaml_button.invoke()
+                self.assertEqual(self.open_dialog.call_count, 2)
+                self.assertEqual(self.open_dialog.call_args.kwargs["filetypes"], tools._YAML_FILES)
+                panel._load(self.source)
+                panel.export_bundle_button.invoke()
+                self.save_dialog.assert_called_once()
+                self.assertEqual(self.save_dialog.call_args.kwargs["defaultextension"], ".zip")
 
     def test_export_holds_exact_saved_source_and_keeps_late_publication(self):
         self.load_original()
