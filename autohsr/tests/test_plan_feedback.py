@@ -1,7 +1,10 @@
 import copy
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
-from autohsr.ux import plan_result
+from autohsr.ux import failure_evidence, plan_result
 
 
 def report(tasks=(), **values):
@@ -37,6 +40,20 @@ class PlanFeedbackTests(unittest.TestCase):
         self.assertNotIn("开拓力", text)
         data["daily_verified"] = False
         self.assertIn("实训奖励未核实", plan_result(data)[1])
+
+    def test_redemption_plan_reports_only_verified_batch_outcome(self):
+        data = report(("redemption",))
+        self.assertIn("兑换反馈未核实", plan_result(data)[1])
+        data["redemption"] = dict(schema=1, status="completed", codes=["not-for-summary"],
+                                  results=[dict(status="already_used", reused=False, entry_id="a"*32)],
+                                  submitted=1, redeemed=0, reused=0)
+        label, text = plan_result(data)
+        self.assertEqual(label, "日常已完成")
+        self.assertIn("兑换码逐码反馈已核实", text)
+        self.assertNotIn("not-for-summary", text)
+        self.assertNotIn("实训", text)
+        data["redemption"]["status"] = "partial"
+        self.assertIn("兑换批次待核对", plan_result(data)[1])
 
     def test_partial_result_preserves_verified_costs_pending_costs_and_recovery(self):
         data = report(("battle", "daily"), status="partial", daily_verified=True, stamina_spent=120,
@@ -100,3 +117,41 @@ class PlanFeedbackTests(unittest.TestCase):
         text = plan_result(data)[1]
         self.assertNotIn("北京时间", text)
         self.assertIn("周常未到计划时间", text)
+
+
+class FailureEvidenceTests(unittest.TestCase):
+    def test_direct_report_only_uses_failure_image_inside_current_run(self):
+        with TemporaryDirectory() as temporary:
+            runs = Path(temporary).resolve()
+            current = runs / "current"
+            previous = runs / "previous"
+            current.mkdir()
+            previous.mkdir()
+            (previous / "123456_000001_failure.png").touch()
+            (current / "123456_000001_screen.png").touch()
+            data = dict(operation="daily", status="failed", run_dir=str(current))
+            self.assertEqual(failure_evidence(data, runs), (None, None))
+            screenshot = current / "123456_000002_failure.png"
+            screenshot.touch()
+            self.assertEqual(failure_evidence(data, runs), (screenshot, None))
+            data["status"] = "success"
+            self.assertEqual(failure_evidence(data, runs), (None, None))
+
+    def test_combined_plan_ignores_reused_evidence_and_incomplete_child_report(self):
+        with TemporaryDirectory() as temporary:
+            runs = Path(temporary).resolve() / "runs"
+            parent, daily, weekly = (runs / folder for folder in ("plan", "daily", "weekly"))
+            for folder in (parent, daily, weekly):
+                folder.mkdir(parents=True)
+            (daily / "123456_000001_failure.png").touch()
+            screenshot = weekly / "123456_000002_failure.png"
+            screenshot.touch()
+            child_report = weekly / "report.json"
+            child = dict(operation="differential_universe", run_dir=str(weekly))
+            data = report(status="partial", run_dir=str(parent))
+            data["weekly_plan"]["children"] = [dict(operation="daily", run_dir=str(daily), reused=True), child]
+            self.assertEqual(failure_evidence(data, runs), (None, None))
+            child_report.write_text(json.dumps(dict(child, status="failed", report_saved=True)), encoding="utf-8")
+            self.assertEqual(failure_evidence(data, runs), (screenshot, child_report))
+            child["run_dir"] = str(runs.parent)
+            self.assertEqual(failure_evidence(data, runs), (None, None))

@@ -17,7 +17,7 @@ from typing import Any
 
 from .config import CONFIG_PATH, ROOT, Settings, SettingsError
 from .desktop_daily import ASSIGNMENTS, ATTACHMENT_SECTIONS, HOME_TITLES
-from .ux import report_context, recovery_text, exit_text, immersifier_text, issue_text, standard_activity, standard_run_verified, universe_result, planned_battle_metrics, reported_battle_metrics, plan_result
+from .ux import failure_evidence, report_context, recovery_text, exit_text, immersifier_text, issue_text, standard_activity, standard_run_verified, universe_result, planned_battle_metrics, reported_battle_metrics, plan_result
 from . import theme
 from .currency_feedback import observation as currency_observation_text, result as currency_result
 from .currency_controls_ui import CONTROL_OPERATIONS
@@ -106,6 +106,8 @@ class AutoHSRWindow:
         self.last_run_dir: Path | None = None
         self.last_report_file: Path | None = None
         self.last_screenshot: Path | None = None
+        self.inspection_screenshot: Path | None = None
+        self.failure_report_file: Path | None = None
         self.setting_controls: list[tk.Widget] = []
         self.stamina_controls: list[tk.Widget] = []
         self._loading = True
@@ -766,14 +768,72 @@ class AutoHSRWindow:
             self.save_button.pack_forget()
         if self.busy:
             self.save_label.pack_forget()
-        can_open = not self.busy or self.paused
-        self.details_button.configure(state="normal" if can_open else "disabled")
-        for button, path, directory in ((self.report_button, self.last_report_file, False), (self.directory_button, self.last_run_dir, True), (self.screenshot_button, self.last_screenshot, False)):
-            exists = path is not None and (path.is_dir() if directory else path.is_file())
-            button.configure(state="normal" if can_open and exists else "disabled")
+        self._refresh_record_controls()
         self.refresh_feedback()
         if self.active_page == 'settings':
             self.settings_shell.queue_layout()
+
+    def _showing_inspection(self):
+        return self.output_tabs.select() == str(self.inspection_text.frame.master)
+
+    def _record_screenshot(self):
+        return self.inspection_screenshot if self._showing_inspection() else self.last_screenshot
+
+    def _open_record_screenshot(self):
+        self._open_path(self._record_screenshot())
+
+    def _show_failure_report(self):
+        if self.failure_report_file is None:
+            return
+        try:
+            content = self.failure_report_file.read_text(encoding="utf-8")
+        except OSError as error:
+            messagebox.showerror("失败子报告", str(error), parent=self.root)
+            return
+        self._show_summary(content, title="失败子报告", return_focus=self.failure_report_button)
+
+    def _refresh_record_controls(self, _event=None):
+        can_open = not self.busy or self.paused
+        inspection = self._showing_inspection()
+        self.screenshot_button.configure(text="检测截图" if inspection else "运行截图")
+        for button, path in ((self.report_button, self.last_report_file),
+                             (self.failure_report_button, self.failure_report_file),
+                             (self.screenshot_button, self._record_screenshot())):
+            button.configure(state="normal" if can_open and path is not None and path.is_file() else "disabled")
+        self.directory_button.configure(state="normal" if can_open and self.last_run_dir is not None
+                                        and self.last_run_dir.is_dir() else "disabled")
+        if self.failure_report_file is None:
+            self.failure_report_button.pack_forget()
+        elif not self.failure_report_button.winfo_manager():
+            self.failure_report_button.pack(side="left", before=self.directory_button,
+                                            padx=(0, round(10*self.ui_scale)))
+
+    def _reset_run_evidence(self):
+        self.last_run_dir = self.last_report_file = self.last_screenshot = self.failure_report_file = None
+        self.history_context.set("")
+        self._replace_text(self.report_text, "")
+
+    def _record_run(self, report, *, history_path=None):
+        self._reset_run_evidence()
+        run_dir = report.get("run_dir")
+        unsaved = report.get("report_saved") is False
+        unfinished = (history_path is not None and report.get("operation") == "task_workflow"
+                      and report.get("finished_at") == "")
+        if history_path is not None or isinstance(run_dir, str) and run_dir:
+            self.last_run_dir = history_path.parent if history_path is not None else Path(run_dir)
+            if not unsaved and not unfinished:
+                self.last_report_file = self.last_run_dir / "report.json"
+            self.last_screenshot, self.failure_report_file = failure_evidence(
+                dict(report, run_dir=str(self.last_run_dir)), ROOT / "runs")
+        caption = report_context(report, history_path or self.last_report_file)
+        if history_path is None:
+            caption = caption.replace("上次记录", "本次记录", 1)
+        if unfinished:
+            caption = "任务流仅有中间快照 · " + caption
+        elif unsaved:
+            caption = "最终报告未保存 · " + caption
+        self.history_context.set(caption)
+        self._replace_text(self.report_text, json.dumps(report, ensure_ascii=False, indent=2))
 
     def _preset(self, stamina: int, rounds: int) -> None:
         if self.busy or not self.settings.allow_stamina_spend:
@@ -1018,11 +1078,13 @@ class AutoHSRWindow:
     def _submit_tool_job(self, title, work, on_done, on_error=None) -> bool:
         return self._start_desktop_job(title, work, on_done, on_error)
 
-    def _start_desktop_job(self, title, work, on_done, on_error, *, game=False) -> bool:
+    def _start_desktop_job(self, title, work, on_done, on_error, *, game=False, clear_run_evidence=False) -> bool:
         if self.busy or self.closing or (self.worker is not None and self.worker.is_alive()):
             return False
         self.stop_requested.clear()
         self.runner = None
+        if clear_run_evidence:
+            self._reset_run_evidence()
         self.summary.set("")
         self.result_alert.set("")
         self.status.set("● " + title)
@@ -1091,14 +1153,7 @@ class AutoHSRWindow:
         def present(report):
             state = report.get('status', 'partial')
             self.status.set('● ' + STATUS_NAMES.get(state, '结果待核对'))
-            if report.get('run_dir'):
-                self.last_run_dir = Path(report['run_dir'])
-                unsaved = report.get('report_saved') is False
-                # An interrupted write can leave an earlier report in this same directory.
-                self.last_report_file = None if unsaved else self.last_run_dir / 'report.json'
-                context = report_context(report, self.last_report_file)
-                self.history_context.set('本次最终报告未保存 · ' + context if unsaved else context)
-                self._replace_text(self.report_text, json.dumps(report, ensure_ascii=False, indent=2))
+            self._record_run(report)
             self._refresh_recovery()
             self._refresh_controls()
             if on_report is not None:
@@ -1110,7 +1165,7 @@ class AutoHSRWindow:
             if on_report is not None:
                 on_report(dict(operation=operation, status='failed', report_saved=False, error=message))
 
-        return self._start_desktop_job(title, work, present, failed, game=game)
+        return self._start_desktop_job(title, work, present, failed, game=game, clear_run_evidence=True)
 
     def _start_daily_assignment(self, on_report=None) -> bool:
         settings = self._read_settings(operation=ASSIGNMENTS)
@@ -1336,6 +1391,9 @@ class AutoHSRWindow:
         self.summary.set("")
         self.result_alert.set("")
         self.stop_requested.clear()
+        if action == "check":
+            self.inspection_screenshot = None
+            self._replace_text(self.inspection_text, "")
         self._set_busy(True)
         self.status.set("● 正在检测" if action == "check" else "● 正在启动")
         self._log("检测游戏窗口与 OCR，请稍候……" if action == "check" else "正在发送游戏启动请求……")
@@ -1492,6 +1550,7 @@ class AutoHSRWindow:
             messagebox.showinfo("未选择任务", "请开启至少一项每日任务。", parent=self.root)
             return
         self.runner = None
+        self._reset_run_evidence()
         self.active_operation = operation
         self._active_weekly_mode = settings.weekly_mode if operation == 'plan' else None
         self.plan_phase = "daily" if operation == "plan" else ""
@@ -1928,6 +1987,7 @@ class AutoHSRWindow:
         if hasattr(report, "to_dict"):
             report = report.to_dict()
         report = report if isinstance(report, dict) else {}
+        self._record_run(report)
         from .redemption_report import report_summary
         if report_summary(report) is not None:
             self.redemption_panel.render_report(report)
@@ -2021,19 +2081,25 @@ class AutoHSRWindow:
                 plan_label = '本次安排已结束'
         self.result_alert.set(issue_text(report))
         if report.get("report_saved") is False:
-            self.summary.set("报告未保存\n"+self.summary.get())
+            write_error = report.get("report_write_error")
+            self.summary.set("报告未保存" + (f"：{write_error}" if write_error else "") + "\n" + self.summary.get())
+        if operation in ("daily", "plan", "reward_only") and status in ("partial", "failed", "stopped", "cancelled"):
+            failed = TASK_NAMES.get(report.get("failure_task"),
+                                    {"startup": "进入游戏", "redemption": "兑换码"}.get(report.get("failure_task")))
+            if failed is None and (report.get("weekly_plan") or {}).get("status") in ("needs_review", "exhausted", "expired"):
+                failed = "周常"
+            if failed:
+                self.summary.set(self.summary.get() + "\n中断阶段：" + failed)
+            has_evidence = self.last_screenshot is not None or self.failure_report_file is not None
+            self.summary.set(self.summary.get() + "\n" + ("本次证据见「记录 → 运行报告」。" if has_evidence
+                                                           else "本次未找到可打开的失败截图或子报告。"))
+            self.output_tabs.select(self.report_text.frame.master)
         if operation == "plan":
             self._weekly_result_summary = self.summary.get()
-        self.history_context.set(report_context(report, Path(report["run_dir"]) / "report.json" if report.get("run_dir") else None))
-        if report.get("report_saved") is False:
-            self.history_context.set("本次报告未写入磁盘 · " + self.history_context.get())
-        self._replace_text(self.report_text, json.dumps(report, ensure_ascii=False, indent=2))
         self.current_task.set(plan_label or STATUS_NAMES.get(status, status))
         self._log(self.summary.get(), "success" if status in ("success", "completed", "done")
                   and plan_label != "结果待核对" else "warning")
         if report.get("run_dir"):
-            self.last_run_dir = Path(report["run_dir"])
-            self.last_report_file = self.last_run_dir / "report.json"
             self._log(("本次报告未保存；已保留的其他证据目录：" if report.get("report_saved") is False else "运行报告与截图：") + str(self.last_run_dir))
         self.runner = None
         self._set_busy(False)
@@ -2070,8 +2136,8 @@ class AutoHSRWindow:
         self.detect_title.set(title)
         self.detect_size.set(size)
         self.detect_permission.set(permission)
-        self.last_screenshot = Path(data["screenshot"]) if data.get("screenshot") else None
-        self._replace_text(self.inspection_text, f"窗口：{title}\n{size}\n{permission}\n截图：{self.last_screenshot or '未生成'}\n\nOCR 识别文字\n{data.get('ocr_text') or '未识别到文字'}")
+        self.inspection_screenshot = Path(data["screenshot"]) if data.get("screenshot") else None
+        self._replace_text(self.inspection_text, f"窗口：{title}\n{size}\n{permission}\n截图：{self.inspection_screenshot or '未生成'}\n\nOCR 识别文字\n{data.get('ocr_text') or '未识别到文字'}")
         self._set_busy(False)
         self.status.set("● 检测完成")
         self._log(f"检测完成：{title}；{size}；{permission}。识别详情见“窗口检测”。")
@@ -2087,14 +2153,9 @@ class AutoHSRWindow:
             reports = list((ROOT / "runs").glob("*/report.json"))
             if reports:
                 path = max(reports, key=lambda p: p.stat().st_mtime)
-                content = path.read_text(encoding="utf-8")
-                report = json.loads(content)
-                context = report_context(report, path)
-                unfinished = report.get('operation') == 'task_workflow' and report.get('finished_at') == ''
-                self.last_report_file = None if unfinished else path
-                self.history_context.set('任务流仅有中间快照 · ' + context if unfinished else context)
-                self._replace_text(self.report_text, content)
-                self.last_run_dir = path.parent
+                report = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(report, dict):
+                    self._record_run(report, history_path=path)
         except (OSError, ValueError):
             pass
 

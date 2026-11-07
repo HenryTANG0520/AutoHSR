@@ -160,8 +160,9 @@ class WorkflowToolStepTests(TestCase):
                     runner.stop()
                     runner.checkpoint()
 
-                def submit(_title, work, present, _failed, *, game):
+                def submit(_title, work, present, _failed, *, game, clear_run_evidence):
                     self.assertFalse(game)
+                    self.assertTrue(clear_run_evidence)
                     present(work(None))
                     return True
 
@@ -169,6 +170,8 @@ class WorkflowToolStepTests(TestCase):
                                      status=Mock(), last_report_file=self.root / 'older.json', history_context=Mock(),
                                      report_text=object(), _replace_text=Mock(), _refresh_recovery=Mock(),
                                      _refresh_controls=Mock(), _start_desktop_job=submit)
+                ui._reset_run_evidence = AutoHSRWindow._reset_run_evidence.__get__(ui)
+                ui._record_run = AutoHSRWindow._record_run.__get__(ui)
                 on_report = Mock()
                 with (patch.object(runner, '_save', side_effect=save_report),
                       patch.object(runner, '_wait', side_effect=stop_wait) as wait):

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 from pathlib import Path
 import re
 
@@ -74,6 +75,51 @@ def report_context(report: dict, path: Path | None = None) -> str:
     return f"上次记录 · {when} · {operation} · {kind} · {day}"
 
 
+def failure_evidence(report: dict, runs: Path) -> tuple[Path | None, Path | None]:
+    """Locate existing failure evidence and the current plan's failed child report."""
+    if report.get("status") in ("success", "completed", "done"):
+        return None, None
+    if not isinstance(report.get("run_dir"), str) or not report["run_dir"]:
+        return None, None
+    try:
+        root = runs.resolve()
+        directory = Path(report["run_dir"]).resolve()
+        if directory.parent != root or not directory.is_dir():
+            return None, None
+        child_report = None
+        evidence_dirs = [directory]
+        weekly = report.get("weekly_plan")
+        children = weekly.get("children") if isinstance(weekly, dict) else None
+        if report.get("operation") == "plan" and isinstance(children, list):
+            child = next((row for row in reversed(children)
+                          if isinstance(row, dict) and row.get("reused") is not True), None)
+            if child and isinstance(child.get("run_dir"), str) and child["run_dir"]:
+                child_dir = Path(child["run_dir"]).resolve()
+                if child_dir.parent == root and child_dir != directory:
+                    path = child_dir / "report.json"
+                    try:
+                        saved = json.loads(path.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        saved = None
+                    if (isinstance(saved, dict) and not path.is_symlink()
+                            and saved.get("operation") == child.get("operation")
+                            and saved.get("run_dir") == child["run_dir"]
+                            and saved.get("report_saved") is True
+                            and saved.get("status") in ("partial", "failed", "stopped", "cancelled")):
+                        child_report = path
+                        evidence_dirs.insert(0, child_dir)
+        for folder in evidence_dirs:
+            screenshot = max((path for path in folder.glob("*_failure.png")
+                              if re.fullmatch(r"\d{6}_\d{6}_failure\.png", path.name)
+                              and path.is_file() and not path.is_symlink()),
+                             key=lambda path: path.stat().st_mtime_ns, default=None)
+            if screenshot is not None:
+                return screenshot, child_report
+        return None, child_report
+    except (OSError, RuntimeError, ValueError):
+        return None, None
+
+
 def exit_text(report: dict) -> str:
     result = next((r for r in report.get("results", []) if r.get("task") == "close_game"), None)
     if result:
@@ -92,7 +138,7 @@ def recovery_text(report: dict) -> str:
     next_step = report.get("safe_next") or (
         "人工核对当前界面与消耗，返回主界面后仅补领奖。" if any(report.get(k) for k in
             ('stamina_spent','stamina_pending','immersifiers_spent','immersifiers_pending')) else
-        "查看本次截图，处理登录/更新或未知页面后重新检测；未确认事项不要视为完成。")
+        "查看本次运行记录，处理登录、更新或未知页面后重新检测。")
     return f"原因：{error}\n下一步：{next_step}"
 
 
@@ -126,7 +172,7 @@ def plan_result(report: dict) -> tuple[str, str] | None:
     weekly = report.get("weekly_plan")
     tasks = weekly.get("daily_tasks") if isinstance(weekly, dict) else None
     if (not isinstance(tasks, list) or any(not isinstance(name, str) or name not in
-            ("assignments", "battle", "daily", "mail", "battlepass") for name in tasks)
+            ("assignments", "battle", "daily", "redemption", "mail", "battlepass") for name in tasks)
             or len(tasks) != len(set(tasks))):
         return None
     status = report.get("status")
@@ -174,6 +220,14 @@ def plan_result(report: dict) -> tuple[str, str] | None:
                 parts.append(f"{unknown} {name}待核对")
     if "daily" in tasks or report.get("daily_verified") is True:
         parts.append(('原日常' if reused else '')+("实训奖励已核实" if report.get("daily_verified") is True else "实训奖励未核实"))
+    if "redemption" in tasks:
+        from .redemption_report import report_summary
+        state = (report_summary(report) or {}).get("state")
+        parts.append(("原日常" if reused else "") + {
+            "completed": "兑换码逐码反馈已核实",
+            "empty": "没有可处理的兑换码",
+            "needs_review": "兑换批次待核对",
+        }.get(state, "兑换反馈未核实"))
     if any(isinstance(row, dict) and row.get("task") == "close_game" for row in report.get("results", [])):
         parts.append(('原日常：' if reused else '')+exit_text(report))
     lines = [" · ".join(parts)]

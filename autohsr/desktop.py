@@ -183,12 +183,14 @@ def _logs(ui):
     files = ttk.Frame(page)
     files.grid(row=1, column=0, sticky="ew", pady=(round(10*s), 0))
     ui.report_button = ttk.Button(files, text="打开报告", command=lambda: ui._open_path(ui.last_report_file))
-    ui.screenshot_button = ttk.Button(files, text="查看截图", command=lambda: ui._open_path(ui.last_screenshot))
+    ui.screenshot_button = ttk.Button(files, text="查看截图", command=ui._open_record_screenshot)
+    ui.failure_report_button = ttk.Button(files, text="失败子报告", command=ui._show_failure_report)
     ui.directory_button = ttk.Button(files, text="运行目录", command=lambda: ui._open_path(ui.last_run_dir))
-    for button in (ui.report_button, ui.screenshot_button, ui.directory_button):
+    for button in (ui.report_button, ui.screenshot_button, ui.failure_report_button, ui.directory_button):
         button.configure(style="Panel.TButton")
         button.pack(side="left", padx=(0, round(10*s)))
     ui.details_button = ui.screenshot_button
+    ui.output_tabs.bind("<<NotebookTabChanged>>", ui._refresh_record_controls, add="+")
     note(page, variable=ui.history_context, row=2, style="Hint.TLabel", scale=s)
 
 

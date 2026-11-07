@@ -68,6 +68,7 @@ class Host:
         self.stop_requested = Event()
         self._native_run = NativeRunSlot(self.events, self.stop_requested)
         self.runner = self.worker = None
+        self.book_editor = None
         self.busy = self.running = self.paused = self.stopping = self.closing = self.dirty = False
         self.status, self.summary, self.result_alert, self.current_task = (Mock() for _ in range(4))
         self.root = SimpleNamespace(iconify=Mock(), withdraw=Mock(), destroy=Mock(), after=Mock(), after_cancel=Mock())
@@ -75,6 +76,8 @@ class Host:
                                                 runtime=SimpleNamespace(wait_idle=Mock(return_value=True)))
         self._clock = self._freeze_clock = self._refresh_weekly_caption = Mock()
         self._refresh_controls = self._refresh_recovery = self._restore = self._log = Mock()
+        self._reset_run_evidence = Mock()
+        self._record_run = Mock()
 
     def _set_busy(self, busy, running=False):
         self.busy, self.running = busy, running
