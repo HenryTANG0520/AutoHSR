@@ -87,8 +87,8 @@ def page(*tokens):
     return Scene(list(tokens), image=np.full((540, 960, 3), 35, np.uint8))
 
 
-def phone():
-    return page(token('开拓等级', .8, .15), token('委托', .8, .6), token('UID:100000000', .08, .97))
+def phone(uid='100000000'):
+    return page(token('开拓等级', .8, .15), token('委托', .8, .6), token('UID:' + uid, .08, .97))
 
 
 def login():
@@ -175,18 +175,21 @@ class ColdStartEntryTests(TestCase):
             self.assertFalse((root / 'schedules').exists())
 
     def invoke(self, frames, *, plan=False, rewards=False, cold=True, stop=None, battle=False, profile_uid='',
-               scheduled=False):
+               scheduled=False, cached_uid=''):
         temporary = TemporaryDirectory(prefix='hsr-cold-')
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
         config = root / 'config.json'
         Settings(assignments=False, battle=battle, daily=not battle, daily_synthesis=False,
                  overlay_logs=False, mail=False, battlepass=False,
-                 profile_account_key=account_key_from_uid(profile_uid) if profile_uid else '').save(config)
+                 profile_account_key=account_key_from_uid(profile_uid) if profile_uid else '',
+                 profile_cached_login=bool(cached_uid)).save(config)
         initial_config = config.read_bytes()
         geometry = windows.Geometry(0, 0, 960, 540)
         window = windows.GameWindow.__new__(windows.GameWindow)
         window.hwnd, window.path, window.focus = 50971, None, Mock()
+        window.current_executable = Mock(return_value=Settings().game_path)
+        window.current_window_key = Mock(return_value='synthetic-window')
         native = Mock()
         native.IsWindow.return_value = 1
         native.IsIconic.return_value = 0
@@ -279,6 +282,8 @@ class ColdStartEntryTests(TestCase):
             finds = [AutomationError('synthetic absent'), window] if cold else [window]
             stack.enter_context(patch('autohsr.app.find_game', side_effect=finds))
             launch = stack.enter_context(patch('autohsr.app.launch_game', return_value='synthetic launch'))
+            cache = stack.enter_context(patch('autohsr.profile_login._cached_key',
+                return_value=account_key_from_uid(cached_uid) if cached_uid else ''))
             args = ['--plan' if plan else '--run', '--config', str(config)]
             if rewards:
                 args.append('--reward-only')
@@ -300,7 +305,7 @@ class ColdStartEntryTests(TestCase):
         saved = json.loads(output.getvalue())
         self.assertTrue(saved['report_saved'])
         return SimpleNamespace(code=code, report=saved, sent=sent, executed=executed, captures=index,
-                               epochs=capture_epochs, root=root)
+                               epochs=capture_epochs, root=root, cached_reads=cache.call_count)
 
     def test_black_splash_login_and_second_black_reach_daily(self):
         result = self.invoke([EmptyCapture('blank'), page(token('启动画面', .5, .5)), login(), login(),
@@ -343,6 +348,48 @@ class ColdStartEntryTests(TestCase):
         self.assertIn('已绑定账号', result.report['error'])
         self.assertEqual(result.executed, [])
         self.assertEqual(result.sent, [])
+
+    def test_cached_profile_login_clicks_once_and_verifies_current_uid(self):
+        for plan, scheduled in ((False, False), (True, False), (False, True)):
+            with self.subTest(plan=plan, scheduled=scheduled):
+                result = self.invoke([login(), login(), login(), phone()], profile_uid='100000000',
+                                     cached_uid='100000000', plan=plan, scheduled=scheduled)
+                self.assertEqual(result.code, 0)
+                self.assertEqual(result.sent, [('点击进入', (0, 0, 0))])
+                self.assertEqual(result.cached_reads, 1)
+                self.assertEqual(result.executed, ['daily'])
+                reports = [json.loads(path.read_text('utf8')) for path in result.root.rglob('report.json')]
+                [daily] = [report for report in reports if report['operation'] == 'daily']
+                self.assertEqual(daily['profile_login'], dict(enter_submitted=True, account_verified=True))
+
+    def test_cached_profile_login_blocks_mismatched_cache_and_does_not_create_budget(self):
+        with patch('autohsr.recovery.BattleBudget.begin') as begin:
+            result = self.invoke([login(), login()], battle=True, profile_uid='100000000', cached_uid='200000000')
+        self.assertEqual(result.code, 1)
+        self.assertIn('上次账号与当前方案不符', result.report['error'])
+        self.assertEqual(result.sent, [])
+        self.assertEqual(result.cached_reads, 1)
+        begin.assert_not_called()
+
+    def test_cached_profile_login_stops_if_game_reports_another_uid(self):
+        with patch('autohsr.recovery.BattleBudget.begin') as begin:
+            result = self.invoke([login(), login(), phone('200000000')], battle=True,
+                                 profile_uid='100000000', cached_uid='100000000')
+        self.assertEqual(result.code, 1)
+        self.assertEqual(result.sent, [('点击进入', (0, 0, 0))])
+        self.assertEqual(result.executed, [])
+        self.assertEqual(result.report['profile_login'], dict(enter_submitted=True, account_verified=False))
+        begin.assert_not_called()
+
+    def test_cached_profile_login_refuses_verification_duplicate_and_off_target_labels(self):
+        for frame in (page(token('点击进入', .5, .92), token('验证码', .5, .5)),
+                      page(token('点击进入', .5, .92), token('点击进入', .3, .8)),
+                      page(token('点击进入', .85, .4))):
+            with self.subTest(labels=frame.text):
+                result = self.invoke([frame], profile_uid='100000000', cached_uid='100000000')
+                self.assertEqual(result.code, 1)
+                self.assertEqual(result.cached_reads, 0)
+                self.assertEqual(result.sent, [])
 
     def test_scheduled_daily_uses_frozen_binding_after_configuration_changes(self):
         with patch('autohsr.recovery.BattleBudget.begin') as begin:

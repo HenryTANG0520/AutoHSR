@@ -114,6 +114,7 @@ class RunReport:
     challenge: dict = field(default_factory=dict)
     du_rewards: dict = field(default_factory=dict)
     execution_identity: dict = field(default_factory=dict)
+    profile_login: dict = field(default_factory=dict)
     engagement: int | None = None
     run_dir: str = ""
     operation: str = "daily"
@@ -165,6 +166,8 @@ class RunReport:
     def to_dict(self) -> dict:
         from dataclasses import asdict
         data = asdict(self)
+        if not self.profile_login:
+            del data['profile_login']
         if not self.assignment:
             del data['assignment']
         if not self.train_supply:

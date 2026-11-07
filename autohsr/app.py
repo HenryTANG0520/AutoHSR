@@ -74,6 +74,7 @@ class Context:
         self._currency_position_request = None
         self._du_actions = []
         self._daily_startup = None
+        self._cached_profile_login = None
         from .workflow_identity import wrap_window
         self.window = wrap_window(self, window)
 
@@ -103,11 +104,13 @@ class Context:
     def daily_startup(self, workflow, cold_start):
         from .workflows import DailyStartupObservation
         previous = self._daily_startup
+        previous_login = self._cached_profile_login
         self._daily_startup = DailyStartupObservation(workflow, cold_start)
         try:
             yield
         finally:
             self._daily_startup = previous
+            self._cached_profile_login = previous_login
 
     def snapshot(self) -> Scene:
         occluded_frames=0
@@ -176,6 +179,10 @@ class Context:
             self.scene_epoch = capture_epoch
             self.last_scene = scene  # Keep a failing identity frame for local evidence.
             if self._daily_startup is not None and not self._daily_startup.accept(scene):
+                self.last_scene = None
+                self._daily_startup.retry(scene)
+                continue
+            if self._cached_profile_login is not None and self._cached_profile_login.observe(scene):
                 self.last_scene = None
                 self._daily_startup.retry(scene)
                 continue
@@ -3271,9 +3278,16 @@ class Runner:
             daily_workflow = DailyWorkflow(context) if self.report.operation in ('daily', 'reward_only') else None
             if daily_workflow is not None:
                 self.report.failure_task = 'startup'
+            cached_login = (self.report.operation == 'daily' and not self.assignments_only
+                            and not self.daily_attachment_only and self.settings.profile_cached_login)
             with context.daily_startup(daily_workflow, cold_start) if daily_workflow is not None else nullcontext():
+                if cached_login:
+                    from .profile_login import CachedProfileLogin
+                    context._cached_profile_login = CachedProfileLogin(context, daily_workflow)
                 if not (build_target or self._foreground_only):
                     prepare_workflow_identity(context)
+                    if cached_login:
+                        self.report.profile_login['account_verified'] = True
                 if defer_battle_budget:
                     self.battle_budget.begin(new_run=self.new_battle_run,
                         **(dict(protect_pending=True) if self.use_power_plan else {}))

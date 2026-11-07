@@ -16,6 +16,8 @@ class DesktopProfiles:
 
     def _current_note(self):
         binding = '已绑定账号' if self.ui.settings.profile_account_key else '未绑定账号'
+        if self.ui.settings.profile_cached_login:
+            binding += ' · 自动进入已有会话'
         return f'当前方案 · {self.catalog.label_for(self.ui.config_path)} · {binding}'
 
     def names(self):
@@ -104,5 +106,22 @@ class DesktopProfiles:
             self.feedback.set(str(error))
             return
         if key == ui.settings.profile_account_key or ui._read_settings(
-                save=True, operation='save', overrides={'profile_account_key': key}) is not None:
+                save=True, operation='save',
+                overrides={'profile_account_key': key, 'profile_cached_login': False}) is not None:
+            self.feedback.set(self._current_note())
+
+    def toggle_cached_login(self):
+        if not self._ready_for_change():
+            return
+        ui = self.ui
+        if not ui.settings.profile_account_key:
+            self.feedback.set('请先为当前方案绑定账号。')
+            return
+        from tkinter import messagebox
+        enabled = not ui.settings.profile_cached_login
+        prompt = ('允许日常自动进入游戏中已有的登录会话吗？需要本机上次账号与当前方案相符。'
+                  if enabled else '停用当前方案的自动进入？')
+        if not messagebox.askyesno('自动进入已有会话', prompt, parent=ui.root) or not self._ready_for_change():
+            return
+        if ui._read_settings(save=True, operation='save', overrides={'profile_cached_login': enabled}) is not None:
             self.feedback.set(self._current_note())

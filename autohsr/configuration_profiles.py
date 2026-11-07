@@ -90,7 +90,7 @@ class ConfigurationProfiles:
         except FileExistsError:
             raise ProfileError('已有同名方案。') from None
         try:
-            replace(settings, profile_account_key='').save(path)
+            replace(settings, profile_account_key='', profile_cached_login=False).save(path)
         except BaseException:
             # Remove only an empty directory just created by this invocation.
             try:

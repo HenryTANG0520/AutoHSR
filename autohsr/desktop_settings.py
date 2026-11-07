@@ -294,8 +294,8 @@ def build_settings(ui):
     combo(row("game", 4, "配置方案", variable=profiles.feedback), profiles.choice, profiles.names(),
           "configuration_profile_choice")
     buttons(row("game", 5, "管理方案"), (("新建副本", profiles.create), ("切换方案", profiles.switch)))
-    buttons(row("game", 6, "方案账号", hint="请先在游戏中登录对应账号"), (("设置方案账号", profiles.bind_account),))
-    note("game", 7, text="切换会重新加载设置和工具页。")
+    buttons(row("game", 6, "方案账号"), (("设置方案账号", profiles.bind_account),))
+    buttons(row("game", 7, "已有会话"), (("设置自动进入", profiles.toggle_cached_login),))
 
     ui.daily_task_controls = {}
     index = 0
