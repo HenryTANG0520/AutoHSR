@@ -64,6 +64,7 @@ class ContractTests(unittest.TestCase):
             journal = root / 'runs' / 'battle-session.json'
             journal.parent.mkdir()
             ui = SimpleNamespace(busy=False, closing=False, worker=None, root=object(),
+                                 _battle_setup_needed=lambda: False,
                                  _read_settings=Mock(return_value=Settings()),
                                  desktop_schedule=SimpleNamespace(manual_confirmation=False),
                                  power_mode=SimpleNamespace(get=lambda: '单副本'))
