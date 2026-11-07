@@ -401,6 +401,8 @@ class WorkflowNavigation:
                 return VISA_CHARACTERS_PAGE
             if support_visa_target(scene, self.confidence) is not None:
                 return _VISA_MORE_MENU
+            if self.target == VISA_CHARACTERS_PAGE and page == 'world':
+                return self._world_return_page(scene, page)
             return 'phone' if support_more_target(scene, self.confidence) is not None else None
         if self.target == WORLD_WORKFLOW_PAGE:
             return self._world_return_page(scene, page)
@@ -470,6 +472,8 @@ class WorkflowNavigation:
             token = phone_achievement_target(frame.scene, self.confidence) if page == 'phone' else None
             return _Action('open_achievements', (self.target,), token) if token else None
         if self.target in (VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE):
+            if self.target == VISA_CHARACTERS_PAGE and page == 'world':
+                return _Action('open_phone', ('phone',))
             if page == 'phone':
                 token = support_more_target(frame.scene, self.confidence)
                 return _Action('open_more', (_VISA_MORE_MENU,), token) if token else None
@@ -681,9 +685,20 @@ class WorkflowNavigation:
 
                     if observation['game_day'] != game_day():
                         raise AutomationError('每日实训观察已跨游戏日，请重新核对。')
+                gift = self.record.get('support_gift_observation')
+                if gift is not None and self._support_gift(self.arrival) != gift:
+                    raise AutomationError('漫游签证礼物提示在报告提交前已变化。')
         except AutomationError:
             self.record.pop('training_observation', None)
+            self.record.pop('support_gift_observation', None)
             raise
+
+    def _support_gift(self, pair):
+        from .support_gift_observe import observe_support_gift
+
+        result = observe_support_gift((frame.scene for frame in pair), self.c.vision)
+        self._final_guard(pair)
+        return result
 
     def require_claim_handoff(self, frame):
         """Keep the independently captured claim frames in the verified navigation scope."""
@@ -729,7 +744,7 @@ class WorkflowNavigation:
         elif self.target == VISA_COLLECTION_PAGE:
             expected, version = ('phone', VISA_COLLECTION_PAGE), VISA_LAYOUT_VERSION
         elif self.target == VISA_CHARACTERS_PAGE:
-            expected, version = ('phone', VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE), VISA_LAYOUT_VERSION
+            expected, version = ('world', 'phone', VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE), VISA_LAYOUT_VERSION
         elif self.target in BATTLEPASS_WORKFLOW_PAGES:
             expected, version = ('phone', *BATTLEPASS_WORKFLOW_PAGES), _BATTLEPASS_LAYOUT_VERSION
         elif self.target in GUIDE_WORKFLOW_SUBPAGES:
@@ -775,6 +790,9 @@ class WorkflowNavigation:
                     self._final_guard(pair)
                 if observation is not None:
                     self.record['training_observation'] = observation
+            elif self.target == VISA_CHARACTERS_PAGE:
+                with _seal(pair):
+                    self.record['support_gift_observation'] = self._support_gift(pair)
         except BaseException:
             self.record['page_verified'] = False
             raise

@@ -26,7 +26,7 @@ _NAVIGATION_PAGES = frozenset((*WORKFLOW_PAGES, 'world', 'activity_list'))
 _ACTIONS = frozenset(('return_to_hub', 'open_journey_events', *('open_' + page for page in WORKFLOW_PAGES)))
 _EXTRA_ACTIONS = {
     VISA_COLLECTION_PAGE: ('open_more', 'open_visa_collection'),
-    VISA_CHARACTERS_PAGE: ('open_more', 'open_visa_collection', 'open_visa_characters'),
+    VISA_CHARACTERS_PAGE: ('open_phone', 'open_more', 'open_visa_collection', 'open_visa_characters'),
     ACHIEVEMENT_OVERVIEW_PAGE: ('open_achievements',),
     REDEMPTION_FORM_PAGE: ('open_redemption_more', 'open_redemption_form'),
     WORLD_WORKFLOW_PAGE: ('return_to_hub',),
@@ -159,6 +159,12 @@ def _project_child(row, step, parent_dir, read_source):
             observation = training_observation_receipt(navigation)
             if observation is not None and step.get('training_observation') == observation:
                 row['training_observation'] = observation
+        if target == VISA_CHARACTERS_PAGE:
+            from .support_gift_observe import gift_receipt
+
+            gift = gift_receipt(navigation)
+            if gift is not None and step.get('support_gift_observation') == gift:
+                row['support_gift_observation'] = gift
 
 
 def project_result(recipe, report, *, read_source):

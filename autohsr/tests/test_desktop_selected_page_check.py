@@ -106,6 +106,19 @@ class DesktopSelectedPageCheckTests(TestCase):
         self.assertTrue(checks['messages'].instate(('disabled',)))
         self.assertEqual(targets(self.preview()), ('phone',))
 
+    def test_support_showcase_is_independent_and_gift_is_not_a_claim(self):
+        self.select_pages('visa_characters')
+        self.assertTrue(self.panel.page_check.checks['phone'].instate(('disabled',)))
+        self.assertIn('大世界', self.panel.page_check.order['text'])
+        self.assertEqual(targets(self.preview()), ('visa_characters',))
+        self.assertTrue(self.panel.start())
+        row = dict(page('visa_characters', sent=4),
+                   support_gift_observation=dict(indicator='visible', claimable_state='unknown',
+                                                 claim_receipt_status='not_observed'))
+        self.deliver(dict(status='success', pages=[row]))
+        self.assertIn('漫游签证支援区 · 到页已核实', self.panel.result_detail['text'])
+        self.assertIn('礼物提示可见。领取与到账待核对。', self.panel.result_detail['text'])
+
     def test_running_disables_edits_and_only_projects_anonymous_pages(self):
         self.select_pages('phone', 'mail', 'odyssey')
         recipe = self.preview()

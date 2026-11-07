@@ -186,7 +186,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 yield pages[-1] if already_open and not resume else pages[min(completed_inputs + start_in_list, len(pages) - 1)]
 
         window = _Window(frames())
-        if target == 'world':
+        if target in ('world', 'visa_characters'):
             window.key = GameWindow.key.__get__(window)
         if battlepass_size is not None:
             window.geometry = Geometry(0, 0, *battlepass_size)
@@ -267,7 +267,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
 
         def vision(confidence):
             engine = window.vision(confidence)
-            if target == 'world' or guide_target:
+            if target in ('world', 'visa_characters') or guide_target:
                 engine.template = Vision.__new__(Vision).template
             return engine
 
@@ -315,7 +315,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 ('autohsr.workflow_lease.NAME', 'Local\\AutoHSR.WorkflowNavigationQA.' + uuid4().hex),
             ):
                 stack.enter_context(patch(name, value))
-            if target != 'world' and not guide_target:
+            if target not in ('world', 'visa_characters') and not guide_target:
                 stack.enter_context(patch('autohsr.app.Context.template', return_value=None))
             for name, kwargs in (
                 ('autohsr.app.C.get_last_error', dict(return_value=0)),
@@ -809,6 +809,27 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 actions = native['workflow_navigation']['actions']
                 self.assertEqual([action['destination_page'] for action in actions], expected)
                 self.assertTrue(all(action['destination_status'] == 'verified' for action in actions))
+
+    def test_opens_support_showcase_from_world_and_only_uses_navigation(self):
+        from autohsr.tests.test_support_gift_observe import with_support_gift
+
+        destination = visa_collection('characters')
+        destination.image = with_support_gift(destination.image, (.77, .23))
+        pages = (world_hud(), support_phone(), support_phone(menu=True),
+                 visa_collection(), destination)
+        sent, steps, native = self.run_navigation(target='visa_characters', visa_pages=pages)
+        self.assertEqual(sent, [(0x08,), (0x0A,)] + [(0xC001, 0x0002, 0x0004)] * 3)
+        result = native['workflow_navigation']
+        self.assertEqual([action['destination_page'] for action in result['actions']],
+                         ['phone', 'visa_more_menu', 'visa_collection', 'visa_characters'])
+        self.assertTrue(steps[0]['facts']['page_verified'])
+        gift = dict(indicator='visible', claimable_state='unknown', claim_receipt_status='not_observed')
+        self.assertEqual(result['support_gift_observation'], gift)
+        self.assertEqual(steps[0]['support_gift_observation'], gift)
+        repeated, rows, _ = self.run_navigation(target='visa_characters', visa_pages=pages, selected_page=True)
+        self.assertEqual(repeated, sent)
+        self.assertEqual(rows[0]['actions_sent'], 4)
+        self.assertEqual(rows[0]['support_gift_observation'], gift)
 
     def test_character_showcase_stops_on_unverified_visa_or_reward_overlay(self):
         collection = visa_collection()

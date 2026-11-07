@@ -420,7 +420,10 @@ class PageCheckRunnerTests(TestCase):
     def test_formal_visa_diagnostic_projects_all_three_native_inputs(self):
         projection, packets, _ = self.run_case(('visa_characters',), cli=True)
         self.assertEqual(packets, [(0xC001, 0x0002, 0x0004)] * 3)
-        self.assertEqual(projection, dict(status='success', pages=[row('visa_characters', 'verified', 3, 0)]))
+        expected = dict(row('visa_characters', 'verified', 3, 0),
+                        support_gift_observation=dict(indicator='unknown', claimable_state='unknown',
+                                                      claim_receipt_status='not_observed'))
+        self.assertEqual(projection, dict(status='success', pages=[expected]))
 
     def test_late_loss_or_short_send_retains_prior_proof_and_never_runs_third_page(self):
         targets = ('phone', 'mail', 'odyssey')
