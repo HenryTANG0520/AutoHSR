@@ -3,7 +3,11 @@ import json
 from pathlib import Path
 import sys
 
+from .task_capabilities import SCREEN_CHECK_PLAN, SCREEN_CHECK_PLAN_VERSION, TaskCapabilities
 from .task_workflow import WORKFLOW_PAGES, WorkflowError, compile_recipe, read, workflow_notification_png_path
+
+
+_TASK_CAPABILITIES = TaskCapabilities(enabled={SCREEN_CHECK_PLAN})
 
 
 def add_arguments(mode, parser):
@@ -110,18 +114,17 @@ def _screen_check(args, parser, raw_args):
     allowed = {flag} if preview else {flag, '--config'}
     if provided.count(flag) != 1 or set(provided) - allowed:
         parser.error('所选页面核对须单独运行，执行时可指定 --config。')
-    from .selected_page_check import build_recipe, saved_result
 
     runner = None
     try:
-        recipe = build_recipe(targets)
         if preview:
-            data = dict(status='success', mode='preview', pages=list(targets),
-                        reservations=recipe.profile, game_accessed=False)
+            data = _TASK_CAPABILITIES.dispatch(SCREEN_CHECK_PLAN, SCREEN_CHECK_PLAN_VERSION, {'pages': targets})
         else:
             from .config import Settings
+            from .selected_page_check import build_recipe, saved_result
             from .task_workflow_run import TaskWorkflowRunner
 
+            recipe = build_recipe(targets)
             try:
                 settings = Settings.load(args.config)
             except (OSError, TypeError, ValueError):
