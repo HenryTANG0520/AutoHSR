@@ -4,12 +4,10 @@ import gc
 import hashlib
 import json
 from pathlib import Path
-import sys
 from tempfile import TemporaryDirectory
 from threading import Event
 import time
 import tkinter as tk
-from types import ModuleType
 import unittest
 from unittest.mock import Mock, patch
 
@@ -23,10 +21,8 @@ FLOWS = {'mail': '独立邮件样本', 'battlepass': '独立勋礼样本'}
 
 
 def backend(factory=None):
-    module = ModuleType('autohsr.daily_attachments')
-    module.ATTACHMENT_FLOWS = FLOWS
-    module.attachment_runner = factory if factory is not None else Mock(side_effect=AssertionError('no native runner'))
-    return patch.dict(sys.modules, {module.__name__: module})
+    runner = factory if factory is not None else Mock(side_effect=AssertionError('no native runner'))
+    return patch.multiple('autohsr.daily_attachments', ATTACHMENT_FLOWS=FLOWS, attachment_runner=runner)
 
 
 def write_report(path, report):
