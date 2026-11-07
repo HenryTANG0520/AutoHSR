@@ -3,14 +3,16 @@ import json
 from pathlib import Path
 import sys
 
-from .task_capabilities import SCREEN_CHECK_PLAN, SCREEN_CHECK_PLAN_VERSION, TaskCapabilities
+from .task_capabilities import (SCREEN_CHECK_PLAN, SCREEN_CHECK_PLAN_VERSION, WORKFLOW_CHECK, WORKFLOW_CHECK_VERSION,
+                                TaskCapabilities)
 from .task_workflow import WORKFLOW_PAGES, WorkflowError, compile_recipe, read, workflow_notification_png_path
 
 
-_TASK_CAPABILITIES = TaskCapabilities(enabled={SCREEN_CHECK_PLAN})
+_TASK_CAPABILITIES = TaskCapabilities(enabled={SCREEN_CHECK_PLAN, WORKFLOW_CHECK})
 
 
 def add_arguments(mode, parser):
+    mode.add_argument('--list-task-capabilities', action='store_true', help='离线列出可发现的任务能力及其接口版本')
     mode.add_argument('--task-workflow', type=Path, help='执行明确选择的任务流程JSON；原生任务门禁和预算继续生效')
     mode.add_argument('--task-workflow-check', type=Path, help='离线检查任务树和最大预算；不读取游戏配置或记录源文件')
     mode.add_argument('--task-workflow-export', type=Path, help='把已保存的任务流JSON及其便携素材导出为ZIP')
@@ -143,6 +145,12 @@ def _screen_check(args, parser, raw_args):
 
 
 def dispatch(args, parser, raw_args):
+    if args.list_task_capabilities:
+        if raw_args != ['--list-task-capabilities']:
+            parser.error('能力目录须单独查询。')
+        print(json.dumps(dict(status='success', capabilities=_TASK_CAPABILITIES.discover()), ensure_ascii=False,
+                         indent=2))
+        return 0
     yaml_result = _convert_yaml(args, parser, raw_args)
     if yaml_result is not None:
         return yaml_result
@@ -171,12 +179,13 @@ def dispatch(args, parser, raw_args):
     runner = None
     try:
         document = read(selected)
-        recipe = compile_recipe(document, selected_path=args.workflow_step_path, base_dir=selected.resolve().parent)
         if args.task_workflow_check is not None:
-            data = dict(status='success', mode='validation', name=recipe.document['name'],
-                        selected_path=list(recipe.path), reservations=recipe.profile, game_accessed=False,
-                        configuration_loaded=False, source_files_read=False)
+            arguments = dict(document=document)
+            if args.workflow_step_path is not None:
+                arguments['step_path'] = args.workflow_step_path
+            data = _TASK_CAPABILITIES.dispatch(WORKFLOW_CHECK, WORKFLOW_CHECK_VERSION, arguments)
         else:
+            recipe = compile_recipe(document, selected_path=args.workflow_step_path, base_dir=selected.resolve().parent)
             from .config import Settings
             from .task_workflow_run import (TaskWorkflowRunner, WorkflowNotificationImage, freeze_step_notifications,
                                             step_notification_aliases, step_notification_images)

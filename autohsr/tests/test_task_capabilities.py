@@ -1,13 +1,16 @@
-"""Offline contract checks for the selected page preview pilot."""
+"""Offline contract checks for the read-only task capability tools."""
 
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 
 from autohsr.__main__ import main
-from autohsr.task_capabilities import CapabilityError, SCREEN_CHECK_PLAN, SCREEN_CHECK_PLAN_VERSION, TaskCapabilities
+from autohsr.task_capabilities import (CapabilityError, SCREEN_CHECK_PLAN, SCREEN_CHECK_PLAN_VERSION, WORKFLOW_CHECK,
+                                      WORKFLOW_CHECK_VERSION, TaskCapabilities)
 from autohsr.task_workflow import WORKFLOW_PAGES
 
 
@@ -16,7 +19,9 @@ class TaskCapabilityTests(TestCase):
         self.service = TaskCapabilities(enabled={SCREEN_CHECK_PLAN})
 
     def test_discovery_describes_the_version_and_strict_json_objects(self):
-        descriptor, = json.loads(json.dumps(self.service.discover()))
+        by_id = {item['id']: item for item in json.loads(json.dumps(self.service.discover()))}
+        descriptor = by_id[SCREEN_CHECK_PLAN]
+        self.assertIs(by_id[WORKFLOW_CHECK]['enabled'], False)
         self.assertEqual((descriptor['id'], descriptor['version']), ('autohsr.screen_check_plan', 1))
         self.assertIs(descriptor['read_only'], True)
         self.assertIs(descriptor['enabled'], True)
@@ -77,3 +82,52 @@ class TaskCapabilityTests(TestCase):
                 self.assertEqual(main(['--screen-check-plan', *pages]), 2)
             self.assertEqual(output.getvalue(), '')
             self.assertEqual(json.loads(errors.getvalue()), dict(status='failed', error=message))
+
+    def test_cli_catalog_discovers_both_tools_without_loading_settings(self):
+        with patch('autohsr.config.Settings.load') as load, patch('autohsr.task_workflow_run.TaskWorkflowRunner') as run, \
+                redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()):
+            self.assertEqual(main(['--list-task-capabilities']), 0)
+            by_id = {item['id']: item for item in json.loads(output.getvalue())['capabilities']}
+            self.assertEqual(set(by_id), {SCREEN_CHECK_PLAN, WORKFLOW_CHECK})
+            self.assertTrue(all(item['enabled'] and item['read_only'] for item in by_id.values()))
+            self.assertEqual(by_id[WORKFLOW_CHECK]['input_schema']['required'], ['document'])
+            with self.assertRaises(SystemExit) as error:
+                main(['--list-task-capabilities', '--config', 'missing.json'])
+            self.assertEqual(error.exception.code, 2)
+            load.assert_not_called()
+            run.assert_not_called()
+
+    def test_workflow_check_preserves_cli_output_and_only_reserves_the_selected_step(self):
+        document = dict(version=1, name='工具校验样例', steps=[
+            dict(id='records', type='task', task='warp_analysis', params=dict(imports=['missing.json'])),
+            dict(id='training', type='task', task='daily_training_rewards'),
+        ])
+        service = TaskCapabilities(enabled={WORKFLOW_CHECK})
+        with TemporaryDirectory() as folder:
+            source = Path(folder) / 'task.json'
+            source.write_text(json.dumps(document, ensure_ascii=False), encoding='utf-8')
+            with patch('autohsr.config.Settings.load') as load, patch('autohsr.task_workflow_run.TaskWorkflowRunner') as run, \
+                    redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()):
+                expected = service.dispatch(WORKFLOW_CHECK, WORKFLOW_CHECK_VERSION,
+                                            {'document': document, 'step_path': '1'})
+                self.assertEqual(main(['--task-workflow-check', str(source), '--workflow-step-path', '1']), 0)
+                self.assertEqual(json.loads(output.getvalue()), expected)
+                load.assert_not_called()
+                run.assert_not_called()
+        self.assertEqual(expected['selected_path'], [1])
+        self.assertEqual(expected['reservations']['daily_calls'], 1)
+        self.assertEqual(expected['reservations']['executions'], 1)
+        self.assertFalse(expected['source_files_read'] or expected['configuration_loaded'] or expected['game_accessed'])
+
+    def test_disabled_workflow_check_stops_before_compilation_and_invalid_step_has_stable_code(self):
+        document = dict(version=1, name='样例', steps=[dict(id='wait', type='wait', seconds=0)])
+        with patch('autohsr.task_capabilities.compile_recipe') as compile_workflow:
+            with self.assertRaises(CapabilityError) as disabled:
+                self.service.dispatch(WORKFLOW_CHECK, WORKFLOW_CHECK_VERSION, {'document': document})
+            self.assertEqual(disabled.exception.code, 'disabled')
+            compile_workflow.assert_not_called()
+        service = TaskCapabilities(enabled={WORKFLOW_CHECK})
+        for extra in ({'step_path': '0/5'}, {'step_path': 1}, {'path': 'file.json'}):
+            with self.subTest(extra=extra), self.assertRaises(CapabilityError) as invalid:
+                service.dispatch(WORKFLOW_CHECK, WORKFLOW_CHECK_VERSION, {'document': document, **extra})
+            self.assertEqual(invalid.exception.code, 'invalid_arguments')
