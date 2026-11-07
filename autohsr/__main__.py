@@ -46,6 +46,12 @@ def main(argv: list[str] | None = None) -> int:
                       help="只读核对本地星铁版本与官方更新、预下载包清单")
     mode.add_argument("--app-update-check", action="store_true", help="核对 AutoHSR 的 GitHub 正式版本")
     mode.add_argument("--app-update-stage", type=Path, metavar="ZIP", help="校验并暂存官方 Windows 便携包")
+    mode.add_argument("--app-update-install", type=Path, metavar="ZIP", help="将已校验的官方包安装到已退出的便携版")
+    mode.add_argument("--app-update-status", type=Path, metavar="DIR", help="核对便携版更新事务")
+    mode.add_argument("--app-update-rollback", type=Path, metavar="DIR", help="恢复便携版的更新前运行文件")
+    mode.add_argument("--app-update-accept", type=Path, metavar="DIR", help="确认保留当前运行文件并清理更新备份")
+    parser.add_argument("--app-update-target", type=Path, metavar="DIR", help="指定助手便携版安装目录")
+    parser.add_argument("--app-update-checksum", type=Path, metavar="SHA256", help="离线安装时指定发布方的校验文件")
     mode.add_argument("--currency-wars-replay", type=Path, help="离线回放 .sample.json；不访问游戏或加载每日配置")
     mode.add_argument("--currency-wars-check", action="store_true", help="货币战争只读识别与证据保存；自动玩法尚未开放")
     mode.add_argument("--currency-wars-prepare", action="store_true", help="启动或复用游戏，进入已有登录及主界面；不开始对局")
@@ -193,6 +199,13 @@ def main(argv: list[str] | None = None) -> int:
         from .app_update import run as run_app_update
 
         return run_app_update(args, raw_args, parser)
+    if (args.app_update_target is not None or args.app_update_checksum is not None) and args.app_update_install is None:
+        parser.error('助手更新目标与校验文件仅配合 --app-update-install。')
+    if any(value is not None for value in (args.app_update_install, args.app_update_status,
+                                            args.app_update_rollback, args.app_update_accept)):
+        from .app_update_install import run as run_app_update_install
+
+        return run_app_update_install(args, raw_args, parser)
     if args.build_target_output is not None:
         parser.error('--build-target-output 仅配合 --compose-build-target。')
     if args.reward_guide_capture is not None:

@@ -111,6 +111,14 @@ def _asset(url, limit, timeout):
         yield from _body(response, remaining, limit)
 
 
+def release_from_checksum(raw):
+    filename = rb'AutoHSR-(v' + _VERSION.encode('ascii') + rb')-windows-x64\.zip'
+    match = re.fullmatch(rb'([0-9a-fA-F]{64}) [ *]' + filename + rb'\r?\n?', raw)
+    if match is None:
+        raise UpdateError('release_checksum_unverified')
+    return Release(match[2].decode('ascii'), match[1].decode('ascii').lower())
+
+
 def official_release():
     with _response(_LATEST, monotonic() + 15) as (response, _):
         if response.status not in _REDIRECTS:
@@ -121,10 +129,10 @@ def official_release():
         raise UpdateError('release_tag_unverified')
     release = Release(match[1], '')
     raw = b''.join(_asset(release.asset + '.sha256', 1024, 15))
-    checksum = re.fullmatch(rb'([0-9a-fA-F]{64}) [ *]' + re.escape(release.filename.encode('ascii')) + rb'\r?\n?', raw)
-    if checksum is None:
+    verified = release_from_checksum(raw)
+    if verified.tag != release.tag:
         raise UpdateError('release_checksum_unverified')
-    return Release(release.tag, checksum[1].decode('ascii').lower())
+    return verified
 
 
 def compare_release(release, current):
