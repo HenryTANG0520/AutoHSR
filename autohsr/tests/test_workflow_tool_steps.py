@@ -1,5 +1,6 @@
 from contextlib import nullcontext, redirect_stderr
 import io
+from itertools import product
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -101,6 +102,75 @@ class WorkflowToolStepTests(TestCase):
         self.assertEqual(question.call_args.kwargs['default'], 'no')
         self.assertIn('test', question.call_args.args[1])
         ui._start_scoped_runner.assert_not_called()
+
+    def test_stopped_imported_single_step_does_not_link_unwritten_final_report(self):
+        from autohsr.task_workflow_draft import WorkflowDraft
+        from autohsr.workflow_bundle import export_bundle, import_bundle
+        from autohsr.workflow_yaml import load_march7th_yaml
+
+        original = self.root / 'source.yaml'
+        original.write_text('name: 等待流程\nsteps: [{type: wait, seconds: 1}, {type: wait, seconds: 2}]\n', 'utf8')
+        yaml_saved = load_march7th_yaml(original).save_as(self.root / 'yaml-saved.json')
+        bundle = export_bundle(yaml_saved.path, self.root / 'workflow.zip')
+        imported = import_bundle(bundle, self.root / 'unpacked')
+        zip_saved = WorkflowDraft.load(imported).save_as(self.root / 'zip-saved.json')
+        for saved, fail_final in product((yaml_saved, zip_saved), (False, True)):
+            with self.subTest(source=saved.path.name, fail_final=fail_final):
+                outcome = 'write-failure' if fail_final else 'saved'
+                case_root = self.root / f'{saved.path.stem}-{outcome}'
+                runner = TaskWorkflowRunner(Settings(), saved.recipe.document, selected_path='1', root=case_root / 'runs')
+                write_report = runner._save
+
+                def save_report():
+                    if fail_final and runner.report.finished_at:
+                        raise OSError('synthetic final write failure')
+                    write_report()
+
+                def stop_wait(_seconds):
+                    runner.stop()
+                    runner.checkpoint()
+
+                def submit(_title, work, present, _failed, *, game):
+                    self.assertFalse(game)
+                    present(work(None))
+                    return True
+
+                ui = SimpleNamespace(events=Mock(), _native_run=SimpleNamespace(run=lambda value: value.run()),
+                                     status=Mock(), last_report_file=self.root / 'older.json', history_context=Mock(),
+                                     report_text=object(), _replace_text=Mock(), _refresh_recovery=Mock(),
+                                     _refresh_controls=Mock(), _start_desktop_job=submit)
+                on_report = Mock()
+                with (patch.object(runner, '_save', side_effect=save_report),
+                      patch.object(runner, '_wait', side_effect=stop_wait) as wait):
+                    self.assertTrue(AutoHSRWindow._start_scoped_runner(
+                        ui, '运行已保存流程', 'task_workflow', lambda _emit: runner, on_report, game=False))
+                wait.assert_called_once_with(2)
+                result = on_report.call_args.args[0]
+                disk = ui.last_run_dir / 'report.json'
+                before = disk.read_bytes()
+                self.assertEqual(json.loads(ui._replace_text.call_args.args[1]), result)
+                self.assertEqual([step['step'] for step in result['workflow']['steps']], ['m7-1'])
+                self.assertTrue(result['finished_at'])
+                if fail_final:
+                    self.assertFalse(result['report_saved'])
+                    self.assertFalse(json.loads(before)['finished_at'])
+                    self.assertIsNone(ui.last_report_file)
+                    self.assertIn('最终报告未保存', ui.history_context.set.call_args.args[0])
+                else:
+                    self.assertTrue(result['report_saved'])
+                    self.assertEqual(json.loads(before), result)
+                    self.assertEqual(ui.last_report_file, disk)
+
+                ui.last_report_file = None
+                with patch('autohsr.gui.ROOT', case_root):
+                    AutoHSRWindow._discover_report(ui)
+                self.assertEqual(json.loads(ui._replace_text.call_args.args[1]), json.loads(before))
+                if fail_final:
+                    self.assertIsNone(ui.last_report_file)
+                    self.assertIn('仅有中间快照', ui.history_context.set.call_args.args[0])
+                else:
+                    self.assertEqual(ui.last_report_file, disk)
+                self.assertEqual(disk.read_bytes(), before)
 
     def test_unknown_notification_blocks_later_sends_but_preserves_anonymous_result(self):
         first = dict(notice('first'), on_failure='continue')

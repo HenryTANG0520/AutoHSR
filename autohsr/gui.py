@@ -1050,8 +1050,11 @@ class AutoHSRWindow:
             self.status.set('● ' + STATUS_NAMES.get(state, '结果待核对'))
             if report.get('run_dir'):
                 self.last_run_dir = Path(report['run_dir'])
-                self.last_report_file = self.last_run_dir / 'report.json'
-                self.history_context.set(report_context(report, self.last_report_file))
+                unsaved = report.get('report_saved') is False
+                # An interrupted write can leave an earlier report in this same directory.
+                self.last_report_file = None if unsaved else self.last_run_dir / 'report.json'
+                context = report_context(report, self.last_report_file)
+                self.history_context.set('本次最终报告未保存 · ' + context if unsaved else context)
                 self._replace_text(self.report_text, json.dumps(report, ensure_ascii=False, indent=2))
             self._refresh_recovery()
             self._refresh_controls()
@@ -2038,11 +2041,15 @@ class AutoHSRWindow:
         try:
             reports = list((ROOT / "runs").glob("*/report.json"))
             if reports:
-                self.last_report_file = max(reports, key=lambda p: p.stat().st_mtime)
-                content = self.last_report_file.read_text(encoding="utf-8")
-                self.history_context.set(report_context(json.loads(content), self.last_report_file))
+                path = max(reports, key=lambda p: p.stat().st_mtime)
+                content = path.read_text(encoding="utf-8")
+                report = json.loads(content)
+                context = report_context(report, path)
+                unfinished = report.get('operation') == 'task_workflow' and report.get('finished_at') == ''
+                self.last_report_file = None if unfinished else path
+                self.history_context.set('任务流仅有中间快照 · ' + context if unfinished else context)
                 self._replace_text(self.report_text, content)
-                self.last_run_dir = self.last_report_file.parent
+                self.last_run_dir = path.parent
         except (OSError, ValueError):
             pass
 
