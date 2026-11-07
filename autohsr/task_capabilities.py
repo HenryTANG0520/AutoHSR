@@ -3,7 +3,7 @@
 from collections.abc import Collection
 from typing import Literal, TypedDict
 
-from .task_workflow import MAX_DEPTH, MAX_NODES, WORKFLOW_PAGES, WorkflowError, compile_recipe
+from .task_workflow import MAX_DEPTH, MAX_NODES, SCREEN_CHECK_EXTRA_PAGES, SCREEN_CHECK_PAGES, WorkflowError, compile_recipe
 
 
 SCREEN_CHECK_PLAN = 'autohsr.screen_check_plan'
@@ -57,9 +57,10 @@ def _object_schema(properties, *, optional=()):
 
 
 def _pages_schema():
-    return dict(type='array', items=dict(type='string', enum=list(WORKFLOW_PAGES)),
-                minItems=1, maxItems=len(WORKFLOW_PAGES), uniqueItems=True,
-                description='按核对顺序填写。短信通知须单独选择，活动页须依次放在末尾。')
+    return dict(type='array', items=dict(type='string', enum=list(SCREEN_CHECK_PAGES)),
+                minItems=1, maxItems=len(SCREEN_CHECK_PAGES), uniqueItems=True,
+                description='按核对顺序填写，活动页须依次放在末尾。须单独选择的页面有 messages、'
+                            + '、'.join(SCREEN_CHECK_EXTRA_PAGES) + '。')
 
 
 def _reservations_schema(*, optional=()):

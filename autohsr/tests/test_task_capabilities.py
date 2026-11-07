@@ -11,7 +11,7 @@ from unittest.mock import patch
 from autohsr.__main__ import main
 from autohsr.task_capabilities import (CapabilityError, SCREEN_CHECK_PLAN, SCREEN_CHECK_PLAN_VERSION, WORKFLOW_CHECK,
                                       WORKFLOW_CHECK_VERSION, TaskCapabilities)
-from autohsr.task_workflow import WORKFLOW_PAGES
+from autohsr.task_workflow import SCREEN_CHECK_PAGES
 
 
 class TaskCapabilityTests(TestCase):
@@ -30,7 +30,7 @@ class TaskCapabilityTests(TestCase):
             self.assertIs(schema['additionalProperties'], False)
             self.assertEqual(set(schema['required']), set(schema['properties']))
         pages = descriptor['input_schema']['properties']['pages']
-        self.assertEqual(pages['items']['enum'], list(WORKFLOW_PAGES))
+        self.assertEqual(pages['items']['enum'], list(SCREEN_CHECK_PAGES))
         self.assertIs(pages['uniqueItems'], True)
 
     def test_disabled_unknown_and_unsupported_calls_never_compile(self):
@@ -52,25 +52,26 @@ class TaskCapabilityTests(TestCase):
         for arguments in (None, {}, {'pages': 'mail'}, {'pages': ('mail',)}, {'pages': ['mail'], 'config': 'extra'},
                           {'pages': []}, {'pages': ['mail', 'mail']}, {'pages': ['unknown']}, {'pages': [{}]},
                           {'pages': ['odyssey', 'mail']}, {'pages': ['reward_guide', 'odyssey']},
-                          {'pages': ['messages', 'mail']}):
+                          {'pages': ['messages', 'mail']}, {'pages': ['phone', 'visa_characters']}):
             with self.subTest(arguments=arguments), self.assertRaises(CapabilityError) as failure:
                 self.service.dispatch(SCREEN_CHECK_PLAN, SCREEN_CHECK_PLAN_VERSION, arguments)
             self.assertEqual(failure.exception.code, 'invalid_arguments')
 
-    def test_cli_and_capability_return_the_same_existing_preview(self):
-        pages = ['mail', 'phone', 'odyssey', 'reward_guide']
-        expected = dict(status='success', mode='preview', pages=pages,
-                        reservations=dict(daily_calls=0, du_calls=0, currency_calls=0, du_runs=0,
-                                          currency_games=0, executions=4), game_accessed=False)
-        with patch('autohsr.config.Settings.load') as load, patch('autohsr.task_workflow_run.TaskWorkflowRunner') as run, \
-                redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as errors:
-            self.assertEqual(self.service.dispatch(SCREEN_CHECK_PLAN, SCREEN_CHECK_PLAN_VERSION, {'pages': pages}),
-                             expected)
-            self.assertEqual(main(['--screen-check-plan', *pages]), 0)
-        self.assertEqual(json.loads(output.getvalue()), expected)
-        self.assertEqual(errors.getvalue(), '')
-        load.assert_not_called()
-        run.assert_not_called()
+    def test_cli_and_capability_return_the_same_batch_and_standalone_previews(self):
+        for pages in (['mail', 'phone', 'odyssey', 'reward_guide'], ['visa_characters']):
+            expected = dict(status='success', mode='preview', pages=pages,
+                            reservations=dict(daily_calls=0, du_calls=0, currency_calls=0, du_runs=0,
+                                              currency_games=0, executions=len(pages)), game_accessed=False)
+            with self.subTest(pages=pages), patch('autohsr.config.Settings.load') as load, \
+                    patch('autohsr.task_workflow_run.TaskWorkflowRunner') as run, \
+                    redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as errors:
+                self.assertEqual(self.service.dispatch(SCREEN_CHECK_PLAN, SCREEN_CHECK_PLAN_VERSION, {'pages': pages}),
+                                 expected)
+                self.assertEqual(main(['--screen-check-plan', *pages]), 0)
+                self.assertEqual(json.loads(output.getvalue()), expected)
+                self.assertEqual(errors.getvalue(), '')
+                load.assert_not_called()
+                run.assert_not_called()
 
     def test_cli_maps_dispatch_errors_to_existing_failure_output(self):
         for service, pages, message in (

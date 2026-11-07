@@ -5,7 +5,7 @@ import sys
 
 from .task_capabilities import (SCREEN_CHECK_PLAN, SCREEN_CHECK_PLAN_VERSION, WORKFLOW_CHECK, WORKFLOW_CHECK_VERSION,
                                 TaskCapabilities)
-from .task_workflow import WORKFLOW_PAGES, WorkflowError, compile_recipe, read, workflow_notification_png_path
+from .task_workflow import SCREEN_CHECK_PAGES, WorkflowError, compile_recipe, read, workflow_notification_png_path
 
 
 _TASK_CAPABILITIES = TaskCapabilities(enabled={SCREEN_CHECK_PLAN, WORKFLOW_CHECK})
@@ -18,9 +18,9 @@ def add_arguments(mode, parser):
     mode.add_argument('--task-workflow-export', type=Path, help='把已保存的任务流JSON及其便携素材导出为ZIP')
     mode.add_argument('--task-workflow-import', type=Path, help='把任务流素材ZIP校验后解包到新目录')
     mode.add_argument('--task-workflow-convert-yaml', type=Path, help='把支持的三月七 YAML 步骤转换成新的任务流 JSON')
-    mode.add_argument('--screen-check-plan', nargs='+', choices=WORKFLOW_PAGES,
+    mode.add_argument('--screen-check-plan', nargs='+', choices=SCREEN_CHECK_PAGES,
                       help='离线预览所选页面的顺序和预算，活动页面须放末尾')
-    mode.add_argument('--screen-check-pages', nargs='+', choices=WORKFLOW_PAGES,
+    mode.add_argument('--screen-check-pages', nargs='+', choices=SCREEN_CHECK_PAGES,
                       help='从已登录前台按指定顺序导航核对，结果待核对时停止')
     parser.add_argument('--workflow-bundle-destination', type=Path, help='导出的新ZIP路径或导入的新目录')
     parser.add_argument('--workflow-json-destination', type=Path, help='三月七 YAML 转换生成的新 JSON 路径')

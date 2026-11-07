@@ -20,9 +20,10 @@ from autohsr.__main__ import main
 from autohsr.app import Runner
 from autohsr.config import Settings
 from autohsr.models import FocusLost, Scene, Stopped, Token
-from autohsr.task_workflow import ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, PAGE_TASK, WORKFLOW_PAGES, WorkflowError
+from autohsr.task_workflow import (ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, PAGE_TASK, SCREEN_CHECK_EXTRA_PAGES,
+                                   WORKFLOW_PAGES, WorkflowError)
 from autohsr.task_workflow_run import TaskWorkflowRunner, _bytes
-from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, _Window, phone
+from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, _Window, phone, support_phone, visa_collection
 from autohsr.windows import GameWindow, INPUT
 
 
@@ -77,10 +78,19 @@ class PageCheckProjectionTests(TestCase):
         self.assertTrue(all(value == 0 for field, value in recipe.profile.items() if field != 'executions'))
         self.assertEqual(list(self.root.iterdir()), [])
         run.assert_not_called()
-        for bad in (None, [], 'mail', ('mail', 'mail'), ['world'], ['unknown'], ['mail', {}], ['odyssey', 'mail'],
+        for bad in (None, [], 'mail', ('mail', 'mail'), ['unknown'], ['mail', {}], ['odyssey', 'mail'],
                     ['reward_guide', 'mail'], ['mail', 'reward_guide', 'odyssey'], ['mail', 'messages']):
             with self.subTest(selection=bad), self.assertRaises(WorkflowError):
                 pages.build_recipe(bad, base_dir=self.root)
+
+    def test_exact_page_diagnostics_are_standalone(self):
+        for target in SCREEN_CHECK_EXTRA_PAGES:
+            with self.subTest(target=target):
+                recipe = pages.build_recipe((target,), base_dir=self.root)
+                self.assertEqual(recipe.steps[0]['params']['target'], target)
+                self.assertEqual(recipe.profile['executions'], 1)
+                with self.assertRaises(WorkflowError):
+                    pages.build_recipe(('phone', target), base_dir=self.root)
 
     def test_unknown_arrival_preserves_recorded_send_and_stops_projection_at_the_unrun_page(self):
         self.record('phone', 'success', [])
@@ -249,11 +259,16 @@ class PageCheckRunnerTests(TestCase):
 
                 world, panel = (Scene(frame.tokens, cv2.resize(frame.image, (1920, 1080)))
                                 for frame in (world_pair()[-1], bright_sequence()[-1]))
+            if targets == ('visa_characters',):
+                visa_pages = (support_phone(), support_phone(menu=True), visa_collection(), visa_collection('characters'))
 
             def frames():
                 if targets == ('messages',):
                     while True:
                         yield panel if packets else world
+                if targets == ('visa_characters',):
+                    while True:
+                        yield visa_pages[min(len(packets), len(visa_pages) - 1)]
                 current, different = mailbox(ACCOUNT), mailbox(OTHER)
                 while True:
                     yield different if changed else current if packets else start
@@ -265,7 +280,7 @@ class PageCheckRunnerTests(TestCase):
 
             window = _Window(frames())
             window.require_foreground = GameWindow.require_foreground.__get__(window)
-            if targets == ('messages',):
+            if targets in (('messages',), ('visa_characters',)):
                 (root / 'config.ini').write_text('[General]\ngame_version=4.6.0\n', encoding='utf8')
                 executable = root / 'StarRail.exe'
                 executable.touch()
@@ -336,6 +351,11 @@ class PageCheckRunnerTests(TestCase):
         projection, packets, _ = self.run_case(('messages',), cli=True)
         self.assertEqual(packets, [(0xC001, 0x0002, 0x0004)])
         self.assertEqual(projection, dict(status='success', pages=[row('messages', 'verified', 1, 0)]))
+
+    def test_formal_visa_diagnostic_projects_all_three_native_inputs(self):
+        projection, packets, _ = self.run_case(('visa_characters',), cli=True)
+        self.assertEqual(packets, [(0xC001, 0x0002, 0x0004)] * 3)
+        self.assertEqual(projection, dict(status='success', pages=[row('visa_characters', 'verified', 3, 0)]))
 
     def test_late_loss_or_short_send_retains_prior_proof_and_never_runs_third_page(self):
         targets = ('phone', 'mail', 'odyssey')

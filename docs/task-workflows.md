@@ -133,6 +133,15 @@ python -m autohsr --screen-check-pages phone mail odyssey reward_guide
 
 短信通知的入口来源与其他页面不同，桌面和 CLI 均需单独选择。CLI 可用 `--screen-check-plan messages` 预览，或用 `--screen-check-pages messages` 执行。
 
+CLI 还可单独核对 `world`（大世界）、`visa_collection`（漫游签证收集展示）、`visa_characters`（角色展示）、`achievement_overview`（成就总览）、`battlepass_rewards`（勋礼奖励页）、`battlepass_tasks`（勋礼任务页）或 `redemption_form`（兑换码表单）。这些目标使用各自已校准的前台路线，暂不并入多页批次。兑换表单只核对到达，奖励页只核对页签。
+
+```powershell
+python -m autohsr --screen-check-plan visa_characters
+python -m autohsr --screen-check-pages visa_characters
+```
+
+`--list-task-capabilities` 中的 `autohsr.screen_check_plan` 同步列出这些目标，使用相同的单页选择和预算检查。执行后只在匿名回执中显示目标、核对状态与动作计数。
+
 音频支持 1 或 2 声道、8 或 16 位、8～48 kHz，文件最多 32 MiB、时长最多 120 秒。播放完成来自 Windows 驱动反馈。主动通知在桌面运行时显示本次最多步骤数和方案别名，授权后沿用冻结的方案版本。CLI 显式使用 `--workflow-allow-notify`。每次流程最多 20 个主动通知步骤。应用内定时暂未开放这项授权。通知正文留在流程文件及明确发往的渠道，运行回执只记结果及必要的匿名事实。[通知设置](notifications.md)
 
 图片通知可在 `workflow_notify` 的 `params` 中填写 `{"profile":"my-smtp","message":"本次流程的图片","png":"selected.png"}`。JSON 中的相对路径以流程文件所在目录为准。运行时还须明确提供同一份 PNG 的路径和同一个已保存的 SMTP 方案。

@@ -7,10 +7,12 @@ import re
 
 from .config import ROOT
 from .storage import hold_read_sources
-from .task_workflow import (ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE, PAGE_TASK, WORKFLOW_PAGES,
-                            Recipe, WorkflowError, _pairs, compile_recipe)
+from .task_workflow import (ACHIEVEMENT_OVERVIEW_PAGE, ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES,
+                            MESSAGE_WORKFLOW_PAGE, PAGE_TASK, REDEMPTION_FORM_PAGE, SCREEN_CHECK_EXTRA_PAGES,
+                            SCREEN_CHECK_PAGES, VISA_CHARACTERS_PAGE, VISA_COLLECTION_PAGE, WORKFLOW_PAGES,
+                            WORLD_WORKFLOW_PAGE, Recipe, WorkflowError, _pairs, compile_recipe)
 from .task_workflow_run import _bytes as _workflow_bytes
-from .workflow_navigation import _GUIDE_PAGES, _MAX_ACTIONS
+from .workflow_navigation import _GUIDE_PAGES, _MAX_ACTIONS, _REDEMPTION_MORE, _VISA_MORE_MENU
 
 
 NAME = '核对所选页面'
@@ -21,15 +23,25 @@ _SHA256 = re.compile(r'[a-f0-9]{64}')
 _LOCAL_DRIVE = re.compile(r'[A-Za-z]:')
 _NAVIGATION_PAGES = frozenset((*WORKFLOW_PAGES, 'world', 'activity_list'))
 _ACTIONS = frozenset(('return_to_hub', 'open_journey_events', *('open_' + page for page in WORKFLOW_PAGES)))
+_EXTRA_ACTIONS = {
+    VISA_COLLECTION_PAGE: ('open_more', 'open_visa_collection'),
+    VISA_CHARACTERS_PAGE: ('open_more', 'open_visa_collection', 'open_visa_characters'),
+    ACHIEVEMENT_OVERVIEW_PAGE: ('open_achievements',),
+    REDEMPTION_FORM_PAGE: ('open_redemption_more', 'open_redemption_form'),
+    WORLD_WORKFLOW_PAGE: ('return_to_hub',),
+    **{page: ('open_battlepass', 'open_' + page) for page in BATTLEPASS_WORKFLOW_PAGES},
+}
 
 
 def _document(targets):
-    if (not isinstance(targets, (list, tuple)) or not 1 <= len(targets) <= len(WORKFLOW_PAGES)
-            or any(type(target) is not str or target not in WORKFLOW_PAGES for target in targets)
+    if (not isinstance(targets, (list, tuple)) or not 1 <= len(targets) <= len(SCREEN_CHECK_PAGES)
+            or any(type(target) is not str or target not in SCREEN_CHECK_PAGES for target in targets)
             or len(set(targets)) != len(targets)):
         raise WorkflowError('请选择至少一个支持的日常页面，每页只选一次。')
     if MESSAGE_WORKFLOW_PAGE in targets and len(targets) != 1:
         raise WorkflowError('短信通知须单独核对，请从已有未读角标的大世界或已打开的通知面板开始。')
+    if len(targets) != 1 and any(target in SCREEN_CHECK_EXTRA_PAGES for target in targets):
+        raise WorkflowError('大世界、漫游签证、成就总览、兑换码表单和指定无名勋礼页签须单独核对。')
     activity = tuple(page for page in ACTIVITY_WORKFLOW_PAGES if page in targets)
     if activity and tuple(targets[-len(activity):]) != activity:
         raise WorkflowError('活动页面须放在末尾，并按巡星之礼、奖励指南的顺序排列。')
@@ -65,9 +77,13 @@ def _absolute(value):
     return path
 
 
-def _action_counts(actions):
+def _action_counts(actions, target):
     if not isinstance(actions, list) or len(actions) > _MAX_ACTIONS:
         raise ValueError('invalid navigation actions')
+    allowed_actions, allowed_pages = _ACTIONS, _NAVIGATION_PAGES
+    if target in _EXTRA_ACTIONS:
+        allowed_actions = _EXTRA_ACTIONS[target]
+        allowed_pages = allowed_pages.union(SCREEN_CHECK_EXTRA_PAGES, (_REDEMPTION_MORE, _VISA_MORE_MENU))
     previous = None
     sent = unconfirmed = 0
     for index, action in enumerate(actions):
@@ -76,10 +92,10 @@ def _action_counts(actions):
         kind, source = action.get('action'), action.get('source_page')
         state, arrived = action.get('input_status'), action.get('destination_status')
         page, expected = action.get('destination_page'), action.get('expected_pages')
-        if (not isinstance(kind, str) or kind not in _ACTIONS or not isinstance(source, str)
-                or source not in _NAVIGATION_PAGES or (previous is not None and source != previous)
+        if (not isinstance(kind, str) or kind not in allowed_actions or not isinstance(source, str)
+                or source not in allowed_pages or (previous is not None and source != previous)
                 or not isinstance(expected, list) or not expected
-                or any(not isinstance(target, str) or target not in _NAVIGATION_PAGES for target in expected)
+                or any(not isinstance(page, str) or page not in allowed_pages for page in expected)
                 or state not in ('sent', 'unconfirmed') or arrived not in ('verified', 'unknown')
                 or (arrived == 'verified' and (state != 'sent' or page not in expected))
                 or (arrived == 'unknown' and (page is not None or index + 1 != len(actions)))):
@@ -113,7 +129,7 @@ def _project_child(row, step, parent_dir, read_source):
                 or type(navigation.get('page_verified')) is not bool):
             return
         actions = navigation.get('actions')
-        sent, unconfirmed, last = _action_counts(actions)
+        sent, unconfirmed, last = _action_counts(actions, target)
     except (KeyError, OSError, RuntimeError, TypeError, ValueError):
         return
     row.update(actions_sent=sent, actions_unconfirmed=unconfirmed)
