@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 
 from autohsr.__main__ import main
 from autohsr.app import Context, Runner
-from autohsr import build_target_draft
+from autohsr import build_target_compose, build_target_draft
 from autohsr.build_target_preview import BuildTargetSelection
 from autohsr.config import Settings, SettingsError
 from autohsr.desktop_daily import DailyPanel, _preview_text
@@ -300,6 +300,77 @@ class BuildTargetPreviewTests(unittest.TestCase):
         report = self.draft_cli([frame, frame], material=material, location=location)
         self.assertEqual(report['build_target']['draft']['items'],
                          [dict(category='calyx_crimson', target='虚无之蕾', location=location, count=1)])
+
+    def compose_sources(self):
+        golden = [*self.material(), self.route('城郊雪原', .50)]
+        material, location = '法吉娜之心', '「辉痕圣林」神悟树庭'
+        crimson = [*self.material(material), self.route(location, .52)]
+        drafts = (self.draft_cli([golden, golden], count=2),
+                  self.draft_cli([crimson, crimson], material=material, location=location))
+        receipts = [self.root / f'receipt-{index}.json' for index in range(len(drafts))]
+        for path, report in zip(receipts, drafts):
+            path.write_text(json.dumps(report, ensure_ascii=False), encoding='utf8')
+        return drafts, receipts
+
+    def compose_cli(self, receipts, *, stamina, output=None, code=0):
+        args = ['--compose-build-target', *map(str, receipts), '--stamina', str(stamina)]
+        if output is not None:
+            args += ['--build-target-output', str(output)]
+        with (patch('autohsr.build_target_compose.ROOT', self.root), patch.object(Settings, 'load') as load,
+              patch('autohsr.app.find_game') as find, redirect_stdout(io.StringIO()) as stdout):
+            self.assertEqual(main(args), code, stdout.getvalue())
+        load.assert_not_called()
+        find.assert_not_called()
+        return json.loads(stdout.getvalue())
+
+    def test_compose_preserves_manual_order_and_previews_a_shared_budget_before_publication(self):
+        drafts, receipts = self.compose_sources()
+        before = {path: path.read_bytes() for path in receipts}
+        result = self.compose_cli(receipts[::-1], stamina=40)
+        self.assertEqual((result['mode'], result['materials'], result['stamina_required'], result['stamina_remaining']),
+                         ('preview', ['法吉娜之心', '漫游指南'], 30, 10))
+        self.assertIs(result['game_accessed'], False)
+        self.assertNotIn('output', result)
+        output = self.root / 'new-plan.json'
+        original_link = build_target_compose._link
+
+        def publish_with_read_locks(staged, destination):
+            for path in (*receipts, *(Path(draft['run_dir']) / 'power-plan.json' for draft in drafts)):
+                with self.assertRaises(PermissionError), path.open('ab'):
+                    pass
+            original_link(staged, destination)
+
+        with patch.object(build_target_compose, '_link', side_effect=publish_with_read_locks) as publish:
+            prepared = self.compose_cli(receipts[::-1], stamina=30, output=output)
+        publish.assert_called_once()
+        self.assertEqual((prepared['mode'], prepared['stamina_remaining']), ('prepared', 0))
+        self.assertEqual(hashlib.sha256(output.read_bytes()).hexdigest(), prepared['sha256'])
+        self.assertEqual(items(json.loads(output.read_bytes())), items(result['items']))
+        self.assertEqual(result['items'], [draft['build_target']['draft']['items'][0] for draft in drafts[::-1]])
+        self.assertEqual({path: path.read_bytes() for path in receipts}, before)
+
+    def test_compose_refuses_duplicates_over_budget_and_an_existing_output(self):
+        _, receipts = self.compose_sources()
+        output = self.root / 'new-plan.json'
+        alternate = self.root / 'alternate-receipt.json'
+        alternate.write_bytes(receipts[0].read_bytes())
+        for selected, stamina in ((receipts, 20), ([receipts[0], receipts[0]], 40), ([receipts[0], alternate], 40)):
+            with self.subTest(stamina=stamina):
+                self.compose_cli(selected, stamina=stamina, output=output, code=1)
+                self.assertFalse(output.exists())
+        output.write_bytes(b'existing user plan')
+        self.compose_cli(receipts, stamina=40, output=output, code=1)
+        self.assertEqual(output.read_bytes(), b'existing user plan')
+
+    def test_compose_refuses_staged_receipts_and_changed_original_evidence(self):
+        drafts, receipts = self.compose_sources()
+        run_dir = Path(drafts[0]['run_dir'])
+        output = self.root / 'new-plan.json'
+        self.compose_cli([run_dir / 'report.json', receipts[1]], stamina=40, output=output, code=1)
+        evidence = run_dir / drafts[0]['build_target']['preview']['evidence']
+        evidence.write_bytes(evidence.read_bytes() + b'changed')
+        self.compose_cli(receipts, stamina=40, output=output, code=1)
+        self.assertFalse(output.exists())
 
     def test_draft_refuses_unproven_source_and_out_of_budget_request(self):
         valid = [*self.material(), self.route('城郊雪原', .50)]

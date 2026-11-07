@@ -80,6 +80,10 @@ def main(argv: list[str] | None = None) -> int:
                       help='从当前前台的成就总览提交一次一键领取及专属确认')
     mode.add_argument("--preview-build-target", action="store_true", help="只读核对培养目标、材料详情与配方、花萼预览及结算提示")
     mode.add_argument('--build-target', action='store_true', help='核实用户指定的培养材料来源并生成单项体力草稿；只读')
+    mode.add_argument('--compose-build-target', type=Path, nargs='+', metavar='RECEIPT',
+                      help='离线合并已发布的培养草稿回执，须显式指定 --stamina')
+    parser.add_argument('--build-target-output', type=Path, metavar='NEW_JSON',
+                        help='配合 --compose-build-target 保存新体力计划，省略时只预览')
     mode.add_argument("--launch", action="store_true", help="仅启动游戏程序")
     mode.add_argument("--run", action="store_true", help="按配置执行每日任务；F10 紧急停止")
     mode.add_argument('--assignments-only', action='store_true', help='独立核对并领取持续委托奖励')
@@ -172,6 +176,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.error('--observe-daily-event-return 仅配合 --daily-event-claim。')
     if args.navigate_daily_event and args.daily_event_claim is None:
         parser.error('--navigate-daily-event 仅配合 --daily-event-claim。')
+    if args.compose_build_target is not None:
+        from .build_target_compose import run as run_build_target_compose
+
+        return run_build_target_compose(args, raw_args, parser)
+    if args.build_target_output is not None:
+        parser.error('--build-target-output 仅配合 --compose-build-target。')
     if args.reward_guide_capture is not None:
         return run_capture(args, raw_args, parser)
     if args.reward_guide_notify is not None or args.reward_guide_notify_profile is not None:

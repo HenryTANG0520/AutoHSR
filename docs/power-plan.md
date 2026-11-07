@@ -236,6 +236,17 @@ if ((Get-FileHash -LiteralPath $planFile -Algorithm SHA256).Hash -ne $draft.buil
 
 正式运行按当前账号、副本、支援设置及实际已有开拓力复核，原待核对支付仍会阻止新预算。核对该行 `power_plan.done[0]` 和本次对应支付回执判断实际完成次数。旧目标进度或 CLI 的 `success` 可能对应本次零开战。材料补足仍需读取实际掉落或新的培养缺口。
 
+#### 合并已发布的培养草稿
+
+分别生成单项草稿时，将命令标准输出保存为本地 JSON，例如将每次 `--build-target` 的输出接到 `Set-Content -Encoding utf8 '材料一.json'`。合并时选 2～24 份成功回执，保留各自运行目录中的原审计报告、单项计划和截图。指定本次共同的开拓力上限，先查看预计总费用及预算余量。指定新输出文件后，会按输入顺序保存普通体力计划 JSON。
+
+```powershell
+python -m autohsr --compose-build-target '材料一.json' '材料二.json' --stamina 60
+python -m autohsr --compose-build-target '材料一.json' '材料二.json' --stamina 60 --build-target-output '培养组合.json'
+```
+
+合并保留每项的手填次数。回执、审计、单项计划或截图不一致，或者重复选择同一副本地点、预计总费用超出上限时停止。合并阶段只读取本地文件。审阅后可用既有 `--run --power-plan --power-plan-file` 入口显式执行，并用 `--stamina 60 --no-fill-power-plan --no-echo-of-war` 约束该次计划。实际开拓力、账号和支付仍在执行时核验。
+
 #### 当前客户端最小补样
 
 4.6 上线前的 9 月 20 日真珠前瞻录像可作跨页绑定参考。10.300／11.200 秒的缺口槽显示海妖残鳍图标和 `65`，右侧 `30` 是关卡费用。11.600／11.800 秒同一槽的道具卡显示「海妖残鳍」、持有 `0` 和凝滞虚影地点「『酣歌海垠』斯缇科西亚」。12.600／12.800 秒返回原槽。此段覆盖具名缺口的跨页关系，4.6 同目标、关卡难度、实得与合成量仍需各自取证。[真珠跨页原片](https://www.bilibili.com/video/BV1xuez6uEwV/?t=10) · [真珠前瞻公告](https://www.miyoushe.com/sr/article/78288294) · [塞壬之形官方关卡](https://www.taptap.cn/moment/704370773585824504)
