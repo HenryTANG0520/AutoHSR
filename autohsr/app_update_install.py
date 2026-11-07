@@ -231,7 +231,7 @@ def maintenance(root, action):
         if action == 'accept':
             if phase not in (0, 4):
                 raise UpdateError('installation_recovery_required')
-            _closed(root, journal)
+            require_closed(journal / 'previous' / _EXE, journal / 'next' / _EXE)
             if journal.resolve(strict=True) != journal or journal.parent != root:
                 raise UpdateError('installation_path_unverified')
             if {child.name for child in journal.iterdir()} != {'previous', 'next', 'state.json'}:

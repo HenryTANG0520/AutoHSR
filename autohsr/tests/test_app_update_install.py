@@ -92,7 +92,10 @@ class AppUpdateInstallTests(TestCase):
                              '--app-update-checksum', str(checksum)])
             self.assertEqual(code, 0, output.getvalue())
             network.assert_not_called()
-        result = updater.maintenance(self.root, 'accept')
+        with patch.object(updater, 'require_closed', wraps=updater.require_closed) as closed:
+            result = updater.maintenance(self.root, 'accept')
+        journal = self.root / '.autohsr-update'
+        closed.assert_called_once_with(journal / 'previous' / 'AutoHSR.exe', journal / 'next' / 'AutoHSR.exe')
         self.assertEqual((result['installation'], result['backup_retained']), ('installed', False))
         self.assertEqual(self.exe.read_bytes(), b'MZ new runtime')
         self.assert_user_data()

@@ -21,6 +21,10 @@ _WAIT_SECONDS = 120
 _DESKTOP_WAIT_SECONDS = 40
 
 
+class UpdateCancelled(UpdateError):
+    """The operator withdrew a queued update before installation."""
+
+
 def publish(job, name, record):
     temporary = job / ('.' + name + '.tmp')
     original = None
@@ -90,9 +94,24 @@ def process_environment():
     return environment
 
 
-def _wait_closed(root):
+def cancel_job(job):
+    job, _, _, _, _ = read_job(job)
+    if not os.path.lexists(job / 'cancel.json'):
+        publish(job, 'cancel.json', dict(protocol=PROTOCOL, job=job.name))
+
+
+def _require_requested(job):
+    path = job / 'cancel.json'
+    if os.path.lexists(path):
+        if read_record(path) != {'protocol': PROTOCOL, 'job': job.name}:
+            raise UpdateError('update_handoff_unverified')
+        raise UpdateCancelled('update_cancelled')
+
+
+def _wait_closed(root, *, check=lambda: None):
     deadline = monotonic() + _WAIT_SECONDS
     while True:
+        check()
         try:
             require_closed(root / _EXE)
             return
@@ -155,14 +174,16 @@ def _apply(job, root, release, restart, current_version):
         raise UpdateError('installation_previous_transaction')
     if compare_release(release, current_version) != 'available':
         raise UpdateError('release_not_newer_than_installed')
+    _require_requested(job)
     if official_release() != release:
         raise UpdateError('release_changed_after_handoff')
     stage_release(release, archive)
     created = archive.lstat()
     try:
-        _wait_closed(root)
+        _wait_closed(root, check=lambda: _require_requested(job))
         if installed_version(root) != current_version:
             raise UpdateError('installed_version_changed_after_handoff')
+        _require_requested(job)
         install(archive, root, release)
         try:
             _probe(root, job, release)
@@ -199,7 +220,7 @@ def worker(path):
             raise UpdateError('update_handoff_already_used')
         try:
             report = _apply(job, root, release, restart, current_version)
-        except KeyboardInterrupt:
+        except (UpdateCancelled, KeyboardInterrupt):
             report = dict(status='stopped')
         except UpdateError as error:
             report = dict(status='failed', reason=str(error))

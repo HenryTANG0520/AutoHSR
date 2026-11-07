@@ -7,6 +7,7 @@ class ToolsShelf(ttk.Frame):
         from .desktop_daily_observe import build_daily_observation_panel
         from .desktop_services import build_notifications_panel, build_redemption_panel
         from .desktop_screenshot import build_screenshot_panel
+        from .desktop_update import build_update_panel
         from .desktop_warp import build_warp_panel
         from .desktop_workflows import build_schedule_panel, build_workflow_panel
 
@@ -24,7 +25,8 @@ class ToolsShelf(ttk.Frame):
                 ('workflow', '任务流', build_workflow_panel),
                 ('schedule', '应用内定时', build_schedule_panel),
                 ('screenshot', '截图与识别', build_screenshot_panel),
-                ('daily_observation', '日常页面核对', build_daily_observation_panel))):
+                ('daily_observation', '日常页面核对', build_daily_observation_panel),
+                ('app_update', '助手更新', build_update_panel))):
             nav.columnconfigure(index, weight=1)
             self.buttons[key] = ttk.Button(nav, text=title, style='Settings.Nav.TButton', takefocus=False,
                                            command=lambda key=key: self.select(key))

@@ -164,3 +164,21 @@ class AppUpdateHandoffTests(TestCase):
             else:
                 self.assertIs(display.call_args.kwargs['on_ready'], callback)
                 callback.assert_not_called()
+
+    def test_cancelled_job_skips_download_and_keeps_current_runtime(self):
+        job = self.queue()
+        handoff.cancel_job(job)
+        with patch.object(handoff, 'official_release') as lookup:
+            self.assertEqual(handoff.worker(job), 130)
+        lookup.assert_not_called()
+        self.assertEqual(handoff.read_record(job / 'result.json'), {'status': 'stopped'})
+        self.assertEqual(self.exe.read_bytes(), b'MZ old')
+
+    def test_checked_release_must_match_before_queuing_worker(self):
+        changed = app_update.Release('v0.3.1', self.release.digest)
+        with (patch.object(dispatch, 'official_release', return_value=changed),
+              patch.object(dispatch, '_spawn') as launch,
+              self.assertRaisesRegex(app_update.UpdateError, 'release_changed_after_check')):
+            dispatch.begin(self.root, expected_release=self.release)
+        launch.assert_not_called()
+        self.assertFalse((self.root / 'runs').exists())

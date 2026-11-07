@@ -7,10 +7,11 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from uuid import uuid4
 
 from . import __version__
-from .app_update import UpdateError, _sha256_stream, compare_release, official_release
+from .app_update import Release, UpdateError, _sha256_stream, compare_release, official_release
 from .app_update_handoff import (PROTOCOL, WORKER, installed_version, process_environment, publish, read_job,
                                  read_record, startup_receipt)
 from .app_update_install import _TRANSACTION, _id, _runtime
@@ -46,13 +47,37 @@ def _spawn(job):
         return subprocess.Popen(command, **options)
 
 
-def begin(root, *, restart=True):
+@dataclass(frozen=True)
+class UpdateCheck:
+    installed: str
+    release: Release
+    relation: str
+    can_install: bool
+    previous_transaction: bool
+
+
+def check_for_update(root):
+    packaged = getattr(sys, 'frozen', False)
+    version = installed_version(root) if packaged else __version__
+    release = official_release()
+    can_install = bool(packaged and _id(RESOURCE_ROOT / WORKER, directory=False) is not None)
+    return UpdateCheck(version, release, compare_release(release, version), can_install,
+                       os.path.lexists(root / _TRANSACTION))
+
+
+def begin(root, *, restart=True, expected_release=None, cancelled=lambda: False):
     root = Path(root).resolve(strict=True)
     _runtime(root)
     if os.path.lexists(root / _TRANSACTION):
         raise UpdateError('installation_previous_transaction')
     version = installed_version(root)
+    if cancelled():
+        return dict(status='stopped')
     release = official_release()
+    if expected_release is not None and release != expected_release:
+        raise UpdateError('release_changed_after_check')
+    if cancelled():
+        return dict(status='stopped')
     relation = compare_release(release, version)
     if relation != 'available':
         return dict(status='success', update=relation, version=version, release=release.tag[1:])
@@ -66,12 +91,36 @@ def begin(root, *, restart=True):
     job.mkdir()
     publish(job, 'request.json', dict(protocol=PROTOCOL, tag=release.tag, sha256=release.digest,
                                       restart=restart, current_version=version))
+    if cancelled():
+        publish(job, 'result.json', dict(status='stopped'))
+        return dict(status='stopped')
     try:
         _spawn(job)
     except (OSError, UpdateError):
         publish(job, 'result.json', dict(status='failed', reason='independent_updater_not_started'))
         raise
     return dict(status='queued', job=job.name, version=version, release=release.tag[1:])
+
+
+def recent_result(root):
+    folder = root / 'runs' / 'app-update'
+    if _id(folder, directory=True) is None:
+        return None
+    if folder.resolve(strict=True) != folder:
+        raise UpdateError('update_handoff_unverified')
+    # Use the request creation time, not the later result write time.
+    requests = sorted((path for path in folder.glob('*/request.json') if path.parent.is_dir()),
+                      key=lambda path: path.stat().st_mtime_ns, reverse=True)
+    for path in requests[:20]:
+        try:
+            job, _, release, _, _ = read_job(path.parent)
+        except (OSError, UpdateError):
+            continue
+        result = job / 'result.json'
+        record = read_record(result) if os.path.lexists(result) else dict(status='pending')
+        return dict(version=release.tag[1:], **{name: record.get(name) for name in
+                    ('status', 'desktop_restart', 'installation')})
+    return None
 
 
 def _updated_installation(path):

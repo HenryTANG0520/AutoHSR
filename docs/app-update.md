@@ -1,5 +1,7 @@
 # 助手更新与回滚
 
+桌面从「设置 → 工具 → 助手更新」打开，底栏点「检查更新」。确认可安装的新版本后，底栏改为「更新并重启」。只有选择该按钮才下载和交接。请先处理未保存设置，等现有任务结束。交接前可用底栏停止。更新后可打开同一页，点「查看上次结果」核对窗口就绪和旧文件保留状态。确认新版后，点「清理更新备份」可释放旧运行文件。需要回滚时，先关闭目标助手，再用下文 CLI。
+
 使用 AutoHSR 的 CLI 检查最新正式版，或下载 Windows x64 便携包到明确指定的新文件。
 
 ```powershell
@@ -21,7 +23,7 @@ python -m autohsr --app-update-status 'D:\Apps\AutoHSR'
 
 安装只替换 `AutoHSR.exe` 和 `_internal`。配置、运行记录、通知凭据、定时方案及其他文件留在原位。安装期间会先移出旧 EXE，最后再发布新 EXE。更新失败会尝试恢复旧运行文件。断电或强制终止后，状态命令按原文件标识和实际位置判断是否中断。
 
-手动启动新版核对，退出后选择验收或回滚。回滚也可恢复已中断的安装。验收会清理仍保留的更新副本，并允许下一次安装。若清理遇到占用，回执中的 `cleanup_pending` 指出仍待清理的目录名。状态和回滚无需联网。
+手动启动新版核对后可验收。需要回滚时先退出目标助手。回滚也可恢复已中断的安装。验收会清理仍保留的更新副本，并允许下一次安装。若清理遇到占用，回执中的 `cleanup_pending` 指出仍待清理的目录名。状态和回滚无需联网。
 
 ```powershell
 python -m autohsr --app-update-rollback 'D:\Apps\AutoHSR'
@@ -40,4 +42,4 @@ python -m autohsr --app-update-handoff 'D:\Apps\AutoHSR'
 
 交接命令返回本次任务编号。进度证据保存在安装目录的 `runs/app-update/<编号>/`。结束后查看 `result.json`，其中 `runtime_verified` 表示启动探针通过，`desktop_restart: ready` 表示已收到本次新版的界面就绪信号。普通启动在主窗口映射后报告，管理员模式沿用现有启动通道的就绪信号。进程提前退出、回执不符或 40 秒内未就绪时，结果为部分完成并保留旧运行文件。核对后可退出新版，再执行验收或回滚。打包版的任务目录可在更新器退出后清理其临时副本。
 
-三月七同样在确认新版后交给独立更新器。AutoHSR 目前通过 CLI 发起交接，桌面操作入口待接入。[三月七固定更新入口](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/version/app_update.py)
+三月七同样在确认新版后交给独立更新器。AutoHSR 的桌面与 CLI 共用交接、启动核对和回滚后端。[三月七固定更新入口](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/version/app_update.py)
