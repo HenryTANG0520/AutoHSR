@@ -44,17 +44,28 @@ def main():
                     assert ui._read_settings(save=True).target_location == ""
                     assert Settings.load(config).target_location == ""
                     saved = config.read_bytes()
+                    plan = ui._form_signature()
+                    root.focus_force()
+                    ui.start_button.focus_set()
                     ui.start_button.invoke()
                     root.update()
                     assert ui.active_page == "tasks" and not ui.busy and ui.dungeon_home_return
                     assert ui.start_button.cget("text") == "返回每日"
+                    assert root.focus_get() is ui.dungeon_list
+                    ui.dungeon_list.event_generate("<Escape>")
+                    root.update()
+                    assert ui.active_page == "home" and root.focus_get() is ui.start_button
+                    assert ui._form_signature() == plan and config.read_bytes() == saved
+                    ui.start_button.invoke()
+                    root.update()
                     # Selecting the first displayed mission confirms target and location.
                     ui.dungeon_list.choose(0)
                     root.update()
                     assert ui.active_page == "home" and not ui.busy and not ui._battle_setup_needed()
                     assert ui.target_location.get() and ui.dirty and config.read_bytes() == saved
                     assert ui.start_button.cget("text") == "开始计划"
-                    checks += 12
+                    assert root.focus_get() is ui.start_button
+                    checks += 16
 
                     board.selected = "daily"
                     board.activate()
@@ -112,6 +123,11 @@ def main():
                     assert "next" in board.hitboxes
                     click(board, board.hitboxes["next"])
                     assert board._slide_job is not None
+                    root.update_idletasks()
+                    click(board, board.hitboxes["previous"])
+                    pump(root, lambda: board._slide_job is None)
+                    assert board.offset == 0 and ui.active_page == "home"
+                    click(board, board.hitboxes["next"])
                     pump(root, lambda: board._slide_job is None)
                     assert board.offset == 1
                     board.event_generate("<MouseWheel>", delta=120)
@@ -130,7 +146,7 @@ def main():
                     root.update()
                     assert board._slide_job is None and board._position == board.offset
                     assert plan == ui._form_signature() and config.read_bytes() == saved
-                    checks += 8
+                    checks += 9
                 finally:
                     root.destroy()
 

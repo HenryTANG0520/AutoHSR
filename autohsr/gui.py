@@ -94,7 +94,7 @@ class AutoHSRWindow:
         self._f9_local_pressed = False
         self._selected_tool = 'warp'
         self.daily_section = None
-        self.dungeon_home_return = False
+        self.dungeon_home_return = None
         self.book_editor = None
         self.detail_content = None
         self.detail_return_focus = None
@@ -278,7 +278,7 @@ class AutoHSRWindow:
         self.daily_section = None
         self.daily_view.grid_remove()
         if name != "tasks":
-            self.dungeon_home_return = False
+            self.dungeon_home_return = None
         self.active_page = name
         self.input_focus.cancel_if_obsolete()
         self.page_title.set(PAGE_TITLES[name])
@@ -1517,7 +1517,7 @@ class AutoHSRWindow:
         if run_plan and operation == "daily":
             operation = "plan"
         if operation in ("daily", "plan") and not resume_weekly_currency and self._battle_setup_needed():
-            self._show_task_setup("battle")
+            self._show_task_setup("battle", from_start=True)
             return
         settings = self._read_settings(operation=operation, **({'resume_weekly_currency': True} if resume_weekly_currency else {}))
         if settings is None:
@@ -1938,18 +1938,18 @@ class AutoHSRWindow:
         if data.get("screenshot"):
             self.last_screenshot = Path(data["screenshot"])
 
-    def _show_task_setup(self, task):
+    def _show_task_setup(self, task, *, from_start=False):
         if task == "battle":
             if not self.settings.allow_stamina_spend:
                 self._show_daily_tasks(task)
                 return
             if self.power_mode.get() == '体力计划':
                 from .power_plan_ui import show
-                show(self)
+                show(self, return_focus=self.footer_start_button if from_start else self.table)
                 return
             from .dungeon_ui import show_browser
             self._show_page("tasks")
-            self.dungeon_home_return = True
+            self.dungeon_home_return = "start" if from_start else "card"
             if self._battle_setup_needed():
                 self.dungeon_search.set("")
             show_browser(self)
@@ -1972,8 +1972,9 @@ class AutoHSRWindow:
         return len(self.target_name.get().strip()) < 2 or not self.target_location.get().strip()
 
     def _return_from_dungeon(self):
+        from_start = self.dungeon_home_return == "start"
         self._show_page("home")
-        self.root.after_idle(self.table.focus_set)
+        self.root.after_idle(lambda: (self.footer_start_button if from_start else self.table).focus_set())
         return "break"
 
     def _show_task_detail(self, _: tk.Event | None = None) -> None:

@@ -623,7 +623,7 @@ class TaskBoard(Surface):
         delta=e.x-start
         if abs(delta)>=24*self.scale:
             self.scroll(-1 if delta>0 else 1)
-        elif key==self._target(e) and self._slide_job is None:
+        elif key==self._target(e) and (self._slide_job is None or key in ("previous","next")):
             self._click(key)
 
     def _click(self,key):
