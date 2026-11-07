@@ -59,6 +59,7 @@ _PAGE_TARGETS = {
     'dispatch': 'assignments', 'mail': 'mail', 'reward_guide': 'reward_guide',
     'achievement': 'achievement_overview', 'redemption': 'redemption_form',
     'pass1': 'battlepass_rewards', 'pass2': 'battlepass_tasks',
+    'visa': 'visa_collection',
 }
 _UNSUPPORTED = {
     'click_image': '模板点击没有等价的 AutoHSR 步骤',

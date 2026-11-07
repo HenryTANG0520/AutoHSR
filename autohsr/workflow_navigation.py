@@ -18,7 +18,7 @@ from .daily_event_observe import read_event_installation
 from .daily_event_pages import _VERSION, phone_journey_event_entry, read_gift_of_odyssey
 from .daily_message_observe import message_panel, phone_message_entry
 from .daily_message_world import world_message_target
-from .daily_reward_observe import phone_achievement_target
+from .daily_reward_observe import phone_achievement_target, support_more_target, support_visa_target
 from .daily_visa_pages import (VISA_LAYOUT_VERSION, refine_small_visa_title, visa_character_tab, visa_overview,
                               visa_support_section)
 from .dungeons import CATEGORIES
@@ -28,8 +28,8 @@ from .policy import du_guide_details, has_du_field_plane_marker
 from .screenshot_tool import MAX_PIXELS
 from .storage import hold_read_sources
 from .task_workflow import (ACHIEVEMENT_OVERVIEW_PAGE, ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES,
-                            GUIDE_WORKFLOW_SUBPAGES,
-                            MESSAGE_WORKFLOW_PAGE, REDEMPTION_FORM_PAGE, VISA_CHARACTERS_PAGE, WORKFLOW_NAVIGATION_TARGETS,
+                            GUIDE_WORKFLOW_SUBPAGES, MESSAGE_WORKFLOW_PAGE, REDEMPTION_FORM_PAGE,
+                            VISA_CHARACTERS_PAGE, VISA_COLLECTION_PAGE, WORKFLOW_NAVIGATION_TARGETS,
                             WORLD_WORKFLOW_PAGE)
 from .team_calibration_pages import calibration_overlay
 from .vision import helper_overlay
@@ -50,7 +50,7 @@ _GUIDE_PAGES = ('guide', 'daily_training', 'survival_index')
 _EXACT_GUIDE_PAGES = (*_GUIDE_PAGES, *GUIDE_WORKFLOW_SUBPAGES)
 _EXACT_GUIDE_TITLES = ('逐光捡金', '旷宇纷争')
 _GUIDE_LAYOUT_VERSION = '4.6.0'
-_VISA_COLLECTION = 'visa_collection'
+_VISA_MORE_MENU = 'visa_more_menu'
 _BATTLEPASS_LAYOUT_VERSION = '4.6.0'
 _ACHIEVEMENT_LAYOUT_VERSION = '4.6.0'
 _REDEMPTION_LAYOUT_VERSION = '4.6.0'
@@ -63,6 +63,7 @@ _WORLD_PHONE_CENTER = (.018, .067, .028, .083)
 _ROUTE_STOP = ('跳过剧情', '跳过当前剧情', '退出剧情', '自动播放', '对话记录', '跳过对话', '确认跳过',
                '购买确认', '确认付款')
 _CLAIM_PROMPT = ('确认领取',)
+_VISA_CLAIM_PROMPTS = (*_CLAIM_PROMPT, '支援奖励', '奖励详情', '奖励明细', '领取记录', '领取成功')
 _WORLD_STOP = ('挑战失败', '战斗胜利', '点击进入', '开始游戏', '账号登录', '扫码登录', '验证码',
                *_CLAIM_PROMPT, '领取成功', '奖励详情', '开启无名勋礼')
 _ROUTE_MODAL_PHRASES = ('确认购买', '是否购买', '确认支付', '请支付', '确认付款', '跳过当前剧情')
@@ -351,6 +352,19 @@ class WorkflowNavigation:
         if self.target == REDEMPTION_FORM_PAGE:
             return self._read_redemption_page(scene)
         page = self._page(scene)
+        if self.target == VISA_COLLECTION_PAGE:
+            low = trusted(scene, COLLECTION_FLOOR)
+            if _route_blocked(low, _VISA_CLAIM_PROMPTS, _VISA_CLAIM_PROMPTS):
+                raise AutomationError('当前有漫游签证领奖提示，收集展示导航已停止。')
+            if low.has(_LOADING, exact=True) or _has_split_label(low, _LOADING, FULL):
+                return None
+            if visa_overview(scene, self.confidence):
+                return VISA_COLLECTION_PAGE
+            if visa_support_section(scene, self.confidence):
+                return VISA_CHARACTERS_PAGE
+            if support_visa_target(scene, self.confidence) is not None:
+                return _VISA_MORE_MENU
+            return 'phone' if support_more_target(scene, self.confidence) is not None else None
         if self.target == WORLD_WORKFLOW_PAGE:
             return self._world_return_page(scene, page)
         if self.target in GUIDE_WORKFLOW_SUBPAGES:
@@ -375,7 +389,7 @@ class WorkflowNavigation:
             return page
         if self.target == VISA_CHARACTERS_PAGE:
             if visa_overview(scene, self.confidence):
-                return _VISA_COLLECTION
+                return VISA_COLLECTION_PAGE
             return VISA_CHARACTERS_PAGE if visa_support_section(scene, self.confidence) else None
         options = dict(client_version=self._installation.version, confidence=self.confidence)
         if self.target == 'reward_guide':
@@ -422,8 +436,16 @@ class WorkflowNavigation:
         if self.target == ACHIEVEMENT_OVERVIEW_PAGE:
             token = phone_achievement_target(frame.scene, self.confidence) if page == 'phone' else None
             return _Action('open_achievements', (self.target,), token) if token else None
+        if self.target == VISA_COLLECTION_PAGE:
+            if page == 'phone':
+                token = support_more_target(frame.scene, self.confidence)
+                return _Action('open_more', (_VISA_MORE_MENU,), token) if token else None
+            if page == _VISA_MORE_MENU:
+                token = support_visa_target(frame.scene, self.confidence)
+                return _Action('open_visa_collection', (VISA_COLLECTION_PAGE,), token) if token else None
+            return None
         if self.target == VISA_CHARACTERS_PAGE:
-            if page != _VISA_COLLECTION or self._installation is None:
+            if page != VISA_COLLECTION_PAGE or self._installation is None:
                 return None
             tab = visa_character_tab(frame.scene, client_version=self._installation.version, confidence=self.confidence)
             return _Action('open_' + VISA_CHARACTERS_PAGE, (VISA_CHARACTERS_PAGE,), tab) if tab is not None else None
@@ -485,7 +507,7 @@ class WorkflowNavigation:
         sample = image[::max(1, image.shape[0] // 160), ::max(1, image.shape[1] // 240)]
         if float(np.std(sample, axis=(0, 1)).max()) < 2:
             raise EmptyCapture('日常页面导航的过场画面为空。')
-        if self.target == VISA_CHARACTERS_PAGE and self._installation is not None:
+        if self.target in (VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE) and self._installation is not None:
             refine_small_visa_title(scene, c.vision, self.confidence, client_version=self._installation.version)
         page = self._read_page(scene)
         account = self._account(scene)
@@ -632,8 +654,10 @@ class WorkflowNavigation:
             expected, version = ('phone', _REDEMPTION_MORE, self.target), _REDEMPTION_LAYOUT_VERSION
         elif self.target == ACHIEVEMENT_OVERVIEW_PAGE:
             expected, version = ('phone', self.target), _ACHIEVEMENT_LAYOUT_VERSION
+        elif self.target == VISA_COLLECTION_PAGE:
+            expected, version = ('phone', VISA_COLLECTION_PAGE), VISA_LAYOUT_VERSION
         elif self.target == VISA_CHARACTERS_PAGE:
-            expected, version = (_VISA_COLLECTION, VISA_CHARACTERS_PAGE), VISA_LAYOUT_VERSION
+            expected, version = (VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE), VISA_LAYOUT_VERSION
         elif self.target in BATTLEPASS_WORKFLOW_PAGES:
             expected, version = ('phone', *BATTLEPASS_WORKFLOW_PAGES), _BATTLEPASS_LAYOUT_VERSION
         elif self.target in GUIDE_WORKFLOW_SUBPAGES:

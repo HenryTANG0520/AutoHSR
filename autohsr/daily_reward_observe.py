@@ -91,7 +91,7 @@ def phone_achievement_target(scene, confidence):
     return None
 
 
-def _support_more_target(scene, confidence):
+def support_more_target(scene, confidence):
     clean = trusted(scene, COLLECTION_FLOOR)
     if (_blocked(clean) or clean.has(('成就', '设置', '活动', '邮箱', '星际和平指南'), TITLE, exact=True)
             or clean.has(('兑换成功', '请输入兑换码', '请在此输入兑换码'), exact=True)):
@@ -99,7 +99,7 @@ def _support_more_target(scene, confidence):
     return phone_more_target(scene, confidence)
 
 
-def _support_visa_target(scene, confidence):
+def support_visa_target(scene, confidence):
     clean = trusted(scene, COLLECTION_FLOOR)
     if (_blocked(clean, allow_menu=True) or _has_split_label(clean, _MENU_LABELS, FULL)
             or clean.has((*_MENU_LABELS, '成就', '设置', '活动', '邮箱'), TITLE, exact=True)
@@ -116,8 +116,8 @@ def _support_visa_target(scene, confidence):
     return visa
 
 
-_TARGETS = dict(open_achievements=phone_achievement_target, open_more=_support_more_target,
-                open_support=_support_visa_target)
+_TARGETS = dict(open_achievements=phone_achievement_target, open_more=support_more_target,
+                open_support=support_visa_target)
 _OVERVIEWS = dict(achievements={'achievement_overview': '成就总览'},
                   support={'support_collection_overview': '漫游签证收集展示', _SUPPORT_SECTION: '漫游签证支援区'})
 _TITLE_ONLY = ('achievement_title_only', 'support_title_only')
@@ -133,9 +133,9 @@ def _destination_hint(scene, confidence, mode):
         return 'support_collection_overview'
     if mode == 'support' and visa_support_section(scene, confidence):
         return _SUPPORT_SECTION
-    if mode == 'support' and _support_visa_target(scene, confidence) is not None:
+    if mode == 'support' and support_visa_target(scene, confidence) is not None:
         return 'more_menu_still_visible'
-    phone_target = _support_more_target if mode == 'support' else phone_achievement_target
+    phone_target = support_more_target if mode == 'support' else phone_achievement_target
     if phone_target(scene, confidence) is not None:
         return 'phone_still_visible'
     name = '漫游签证' if mode == 'support' else '成就'

@@ -22,8 +22,9 @@ from autohsr.daily_event_observe import read_event_installation
 from autohsr.models import FocusLost, Scene, Token
 from autohsr.tests.test_daily_event_navigation import activity_frame
 from autohsr.tests.test_daily_event_pages import _odyssey
-from autohsr.tests.test_daily_reward_observe import ACCOUNT, _Window, phone, visa_collection
+from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, _Window, phone, support_phone, visa_collection
 from autohsr.tests.test_du_team import fixture
+from autohsr.tests.test_redemption_pages import four_row_more_scene, variant_phone_scene
 from autohsr.tests.test_task_workflow import condition, recipe, task
 from autohsr.tests.test_workflow_navigation import badge, exact_guide_fixture, identified, world_hud
 from autohsr.vision import Vision
@@ -38,7 +39,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                        lose_focus_on_installation_read=False, from_phone=False, battlepass_size=None,
                        lose_focus_after_geometry=0, duplicate_tab=False, first_escape_native_count=2,
                        upstream_screen=None, guide_overlay=None, overlay_on_target=False,
-                       achievement_page_kind="overview", redemption_state="form"):
+                       achievement_page_kind="overview", redemption_state="form",
+                       visa_pages=None, expect_visa_stop=False):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -88,6 +90,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             pages = (source, achievement)
         elif target == 'visa_characters':
             pages = (visa_collection(), visa_collection('characters'))
+        elif target == 'visa_collection':
+            pages = visa_pages or (support_phone(), support_phone(menu=True), visa_collection())
         elif target == 'world':
             pages = (identified(fixture('mail_claimable')), identified(fixture('phone_mail_icon')), world_hud())
         elif guide_target:
@@ -300,7 +304,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             interrupted = (late_loss or late_version or lose_focus_on_installation_read
                            or lose_focus_after_geometry or version != '4.6.0'
                            or duplicate_tab or first_escape_native_count != 2 or guide_overlay is not None
-                           or achievement_page_kind != 'overview' or redemption_state != 'form')
+                           or achievement_page_kind != 'overview' or redemption_state != 'form' or expect_visa_stop)
             self.assertEqual(code, 1 if interrupted else 0, err.getvalue())
             if lose_focus_after_geometry:
                 self.assertTrue(focus_changed)
@@ -579,6 +583,85 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         result = native['workflow_navigation']
         self.assertFalse(result['page_verified'])
         self.assertEqual(result['actions'][0]['input_status'], 'sent')
+
+    def test_imported_visa_opens_collection_with_two_verified_clicks(self):
+        sent, steps, native = self.run_navigation(target='visa_collection', upstream_screen='visa')
+        self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * 2)
+        self.assertAlmostEqual(self.clicks[0][0], .918, delta=.015)
+        self.assertAlmostEqual(self.clicks[0][1], .107, delta=.015)
+        visa = next(token for token in support_phone(menu=True).tokens if token.text == '漫游签证')
+        self.assertAlmostEqual(self.clicks[1][0], visa.center[0], delta=.001)
+        self.assertAlmostEqual(self.clicks[1][1], visa.center[1], delta=.001)
+        self.assertTrue(steps[0]['facts']['page_verified'])
+        result = native['workflow_navigation']
+        self.assertEqual(result['target'], 'visa_collection')
+        self.assertEqual(result['client_version'], '4.6.0')
+        self.assertTrue(result['page_verified'])
+        self.assertEqual(result['actions'], [
+            dict(action='open_more', source_page='phone', expected_pages=['visa_more_menu'],
+                 input_status='sent', destination_status='verified', destination_page='visa_more_menu'),
+            dict(action='open_visa_collection', source_page='visa_more_menu', expected_pages=['visa_collection'],
+                 input_status='sent', destination_status='verified', destination_page='visa_collection'),
+        ])
+
+    def test_visa_collection_already_open_is_zero_input(self):
+        sent, steps, native = self.run_navigation(target='visa_collection', already_open=True)
+        self.assertEqual(sent, [])
+        self.assertTrue(steps[0]['facts']['page_verified'])
+        self.assertEqual(native['workflow_navigation']['actions'], [])
+
+    def test_visa_collection_accepts_the_four_row_menu_variant(self):
+        closed, menu = variant_phone_scene(), four_row_more_scene()
+        menu.image[100:380, 1490:1670] = 49
+        for scene in (closed, menu):
+            scene.tokens.append(ACCOUNT)
+        sent, steps, native = self.run_navigation(target='visa_collection', visa_pages=(closed, menu, visa_collection()))
+        self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * 2)
+        self.assertTrue(steps[0]['facts']['page_verified'])
+        self.assertAlmostEqual(self.clicks[0][0], 1753 / 1920, delta=.002)
+        self.assertAlmostEqual(self.clicks[1][1], 140 / 1080, delta=.002)
+        self.assertEqual([row['destination_page'] for row in native['workflow_navigation']['actions']],
+                         ['visa_more_menu', 'visa_collection'])
+
+    def test_visa_collection_rejects_unqualified_start_pages(self):
+        for page in (support_phone(menu=True), visa_collection('characters'), world_hud()):
+            with self.subTest(page=[token.text for token in page.tokens[:4]]):
+                sent, steps, native = self.run_navigation(target='visa_collection', visa_pages=(page,),
+                                                          expect_visa_stop=True)
+                self.assertEqual(sent, [])
+                self.assertNotIn('page_verified', steps[0]['facts'])
+                self.assertEqual(native['workflow_navigation']['actions'], [])
+
+    def test_visa_does_not_click_menu_entry_without_first_arrival(self):
+        phone = support_phone()
+        menu = support_phone(menu=True)
+        claim = Token('支援奖励详情', .99, (.35, .25, .46, .30))
+        loading = Token('正在加载', .99, (.35, .25, .46, .30))
+        for pending in (phone, support_phone(menu=True, account=OTHER),
+                        Scene([*menu.tokens, claim], menu.image), Scene([*menu.tokens, loading], menu.image)):
+            with self.subTest(page=[token.text for token in pending.tokens[-2:]]):
+                sent, steps, native = self.run_navigation(target='visa_collection', visa_pages=(phone, pending),
+                                                          expect_visa_stop=True)
+                self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)])
+                self.assertNotIn('page_verified', steps[0]['facts'])
+                self.assertEqual(native['workflow_navigation']['actions'], [
+                    dict(action='open_more', source_page='phone', expected_pages=['visa_more_menu'],
+                         input_status='sent', destination_status='unknown')])
+
+    def test_visa_does_not_count_character_showcase_or_popup_as_collection(self):
+        collection = visa_collection()
+        reconnect = Token('重新连接', .99, (.40, .25, .55, .30))
+        for pending in (visa_collection('characters'), Scene([*collection.tokens, reconnect], collection.image)):
+            with self.subTest(page=[token.text for token in pending.tokens[-2:]]):
+                sent, steps, native = self.run_navigation(target='visa_collection',
+                                                          visa_pages=(support_phone(), support_phone(menu=True), pending),
+                                                          expect_visa_stop=True)
+                self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)] * 2)
+                self.assertNotIn('page_verified', steps[0]['facts'])
+                result = native['workflow_navigation']
+                self.assertFalse(result['page_verified'])
+                self.assertEqual([row['destination_status'] for row in result['actions']], ['verified', 'unknown'])
+                self.assertEqual([row['input_status'] for row in result['actions']], ['sent', 'sent'])
 
     def test_opens_character_showcase_with_one_explicit_task_and_no_other_input(self):
         sent, steps, native = self.run_navigation(target='visa_characters', check_publication_lock=True)

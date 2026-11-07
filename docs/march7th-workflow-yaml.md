@@ -10,7 +10,7 @@
 | `for` | 1～1000 次、非空 `children`，子步骤全部可转换。缺省 1 次 |
 | `break`、`continue` | 在可转换的循环体中 |
 | `stop_workflow` | 转为原生 `stop` |
-| `switch_screen` | `main` 转为 `world`，`menu` 转为手机。`guide2`、`guide3`、`guide4`、`guide5` 分别转为每日实训、生存索引、逐光捡金、旷宇纷争。支持委托 `dispatch`、邮件 `mail`、奖励指南 `reward_guide`、新消息通知 `incoming_message`、成就 `achievement` 和兑换表单 `redemption`。`pass1`、`pass2` 分别转为 `battlepass_rewards`、`battlepass_tasks` |
+| `switch_screen` | `main` 转为 `world`，`menu` 转为手机。`guide2`、`guide3`、`guide4`、`guide5` 分别转为每日实训、生存索引、逐光捡金、旷宇纷争。支持委托 `dispatch`、邮件 `mail`、奖励指南 `reward_guide`、新消息通知 `incoming_message`、成就 `achievement` 和兑换表单 `redemption`。`pass1`、`pass2` 分别转为 `battlepass_rewards`、`battlepass_tasks`。 `visa` 转为 `visa_collection` |
 | `play_audio` | 显式填写普通相对路径或本地绝对路径，扩展名为 `.wav`。转为原生 `workflow_audio` |
 | `send_message` | 调用方显式绑定一个原生方案名称。纯文本转为 `workflow_notify` |
 
@@ -28,10 +28,11 @@
 
 `redemption` 转为 `redemption_form`，沿用手机「更多」的两段核对，止于兑换表单。[固定上游路线](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L97-L103) · [兑换码表单导航](task-workflows.md#兑换码表单导航)
 
+上游的 `visa` 从手机「更多」打开漫游签证，页面定义未区分页签。转换后的 `visa_collection` 要求核实收集展示，从前台手机主菜单或已打开的收集展示开始。需要角色展示时，可另设原生 `visa_characters` 步骤。[固定上游手机路径](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L89-L95) · [固定上游签证定义](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L536-L547) · [收集展示导航](task-workflows.md#漫游签证收集展示)
+
 | 待核对目标 | 补映射所需的最小证据 |
 | --- | --- |
 | 行动摘要 | 固定上游只列 `guide2` 至 `guide5`。先确认对应上游页面 ID，再核对 4.6.0 未选中入口与选中标题、独立正文标记，并用相邻指南页作反例 |
-| `visa` | 上游裁片只含页头。需确认哪些子页属于目标，再核对手机入口与目标子页的相邻双帧 |
 | `activity`、`configure_team` | 需区分通用活动与具体横幅、普通编队与玩法备战。各需安全入口、到页双帧和相邻误页 |
 | 地图、相机、背包及玩法子页 | 需实际入口与到页标记，以及无消耗的独立动作回执。当前各玩法的正式命令有各自的停止条件 |
 
