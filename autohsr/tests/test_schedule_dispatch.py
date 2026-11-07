@@ -1,5 +1,5 @@
 """Schedule integration with fake task-tree Runners; never game or system input."""
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import nullcontext, redirect_stdout, redirect_stderr
 from copy import deepcopy
 from datetime import datetime, timedelta
 import io
@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import tempfile
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 import uuid
@@ -483,6 +484,46 @@ class ScheduleDispatchTests(unittest.TestCase):
         self.assertEqual(result['reason'],'monitor_limit')
         self.assertIsNone(result['snapshot']['last'])
         self.assertFalse(result['snapshot']['system_tasks_registered'])
+
+    def test_cli_runs_only_next_due_native_workflow_after_clock_rollback(self):
+        from autohsr.__main__ import main
+
+        store = ScheduleStore(self.root / 'clock-cli')
+        plan = self.plan(dict(type='workflow', path=str(self.workflow)))
+        store.save(plan)
+        first_due = datetime(2026, 10, 30, 8, 30, tzinfo=CHINA)
+        next_due = first_due + timedelta(days=1)
+        now = first_due - timedelta(minutes=1)
+        times = iter((first_due + timedelta(minutes=5), first_due, next_due, next_due))
+        controllers = []
+        self.executor.workflow_factory = None  # Exercise the native wait step and saved report.
+
+        def build(*args, **kwargs):
+            controller = Scheduler(*args, **kwargs, clock=lambda: now)
+            controllers.append(controller)
+            return controller
+
+        def advance(_):
+            nonlocal now
+            self.assertTrue(controllers[0].wait_idle(3))
+            now = next(times)
+
+        output, error = io.StringIO(), io.StringIO()
+        with (patch('autohsr.config.Settings.load', return_value=self.settings),
+              patch('autohsr.schedule_dispatch.NativeScheduleExecutor', return_value=self.executor),
+              patch('autohsr.schedule_runtime.Scheduler', side_effect=build),
+              patch('autohsr.schedule_cli.time', SimpleNamespace(monotonic=lambda: 0., sleep=advance)),
+              patch('autohsr.schedule_cli._stop_pressed', side_effect=[False] * 4 + [True]),
+              patch('autohsr.task_workflow_run.workflow_lease', side_effect=nullcontext),
+              redirect_stdout(output), redirect_stderr(error)):
+            code = main(['--schedule-run', plan['id'], '--schedule-store-dir', str(store.root)])
+        self.assertEqual(code, 0, error.getvalue())
+        self.assertEqual(json.loads(output.getvalue())['reason'], 'user_stop')
+        receipts = store.receipts()
+        self.assertEqual([(row['slot'], row['status']) for row in receipts], [(next_due.isoformat(), 'success')])
+        report_path = receipts[0]['attempts'][0]['result']['source']['report_path']
+        report = json.loads(Path(report_path).read_bytes())
+        self.assertEqual([(step['step'], step['status']) for step in report['workflow']['steps']], [('wait', 'success')])
 
     def test_parent_stop_intent_survives_partial_unsaved_report_through_adapter(self):
         def factory(*args,**kwargs):

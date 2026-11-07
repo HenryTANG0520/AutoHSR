@@ -78,6 +78,7 @@ class Scheduler:
         self._seen = set()
         self._active = self._pending = None
         self._running = self._paused = False
+        self._latest_minute = None
         self._last = None
 
     def _emit(self, event):
@@ -128,6 +129,7 @@ class Scheduler:
                 raise ScheduleError('原计划执行尚未退出；未重新启动计时。')
             for entry in self._enabled.values():
                 entry['armed_at'] = now
+            self._latest_minute = now
             self._running, self._paused = True, False
         self._event('started', startup_minute='skip', missed_policy='skip')
         return self.snapshot()
@@ -225,11 +227,15 @@ class Scheduler:
         if not self._tick_lock.acquire(blocking=False):
             return self.snapshot()
         try:
-            now = local_time(now if now is not None else self.clock())
+            now = local_time(now if now is not None else self.clock()).replace(second=0, microsecond=0)
             with self._lock:
                 active = self._active
                 expired = active is not None and active.deadline is not None and self.monotonic() >= active.deadline
                 running, paused = self._running, self._paused
+                # A clock correction must not turn a missed minute into a new slot.
+                rewound = running and now < self._latest_minute
+                if running and not rewound:
+                    self._latest_minute = now
                 entries = list(sorted(self._enabled.items()))
             if active is not None and not active.cancel.is_set():
                 with active.controls:
@@ -242,7 +248,7 @@ class Scheduler:
                         return self.snapshot()
             if expired:
                 self._cancel(active, 'timeout')
-            if not running or paused:
+            if not running or paused or rewound:
                 return self.snapshot()
             for plan_id, entry in entries:
                 with self._lock:

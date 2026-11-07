@@ -404,6 +404,10 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(executor.created, [])
         self.clock.set(); scheduler.tick()
         self.assertTrue(scheduler.wait_idle(2))
+        self.assertEqual(executor.created, [])
+        self.assertEqual(self.store.receipts(), [])
+        self.clock.set(days=1); scheduler.tick()
+        self.assertTrue(scheduler.wait_idle(2))
         self.clock.set(hour=3, minute=58); scheduler.tick()
         self.clock.set(); scheduler.tick()
         self.assertEqual(len(executor.created), 1)
@@ -772,11 +776,14 @@ class RuntimeTests(unittest.TestCase):
         self.clock.set(days=1); scheduler.tick()
         self.assertEqual(len(executor.created), 1)
 
-    def test_wall_timeout_is_checked_while_paused_and_waits_for_exit(self):
+    def test_wall_timeout_is_checked_while_paused_with_clock_rollback(self):
         runner = FakeRunner(block=True, auto_release=False)
         scheduler, executor = self.build(runner, plan=definition(timeout_seconds=10))
         self.fire(scheduler); self.assertTrue(runner.started.wait(2))
-        scheduler.pause(); self.clock.seconds = 11; scheduler.tick()
+        scheduler.pause()
+        self.clock.set(hour=3, minute=59)
+        self.clock.seconds = 11
+        scheduler.tick()
         self.assertTrue(runner.stopped.is_set())
         self.assertFalse(scheduler.wait_idle(0))
         runner.release.set(); self.assertTrue(scheduler.wait_idle(2))
