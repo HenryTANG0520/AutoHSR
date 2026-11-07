@@ -3,7 +3,7 @@
 from queue import SimpleQueue
 from threading import Event, Thread
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from .desktop_services import _PaperPanel
 from .game_update_launcher import handoff, prepare_launcher, track_installation, verify_installation
@@ -24,7 +24,9 @@ class _GameUpdatePanel(_PaperPanel):
         self.action = tk.StringVar(master=self, value='游戏更新')
         self.feedback = tk.StringVar(master=self, value='按「游戏连接」中选择的星铁安装检查官方版本。')
         self.versions = tk.StringVar(master=self)
+        self.download_feedback = tk.StringVar(master=self)
         self.offer = self.pending = None
+        self.download_offer = None
         self.checked_scope = None
         self.tracking = self._tracking_after = None
         row = self._row(1, '渠道与操作')
@@ -40,6 +42,10 @@ class _GameUpdatePanel(_PaperPanel):
         self.stop_tracking_button = self._control(ttk.Button(
             controls, text='停止跟踪', command=self._cancel_tracking))
         self.stop_tracking_button.pack(side='left', padx=(self.pad, 0))
+        self.download_button = self._control(ttk.Button(self._row(5, '启动器操作'),
+            text='确认启动下载', command=self._request_download))
+        self.download_button.pack(side='left')
+        self._note(6, variable=self.download_feedback)
         self.refresh_controls()
 
     def _scope(self):
@@ -61,12 +67,15 @@ class _GameUpdatePanel(_PaperPanel):
     def refresh_controls(self):
         if self.checked_scope is not None and self.checked_scope != self._scope():
             self._stop_tracking()
-            self.checked_scope = self.offer = self.pending = None
+            self.checked_scope = self.offer = self.pending = self.download_offer = None
             self.versions.set('')
             self.feedback.set('选择已变化，请检查本次游戏版本。')
+            self.download_feedback.set('')
         super().refresh_controls()
         if self.tracking is None:
             self.stop_tracking_button.state(('disabled',))
+        if self.download_offer is None:
+            self.download_button.state(('disabled',))
 
     def _destroyed(self, event):
         if event.widget is self:
@@ -115,11 +124,11 @@ class _GameUpdatePanel(_PaperPanel):
                 self.versions.set(f'本机 {installed} · 本次目标 {target}')
             state = latest['tracking']
             if state == 'verified':
-                self.pending = None
+                self.pending = self.download_offer = None
                 self.feedback.set('已连续核实本机安装达到本次目标版本。')
                 self._stop_tracking()
             elif state == 'source_changed':
-                self.pending = None
+                self.pending = self.download_offer = None
                 self.feedback.set('星铁安装来源已变化，请重新检查。')
                 self._stop_tracking()
             elif state == 'timeout':
@@ -176,8 +185,9 @@ class _GameUpdatePanel(_PaperPanel):
 
         if self.ui._submit_tool_job('检查游戏版本', work, done, self._error):
             self._stop_tracking()
-            self.offer = self.pending = None
+            self.offer = self.pending = self.download_offer = None
             self.versions.set('')
+            self.download_feedback.set('')
             self.feedback.set('正在核对本机安装与官方包清单。')
 
     def _handoff(self):
@@ -193,13 +203,17 @@ class _GameUpdatePanel(_PaperPanel):
             self.offer = None
             if report['status'] == 'stopped':
                 self.feedback.set('已停止，未发送启动请求。')
+            elif report.get('launcher') != 'open_requested' or self.checked_scope != self._scope():
+                self.feedback.set('启动器交接待核对，请重新检查。')
             elif offer.action == 'update':
+                self.download_offer = offer
                 self.pending = offer
                 if self._start_tracking(offer):
                     self.feedback.set('已请求打开官方启动器。请在启动器确认更新，助手会跟踪安装版本。')
                 else:
                     self.feedback.set('已请求打开官方启动器。更新后可手动核对安装版本。')
             else:
+                self.download_offer = offer
                 self.feedback.set('已请求打开官方启动器。请在启动器中确认预下载和查看进度。')
             self._action_changed()
 
@@ -224,7 +238,7 @@ class _GameUpdatePanel(_PaperPanel):
                 installed, target = report['installed_version'], report['target']
                 self.versions.set(f'本机 {installed} · 本次目标 {target}')
                 if report['status'] == 'success':
-                    self.pending = None
+                    self.pending = self.download_offer = None
                     self._stop_tracking()
                     self.feedback.set('已核实本机安装达到本次目标版本。')
                 else:
@@ -232,6 +246,37 @@ class _GameUpdatePanel(_PaperPanel):
             self._action_changed()
 
         self.ui._submit_tool_job('核对安装版本', work, done, self._error)
+
+    def _request_download(self):
+        offer = self.download_offer
+        if offer is None or self.ui.busy or self.ui.closing or self.checked_scope != self._scope():
+            return
+        action = '更新' if offer.action == 'update' else '预下载'
+        if not messagebox.askyesno('确认启动下载',
+                f'允许在官方启动器中{action}星铁至 {offer.target}？\n确认后请将星铁启动器页面置于前台。',
+                parent=self.winfo_toplevel()):
+            return
+        if self.download_offer is not offer or self.checked_scope != self._scope():
+            return
+
+        def work(cancel):
+            from .game_update_download import request_download
+            return request_download(offer, stop=cancel)
+
+        def done(report):
+            if report['progress_observed']:
+                text = '已在星铁页面核实下载或安装进度。'
+            elif report['submissions']:
+                text = '已提交启动器操作，后续反馈待核对。'
+            else:
+                text = '未提交启动器操作。'
+            self.download_feedback.set(text + (report.get('message') or ''))
+            self._action_changed()
+
+        if self.ui._start_desktop_job('核对并启动下载', work, done, self._error, game=True):
+            self.download_offer = None
+            self.download_feedback.set('请将对应的官方启动器置于前台。')
+            self._action_changed()
 
     def _error(self, error):
         self.offer = None
