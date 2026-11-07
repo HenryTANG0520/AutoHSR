@@ -131,6 +131,15 @@ python -m autohsr --screen-check-pages phone mail odyssey reward_guide
 
 三月七在单页失败后尝试返回主界面，再核对余下页面。AutoHSR 中，若最后一步在写入启动意图时中断、父报告最终保存成功，先前核实页的回执仍可查看。本步到页和动作次数保留待核对，后续页标为未执行。人工恢复到已知页面后，可以显式选中仍需核对的页面另开一批，新一批按当次窗口和账号重新取证。[三月七失败处理](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/base/screen_test.py#L33-L42)
 
+原页面核对保存为部分完成且还有未启动页面时，也可以使用 CLI 续查。选择本机 `runs` 中该批次的原 `report.json`，保留同目录的 `workflow.json`、`steps.jsonl` 和各子报告。程序交叉核对原顺序、已核实前缀和执行日志，只选尚无启动意图的后续页面。曾发生换号、主动停止、原报告和日志不一致时会拒绝续查。
+
+```powershell
+python -m autohsr --screen-check-resume-plan 'runs\原批次目录\report.json'
+python -m autohsr --screen-check-resume 'runs\原批次目录\report.json'
+```
+
+预览只读本地文件。执行前先手动回到大世界并将游戏置于前台，程序用双帧零输入确认当前大世界，成功后才执行后续页面。续查生成独立报告，按本次账号重新绑定并在本批内保持一致，保留原批次的结果。
+
 短信通知的入口来源与其他页面不同，桌面和 CLI 均需单独选择。CLI 可用 `--screen-check-plan messages` 预览，或用 `--screen-check-pages messages` 执行。
 
 CLI 还可单独核对 `world`（大世界）、`visa_collection`（漫游签证收集展示）、`visa_characters`（角色展示）、`achievement_overview`（成就总览）、`battlepass_rewards`（勋礼奖励页）、`battlepass_tasks`（勋礼任务页）或 `redemption_form`（兑换码表单）。这些目标使用各自已校准的前台路线，暂不并入多页批次。兑换表单只核对到达，奖励页只核对页签。

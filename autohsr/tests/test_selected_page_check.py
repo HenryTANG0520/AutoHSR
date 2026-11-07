@@ -67,6 +67,71 @@ class PageCheckProjectionTests(TestCase):
     def project(self, report=None):
         return pages.project_result(self.recipe, self.report if report is None else report, read_source=self.load)
 
+    def saved_interrupted_run(self):
+        self.record('phone', 'success', [])
+        self.record('mail', 'partial', [action('open_mail', 'phone', ('mail',))])
+        parent = Path(self.report['run_dir'])
+        parent.mkdir()
+        for path, raw in self.sources.items():
+            path.parent.mkdir()
+            path.write_bytes(raw)
+        self.report['workflow']['identity'] = dict(account_changed=False)
+        (parent / 'workflow.json').write_bytes(_bytes(self.recipe.document))
+        events = []
+        for entry in self.report['workflow']['steps']:
+            entry['started_at'] = '2026-11-07T00:00:00+08:00'
+            entry['finished_at'] = self.report['finished_at']
+            events.append(dict(event='intent', sequence=entry['sequence'], step=entry['step'],
+                               type=entry['type'], task=entry['task'], trail=[], status='running',
+                               started_at=entry['started_at']))
+            events.append(dict(event='result', **entry))
+        (parent / 'steps.jsonl').write_text(''.join(json.dumps(event) + '\n' for event in events), encoding='utf8')
+        path = parent / 'report.json'
+        path.write_bytes(_bytes(self.report))
+        return path
+
+    def test_resume_plan_only_compiles_the_unstarted_suffix_after_zero_input_world_check(self):
+        source = self.saved_interrupted_run()
+        original = source.read_bytes()
+        recovered = pages.recovery_recipe(source, runs_root=self.root)
+        self.assertEqual([step['params'] for step in recovered.steps],
+                         [{'target': 'world', 'observe_only': True}, {'target': 'odyssey'}])
+        self.assertEqual(pages.project_result(recovered, {}, read_source=self.load)['status'], 'unknown')
+        recover = pages.recovery_recipe
+        with patch('autohsr.selected_page_check.recovery_recipe',
+                   side_effect=lambda path: recover(path, runs_root=self.root)) as select, \
+                patch('autohsr.config.Settings.load') as load, redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(main(['--screen-check-resume-plan', str(source)]), 0)
+        self.assertEqual(json.loads(out.getvalue())['pages'], ['world', 'odyssey'])
+        select.assert_called_once_with(source)
+        load.assert_not_called()
+        self.assertEqual(source.read_bytes(), original)
+
+    def test_resume_rejects_changed_account_stopped_and_wrong_source(self):
+        source = self.saved_interrupted_run()
+        for change in ('stopped', 'changed_account', 'different_recipe', 'missing_prefix_evidence'):
+            with self.subTest(change=change):
+                report = deepcopy(self.report)
+                if change == 'stopped':
+                    report['status'] = 'stopped'
+                elif change == 'changed_account':
+                    report['workflow']['identity']['account_changed'] = True
+                elif change == 'different_recipe':
+                    report['workflow']['definition_sha256'] = '0' * 64
+                else:
+                    report['workflow']['steps'][0]['source']['sha256'] = '0' * 64
+                source.write_bytes(_bytes(report))
+                with self.assertRaises(WorkflowError):
+                    pages.recovery_recipe(source, runs_root=self.root)
+
+    def test_resume_refuses_a_tail_with_an_already_recorded_intent(self):
+        source = self.saved_interrupted_run()
+        journal = source.with_name('steps.jsonl')
+        with journal.open('a', encoding='utf8') as stream:
+            stream.write(json.dumps(dict(event='intent', step='page_odyssey', sequence=3)) + '\n')
+        with self.assertRaises(WorkflowError):
+            pages.recovery_recipe(source, runs_root=self.root)
+
     def test_preview_order_is_explicit_and_never_writes_or_starts(self):
         ordinary = tuple(page for page in WORKFLOW_PAGES if page not in (*ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE))
         targets = (*reversed(ordinary), *ACTIVITY_WORKFLOW_PAGES)

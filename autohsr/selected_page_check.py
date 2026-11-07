@@ -7,7 +7,7 @@ import re
 
 from .config import ROOT
 from .storage import hold_read_sources
-from .task_workflow import (ACHIEVEMENT_OVERVIEW_PAGE, ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES,
+from .task_workflow import (ACHIEVEMENT_OVERVIEW_PAGE, ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES, MAX_BYTES,
                             MESSAGE_WORKFLOW_PAGE, PAGE_TASK, REDEMPTION_FORM_PAGE, SCREEN_CHECK_EXTRA_PAGES,
                             SCREEN_CHECK_PAGES, VISA_CHARACTERS_PAGE, VISA_COLLECTION_PAGE, WORKFLOW_PAGES,
                             WORLD_WORKFLOW_PAGE, Recipe, WorkflowError, _pairs, compile_recipe)
@@ -16,6 +16,7 @@ from .workflow_navigation import _GUIDE_PAGES, _MAX_ACTIONS, _REDEMPTION_MORE, _
 
 
 NAME = '核对所选页面'
+RECOVERY_NAME = '恢复后核对未执行页面'
 MAX_SOURCE_BYTES = 64 * 1024 * 1024
 _TERMINAL = ('success', 'partial', 'failed', 'stopped')
 _STEP_SETUP_FIELDS = frozenset(('sequence', 'step', 'type', 'task', 'trail', 'status', 'started_at'))
@@ -56,10 +57,23 @@ def build_recipe(targets, *, base_dir=None) -> Recipe:
     return compile_recipe(_document(targets), base_dir=base_dir)
 
 
+def _recovery_document(targets):
+    document = _document(targets)
+    if any(target in (*SCREEN_CHECK_EXTRA_PAGES, MESSAGE_WORKFLOW_PAGE) for target in targets):
+        raise WorkflowError('独立核对页不能加入批量续查。')
+    world = _document((WORLD_WORKFLOW_PAGE,))['steps'][0]
+    world['params']['observe_only'] = True
+    return dict(document, name=RECOVERY_NAME, steps=[world, *document['steps']])
+
+
 def _expected_document(recipe):
     if isinstance(recipe, Recipe) and not recipe.path:
         try:
-            expected = _document(tuple(step['params']['target'] for step in recipe.steps))
+            targets = tuple(step['params']['target'] for step in recipe.steps)
+            if recipe.document['name'] == RECOVERY_NAME and targets[:1] == (WORLD_WORKFLOW_PAGE,):
+                expected = _recovery_document(targets[1:])
+            else:
+                expected = _document(targets)
             if recipe.steps == expected['steps'] and _workflow_bytes(recipe.document) == _workflow_bytes(expected):
                 return expected
         except (KeyError, TypeError, ValueError):
@@ -157,7 +171,7 @@ def project_result(recipe, report, *, read_source):
             or not report['finished_at']):
         return result
     workflow = report.get('workflow')
-    if (not isinstance(workflow, dict) or workflow.get('name') != NAME or workflow.get('selected_path') != []
+    if (not isinstance(workflow, dict) or workflow.get('name') != expected['name'] or workflow.get('selected_path') != []
             or workflow.get('definition_sha256') != sha256(_workflow_bytes(expected)).hexdigest()):
         return result
     entries = workflow.get('steps')
@@ -193,20 +207,69 @@ def project_result(recipe, report, *, read_source):
     return result
 
 
-def saved_result(recipe, report, *, runs_root=None):
-    """Project the finished run from bounded, ordinary local child reports."""
+def _read_local(path, limit):
     from .workflow_bundle import _path as local_file
 
+    source = local_file(path)
+    with hold_read_sources((source,)):
+        if local_file(path) != source:
+            raise OSError('报告的本地来源已变化。')
+        with source.open('rb') as stream:
+            raw = stream.read(limit + 1)
+    if not 0 < len(raw) <= limit:
+        raise ValueError('报告文件大小无效。')
+    return raw
+
+
+def saved_result(recipe, report, *, runs_root=None):
+    """Project the finished run from bounded, ordinary local child reports."""
     root = Path(runs_root if runs_root is not None else ROOT / 'runs').absolute()
 
     def read_source(path):
         if path.parent.parent != root:
             raise OSError('子报告不在本次运行根目录。')
-        source = local_file(path)
-        with hold_read_sources((source,)):
-            if local_file(path) != source:
-                raise OSError('子报告的本地来源已变化。')
-            with source.open('rb') as stream:
-                return stream.read(MAX_SOURCE_BYTES + 1)
+        return _read_local(path, MAX_SOURCE_BYTES)
 
     return project_result(recipe, report, read_source=read_source)
+
+
+def _require_original_journal(path, entries):
+    events = [json.loads(line, object_pairs_hook=_pairs) for line in _read_local(path, MAX_BYTES).splitlines()]
+    expected = []
+    for entry in entries:
+        intent = {field: entry[field] for field in _STEP_SETUP_FIELDS}
+        intent['status'] = 'running'
+        expected.extend((dict(event='intent', **intent), dict(event='result', **entry)))
+    if events != expected:
+        raise WorkflowError('原报告与执行账本不一致。')
+
+
+def recovery_recipe(path, *, runs_root=None):
+    """Read an original saved page-check run and compile only its unstarted suffix."""
+    root = Path(runs_root if runs_root is not None else ROOT / 'runs').absolute()
+    path = (Path.cwd() / path)
+    if path.name != 'report.json' or path.parent.parent != root or '..' in path.parts:
+        raise WorkflowError('请指定 AutoHSR 本地运行目录中的页面核对 report.json。')
+    try:
+        report = json.loads(_read_local(path, MAX_SOURCE_BYTES), object_pairs_hook=_pairs)
+        if not isinstance(report, dict) or _absolute(report.get('run_dir')) != path.parent:
+            raise ValueError('report directory mismatch')
+        document = json.loads(_read_local(path.with_name('workflow.json'), MAX_BYTES), object_pairs_hook=_pairs)
+        original = compile_recipe(document)
+        receipt = saved_result(original, report, runs_root=root)
+        if receipt['status'] == 'partial':
+            _require_original_journal(path.with_name('steps.jsonl'), report['workflow']['steps'])
+    except (KeyError, OSError, RuntimeError, TypeError, ValueError):
+        raise WorkflowError('原页面核对流程或报告无法核实。') from None
+    rows = receipt['pages']
+    workflow = report.get('workflow')
+    identity = workflow.get('identity') if isinstance(workflow, dict) else None
+    pending = [row['target'] for row in rows if row['status'] == 'not_run']
+    observed = [row['status'] for row in rows if row['status'] != 'not_run']
+    if (receipt['status'] != 'partial' or not pending or not observed or observed[-1] != 'unknown'
+            or any(status != 'verified' for status in observed[:-1])
+            or (rows[0]['target'] == WORLD_WORKFLOW_PAGE and rows[0]['status'] != 'verified')
+            or report['workflow']['steps'][-1]['status'] not in ('failed', 'partial')
+            or not isinstance(identity, dict) or identity.get('account_changed') is not False):
+        raise WorkflowError('原批次没有可安全续查的未执行页面，请核对原报告。')
+    return compile_recipe(_recovery_document(pending))

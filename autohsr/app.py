@@ -24,7 +24,7 @@ from .ocr_isolation import IsolatedVision
 from .windows import find_game, is_admin, is_elevated, launch
 from .storage import file_revision, hold_read_sources, replace_file
 from .task_workflow import (GAME_VISION_TASKS, PAGE_TASK, TEMPLATE_TASKS, WORKFLOW_FOREGROUND_TASKS,
-                            WORKFLOW_NAVIGATION_TARGETS)
+                            WORKFLOW_NAVIGATION_TARGETS, WORLD_WORKFLOW_PAGE)
 
 
 def launch_game(settings: Settings) -> str:
@@ -2310,6 +2310,7 @@ class Runner:
                  use_power_plan=False,new_power_plan=False,currency_overclock_open_a0=False,build_target_selection=None,
                  challenge_lobby_mode=None, assignments_only=False, daily_reward_mode=None,
                  daily_attachment_only=None, workflow_screen_query=None, workflow_page=None,
+                 workflow_page_observe_only=False,
                  observation_wait_for_foreground=False, daily_event_claim_day=None, daily_event_observe_return=False,
                  daily_event_claim_navigate=False, daily_message_reply=None,
                  reward_guide_capture=None):
@@ -2341,6 +2342,10 @@ class Runner:
         elif workflow_page is not None:
             raise ValueError('游戏页面目标只适用于任务流的专用切换入口。')
         self.workflow_page = workflow_page
+        if (type(workflow_page_observe_only) is not bool
+                or workflow_page_observe_only and (operation != PAGE_TASK or workflow_page != WORLD_WORKFLOW_PAGE)):
+            raise ValueError('仅大世界核对支持禁止本次导航输入。')
+        self.workflow_page_observe_only = workflow_page_observe_only
         if daily_attachment_only is not None:
             from .daily_attachments import attachment_settings
             if operation != 'daily' or new_battle_run or use_power_plan or new_power_plan or assignments_only:
@@ -3320,7 +3325,8 @@ class Runner:
                 from .workflow_navigation import WorkflowNavigation
 
                 self.emit(dict(type='task', task=PAGE_TASK, status='running', detail='核对并打开选定游戏页面'))
-                workflow_navigation = context.workflow_navigation = WorkflowNavigation(context, self.workflow_page)
+                workflow_navigation = context.workflow_navigation = WorkflowNavigation(
+                    context, self.workflow_page, observe_only=self.workflow_page_observe_only)
                 result = workflow_navigation.run()
                 if result.status != 'ok' or self.report.workflow_navigation.get('page_verified') is not True:
                     raise AutomationError('未核实到达本次任务流请求的游戏页面。')

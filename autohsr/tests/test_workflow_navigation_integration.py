@@ -1,6 +1,7 @@
 """Exercise the task-tree page adapter with a simulated Win32 foreground."""
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 import ctypes
+from hashlib import sha256
 import io
 import json
 import os
@@ -20,6 +21,8 @@ from autohsr.app import Runner
 from autohsr.config import Settings
 from autohsr.daily_event_observe import read_event_installation
 from autohsr.models import FocusLost, Scene, Token
+from autohsr.selected_page_check import build_recipe
+from autohsr.task_workflow_run import _bytes
 from autohsr.tests.test_daily_event_navigation import activity_frame
 from autohsr.tests.test_daily_event_pages import _odyssey
 from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, _Window, phone, support_phone, visa_collection
@@ -33,6 +36,25 @@ from autohsr.workflow_battlepass_tabs import small_battlepass_tab
 from autohsr.workflow_navigation import WorkflowNavigation
 
 
+def interrupted_page_report(runs_root):
+    directory = runs_root / 'interrupted-page-check'
+    directory.mkdir(parents=True)
+    original = build_recipe(('mail', 'phone')).document
+    raw = _bytes(original)
+    (directory / 'workflow.json').write_bytes(raw)
+    now = '2026-11-08T00:00:00+08:00'
+    intent = dict(sequence=1, step='page_mail', type='task', task='workflow_open_page',
+                  trail=[], status='running', started_at=now)
+    result = dict(intent, status='failed', finished_at=now)
+    events = (dict(event='intent', **intent), dict(event='result', **result))
+    (directory / 'steps.jsonl').write_text(''.join(json.dumps(event) + '\n' for event in events), encoding='utf8')
+    report = directory / 'report.json'
+    report.write_bytes(_bytes(dict(operation='task_workflow', status='partial', report_saved=True,
+        run_dir=str(directory), finished_at=now, workflow=dict(name=original['name'], selected_path=[],
+        steps=[result], identity=dict(account_changed=False), definition_sha256=sha256(raw).hexdigest()))))
+    return report
+
+
 class WorkflowNavigationIntegrationTests(unittest.TestCase):
     def run_navigation(self, *, already_open=False, late_loss=False, target='mail', version='4.6.0',
                        start_in_list=False, late_version=False, from_odyssey=False, check_publication_lock=False,
@@ -40,7 +62,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                        lose_focus_after_geometry=0, duplicate_tab=False, first_escape_native_count=2,
                        upstream_screen=None, guide_overlay=None, overlay_on_target=False,
                        achievement_page_kind="overview", redemption_state="form", current_redemption_form=False,
-                       visa_pages=None, expect_visa_stop=False):
+                       visa_pages=None, expect_visa_stop=False, observe_only=False, resume=False):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -99,6 +121,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             pages = visa_pages or (support_phone(), support_phone(menu=True), visa_collection())
         elif target == 'world':
             pages = (identified(fixture('mail_claimable')), identified(fixture('phone_mail_icon')), world_hud())
+            if resume:
+                pages = (world_hud() if already_open else source, source)
         elif guide_target:
             if target == 'universe_guide':
                 pages = (exact_guide_fixture('difficulty_guide'), exact_guide_fixture('currency_guide'))
@@ -158,7 +182,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
 
         def frames():
             while True:
-                yield pages[-1] if already_open else pages[min(completed_inputs + start_in_list, len(pages) - 1)]
+                yield pages[-1] if already_open and not resume else pages[min(completed_inputs + start_in_list, len(pages) - 1)]
 
         window = _Window(frames())
         if target == 'world':
@@ -259,10 +283,14 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             Settings(overlay_logs=True, auto_launch=True, ocr_confidence=.91).save(config)
             original = config.read_bytes()
             workflow = root / 'recipe.json'
-            document = recipe(task('page', 'workflow_open_page', target=target),
+            parameters = {'observe_only': True} if observe_only else {}
+            document = recipe(task('page', 'workflow_open_page', target=target, **parameters),
                               dict(id='opened', type='if', condition=condition('page', 'page_verified', True),
                                    steps=[dict(id='verified', type='wait', seconds=0)]))
-            if upstream_screen is None:
+            if resume:
+                workflow = interrupted_page_report(root / 'runs')
+                original_report = workflow.read_bytes()
+            elif upstream_screen is None:
                 workflow.write_text(json.dumps(document, ensure_ascii=False), encoding='utf-8')
             else:
                 source_yaml = root / 'source.yaml'
@@ -280,6 +308,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             for name, value in (
                 ('autohsr.app.ROOT', root),
                 ('autohsr.task_workflow_run.ROOT', root),
+                ('autohsr.selected_page_check.ROOT', root),
                 ('autohsr.windows.user32', user32),
                 ('autohsr.windows.kernel32', SimpleNamespace(CreateMutexW=Mock(return_value=1), CloseHandle=Mock())),
                 ('autohsr.workflow_lease.NAME', 'Local\\AutoHSR.WorkflowNavigationQA.' + uuid4().hex),
@@ -305,11 +334,13 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 stack.enter_context(patch.object(windows, 'geometry', side_effect=geometry))
             stack.enter_context(redirect_stdout(out))
             stack.enter_context(redirect_stderr(err))
-            code = main(['--task-workflow', str(workflow), '--config', str(config)])
+            command = '--screen-check-resume' if resume else '--task-workflow'
+            code = main([command, str(workflow), '--config', str(config)])
             interrupted = (late_loss or late_version or lose_focus_on_installation_read
                            or lose_focus_after_geometry or version != '4.6.0'
                            or duplicate_tab or first_escape_native_count != 2 or guide_overlay is not None
-                           or achievement_page_kind != 'overview' or redemption_state != 'form' or expect_visa_stop)
+                           or achievement_page_kind != 'overview' or redemption_state != 'form' or expect_visa_stop
+                           or ((observe_only or resume) and not already_open))
             self.assertEqual(code, 1 if interrupted else 0, err.getvalue())
             if lose_focus_after_geometry:
                 self.assertTrue(focus_changed)
@@ -317,6 +348,9 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 self.assertEqual(installation_held, [True])
             self.assertEqual(config.read_bytes(), original)
             parent = json.loads(out.getvalue())
+            if resume:
+                self.assertEqual(workflow.read_bytes(), original_report)
+                return sent, parent, None
             entry = parent['workflow']['steps'][0]
             native_path = Path(entry['source']['path'])
             native = json.loads(native_path.read_text(encoding='utf-8'))
@@ -489,6 +523,27 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertFalse(record['page_verified'])
         [row] = record['actions']
         self.assertEqual((row['input_status'], row['destination_page']), ('sent', 'world'))
+
+    def test_world_observation_requires_already_open_world_and_sends_no_escape(self):
+        for already_open in (False, True):
+            with self.subTest(already_open=already_open):
+                sent, steps, native = self.run_navigation(target='world', already_open=already_open, observe_only=True)
+                self.assertEqual(sent, [])
+                self.assertEqual(native['workflow_navigation']['actions'], [])
+                self.assertIs(native['workflow_navigation']['page_verified'], already_open)
+                self.assertEqual(steps[0]['status'], 'success' if already_open else 'failed')
+
+    def test_cli_resumes_only_the_unstarted_page_after_the_world_check(self):
+        sent, receipt, _ = self.run_navigation(target='world', already_open=True, resume=True)
+        self.assertEqual(sent, [(0x08,), (0x0A,)])
+        self.assertEqual(receipt, dict(status='success', pages=[
+            dict(target='world', status='verified', actions_sent=0, actions_unconfirmed=0),
+            dict(target='phone', status='verified', actions_sent=1, actions_unconfirmed=0),
+        ]))
+        sent, receipt, _ = self.run_navigation(target='world', resume=True)
+        self.assertEqual(sent, [])
+        self.assertEqual([(row['target'], row['status']) for row in receipt['pages']],
+                         [('world', 'unknown'), ('phone', 'not_run')])
 
     def test_world_native_losing_focus_at_either_final_geometry_sends_no_new_escape(self):
         for plan_count, completed in ((2, 0), (4, 1)):

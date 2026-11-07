@@ -213,7 +213,7 @@ def _params(task, params):
         'workflow_text': {'image', 'text', 'region', 'threshold', 'contains'},
         'workflow_game_image': {'template', 'region', 'threshold'},
         'workflow_game_text': {'text', 'region', 'threshold', 'contains'},
-        PAGE_TASK: {'target'},
+        PAGE_TASK: {'target', 'observe_only'},
         'workflow_notify': {'profile', 'message', 'png'},
     }[task]
     _keys(params, allowed)
@@ -297,6 +297,10 @@ def _params(task, params):
     elif task == PAGE_TASK:
         if params.get('target') not in WORKFLOW_NAVIGATION_TARGETS:
             raise WorkflowError('请选择任务流支持的游戏页面。')
+        if 'observe_only' in params:
+            _boolean(params['observe_only'])
+            if params['target'] != WORLD_WORKFLOW_PAGE:
+                raise WorkflowError('仅大世界核对支持禁止本次导航输入。')
     elif task == 'workflow_notify':
         from .notify_profiles import NotifyError, alias, text
 
@@ -572,6 +576,8 @@ def task_spec(settings: Settings, node, base_dir):
         current.validate('check')
     elif task == PAGE_TASK:
         options = dict(operation=task, workflow_page=params['target'])
+        if params.get('observe_only') is True:
+            options['workflow_page_observe_only'] = True
         current.validate('check')
     elif task.startswith('warp_'):
         options = params

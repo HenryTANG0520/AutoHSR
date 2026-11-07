@@ -223,11 +223,12 @@ def _seal(frames):
 
 
 class WorkflowNavigation:
-    def __init__(self, context, target):
+    def __init__(self, context, target, *, observe_only=False):
         if target not in TARGETS:
             raise AutomationError('请选择受支持的日常页面。')
         self.c = context
         self.target = target
+        self._observe_only = observe_only
         self.record = {'target': target, 'page_verified': False, 'actions': []}
         context.report.workflow_navigation = self.record
         self.daily = DailyWorkflow(context)
@@ -255,7 +256,7 @@ class WorkflowNavigation:
                 and claim.record is c.report.daily_event_claim and claim._navigation is self)
 
     def authorizes_input(self, action):
-        return (self.c.report.operation == OPERATION
+        return not self._observe_only and (self.c.report.operation == OPERATION
                 or action in ('open_journey_events', 'open_odyssey') and self._bound_to_event_claim())
 
     def _control(self):
@@ -704,6 +705,8 @@ class WorkflowNavigation:
                 raise AutomationError('当前客户端尚未校准所选页面导航。')
             self.record['client_version'] = self._installation.version
         pair = self._pair(expected=expected)
+        if self._observe_only and not self._satisfies(pair[-1].page):
+            raise AutomationError('请先手动回到大世界，续查未发送导航输入。')
         while not self._satisfies(pair[-1].page):
             if len(self.record['actions']) >= _MAX_ACTIONS:
                 raise AutomationError('日常页面导航达到本次输入上限。')
