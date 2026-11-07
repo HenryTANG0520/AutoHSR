@@ -1,6 +1,6 @@
 """Evidence for one explicitly requested reply in the calibrated SMS branch."""
 from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 import time
 import unicodedata
@@ -27,7 +27,14 @@ _VERSION = '4.6.0'
 _SECTION = 2024900
 _ITEM = 202490003
 _P179_ITEM = 202500019
-REPLY_SELECTIONS = {(REPLY_NODE, REPLY_CHOICE): _ITEM, P179_SELECTION: _P179_ITEM}
+REPLY_SELECTIONS = {
+    (REPLY_NODE, REPLY_CHOICE): _ITEM,
+    (REPLY_NODE, '恭喜获得新形态'): 202490005,
+    (REPLY_NODE, '说对方看起来很开心'): 202490007,
+    (P179_SELECTION[0], '羡慕对方的爱好'): 202500014,
+    (P179_SELECTION[0], '回应工作狂'): 202500016,
+    P179_SELECTION: _P179_ITEM,
+}
 _FLOOR = .65
 _TEXT_FLOOR = .90
 _STARTER = '39cf455816495cd22f41fdc03d73ae18d97d16543eb7ddb010ef0d29a12dcbb5'
@@ -37,6 +44,12 @@ _CHOICES = (
     (202490007, '972a1cce86695e800bed5c8f727b3c21c3b37b0b93830dfedfe114bb52edb95f'),
 )
 _OUTGOING = '156c4280e9c0346232abcc2da0cbed9b0517b9f75b3385bc1f18ffff4143283e'
+_ADDITIONAL_OUTGOING = {
+    202490005: 'ad5a58d45b63a74810b9b2d153d9f2cfd01be17bd14a656df0ffb64d480d7c7b',
+    202490007: 'aec2eeb295f26a5af75d460d2b7e28422da006ba176d23c24ccca0297c3fb92c',
+    202500014: '33ef780524c6739dd28ce7900f9bc8e0a3e9546a811a5c833434eabd8367d65f',
+    202500016: 'ab5b71a3a0726576c65af476129ce6e3f4ca21cdb02546cce75cb20aebb06cf1',
+}
 _HEADER = (525 / 1280, 120 / 720, 625 / 1280, 153 / 720)
 _STARTER_AREA = (620 / 1280, 244 / 720, 925 / 1280, 369 / 720)
 _VISIBLE_CHAT = (189 / 480, 57 / 270, 410 / 480, 224 / 270)
@@ -56,6 +69,7 @@ class _ReplyProfile:
     surface: tuple[tuple[int, int, int, int], ...]
     first_option_crop: ROI | None = None
     first_option_plain: str = ''
+    variable_width: bool = False
 
 
 _P179 = _ReplyProfile(
@@ -76,13 +90,23 @@ _P179 = _ReplyProfile(
 
 
 def _profile(item_id):
-    if type(item_id) is int:
-        if item_id == _ITEM:
-            return _ReplyProfile(_SECTION, _ITEM, _STARTER, _CHOICES, _OUTGOING,
-                                 _STARTER_AREA, _OUTGOING_AREA, _P178_SURFACE)
-        if item_id == _P179_ITEM:
-            return _P179
-    return None
+    if type(item_id) is not int:
+        return None
+    if any(item_id == item for item, _ in _CHOICES):
+        base = _ReplyProfile(_SECTION, _ITEM, _STARTER, _CHOICES, _OUTGOING,
+                             _STARTER_AREA, _OUTGOING_AREA, _P178_SURFACE)
+    elif any(item_id == item for item, _ in _P179.choices):
+        base = _P179
+    else:
+        return None
+    if base.item == item_id:
+        return base
+    outgoing = _ADDITIONAL_OUTGOING.get(item_id)
+    if outgoing is None:
+        return None
+    _, top, _, bottom = base.outgoing_area
+    return replace(base, item=item_id, outgoing=outgoing, outgoing_area=(.42, top, .76, bottom),
+                   variable_width=True)
 
 
 @dataclass(frozen=True)
@@ -164,6 +188,19 @@ def _outgoing_surface(panel, areas=_P178_SURFACE) -> bool:
     return bool(np.max(np.mean(warm, axis=1)) >= .70 and inner >= 220 and inner - outside >= 12)
 
 
+def _width_adjusted_surface(panel, token) -> bool:
+    """Keep the established right alignment and read the rim around the OCR box."""
+    height, width = panel.gray.shape
+    left, top, right, bottom = (round(value * size) for value, size in zip(token.box, (width, height) * 2))
+    if not 204 <= left <= 338 or not 348 <= right <= 358 or bottom - top < 4:
+        return False
+    rim = (left + 5, top - 6, 352, top + 3)
+    left_core = (left - 2, top + 1, left + 2, bottom - 1)
+    right_core = (354, top + 1, 358, bottom - 1)
+    pane = (368, top + 1, 373, bottom - 1)
+    return _outgoing_surface(panel, (rim, left_core, right_core, pane))
+
+
 def _confirm_first_option(profile, label, digest, image, read):
     area = profile.first_option_crop
     if area is None or not callable(read) or _plain_digest(label.text) != profile.first_option_plain:
@@ -180,8 +217,7 @@ def _confirm_first_option(profile, label, digest, image, read):
 
 
 def _reply_target(panel, profile, image, read) -> Token | None:
-    if (not _has_starter(panel, profile) or _seen(panel.tokens, _VISIBLE_CHAT, profile.outgoing)
-            or _outgoing_surface(panel, profile.surface)):
+    if not _has_starter(panel, profile) or _outgoing_surface(panel, profile.surface):
         return None
     boxes = read_reply_target_boxes(panel.image)
     if len(boxes) != len(profile.choices):
@@ -193,16 +229,21 @@ def _reply_target(panel, profile, image, read) -> Token | None:
                              and (index != 0 or not _confirm_first_option(profile, label, digest, image, read))):
             return None
         labels[item] = label
+    if any(token not in labels.values() for token in _seen(panel.tokens, _VISIBLE_CHAT, profile.outgoing)):
+        return None
     return labels.get(profile.item)
 
 
 def _reply_feedback(panel, profile) -> Token | None:
-    if (not _has_starter(panel, profile) or _reply_options(panel.gray)[0] != 'not_visible'
-            or not _outgoing_surface(panel, profile.surface)):
+    if not _has_starter(panel, profile) or _reply_options(panel.gray)[0] != 'not_visible':
         return None
     token = _one_field(panel.tokens, profile.outgoing_area)
     matches = _seen(panel.tokens, _VISIBLE_CHAT, profile.outgoing)
-    return token if token is not None and matches == [token] else None
+    if token is None or matches != [token]:
+        return None
+    surface = (_width_adjusted_surface(panel, token) if profile.variable_width
+               else _outgoing_surface(panel, profile.surface))
+    return token if surface else None
 
 
 def _same_box(first, second):

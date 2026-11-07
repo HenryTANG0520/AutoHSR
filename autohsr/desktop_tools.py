@@ -30,7 +30,7 @@ class ToolsShelf(ttk.Frame):
                 ('app_update', '助手更新', build_update_panel),
                 ('game_update', '游戏更新', build_game_update_panel))):
             nav.columnconfigure(index, weight=1)
-            self.buttons[key] = ttk.Button(nav, text=title, style='Settings.Nav.TButton', takefocus=False,
+            self.buttons[key] = ttk.Button(nav, text=title, style='Tools.Settings.Nav.TButton', takefocus=False,
                                            command=lambda key=key: self.select(key))
             self.buttons[key].grid(row=0, column=index, sticky='ew', padx=(0, round(4 * ui.ui_scale)))
             self.buttons[key].bind('<Left>', lambda _, index=index: self._move(index - 1))
@@ -63,10 +63,10 @@ class ToolsShelf(ttk.Frame):
         if self.selected != key:
             if self.selected is not None:
                 self.panels[self.selected].grid_remove()
-                self.buttons[self.selected].configure(style='Settings.Nav.TButton', takefocus=False)
+                self.buttons[self.selected].configure(style='Tools.Settings.Nav.TButton', takefocus=False)
             self.selected = key
             self.panels[key].grid()
-            self.buttons[key].configure(style='Settings.Selected.Nav.TButton', takefocus=True)
+            self.buttons[key].configure(style='Tools.Settings.Selected.Nav.TButton', takefocus=True)
             self.ui.settings_shell.queue_layout()
         return self.panels[key]
 

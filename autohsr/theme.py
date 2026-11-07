@@ -476,6 +476,7 @@ def apply_theme(root, scale):
         style.configure(name, padding=(d(8), d(6)), font=native_font(root, 11), anchor="center")
         style.map(name, foreground=[("disabled", "#8b8b8b"), ("focus", "#76591d" if fill == CARD else LIGHT),
                                     ("active", "#76591d" if fill == CARD else LIGHT), ("!disabled", ink)])
+        style.configure("Tools." + name, padding=(d(6), d(6)))
     style.configure("Horizontal.TScale",background=CARD,troughcolor="#c1c1c1",sliderlength=d(18))
     style.configure("Vertical.TScrollbar",background="#b0b0b0",troughcolor=PANEL,borderwidth=0,arrowcolor=MUTED)
     return style

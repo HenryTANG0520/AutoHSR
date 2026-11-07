@@ -132,7 +132,7 @@ class SingleReplyTests(unittest.TestCase):
 
     def test_other_item_and_unsupported_version_do_not_capture(self):
         context = self.context()
-        for item in (None, True, 202490005):
+        for item in (None, True, 202490004):
             with self.assertRaisesRegex(AutomationError, '明确选择'):
                 self.run_reply(context, item_id=item)
         self.executable.with_name('config.ini').write_text('[General]\ngame_version=4.7.0\n', encoding='utf8')
@@ -140,6 +140,15 @@ class SingleReplyTests(unittest.TestCase):
             self.run_reply(context)
         self.assertEqual(context.capture_sequence, 0)
         self.assertEqual(self.records(), [])
+
+    def test_reply_option_equal_to_outgoing_does_not_hide_the_selected_control(self):
+        before = next(replay_frames())
+        profile = replace(reply._profile(202490005), outgoing=reply._text_digest(_SYNTHETIC_OPTIONS[1]))
+        panel = reply._selected_panel(before)
+        self.assertEqual(reply._reply_target(panel, profile, before.image, None), before.tokens[5])
+        old = token(_SYNTHETIC_OPTIONS[1], (819, 382, 946, 407))
+        repeated = replace(before, tokens=[*before.tokens, old])
+        self.assertIsNone(reply._reply_target(reply._selected_panel(repeated), profile, repeated.image, None))
 
     def test_option_echo_left_preview_or_missing_surface_leaves_pending_and_blocks_restart(self):
         first, second, after, final = replay_frames()
@@ -234,6 +243,20 @@ class SingleReplyTests(unittest.TestCase):
 
 
 class ReplyEvidenceTests(unittest.TestCase):
+    def test_additional_profiles_keep_original_section_and_exact_outgoing_data(self):
+        expected = {
+            202490005: (2024900, 'ad5a58d45b63a74810b9b2d153d9f2cfd01be17bd14a656df0ffb64d480d7c7b'),
+            202490007: (2024900, 'aec2eeb295f26a5af75d460d2b7e28422da006ba176d23c24ccca0297c3fb92c'),
+            202500014: (2025000, '33ef780524c6739dd28ce7900f9bc8e0a3e9546a811a5c833434eabd8367d65f'),
+            202500016: (2025000, 'ab5b71a3a0726576c65af476129ce6e3f4ca21cdb02546cce75cb20aebb06cf1'),
+        }
+        for item, (section, digest) in expected.items():
+            with self.subTest(item=item):
+                profile = reply._profile(item)
+                self.assertEqual((profile.section, profile.item, profile.outgoing), (section, item, digest))
+                self.assertTrue(profile.variable_width)
+                self.assertIn(item, reply.REPLY_SELECTIONS.values())
+
     def test_geometry_fixtures_preserve_distinct_before_and_after_evidence(self):
         manifest = json.loads((FIXTURES / 'manifest.json').read_text(encoding='utf8'))
         fixed = manifest['fixed_data']

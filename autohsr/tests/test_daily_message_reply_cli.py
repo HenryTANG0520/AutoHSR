@@ -254,6 +254,50 @@ class DailyMessageReplyCliTests(unittest.TestCase):
         self.assertFalse(self.ledger())
         self.native.SendInput.assert_not_called()
 
+    def test_alternate_reply_with_same_option_and_outgoing_confirms_one_click(self):
+        item = 202500016
+        selection = next(pair for pair, value in reply.REPLY_SELECTIONS.items() if value == item)
+        directory = replay.FIXTURES.with_name('daily_message_reply_p179')
+        cases = json.loads((directory / 'manifest.json').read_text(encoding='utf8'))['cases']
+        first, second, third = replay._SYNTHETIC_OPTIONS
+        labels = dict(starter=replay._SYNTHETIC_STARTER, option_1_punctuation_omission=first,
+                      option_2=second, option_3=third, outgoing=second)
+        original = reply._profile(item)
+        profile = replace(original, starter=reply._text_digest(labels['starter']),
+                          choices=tuple((option, reply._text_digest(label)) for (option, _), label in
+                                        zip(original.choices, (first, second, third))),
+                          outgoing=reply._text_digest(second))
+
+        def frame(case):
+            fields = [Token('甲乙', case[key]['score'], tuple(case[key]['box']))
+                      for key in ('left_header', 'right_header')]
+            for field in case['full_frame_vision']:
+                box = tuple(field['box'])
+                if field['field'] == 'outgoing':
+                    box = (.63, box[1], box[2], box[3])
+                fields.append(Token(labels[field['field']], field['score'], box))
+            scene = replay.state_frame(case['file'], ACCOUNT, *fields, directory=directory)
+            if case['phase'] == 'after':
+                _, top, _, bottom = fields[-1].box
+                height, width = scene.image.shape[:2]
+                top, bottom = round((top - 6 / 270) * height), round(bottom * height)
+                left, right = round(299 / 480 * width), round(360 / 480 * width)
+                scene.image[top:bottom, left:right] = (224, 228, 244)
+            return scene
+
+        with patch.object(reply, '_profile', return_value=profile):
+            frames = [frame(case) for case in cases if case['phase'] != 'no_outgoing']
+            self.frames = iter(frames)
+            self.assert_result(self.invoke(selection), (0, 'success', 'sent', 'confirmed', 'confirmed'))
+            target = next(token for token in frames[1].tokens if token.text == second)
+            self.assertEqual(self.fixture.packets, [self.expected_click(target)])
+            self.assert_ledger_status('confirmed')
+            original_ledger = self.ledger()
+            self.frames = iter(frame(case) for case in cases[:2])
+            self.assert_result(self.invoke(reply.P179_SELECTION), (1, 'partial', 'not_sent', 'unknown', 'confirmed'))
+            self.assertEqual(self.ledger(), original_ledger)
+            self.native.SendInput.assert_called_once()
+
     def test_unknown_selection_and_other_flags_are_rejected_before_native(self):
         args = self.args()
         for rejected in ([args[0], args[1], '不支持的合成回复', *args[3:]],

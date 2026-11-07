@@ -438,7 +438,8 @@ class DailyObservationPanelTests(unittest.TestCase):
         self.assertFalse(self.panel.start())
         self.panel.reply_node.set(REPLY_NODE)
         self.panel._reply_node_selected()
-        self.assertEqual(tuple(self.panel.reply_choice['values']), (REPLY_CHOICE,))
+        self.assertEqual(tuple(self.panel.reply_choice['values']),
+                         (REPLY_CHOICE, '恭喜获得新形态', '说对方看起来很开心'))
         self.assertEqual(self.panel.reply_choice.get(), '')
         self.assertFalse(self.panel.primary_action()[2])
         self.panel.reply_choice.set(REPLY_CHOICE)
@@ -446,6 +447,8 @@ class DailyObservationPanelTests(unittest.TestCase):
         self.assertTrue(self.panel.primary_action()[2])
         self.panel.reply_node.set(P179_SELECTION[0])
         self.panel._reply_node_selected()
+        self.assertEqual(tuple(self.panel.reply_choice['values']),
+                         ('羡慕对方的爱好', '回应工作狂', P179_SELECTION[1]))
         self.assertEqual(self.panel.reply_choice.get(), '')
         self.panel.reply_choice.set(REPLY_CHOICE)
         self.panel._reply_choice_selected()
