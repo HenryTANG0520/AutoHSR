@@ -63,8 +63,11 @@ def report_context(report: dict, path: Path | None = None) -> str:
     stamp = report.get("started_at") or report.get("finished_at")
     if stamp:
         when = str(stamp).replace("T", " ")[:25]
-    elif path and path.exists():
-        when = "文件时间 " + datetime.fromtimestamp(path.stat().st_mtime).astimezone().strftime("%m-%d %H:%M")
+    elif path is not None:
+        try:
+            when = "文件时间 " + datetime.fromtimestamp(path.stat().st_mtime).astimezone().strftime("%m-%d %H:%M")
+        except (OSError, OverflowError, ValueError):
+            when = "时间未记录"
     else:
         when = "时间未记录"
     source = Path(report.get("source") or (path.parent.parent.parent if path else "."))

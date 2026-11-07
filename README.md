@@ -487,6 +487,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 
 `success`为请求条件均已验证，`partial`为部分完成或未核实，`failed/stopped`为失败/停止。`daily_verified`独立保留实训结论，附加任务失败不能抹掉已验证每日；差分胜利与随后领奖也分开记录。
 
+记录页在启动时按文件修改时间倒序查找最近可读取的运行报告。遇到格式无效或不可读的报告时，页面显示跳过份数并保留原文件；找不到可显示的历史报告时会单独提示。
+
 ## 主要配置
 
 | 键 | 默认 | 作用 |

@@ -2215,15 +2215,32 @@ class AutoHSRWindow:
 
     def _discover_report(self) -> None:
         self._refresh_recovery()
-        try:
-            reports = list((ROOT / "runs").glob("*/report.json"))
-            if reports:
-                path = max(reports, key=lambda p: p.stat().st_mtime)
+        reports = []
+        skipped = 0
+        for path in (ROOT / "runs").glob("*/report.json"):
+            try:
+                reports.append((path.stat().st_mtime_ns, path))
+            except OSError:
+                skipped += 1
+        text_fields = ("status", "operation", "source", "run_dir",
+                       "started_at", "finished_at", "reset_day", "game_day")
+        for _, path in sorted(reports, reverse=True):
+            try:
                 report = json.loads(path.read_text(encoding="utf-8"))
-                if isinstance(report, dict):
-                    self._record_run(report, history_path=path)
-        except (OSError, ValueError):
-            pass
+            except (OSError, ValueError):
+                report = None
+            if (not isinstance(report, dict)
+                    or any(not isinstance(report.get(field, ""), str) for field in text_fields)
+                    or type(report.get("report_saved", True)) is not bool):
+                skipped += 1
+                continue
+            self._record_run(report, history_path=path)
+            if skipped:
+                self.history_context.set(f"已跳过 {skipped} 份无效报告 · {self.history_context.get()}")
+            return
+        self._reset_run_evidence()
+        self.history_context.set(f"已跳过 {skipped} 份无效报告 · 暂无可显示的历史记录"
+                                 if skipped else "暂无历史运行记录")
 
     def _open_path(self, path: Path | None) -> None:
         if path is None:
