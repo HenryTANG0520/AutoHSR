@@ -365,7 +365,7 @@ class DailyInterludeTests(unittest.TestCase):
     def test_focus_retry_reads_the_daily_bill_instead_of_du_zero_budget(self):
         from autohsr.du_daily import _step
         report=RunReport(immersifiers_pending=2)
-        runner=SimpleNamespace(report=report,checkpoint=Mock(),log=Mock())
+        runner=SimpleNamespace(report=report,checkpoint=Mock(),log=Mock(),daily_attachment_only=None)
         action=Mock(side_effect=[InputInterrupted('focus'),TaskResult('battle','ok','done')])
         with self.assertRaisesRegex(AutomationError,'消耗待核对'):
             _step(SimpleNamespace(runner=runner),action,'battle')

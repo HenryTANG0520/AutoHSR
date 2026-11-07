@@ -324,6 +324,7 @@ class EchoWeeklyTests(unittest.TestCase):
         import os
         from autohsr.power_plan_store import normal_path
         base=(ROOT/'runs').resolve()
+        base.mkdir(exist_ok=True)
         temporary_base=Path('\\\\?\\'+str(base)) if os.name=='nt' else base
         with tempfile.TemporaryDirectory(dir=temporary_base,prefix='echo-old-') as work:
             root=Path(work).resolve()

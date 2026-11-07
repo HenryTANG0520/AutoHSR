@@ -467,7 +467,8 @@ class GuiLifecycleTests(unittest.TestCase):
         worker = Mock()
         worker.is_alive.return_value = True
         ui = SimpleNamespace(events=events, worker=worker, _finish=Mock(), _clock=Mock(),
-                             _refresh_weekly_caption=Mock(), _drain=Mock(), closing=False, root=Mock())
+                             _refresh_weekly_caption=Mock(), _drain=Mock(), closing=False, root=Mock(),
+                             desktop_schedule=SimpleNamespace(tick=Mock()))
         AutoHSRWindow._drain(ui)
         ui._finish.assert_not_called()
         self.assertFalse(events.empty())

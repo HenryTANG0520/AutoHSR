@@ -112,7 +112,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
 
         def geometry(_hwnd):
             nonlocal foreground, focus_changed
-            if plan_count == 2:
+            if plan_count == lose_focus_after_geometry:
                 foreground = window.hwnd + 1
                 focus_changed = True
             return window.geometry
