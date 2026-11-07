@@ -7,6 +7,7 @@ from pathlib import Path
 import time
 
 from .config import ROOT
+from .currency_wars_identity import checked_account_key
 from .models import AutomationError, EmptyCapture, FocusLost, InputInterrupted, Stopped, TaskResult
 from .storage import replace_file
 
@@ -106,8 +107,7 @@ class RedemptionWorkflow:
                 or scene.geometry is None):
             raise AutomationError('兑换流程需要当前新鲜的游戏画面。')
         if account:
-            from .currency_wars_identity import account_key
-            observed = account_key(scene, max(.85, c.settings.ocr_confidence))
+            observed = checked_account_key(scene, c.settings.ocr_confidence)
             if observed != self.account:
                 raise AutomationError('兑换账号已改变，未发送或重放兑换码。')
 
@@ -129,11 +129,10 @@ class RedemptionWorkflow:
         return str(self.c.evidence(scene, 'redemption_' + label))
 
     def _bind_account(self):
-        from .currency_wars_identity import account_key
         frames = []
         for _ in range(24):
             scene = self._snapshot()
-            observed = account_key(scene, max(.85, self.c.settings.ocr_confidence))
+            observed = checked_account_key(scene, self.c.settings.ocr_confidence)
             if self.account is not None and observed != self.account:
                 raise AutomationError('兑换前的两帧账号不一致。')
             self.account = observed
@@ -228,8 +227,6 @@ class RedemptionWorkflow:
 
     def confirmation_guard(self, scene, action):
         """After the native window guard, recheck the same frame and intent."""
-        from .currency_wars_identity import checked_account_key
-
         c = self.c
         window, geometry = c.window, scene.geometry
         epoch, captured_at, image = self.epoch, scene.captured_at, scene.image

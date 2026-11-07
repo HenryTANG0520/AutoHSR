@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 
 from autohsr.app import Runner
 from autohsr.config import Settings, SettingsError
+from autohsr.currency_wars_identity import UID_VETO_FLOOR
 from autohsr.models import InputInterrupted, RunReport, TaskResult
 from autohsr.redemption_codes import CatalogFetchError
 from autohsr.redemption_settings import resolve_batch
@@ -119,11 +120,15 @@ class RedemptionIntegrationTests(unittest.TestCase):
             self.addCleanup(helper.doCleanups)
             helper.fixture(Path(folder), SimpleNamespace())
             with patch('autohsr.redemption_run.run_redemption', return_value=TaskResult('redemption', 'ok', 'synthetic batch done')) as run, \
+                 patch('autohsr.app.Vision') as vision, \
                  patch('autohsr.recovery.BattleBudget', side_effect=AssertionError('no battle budget')):
-                report = Runner(Settings(redemption_source='manual', redemption_codes=['abc'], overlay_logs=False), operation='redemption').run()
+                settings = Settings(redemption_source='manual', redemption_codes=['abc'], overlay_logs=False, ocr_confidence=.80)
+                report = Runner(settings, operation='redemption').run()
             self.assertEqual(report.status, 'success')
             self.assertTrue(report.report_saved)
             self.assertEqual(report.stamina_spent, 0)
+            vision.assert_called_once_with(.80)
+            self.assertEqual(vision.return_value.uid_counterevidence_floor, UID_VETO_FLOOR)
             run.assert_called_once()
 
     def test_daily_order_and_reward_only_exclusion_preserve_existing_settings(self):

@@ -12,6 +12,7 @@ from PIL import Image
 
 from autohsr.app import Context
 from autohsr.config import Settings
+from autohsr.currency_wars_identity import UID_COUNTEREVIDENCE
 from autohsr.models import AutomationError, InputInterrupted, RunReport, TaskResult, Token
 from autohsr.redemption_codes import from_values
 from autohsr.redemption_run import RedemptionWorkflow, run_redemption
@@ -308,6 +309,37 @@ class RedemptionRunTests(unittest.TestCase):
                 self.execute(later, store)
             later.window.click.assert_not_called()
             later.window.type_redemption_code.assert_not_called()
+
+    def test_conflicting_uid_on_second_result_keeps_submit_pending_without_replay(self):
+        for below_capture_threshold in (False, True):
+            with self.subTest(below_capture_threshold=below_capture_threshold), tempfile.TemporaryDirectory() as folder:
+                scenes = sequence()
+                result = scenes[-2]
+                conflict = Token('UID:200000000', .72, (.01, .96, .10, .99))
+                if below_capture_threshold:
+                    result.field_reads[UID_COUNTEREVIDENCE] = (conflict,)
+                else:
+                    result.tokens.append(conflict)
+                c = context(folder, scenes)
+                if below_capture_threshold:
+                    c.settings.ocr_confidence = .80
+                store = RedemptionStore(Path(folder) / 'ledger.json')
+
+                with self.assertRaisesRegex(AutomationError, '当前账号标识未完整核实'):
+                    self.execute(c, store)
+
+                data = c.report.redemption
+                self.assertEqual(data['results'], [])
+                self.assertEqual((data['actions'][-1]['intent'], data['actions'][-1]['status']), ('submit_code', 'unknown'))
+                self.assertEqual(store.lookup(data['account_key'], 'cn', CODE)['status'], 'pending')
+                c.window.type_redemption_code.assert_called_once()
+                self.assertEqual(c.window.click.call_count, 4)
+
+                later = context(folder, [pages.phone_scene()] * 3)
+                with self.assertRaisesRegex(AutomationError, '未重放或覆盖'):
+                    self.execute(later, store)
+                later.window.click.assert_not_called()
+                later.window.type_redemption_code.assert_not_called()
 
     def test_new_success_claims_mail_once_and_daily_can_defer_to_selected_mail_task(self):
         for operation, selected in (('redemption', False), ('daily', True)):
