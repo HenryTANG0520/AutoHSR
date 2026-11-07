@@ -1030,6 +1030,43 @@ class WorkflowTests(unittest.TestCase):
             with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 main(argv)
 
+    def test_cli_missing_explicit_config_cannot_start_workflow_or_page_navigation(self):
+        from autohsr.__main__ import main
+
+        source = self.root / 'recipe.json'
+        source.write_text(json.dumps(recipe(task('daily'))), 'utf8')
+        missing = self.root / 'missing-config.json'
+        for entry in (['--task-workflow', str(source)], ['--screen-check-pages', 'mail']):
+            for config in (['--config', str(missing)], [f'--config={missing}']):
+                with self.subTest(entry=entry, config=config), \
+                        patch('autohsr.task_workflow_run.TaskWorkflowRunner') as runner, \
+                        patch('autohsr.app.Runner') as native, redirect_stdout(io.StringIO()) as output, \
+                        redirect_stderr(io.StringIO()) as errors:
+                    self.assertEqual(main([*entry, *config]), 2)
+                    self.assertEqual(output.getvalue(), '')
+                    self.assertEqual(json.loads(errors.getvalue())['status'], 'failed')
+                    runner.assert_not_called()
+                    native.assert_not_called()
+        self.assertEqual(list(self.root.iterdir()), [source])
+
+    def test_cli_workflow_loads_valid_explicit_config_and_preserves_omitted_default(self):
+        from autohsr.__main__ import main
+
+        source = self.root / 'recipe.json'
+        source.write_text(json.dumps(recipe(task('daily'))), 'utf8')
+        config = self.root / 'without-battle.json'
+        Settings(battle=False, allow_stamina_spend=False).save(config)
+        for flags, battle in ((['--config', str(config)], False), ([], True)):
+            with self.subTest(flags=flags), patch('autohsr.__main__.CONFIG_PATH', self.root / 'missing-default.json'), \
+                    patch('autohsr.task_workflow_run.TaskWorkflowRunner') as runner, \
+                    redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                runner.return_value.run.return_value.to_dict.return_value = {'status': 'success'}
+                self.assertEqual(main(['--task-workflow', str(source), *flags]), 0)
+                settings, document, _ = runner.call_args.args
+                resolved, _ = task_spec(settings, document['steps'][0], self.root)
+                self.assertIs(resolved.battle, battle)
+                self.assertIs(resolved.allow_stamina_spend, battle)
+
     def test_sequence_lease_blocks_other_threads_and_releases_after_exit(self):
         failures = []
         def outsider():

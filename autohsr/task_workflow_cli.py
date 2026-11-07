@@ -126,7 +126,7 @@ def _screen_check(args, parser, raw_args):
 
             recipe = build_recipe(targets)
             try:
-                settings = Settings.load(args.config)
+                settings = Settings.load(args.config, require_existing='--config' in provided)
             except (OSError, TypeError, ValueError):
                 raise WorkflowError('所选页面核对无法读取有效的设置文件。') from None
             runner = TaskWorkflowRunner(settings, recipe.document, base_dir=recipe.base_dir)
@@ -191,12 +191,12 @@ def dispatch(args, parser, raw_args):
                 image = Path.cwd() / workflow_notification_png_path(image)
                 if images != {(str(image), profile)}:
                     raise WorkflowError('本次授权须与所选步骤中声明的 PNG 路径和 SMTP 方案完全一致。')
+            settings = Settings.load(args.config, require_existing='--config' in provided)
             authorization = ({'notification_versions': freeze_step_notifications(recipe)} if aliases else {})
             if images:
                 from .reward_guide_notify import freeze_png
 
                 authorization['notification_image'] = WorkflowNotificationImage(profile, freeze_png(image))
-            settings = Settings.load(args.config)
             from .notify_cli import override as override_notify
             override_notify(args, settings)
             def emit(event):
