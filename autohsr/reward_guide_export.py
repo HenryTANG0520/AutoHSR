@@ -55,14 +55,14 @@ def _verify_sources(sources):
         raise _Rejected('source_changed') from None
 
 
-def _read_png_image(stream, *, max_height, max_pixels):
+def _read_png_image(stream, *, max_height, max_pixels, min_edge=64):
     stream.seek(-len(_PNG_END), os.SEEK_END)
     if stream.read(len(_PNG_END)) != _PNG_END:
         raise _Rejected('invalid_source')
     stream.seek(0)
     with Image.open(stream, formats=('PNG',)) as header:
         width, height = header.size
-        if min(width, height) < 64 or getattr(header, 'n_frames', 1) != 1:
+        if min(width, height) < min_edge or getattr(header, 'n_frames', 1) != 1:
             raise _Rejected('invalid_source')
         if width > _MAX_INPUT_EDGE or height > max_height or width * height > max_pixels:
             raise _Rejected('limit')

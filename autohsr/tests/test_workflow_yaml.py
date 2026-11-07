@@ -166,12 +166,23 @@ class WorkflowYamlTests(unittest.TestCase):
                                                 on_failure='continue', params=dict(profile='manual-test', message=message)))
         self.assertEqual(self.source.read_bytes(), original)
 
-    def test_notification_refuses_attachment_loss_text_coercion_and_yaml_binding(self):
+    def test_screenshot_notification_converts_to_linked_native_steps(self):
+        self.write('name: 截图通知\nsteps: [{type: send_message, text: 提示, with_screenshot: true}]\n')
+        with self.assertRaisesRegex(WorkflowError, '显式方案绑定'):
+            load_march7th_yaml(self.source)
+        draft = load_march7th_yaml(self.source, notify_profile='manual-test')
+        capture, notification = draft.validate().steps
+        self.assertEqual(capture['task'], 'workflow_game_capture')
+        self.assertEqual(capture['params'], {'region': [0, 0, 1, 1]})
+        self.assertEqual(notification['params'], dict(profile='manual-test', message='提示',
+                                                      capture_from=capture['id']))
+        self.assertFalse(self.target.exists())
+
+    def test_notification_refuses_invalid_attachment_flag_text_coercion_and_yaml_binding(self):
         cases = (
             ('type: notify, text: 消息', '步骤类型'),
             ('type: send_message, text: 消息, profile: chosen', '未知字段'),
             ('type: send_message, text: 消息, allow_notify: true', '未知字段'),
-            ('type: send_message, text: 消息, with_screenshot: true', 'with_screenshot'),
             ('type: send_message, text: 消息, with_screenshot: "false"', 'with_screenshot'),
             ('type: send_message, text: 消息, with_screenshot: null', 'with_screenshot'),
             ('type: send_message, text: " 消息"', '首尾空白'),

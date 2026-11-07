@@ -14,12 +14,14 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from autohsr import notify_runtime, reward_guide_notify, workflow_notify
 from autohsr.__main__ import main
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.models import AutomationError, EmptyCapture, FocusLost, Scene, Token
 from autohsr.schedule_dispatch import _dependency_paths
 from autohsr.task_workflow import WorkflowError, compile_recipe, task_spec
+from autohsr.task_workflow_run import TaskWorkflowRunner
 from autohsr.tests.test_task_workflow import condition, recipe, task
 from autohsr.windows import Geometry
 
@@ -59,7 +61,8 @@ class WorkflowGameScreenIntegrationTests(unittest.TestCase):
         self.present = self.absent.copy()
         self.present[20:36, 40:59] = pattern[:, :, ::-1]
 
-    def run_cli(self, frames, *, expect, before_publish=None, text=None, region=None, after_publish=None):
+    def run_cli(self, frames, *, expect, before_publish=None, text=None, region=None, after_publish=None,
+                extra_steps=(), flags=()):
         workflow = self.root / 'workflow.json'
         operation = 'workflow_game_image' if text is None else 'workflow_game_text'
         params = dict(template=self.template.name) if text is None else dict(text=text, region=[0, 0, 1, .9])
@@ -72,7 +75,7 @@ class WorkflowGameScreenIntegrationTests(unittest.TestCase):
                  steps=[dict(id='match', type='wait', seconds=0)],
                  else_steps=[dict(id='miss', type='wait', seconds=0)]),
         ]
-        workflow.write_text(json.dumps(recipe(*steps), ensure_ascii=False), encoding='utf-8')
+        workflow.write_text(json.dumps(recipe(*steps, *extra_steps), ensure_ascii=False), encoding='utf-8')
         window = ScreenWindow(frames)
         account = Token('UID:135792468', .99, (.018, .957, .106, .985))
         vision = SimpleNamespace(read=lambda image, geometry: Scene([account], image, geometry))
@@ -111,8 +114,8 @@ class WorkflowGameScreenIntegrationTests(unittest.TestCase):
                 stack.enter_context(patch(target, **kwargs))
             stack.enter_context(redirect_stdout(out))
             stack.enter_context(redirect_stderr(err))
-            code = main(['--task-workflow', str(workflow), '--config', str(self.config)])
-        self.assertEqual(code, expect, err.getvalue())
+            code = main(['--task-workflow', str(workflow), '--config', str(self.config), *flags])
+        self.assertEqual(code, expect, err.getvalue() + out.getvalue())
         for action in ('focus', 'send', 'click', 'key', 'move', 'scroll', 'drag'):
             getattr(window, action).assert_not_called()
         self.assertEqual(self.config.read_bytes(), self.original)
@@ -254,3 +257,65 @@ class WorkflowGameScreenIntegrationTests(unittest.TestCase):
                        {'region': [0, 0, 1, 1], 'path': 'arbitrary.png'}):
             with self.subTest(params=params), self.assertRaises(WorkflowError):
                 compile_recipe(recipe(task('look', 'workflow_game_capture', **params)))
+
+    def test_capture_notification_uses_verified_pixels_and_has_one_attempt_per_step(self):
+        service = notify_runtime.NotificationService(root=self.root / 'private-notify', request=Mock(
+            side_effect=AssertionError('no HTTP')))
+        profile = 'fixture-smtp'
+        service.store.save(dict(id=profile, provider='smtp', params=dict(host='smtp.example.test',
+                                user='sender@example.test', password='test-password',
+                                To=['recipient@example.test'])))
+        smtp = Mock()
+        self.enterContext(patch('autohsr.notify_local.smtplib.SMTP_SSL', return_value=smtp))
+        self.enterContext(patch('autohsr.notify_local.smtplib.SMTP', return_value=smtp))
+        smtp.send_message.return_value = {}
+        for module in (workflow_notify, reward_guide_notify):
+            self.enterContext(patch.object(module, 'NotificationService', return_value=service))
+        steps = tuple(task(f'mail-{i}', 'workflow_notify', profile=profile, message=f'消息 {i}', capture_from='look')
+                      for i in (1, 2))
+        flags = ('--workflow-allow-notify', '--workflow-allow-capture-notify')
+        report, _ = self.run_cli([self.present] * 3, expect=0, region=[.15, .1, .6, .7],
+                                 extra_steps=steps, flags=flags)
+        capture, *_, first, second = report['workflow']['steps']
+        digest = capture['capture']['sha256']
+        for step in (first, second):
+            self.assertEqual(step['attachment'], dict(step='look', sequence=1, sha256=digest))
+            self.assertEqual(step['notification']['status'], 'accepted')
+            intent = Path(step['source']['path']).with_name('intent.json')
+            self.assertEqual(json.loads(intent.read_bytes())['capture_sha256'], digest)
+        self.assertEqual(smtp.send_message.call_count, 2)
+        for call in smtp.send_message.call_args_list:
+            attachment, = call.args[0].iter_attachments()
+            with Image.open(io.BytesIO(attachment.get_payload(decode=True))) as image:
+                np.testing.assert_array_equal(np.asarray(image), self.present[10:70, 30:120, ::-1])
+
+        check = TaskWorkflowRunner._capture_attachment
+
+        def replace_capture(runner, reference, entry):
+            capture = runner.report.workflow['steps'][0]
+            path = Path(capture['source']['path']).with_name('capture.png')
+            Image.new('RGB', (90, 60), 'black').save(path)
+            return check(runner, reference, entry)
+
+        with patch.object(TaskWorkflowRunner, '_capture_attachment', replace_capture):
+            report, _ = self.run_cli([self.present] * 3, expect=1, region=[.15, .1, .6, .7],
+                                     extra_steps=steps, flags=flags)
+        self.assertIn('导出回执不符', report['workflow']['steps'][-1]['error'])
+        self.assertEqual(smtp.send_message.call_count, 2)
+
+    def test_capture_notification_requires_prior_step_and_separate_cli_authorization(self):
+        capture = task('look', 'workflow_game_capture', region=[0, 0, .5, .5])
+        notification = task('mail', 'workflow_notify', profile='fixture-smtp', message='消息', capture_from='look')
+        for steps in ((notification, capture), (dict(capture, enabled=False), notification),
+                      (capture, dict(id='loop', type='for', count=1, steps=[notification]))):
+            with self.subTest(steps=steps), self.assertRaisesRegex(WorkflowError, '同一分支'):
+                compile_recipe(recipe(*steps))
+        with self.assertRaisesRegex(WorkflowError, '一起运行'):
+            compile_recipe(recipe(capture, notification), selected_path='1')
+        path = self.root / 'no-authorization.json'
+        path.write_text(json.dumps(recipe(capture, notification)), encoding='utf-8')
+        errors = io.StringIO()
+        with redirect_stderr(errors), self.assertRaises(SystemExit) as rejected:
+            main(['--task-workflow', str(path), '--workflow-allow-notify'])
+        self.assertEqual(rejected.exception.code, 2)
+        self.assertIn('--workflow-allow-capture-notify', errors.getvalue())

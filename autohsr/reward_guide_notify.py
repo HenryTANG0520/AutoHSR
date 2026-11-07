@@ -45,7 +45,7 @@ def _read_bytes(path):
     return raw
 
 
-def _load_attachment(value, *, expected_source=None):
+def _load_attachment(value, *, expected_source=None, min_edge=64):
     path = _png_path(value)
     revision = file_revision(path)
     with hold_read_sources((path,)):
@@ -58,7 +58,8 @@ def _load_attachment(value, *, expected_source=None):
     if expected_source is not None and expected_source != source:
         raise _Rejected('attachment_changed')
     try:
-        image = _read_png_image(BytesIO(raw), max_height=_MAX_INPUT_EDGE * _MAX_PAGES, max_pixels=_MAX_INPUT_PIXELS)
+        image = _read_png_image(BytesIO(raw), max_height=_MAX_INPUT_EDGE * _MAX_PAGES, max_pixels=_MAX_INPUT_PIXELS,
+                                min_edge=min_edge)
     except _Rejected as error:
         raise _Rejected('attachment_limit' if str(error) == 'limit' else 'invalid_attachment') from None
     pixels = image.tobytes()
@@ -72,9 +73,9 @@ def _load_attachment(value, *, expected_source=None):
     return source, png, image_key.hexdigest()
 
 
-def freeze_png(image):
+def freeze_png(image, *, min_edge=64):
     try:
-        source, _, _ = _load_attachment(image)
+        source, _, _ = _load_attachment(image, min_edge=min_edge)
     except (OSError, RuntimeError, TypeError, ValueError, SyntaxError, DeflateError,
             Image.DecompressionBombError):
         raise NotifyError('无法核实明确选择的本地 PNG。') from None
@@ -116,8 +117,8 @@ def send_reward_guide(image, profile, *, service=None, checkpoint=lambda: None):
 
 
 def send_local_png(image, profile, title, body, *, service=None, checkpoint=lambda: None,
-                   expected_version=None, expected_source=None):
-    """Submit once per canonical PNG and profile alias across manual entry points."""
+                   expected_version=None, expected_source=None, workflow_step_key=None):
+    """Submit a PNG once, scoped to a capture step or the usual image and profile."""
     stopped = submitted = False
     blocked = None
 
@@ -146,7 +147,8 @@ def send_local_png(image, profile, title, body, *, service=None, checkpoint=lamb
 
     try:
         check()
-        source, png, image_key = _load_attachment(image, expected_source=expected_source)
+        source, png, image_key = _load_attachment(image, expected_source=expected_source,
+                                                  min_edge=64 if workflow_step_key is None else 16)
     except (NotifyCancelled, KeyboardInterrupt):
         return _result('cancelled')
     except _Rejected as error:
@@ -192,7 +194,8 @@ def send_local_png(image, profile, title, body, *, service=None, checkpoint=lamb
 
     attempt = copy(service)
     attempt.local_send = send
-    key = 'reward-guide-png-v1:' + image_key
+    key = ('reward-guide-png-v1:' + image_key if workflow_step_key is None
+           else f'workflow-capture-png-v1:{workflow_step_key}')
     try:
         check()
         receipt = attempt.deliver(frozen, title, body, key, checkpoint=check)

@@ -90,7 +90,7 @@ class TaskWorkflowRunner:
     def __init__(self, settings, document, emit=None, *, selected_path=None, base_dir=None,
                  root=None, runner_factory=None, plan_factory=None, currency_factory=None, warp_service=None,
                  notification_versions=None, notification_service=None, wait_for_foreground=False,
-                 notification_image=None):
+                 notification_image=None, allow_capture_notify=False):
         if type(wait_for_foreground) is not bool:
             raise WorkflowError('任务流前台等待选项无效。')
         self.settings = replace(settings)
@@ -108,6 +108,8 @@ class TaskWorkflowRunner:
                     or images != {(str(notification_image.source.path), notification_image.profile)}):
                 raise WorkflowError('任务流程的图片通知须明确授权同一份本地 PNG 和 SMTP 方案。')
         self.notification_image = notification_image
+        if type(allow_capture_notify) is not bool or bool(step_notification_captures(self.recipe)) != allow_capture_notify:
+            raise WorkflowError('须明确授权本次任务流向已保存的 SMTP 方案发送游戏截图。')
         self.notification_service = notification_service
         self.emit = emit or (lambda event: None)
         self.root = Path(root) if root is not None else ROOT / 'runs'
@@ -427,8 +429,23 @@ class TaskWorkflowRunner:
         if on_failure == 'stop':
             raise _Halt(entry['error'])
 
-    def _local_task(self, node, sequence):
+    def _capture_attachment(self, reference, entry):
+        from .reward_guide_notify import freeze_png
+
+        capture_step = next((item for item in reversed(self.report.workflow['steps'])
+                             if item['step'] == reference and item['trail'] == entry['trail']), None)
+        if capture_step is None or capture_step['status'] != 'success' or 'capture' not in capture_step:
+            raise WorkflowError('当前分支或循环没有已核实的截图回执。')
+        capture = capture_step['capture']
+        source = freeze_png(Path(capture_step['source']['path']).parent / capture['file'], min_edge=16)
+        if source.digest.hex() != capture['sha256']:
+            raise WorkflowError('截图文件与本次导出回执不符，未发送通知。')
+        entry['attachment'] = dict(step=reference, sequence=capture_step['sequence'], sha256=capture['sha256'])
+        return source
+
+    def _local_task(self, node, entry):
         task = node['task']
+        sequence = entry['sequence']
         options = deepcopy(self.specs[node['id']][1])
         if task == 'workflow_notify':
             if self._notification_blocked:
@@ -437,6 +454,8 @@ class TaskWorkflowRunner:
 
             profile = options['profile']
             attachment = {'attachment': self.notification_image.source} if 'png' in options else {}
+            if 'capture_from' in options:
+                attachment = {'capture_attachment': self._capture_attachment(options['capture_from'], entry)}
             return send_step(profile, options['message'], directory=self._directory, checkpoint=self.checkpoint,
                              run_key=self._directory.name, sequence=sequence,
                              expected_version=self.notification_versions[profile], service=self.notification_service,
@@ -494,7 +513,7 @@ class TaskWorkflowRunner:
             else:
                 if enter is not None:
                     enter()
-                result = self._local_task(node, entry['sequence'])
+                result = self._local_task(node, entry)
                 self._notice_stopped(result)
             if not isinstance(result, dict) or result.get('status') not in ('success', 'partial', 'failed', 'stopped'):
                 raise WorkflowError('任务返回了未知结果。')
@@ -865,6 +884,11 @@ def step_notification_images(recipe):
             for node in _tasks(recipe.steps) if node['task'] == 'workflow_notify' and 'png' in node['params']}
 
 
+def step_notification_captures(recipe):
+    return {node['params']['profile'] for node in _tasks(recipe.steps)
+            if node['task'] == 'workflow_notify' and 'capture_from' in node['params']}
+
+
 @dataclass(frozen=True)
 class WorkflowNotificationImage:
     profile: str
@@ -875,6 +899,6 @@ def freeze_step_notifications(recipe, *, service=None):
     from .workflow_notify import freeze_profile
     from .reward_guide_notify import freeze_smtp_profile
 
-    smtp_profiles = {profile for _, profile in step_notification_images(recipe)}
+    smtp_profiles = {profile for _, profile in step_notification_images(recipe)} | step_notification_captures(recipe)
     return {identity: (freeze_smtp_profile if identity in smtp_profiles else freeze_profile)(
         identity, service=service) for identity in step_notification_aliases(recipe)}

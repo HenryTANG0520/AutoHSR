@@ -195,7 +195,7 @@ def _deliver(service, profile, message, frozen, step_key, directory, checkpoint)
 
 
 def send_step(profile, message, *, expected_version, directory, checkpoint, run_key, sequence, service=None,
-              attachment=None):
+              attachment=None, capture_attachment=None):
     """Submit a frozen profile once for this run and publish an anonymous local receipt."""
     profile, message, expected_version = alias(profile), validate_message(message), _version(expected_version)
     if type(sequence) is not int or not 1 <= sequence <= 10000:
@@ -211,7 +211,10 @@ def send_step(profile, message, *, expected_version, directory, checkpoint, run_
     except OSError:
         return _result(directory, 'rejected', reason='intent_write_failed', saved=False)
     try:
-        _write_new(directory / 'intent.json', dict(schema=1, key=step_key, status='pending'))
+        intent = dict(schema=1, key=step_key, status='pending')
+        if capture_attachment is not None:
+            intent['capture_sha256'] = capture_attachment.digest.hex()
+        _write_new(directory / 'intent.json', intent)
     except OSError:
         return _result(directory, 'rejected', reason='intent_write_failed', saved=False)
     try:
@@ -219,12 +222,14 @@ def send_step(profile, message, *, expected_version, directory, checkpoint, run_
     except (Stopped, NotifyCancelled):
         return _finish(directory, 'cancelled')
     service = NotificationService() if service is None else service
-    if attachment is not None:
+    if attachment is not None or capture_attachment is not None:
         from .reward_guide_notify import send_local_png
 
-        receipt = send_local_png(attachment.path, profile, _TITLE, message, service=service,
+        source = attachment if capture_attachment is None else capture_attachment
+        delivery = {} if capture_attachment is None else {'workflow_step_key': step_key}
+        receipt = send_local_png(source.path, profile, _TITLE, message, service=service,
                                  checkpoint=checkpoint, expected_version=expected_version,
-                                 expected_source=attachment)
+                                 expected_source=source, **delivery)
         if receipt['reused']:
             return _finish(directory, 'unknown', reason='already_attempted', reused=True)
         reason = receipt['reason']

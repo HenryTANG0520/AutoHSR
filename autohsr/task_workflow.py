@@ -229,7 +229,7 @@ def _params(task, params):
         'workflow_game_text': {'text', 'region', 'threshold', 'contains'},
         GAME_CAPTURE_TASK: {'region'},
         PAGE_TASK: {'target', 'observe_only', 'background'},
-        'workflow_notify': {'profile', 'message', 'png'},
+        'workflow_notify': {'profile', 'message', 'png', 'capture_from'},
     }[task]
     _keys(params, allowed)
     for key in ('use_power_plan', 'use_support', 'support_daily_only', 'resume_weekly_currency', 'save', 'rewards',
@@ -346,6 +346,11 @@ def _params(task, params):
             raise WorkflowError(str(error)) from error
         if 'png' in params:
             workflow_notification_png_path(params['png'])
+        if 'capture_from' in params:
+            reference = params['capture_from']
+            if ('png' in params or not isinstance(reference, str)
+                    or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}', reference)):
+                raise WorkflowError('截图附件须用 capture_from 指定截图步骤 ID，并且只能选择一种附件来源。')
 
 
 def workflow_notification_png_path(value):
@@ -462,6 +467,7 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
     def walk(nodes, depth=0, in_loop=False):
         if not isinstance(nodes, list) or depth >= MAX_DEPTH:
             raise WorkflowError('步骤列表无效或嵌套过深。')
+        captures = {}
         for node in nodes:
             if not isinstance(node, dict):
                 raise WorkflowError('步骤必须为对象。')
@@ -495,6 +501,12 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
                 if not isinstance(node.get('task'), str) or node['task'] not in TASKS:
                     raise WorkflowError('未知正式任务。')
                 _params(node['task'], node.get('params', {}))
+                reference = node.get('params', {}).get('capture_from')
+                if reference is not None and (reference not in captures
+                                              or node.get('enabled', True) and not captures[reference]):
+                    raise WorkflowError('通知附件须引用同一分支前方已启用的截图步骤。')
+                if node['task'] == GAME_CAPTURE_TASK:
+                    captures[identity] = node.get('enabled', True)
                 if node.get('on_failure', 'stop') not in ('stop', 'continue'):
                     raise WorkflowError('失败策略须为stop或continue。')
             if kind == 'wait':
@@ -528,6 +540,8 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
         raise WorkflowError('步骤路径越界或没有子步骤。') from error
     if path and selected[0]['type'] in ('break', 'continue'):
         raise WorkflowError('不能脱离循环单独执行break／continue。')
+    if path and selected[0].get('enabled', True) and selected[0].get('params', {}).get('capture_from') is not None:
+        raise WorkflowError('截图通知须与引用的截图步骤一起运行。')
     profile = _profile(selected)
     if any(profile[key] > 1 for key in ('daily_calls', 'du_calls', 'currency_calls')):
         raise WorkflowError('一个流程路径最多一份日常预算、一个差分批次和一个货币战争批次；不能用重复步骤新增预算。')

@@ -1368,7 +1368,8 @@ class AutoHSRWindow:
 
     def _start_task_workflow(self, recipe, on_report=None, *, source_scope=None) -> bool:
         from .task_workflow_run import (TaskWorkflowRunner, _tasks, freeze_step_notifications,
-                                        step_notification_aliases, step_notification_images)
+                                        step_notification_aliases, step_notification_captures,
+                                        step_notification_images)
 
         if step_notification_images(recipe):
             self.result_alert.set('图片通知须在命令行明确授权本地 PNG 和 SMTP 方案。')
@@ -1378,6 +1379,7 @@ class AutoHSRWindow:
             return False
 
         aliases = step_notification_aliases(recipe)
+        captures = step_notification_captures(recipe)
         authorization = {}
         if aliases:
             try:
@@ -1387,8 +1389,13 @@ class AutoHSRWindow:
                 return False
             count = recipe.profile['notification_calls']
             prompt = f'本次流程最多执行 {count} 个主动通知步骤，使用以下已保存方案。\n\n' + '\n'.join(aliases)
+            if captures:
+                prompt += ('\n\n以下 SMTP 方案还会发送任务流选区中的游戏画面。'
+                           '请核对选区，画面中的文字和标识也会发送。\n' + '\n'.join(sorted(captures)))
             if not messagebox.askyesno('授权本次流程的主动通知', prompt, parent=self.root, default='no'):
                 return False
+            if captures:
+                authorization['allow_capture_notify'] = True
             if self.busy or self.closing:
                 return False
 

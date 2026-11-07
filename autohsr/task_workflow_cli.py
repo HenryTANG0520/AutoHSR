@@ -31,12 +31,14 @@ def add_arguments(mode, parser):
     parser.add_argument('--workflow-yaml-native-vision', action='store_true',
                         help='仅用于 --task-workflow-convert-yaml。显式采用 AutoHSR 原生双帧图文规则，默认关闭')
     parser.add_argument('--workflow-yaml-notify-profile',
-                        help='仅用于 --task-workflow-convert-yaml。为纯文本通知绑定一个原生方案名称，不授权发送')
+                        help='仅用于 --task-workflow-convert-yaml。为通知绑定一个原生方案名称，不授权发送')
     parser.add_argument('--workflow-step-path', help='仅执行指定步骤子树，例如1/0；序号从0开始，不补执行前序步骤')
     parser.add_argument('--workflow-allow-notify', action='store_true',
                         help='授权本次明确选择的任务流程向已保存方案发送主动通知')
     parser.add_argument('--workflow-notify-png', nargs=2, metavar=('PNG', 'SMTP方案'),
                         help='为本次手动任务流明确授权 JSON 中绑定的一份本地 PNG 和已保存的 SMTP 方案')
+    parser.add_argument('--workflow-allow-capture-notify', action='store_true',
+                        help='允许本次任务流发送所选游戏截图至步骤指定的已保存 SMTP 方案')
 
 
 def validate_arguments(args, parser):
@@ -47,6 +49,8 @@ def validate_arguments(args, parser):
         parser.error('--workflow-yaml-notify-profile 仅用于 --task-workflow-convert-yaml。')
     if args.workflow_notify_png is not None and (args.task_workflow is None or not args.workflow_allow_notify):
         parser.error('--workflow-notify-png 需要 --task-workflow 和 --workflow-allow-notify。')
+    if args.workflow_allow_capture_notify and (args.task_workflow is None or not args.workflow_allow_notify):
+        parser.error('--workflow-allow-capture-notify 需要 --task-workflow 和 --workflow-allow-notify。')
 
 
 def _bundle(args, parser, raw_args):
@@ -184,7 +188,7 @@ def dispatch(args, parser, raw_args):
     allowed = {'--task-workflow', '--task-workflow-check', '--workflow-step-path'}
     if args.task_workflow is not None:
         allowed.update(('--config', '--notify', '--no-notify', '--notify-profile', '--workflow-allow-notify',
-                        '--workflow-notify-png'))
+                        '--workflow-notify-png', '--workflow-allow-capture-notify'))
     provided = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
     if set(provided) - allowed:
         parser.error('任务流程不能混用其他运行或资源覆盖参数；每步参数在流程JSON中明确配置。')
@@ -202,10 +206,14 @@ def dispatch(args, parser, raw_args):
             recipe = compile_recipe(document, selected_path=args.workflow_step_path, base_dir=selected.resolve().parent)
             from .config import Settings
             from .task_workflow_run import (TaskWorkflowRunner, WorkflowNotificationImage, freeze_step_notifications,
-                                            step_notification_aliases, step_notification_images)
+                                            step_notification_aliases, step_notification_captures,
+                                            step_notification_images)
             aliases = step_notification_aliases(recipe)
             if aliases and not args.workflow_allow_notify:
                 parser.error('任务流程含主动通知。请核对已保存方案后明确使用 --workflow-allow-notify。')
+            captures = step_notification_captures(recipe)
+            if bool(captures) != args.workflow_allow_capture_notify:
+                parser.error('截图通知与 --workflow-allow-capture-notify 须同时出现。')
             images = step_notification_images(recipe)
             if images and args.workflow_notify_png is None:
                 parser.error('任务流程含图片通知。请明确使用 --workflow-notify-png PNG SMTP方案。')
@@ -216,6 +224,8 @@ def dispatch(args, parser, raw_args):
                     raise WorkflowError('本次授权须与所选步骤中声明的 PNG 路径和 SMTP 方案完全一致。')
             settings = Settings.load(args.config, require_existing='--config' in provided)
             authorization = ({'notification_versions': freeze_step_notifications(recipe)} if aliases else {})
+            if captures:
+                authorization['allow_capture_notify'] = True
             if images:
                 from .reward_guide_notify import freeze_png
 

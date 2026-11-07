@@ -20,7 +20,7 @@ from yaml.nodes import ScalarNode
 
 from .models import normalize
 from .notify_profiles import NotifyError, alias
-from .task_workflow import (MAX_BYTES, MAX_DEPTH, MAX_NODES, MAX_WAIT_SECONDS, PAGE_TASK, WorkflowError,
+from .task_workflow import (GAME_CAPTURE_TASK, MAX_BYTES, MAX_DEPTH, MAX_NODES, MAX_WAIT_SECONDS, PAGE_TASK, WorkflowError,
                             _params, compile_recipe, execution_tasks)
 from .task_workflow_draft import SavedWorkflow, WorkflowDraft, _snapshot
 from .workflow_yaml_crop import parse_march7th_crop
@@ -332,8 +332,8 @@ def _vision_node(step, source_dir, where, *, use_native_vision):
 def _notification_params(step, notify_profile, where):
     if notify_profile is None:
         raise WorkflowError(f'{where}无法迁移。上游通知缺少 AutoHSR 所需的显式方案绑定。')
-    if step.get('with_screenshot', False) is not False:
-        raise WorkflowError(f'{where}只支持纯文本通知，with_screenshot 须省略或明确为 false。')
+    if type(step.get('with_screenshot', False)) is not bool:
+        raise WorkflowError(f'{where}的 with_screenshot 须为布尔值。')
     message = step.get('text')
     if isinstance(message, str) and message != message.strip():
         raise WorkflowError(f'{where}的正文含首尾空白，三月七发送前会裁剪，无法无损迁移。')
@@ -390,6 +390,11 @@ def _steps(values, source_dir, *, use_native_vision, notify_profile, prefix=(), 
         elif kind == 'send_message':
             node.update(type='task', task='workflow_notify', on_failure='continue',
                         params=_notification_params(value, notify_profile, f'{where}（{kind}）'))
+            if value.get('with_screenshot') is True:
+                capture = node['id'] + '-capture'
+                result.append(dict(id=capture, type='task', task=GAME_CAPTURE_TASK,
+                                   params=dict(region=[0, 0, 1, 1]), on_failure='continue'))
+                node['params']['capture_from'] = capture
         elif kind == 'switch_screen':
             screen = value.get('target_screen')
             target = _PAGE_TARGETS.get(screen.strip()) if isinstance(screen, str) else None

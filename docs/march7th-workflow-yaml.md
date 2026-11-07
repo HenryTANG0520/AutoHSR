@@ -12,7 +12,7 @@
 | `stop_workflow` | 转为原生 `stop` |
 | `switch_screen` | `main` 转为 `world`，`menu` 转为手机。`guide2`、`guide3`、`guide4`、`guide5` 分别转为每日实训、生存索引、逐光捡金、旷宇纷争。支持委托 `dispatch`、邮件 `mail`、奖励指南 `reward_guide`、新消息通知 `incoming_message`、成就 `achievement` 和兑换表单 `redemption`。`pass1`、`pass2` 分别转为 `battlepass_rewards`、`battlepass_tasks`。 `visa` 转为 `visa_collection` |
 | `play_audio` | 显式填写普通相对路径或本地绝对路径，扩展名为 `.wav`。转为原生 `workflow_audio` |
-| `send_message` | 调用方显式绑定一个原生方案名称。纯文本转为 `workflow_notify` |
+| `send_message` | 调用方显式绑定一个原生方案名称。纯文本转为 `workflow_notify`，截图通知另加入一个前置截图步骤 |
 
 识别固定提交的上游步骤字段。上游编辑器在节点里同时写入其他步骤类型的默认字段，转换只取当前动作实际使用的字段。非循环节点携带非空子步骤、任何未知字段或动作，都会拒绝整份转换。错误给出出问题的步骤路径。
 
@@ -40,19 +40,19 @@
 
 定义最多 1 MiB，YAML 解析最多 27 层和 16,416 个解析节点。拒绝锚点、别名、合并键、重复键、非文字键、自定义标签和多文档输入。文件需为普通本地文件，来源与目标父目录不经过重解析点。正式编译器仍独立限制 256 个任务步骤、12 层步骤和 10,000 次展开。
 
-## 纯文本通知
+## 通知
 
-桌面从「设置 → 工具 → 任务流」选择「导入 YAML 图文…」。选定 YAML 后，可为其中的纯文本通知明确选一个已有方案，默认不绑定。普通「打开任务流」保留严格导入。也可在 Python API 中传入 `notify_profile='my-profile'`，或使用转换专用 CLI 参数。方案名称写入通知步骤的 `params.profile`。桌面选择和 CLI 转换都只生成草稿或新 JSON。手动运行时由原入口核实方案及其版本，CLI 需要另外明确给出 `--workflow-allow-notify`。[原生任务流](task-workflows.md) · [通知方案](notifications.md)
+桌面从「设置 → 工具 → 任务流」选择「导入 YAML 图文…」。选定 YAML 后，可为其中的通知明确选一个已有方案，默认不绑定。普通「打开任务流」保留严格导入。也可在 Python API 中传入 `notify_profile='my-profile'`，或使用转换专用 CLI 参数。方案名称写入通知步骤的 `params.profile`。桌面选择和 CLI 转换都只生成草稿或新 JSON。手动运行时由原入口核实方案及其版本，CLI 需要另外明确给出 `--workflow-allow-notify`。[原生任务流](task-workflows.md) · [通知方案](notifications.md)
 
 ```powershell
 .\.venv\Scripts\python.exe -m autohsr --task-workflow-convert-yaml workflow.yaml --workflow-json-destination migrated.json --workflow-yaml-notify-profile my-profile
 ```
 
-`text` 须为非空字符串，最多 1800 个字符。支持原样保留内部空格和换行。三月七发送前会裁去首尾空白，这类正文会拒绝转换。多行正文可用 `|-` 省去 YAML 默认追加的末尾换行。「7 次完成」等普通正文可直接写入。纯数字、日期及其他会被上游解析为非文本的标量，须用引号或文本块明确表示文字。`with_screenshot` 可省略或显式填布尔 `false`，截图及节点自带的方案、标题和渠道字段均不支持。[上游通知步骤](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/module/workflow/__init__.py#L1203-L1232) · [上游 YAML 版本](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/requirements.txt#L1)
+`text` 须为非空字符串，最多 1800 个字符。支持原样保留内部空格和换行。三月七发送前会裁去首尾空白，这类正文会拒绝转换。多行正文可用 `|-` 省去 YAML 默认追加的末尾换行。「7 次完成」等普通正文可直接写入。纯数字、日期及其他会被上游解析为非文本的标量，须用引号或文本块明确表示文字。`with_screenshot` 可省略或填写布尔值。节点自带的方案、标题和渠道字段暂未适配。[上游通知步骤](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/module/workflow/__init__.py#L1203-L1232) · [上游 YAML 版本](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/requirements.txt#L1)
 
-上游 `with_screenshot: true` 在步骤执行时获取当前游戏画面。AutoHSR 原生 JSON 可用独立步骤把当前游戏选区导出为本地 PNG。通知仍需明确选择本地 PNG 和 SMTP 方案，并在命令行授权本次运行。自动连接截图与通知、迁移 `with_screenshot: true` 均待实现。[截图步骤](task-workflows.md#导出游戏截图选区) · [原生任务流](task-workflows.md)
+上游 `with_screenshot: true` 在步骤执行时获取当前游戏画面。转换后会先截取整个游戏客户区，再把该步骤的 PNG 附到通知。可在保存草稿前修改选区。通知步骤沿用原 YAML 路径生成的 ID，新增的截图步骤 ID 后缀为 `-capture`。执行需要已保存的 SMTP 方案和本次截图发送授权。[发送本次游戏截图](task-workflows.md#发送本次游戏截图)
 
-迁移只保留正文的发送意图。三月七的全局标题、渠道、通知级别、合并发送及布尔成功结果没有逐节点等价项。原生使用选定方案、固定任务流标题和独立提交回执。通知失败后可继续流程，提交待核对时会阻止后续主动通知。原生每次运行最多 20 个通知步骤的限制仍适用。[上游全局通知器](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/module/notification/notification.py#L271-L318)
+迁移保留正文和截图选项。三月七的全局标题、渠道、通知级别、合并发送及布尔成功结果没有逐节点等价项。原生使用选定方案、固定任务流标题和独立提交回执。通知失败后可继续流程，提交待核对时会阻止后续主动通知。原生每次运行最多 20 个通知步骤的限制仍适用。[上游全局通知器](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/module/notification/notification.py#L271-L318)
 
 ## 固定上游核对
 
