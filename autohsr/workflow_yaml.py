@@ -20,8 +20,8 @@ from yaml.nodes import ScalarNode
 
 from .models import normalize
 from .notify_profiles import NotifyError, alias
-from .task_workflow import (MAX_BYTES, MAX_DEPTH, MAX_NODES, PAGE_TASK, WorkflowError, _params, compile_recipe,
-                            execution_tasks)
+from .task_workflow import (MAX_BYTES, MAX_DEPTH, MAX_NODES, MAX_WAIT_SECONDS, PAGE_TASK, WorkflowError,
+                            _params, compile_recipe, execution_tasks)
 from .task_workflow_draft import SavedWorkflow, WorkflowDraft, _snapshot
 from .workflow_yaml_crop import parse_march7th_crop
 
@@ -226,6 +226,19 @@ def _whole(value, default, limit, *, quoted_grammar, where):
     raise WorkflowError(f'{where}必须是 0～{limit} 的整数。')
 
 
+def _wait_value(value, where):
+    try:
+        if value is None:
+            return 1
+        if isinstance(value, str):
+            value = _numeric(value.strip(), _NUMBER)
+        if isinstance(value, Decimal) and 0 <= value <= MAX_WAIT_SECONDS:
+            return int(value) if value == value.to_integral_value() else float(value)
+    except (ValueError, DecimalException):
+        pass
+    raise WorkflowError(f'{where}必须是 0～{MAX_WAIT_SECONDS} 的有限数字。')
+
+
 def _template_threshold(value, where):
     try:
         if value is None:
@@ -360,9 +373,7 @@ def _steps(values, source_dir, *, use_native_vision, notify_profile, prefix=(), 
         elif children != []:
             raise WorkflowError(f'{where}包含无法保留的子步骤。')
         if kind == 'wait':
-            node['seconds'] = _whole(
-                value.get('seconds'), 1, 3600, quoted_grammar=_NUMBER, where=where + '的等待秒数',
-            )
+            node['seconds'] = _wait_value(value.get('seconds'), where + '的等待秒数')
         elif kind == 'for':
             count = _whole(
                 value.get('count'), 1, 1000, quoted_grammar=_INTEGER, where=where + '的循环次数',

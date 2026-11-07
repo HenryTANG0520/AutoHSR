@@ -84,9 +84,11 @@ class WorkflowYamlTests(unittest.TestCase):
 
     def test_yml_variant_and_yaml_12_directive(self):
         self.source = self.root / 'workflow.YML'
-        self.write('%YAML 1.2\n---\nname: yes\nsteps: [{type: wait, seconds: 1e0}]\n')
+        self.write('%YAML 1.2\n---\nname: yes\nsteps: '
+                   '[{type: wait, seconds: 1e0}, {type: wait, seconds: ".25e0"}]\n')
         saved = convert_march7th_yaml(self.source, self.target)
-        self.assertEqual((saved.recipe.document['name'], saved.recipe.steps[0]['seconds']), ('yes', 1))
+        self.assertEqual(saved.recipe.document['name'], 'yes')
+        self.assertEqual([step['seconds'] for step in saved.recipe.steps], [1, .25])
 
     def test_no_overwrite_including_original_and_publish_race(self):
         original = self.write('name: 等待\nsteps: [{type: wait}]\n')
@@ -317,7 +319,7 @@ class WorkflowYamlTests(unittest.TestCase):
 
     def test_unsupported_parameters_and_children_are_not_silently_removed(self):
         for node in (
-            '{type: wait, seconds: 0.5}', '{type: wait, seconds: true}',
+            '{type: wait, seconds: 3600.0001}', '{type: wait, seconds: true}',
             '{type: wait, seconds: .inf}', '{type: wait, seconds: -1}',
             '{type: wait, seconds: 3601}', '{type: for, count: 0, children: [{type: break}]}',
             '{type: for, count: 1.5, children: [{type: wait}]}', '{type: for, count: 1001}',

@@ -18,6 +18,7 @@ MAX_NODES = 256
 MAX_DEPTH = 12
 MAX_EXECUTIONS = 10000
 MAX_STEP_NOTIFICATIONS = 20
+MAX_WAIT_SECONDS = 3600
 GAME_VISION_TASKS = {'workflow_game_image', 'workflow_game_text'}
 PAGE_TASK = 'workflow_open_page'
 ACTIVITY_WORKFLOW_PAGES = ('odyssey', 'reward_guide')
@@ -91,6 +92,12 @@ def _keys(value, allowed, required=()):
 def _integer(value, low, high):
     if type(value) is not int or not low <= value <= high:
         raise WorkflowError(f'流程整数必须在{low}～{high}之间。')
+    return value
+
+
+def _wait_seconds(value):
+    if type(value) not in (int, float) or not 0 <= value <= MAX_WAIT_SECONDS:
+        raise WorkflowError(f'等待秒数必须是 0～{MAX_WAIT_SECONDS} 的有限数字。')
     return value
 
 
@@ -409,7 +416,7 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
                 if node.get('on_failure', 'stop') not in ('stop', 'continue'):
                     raise WorkflowError('失败策略须为stop或continue。')
             if kind == 'wait':
-                _integer(node.get('seconds'), 0, 3600)
+                _wait_seconds(node.get('seconds'))
             if kind == 'for':
                 _integer(node.get('count'), 1, 1000)
             if kind == 'while':

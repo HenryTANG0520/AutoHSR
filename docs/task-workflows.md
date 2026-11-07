@@ -121,7 +121,7 @@ UTF-8 JSON顶层为`version:1`、`name`、`steps`；不接受重复JSON键、NaN
 | type | 专用字段 | 行为 |
 | --- | --- | --- |
 | `task` | `task`、可选`params/on_failure` | 顺序执行一次正式任务；失败策略默认stop，可选continue；不重试 |
-| `wait` | `seconds`，0～3600的整数 | 可暂停／停止的主动等待；暂停期间不消耗所请求等待时间 |
+| `wait` | `seconds`，0～3600 的有限数字，可用小数秒 | 可暂停／停止的主动等待；暂停期间不消耗所请求等待时间 |
 | `if` | `condition` 或 `screen_condition`，`steps`，可选 `else_steps` | 按已知结果执行一个分支，未知条件停止 |
 | `for` | `count/steps`，1～1000 | 固定有界次数；不接受上游0表示无限的行为 |
 | `while` | `condition` 或 `screen_condition`，`max_iterations`，`steps`，上限 1～1000 | 每次重新核对条件。到上限后仍成立则为部分完成 |

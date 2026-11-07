@@ -220,7 +220,7 @@ class WorkflowNodeFormTests(unittest.TestCase):
 
     def test_numeric_wait_loop_and_iteration_ranges(self):
         for label, key, valid, invalid in (
-                ("等待", "seconds", (0, 3600), ("3601", "-1", "1.5")),
+                ("等待", "seconds", (0, .25, 1e-6, 3600), ("3600.001", "-.5", "nan", "inf")),
                 ("固定次数循环", "count", (1, 1000), ("0", "1001", "nan")),
                 ("条件循环", "max_iterations", (1, 1000), ("0", "1001", "")),
         ):
@@ -235,7 +235,7 @@ class WorkflowNodeFormTests(unittest.TestCase):
                 for raw in invalid:
                     self.form.values[key].set(raw)
                     self.form.apply_button.invoke()
-                    self.assertIn("整数", self.form.error.get())
+                    self.assertIn("数字" if key == "seconds" else "整数", self.form.error.get())
                 self.applied.assert_not_called()
 
     def test_advanced_parameters_are_validated_and_remembered_per_task(self):

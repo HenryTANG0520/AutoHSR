@@ -7,8 +7,8 @@ from tkinter import ttk
 
 from . import theme
 from .task_workflow import (
-    FIELDS, GAME_VISION_TASKS, PAGE_TASK, TASKS, TEMPLATE_TASKS, WorkflowError,
-    _condition, _integer, _params, _screen_condition, _text, loads,
+    FIELDS, GAME_VISION_TASKS, MAX_WAIT_SECONDS, PAGE_TASK, TASKS, TEMPLATE_TASKS, WorkflowError,
+    _condition, _integer, _params, _screen_condition, _text, _wait_seconds, loads,
 )
 
 
@@ -40,7 +40,7 @@ _PAGES = {
     "messages": "短信通知", "visa_characters": "漫游签证角色展示",
 }
 _NUMBERS = {
-    "wait": ("seconds", "等待秒数（0～3600）", 0, 3600),
+    "wait": ("seconds", f"等待秒数（0～{MAX_WAIT_SECONDS}）", 0, MAX_WAIT_SECONDS),
     "for": ("count", "循环次数（1～1000）", 1, 1000),
     "while": ("max_iterations", "最大循环次数（1～1000）", 1, 1000),
 }
@@ -482,7 +482,15 @@ class WorkflowNodeForm(ttk.Frame):
         fields = dict(type=kind, name=_text(name) if name else None, enabled=self.enabled.get())
         if kind in _NUMBERS:
             key, _, low, high = _NUMBERS[kind]
-            fields[key] = _number(self.values[key].get(), low, high)
+            raw = self.values[key].get()
+            if kind == 'wait':
+                try:
+                    value = int(raw) if _DECIMAL.fullmatch(raw.strip()) else float(raw)
+                except ValueError:
+                    value = None
+                fields[key] = _wait_seconds(value)
+            else:
+                fields[key] = _number(raw, low, high)
         if kind in _CONDITION_KINDS:
             source = self._condition_source()
             if source == "condition":

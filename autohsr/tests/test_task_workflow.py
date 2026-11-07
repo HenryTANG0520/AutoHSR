@@ -157,7 +157,7 @@ class WorkflowTests(unittest.TestCase):
         from autohsr.__main__ import main
 
         source, target = self.root / 'sample.yml', self.root / 'converted.json'
-        raw = b'name: example\nsteps:\n  - type: wait\n    seconds: 3\n'
+        raw = b'name: example\nsteps:\n  - type: wait\n    seconds: 0.25\n'
         source.write_bytes(raw)
         args = ['--task-workflow-convert-yaml', str(source), '--workflow-json-destination', str(target)]
         with patch.object(Settings, 'load', side_effect=AssertionError('offline conversion')):
@@ -171,7 +171,13 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(json.loads(err.getvalue())['status'], 'failed')
         self.assertEqual(source.read_bytes(), raw)
         self.assertEqual(target.read_bytes(), original)
-        self.assertEqual(compile_recipe(loads(original)).steps[0]['seconds'], 3)
+        document = loads(original)
+        self.assertEqual(compile_recipe(document).steps[0]['seconds'], .25)
+        runner = self.runner(document)
+        with patch.object(runner, '_wait', wraps=runner._wait) as wait:
+            self.assertEqual(runner.run().status, 'success')
+        wait.assert_called_once_with(.25)
+        self.assertEqual(self.calls, [])
 
     def test_parent_reports_anonymous_redemption_feedback_from_verified_child(self):
         from autohsr.notify_runtime import report_message
