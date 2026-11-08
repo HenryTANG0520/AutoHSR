@@ -247,6 +247,8 @@ P178 的 18.138125、18.438250 秒前帧与 19.205125、19.505188 秒后帧通�
 
 三月七的取景标记是圆形快门图，预览标记只含「编辑」。后续需要独立核对取景控件、同一普通相机预览的操作区，以及实训卡反馈。单独出现任一标记时，保持待核对。[上游取景标记](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/images/screen/camera.png) · [上游预览标记](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/images/screen/photo_preview.png)
 
+固定导航表从手机右侧图标进入取景，从预览按 Esc 回取景，再按 Esc 回大世界。上游拍照函数在预览标记出现前可能重复按 F，结束时未重读实训任务卡。AutoHSR 的采样应把快门、预览、两段返回和卡片状态分开记录，并在反馈不明时停在原阶段。[上游导航表](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L562-L586) · [上游拍照函数](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/daily/photo.py#L9-L21)
+
 现场应先核实同一张「拍照1次」、0/1、+100 的待完成卡，再从普通手机相机保留入口、取景及快门提示。经本次授权只操作一次快门，保留预览和返回操作区。回同卡后留两张 1/1 或可领取画面。未核实回页时保留待核对。照片编辑、保存、分享、活动摄影和任务点数领取各属独立操作。
 
 ### 登录奖励与合成

@@ -75,6 +75,7 @@ def _default_params(task):
     return {
         "daily": {"tasks": ["assignments"]},
         FREE_ATTACHMENT_TASK: {"target": "mail"},
+        "redemption": {"source": "manual", "server": "auto", "codes": []},
         "workflow_audio": {"path": "提示.wav"},
         "workflow_image": {"image": "截图.png", "template": "模板.png"},
         "workflow_game_image": {"template": "模板.png"},

@@ -1,5 +1,5 @@
 """Configuration, CLI, native routing and text input with isolated fake IO."""
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from dataclasses import replace
 import io
 import json
@@ -8,8 +8,9 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
+from uuid import uuid4
 
-from autohsr.app import Runner
+from autohsr.app import Context, Runner
 from autohsr.config import Settings, SettingsError
 from autohsr.currency_wars_identity import UID_VETO_FLOOR
 from autohsr.models import InputInterrupted, RunReport, TaskResult
@@ -166,6 +167,84 @@ class RedemptionIntegrationTests(unittest.TestCase):
         self.assertFalse(current.daily)
         self.assertEqual(options['operation'], 'daily')
 
+    def test_workflow_cli_executes_native_redemption_and_reuses_saved_code(self):
+        from autohsr.__main__ import main
+        from autohsr.tests.test_daily_reward_observe import ACCOUNT, _Window
+        from autohsr.tests.test_redemption_pages import form_scene, more_scene, phone_scene, result_scene
+
+        code = 'WorkflowExample26'
+        stage = 0
+        phone, more, form = phone_scene(), more_scene(), form_scene()
+        echo, receipt = form_scene(code), result_scene('redeemed')
+        for scene in (phone, more, form, echo, receipt):
+            scene.tokens.append(ACCOUNT)
+        scenes = (phone, more, form, form, echo, receipt, phone)
+
+        def frames():
+            while True:
+                yield scenes[stage]
+
+        window = _Window(frames())
+        window.focus = Mock()
+        window.emergency_pressed = Mock(return_value=False)
+
+        def advance(*_args, before_submit=None):
+            nonlocal stage
+            if before_submit is not None:
+                before_submit()
+            stage += 1
+
+        def type_code(_code, _geometry, *, checkpoint):
+            checkpoint()
+            advance()
+
+        window.click = Mock(side_effect=advance)
+        window.type_redemption_code = Mock(side_effect=type_code)
+
+        def vision(confidence):
+            engine = window.vision(confidence)
+            engine.refine_redemption = lambda scene: scene.field_reads.update(window.frame.field_reads)
+            return engine
+
+        with tempfile.TemporaryDirectory() as folder, ExitStack() as stack:
+            root = Path(folder)
+            config, workflow = root / 'config.json', root / 'recipe.json'
+            Settings(overlay_logs=False, redemption_claim_mail=True).save(config)
+            original_config = config.read_bytes()
+            workflow.write_text(json.dumps(dict(version=1, name='redeem', steps=[
+                dict(id='redeem', type='task', task='redemption', params=dict(source='manual', server='cn', codes=[code])),
+            ])), 'utf8')
+            mutex = 'Local\\AutoHSR.RedemptionTest.' + uuid4().hex
+            for target, value in (
+                    ('autohsr.app.ROOT', root), ('autohsr.task_workflow_run.ROOT', root), ('autohsr.redemption_run.ROOT', root),
+                    ('autohsr.workflow_lease.NAME', mutex), ('autohsr.workflow_lease.NATIVE_NAME', mutex + '.Runner')):
+                stack.enter_context(patch(target, value))
+            for target, kwargs in (
+                    ('autohsr.app.find_game', dict(return_value=window)),
+                    ('autohsr.app.is_elevated', dict(return_value=False)),
+                    ('autohsr.app.Vision', dict(side_effect=vision)),
+                    ('autohsr.app.threading.Thread', {}),
+                    ('autohsr.app.Runner._arm_hotkeys', {}),
+                    ('autohsr.workflows.DailyWorkflow.mail', dict(side_effect=AssertionError('independent mail is off'))),
+                    ('autohsr.recovery.BattleBudget', dict(side_effect=AssertionError('no battle budget')))):
+                stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch.object(Context, 'sleep', lambda context, _seconds: context.checkpoint()))
+            for expected in ((1, 0), (0, 1)):
+                stage = 0
+                output, logs = io.StringIO(), io.StringIO()
+                with redirect_stdout(output), redirect_stderr(logs):
+                    status = main(['--task-workflow', str(workflow), '--config', str(config)])
+                report = json.loads(output.getvalue())
+                step, = report['workflow']['steps']
+                native = json.loads(Path(step['source']['path']).read_bytes())
+                self.assertEqual(status, 0, (native['error'], stage))
+                summary = step['redemption_summary']
+                self.assertEqual((summary['redeemed'], summary['reused']), expected)
+                self.assertNotIn(code, output.getvalue())
+            self.assertEqual(config.read_bytes(), original_config)
+        self.assertEqual(window.click.call_count, 5)
+        window.type_redemption_code.assert_called_once()
+
     def test_schedule_freezes_local_catalog_before_enabling_execution(self):
         from autohsr.schedule_dispatch import NativeScheduleExecutor
         from autohsr.schedule_plan import ScheduleError, validate
@@ -173,12 +252,16 @@ class RedemptionIntegrationTests(unittest.TestCase):
             root = Path(folder)
             catalog = root / 'codes.json'
             catalog.write_text('[]', encoding='utf-8')
-            target = dict(type='task', task='daily', params=dict(tasks=['redemption'],
-                redemption_source='file', redemption_catalog='codes.json'))
-            plan = validate(dict(version=1, id='fixture', name='fixture', time='08:30', weekdays=[1], target=target))
             executor = NativeScheduleExecutor(Settings(), base_dir=root, run_root=root / 'runs', busy_probe=lambda: False)
-            frozen = executor.freeze(plan)
-            self.assertEqual(len(frozen['dependencies']), 1)
-            catalog.write_text('[{}]', encoding='utf-8')
-            with self.assertRaises(ScheduleError):
-                executor.revalidate(frozen)
+            targets = (dict(type='task', task='daily', params=dict(tasks=['redemption'],
+                            redemption_source='file', redemption_catalog='codes.json')),
+                       dict(type='task', task='redemption', params=dict(source='file', server='cn', catalog='codes.json')))
+            for target in targets:
+                with self.subTest(task=target['task']):
+                    catalog.write_text('[]', encoding='utf-8')
+                    plan = validate(dict(version=1, id='fixture', name='fixture', time='08:30', weekdays=[1], target=target))
+                    frozen = executor.freeze(plan)
+                    self.assertEqual(len(frozen['dependencies']), 1)
+                    catalog.write_text('[{}]', encoding='utf-8')
+                    with self.assertRaises(ScheduleError):
+                        executor.revalidate(frozen)

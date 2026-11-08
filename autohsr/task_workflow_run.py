@@ -22,7 +22,7 @@ from .du_points_followup import FollowupWeek, followup_week_scope
 from .models import AutomationError, RunReport, Stopped, TaskResult
 from .storage import replace_file
 from .task_workflow import (ASSIGNMENT_REWARDS_TASK, FIELDS, FREE_ATTACHMENT_TASK, GAME_CAPTURE_TASK, GAME_TASKS, GAME_VISION_TASKS,
-                            MAX_EXECUTIONS, PAGE_TASK, TEMPLATE_TASKS,
+                            MAX_EXECUTIONS, PAGE_TASK, REDEMPTION_TASK, TEMPLATE_TASKS,
                             TRAINING_REWARDS_TASK, TRAINING_SCAN_PAGE, TRAINING_SYNTHESIS_TASK, VISA_CHARACTERS_PAGE, VISION_TASKS,
                             WORKFLOW_FOREGROUND_TASKS, WorkflowError,
                             compile_recipe, execution_task, task_spec, workflow_notification_png_path)
@@ -574,6 +574,16 @@ class TaskWorkflowRunner:
                 if claim is None or not self._identity.has_step_proof(identity_mark, run_dir=result.get('run_dir') or ''):
                     raise WorkflowError('成就领奖缺少同账号的已保存展示及回页回执。')
                 entry['achievement_bulk_claim'] = claim
+            if node['task'] == REDEMPTION_TASK:
+                from .redemption_report import report_summary
+
+                summary = report_summary(result)
+                bound = self._identity.has_step_proof(identity_mark, run_dir=result.get('run_dir') or '')
+                if result['status'] == 'success' and (not bound or summary['state'] not in ('completed', 'empty')):
+                    raise WorkflowError('独立兑换缺少同账号的已保存批次结果。')
+                if bound:
+                    entry['redemption_summary'] = summary
+                    self.report.workflow['redemption_summary'] = summary
             if node['task'] == PAGE_TASK and result['status'] == 'success' and options['workflow_page'] == 'daily_training':
                 from .daily_training_observe import training_observation_receipt
 

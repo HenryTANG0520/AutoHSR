@@ -18,7 +18,8 @@ from .config import ROOT, Settings
 from .daily_observe import ACHIEVEMENT_CLAIM_OPERATION, EVENT_CLAIM_OPERATION
 from .schedule_plan import ScheduleError, ScheduleSourceUnverified, completion_options, revision, validate as validate_plan
 from .storage import hold_read_sources
-from .task_workflow import GAME_TASKS, MAX_BYTES, TRAINING_SYNTHESIS_TASK, compile_recipe, execution_tasks, loads, step_path, task_spec
+from .task_workflow import (GAME_TASKS, MAX_BYTES, REDEMPTION_TASK, TRAINING_SYNTHESIS_TASK, compile_recipe,
+                            execution_tasks, loads, step_path, task_spec)
 
 
 def _json(value):
@@ -95,7 +96,7 @@ def _dependency_paths(configured):
                 yield options['template'], 64 * 1024 * 1024
         if node['task'] == 'workflow_game_image':
             yield options['workflow_screen_query']['template'], 64 * 1024 * 1024
-        if node['task'] in ('daily', 'plan') and current.redemption_enabled and current.redemption_source == 'file':
+        if node['task'] in ('daily', 'plan', REDEMPTION_TASK) and current.redemption_enabled and current.redemption_source == 'file':
             yield current.redemption_catalog, 256 * 1024
 
 

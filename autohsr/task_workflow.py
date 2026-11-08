@@ -28,6 +28,7 @@ TRAINING_REWARDS_TASK = 'daily_training_rewards'
 TRAINING_SYNTHESIS_TASK = 'daily_training_synthesis'
 ASSIGNMENT_REWARDS_TASK = 'daily_assignment_rewards'
 FREE_ATTACHMENT_TASK = 'daily_free_attachment'
+REDEMPTION_TASK = 'redemption'
 FREE_ATTACHMENT_TARGETS = ('mail', 'battlepass')
 INDEPENDENT_DAILY_TARGETS = ('assignments', *FREE_ATTACHMENT_TARGETS)
 ACTIVITY_WORKFLOW_PAGES = ('odyssey', 'reward_guide')
@@ -51,7 +52,7 @@ SCREEN_CHECK_EXTRA_PAGES = (VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE, ACHIEVEM
 SCREEN_CHECK_PAGES = (*WORKFLOW_PAGES, *SCREEN_CHECK_EXTRA_PAGES)
 WORKFLOW_FOREGROUND_TASKS = WORKFLOW_SCREEN_TASKS | {PAGE_TASK}
 GAME_TASKS = {'daily', TRAINING_REWARDS_TASK, TRAINING_SYNTHESIS_TASK, ASSIGNMENT_REWARDS_TASK, FREE_ATTACHMENT_TASK,
-              EVENT_CLAIM_OPERATION, ACHIEVEMENT_CLAIM_OPERATION,
+              EVENT_CLAIM_OPERATION, ACHIEVEMENT_CLAIM_OPERATION, REDEMPTION_TASK,
               'plan', 'differential_universe', 'currency_wars_loop',
               'currency_wars_points', 'currency_wars_rewards', 'du_rewards'} | WORKFLOW_FOREGROUND_TASKS
 VISION_TASKS = {'workflow_image', 'workflow_text'} | GAME_VISION_TASKS
@@ -216,6 +217,7 @@ def _params(task, params):
         ASSIGNMENT_REWARDS_TASK: set(),
         TRAINING_SYNTHESIS_TASK: set(),
         FREE_ATTACHMENT_TASK: {'target'},
+        REDEMPTION_TASK: {'source', 'server', 'codes', 'catalog'},
         ACHIEVEMENT_CLAIM_OPERATION: set(),
         EVENT_CLAIM_OPERATION: {'day', 'navigate'},
         'differential_universe': {'runs', 'mode', 'team', 'save', 'rewards', 'resume_active', 'periodic_rank',
@@ -236,6 +238,25 @@ def _params(task, params):
         'workflow_notify': {'profile', 'message', 'png', 'capture_from'},
     }[task]
     _keys(params, allowed)
+    if task == REDEMPTION_TASK:
+        from .redemption_codes import MAX_ROWS, validate_code
+
+        source = params.get('source')
+        if source not in ('manual', 'file', 'online') or params.get('server') not in ('cn', 'global', 'auto'):
+            raise WorkflowError('独立兑换须指定码表来源和服务器。')
+        if ('codes' in params) != (source == 'manual') or ('catalog' in params) != (source == 'file'):
+            raise WorkflowError('仅手动兑换接受 codes，仅本地码表接受 catalog，且两者分别必填。')
+        if source == 'manual':
+            codes = params['codes']
+            if type(codes) is not list or not 1 <= len(codes) <= MAX_ROWS:
+                raise WorkflowError('手动兑换须提供有界的非空兑换码列表。')
+            try:
+                for code in codes:
+                    validate_code(code)
+            except ValueError as error:
+                raise WorkflowError(str(error)) from error
+        if source == 'file':
+            _text(params['catalog'], 4096)
     for key in ('use_power_plan', 'use_support', 'support_daily_only', 'resume_weekly_currency', 'save', 'rewards',
                 'resume_active', 'resume', 'until_points', 'continue_after_defeat', 'use_cassettes', 'reached_only'):
         if key in params:
@@ -370,6 +391,7 @@ def _profile(nodes):
     total = dict(daily_calls=0, du_calls=0, currency_calls=0, du_runs=0, currency_games=0,
                  du_rewards_calls=0, notification_calls=0, free_attachment_calls=0, assignment_reward_calls=0,
                  odyssey_claim_calls=0, achievement_claim_calls=0, synthesis_calls=0, synthesis_owners=0,
+                 redemption_calls=0, redemption_owners=0,
                  assignments_owners=0, mail_owners=0, battlepass_owners=0, executions=0)
     for node in nodes:
         kind = node['type']
@@ -384,7 +406,9 @@ def _profile(nodes):
             if task in ('daily', TRAINING_REWARDS_TASK, 'plan'):
                 current['daily_calls'] = 1
             if task in ('daily', 'plan'):
-                current['synthesis_owners'] = int('daily' in params.get('tasks', DAILY_TASKS))
+                selected = params.get('tasks', DAILY_TASKS)
+                current['synthesis_owners'] = int('daily' in selected)
+                current['redemption_owners'] = int(REDEMPTION_TASK in selected)
                 for target in params.get('tasks', INDEPENDENT_DAILY_TARGETS):
                     if target in INDEPENDENT_DAILY_TARGETS:
                         current[f'{target}_owners'] = 1
@@ -399,6 +423,8 @@ def _profile(nodes):
                 current['odyssey_claim_calls'] = 1
             if task == ACHIEVEMENT_CLAIM_OPERATION:
                 current['achievement_claim_calls'] = 1
+            if task == REDEMPTION_TASK:
+                current.update(redemption_calls=1, redemption_owners=1)
             if task in ('differential_universe', 'plan'):
                 current.update(du_calls=1, du_runs=params.get('runs', 1) if task != 'plan' else 10)
             if task in ('currency_wars_loop', 'plan'):
@@ -561,6 +587,9 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
         raise WorkflowError('同一路径的巡星之礼最多提交一个明确日卡。')
     if profile['achievement_claim_calls'] > 1:
         raise WorkflowError('同一路径最多执行一次成就一键领取。')
+    redemption_owners = profile.pop('redemption_owners')
+    if profile['redemption_calls'] and redemption_owners > 1:
+        raise WorkflowError('同一路径只可安排一份兑换批次，普通日常如与独立兑换组合须明确排除兑换。')
     synthesis_owners = profile.pop('synthesis_owners')
     if profile['synthesis_calls'] and synthesis_owners > 1:
         raise WorkflowError('同一路径最多一次单件合成，不能与可能合成的普通日常重复安排。')
@@ -571,7 +600,7 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
     # Existing frozen scheduler manifests compare this exact public mapping.
     # Keep the old key set when the selected scope has no new reward owner.
     for key in ('du_rewards_calls', 'notification_calls', 'free_attachment_calls', 'assignment_reward_calls',
-                'odyssey_claim_calls', 'achievement_claim_calls', 'synthesis_calls'):
+                'odyssey_claim_calls', 'achievement_claim_calls', 'synthesis_calls', 'redemption_calls'):
         if profile[key] == 0:
             profile.pop(key)
     return Recipe(document, selected, path, profile, Path(base_dir or ROOT).resolve())
@@ -635,6 +664,14 @@ def task_spec(settings: Settings, node, base_dir):
         options = dict(operation='daily', daily_attachment_only=target)
     elif task == ACHIEVEMENT_CLAIM_OPERATION:
         current.validate('check')
+        options = dict(operation=task)
+    elif task == REDEMPTION_TASK:
+        catalog = str((base_dir / params['catalog']).resolve()) if params['source'] == 'file' else ''
+        current = replace(current, redemption_enabled=True,
+                          redemption_source=params['source'], redemption_server=params['server'],
+                          redemption_codes=params.get('codes', []), redemption_catalog=catalog,
+                          redemption_claim_mail=False)
+        current.validate('redemption')
         options = dict(operation=task)
     elif task == EVENT_CLAIM_OPERATION:
         current.validate('check')

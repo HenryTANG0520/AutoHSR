@@ -248,9 +248,12 @@ class WorkflowBundleTests(unittest.TestCase):
             dict(redemption_server={'unexpected': 'PRIVATE-CODE'}),
             dict(redemption_claim_mail='PRIVATE-CODE'),
         )
-        for params in overrides:
-            with self.subTest(fields=tuple(params)):
-                protected = dict(task('daily', 'daily', tasks=['redemption'], **params), enabled=False)
+        tasks = [task('redeem', 'daily', tasks=['redemption'], **params) for params in overrides]
+        tasks.extend((task('redeem', 'redemption', source='manual', server='cn', codes=['PRIVATECODE']),
+                      task('redeem', 'redemption', source='file', server='cn', catalog='private-catalog.json')))
+        for step in tasks:
+            with self.subTest(task=step['task'], fields=tuple(step['params'])):
+                protected = dict(step, enabled=False)
                 document = flow(dict(id='gate', type='wait', seconds=0),
                                 dict(id='branch', type='if', condition=dict(step='gate', field='status',
                                                                           op='eq', value='success'),
@@ -258,7 +261,7 @@ class WorkflowBundleTests(unittest.TestCase):
                 source = self.save(document)
                 with self.assertRaisesRegex(bundles.BundleError, '在线兑换') as exported:
                     bundles.export_bundle(self.source, self.output)
-                self.assertNotIn('PRIVATE-CODE', str(exported.exception))
+                self.assertNotIn('PRIVATECODE', str(exported.exception).replace('-', ''))
                 self.assertNotIn('private-catalog', str(exported.exception))
                 self.assertFalse(self.output.exists())
                 self.assertEqual(self.source.read_bytes(), source)
@@ -266,7 +269,7 @@ class WorkflowBundleTests(unittest.TestCase):
                 before = self.output.read_bytes()
                 with self.assertRaisesRegex(bundles.BundleError, '在线兑换') as imported:
                     bundles.import_bundle(self.output, self.destination)
-                self.assertNotIn('PRIVATE-CODE', str(imported.exception))
+                self.assertNotIn('PRIVATECODE', str(imported.exception).replace('-', ''))
                 self.assertNotIn('private-catalog', str(imported.exception))
                 self.assertEqual(self.output.read_bytes(), before)
                 self.assert_unpublished()

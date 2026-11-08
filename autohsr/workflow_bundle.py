@@ -15,7 +15,7 @@ from zlib import error as DeflateError
 from .models import AutomationError, Stopped
 from .screenshot_tool import MAX_BYTES as MAX_IMAGE_BYTES
 from .storage import file_revision, hold_read_sources, replace_file
-from .task_workflow import MAX_BYTES as MAX_WORKFLOW_BYTES, compile_recipe, execution_task, loads, read
+from .task_workflow import MAX_BYTES as MAX_WORKFLOW_BYTES, REDEMPTION_TASK, compile_recipe, execution_task, loads, read
 from .workflow_audio import MAX_FILE_BYTES as MAX_AUDIO_BYTES, _local_drive
 
 
@@ -83,6 +83,8 @@ def _references(nodes):
             raise BundleError('该任务流依赖本地通知方案，请移除对应步骤后打包。')
         if params.get('use_power_plan') is True:
             raise BundleError('该任务流依赖本地体力计划，请取消对应步骤的体力计划后打包。')
+        if task == REDEMPTION_TASK and params['source'] != 'online':
+            raise BundleError('素材包仅支持在线兑换来源，请移除手动兑换码和本地码表步骤。')
         if task == 'daily':
             if ('redemption_codes' in params or 'redemption_catalog' in params
                     or params.get('redemption_source', 'online') != 'online'):

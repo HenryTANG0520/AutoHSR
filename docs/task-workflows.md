@@ -35,6 +35,7 @@
 | `workflow_game_capture` | 导出当前游戏窗口的选区 | 必填 `region`，不自动启动游戏，PNG 保存在本次运行目录 |
 | `workflow_open_page` | 已知日常页面切换 | 必填 `target`，可选值见下方。只切换页面并核实到达 |
 | `achievement_bulk_claim` | 本次成就一键领取 | 无参数。从简中 4.6.0 前台成就总览核实并领取，需手动关闭物品提示 |
+| `redemption` | 独立兑换码 | 必填 `source` 与 `server`。手动批次用 `codes`，本地码表用 `catalog` |
 | `workflow_notify` | 已保存通知方案 | 必填 `profile`、`message`。可用 `capture_from` 通过 SMTP 或 Telegram 发送本次游戏截图，也可通过 CLI 授权 SMTP 发送预选 `png`。同一运行出现待核对的提交后停止后续主动通知 |
 | `daily_training_synthesis` | 独立实训合成 | 从简中 4.6.0 实训页核对任务卡，仅合成一个奇巧零食，手动运行 |
 
@@ -171,6 +172,18 @@ P1 底栏「仅补领奖」和 `--run --reward-only` 继续直达同一原生入
 ### 兑换码表单导航
 
 `workflow_open_page` 的「兑换码表单」对应 `redemption_form`。简中 4.6.0 下，从已核实手机菜单先打开「更多」，再进入「兑换码」。每段核对新鲜同账号双帧；已展开菜单时只需要第二段，已在表单时零输入。停在表单，不填写兑换码、点击确认或读取原生兑换回执。兑换结果、购买提示及只见菜单残留文字均不算到页。[正式兑换入口](redemption-codes.md)
+
+### 独立兑换码
+
+在任务流编辑器添加「独立兑换码」，或在 JSON 中加入以下示例步骤。把示例值换成本次要处理的兑换码。
+
+```json
+{"id":"redeem","type":"task","task":"redemption","params":{"source":"manual","server":"cn","codes":["EXAMPLEONLY001"]}}
+```
+
+`source` 支持 `manual`、`file` 和 `online`。手动模式填写 `codes`，本地模式填写 `catalog`，相对路径以任务流文件所在目录为基准。服务器须选 `cn`、`global` 或 `auto`。自动识别在执行时根据当前游戏安装来源确定。应用内定时冻结本地码表，素材包仅允许在线来源。
+
+每条流程路径可安排一份兑换批次。若同一路径也安排「每日任务」，须明确选择其余日常。兑换沿用原生入口的启动、账号和逐码去重。独立节点默认只处理兑换；需要收取附件时，可另排「独立免费领奖」的邮件步骤。父回执只记录结果计数，兑换码原文及原始逐码结果留在本地流程定义与原生报告。未知提交保留原回执，后续游戏步骤停止。[原生逐码回执](redemption-codes.md)
 
 ### 当前页面核对
 

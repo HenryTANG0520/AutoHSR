@@ -359,6 +359,35 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('兑换新成功：0', body)
         self.assertIn('过期：1', body)
 
+    def test_independent_redemption_uses_native_scope_and_one_batch(self):
+        code = 'PrivateStandalone26'
+        redeem = task('redeem', 'redemption', source='manual', server='cn', codes=[code])
+        mail = task('mail', 'daily_free_attachment', target='mail')
+        self.assertEqual(compile_recipe(recipe(redeem, mail)).profile['redemption_calls'], 1)
+        for other in (task('another', 'redemption', source='online', server='auto'),
+                      task('daily'), task('daily', tasks=['redemption']), task('weekly', 'plan')):
+            with self.subTest(other=other['task']), self.assertRaisesRegex(WorkflowError, '一份兑换批次'):
+                compile_recipe(recipe(redeem, other))
+        with self.assertRaises(WorkflowError):
+            compile_recipe(recipe(task('invalid', 'redemption', source='online', server='cn', codes=[code])))
+        self.assertEqual(compile_recipe(recipe(redeem, task('daily', tasks=['daily']))).profile['daily_calls'], 1)
+        self.responses = [dict(redemption=dict(schema=1, status='completed', codes=[code],
+                              submitted=1, redeemed=1, reused=0,
+                              results=[dict(code=code, status='redeemed', reused=False, entry_id='2'*32)]))]
+        report = self.runner(recipe(redeem)).run()
+        self.assertEqual(report.status, 'success')
+        current, options = self.calls[-1]
+        self.assertEqual(options, dict(operation='redemption'))
+        self.assertEqual(current.redemption_codes, [code])
+        self.assertFalse(current.redemption_claim_mail)
+        step, = report.workflow['steps']
+        self.assertEqual(step['redemption_summary'], report.workflow['redemption_summary'])
+        self.assertEqual(step['redemption_summary']['redeemed'], 1)
+        self.assertNotIn(code, json.dumps(report.to_dict()))
+        incomplete = self.runner(recipe(redeem)).run()
+        self.assertEqual(incomplete.status, 'partial')
+        self.assertNotIn('redemption_summary', incomplete.workflow['steps'][0])
+
     def test_daily_then_du_has_one_budget_and_one_parent_finished(self):
         document = recipe(task('daily', tasks=['battle', 'daily'], stamina_limit=120),
                           task('du', 'differential_universe', runs=2))
