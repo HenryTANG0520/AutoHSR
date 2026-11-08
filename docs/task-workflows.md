@@ -27,7 +27,7 @@
 | `currency_wars_rewards` | 原生积分领奖Runner | `resume`默认false；不开始对局，不清理满额资源，未知领取不重放 |
 | `warp_analysis` | `warp_service.run(analysis_only=True)` | 必填`imports`，1～32份明确的本地SRGF／UIGF文件；只分析不创建导出 |
 | `warp_export` | 原记录导出服务 | 必填`imports/output`，`format`默认uigf，可选srgf/xlsx；可选`selected_uid`，原件及已有输出不覆盖 |
-| `workflow_audio` | Windows 本地音频 | 必填 `path`，支持明确选定的 PCM WAV。暂停后从当前位置继续，停止时清空本步骤队列 |
+| `workflow_audio` | Windows 本地音频 | 必填 `path`，支持明确选定的 PCM WAV 或 MP3。暂停后从当前位置继续，停止时清空本步骤队列 |
 | `workflow_image` | 本地模板判断 | 必填 `image`、`template`，使用明确的 PNG／JPEG。可选 `region`、`threshold`，默认阈值 0.88 |
 | `workflow_text` | 本地 OCR 判断 | 必填 `image`、`text`，可选 `region`、`threshold`、`contains`。默认精确匹配，阈值 0.65 |
 | `workflow_game_image` | 当前游戏画面模板判断 | 必填 `template`，可选 `region`、`threshold`。默认阈值 0.88 |
@@ -252,7 +252,9 @@ python -m autohsr --screen-check-pages visa_characters
 
 `--list-task-capabilities` 中的 `autohsr.screen_check_plan` 同步列出这些目标，使用相同的单页选择和预算检查。执行后的匿名回执包含目标、核对状态与动作计数，每日实训还可附带上述观察。
 
-音频支持 1 或 2 声道、8 或 16 位、8～48 kHz，文件最多 32 MiB、时长最多 120 秒。播放完成来自 Windows 驱动反馈。主动通知在桌面运行时显示本次最多步骤数和方案别名，授权后沿用冻结的方案版本。CLI 显式使用 `--workflow-allow-notify`。每次流程最多 20 个主动通知步骤。应用内定时暂未开放这项授权。通知正文留在流程文件及明确发往的渠道，运行回执只记结果及必要的匿名事实。[通知设置](notifications.md)
+音频文件最多 32 MiB、时长最多 120 秒。PCM 支持 1 或 2 声道、8 或 16 位、8～48 kHz。MP3 由 Windows Media Foundation 解码为受支持的 PCM，缺少系统组件时本步骤报告失败。两种格式共用播放器，播放完成来自 Windows 驱动反馈。[Windows 音频解码](https://learn.microsoft.com/en-us/windows/win32/medfound/tutorial--decoding-audio)
+
+主动通知在桌面运行时显示本次最多步骤数和方案别名，授权后沿用冻结的方案版本。CLI 显式使用 `--workflow-allow-notify`。每次流程最多 20 个主动通知步骤。应用内定时暂未开放这项授权。通知正文留在流程文件及明确发往的渠道，运行回执只记结果及必要的匿名事实。[通知设置](notifications.md)
 
 图片通知可在 `workflow_notify` 的 `params` 中填写 `{"profile":"my-smtp","message":"本次流程的图片","png":"selected.png"}`。JSON 中的相对路径以流程文件所在目录为准。运行时还须明确提供同一份 PNG 的路径和同一个已保存的 SMTP 方案。
 
@@ -369,7 +371,7 @@ CLI 和定时要求游戏已经在前台。桌面手动运行时，如果第一�
 
 ## 素材包
 
-「导出素材包…」从已保存且与当前草稿一致的流程生成新的 ZIP。导出会遍历整棵任务树，包括禁用节点及条件的两侧，只收录节点明确引用的 PNG、JPEG 和 PCM WAV。包内用相对路径关联素材，并记录文件长度与 SHA-256。包含私有记录、通知配置依赖或其他非便携设置的流程会被拒绝。分享前可检查流程名称、文字条件和素材内容。
+「导出素材包…」从已保存且与当前草稿一致的流程生成新的 ZIP。导出会遍历整棵任务树，包括禁用节点及条件的两侧，只收录节点明确引用的 PNG、JPEG、PCM WAV 和 MP3。包内用相对路径关联素材，并记录文件长度与 SHA-256。包含私有记录、通知配置依赖或其他非便携设置的流程会被拒绝。分享前可检查流程名称、文字条件和素材内容。
 
 「导入素材包…」需要明确选择 ZIP 和一个新目录。导入校验归档成员、摘要与整棵任务树后发布目录，并打开其中的 `workflow.json` 草稿。运行仍由单独的操作触发。导入导出均保留已有目录和文件。
 

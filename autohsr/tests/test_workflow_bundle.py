@@ -80,6 +80,18 @@ class WorkflowBundleTests(unittest.TestCase):
         self.assertFalse(self.destination.exists())
         self.assertEqual(list(self.root.glob('.autohsr-bundle-*')), [])
 
+    def test_mp3_is_verified_and_preserved_in_a_bundle(self):
+        from autohsr.tests.test_workflow_audio import SILENT_MP3
+
+        mp3 = self.media / '提示 音频.MP3'
+        mp3.write_bytes(SILENT_MP3)
+        self.save(flow(task('sound', 'workflow_audio', path=str(mp3))))
+        bundles.export_bundle(self.source, self.output)
+        imported = read(bundles.import_bundle(self.output, self.destination))
+        relative = imported['steps'][0]['params']['path']
+        self.assertEqual(relative, 'assets/0001.mp3')
+        self.assertEqual((self.destination / relative).read_bytes(), SILENT_MP3)
+
     def test_round_trip_copies_only_explicit_material_and_rewrites_every_branch(self):
         secret = self.source.parent / 'private-credentials.json'
         secret.write_text('private marker', encoding='utf-8')

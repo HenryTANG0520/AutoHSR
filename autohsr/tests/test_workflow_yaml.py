@@ -247,7 +247,7 @@ class WorkflowYamlTests(unittest.TestCase):
                 with self.assertRaisesRegex(WorkflowError, r'步骤 0.*switch_screen'):
                     load_march7th_yaml(self.source)
 
-    def test_wav_references_stay_bound_to_original_locations_after_save_as(self):
+    def test_audio_references_stay_bound_to_original_locations_after_save_as(self):
         self.source = self.root / 'upstream' / 'workflow.yaml'
         source_audio = self.source.parent / 'clips' / '提示 音.WAV'
         source_audio.parent.mkdir(parents=True)
@@ -255,7 +255,7 @@ class WorkflowYamlTests(unittest.TestCase):
             clip.setparams((1, 2, 8000, 16, 'NONE', 'not compressed'))
             clip.writeframes(bytes(32))
         original_audio = source_audio.read_bytes()
-        external_audio = self.root / 'independent.wav'  # The draft may reference a file not yet installed.
+        external_audio = self.root / 'independent.mp3'  # The draft may reference a file not yet installed.
         destination = self.root / 'other' / 'draft.json'
         shadow_audio = destination.parent / 'clips' / source_audio.name
         shadow_audio.parent.mkdir(parents=True)
@@ -269,7 +269,7 @@ class WorkflowYamlTests(unittest.TestCase):
 
         def guard_media(operation):
             def guarded(path, *args, **kwargs):
-                self.assertNotEqual(path.suffix.casefold(), '.wav')
+                self.assertNotIn(path.suffix.casefold(), ('.wav', '.mp3'))
                 return operation(path, *args, **kwargs)
             return guarded
 
@@ -298,8 +298,8 @@ class WorkflowYamlTests(unittest.TestCase):
 
     def test_audio_rejects_default_formats_cwd_and_unsafe_paths(self):
         cases = (
-            (None, '默认 MP3'), ('', '默认 MP3'), ('./assets/audio/pa.mp3', '默认 MP3'),
-            ('clips/beep.ogg', '默认 MP3'),
+            (None, '明确指定'), ('', '明确指定'), ('./assets/audio/pa.mp3', '工作目录'),
+            ('clips/beep.ogg', '明确指定'),
             ('./clips/beep.wav', '工作目录'), (r'.\clips\beep.wav', '工作目录'),
             ('../clips/beep.wav', '工作目录'), (r'..\clips\beep.wav', '工作目录'),
             (r'\\server\share\beep.wav', '音频路径无效'), ('//server/share/beep.wav', '音频路径无效'),

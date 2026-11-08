@@ -11,6 +11,10 @@ from autohsr import workflow_audio as audio
 from autohsr.models import AutomationError, Stopped
 
 
+# 128 kbps MPEG-1 Layer III, 44.1 kHz, two channels, silent frames.
+SILENT_MP3 = (bytes.fromhex('fffb9064') + bytes(413)) * 16
+
+
 class FakeClock:
     def __init__(self):
         self.now = 0.0
@@ -78,6 +82,28 @@ class WorkflowAudioTests(unittest.TestCase):
         self.assertEqual(self.player.calls, ['prepare', 'submit', 'resume', 'close'])
         clip = self.factory.call_args.args[0]
         self.assertEqual((clip.channels, clip.width, clip.rate, clip.frames, len(clip.pcm)), (1, 2, 8000, 800, 1600))
+
+    def test_mp3_uses_the_pcm_output_and_rejects_wrong_format_or_duration(self):
+        source = self.source.with_suffix('.mp3')
+        source.write_bytes(self.source.read_bytes())
+        with self.assertRaises(AutomationError):
+            self.play(source)
+        source.write_bytes(SILENT_MP3)
+        with patch.object(audio, 'MAX_DURATION_SECONDS', .05), self.assertRaisesRegex(AutomationError, '时长'):
+            self.play(source)
+        self.factory.assert_not_called()
+        self.assertGreater(self.play(source)['duration_seconds'], .3)
+        self.assertEqual(self.player.calls, ['prepare', 'submit', 'resume', 'close'])
+        clip = self.factory.call_args.args[0]
+        self.assertEqual((clip.channels, clip.width, clip.rate), (2, 2, 44100))
+
+    def test_stop_during_mp3_decode_never_opens_output(self):
+        source = self.source.with_suffix('.mp3')
+        source.write_bytes(SILENT_MP3)
+        stopped = Mock(side_effect=[False, False, False, True])
+        with self.assertRaises(Stopped):
+            self.play(source, stopped=stopped)
+        self.factory.assert_not_called()
 
     def test_pause_polls_and_restarts_existing_queue_without_counting_paused_time(self):
         def checkpoint():

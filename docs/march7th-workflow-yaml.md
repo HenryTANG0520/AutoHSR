@@ -11,12 +11,12 @@
 | `break`、`continue` | 在可转换的循环体中 |
 | `stop_workflow` | 转为原生 `stop` |
 | `switch_screen` | `main` 转为 `world`，`menu` 转为手机。`guide2`、`guide3`、`guide4`、`guide5` 分别转为每日实训、生存索引、逐光捡金、旷宇纷争。支持委托 `dispatch`、邮件 `mail`、奖励指南 `reward_guide`、新消息通知 `incoming_message`、成就 `achievement` 和兑换表单 `redemption`。`pass1`、`pass2` 分别转为 `battlepass_rewards`、`battlepass_tasks`。 `visa` 转为 `visa_collection` |
-| `play_audio` | 显式填写普通相对路径或本地绝对路径，扩展名为 `.wav`。转为原生 `workflow_audio` |
+| `play_audio` | 显式填写普通相对路径或本地绝对路径，扩展名为 `.wav` 或 `.mp3`。转为原生 `workflow_audio` |
 | `send_message` | 调用方显式绑定一个原生方案名称。纯文本转为 `workflow_notify`，截图通知另加入一个前置截图步骤 |
 
 识别固定提交的上游步骤字段。上游编辑器在节点里同时写入其他步骤类型的默认字段，转换只取当前动作实际使用的字段。非循环节点携带非空子步骤、任何未知字段或动作，都会拒绝整份转换。错误给出出问题的步骤路径。
 
-普通相对音频路径（例如 `clips/beep.wav`）以原 YAML 所在目录为基准。本地绝对路径沿用指定位置。两者均以绝对引用写入草稿及另存文件，目标目录的同名 WAV 不会改变引用。以 `./` 或 `../` 开头的路径在三月七里取决于其进程工作目录，因此拒绝。省略路径、默认 MP3、其他扩展名、UNC、网络映射盘和设备路径也会拒绝。导入阶段只检查路径，文件是否存在和能否按 PCM WAV 播放由正式音频步骤核验。播放失败会记录在任务流报告中，后续步骤沿用上游行为继续。
+普通相对音频路径（例如 `clips/beep.mp3`）以原 YAML 所在目录为基准。本地绝对路径沿用指定位置。两者均以绝对引用写入草稿及另存文件，目标目录的同名音频不会改变引用。以 `./` 或 `../` 开头的路径在三月七里取决于其进程工作目录，其默认 `./assets/audio/pa.mp3` 也受此限制。迁移时需明确指定本地音频，拒绝网络盘和设备路径。导入 YAML 时只核对路径，文件与格式由正式音频步骤验证。播放失败会记录在任务流报告中，后续步骤沿用上游行为继续。[上游播放步骤](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/module/workflow/__init__.py#L1188-L1202)
 
 上游的 `pass1` 与 `pass2` 分别指向勋礼奖励页和任务页。转换后使用对应的正式到页目标，从已核实的手机或勋礼页开始，在前台连续核对同账号和实际到页。导航待核对时挡住后续游戏输入。[固定上游页面定义](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L801-L837) · [勋礼到页边界](task-workflows.md#无名勋礼页签)
 

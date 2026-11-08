@@ -312,9 +312,11 @@ def _params(task, params):
                 from .warp_records import uid
                 uid(params['selected_uid'])
     elif task == 'workflow_audio':
+        from .workflow_audio import AUDIO_SUFFIXES
+
         path = _text(params.get('path'), 4096)
-        if Path(path).suffix.lower() != '.wav':
-            raise WorkflowError('播放音频需要明确的 WAV 文件。')
+        if Path(path).suffix.lower() not in AUDIO_SUFFIXES:
+            raise WorkflowError('播放音频需要明确的 WAV 或 MP3 文件。')
     elif task in VISION_TASKS:
         if task not in GAME_VISION_TASKS:
             _text(params.get('image'), 4096)

@@ -1,4 +1,4 @@
-"""Bounded local PCM playback for one task-tree step."""
+"""Bounded local audio playback for one task-tree step."""
 
 from dataclasses import dataclass
 import ctypes as C
@@ -15,10 +15,11 @@ from .storage import file_revision, hold_read_sources
 
 MAX_FILE_BYTES = 32 * 1024 * 1024
 MAX_DURATION_SECONDS = 120
+AUDIO_SUFFIXES = frozenset(('.wav', '.mp3'))
 _DRIVER_GRACE = 2
 _POLL_INTERVAL = .025
 _MAX_CHUNKS = 1024
-_BAD_SOURCE = '请选择可读取的本地 PCM WAV，文件最多 32 MiB，时长最多 120 秒。'
+_BAD_SOURCE = '请选择可读取的本地 PCM WAV 或 MP3，文件最多 32 MiB，时长最多 120 秒。'
 _BAD_DEVICE = 'Windows 音频设备未能播放本次文件。'
 _RELEASE_FAILED = 'Windows 音频设备未确认释放。'
 _output_lock = Lock()
@@ -38,7 +39,7 @@ def _source(path):
     candidate = Path(path)
     drive = candidate.drive
     if (not candidate.is_absolute() or len(drive) != 2 or drive[1] != ':'
-            or candidate.suffix.casefold() != '.wav' or not _local_drive(candidate.anchor)):
+            or candidate.suffix.casefold() not in AUDIO_SUFFIXES or not _local_drive(candidate.anchor)):
         raise AutomationError(_BAD_SOURCE)
     current = Path(candidate.anchor)
     for part in candidate.parts[1:]:
@@ -103,6 +104,19 @@ def _read_clip(path, size):
             # RIFF pads interior chunks to a word. Some writers omit the last pad.
             stream.seek(end + (length % 2 if end < size else 0))
     raise AutomationError(_BAD_SOURCE)
+
+
+def read_media_clip(path, size, checkpoint):
+    if path.suffix.casefold() == '.wav':
+        return _read_clip(path, size)
+    if path.suffix.casefold() != '.mp3' or not 0 < size <= MAX_FILE_BYTES:
+        raise AutomationError(_BAD_SOURCE)
+    from .workflow_mp3 import decode
+
+    try:
+        return decode(path, checkpoint=checkpoint, max_seconds=MAX_DURATION_SECONDS)
+    except (OSError, AttributeError):
+        raise AutomationError('当前 Windows 环境未能加载 MP3 解码组件。') from None
 
 
 def _pcm_format(raw):
@@ -223,8 +237,13 @@ def _wait_for_output(player, duration, stopped, paused):
 
 
 def play(path, *, checkpoint, stopped, paused):
-    """Play the pinned local PCM once. Callbacks read the owning workflow's state."""
+    """Play one pinned local audio file. Callbacks read the owning workflow's state."""
     global _unreleased_output
+
+    def decode_checkpoint():
+        _stop_if_requested(stopped)
+        checkpoint()
+
     _stop_if_requested(stopped)
     if not _output_lock.acquire(blocking=False):
         raise AutomationError('已有任务音频正在播放。')
@@ -238,7 +257,7 @@ def play(path, *, checkpoint, stopped, paused):
             source = _source(path)
             with hold_read_sources((source,)):
                 revision = file_revision(source)
-                clip = _read_clip(source, revision[2])
+                clip = read_media_clip(source, revision[2], decode_checkpoint)
                 _stop_if_requested(stopped)
                 try:
                     player = _WaveOut(clip)

@@ -16,12 +16,12 @@ from .models import AutomationError, Stopped
 from .screenshot_tool import MAX_BYTES as MAX_IMAGE_BYTES
 from .storage import file_revision, hold_read_sources, replace_file
 from .task_workflow import MAX_BYTES as MAX_WORKFLOW_BYTES, REDEMPTION_TASK, compile_recipe, execution_task, loads, read
-from .workflow_audio import MAX_FILE_BYTES as MAX_AUDIO_BYTES, _local_drive
+from .workflow_audio import AUDIO_SUFFIXES, MAX_FILE_BYTES as MAX_AUDIO_BYTES, _local_drive, read_media_clip
 
 
 _WORKFLOW = 'workflow.json'
 _MANIFEST = 'manifest.json'
-_ASSET = re.compile(r'assets/[0-9]{4}\.(?:png|jpg|jpeg|wav)')
+_ASSET = re.compile(r'assets/[0-9]{4}\.(?:png|jpg|jpeg|wav|mp3)')
 _SHA256 = re.compile(r'[0-9a-f]{64}')
 _MAX_ASSETS = 256
 _MAX_EXPANDED = 128 * 1024 * 1024
@@ -30,12 +30,11 @@ _MAX_INDEX = 128 * 1024
 _MAX_ARCHIVE = _MAX_EXPANDED + _MAX_MANIFEST + _MAX_INDEX + 65536
 _BLOCK = 1024 * 1024
 _IMAGE = frozenset(('.png', '.jpg', '.jpeg'))
-_AUDIO = frozenset(('.wav',))
 _FIELDS = {
     'workflow_image': {'image': _IMAGE, 'template': _IMAGE},
     'workflow_text': {'image': _IMAGE},
     'workflow_game_image': {'template': _IMAGE},
-    'workflow_audio': {'path': _AUDIO},
+    'workflow_audio': {'path': AUDIO_SUFFIXES},
 }
 
 
@@ -122,13 +121,13 @@ def _copy(source, destination, limit, checkpoint):
 
 def _verify_media(path, suffix, size, checkpoint):
     checkpoint()
-    if suffix == '.wav':
-        from .workflow_audio import _read_clip
-
+    if suffix in AUDIO_SUFFIXES:
         try:
-            _read_clip(path, size)
+            read_media_clip(path, size, checkpoint)
+        except Stopped:
+            raise
         except AutomationError:
-            raise BundleError('任务流包含无效或超限的 PCM WAV。') from None
+            raise BundleError('任务流包含无效、超限或无法解码的音频。') from None
         return
     from .workflow_vision import WorkflowVisionError, _read
 
@@ -185,7 +184,7 @@ def _write_bundle(staged, workflow, sources, revisions, checkpoint):
         for path, name in sources.items():
             suffix = Path(name).suffix
             size = revisions[path][2]
-            limit = MAX_AUDIO_BYTES if suffix == '.wav' else MAX_IMAGE_BYTES
+            limit = MAX_AUDIO_BYTES if suffix in AUDIO_SUFFIXES else MAX_IMAGE_BYTES
             if not 0 < size <= limit:
                 raise BundleError('单个素材超过大小上限或为空。')
             _verify_media(path, suffix, size, checkpoint)
@@ -248,7 +247,7 @@ def _index(archive, count):
     for info in members:
         name = info.filename
         limit = ({_MANIFEST: _MAX_MANIFEST, _WORKFLOW: MAX_WORKFLOW_BYTES}.get(name)
-                 or (MAX_AUDIO_BYTES if name.endswith('.wav') else MAX_IMAGE_BYTES))
+                 or (MAX_AUDIO_BYTES if Path(name).suffix in AUDIO_SUFFIXES else MAX_IMAGE_BYTES))
         if (name in entries or info.orig_filename != name
                 or (name not in (_MANIFEST, _WORKFLOW) and not _ASSET.fullmatch(name))
                 or stat.S_IFMT(info.external_attr >> 16) not in (0, stat.S_IFREG)

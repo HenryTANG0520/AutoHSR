@@ -23,6 +23,7 @@ from .notify_profiles import NotifyError, alias
 from .task_workflow import (GAME_CAPTURE_TASK, MAX_BYTES, MAX_DEPTH, MAX_NODES, MAX_WAIT_SECONDS, PAGE_TASK, WorkflowError,
                             _params, compile_recipe, execution_tasks)
 from .task_workflow_draft import SavedWorkflow, WorkflowDraft, _snapshot
+from .workflow_audio import AUDIO_SUFFIXES
 from .workflow_yaml_crop import parse_march7th_crop
 
 
@@ -211,8 +212,8 @@ def _media_reference(value, source_dir, where, *, label, suffixes, suffix_error)
 
 def _audio_path(value, source_dir, where):
     text = value.strip() if isinstance(value, str) else ''
-    return _media_reference(text, source_dir, where, label='音频', suffixes={'.wav'},
-                            suffix_error='须明确指定 WAV 文件，默认 MP3 和其他格式无法迁移。')
+    return _media_reference(text, source_dir, where, label='音频', suffixes=AUDIO_SUFFIXES,
+                            suffix_error='须明确指定本地 WAV 或 MP3 文件。')
 
 
 def _whole(value, default, limit, *, quoted_grammar, where):
