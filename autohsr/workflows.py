@@ -1394,7 +1394,7 @@ class DailyWorkflow:
 
     def daily(self) -> TaskResult:
         from .daily_synthesis import complete_once, task_target
-        from .daily_training_card_claim import claim_hidden_points
+        from .daily_training_card_claim import claim_task_points
 
         self.ctx.report.daily_verified = False
         scene = self._open_guide("每日实训")
@@ -1408,21 +1408,21 @@ class DailyWorkflow:
                 continue
             if not self._tab(scene, "每日实训"):
                 return self._result("daily", "partial", "实训奖励弹窗未识别，无法继续核实。", scene)
-            claim = scene.find("领取", (0.14, 0.41, 0.88, 0.90), exact=True)
-            if claim is None:
-                activity = self._activity(scene)
-                self.ctx.report.engagement = activity
-                if can_synthesize and type(activity) is int and activity < 500 and task_target(scene) is not None:
-                    outcome = 'synthesis'
-                    break
-                scene, outcome = claim_hidden_points(self, scene, activity, look_for_synthesis=can_synthesize)
-                if outcome == 'claimed':
-                    continue
+            activity = self._activity(scene)
+            self.ctx.report.engagement = activity
+            if activity == 500:
                 break
-            previous = normalize(scene.text)
-            self._click(scene, claim)
-            scene = self._wait(lambda s: normalize(s.text) != previous, description="确认领取实训任务点数")
-            scene = self._dismiss_reward(scene)
+            visible_claim = scene.has("领取", (0.14, 0.41, 0.88, 0.90), exact=True)
+            if not visible_claim and can_synthesize and type(activity) is int and task_target(scene) is not None:
+                outcome = 'synthesis'
+                break
+            scene, outcome = claim_task_points(self, scene, activity, inspect_current=visible_claim,
+                                               look_for_synthesis=can_synthesize and not visible_claim)
+            if outcome == 'claimed':
+                continue
+            if visible_claim and outcome is None:
+                return self._result("daily", "partial", "实训任务卡的领取状态待核对。", scene)
+            break
         else:
             activity = self._activity(scene)
             if can_synthesize and type(activity) is int and activity < 500 and task_target(scene) is not None:

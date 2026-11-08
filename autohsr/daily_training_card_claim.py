@@ -1,4 +1,4 @@
-"""Claim an already-completed training card found in the later viewports."""
+"""Claim points from a verified completed card in any training viewport."""
 
 from dataclasses import dataclass
 
@@ -107,11 +107,11 @@ class CardClaim:
         raise AutomationError('实训任务点数已尝试领取，本次卡片和活跃度反馈待核对。')
 
 
-def claim_hidden_points(workflow, scene, activity, *, look_for_synthesis=False):
+def claim_task_points(workflow, scene, activity, *, inspect_current=False, look_for_synthesis=False):
     ctx = workflow.ctx
     look_for_synthesis = (look_for_synthesis and ctx.report.operation == 'daily'
                           and workflow.settings.daily and workflow.settings.daily_synthesis)
-    receipt = {}
+    receipt = dict(state='unverified', scrolls=[]) if inspect_current else {}
     record = dict(search=receipt, input='not_sent', feedback='unknown')
 
     def select(pair, view, confidence):
@@ -122,7 +122,8 @@ def claim_hidden_points(workflow, scene, activity, *, look_for_synthesis=False):
 
     selection = None
     try:
-        current, selection = search_task(workflow, scene, activity, select, receipt, reward_only=True)
+        current, selection = search_task(workflow, scene, activity, select, receipt,
+                                         inspect_current=inspect_current, reward_only=True)
     finally:
         if selection == 'synthesis':
             ctx.report.training_synthesis_search = receipt
