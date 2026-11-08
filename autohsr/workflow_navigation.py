@@ -31,10 +31,12 @@ from .policy import du_guide_details, has_du_field_plane_marker
 from .screenshot_tool import MAX_PIXELS
 from .storage import hold_read_sources
 from .task_workflow import (ACHIEVEMENT_OVERVIEW_PAGE, ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES, CAMERA_WORKFLOW_PAGE,
-                            GUIDE_WORKFLOW_SUBPAGES, MESSAGE_WORKFLOW_PAGE, REDEMPTION_FORM_PAGE, TRAINING_SCAN_PAGE,
+                            GUIDE_WORKFLOW_SUBPAGES, MESSAGE_WORKFLOW_PAGE, REDEMPTION_FORM_PAGE, TEAM_WORKFLOW_PAGE,
+                            TRAINING_SCAN_PAGE,
                             VISA_CHARACTERS_PAGE, VISA_COLLECTION_PAGE, WORKFLOW_NAVIGATION_TARGETS,
                             WORLD_WORKFLOW_PAGE)
-from .team_calibration_pages import calibration_overlay
+from .team_calibration_destination import observe_team_page, same_team_page
+from .team_calibration_pages import calibration_overlay, phone_team_target
 from .vision import helper_overlay
 from .workflow_battlepass_tabs import exact_battlepass_tab, small_selection_agrees
 from .workflows import DailyWorkflow, TITLE
@@ -60,6 +62,7 @@ _REDEMPTION_LAYOUT_VERSION = '4.6.0'
 _REDEMPTION_MORE = 'redemption_more'
 _REDEMPTION_MENU_LABELS = ('漫游签证', '手机装饰', '开拓穿搭', '兑换码')
 _WORLD_LAYOUT_VERSION = '4.6.0'
+_TEAM_LAYOUT_VERSION = '4.6.0'
 _WORLD_RETURN_PANELS = (*_GUIDE_PAGES, 'assignments', 'mail', 'battlepass')
 _WORLD_PHONE_ROI = (.005, .041, .042, .105)
 _WORLD_PHONE_CENTER = (.018, .067, .028, .083)
@@ -393,6 +396,17 @@ class WorkflowNavigation:
         if self.target == REDEMPTION_FORM_PAGE:
             return self._read_redemption_page(scene)
         page = self._page(scene)
+        if self.target == TEAM_WORKFLOW_PAGE:
+            low = trusted(scene, COLLECTION_FLOOR)
+            if _activity_title(low) or message_panel(low):
+                return None
+            if page == 'world':
+                return self._world_return_page(scene, page)
+            if page is None and observe_team_page(scene, self.confidence) is not None:
+                return TEAM_WORKFLOW_PAGE
+            if page in (None, 'phone') and phone_team_target(scene, self.confidence) is not None:
+                return 'phone'
+            return None
         if self.target == CAMERA_WORKFLOW_PAGE:
             low = trusted(scene, COLLECTION_FLOOR)
             if other_camera_mode(scene) or _activity_title(low) or message_panel(low):
@@ -427,6 +441,8 @@ class WorkflowNavigation:
         if self.target == WORLD_WORKFLOW_PAGE:
             if page is None and ordinary_viewfinder(scene, self.c.vision, self.confidence):
                 page = CAMERA_WORKFLOW_PAGE
+            if page is None and observe_team_page(scene, self.confidence) is not None:
+                page = TEAM_WORKFLOW_PAGE
             return self._world_return_page(scene, page)
         if self.target in GUIDE_WORKFLOW_SUBPAGES:
             return page
@@ -463,6 +479,11 @@ class WorkflowNavigation:
 
     def _action(self, frame):
         page = frame.page
+        if self.target == TEAM_WORKFLOW_PAGE:
+            if page == 'world':
+                return _Action('open_phone', ('phone',))
+            token = phone_team_target(frame.scene, self.confidence) if page == 'phone' else None
+            return _Action('open_ordinary_team', (self.target,), token) if token is not None else None
         if self.target == CAMERA_WORKFLOW_PAGE:
             if page == 'world':
                 return _Action('open_phone', ('phone',))
@@ -477,7 +498,7 @@ class WorkflowNavigation:
                 return _Action('open_' + self.target, (self.target,), tab) if tab else None
             return None
         if self.target == WORLD_WORKFLOW_PAGE:
-            if page in ('phone', CAMERA_WORKFLOW_PAGE):
+            if page in ('phone', CAMERA_WORKFLOW_PAGE, TEAM_WORKFLOW_PAGE):
                 return _Action('return_to_hub', (WORLD_WORKFLOW_PAGE,))
             if page in _WORLD_RETURN_PANELS:
                 return _Action('return_to_hub', (WORLD_WORKFLOW_PAGE, 'phone'))
@@ -594,6 +615,14 @@ class WorkflowNavigation:
                 and not np.may_share_memory(first.image, second.image) and first.captured_at < second.captured_at
                 and first.account == second.account and first.page is not None and first.page == second.page)
 
+    def _matching_pair(self, first, second):
+        if not self._adjacent(first, second) or not self._fresh(first.captured_at):
+            return False
+        if second.page != TEAM_WORKFLOW_PAGE:
+            return True
+        return same_team_page(observe_team_page(first.scene, self.confidence),
+                              observe_team_page(second.scene, self.confidence))
+
     def _pair(self, *, after=None, expected=(), source=None):
         previous = None
         for attempt in range(_MAX_CAPTURES):
@@ -612,7 +641,7 @@ class WorkflowNavigation:
                     raise AutomationError('日常页面导航到了预期之外的页面，未再发送输入。')
                 previous = None
                 continue
-            if previous is not None and self._adjacent(previous, frame) and self._fresh(previous.captured_at):
+            if previous is not None and self._matching_pair(previous, frame):
                 return previous, frame
             previous = frame
         raise AutomationError('日常页面缺少连续独立的到页证据，未重复发送输入。')
@@ -633,7 +662,7 @@ class WorkflowNavigation:
         first, second = pair
         self._guard()
         self._latest(second)
-        if not self._adjacent(first, second) or not self._fresh(first.captured_at):
+        if not self._matching_pair(first, second):
             raise AutomationError('日常页面导航的双帧已过期或发生替换。')
         for frame in pair:
             scene = frame.scene
@@ -849,6 +878,8 @@ class WorkflowNavigation:
             expected, version = ('phone', self.target), _ACHIEVEMENT_LAYOUT_VERSION
         elif self.target == CAMERA_WORKFLOW_PAGE:
             expected, version = ('world', 'phone', self.target), CAMERA_LAYOUT_VERSION
+        elif self.target == TEAM_WORKFLOW_PAGE:
+            expected, version = ('world', 'phone', self.target), _TEAM_LAYOUT_VERSION
         elif self.target == VISA_COLLECTION_PAGE:
             expected, version = ('phone', VISA_COLLECTION_PAGE), VISA_LAYOUT_VERSION
         elif self.target == VISA_CHARACTERS_PAGE:
@@ -858,7 +889,8 @@ class WorkflowNavigation:
         elif self.target in (*GUIDE_WORKFLOW_SUBPAGES, TRAINING_SCAN_PAGE):
             expected, version = ('phone', *_EXACT_GUIDE_PAGES), _GUIDE_LAYOUT_VERSION
         elif self.target == WORLD_WORKFLOW_PAGE:
-            expected, version = (WORLD_WORKFLOW_PAGE, 'phone', CAMERA_WORKFLOW_PAGE, *_WORLD_RETURN_PANELS), _WORLD_LAYOUT_VERSION
+            expected = (WORLD_WORKFLOW_PAGE, 'phone', CAMERA_WORKFLOW_PAGE, TEAM_WORKFLOW_PAGE, *_WORLD_RETURN_PANELS)
+            version = _WORLD_LAYOUT_VERSION
         elif self.target in (*ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE):
             version = _VERSION
             if self._bound_to_event_claim():

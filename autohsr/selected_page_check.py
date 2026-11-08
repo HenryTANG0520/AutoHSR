@@ -10,7 +10,8 @@ from .daily_training_scan import MAX_SCROLLS, SCAN_ACTION, scan_receipt
 from .storage import hold_read_sources
 from .task_workflow import (ACHIEVEMENT_OVERVIEW_PAGE, ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES, CAMERA_WORKFLOW_PAGE, MAX_BYTES,
                             MESSAGE_WORKFLOW_PAGE, PAGE_TASK, REDEMPTION_FORM_PAGE, SCREEN_CHECK_EXTRA_PAGES,
-                            SCREEN_CHECK_PAGES, TRAINING_SCAN_PAGE, VISA_CHARACTERS_PAGE, VISA_COLLECTION_PAGE, WORKFLOW_PAGES,
+                            SCREEN_CHECK_PAGES, TEAM_WORKFLOW_PAGE, TRAINING_SCAN_PAGE, VISA_CHARACTERS_PAGE,
+                            VISA_COLLECTION_PAGE, WORKFLOW_PAGES,
                             WORLD_WORKFLOW_PAGE, Recipe, WorkflowError, _pairs, compile_recipe)
 from .task_workflow_run import _bytes as _workflow_bytes
 from .workflow_navigation import _GUIDE_PAGES, _MAX_ACTIONS, _REDEMPTION_MORE, _VISA_MORE_MENU
@@ -31,6 +32,7 @@ _EXTRA_ACTIONS = {
     ACHIEVEMENT_OVERVIEW_PAGE: ('open_achievements',),
     REDEMPTION_FORM_PAGE: ('open_redemption_more', 'open_redemption_form'),
     WORLD_WORKFLOW_PAGE: ('return_to_hub',),
+    TEAM_WORKFLOW_PAGE: ('open_phone', 'open_ordinary_team'),
     TRAINING_SCAN_PAGE: ('return_to_hub', 'open_guide', 'open_daily_training', SCAN_ACTION),
     **{page: ('open_battlepass', 'open_' + page) for page in BATTLEPASS_WORKFLOW_PAGES},
 }
@@ -44,7 +46,7 @@ def _document(targets):
     if MESSAGE_WORKFLOW_PAGE in targets and len(targets) != 1:
         raise WorkflowError('短信通知须单独核对，请从已有未读角标的大世界或已打开的通知面板开始。')
     if len(targets) != 1 and any(target in SCREEN_CHECK_EXTRA_PAGES for target in targets):
-        raise WorkflowError('实训任务巡查、大世界、漫游签证、成就总览、兑换码表单和指定无名勋礼页签须单独核对。')
+        raise WorkflowError('实训任务巡查、大世界、漫游签证、成就总览、兑换码表单、普通编队和指定无名勋礼页签须单独核对。')
     activity = tuple(page for page in ACTIVITY_WORKFLOW_PAGES if page in targets)
     if activity and tuple(targets[-len(activity):]) != activity:
         raise WorkflowError('活动页面须放在末尾，并按巡星之礼、奖励指南的顺序排列。')

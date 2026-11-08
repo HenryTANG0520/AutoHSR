@@ -10,7 +10,7 @@
 | `for` | 1～1000 次、非空 `children`，子步骤全部可转换。缺省 1 次 |
 | `break`、`continue` | 在可转换的循环体中 |
 | `stop_workflow` | 转为原生 `stop` |
-| `switch_screen` | `main` 转为 `world`，`menu` 转为手机。`guide2`、`guide3`、`guide4`、`guide5` 分别转为每日实训、生存索引、逐光捡金、旷宇纷争。支持委托 `dispatch`、邮件 `mail`、奖励指南 `reward_guide`、新消息通知 `incoming_message`、成就 `achievement`、兑换表单 `redemption` 和普通相机 `camera`。`pass1`、`pass2` 分别转为 `battlepass_rewards`、`battlepass_tasks`。`visa` 转为 `visa_collection` |
+| `switch_screen` | `main` 转为 `world`，`menu` 转为手机。`guide2`、`guide3`、`guide4`、`guide5` 分别转为每日实训、生存索引、逐光捡金、旷宇纷争。支持委托 `dispatch`、邮件 `mail`、奖励指南 `reward_guide`、新消息通知 `incoming_message`、成就 `achievement`、兑换表单 `redemption`、普通相机 `camera` 和普通编队 `configure_team`。`pass1`、`pass2` 分别转为 `battlepass_rewards`、`battlepass_tasks`。`visa` 转为 `visa_collection` |
 | `play_audio` | 显式填写普通相对路径或本地绝对路径，扩展名为 `.wav` 或 `.mp3`。转为原生 `workflow_audio` |
 | `send_message` | 调用方显式绑定一个原生方案名称。纯文本转为 `workflow_notify`，截图通知另加入一个前置截图步骤 |
 
@@ -30,12 +30,14 @@
 
 `camera` 转为普通相机导航，可从大世界或手机进入取景。照片预览与拍摄活动须另行识别。[固定上游路线](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L562-L586) · [普通相机导航](task-workflows.md#普通相机导航)
 
+`configure_team` 转为 `ordinary_team`，沿用已有手机编队入口与同一普通队伍页的双帧核对。可接 `main` 返回大世界。[上游编队入口](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L170-L174) · [普通编队导航](task-workflows.md#普通编队导航)
+
 上游的 `visa` 从手机「更多」打开漫游签证，页面定义未区分页签。转换后的 `visa_collection` 要求核实收集展示，从前台手机主菜单或已打开的收集展示开始。需要角色展示时，可另设原生 `visa_characters` 步骤。[固定上游手机路径](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L89-L95) · [固定上游签证定义](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L536-L547) · [收集展示导航](task-workflows.md#漫游签证收集展示)
 
 | 待核对目标 | 补映射所需的最小证据 |
 | --- | --- |
 | 行动摘要 | 固定上游只列 `guide2` 至 `guide5`。先确认对应上游页面 ID，再核对 4.6.0 未选中入口与选中标题、独立正文标记，并用相邻指南页作反例 |
-| `activity`、`configure_team` | 需区分通用活动与具体横幅、普通编队与玩法备战。各需安全入口、到页双帧和相邻误页 |
+| `activity` | 需区分通用活动与具体横幅，核对安全入口、到页双帧和相邻误页 |
 | 地图、照片预览、背包及玩法子页 | 需实际入口与到页标记，以及无消耗的独立动作回执。当前各玩法的正式命令有各自的停止条件 |
 
 坐标、图文点击、滑动、按键、其余页面和无限循环均会拒绝。模板查找、文字查找及条件的默认转换会检查选区和上游语义差异，并给出节点路径。桌面「导入 YAML 图文…」可为受支持的步骤显式采用原生实时识别。上游官方示例索引只用于定位具体示例，不会触发目录扫描或自动选取。该接口接收单份 YAML。素材包格式与导入另有入口。[原生图文适配](march7th-workflow-native-vision.md) · [图文条件与迁移边界](march7th-workflow-conditions.md)

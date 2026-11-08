@@ -43,6 +43,7 @@ _PAGES = {
     "difficulty_guide": "逐光捡金", "universe_guide": "旷宇纷争",
     "messages": "短信通知", "visa_collection": "漫游签证收集展示", "visa_characters": "漫游签证角色展示",
     "achievement_overview": "成就总览", "redemption_form": "兑换码表单", "camera": "普通相机",
+    "ordinary_team": "普通编队",
     TRAINING_SCAN_PAGE: "实训任务巡查",
 }
 _DAILY_NAMES = {

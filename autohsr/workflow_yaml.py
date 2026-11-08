@@ -59,6 +59,7 @@ _PAGE_TARGETS = {
     'guide4': 'difficulty_guide', 'guide5': 'universe_guide', 'incoming_message': 'messages',
     'dispatch': 'assignments', 'mail': 'mail', 'reward_guide': 'reward_guide',
     'achievement': 'achievement_overview', 'redemption': 'redemption_form', 'camera': 'camera',
+    'configure_team': 'ordinary_team',
     'pass1': 'battlepass_rewards', 'pass2': 'battlepass_tasks',
     'visa': 'visa_collection',
 }

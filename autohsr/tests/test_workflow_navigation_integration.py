@@ -4,6 +4,7 @@ import ctypes
 from dataclasses import replace
 from hashlib import sha256
 import io
+from itertools import cycle
 import json
 import os
 from pathlib import Path
@@ -66,11 +67,14 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                        visa_pages=None, expect_visa_stop=False, observe_only=False, resume=False,
                        training_page=None, selected_page=False, scan_pages=None, scan_reject=False,
                        scan_account_changed=False, branch_field='page_verified', unknown_condition=False,
-                       camera_case='ordinary', camera_from_world=False, camera_return=False):
+                       camera_case='ordinary', camera_from_world=False, camera_return=False,
+                       team_case='ordinary', team_return=False):
         source = phone()
+        unstable_team = None
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
         guide_target = target in ('difficulty_guide', 'universe_guide', 'daily_training', 'daily_training_scan', 'survival_index')
+        world_route = target in ('world', 'visa_characters', 'camera', 'ordinary_team')
         if target == 'messages':
             from autohsr.tests.test_daily_message_world import bright_sequence, world_pair
 
@@ -119,6 +123,25 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 source = phone(Token('成就', .78, (.473, .109, .499, .143)),
                                Token('奖励', .78, (.501, .109, .527, .143)))
             pages = (source, achievement)
+        elif target == 'ordinary_team' or team_return:
+            from autohsr.tests.test_team_calibration_destination import normal_team_scene
+            from autohsr.tests.test_team_preset_calibration import phone as team_phone
+
+            source = team_phone(uid=ACCOUNT)
+            team = normal_team_scene()
+            team.tokens.append(ACCOUNT)
+            if team_case == 'challenge':
+                team.tokens.append(Token('虚构叙事', .99, (.041, .026, .122, .049)))
+            elif team_case == 'phone_overlay':
+                source.tokens.append(Token('兑换码', .95, (.88, .53, .91, .56)))
+            elif team_case == 'unstable':
+                other = normal_team_scene('启用队伍')
+                other.tokens.append(ACCOUNT)
+                unstable_team = cycle((team, other))
+            if team_return:
+                pages = (team, world_hud())
+            else:
+                pages = (source, team) if from_phone else (world_hud(), source, team)
         elif target == 'camera' or camera_return:
             from autohsr.daily_camera_pages import _ASSETS
 
@@ -210,12 +233,13 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         def frames():
             while True:
                 index = min(completed_inputs + start_in_list, len(pages) - 1)
-                yield pages[-1] if already_open and not resume and scan_pages is None else pages[index]
+                page = pages[-1] if already_open and not resume and scan_pages is None else pages[index]
+                yield next(unstable_team) if unstable_team is not None and page is team else page
 
         window = _Window(frames())
         if scan_pages is not None:
             window.scroll_down_once = GameWindow.scroll_down_once.__get__(window)
-        if target in ('world', 'visa_characters', 'camera'):
+        if world_route:
             window.key = GameWindow.key.__get__(window)
         if battlepass_size is not None:
             window.geometry = Geometry(0, 0, *battlepass_size)
@@ -300,7 +324,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
 
         def vision(confidence):
             engine = window.vision(confidence)
-            if target in ('world', 'visa_characters', 'camera') or guide_target:
+            if world_route or guide_target:
                 engine.template = Vision.__new__(Vision).template
             return engine
 
@@ -351,7 +375,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 ('autohsr.workflow_lease.NAME', 'Local\\AutoHSR.WorkflowNavigationQA.' + uuid4().hex),
             ):
                 stack.enter_context(patch(name, value))
-            if target not in ('world', 'visa_characters', 'camera') and not guide_target:
+            if not (world_route or guide_target):
                 stack.enter_context(patch('autohsr.app.Context.template', return_value=None))
             for name, kwargs in (
                 ('autohsr.app.C.get_last_error', dict(return_value=0)),
@@ -379,7 +403,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                            or lose_focus_after_geometry or (target != 'daily_training' and version != '4.6.0')
                            or duplicate_tab or first_escape_native_count != 2 or guide_overlay is not None
                            or achievement_page_kind != 'overview' or redemption_state != 'form' or expect_visa_stop
-                           or camera_case != 'ordinary'
+                           or camera_case != 'ordinary' or team_case != 'ordinary'
                            or ((observe_only or resume) and not already_open))
             self.assertEqual(code, 1 if interrupted else 0, err.getvalue() + out.getvalue())
             if lose_focus_after_geometry:
@@ -477,6 +501,41 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 self.assertEqual(self.key_scans, [0x1B, 0x1B] if from_world else [])
                 self.assertTrue(steps[0]['facts']['page_verified'])
                 self.assertEqual(native['workflow_navigation']['target'], 'camera')
+
+    def test_ordinary_team_yaml_and_selected_page_use_the_same_navigation(self):
+        click = (0xC001, 0x0002, 0x0004)
+        for from_phone, already_open, expected in ((True, False, [click]), (False, True, []),
+                                                   (False, False, [(0x08,), (0x0A,), click])):
+            with self.subTest(from_phone=from_phone, already_open=already_open):
+                sent, steps, native = self.run_navigation(target='ordinary_team', upstream_screen='configure_team',
+                    from_phone=from_phone, already_open=already_open)
+                self.assertEqual(sent, expected)
+                self.assertTrue(steps[0]['facts']['page_verified'])
+                self.assertEqual(native['workflow_navigation']['target'], 'ordinary_team')
+        sent, rows, _ = self.run_navigation(target='ordinary_team', from_phone=True, selected_page=True)
+        self.assertEqual(sent, [click])
+        self.assertEqual((rows[0]['status'], rows[0]['actions_sent']), ('verified', 1))
+
+    def test_ordinary_team_requires_matching_state_and_does_not_click_through_other_pages(self):
+        click = (0xC001, 0x0002, 0x0004)
+        for case, expected in (('unstable', [click]), ('challenge', [click]), ('phone_overlay', [])):
+            with self.subTest(case=case):
+                sent, steps, native = self.run_navigation(target='ordinary_team', from_phone=True, team_case=case)
+                self.assertEqual(sent, expected)
+                self.assertNotIn('page_verified', steps[0]['facts'])
+                if expected:
+                    self.assertEqual(native['workflow_navigation']['actions'][0]['destination_status'], 'unknown')
+
+    def test_return_from_ordinary_team_checks_matching_state_and_sends_only_escape(self):
+        sent, rows, _ = self.run_navigation(target='world', team_return=True, selected_page=True)
+        self.assertEqual(sent, [(0x08,), (0x0A,)])
+        self.assertEqual(self.key_scans, [0x1B, 0x1B])
+        self.assertEqual((rows[0]['status'], rows[0]['actions_sent']), ('verified', 1))
+        for case in ('unstable', 'challenge'):
+            with self.subTest(case=case):
+                sent, steps, _ = self.run_navigation(target='world', team_return=True, team_case=case)
+                self.assertEqual(sent, [])
+                self.assertNotIn('page_verified', steps[0]['facts'])
 
     def test_camera_does_not_replay_a_click_for_an_unknown_or_activity_viewfinder(self):
         for case in ('missing_key', 'activity', 'split_activity'):
