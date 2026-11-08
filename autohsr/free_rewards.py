@@ -7,6 +7,8 @@ from .models import Scene, Token, normalize
 TITLE=(0,0,.32,.13)
 _BATTLEPASS_CLAIM_AREA = (.60, .79, .98, .91)
 _BATTLEPASS_CLAIM_TEXTS = ('一键领取', '-键领取', '键领取')
+_BATTLEPASS_CATEGORIES = ('本周任务', '本期任务')
+_BATTLEPASS_TASK_ROWS = (.82, .33, .94, .77)
 
 
 def phone(scene):
@@ -97,7 +99,7 @@ def battlepass_page(scene):
             or not scene.has('剩余时间',(.16,.18,.40,.25))):
         return None
     if scene.has('任务',TITLE,exact=True) and all(scene.has(label,(.07,.31,.20,.74),exact=True)
-                                                for label in ('本周任务','本期任务')):
+                                                for label in _BATTLEPASS_CATEGORIES):
         return 'tasks'
     if (scene.has('奖励',TITLE,exact=True)
             and scene.has('无名客的赠礼',(.07,.45,.20,.56),exact=True)
@@ -144,7 +146,7 @@ def battlepass_claim_target(scene, vision, confidence):
         return target
     if (kind != 'tasks' or normalize(target.text) == '一键领取' or not max(.85, confidence) <= target.score <= 1
             or not target.within((.79, .81, .96, .89)) or claim_enabled(scene, target) is not True
-            or sum(task_category(scene, label) for label in ('本周任务', '本期任务')) != 1):
+            or sum(task_category(scene, label) for label in _BATTLEPASS_CATEGORIES) != 1):
         return None
     read = getattr(vision, '_read_field', None)
     if not callable(read):
@@ -174,9 +176,59 @@ def battlepass_progress(scene):
     return (levels[0],*ratios[0]) if len(levels)==len(ratios)==1 else None
 
 
-def battlepass_settled(scene,kind):
+def _red_pixels(hsv):
+    hue, saturation, value = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
+    return ((hue < 10) | (hue > 170)) & (saturation > 130) & (value > 160)
+
+
+def _task_badge(scene, label):
+    """Read only the badge slot above and right of a calibrated category label."""
+    import cv2
+    import numpy as np
+
+    height, width = scene.image.shape[:2]
+    if width < 960 or not .54 <= height / width <= .59:
+        return None
+    matches = [token for token in scene.tokens if normalize(token.text) == label
+               and token.within((.10, .38, .18, .69))]
+    if len(matches) != 1 or matches[0].score < .85:
+        return None
+    _, y = matches[0].center
+    center = .413 if label == '本周任务' else .655
+    if abs(y - center) > .014:
+        return None
+    patch = scene.image[round((y - .079) * height):round((y - .036) * height),
+                        round(.174 * width):round(.199 * width)]
+    hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
+    red = _red_pixels(hsv)
+    if not red.any():
+        return False
+    contours, _ = cv2.findContours(red.astype('uint8'), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if len(contours) != 1:
+        return None
+    x, y, badge_width, badge_height = cv2.boundingRect(contours[0])
+    if (not .016 * height <= badge_height <= .027 * height or not .76 <= badge_width / badge_height <= 1.24
+            or not .57 <= cv2.contourArea(contours[0]) / (badge_width * badge_height) <= .86):
+        return None
+    interior = hsv[y+badge_height//4:y+3*badge_height//4, x+badge_width//4:x+3*badge_width//4]
+    return True if np.mean((interior[:, :, 1] < 85) & (interior[:, :, 2] > 190)) >= .05 else None
+
+
+def _other_task_category_has_badge(scene, category):
+    other, = (label for label in _BATTLEPASS_CATEGORIES if label != category)
+    footer_gold = gold_fraction(scene, (.83, .83, .935, .875))
+    return (_task_badge(scene, category) is False and _task_badge(scene, other) is True
+            and footer_gold is not None and footer_gold < .05
+            and not scene.has('领取', _BATTLEPASS_TASK_ROWS, exact=True))
+
+
+def battlepass_settled(scene, kind, *, category=None):
     if kind not in ('tasks','rewards') or battlepass_page(scene)!=kind or battlepass_modal(scene):
         return False
+    if category is not None:
+        selected = [label for label in _BATTLEPASS_CATEGORIES if task_category(scene, label)]
+        if kind != 'tasks' or selected != [category]:
+            return False
     if scene.has(_BATTLEPASS_CLAIM_TEXTS, _BATTLEPASS_CLAIM_AREA, exact=True):
         return False
     if scene.image is None:
@@ -184,12 +236,12 @@ def battlepass_settled(scene,kind):
     import cv2
     import numpy as np
     h,w=scene.image.shape[:2]
-    # A red notification on the current top tab contradicts "nothing to claim".
+    # The top task tab aggregates both category badges.
     x1,x2=(.458,.47) if kind=='rewards' else (.507,.52)
     hsv=cv2.cvtColor(scene.image[round(.02*h):round(.05*h),round(x1*w):round(x2*w)],cv2.COLOR_BGR2HSV)
-    red=((hsv[:,:,0]<10)|(hsv[:,:,0]>170))&(hsv[:,:,1]>130)&(hsv[:,:,2]>160)
-    if float(np.mean(red))>.07:
+    if float(np.mean(_red_pixels(hsv))) > .07 and (
+            category is None or not _other_task_category_has_badge(scene, category)):
         return False
     if kind=='tasks':
-        return scene.has(('追踪','已完成'),(.82,.33,.94,.77),exact=True)
+        return scene.has(('追踪','已完成'),_BATTLEPASS_TASK_ROWS,exact=True)
     return True

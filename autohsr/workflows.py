@@ -1522,9 +1522,8 @@ class DailyWorkflow:
                     self.ctx.evidence(scene,'battlepass_'+kind+'_before_claim')
                     self._click(scene,target)
                     if kind=='tasks':
-                        scene=self._wait(lambda s:battlepass_settled(s,kind)
+                        scene=self._wait(lambda s:battlepass_settled(s,kind,category=category)
                             and battlepass_progress(s) is not None
-                            and task_category(s, category)
                             and battlepass_progress(s)[:2]>before[:2],description='核实勋礼任务经验到账')
                     else:
                         scene=self._wait(reward_overlay,description='核实勋礼免费奖励展示')
@@ -1541,7 +1540,7 @@ class DailyWorkflow:
                     # action, which is not evidence of completed claims.
                     self._pause()
                     scene=self._snapshot()
-                    if not battlepass_settled(scene,kind) or (category and not task_category(scene,category)):
+                    if not battlepass_settled(scene,kind,category=category):
                         return self._result('battlepass','partial','勋礼当前分类尚未核实无可领取项。',scene)
                 self.ctx.evidence(scene,'battlepass_'+(category or kind)+'_verified')
         return self._result('battlepass','ok','已复核本周、本期任务与免费等级奖励领取状态。',scene)

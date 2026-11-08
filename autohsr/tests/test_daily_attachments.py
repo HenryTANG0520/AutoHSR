@@ -19,6 +19,7 @@ from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.daily_attachments import ATTACHMENT_FLOWS
 from autohsr.free_rewards import battlepass_progress, battlepass_tab, mail_entry
+from autohsr.tests.test_free_rewards import with_battlepass_category_badge
 from autohsr.models import AutomationError, InputInterrupted, Scene
 from autohsr.task_workflow import FREE_ATTACHMENT_TASK, WorkflowError, compile_recipe, task_spec
 from autohsr.tests.test_assignment_only import ACCOUNT, OTHER
@@ -113,6 +114,8 @@ class AttachmentTests(unittest.TestCase):
                             round((x - .05) * width):round((x + .05) * width)] = (30, 175, 245)
             else:
                 scene = fixture(mode)
+            if mode == 'bp_tasks_settled' and event == 'cross_category_badge':
+                scene = with_battlepass_category_badge(scene, '本期任务')
             if mode == 'bp_tasks_claimable' and event in ('weekly_alias', 'weekly_alias_unverified'):
                 target = scene.find('一键领取', exact=True)
                 scene.tokens = [replace(t, text='-键领取') if t == target else t for t in scene.tokens]
@@ -197,7 +200,7 @@ class AttachmentTests(unittest.TestCase):
             elif active in ('一键领取', '-键领取') and mode == 'bp_tasks_claimable':
                 mode = 'bp_tasks_settled'
             elif active == '本期任务':
-                mode = 'period-claimable' if event == 'period_claim' else 'bp_period_settled'
+                mode = 'period-claimable' if event in ('period_claim', 'cross_category_badge') else 'bp_period_settled'
             elif active == '一键领取' and mode == 'period-claimable':
                 mode = 'bp_period_settled'
             elif active == 'bp_rewards_tab':
@@ -351,6 +354,15 @@ class AttachmentTests(unittest.TestCase):
     def test_battlepass_period_experience_has_its_own_receipt(self):
         result = self.invoke('battlepass', 'bp_tasks_claimable', event='period_claim', workflow=True)
         self.assertEqual(result.code, 0)
+        self.assertEqual(result.child['results'][0]['verified_claims'], [
+            'battlepass_weekly_tasks', 'battlepass_period_tasks', 'battlepass_free_levels',
+        ])
+
+    def test_other_category_badge_preserves_weekly_receipt_and_allows_period_claim(self):
+        result = self.invoke('battlepass', 'bp_tasks_claimable', event='cross_category_badge', workflow=True)
+        self.assertEqual((result.code, result.sent), (0, [
+            '一键领取', '本期任务', '一键领取', 'bp_rewards_tab', '一键领取', '点击空白处关闭',
+        ]))
         self.assertEqual(result.child['results'][0]['verified_claims'], [
             'battlepass_weekly_tasks', 'battlepass_period_tasks', 'battlepass_free_levels',
         ])

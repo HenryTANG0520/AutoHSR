@@ -14,6 +14,16 @@ from autohsr.vision import Vision
 from autohsr.workflows import DailyWorkflow
 
 
+def with_battlepass_category_badge(scene, category):
+    """Move the historical badge to the requested row in a synthetic replay."""
+    original = fixture('bp_tasks_claimable').image
+    image = scene.image.copy()
+    image[25:55, 970:1000] = original[25:55, 970:1000]
+    top = 369 if category == '本周任务' else 631
+    image[top:top+28, 344:371] = original[369:397, 344:371]
+    return replace(scene, image=image)
+
+
 class FreeRewardTests(unittest.TestCase):
     def test_badged_icon_only_mail_requires_both_phone_and_matching_glyph(self):
         scene=fixture('phone_mail_icon');target=mail_entry(scene)
@@ -87,6 +97,35 @@ class FreeRewardTests(unittest.TestCase):
         settled = fixture('bp_tasks_settled')
         settled.tokens.append(Token('键领取', .71, (.86, .83, .90, .86)))
         self.assertFalse(battlepass_settled(settled, 'tasks'))
+
+    def test_combined_task_badge_can_be_attributed_only_to_the_other_category(self):
+        cases = (('bp_tasks_settled', '本周任务', '本期任务'),
+                 ('bp_period_settled', '本期任务', '本周任务'))
+        for name, current, other in cases:
+            settled = fixture(name)
+            mixed = with_battlepass_category_badge(settled, other)
+            for width in (1920, 1280, 960):
+                with self.subTest(current=current, width=width):
+                    image = cv2.resize(mixed.image, (width, round(width*9/16)), interpolation=cv2.INTER_AREA)
+                    scene = replace(mixed, image=image)
+                    self.assertFalse(battlepass_settled(scene, 'tasks'))
+                    self.assertTrue(battlepass_settled(scene, 'tasks', category=current))
+                    self.assertFalse(battlepass_settled(scene, 'tasks', category=other))
+            self.assertFalse(battlepass_settled(with_battlepass_category_badge(mixed, current),
+                                               'tasks', category=current))
+
+    def test_other_badge_does_not_hide_current_claim_or_unknown_badge(self):
+        scene = with_battlepass_category_badge(fixture('bp_tasks_settled'), '本期任务')
+        row_claim = Token('领取', .99, (.87, .48, .90, .51))
+        with_claim = replace(scene, tokens=[*scene.tokens, row_claim])
+        self.assertFalse(battlepass_settled(with_claim, 'tasks', category='本周任务'))
+        scene.image[900:945, 1588:1794] = (30, 175, 245)
+        self.assertFalse(battlepass_settled(scene, 'tasks', category='本周任务'))
+        scene = with_battlepass_category_badge(fixture('bp_tasks_settled'), '本期任务')
+        scene.image[631:659, 344:371] = (0, 0, 255)
+        self.assertFalse(battlepass_settled(scene, 'tasks', category='本周任务'))
+        scene.image[631:659, 344:371] = fixture('bp_tasks_settled').image[631:659, 344:371]
+        self.assertFalse(battlepass_settled(scene, 'tasks', category='本周任务'))
 
     def test_ordinary_battlepass_cannot_confirm_weekly_claim_from_period_tab(self):
         weekly = fixture('bp_tasks_claimable')
