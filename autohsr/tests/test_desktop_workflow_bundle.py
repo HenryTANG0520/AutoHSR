@@ -320,13 +320,32 @@ class DesktopWorkflowBundleTests(unittest.TestCase):
             self.assertIsNone(self.pending)
         self.assertEqual(self.ui._submit_tool_job.call_count, 2)
 
+    def test_native_yaml_screenshot_notification_binds_a_draft_with_a_capture_step(self):
+        self.load_original()
+        path = self.directory / "capture.yml"
+        path.write_text("name: 截图通知\nsteps: [{type: send_message, text: 完成, with_screenshot: true}]\n",
+                        encoding="utf8")
+        self.open_dialog.return_value = str(path)
+        with (patch.object(self.panel, "_choose_yaml_notify_profile", return_value="alerts") as choose,
+              patch("autohsr.workflow_notify.send_step") as send):
+            self.panel.import_native_yaml_button.invoke()
+            self.deliver(self.execute(threaded=True))
+            choose.assert_called_once_with()
+            self.deliver(self.execute(threaded=True))
+            send.assert_not_called()
+        capture, notice = self.panel.draft.document["steps"]
+        self.assertEqual(capture["task"], "workflow_game_capture")
+        self.assertEqual(notice["params"], dict(profile="alerts", message="完成", capture_from=capture["id"]))
+        self.assertIsNone(self.panel.draft.source)
+        self.assertTrue(self.panel.run_button.instate(("disabled",)))
+
     def test_native_yaml_uses_validated_steps_to_decide_when_to_prompt(self):
         self.load_original()
         original = self.panel.draft
         path = self.directory / "source.yml"
         self.open_dialog.return_value = str(path)
         cases = (
-            ("steps: [{type: send_message, text: 完成, with_screenshot: true}]\n", "with_screenshot"),
+            ("steps: [{type: send_message, text: 完成, with_screenshot: 'true'}]\n", "with_screenshot"),
             ("steps: [{type: send_message, text: 完成}, {type: click_text}]\n", "步骤 1"),
             ("steps: [{type: for, count: 21, children: [{type: send_message, text: 完成}]}]\n", "最多执行 20"),
             ("steps: [{type: wait, text: send_message}] # send_message\n", None),

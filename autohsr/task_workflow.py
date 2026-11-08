@@ -212,7 +212,7 @@ def _params(task, params):
         'daily': {'tasks', 'use_power_plan', 'stamina_limit', 'rounds', 'target_name', 'target_location',
                   'dungeon_category', 'challenge_count', 'use_support', 'support_daily_only', 'redemption_source',
                   'redemption_server', 'redemption_codes', 'redemption_catalog', 'redemption_claim_mail'},
-        'plan': {'use_power_plan', 'resume_weekly_currency', 'support_daily_only'},
+        'plan': {'tasks', 'use_power_plan', 'resume_weekly_currency', 'support_daily_only'},
         TRAINING_REWARDS_TASK: {'reached_only'},
         ASSIGNMENT_REWARDS_TASK: set(),
         TRAINING_SYNTHESIS_TASK: set(),
@@ -264,14 +264,17 @@ def _params(task, params):
     for key in ('target_name', 'target_location', 'team'):
         if key in params:
             _text(params[key], 120)
-    if task == 'daily':
+    if task in ('daily', 'plan'):
         selected = params.get('tasks')
-        if ('tasks' in params and (not isinstance(selected, list) or not selected
+        if ('tasks' in params and (not isinstance(selected, list) or (task == 'daily' and not selected)
                 or any(not isinstance(t, str) or t not in DAILY_TASKS for t in selected)
                 or len(set(selected)) != len(selected))):
             raise WorkflowError('日常任务须为不重复的正式任务名列表。')
         if params.get('use_power_plan', False) and selected is not None and 'battle' not in selected:
             raise WorkflowError('体力计划需要选择日常刷本。')
+        if selected is not None and params.get('resume_weekly_currency', False):
+            raise WorkflowError('接续原周常不能重新指定日常任务。')
+    if task == 'daily':
         if 'stamina_limit' in params:
             _integer(params['stamina_limit'], 0, 240)
         if 'rounds' in params:
@@ -405,7 +408,7 @@ def _profile(nodes):
         if kind == 'task':
             task = node['task']
             params = node.get('params', {})
-            if task in ('daily', TRAINING_REWARDS_TASK, 'plan'):
+            if task in ('daily', TRAINING_REWARDS_TASK) or (task == 'plan' and params.get('tasks') != []):
                 current['daily_calls'] = 1
             if task in ('daily', 'plan'):
                 selected = params.get('tasks', DAILY_TASKS)
@@ -608,6 +611,11 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
     return Recipe(document, selected, path, profile, Path(base_dir or ROOT).resolve())
 
 
+def _set_daily_scope(settings, selected):
+    for task in DAILY_TASKS:
+        setattr(settings, 'redemption_enabled' if task == REDEMPTION_TASK else task, task in selected)
+
+
 def task_spec(settings: Settings, node, base_dir):
     """Freeze a separate Settings copy; native constructors keep their own gates."""
     task, params = node['task'], deepcopy(node.get('params', {}))
@@ -623,8 +631,7 @@ def task_spec(settings: Settings, node, base_dir):
         selected = params.pop('tasks', [name for name in DAILY_TASKS if getattr(current, 'redemption_enabled' if name == 'redemption' else name)])
         if not selected:
             raise WorkflowError('日常需要选择任务；体力计划需要刷本。')
-        for key in DAILY_TASKS:
-            setattr(current, 'redemption_enabled' if key == 'redemption' else key, key in selected)
+        _set_daily_scope(current, selected)
         options['use_power_plan'] = params.pop('use_power_plan', False)
         if options['use_power_plan'] and 'battle' not in selected:
             raise WorkflowError('体力计划需要选择日常刷本。')
@@ -680,6 +687,11 @@ def task_spec(settings: Settings, node, base_dir):
         options = dict(operation=task, daily_event_claim_day=params['day'], daily_event_workflow=True,
                        daily_event_observe_return=True, daily_event_claim_navigate=params.get('navigate', False))
     elif task == 'plan':
+        selected = params.pop('tasks', None)
+        if selected is not None:
+            _set_daily_scope(current, selected)
+            if not selected and not current.weekly_enabled:
+                raise WorkflowError('未选择日常任务时须启用周常。')
         options = params
         if current.redemption_enabled and current.redemption_source == 'file':
             current.redemption_catalog = str((ROOT / current.redemption_catalog).resolve())

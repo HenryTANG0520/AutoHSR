@@ -71,7 +71,8 @@ class ArchiveIntegrationTests(unittest.TestCase):
             finder.assert_called_once()
 
     def test_unfinished_archive_cannot_escape_through_generic_inputs_or_direct_name(self):
-        context = SimpleNamespace(report=RunReport(operation='differential_universe'))
+        context = SimpleNamespace(report=RunReport(operation='differential_universe'),
+                                  runner=SimpleNamespace(daily_synthesis_only=False))
         context.du_archive_workflow = SimpleNamespace(c=context, finished=False)
         context._require_gameplay_input = lambda: Context._require_gameplay_input(context)
         for method, args in ((Context.click, (None, None)), (Context.key, ('esc',)),
@@ -81,7 +82,7 @@ class ArchiveIntegrationTests(unittest.TestCase):
             with self.subTest(method=method.__name__), self.assertRaises(AutomationError):
                 method(context, *args)
         context.du_archive_workflow.finished = True
-        with self.assertRaises(AutomationError):
+        with self.assertRaisesRegex(AutomationError, '持久保存意图'):
             Context.click(context, None, None, du_intent='du_save_confirm')
 
 

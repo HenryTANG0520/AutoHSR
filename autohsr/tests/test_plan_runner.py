@@ -106,6 +106,22 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(du.differential_universe_mode, "periodic")
         self.assertFalse(du.differential_universe_daily or du.differential_universe_rewards or du.differential_universe_save)
 
+    def test_explicit_workflow_scope_dispatches_only_selected_daily_then_due_weekly(self):
+        from autohsr.task_workflow import task_spec
+
+        original = replace(self.settings, redemption_enabled=True)
+        settings, options = task_spec(original, dict(task="plan", params={"tasks": ["mail"]}), self.root)
+        self.settings = settings
+        self.daily.update(daily_verified=False, stamina_spent=0, stamina_limit=0,
+                          results=[dict(task="mail", status="ok", detail="邮件已核实")])
+        report = self.runner(**options).run()
+        self.assertEqual(report.status, "success")
+        self.assertEqual(report.weekly_plan["daily_tasks"], ["mail"])
+        self.assertEqual([args["operation"] for _, args in self.calls], ["daily", "differential_universe"])
+        self.assertTrue(self.calls[0][0].mail)
+        self.assertFalse(self.calls[0][0].battle or self.calls[0][0].redemption_enabled)
+        self.assertTrue(original.battle and original.redemption_enabled)
+
     def test_settings_are_frozen_at_start(self):
         runner = self.runner()
         self.settings.weekly_mode = "currency_wars"

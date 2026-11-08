@@ -49,6 +49,7 @@ _DAILY_NAMES = {
     "assignments": "持续委托", "battle": "日常副本（使用体力）", "daily": "每日实训",
     "redemption": "兑换码", "mail": "邮件附件", "battlepass": "无名勋礼",
 }
+_DAILY_SCOPE_KEYS = (("task", "daily"), ("task", "plan"))
 _NUMBERS = {
     "wait": ("seconds", f"等待秒数（0～{MAX_WAIT_SECONDS}）", 0, MAX_WAIT_SECONDS),
     "for": ("count", "循环次数（1～1000）", 1, 1000),
@@ -390,7 +391,7 @@ class WorkflowNodeForm(ttk.Frame):
         return params
 
     def _show_daily_scope(self):
-        if self._parameter_key != ("task", "daily"):
+        if self._parameter_key not in _DAILY_SCOPE_KEYS:
             self.daily_scope.grid_remove()
             return
         self.daily_scope.grid()
@@ -404,7 +405,7 @@ class WorkflowNodeForm(ttk.Frame):
             button.configure(state="disabled" if inherit or params is None else "normal")
 
     def _select_daily_scope(self):
-        if self._parameter_key != ("task", "daily"):
+        if self._parameter_key not in _DAILY_SCOPE_KEYS:
             return
         params = self._daily_params()
         if params is None:

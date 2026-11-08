@@ -336,7 +336,7 @@ class TaskWorkflowRunner:
             facts['completed_runs'] = currency['completed']
         return facts
 
-    def _copy_totals(self, result):
+    def _copy_totals(self, result, *, weekly_only=False):
         # Static reservations admit at most one daily owner. DU post-daily is off.
         if result.get('operation') == 'du_rewards':
             self.report.du_rewards = deepcopy(result['du_rewards'])
@@ -346,9 +346,12 @@ class TaskWorkflowRunner:
             self.report.engagement = result['engagement']
             return
         if result.get('operation') in ('daily', 'plan'):
+            if 'weekly_plan' in result:
+                self.report.weekly_plan = deepcopy(result['weekly_plan'])
+        if result.get('operation') in ('daily', 'plan') and not weekly_only:
             for key in ('stamina_spent', 'stamina_limit', 'stamina_pending', 'immersifiers_spent', 'immersifiers_pending',
                         'daily_verified', 'daily_synthesis', 'train_supply', 'engagement', 'battle_completed', 'battle_requested',
-                        'game_day', 'power_plan', 'team_selections', 'support_selections', 'weekly_plan'):
+                        'game_day', 'power_plan', 'team_selections', 'support_selections'):
                 if key in result:
                     setattr(self.report, key, deepcopy(result[key]))
             from .redemption_report import report_summary
@@ -497,6 +500,7 @@ class TaskWorkflowRunner:
         scoped_assignment = node['task'] == ASSIGNMENT_REWARDS_TASK
         scoped_synthesis = node['task'] == TRAINING_SYNTHESIS_TASK
         scoped_daily = scoped_attachment or scoped_assignment or scoped_synthesis
+        weekly_only = node['task'] == 'plan' and node.get('params', {}).get('tasks') == []
         expected = ('reward_only' if node['task'] == TRAINING_REWARDS_TASK
                     else 'daily' if scoped_daily else node['task'])
         child = result = None
@@ -544,6 +548,12 @@ class TaskWorkflowRunner:
                         result['workflow_navigation'].get('control_mode') != 'background'):
                     raise WorkflowError('页面回执没有核实本次使用后台窗口。')
             entry['source'] = self._source(result, expected, native_points=native_points)
+            weekly = result.get('weekly_plan')
+            weekly_not_due = (
+                weekly_only and result['status'] == 'success' and isinstance(weekly, dict)
+                and weekly.get('status') == 'not_due' and weekly.get('daily_handoff') == 'not_selected'
+                and weekly.get('daily_tasks') == [] and weekly.get('children') == []
+            )
             if scoped_synthesis and result['status'] == 'success':
                 from .daily_synthesis_search import synthesis_receipt
 
@@ -639,9 +649,9 @@ class TaskWorkflowRunner:
             if native_points:
                 result = self._du_points_result(result, entry, options['du_runs'], identity_mark)
             else:
-                if not scoped_daily and (not game or self._identity.has_step_proof(identity_mark)):
-                    self._copy_totals(result)
-                if game:
+                if not scoped_daily and (not game or weekly_not_due or self._identity.has_step_proof(identity_mark)):
+                    self._copy_totals(result, weekly_only=weekly_only)
+                if game and not weekly_not_due:
                     self._identity.require_step(identity_mark)
                     entry['account_verified'] = True
                 if attachment is not None and self._identity.has_step_proof(
@@ -651,6 +661,8 @@ class TaskWorkflowRunner:
                         and self._identity.has_step_proof(identity_mark, run_dir=result.get('run_dir', ''))):
                     entry['assignment'] = assignment
             entry['facts'] = {'status': result['status']} if scoped_daily else self._facts(result)
+            if weekly_only:
+                entry['facts'].pop('daily_verified', None)
             entry['status'] = result['status']
             training_source = entry.get('training_scan') or entry.get('training_observation')
             if entry['status'] == 'success' and training_source is not None:

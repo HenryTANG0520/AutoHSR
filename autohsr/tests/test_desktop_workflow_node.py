@@ -100,6 +100,15 @@ class WorkflowNodeFormTests(unittest.TestCase):
             form.daily_buttons["assignments"].invoke()
             self.assertEqual(form.parameters.get("1.0", "end-1c"), invalid)
 
+    def test_plan_scope_accepts_weekly_only_and_preserves_advanced_parameters(self):
+        self.form.open(dict(type="task", task="plan", params={"support_daily_only": True}))
+        self.assertTrue(self.form.daily_scope.grid_info())
+        self.assertTrue(self.form.daily_buttons["mail"].instate(("disabled",)))
+        self.form.daily_config_button.invoke()
+        self.assertEqual(self.submitted()["params"], {"tasks": [], "support_daily_only": True})
+        self.form.daily_buttons["mail"].invoke()
+        self.assertEqual(self.submitted()["params"], {"tasks": ["mail"], "support_daily_only": True})
+
     def test_page_picker_writes_the_selected_native_target(self):
         self.form.open()
         self.form.values["task"].set(_TASK_NAMES["workflow_open_page"])

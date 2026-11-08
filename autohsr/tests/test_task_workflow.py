@@ -1030,6 +1030,60 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(options['use_power_plan'])
         self.assertEqual(self.settings, before)
 
+    def test_plan_scope_reserves_selected_tasks_and_cannot_replace_recovered_daily(self):
+        redeem = task('redeem', 'redemption', source='online', server='cn')
+        compiled = compile_recipe(recipe(redeem, task('plan', 'plan', tasks=['daily', 'mail'])))
+        self.assertEqual(compiled.profile['redemption_calls'], 1)
+        for invalid, message in ((dict(tasks=['redemption']), '一份兑换批次'),
+                                 (dict(tasks=['mail', 'mail']), '不重复'),
+                                 (dict(tasks=['mail'], use_power_plan=True), '选择日常刷本'),
+                                 (dict(tasks=[], resume_weekly_currency=True), '不能重新指定日常任务')):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(WorkflowError, message):
+                compile_recipe(recipe(redeem, task('plan', 'plan', **invalid)))
+        weekly_only = compile_recipe(recipe(task('plan', 'plan', tasks=[]))).steps[0]
+        with self.assertRaisesRegex(WorkflowError, '须启用周常'):
+            task_spec(Settings(weekly_enabled=False), weekly_only, self.root)
+        frozen, options = task_spec(Settings(weekly_enabled=True), weekly_only, self.root)
+        self.assertEqual(options, {})
+        self.assertFalse(frozen.battle or frozen.daily or frozen.assignments or frozen.mail)
+
+    def test_weekly_only_scope_does_not_overwrite_an_earlier_daily_report(self):
+        self.settings.weekly_enabled = True
+        document = recipe(task('daily', tasks=['battle', 'daily']),
+                          task('week', 'plan', tasks=[]))
+        self.responses = [{}, dict(operation='plan', daily_verified=False, stamina_spent=0,
+                                   weekly_plan=dict(daily_tasks=[], status='not_due'))]
+        flow = self.runner(document)
+        self.assertEqual(flow.recipe.profile['daily_calls'], 1)
+        report = flow.run()
+        self.assertEqual(report.status, 'success')
+        self.assertEqual(report.stamina_spent, 120)
+        self.assertTrue(report.daily_verified)
+        self.assertEqual(report.weekly_plan['status'], 'not_due')
+        self.assertNotIn('daily_verified', report.workflow['steps'][1]['facts'])
+
+    def test_weekly_only_not_due_native_plan_needs_no_game_or_account_proof(self):
+        from autohsr.plan_runner import PlanRunner
+        from autohsr.weekly_plan import CHINA
+        from datetime import datetime
+
+        native = Mock(side_effect=AssertionError('weekly plan is not due'))
+
+        def plan_factory(settings, emit, **options):
+            return PlanRunner(settings, emit, root=self.root, runner_factory=native,
+                              now=datetime(2026, 10, 28, 12, tzinfo=CHINA), **options)
+
+        settings = replace(self.settings, weekly_enabled=True, weekly_day=7)
+        flow = TaskWorkflowRunner(settings, recipe(task('week', 'plan', tasks=[])), root=self.root,
+                                  plan_factory=plan_factory)
+        report = flow.run()
+        self.assertEqual(report.status, 'success', report.error)
+        self.assertEqual(report.weekly_plan['status'], 'not_due')
+        step, = report.workflow['steps']
+        self.assertNotIn('account_verified', step)
+        self.assertFalse(report.workflow['identity']['bound'])
+        native.assert_not_called()
+
     def test_support_daily_only_accepts_only_booleans_for_daily_and_plan(self):
         for operation in ('daily', 'plan'):
             for value in (0, 1, 'true', None):

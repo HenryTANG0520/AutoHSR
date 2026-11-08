@@ -19,7 +19,7 @@
 | `daily_event_claim` | 巡星之礼原生单日入口 | 手动运行，明确选择第 3 至 7 日中的一天，保留弹窗和回页回执 |
 | `daily_assignment_rewards` | 日常 Runner 的独立持续委托范围 | 无参数。可与仅补领实训和其他独立领奖顺序执行 |
 | `daily_free_attachment` | 日常 Runner 的独立领奖范围 | 必填 `target`，选择 `mail`（邮件附件）或 `battlepass`（勋礼经验与免费等级奖励） |
-| `plan` | `PlanRunner` | 沿用现有日常→到期周常。`use_power_plan`、`resume_weekly_currency`默认false，`support_daily_only`可覆盖本次日常。原周目标及接续规则保持 |
+| `plan` | `PlanRunner` | 可用 `tasks` 选择本次日常，随后执行到期周常。不填时沿用配置，空列表表示仅到期周常。`use_power_plan`、`resume_weekly_currency` 默认关闭 |
 | `differential_universe` | `Runner(operation='differential_universe')` | `runs`默认1、范围1～10；`mode`默认periodic，可选normal；`team`默认沿用当前预设；`save/rewards/resume_active/until_points`默认false；`periodic_rank`仅用于明确接续；通关后日常固定关闭 |
 | `du_rewards` | `Runner(operation='du_rewards')` | 已打开差分主页，独立处理三类免费已有红点；`use_cassettes`默认false，明确true才加入月下；不演算，不改变保存设置，不等于周积分领奖 |
 | `currency_wars_loop` | `CurrencyLoopRunner` | `runs`默认1、范围1～10，不接受0／无限批次；`resume`默认false；可选`strategy/until_points/continue_after_defeat`。未指定的后三项沿用原生默认及冻结设置；接续仍须核对原局数和原账本 |
@@ -74,7 +74,9 @@
 
 能力 ID 为 `daily_training_rewards`。任务流步骤可省略 `params`，或提供可选布尔值 `reached_only`，默认 `false`。普通 `daily` 节点的 `tasks: ["daily"]` 继续沿用保存的 `daily_synthesis`。独立领奖节点使用仅补领奖设置副本，关闭合成与已有资源消耗，跳过刷本、附加任务、合成恢复和旧账核销。它仍会发出导航和领奖输入，沿用原生仅补领奖的启动、页面和输入门禁，以及任务流的执行权与账号连续性。
 
-P1 底栏「仅补领奖」和 `--run --reward-only` 继续直达同一原生入口。任务流和应用内定时的任务下拉框显示「仅补领每日实训」。定时可直接选此任务，也可选包含此节点的已保存任务流。两者使用同一参数校验和回执。此节点占用一次日常执行名额，因此同一路径只允许一个 `daily_training_rewards`、`daily` 或 `plan` 节点。定时的批内重复上限为一次，单任务预览的体力预算为零。现有父层结束通知仍按其独立设置生效。[应用内定时](schedules.md)
+P1 底栏「仅补领奖」和 `--run --reward-only` 继续直达同一原生入口。任务流和应用内定时的任务下拉框显示「仅补领每日实训」。定时可直接选此任务，也可选包含此节点的已保存任务流。两者使用同一参数校验和回执。此节点与 `daily`、包含日常的 `plan` 共用一个日常执行名额。定时的批内重复上限为一次，单任务预览的体力预算为零。现有父层结束通知仍按其独立设置生效。[应用内定时](schedules.md)
+
+在「日常与到期周常」节点取消「使用配置中的每日任务」后，可勾选本次要执行的日常。单独编排兑换、委托或附件领取时，可从计划节点取消同一项。取消全部日常且已启用周常时，节点只核对并执行到期周常，保留前一步的日常报告和体力结果。选项只应用于该节点的配置快照。体力计划仍需勾选日常副本，接续旧周常时沿用原范围。[日常与周常计划](weekly-plan.md)
 
 500 活跃且五档均核实已领取时，原生报告给出 `daily_verified=true`。待领里程碑按同账号、同游戏日、同档礼盒逐项领取。简中 4.6.0 可在当前视区或向右查找已完成任务卡，并核对点数领取反馈。活跃度为 100 至 499 时，连续两帧核实同账号、同一活跃值、已达档位全部已领且实训页无可见待领点数，原报告会附上 `training_milestones`。若任务流明确设置 `"params": {"reached_only": true}`，并验证该回执来自本次已保存的同账号子报告，步骤可记为 `success` 并继续委托、邮件等后续步骤。该步骤保留 `native_status: "partial"` 和 `daily_verified: false`。未达首档、档位缺失、反馈不明或来源异常时仍按失败策略处理。[任务点数的核对范围](../DAILY_FLOW.md#领取实训任务卡点数)
 
