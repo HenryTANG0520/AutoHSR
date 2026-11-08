@@ -68,6 +68,7 @@ class AttachmentTests(unittest.TestCase):
         claim_guards = 0
         last_stage = None
         mail_return_captures = 0
+        weekly_settlement_captures = 0
         missing_window = Mock(side_effect=AutomationError('游戏窗口未打开。'))
 
         class TestContext(Context):
@@ -91,7 +92,7 @@ class AttachmentTests(unittest.TestCase):
                 return super().evidence(scene, name)
 
         def capture():
-            nonlocal current, mail_return_captures
+            nonlocal current, mail_return_captures, weekly_settlement_captures
             if mode in ('reward', 'old-reward'):
                 scene = Scene([token('获得物品', .50, .11), token('点击空白处关闭', .50, .87)])
             elif mode == 'supply':
@@ -116,6 +117,12 @@ class AttachmentTests(unittest.TestCase):
                 scene = fixture(mode)
             if mode == 'bp_tasks_settled' and event == 'cross_category_badge':
                 scene = with_battlepass_category_badge(scene, '本期任务')
+            if mode == 'bp_tasks_settled' and event in ('brief_experience', 'changed_experience_cap'):
+                weekly_settlement_captures += 1
+                if event == 'changed_experience_cap':
+                    scene.tokens = [replace(t, text='400/900') if t.text == '400/800' else t for t in scene.tokens]
+                elif weekly_settlement_captures != 2:
+                    scene = fixture('bp_tasks_claimable')
             if mode == 'bp_tasks_claimable' and event in ('weekly_alias', 'weekly_alias_unverified'):
                 target = scene.find('一键领取', exact=True)
                 scene.tokens = [replace(t, text='-键领取') if t == target else t for t in scene.tokens]
@@ -366,6 +373,14 @@ class AttachmentTests(unittest.TestCase):
         self.assertEqual(result.child['results'][0]['verified_claims'], [
             'battlepass_weekly_tasks', 'battlepass_period_tasks', 'battlepass_free_levels',
         ])
+
+    def test_battlepass_experience_requires_two_reads_and_the_original_cap(self):
+        for event in ('brief_experience', 'changed_experience_cap'):
+            with self.subTest(event=event):
+                result = self.invoke('battlepass', 'bp_tasks_claimable', event=event, workflow=True)
+                self.assertEqual((result.code, result.sent), (1, ['一键领取']))
+                self.assertEqual(result.child['results'][0]['attachment_outcome'], 'unknown')
+                self.assertEqual(result.child['results'][0]['verified_claims'], [])
 
     def test_unwritten_settlement_evidence_does_not_publish_a_verified_claim(self):
         result = self.invoke('mail', 'mail_claimable', event='settlement_write_failure')

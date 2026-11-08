@@ -11,6 +11,7 @@ from autohsr.free_rewards import (mail_entry,mailbox,mail_claimed,claim_enabled,
     battlepass_modal,battlepass_tab,task_category,battlepass_progress,battlepass_settled)
 from autohsr.tests.test_du_team import fixture
 from autohsr.vision import Vision
+from autohsr.windows import Geometry
 from autohsr.workflows import DailyWorkflow
 
 
@@ -130,8 +131,12 @@ class FreeRewardTests(unittest.TestCase):
     def test_ordinary_battlepass_cannot_confirm_weekly_claim_from_period_tab(self):
         weekly = fixture('bp_tasks_claimable')
         period = fixture('bp_period_settled')
+        for scene in (weekly, period):
+            scene.geometry = Geometry(0, 0, 1920, 1080)
+            scene.tokens.append(Token('UID:100000000', .99, (.04, .96, .11, .98)))
         self.assertGreater(battlepass_progress(period)[:2], battlepass_progress(weekly)[:2])
         flow = DailyWorkflow(Mock(settings=Settings()))
+        flow.ctx.runner.input_epoch = flow.ctx.scene_epoch = 3
         flow._snapshot = Mock(return_value=weekly)
         flow._click = Mock(return_value=period)
 

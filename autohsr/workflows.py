@@ -1488,6 +1488,60 @@ class DailyWorkflow:
             return self._result("mail", "partial", "已点击邮件全部领取，但尚未核实全部附件领取状态。", after)
         return self._result("mail", "ok", "已核实邮件附件奖励展示及全部领取按钮禁用。", after)
 
+    def _claim_battlepass_experience(self, scene, target, category, before):
+        from .currency_wars_identity import AccountNotObserved, checked_account_key
+        from .free_rewards import battlepass_progress, battlepass_settled
+
+        ctx = self.ctx
+        confidence = max(.85, self.settings.ocr_confidence)
+        account = checked_account_key(scene, confidence)
+        geometry, epoch = scene.geometry, ctx.runner.input_epoch
+        if geometry is None:
+            raise AutomationError('勋礼任务领取前缺少当前窗口几何。')
+        self._click(scene, target)
+
+        previous = None
+        first = None
+
+        def settled(current):
+            nonlocal previous, first
+            if ctx.runner.input_epoch != epoch or ctx.scene_epoch != epoch:
+                raise InputInterrupted('勋礼任务领取后输入代次已变，经验待核对。')
+            if current.geometry != geometry:
+                raise AutomationError('勋礼任务领取后窗口几何已变，经验待核对。')
+            try:
+                current_account = checked_account_key(current, confidence)
+            except AccountNotObserved:
+                previous = None
+                return False
+            if current_account != account:
+                raise AutomationError('勋礼任务领取后账号已变，经验待核对。')
+            progress = battlepass_progress(current)
+            if (progress is None or progress[2] != before[2] or progress[:2] <= before[:2]
+                    or not battlepass_settled(current, 'tasks', category=category)):
+                previous = None
+                return False
+            candidate = previous
+            previous = (current, ctx.capture_sequence, progress)
+            if candidate is None:
+                return False
+            earlier, sequence, earlier_progress = candidate
+            if (earlier is current or earlier.image is current.image or sequence + 1 != ctx.capture_sequence
+                    or not earlier.captured_at < current.captured_at or earlier_progress != progress
+                    or not 0 <= time.monotonic() - earlier.captured_at <= 8):
+                return False
+            first = earlier
+            return True
+
+        after = self._wait(settled, description='核实勋礼任务经验到账')
+        ctx.evidence(first, 'battlepass_tasks_first_settled')
+        ctx.window.guard(geometry)
+        ctx.checkpoint()
+        if (ctx.runner.input_epoch != epoch or ctx.scene_epoch != epoch or ctx.last_scene is not after
+                or not 0 <= time.monotonic() - after.captured_at <= 8):
+            raise InputInterrupted('勋礼任务结算画面已失效，经验待核对。')
+        return after
+
     def battlepass(self) -> TaskResult:
         from .free_rewards import (battlepass_page,battlepass_modal,battlepass_tab,
             battlepass_claim_target,task_category,battlepass_progress,battlepass_settled,claim_enabled,reward_overlay)
@@ -1520,12 +1574,10 @@ class DailyWorkflow:
                     if kind=='tasks' and before is None:
                         return self._result('battlepass','partial','勋礼当前等级与经验尚未核实。',scene)
                     self.ctx.evidence(scene,'battlepass_'+kind+'_before_claim')
-                    self._click(scene,target)
                     if kind=='tasks':
-                        scene=self._wait(lambda s:battlepass_settled(s,kind,category=category)
-                            and battlepass_progress(s) is not None
-                            and battlepass_progress(s)[:2]>before[:2],description='核实勋礼任务经验到账')
+                        scene=self._claim_battlepass_experience(scene,target,category,before)
                     else:
+                        self._click(scene,target)
                         scene=self._wait(reward_overlay,description='核实勋礼免费奖励展示')
                         self.ctx.evidence(scene,'battlepass_reward_verified')
                         scene=self._wait(lambda s:reward_overlay(s) and s.has(
