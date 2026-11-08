@@ -29,7 +29,7 @@ def _read(workflow, scene, confidence):
         target = task_target(scene)
         if target is not None and task_target(trusted(scene, confidence)) == target:
             synthesis = 'available'
-    band = _band(workflow, scene, activity, confidence, strict=True)
+    band = _band(workflow, scene, activity, confidence)
     milestones = None
     if band is not None and set(band[0]).union(band[1]) == set(_reached_points(activity)):
         milestones = dict(claimed=sorted(band[1]), claimable=sorted(band[0]))

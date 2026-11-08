@@ -248,6 +248,38 @@ class RewardOnlyMilestonesTests(unittest.TestCase):
                          (0, 'success', 500, True))
         self.assertEqual(len(clicks), 1)
 
+    def test_full_activity_claims_each_verified_tier_and_reports_complete(self):
+        points = tuple(CENTERS)
+        phases = tuple((training(500, gifts=points[:len(points)-i], claimed=points[len(points)-i:]),)
+                       for i in range(len(points) + 1))
+        phases[-1][0].tokens.append(token('领取', .70, .76))
+        code, report, clicks = self.invoke(*phases)
+        self.assertEqual((code, report['status'], report['daily_verified']), (0, 'success', True))
+        self.assertEqual(report['training_milestones'], dict(activity=500, verified=list(points)))
+        self.assertEqual(len(clicks), 6)
+        for click, tier in zip(clicks[1:], reversed(points)):
+            self.assertAlmostEqual(click[0], CENTERS[tier], places=2)
+
+    def test_full_activity_requires_a_stable_gift_and_same_tier_feedback(self):
+        visible = training(500, gifts=(500,), claimed=(100, 200, 300, 400))
+        text_only = training(500, claimed=(100, 200, 300, 400),
+                             labels=(token('一键领取', CENTERS[500], .29),))
+        conflict = training(500, claimed=tuple(CENTERS), labels=(token('500', .906, .33),))
+        stamp(conflict.image, 'daily_reward', .906, .287)
+        for case, frames in (('text only', (text_only,)), ('gift disappears', (visible, visible, text_only)),
+                             ('gift and checkmark', (conflict,))):
+            with self.subTest(case=case):
+                code, report, clicks = self.invoke(frames)
+                self.assertEqual((code, report['status'], len(clicks)), (1, 'partial', 1))
+                self.assertFalse(report['daily_verified'])
+        unrelated = training(500, gifts=(500,), claimed=(100, 200, 300, 400),
+                             labels=(token('动画变化', .51, .58),))
+        code, report, clicks = self.invoke((visible,), (unrelated,), ordinary=True, mail=True)
+        self.assertEqual((code, report['status'], len(clicks)), (1, 'partial', 2))
+        self.assertFalse(report['daily_verified'])
+        self.assertIn('500档本次领取反馈待核对', report['results'][0]['detail'])
+        self.assertEqual(report['results'][1]['status'], 'skipped')
+
     def test_only_the_visible_reached_control_is_selected(self):
         old = training(300, gifts=(200,), claimed=(100,), labels=(token('领取奖励', CENTERS[400], .29),))
         settled = training(300, claimed=(100, 200))

@@ -1384,6 +1384,8 @@ class DailyWorkflow:
         return None
 
     def _rewards_complete(self, scene: Scene) -> bool:
+        if self._matches(scene, "daily_reward", REWARDS):
+            return False
         # Task-card "已领取" text below the reward bar is not milestone proof.
         text_marks = [t for t in scene.tokens if t.within(REWARDS) and normalize(t.text) == "已领取"]
         if (len(text_marks) == 5 and all(sum(t.within(slot) for t in text_marks) == 1 for slot in REWARD_SLOTS)
@@ -1429,38 +1431,19 @@ class DailyWorkflow:
                 outcome = 'synthesis'
         activity = self._activity(scene)
         self.ctx.report.engagement = activity
-        if activity != 500:
-            if outcome == 'synthesis':
-                self._daily_synthesis_attempted = True
-                complete_once(self, scene)
-                return self.daily()
-            if self.ctx.report.operation in ('daily', 'reward_only') and type(activity) is int and 100 <= activity < 500:
-                from .daily_training_rewards import claim_reached_milestones
+        if outcome == 'synthesis' and activity != 500:
+            self._daily_synthesis_attempted = True
+            complete_once(self, scene)
+            return self.daily()
+        if activity == 500 and self._tab(scene, "每日实训") and self._rewards_complete(scene):
+            self.ctx.report.daily_verified = True
+            return self._result("daily", "ok", "已复核每日实训500活跃，五档奖励均已领取。", scene)
+        if self.ctx.report.operation in ('daily', 'reward_only') and type(activity) is int and 100 <= activity <= 500:
+            from .daily_training_rewards import claim_reached_milestones
 
-                return claim_reached_milestones(self, scene, activity)
-            detail = "未能识别当前实训活跃值" if activity is None else f"实训活跃值为{activity}/500"
-            return self._result("daily", "partial", f"{detail}，尚未确认每日任务完成。", scene)
-        for _ in range(6):
-            scene = self._snapshot()
-            dismissed = self._dismiss_reward(scene)
-            if dismissed is not scene:
-                continue
-            if self._tab(scene, "每日实训") and self._activity(scene) == 500 and self._rewards_complete(scene):
-                self.ctx.report.daily_verified = True
-                return self._result("daily", "ok", "已复核每日实训500活跃，五档奖励均已领取。", scene)
-            if not self._tab(scene, "每日实训"):
-                break
-            gifts = self._matches(scene, "daily_reward", REWARDS)
-            claim = scene.find(("领取", "领取奖励", "一键领取"), REWARDS, exact=True)
-            target = gifts[-1][:2] if gifts else claim
-            if target is None:
-                break
-            before = normalize(scene.text)
-            after = self._click(scene, target)
-            if normalize(after.text) == before and not self._rewards_complete(after):
-                after = self._wait(lambda s: normalize(s.text) != before or self._rewards_complete(s), description="确认实训里程碑领奖")
-            self._dismiss_reward(after)
-        return self._result("daily", "partial", "已识别500活跃，但五档奖励的领取状态尚未核实；请采集奖励礼盒和完成图标模板。", scene)
+            return claim_reached_milestones(self, scene, activity)
+        detail = "未能识别当前实训活跃值" if activity is None else f"实训活跃值为{activity}/500"
+        return self._result("daily", "partial", f"{detail}，尚未确认每日任务完成。", scene)
 
     def redemption(self) -> TaskResult:
         from .redemption_run import run_redemption

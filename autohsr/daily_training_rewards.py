@@ -1,9 +1,10 @@
-"""Verified daily-training milestones for activity below the daily maximum."""
+"""Verify individual daily-training milestone claims and their return states."""
 
 import re
 
 from .config import RESOURCE_ROOT
 from .currency_wars_identity import AccountNotObserved, checked_account_key
+from .daily_synthesis import _task_game_day
 from .free_rewards import reward_overlay
 from .models import AutomationError, EmptyCapture, Stopped, normalize
 from .policy import replenishment_dialog
@@ -25,7 +26,7 @@ def _blocked(scene):
             or scene.has(_MODAL, (.25, .18, .75, .86), exact=True) or replenishment_dialog(scene))
 
 
-def _markers(workflow, scene, name, confidence, *, strict):
+def _markers(workflow, scene, name, confidence):
     path = RESOURCE_ROOT / 'assets' / 'templates' / (name + '.png')
     if not path.is_file():
         return None
@@ -39,14 +40,12 @@ def _markers(workflow, scene, name, confidence, *, strict):
             caption = (x - .02, y + .025, x + .02, y + .066)
             numbers = [t for t in scene.tokens if t.within(caption) and re.fullmatch(r'[0-9]{1,3}', t.text.strip())]
             if len(numbers) != 1 or numbers[0].text.strip() != str(points) or not confidence <= numbers[0].score <= 1:
-                if strict:
-                    return None
-                continue
+                return None
             result[points] = x, y
     return result
 
 
-def _band(workflow, scene, activity, confidence, *, strict=False):
+def _band(workflow, scene, activity, confidence):
     if (_blocked(scene) or reward_overlay(scene) or scene.has(_CLOSE, exact=True)
             or activity < 500 and scene.has('本日活跃度已满', (.14, .68, .89, .87), exact=True)
             or any(_unique(scene, (label,), TITLE, confidence) is None for label in ('星际和平指南', '每日实训'))):
@@ -55,8 +54,8 @@ def _band(workflow, scene, activity, confidence, *, strict=False):
     if (len(numbers) != 1 or int(numbers[0].text.strip()) != activity or not confidence <= numbers[0].score <= 1
             or workflow._icon(scene, 'daily_activity_badge', (.13, .23, .225, .37), threshold=.85) is None):
         return None
-    gifts = _markers(workflow, scene, 'daily_reward', confidence, strict=strict)
-    checks = _markers(workflow, scene, 'daily_completed', confidence, strict=strict)
+    gifts = _markers(workflow, scene, 'daily_reward', confidence)
+    checks = _markers(workflow, scene, 'daily_completed', confidence)
     if gifts is None or checks is None:
         return None
     claimed = frozenset(checks)
@@ -121,8 +120,8 @@ def reached_milestones_receipt(report):
 
 
 def _all_reached_claimed(scene, band, reached):
-    return (band == ({}, reached)
-            and not scene.has(('领取', '领取奖励', '一键领取'), (.14, .41, .88, .90), exact=True))
+    return band == ({}, reached) and (500 in reached or not scene.has(
+        ('领取', '领取奖励', '一键领取'), (.14, .41, .88, .90), exact=True))
 
 
 def claim_reached_milestones(workflow, scene, activity):
@@ -133,6 +132,7 @@ def claim_reached_milestones(workflow, scene, activity):
     pending = None
     reached = frozenset(_reached_points(activity))
     reward_only = context.report.operation == 'reward_only'
+    complete = False
     if band is not None and (band[0] or reward_only and _all_reached_claimed(scene, band, reached)):
         window, geometry = context.window, scene.geometry
         epoch = context.scene_epoch
@@ -140,6 +140,7 @@ def claim_reached_milestones(workflow, scene, activity):
         try:
             key = window.current_window_key()
             account = checked_account_key(scene, confidence)
+            game_day = _task_game_day(scene)
 
             def require_source(frame):
                 if (frame is None or not key or context.window is not window or window.current_window_key() != key
@@ -149,16 +150,27 @@ def claim_reached_milestones(workflow, scene, activity):
                     raise AutomationError('实训领奖的窗口或画面代次已变化。')
                 if checked_account_key(frame, confidence) != account:
                     raise AutomationError('实训领奖期间当前账号已变化。')
+                if _task_game_day(frame) != game_day:
+                    raise AutomationError('实训领奖期间游戏日已变化。')
 
-            for _ in range(4):
+            for _ in range(len(reached)):
                 available, previous = band
                 if not available:
                     break
                 scene = context.last_scene
                 require_source(scene)
-                pending = max(available)
+                points = max(available)
+                sequence = context.capture_sequence
+                scene = workflow._snapshot()
+                require_source(scene)
+                current = _band(workflow, scene, activity, confidence)
+                if (context.capture_sequence != sequence + 1 or current is None
+                        or current[1] != previous or current[0].keys() != available.keys()
+                        or any(abs(a - b) > .006 for a, b in zip(available[points], current[0][points]))):
+                    break
+                pending = points
                 source_sequence = context.capture_sequence
-                context.click(scene, available[pending])
+                context.click(scene, current[0][points])
                 workflow._pause()
                 after = _after_claim(workflow, require_source, activity, confidence, pending, previous,
                                      source_sequence=source_sequence)
@@ -167,15 +179,16 @@ def claim_reached_milestones(workflow, scene, activity):
                 confirmed.update(after[1] - previous)
                 pending, band = None, after
             scene = context.last_scene
-            if reward_only and pending is None and _all_reached_claimed(scene, band, reached):
+            if (reward_only or activity == 500) and pending is None and _all_reached_claimed(scene, band, reached):
                 require_source(scene)
                 sequence = context.capture_sequence
-                if _band(workflow, scene, activity, confidence, strict=True) == band:
+                if _band(workflow, scene, activity, confidence) == band:
                     current = workflow._snapshot()
                     require_source(current)
                     if (context.capture_sequence == sequence + 1 and _all_reached_claimed(
-                            current, _band(workflow, current, activity, confidence, strict=True), reached)):
+                            current, _band(workflow, current, activity, confidence), reached)):
                         context.report.training_milestones = dict(activity=activity, verified=sorted(reached))
+                        complete = activity == 500
         except Stopped:
             raise
         except AutomationError as error:
@@ -187,4 +200,7 @@ def claim_reached_milestones(workflow, scene, activity):
         detail += '，本次核实' + '、'.join(str(points) for points in sorted(confirmed)) + '档已领'
     if pending is not None:
         raise AutomationError(detail + f'，{pending}档本次领取反馈待核对。')
+    if complete:
+        context.report.daily_verified = True
+        return workflow._result('daily', 'ok', '已复核每日实训500活跃，五档奖励均已领取。', scene)
     return workflow._result('daily', 'partial', detail + '，尚未确认每日任务完成。', scene)
