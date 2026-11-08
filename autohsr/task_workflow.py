@@ -25,6 +25,7 @@ GAME_CAPTURE_TASK = 'workflow_game_capture'
 WORKFLOW_SCREEN_TASKS = GAME_VISION_TASKS | {GAME_CAPTURE_TASK}
 PAGE_TASK = 'workflow_open_page'
 TRAINING_REWARDS_TASK = 'daily_training_rewards'
+TRAINING_SYNTHESIS_TASK = 'daily_training_synthesis'
 ASSIGNMENT_REWARDS_TASK = 'daily_assignment_rewards'
 FREE_ATTACHMENT_TASK = 'daily_free_attachment'
 FREE_ATTACHMENT_TARGETS = ('mail', 'battlepass')
@@ -49,7 +50,7 @@ SCREEN_CHECK_EXTRA_PAGES = (VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE, ACHIEVEM
                             *BATTLEPASS_WORKFLOW_PAGES, REDEMPTION_FORM_PAGE, WORLD_WORKFLOW_PAGE, TRAINING_SCAN_PAGE)
 SCREEN_CHECK_PAGES = (*WORKFLOW_PAGES, *SCREEN_CHECK_EXTRA_PAGES)
 WORKFLOW_FOREGROUND_TASKS = WORKFLOW_SCREEN_TASKS | {PAGE_TASK}
-GAME_TASKS = {'daily', TRAINING_REWARDS_TASK, ASSIGNMENT_REWARDS_TASK, FREE_ATTACHMENT_TASK, EVENT_CLAIM_OPERATION,
+GAME_TASKS = {'daily', TRAINING_REWARDS_TASK, TRAINING_SYNTHESIS_TASK, ASSIGNMENT_REWARDS_TASK, FREE_ATTACHMENT_TASK, EVENT_CLAIM_OPERATION,
               'plan', 'differential_universe', 'currency_wars_loop',
               'currency_wars_points', 'currency_wars_rewards', 'du_rewards'} | WORKFLOW_FOREGROUND_TASKS
 VISION_TASKS = {'workflow_image', 'workflow_text'} | GAME_VISION_TASKS
@@ -212,6 +213,7 @@ def _params(task, params):
         'plan': {'use_power_plan', 'resume_weekly_currency', 'support_daily_only'},
         TRAINING_REWARDS_TASK: {'reached_only'},
         ASSIGNMENT_REWARDS_TASK: set(),
+        TRAINING_SYNTHESIS_TASK: set(),
         FREE_ATTACHMENT_TASK: {'target'},
         EVENT_CLAIM_OPERATION: {'day', 'navigate'},
         'differential_universe': {'runs', 'mode', 'team', 'save', 'rewards', 'resume_active', 'periodic_rank',
@@ -365,7 +367,7 @@ def _profile(nodes):
     """Worst-case reservations: mutually exclusive branches use max, loops multiply."""
     total = dict(daily_calls=0, du_calls=0, currency_calls=0, du_runs=0, currency_games=0,
                  du_rewards_calls=0, notification_calls=0, free_attachment_calls=0, assignment_reward_calls=0,
-                 odyssey_claim_calls=0,
+                 odyssey_claim_calls=0, synthesis_calls=0, synthesis_owners=0,
                  assignments_owners=0, mail_owners=0, battlepass_owners=0, executions=0)
     for node in nodes:
         kind = node['type']
@@ -380,9 +382,12 @@ def _profile(nodes):
             if task in ('daily', TRAINING_REWARDS_TASK, 'plan'):
                 current['daily_calls'] = 1
             if task in ('daily', 'plan'):
+                current['synthesis_owners'] = int('daily' in params.get('tasks', DAILY_TASKS))
                 for target in params.get('tasks', INDEPENDENT_DAILY_TARGETS):
                     if target in INDEPENDENT_DAILY_TARGETS:
                         current[f'{target}_owners'] = 1
+            if task == TRAINING_SYNTHESIS_TASK:
+                current.update(synthesis_calls=1, synthesis_owners=1)
             if task == ASSIGNMENT_REWARDS_TASK:
                 current.update(assignment_reward_calls=1, assignments_owners=1)
             if task == FREE_ATTACHMENT_TASK:
@@ -550,6 +555,9 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
         raise WorkflowError('同一路径的持续委托、邮件附件或无名勋礼各只能由一个步骤处理。')
     if profile['odyssey_claim_calls'] > 1:
         raise WorkflowError('同一路径的巡星之礼最多提交一个明确日卡。')
+    synthesis_owners = profile.pop('synthesis_owners')
+    if profile['synthesis_calls'] and synthesis_owners > 1:
+        raise WorkflowError('同一路径最多一次单件合成，不能与可能合成的普通日常重复安排。')
     if profile['executions'] > MAX_EXECUTIONS:
         raise WorkflowError('流程展开超过10000步。')
     if profile['notification_calls'] > MAX_STEP_NOTIFICATIONS:
@@ -557,7 +565,7 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
     # Existing frozen scheduler manifests compare this exact public mapping.
     # Keep the old key set when the selected scope has no new reward owner.
     for key in ('du_rewards_calls', 'notification_calls', 'free_attachment_calls', 'assignment_reward_calls',
-                'odyssey_claim_calls'):
+                'odyssey_claim_calls', 'synthesis_calls'):
         if profile[key] == 0:
             profile.pop(key)
     return Recipe(document, selected, path, profile, Path(base_dir or ROOT).resolve())
@@ -601,6 +609,9 @@ def task_spec(settings: Settings, node, base_dir):
         current = reward_only_settings(current)
         current.validate('daily')
         options['operation'] = 'reward_only'
+    elif task == TRAINING_SYNTHESIS_TASK:
+        current.validate('check')
+        options = dict(operation='daily', daily_synthesis_only=True)
     elif task == ASSIGNMENT_REWARDS_TASK:
         from .recovery import reward_only_settings
 

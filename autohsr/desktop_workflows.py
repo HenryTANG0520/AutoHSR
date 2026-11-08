@@ -17,7 +17,7 @@ from .schedule_plan import (CHINA, ScheduleError, loads as load_schedule_json, p
                             validate as validate_schedule)
 from .storage import hold_read_sources
 from .task_workflow import (ASSIGNMENT_REWARDS_TASK, FREE_ATTACHMENT_TASK, MAX_BYTES, TASKS, TRAINING_REWARDS_TASK,
-                            WorkflowError, loads as load_workflow_json)
+                            TRAINING_SYNTHESIS_TASK, WorkflowError, loads as load_workflow_json)
 from .task_workflow_draft import WorkflowDraft, WorkflowSaveConflict
 
 
@@ -33,6 +33,7 @@ _SAVE_ERRORS = {"target_exists": "目标已存在", "source_path": "请选择新
                 "source_changed": "来源已变化", "readback_changed": "另存结果待核对"}
 _TASK_NAMES = {"daily": "每日任务", "plan": "日常与到期周常", "differential_universe": "差分宇宙",
                TRAINING_REWARDS_TASK: "仅补领每日实训",
+               TRAINING_SYNTHESIS_TASK: "实训合成一次奇巧零食",
                ASSIGNMENT_REWARDS_TASK: "仅领取持续委托",
                FREE_ATTACHMENT_TASK: "独立免费领奖",
                EVENT_CLAIM_OPERATION: "巡星之礼单日提交",
@@ -826,6 +827,8 @@ class _WorkflowPanel(_Panel):
                            if 'assignment_reward_calls' in fields else "")
                         + (f"\n独立免费领奖最多 {fields['free_attachment_calls']} 个步骤"
                            if 'free_attachment_calls' in fields else "")
+                        + (f"\n实训单件合成最多 {fields['synthesis_calls']} 次"
+                           if 'synthesis_calls' in fields else "")
                         + (f"\n主动通知最多 {fields['notification_calls']} 个步骤" if 'notification_calls' in fields else ""))
 
     def _error(self, label, error):

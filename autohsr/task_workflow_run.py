@@ -23,7 +23,7 @@ from .models import AutomationError, RunReport, Stopped, TaskResult
 from .storage import replace_file
 from .task_workflow import (ASSIGNMENT_REWARDS_TASK, FIELDS, FREE_ATTACHMENT_TASK, GAME_CAPTURE_TASK, GAME_TASKS, GAME_VISION_TASKS,
                             MAX_EXECUTIONS, PAGE_TASK, TEMPLATE_TASKS,
-                            TRAINING_REWARDS_TASK, TRAINING_SCAN_PAGE, VISA_CHARACTERS_PAGE, VISION_TASKS,
+                            TRAINING_REWARDS_TASK, TRAINING_SCAN_PAGE, TRAINING_SYNTHESIS_TASK, VISA_CHARACTERS_PAGE, VISION_TASKS,
                             WORKFLOW_FOREGROUND_TASKS, WorkflowError,
                             compile_recipe, execution_task, task_spec, workflow_notification_png_path)
 from .task_workflow import execution_tasks as _tasks
@@ -263,7 +263,7 @@ class TaskWorkflowRunner:
         options = deepcopy(options)
         if self._initial_foreground_pending and not options.get('workflow_page_background'):
             self._initial_foreground_pending = False
-            if task in WORKFLOW_FOREGROUND_TASKS or task == EVENT_CLAIM_OPERATION:
+            if task in WORKFLOW_FOREGROUND_TASKS or task in (EVENT_CLAIM_OPERATION, TRAINING_SYNTHESIS_TASK):
                 options['observation_wait_for_foreground'] = True
         if task == 'plan':
             from .plan_runner import PlanRunner
@@ -489,9 +489,10 @@ class TaskWorkflowRunner:
                 raise WorkflowError('此前游戏任务未核实完成；失败后继续只能处理本地步骤，不能再发送游戏输入。')
         scoped_attachment = node['task'] == FREE_ATTACHMENT_TASK
         scoped_assignment = node['task'] == ASSIGNMENT_REWARDS_TASK
-        scoped_reward = scoped_attachment or scoped_assignment
+        scoped_synthesis = node['task'] == TRAINING_SYNTHESIS_TASK
+        scoped_daily = scoped_attachment or scoped_assignment or scoped_synthesis
         expected = ('reward_only' if node['task'] == TRAINING_REWARDS_TASK
-                    else 'daily' if scoped_reward else node['task'])
+                    else 'daily' if scoped_daily else node['task'])
         child = result = None
         identity_mark = self._identity.mark() if game else None
         followup = self._du_points_step[2] if game and self._du_points_step is not None else None
@@ -537,6 +538,13 @@ class TaskWorkflowRunner:
                         result['workflow_navigation'].get('control_mode') != 'background'):
                     raise WorkflowError('页面回执没有核实本次使用后台窗口。')
             entry['source'] = self._source(result, expected, native_points=native_points)
+            if scoped_synthesis and result['status'] == 'success':
+                from .daily_synthesis_search import synthesis_receipt
+
+                synthesis = synthesis_receipt(result.get('daily_synthesis'))
+                if synthesis is None or not self._identity.has_step_proof(identity_mark, run_dir=result.get('run_dir') or ''):
+                    raise WorkflowError('独立实训合成缺少同账号的单件材料回执。')
+                entry['synthesis'] = synthesis
             if node['task'] == GAME_CAPTURE_TASK and result['status'] == 'success':
                 from .workflow_screen import verified_capture
 
@@ -608,7 +616,7 @@ class TaskWorkflowRunner:
             if native_points:
                 result = self._du_points_result(result, entry, options['du_runs'], identity_mark)
             else:
-                if not scoped_reward and (not game or self._identity.has_step_proof(identity_mark)):
+                if not scoped_daily and (not game or self._identity.has_step_proof(identity_mark)):
                     self._copy_totals(result)
                 if game:
                     self._identity.require_step(identity_mark)
@@ -619,7 +627,7 @@ class TaskWorkflowRunner:
                 if (assignment is not None and assignment['outcome'] != 'unknown'
                         and self._identity.has_step_proof(identity_mark, run_dir=result.get('run_dir', ''))):
                     entry['assignment'] = assignment
-            entry['facts'] = {'status': result['status']} if scoped_reward else self._facts(result)
+            entry['facts'] = {'status': result['status']} if scoped_daily else self._facts(result)
             entry['status'] = result['status']
             if training is not None:
                 entry['training_milestones'] = training

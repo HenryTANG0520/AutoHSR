@@ -49,6 +49,76 @@ def condition(identity, field='status', value='success', op='eq'):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_independent_synthesis_reserves_once_and_can_pair_with_reward_only(self):
+        synthesize = task('craft', 'daily_training_synthesis')
+        reward = task('reward', 'daily_training_rewards')
+        compiled = compile_recipe(recipe(synthesize, reward))
+        self.assertEqual(compiled.profile['synthesis_calls'], 1)
+        self.assertEqual(compiled.profile['daily_calls'], 1)
+        for steps in ((synthesize, task('repeat', 'daily_training_synthesis')),
+                      (synthesize, task('normal', tasks=['daily']))):
+            with self.subTest(steps=steps), self.assertRaisesRegex(WorkflowError, '单件合成'):
+                compile_recipe(recipe(*steps))
+        self.assertNotIn('synthesis_calls', compile_recipe(recipe(reward)).profile)
+
+    def test_independent_synthesis_requires_and_exposes_anonymous_native_receipt(self):
+        node = task('craft', 'daily_training_synthesis')
+        record = dict(recipe='奇巧零食', status='complete', task_verified=True, quantity=1, account_key='private',
+                      before_holding=5, after_holding=6, before_materials=[(2, 1), (5, 1)],
+                      after_materials=[(1, 1), (4, 1)])
+        self.responses = [dict(daily_synthesis=record)]
+        report = self.runner(recipe(node)).run()
+        self.assertEqual(report.status, 'success', report.error)
+        self.assertFalse(report.daily_verified)
+        self.assertEqual(report.stamina_spent, 0)
+        step, = report.workflow['steps']
+        self.assertEqual(step['synthesis'], dict(recipe='奇巧零食', quantity=1, material_units=[1, 1]))
+        self.assertTrue(step['account_verified'])
+        self.assertEqual(self.calls[0][1], dict(operation='daily', daily_synthesis_only=True))
+        self.responses = [dict(daily_synthesis=dict(record, after_holding=5))]
+        report = self.runner(recipe(node)).run()
+        self.assertEqual(report.status, 'partial')
+        self.assertNotIn('synthesis', report.workflow['steps'][0])
+
+    def test_independent_synthesis_reaches_native_runner_without_daily_startup(self):
+        from autohsr.app import Runner
+        from autohsr.tests.test_runner_recovery import RunnerRecoveryTests
+        from autohsr.workflow_identity import _scope
+
+        workflow = SimpleNamespace(ensure_main=Mock(side_effect=AssertionError('no generic startup')))
+        context, _ = RunnerRecoveryTests.fixture(self, self.root, workflow)
+
+        def factory(settings, emit, **options):
+            child = Runner(settings, emit, **options)
+            context.runner, context.settings, context.report, context.scene_epoch = child, child.settings, child.report, 0
+            context.snapshot.side_effect = identity_scene
+            self.assertTrue(child.settings.daily_synthesis)
+            self.assertFalse(child.settings.battle)
+            return child
+
+        def perform(_workflow, frame):
+            self.assertIsInstance(frame, Scene)
+            scope = _scope.get()
+            scope.observe(context, identity_scene())
+            time.sleep(.02)
+            scope.observe(context, identity_scene())
+            context.report.daily_synthesis = dict(
+                recipe='奇巧零食', status='complete', task_verified=True, quantity=1,
+                before_holding=5, after_holding=6, before_materials=[(2, 1), (5, 1)],
+                after_materials=[(1, 1), (4, 1)])
+            return TaskResult('daily_training_synthesis', 'ok', 'verified')
+
+        node = task('craft', 'daily_training_synthesis')
+        runner = TaskWorkflowRunner(Settings(), recipe(node), root=self.root / 'runs', runner_factory=factory)
+        with patch('autohsr.daily_synthesis_search.run_independent', side_effect=perform) as craft, \
+                patch.object(Runner, '_prepare_daily_game', side_effect=AssertionError('no startup')) as startup:
+            report = runner.run()
+        self.assertEqual(report.status, 'success', report.workflow)
+        self.assertIn('synthesis', report.workflow['steps'][0])
+        craft.assert_called_once()
+        startup.assert_not_called()
+        workflow.ensure_main.assert_not_called()
+
     def test_independent_assignment_has_no_daily_budget_and_checks_overlaps(self):
         assignment = task('assignments', ASSIGNMENT_REWARDS_TASK)
         training = task('training', 'daily_training_rewards')

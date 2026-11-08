@@ -12,7 +12,8 @@ WORKFLOW_CHECK = 'autohsr.task_workflow_check'
 WORKFLOW_CHECK_VERSION = 1
 _VERSIONS = {SCREEN_CHECK_PLAN: SCREEN_CHECK_PLAN_VERSION, WORKFLOW_CHECK: WORKFLOW_CHECK_VERSION}
 _RESERVATION_FIELDS = ('daily_calls', 'du_calls', 'currency_calls', 'du_runs', 'currency_games', 'executions')
-_OPTIONAL_RESERVATIONS = ('du_rewards_calls', 'notification_calls', 'free_attachment_calls', 'assignment_reward_calls')
+_OPTIONAL_RESERVATIONS = ('du_rewards_calls', 'notification_calls', 'free_attachment_calls', 'assignment_reward_calls',
+                          'synthesis_calls')
 
 
 class CapabilityInfo(TypedDict):

@@ -13,6 +13,7 @@ from autohsr import windows
 from autohsr.app import Context as NativeContext
 from autohsr.daily_support import observe as observe_support
 from autohsr.daily_synthesis import task_target
+from autohsr.daily_synthesis_search import run_independent
 from autohsr.daily_training_card_claim import claim_task_points
 from autohsr.models import AutomationError, Scene
 from autohsr.tests.test_daily_synthesis import card
@@ -122,6 +123,26 @@ class DailyTrainingSearchTests(TestCase):
         craft.assert_called_once()
         self.assertEqual(self.packets, [(0xC001, 0x0800, (-120) & 0xFFFFFFFF)])
         self.assertEqual(ctx.report.training_synthesis_search, dict(state='found', scrolls=['sent']))
+
+    def test_independent_synthesis_finds_hidden_task_and_only_calls_the_single_craft(self):
+        workflow = self.workflow(self.shifted)
+        context = workflow.ctx
+
+        def complete(current, scene):
+            self.assertIs(current, workflow)
+            self.assertIs(context.last_scene, scene)
+            self.assertIsNotNone(task_target(scene))
+            context.report.daily_synthesis = dict(
+                recipe='奇巧零食', status='complete', task_verified=True, quantity=1,
+                before_holding=5, after_holding=6, before_materials=[(2, 1), (5, 1)],
+                after_materials=[(1, 1), (4, 1)])
+
+        with patch('autohsr.daily_synthesis.complete_once', side_effect=complete) as craft:
+            self.assertEqual(run_independent(workflow, context.snapshot()).status, 'ok')
+        craft.assert_called_once()
+        self.assertEqual(context.report.training_synthesis_search, dict(state='found', scrolls=['sent']))
+        self.assertFalse(context.report.daily_verified)
+        self.assertEqual(len(self.packets), 1)
 
     def test_no_movement_reads_again_without_resending(self):
         workflow = self.workflow(self.initial)

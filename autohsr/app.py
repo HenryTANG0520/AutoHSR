@@ -1098,6 +1098,8 @@ class Context:
     def click(self, scene: Scene, target: Token | tuple[float, float], *, du_intent="navigation",
               du_feedback_deadline: float | None = None, assignment_intent: str | None = None):
         self._require_gameplay_input()
+        if getattr(self.runner, 'daily_synthesis_only', False) is True and not du_intent.startswith('daily_synthesis_'):
+            raise AutomationError('独立实训合成仅允许本次配方的已核实操作。')
         if du_feedback_deadline is not None and (self.report.operation != 'differential_universe'
                 or du_intent not in ('curio_discard_confirm','du_tutorial_close')):
             raise AutomationError('差分舍弃专用反馈时限仅用于本次确认和弹层关闭。')
@@ -2341,10 +2343,11 @@ class Runner:
                  workflow_page_observe_only=False, workflow_page_background=False,
                  observation_wait_for_foreground=False, daily_event_claim_day=None, daily_event_observe_return=False,
                  daily_event_claim_navigate=False, daily_event_workflow=False, daily_message_reply=None,
-                 reward_guide_capture=None):
+                 reward_guide_capture=None, daily_synthesis_only=False):
         from dataclasses import replace
         if (type(observation_wait_for_foreground) is not bool
                 or observation_wait_for_foreground
+                and not daily_synthesis_only
                 and operation not in DAILY_OBSERVATION_OPERATIONS | WORKFLOW_FOREGROUND_TASKS | {
                     ACHIEVEMENT_CLAIM_OPERATION, EVENT_CLAIM_OPERATION, MESSAGE_REPLY_OPERATION}):
             raise ValueError('前台等待只适用于明确启动的游戏页面核对。')
@@ -2379,7 +2382,17 @@ class Runner:
                      or workflow_page_observe_only or observation_wait_for_foreground)):
             raise AutomationError('后台窗口仅用于手机和指南的专用导航入口。')
         self.workflow_page_background = workflow_page_background
-        if daily_attachment_only is not None:
+        if (type(daily_synthesis_only) is not bool or daily_synthesis_only
+                and (operation != 'daily' or any((daily_attachment_only, assignments_only, new_battle_run,
+                                                  use_power_plan, new_power_plan, weekly_plan)))):
+            raise ValueError('独立合成只允许当前实训的单件合成。')
+        self.daily_synthesis_only = daily_synthesis_only
+        if daily_synthesis_only:
+            from .recovery import reward_only_settings
+
+            settings = replace(reward_only_settings(settings), daily_synthesis=True, auto_launch=False,
+                               profile_cached_login=False, power_plan_enabled=False, weekly_enabled=False)
+        elif daily_attachment_only is not None:
             from .daily_attachments import attachment_settings
             if operation != 'daily' or new_battle_run or use_power_plan or new_power_plan or assignments_only:
                 raise ValueError('独立免费领奖只允许本次明确选择一个附加任务。')
@@ -2491,7 +2504,7 @@ class Runner:
                                         and isinstance(settings.challenge_plan, dict) else None)
         self._challenge_read_only = (operation in ('challenge_result', 'challenge_preset_observe')
                                      or self._challenge_prepare_mode == 'apocalyptic_shadow')
-        self._foreground_only = (self._challenge_read_only
+        self._foreground_only = (self._challenge_read_only or daily_synthesis_only
                                  or operation in WORKFLOW_FOREGROUND_TASKS | DAILY_OBSERVATION_OPERATIONS
                                  or operation in ('challenge_lobby', 'team_preset_calibration',
                                                   EVENT_CLAIM_OPERATION, ACHIEVEMENT_CLAIM_OPERATION, MESSAGE_REPLY_OPERATION))
@@ -3083,7 +3096,8 @@ class Runner:
         workflow_page = self.report.operation == PAGE_TASK
         workflow_foreground = self.report.operation in WORKFLOW_FOREGROUND_TASKS
         foreground_scope = (challenge_observer or challenge_navigation or daily_reward
-                            or daily_observation or daily_claim or daily_reply or workflow_foreground or achievement_claim)
+                            or daily_observation or daily_claim or daily_reply or workflow_foreground or achievement_claim
+                            or self.daily_synthesis_only)
         guard_publication = self._foreground_only or build_target_preview
         build_target_safe_next = ('请核对当前培养目标或打开同一材料的获得途径。'
                                   if build_target_preview else '请在当前账号的生存索引核对培养目标页。材料详情与副本来源待校准。')
@@ -3160,6 +3174,12 @@ class Runner:
                 self.report.safe_next = SAFE_NEXT
                 if not active():
                     raise AutomationError('独立免费领奖须从正式单任务入口获得执行权及账号核验。')
+            if self.daily_synthesis_only:
+                from .workflow_identity import active
+
+                self.report.safe_next = '请核对当前实训卡及本游戏日合成账本，再运行所需步骤。'
+                if not active():
+                    raise AutomationError('独立合成须从正式任务流获得执行权及账号核验。')
             currency_wars = self.report.operation in ("currency_wars", "currency_wars_prepare", "currency_wars_standard", "currency_wars_points", "currency_wars_rewards", OVERCLOCK_CONFIGURE, START_OPERATION, PREP_OPERATION, "currency_wars_drag_test", "currency_wars_deploy_test", "currency_wars_node_test", FLOW_OPERATION)
             differential_universe = self.report.operation == "differential_universe"
             catalogue = self.report.operation == "dungeon_catalogue"
@@ -3309,7 +3329,8 @@ class Runner:
                 self.report.failure_task = 'startup'
             cached_login = (self.report.operation in ('daily', ENTER_OPERATION) and not self.assignments_only
                             and not self.daily_attachment_only and self.settings.profile_cached_login)
-            with context.daily_startup(daily_workflow, cold_start) if daily_workflow is not None else nullcontext():
+            with context.daily_startup(daily_workflow, cold_start) if (
+                    daily_workflow is not None and not self.daily_synthesis_only) else nullcontext():
                 if cached_login:
                     from .profile_login import CachedProfileLogin
                     context._cached_profile_login = CachedProfileLogin(context, daily_workflow)
@@ -3326,7 +3347,19 @@ class Runner:
                     self.battle_budget.begin(new_run=self.new_battle_run,
                         **(dict(protect_pending=True) if self.use_power_plan else {}))
                 initial = context.snapshot() if daily_workflow is not None else None
-            if catalogue:
+            if self.daily_synthesis_only:
+                from .daily_synthesis_search import run_independent
+                from .task_workflow import TRAINING_SYNTHESIS_TASK
+
+                self.report.failure_task = TRAINING_SYNTHESIS_TASK
+                result = run_independent(daily_workflow, initial)
+                self.report.results.append(result)
+                self.report.status = 'success' if result.status == 'ok' else 'partial'
+                if result.status == 'ok':
+                    self.report.failure_task = ''
+                    self.report.safe_next = ''
+                self.emit(dict(type='task', **result.__dict__))
+            elif catalogue:
                 from .dungeon_workflow import scan_catalogue
                 result = scan_catalogue(DailyWorkflow(context))
                 self.report.results.append(result)
@@ -3627,7 +3660,8 @@ class Runner:
             self.report.status = "partial" if (self.report.daily_verified or self.report.redemption.get('results')
                 or self.report.challenge.get('actions') or self.report.du_rewards.get('actions')
                  or target_input or team_input or reward_input or mode_pending or claim_pending
-                 or achievement_input or reply_recorded or self.report.train_supply_input_attempted
+                or achievement_input or reply_recorded or self.report.train_supply_input_attempted
+                or self.daily_synthesis_only and self.report.daily_synthesis.get('status') in ('pending', 'complete')
                 or self.report.workflow_navigation.get('actions')) else "failed"
             self.report.error = str(error)
             self.report.safe_next = ("积分领奖未完成；保留原报告和领奖记录，未知领取不重发；仅已核实步骤可明确接续。" if self.report.operation=='currency_wars_rewards' else
