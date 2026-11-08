@@ -24,6 +24,7 @@ _FIELDS = {
     "rewards_verified": "奖励已核实", "du_rewards_verified": "差分奖励已核实",
     "image_found": "图片已匹配", "text_found": "文字已匹配", "page_verified": "游戏页面已核实",
     "captured": "截图已导出",
+    "training_activity": "每日实训活跃度", "synthesis_needed": "实训仍需单件合成",
 }
 _OPERATORS = {"eq": "等于", "ne": "不等于", "lt": "小于", "le": "小于或等于", "gt": "大于", "ge": "大于或等于"}
 _VALUE_LABELS = {

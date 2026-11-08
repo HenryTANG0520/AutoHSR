@@ -779,7 +779,8 @@ class WorkflowNavigation:
                 view = new
             else:
                 state = 'limit'
-        self.record['training_scan'] = dict(state=state, views=len(views), cards=combined_cards(views), activity=activity)
+        self.record['training_scan'] = dict(state=state, views=len(views), cards=combined_cards(views),
+                                            activity=activity, game_day=self._scan_day)
 
     def require_claim_handoff(self, frame):
         """Keep the independently captured claim frames in the verified navigation scope."""

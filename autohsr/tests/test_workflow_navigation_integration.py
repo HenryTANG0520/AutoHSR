@@ -65,7 +65,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                        achievement_page_kind="overview", redemption_state="form", current_redemption_form=False,
                        visa_pages=None, expect_visa_stop=False, observe_only=False, resume=False,
                        training_page=None, selected_page=False, scan_pages=None, scan_reject=False,
-                       scan_account_changed=False):
+                       scan_account_changed=False, branch_field='page_verified', unknown_condition=False):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -296,9 +296,12 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             original = config.read_bytes()
             workflow = root / 'recipe.json'
             parameters = {'observe_only': True} if observe_only else {}
+            branch = dict(id='opened', type='if', condition=condition('page', branch_field, True),
+                          steps=[dict(id='verified', type='wait', seconds=0)])
+            if branch_field != 'page_verified':
+                branch['else_steps'] = [dict(id='skip', type='wait', seconds=0)]
             document = recipe(task('page', 'workflow_open_page', target=target, **parameters),
-                              dict(id='opened', type='if', condition=condition('page', 'page_verified', True),
-                                   steps=[dict(id='verified', type='wait', seconds=0)]))
+                              branch)
             if resume:
                 workflow = interrupted_page_report(root / 'runs')
                 original_report = workflow.read_bytes()
@@ -349,12 +352,13 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
             command = '--screen-check-resume' if resume else '--task-workflow'
             args = ['--screen-check-pages', target] if selected_page else [command, str(workflow)]
             code = main([*args, '--config', str(config)])
-            interrupted = (late_loss or late_version or scan_reject or scan_account_changed or lose_focus_on_installation_read
+            interrupted = (unknown_condition or late_loss or late_version or scan_reject or scan_account_changed
+                           or lose_focus_on_installation_read
                            or lose_focus_after_geometry or (target != 'daily_training' and version != '4.6.0')
                            or duplicate_tab or first_escape_native_count != 2 or guide_overlay is not None
                            or achievement_page_kind != 'overview' or redemption_state != 'form' or expect_visa_stop
                            or ((observe_only or resume) and not already_open))
-            self.assertEqual(code, 1 if interrupted else 0, err.getvalue())
+            self.assertEqual(code, 1 if interrupted else 0, err.getvalue() + out.getvalue())
             if lose_focus_after_geometry:
                 self.assertTrue(focus_changed)
             if check_publication_lock:
@@ -569,6 +573,29 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         self.assertEqual((scan['state'], scan['views'], scan['activity']), ('no_movement', 2, 500))
         self.assertEqual([card['task'] for card in scan['cards']],
                          ['assignments', 'defeat_enemies', 'spend_power', 'support_win', 'photo'])
+
+    def test_training_branch_uses_hidden_card_or_full_activity_but_never_guesses_absence(self):
+        from autohsr.tests.test_daily_training_search import training_frames
+
+        initial, shifted, full = training_frames()
+        shifted.tokens = [replace(token, score=.97) if token.text == '机」' else token for token in shifted.tokens]
+        sent, steps, _ = self.run_navigation(target='daily_training_scan', already_open=True,
+                                              scan_pages=(initial, shifted), branch_field='synthesis_needed')
+        self.assertTrue(sent)
+        self.assertTrue(steps[0]['facts']['synthesis_needed'])
+        self.assertEqual(steps[0]['facts']['training_activity'], 400)
+        self.assertEqual([step['step'] for step in steps], ['page', 'opened', 'verified'])
+
+        for frame, expected, branches in (
+                (full, False, ['page', 'opened', 'skip']),
+                (initial, None, ['page', 'opened'])):
+            with self.subTest(expected=expected):
+                sent, steps, _ = self.run_navigation(target='daily_training', already_open=True,
+                                                      training_page=frame, branch_field='synthesis_needed',
+                                                      unknown_condition=expected is None)
+                self.assertEqual(sent, [])
+                self.assertEqual(steps[0]['facts'].get('synthesis_needed'), expected)
+                self.assertEqual([step['step'] for step in steps], branches)
 
     def test_training_scan_short_native_input_keeps_the_attempt_without_replay(self):
         source = identified(fixture('daily_survival_badge'))

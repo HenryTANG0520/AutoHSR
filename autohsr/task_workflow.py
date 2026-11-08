@@ -62,7 +62,7 @@ ASSIGNMENT_FLOW = '仅领取持续委托'
 FIELDS = {'status': str, 'daily_verified': bool, 'completed_runs': int,
           'victories': int, 'defeats': int, 'points_verified': bool, 'rewards_verified': bool,
           'du_rewards_verified': bool, 'image_found': bool, 'text_found': bool, 'page_verified': bool,
-          'captured': bool}
+          'captured': bool, 'training_activity': int, 'synthesis_needed': bool}
 
 
 class WorkflowError(ValueError):

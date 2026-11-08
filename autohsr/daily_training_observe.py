@@ -92,3 +92,24 @@ def training_observation_receipt(navigation):
                 or claimed != sorted(claimed) or claimable != sorted(claimable)):
             return None
     return value
+
+
+def training_condition_facts(receipt, client_version):
+    """Project only facts from an already validated training receipt."""
+    if 'game_day' not in receipt:
+        return {}
+    activity = receipt['activity']
+    facts = dict(training_activity=activity)
+    if activity == 500:
+        facts['synthesis_needed'] = False
+    elif client_version == TRAINING_CARD_VERSION and receipt.get('state') != 'unverified':
+        cards = receipt.get('cards', receipt.get('visible_tasks', ()))
+        card = next((item for item in cards if item['task'] == 'synthesis'), None)
+        available = receipt.get('synthesis_task') == 'available'
+        if card is not None:
+            pending = card['state'] == 'pending'
+            if pending or not available:
+                facts['synthesis_needed'] = pending
+        elif available:
+            facts['synthesis_needed'] = True
+    return facts

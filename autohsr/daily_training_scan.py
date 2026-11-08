@@ -2,6 +2,7 @@
 
 from collections import Counter
 from dataclasses import dataclass
+from datetime import date
 
 import cv2
 import numpy as np
@@ -114,8 +115,16 @@ def scan_receipt(navigation):
     value = navigation.get('training_scan')
     if (navigation.get('target') != TRAINING_SCAN_PAGE or navigation.get('page_verified') is not True
             or navigation.get('client_version') != TRAINING_CARD_VERSION
-            or not isinstance(value, dict) or value.keys() != {'state', 'views', 'cards', 'activity'}):
+            or not isinstance(value, dict) or value.keys() not in (
+                {'state', 'views', 'cards', 'activity'}, {'state', 'views', 'cards', 'activity', 'game_day'})):
         return None
+    if 'game_day' in value:
+        day = value['game_day']
+        try:
+            if type(day) is not str or date.fromisoformat(day).isoformat() != day:
+                return None
+        except ValueError:
+            return None
     state, views, cards, activity = (value[key] for key in ('state', 'views', 'cards', 'activity'))
     if (state not in _STATES or type(views) is not int or not 0 <= views <= MAX_SCROLLS + 1
             or type(activity) is not int or not 0 <= activity <= 500

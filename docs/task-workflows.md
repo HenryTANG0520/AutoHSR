@@ -90,6 +90,19 @@ P1 底栏「仅补领奖」和 `--run --reward-only` 继续直达同一原生入
 
 合成沿用现有配方和独占账本。回执的 `synthesis` 字段只报告配方、成品数量与两种材料各自的变化量。合成后停在配方页面，后续可另加「仅补领每日实训」。已有本游戏日账本或材料变化无法核实时结束本次节点。[合成门禁](../DAILY_FLOW.md#登录奖励与合成)
 
+可先加「切换到游戏页面」，目标选「实训任务巡查」并将其步骤 ID 设为 `training`。随后加一个条件分支，只有核实需要合成时才执行合成节点。
+
+```json
+{
+  "id": "craft_if_needed",
+  "type": "if",
+  "condition": {"step": "training", "field": "synthesis_needed", "op": "eq", "value": true},
+  "steps": [{"id": "craft", "type": "task", "task": "daily_training_synthesis"}]
+}
+```
+
+「每日实训」和「实训任务巡查」的回执也可提供 `training_activity`。核实合成任务待完成时，`synthesis_needed` 为真。卡片已经完成或活跃度已满时为假。卡片缺失或读数冲突时条件保持未知，流程停在该分支。两个结果均限本游戏日。实际合成仍重新核对卡片和材料。
+
 ### 明确指南页签
 
 `difficulty_guide` 指逐光捡金，`universe_guide` 指旷宇纷争。简中 4.6.0 可从已核实的手机或指南页开始。手机打开指南后先核对实际落页，再按需切换。逐光捡金复用左侧三项高难布局。旷宇纷争核对左栏货币战争与差分宇宙，并核对其中一种已校准的详情布局。只有明确页签通过同账号双帧才算到页。已在目标页零输入。切换只点指南页签，模板匹配须唯一且位于对应页签。泛 `guide` 仍接受任一现有指南子页。
@@ -286,7 +299,7 @@ UTF-8 JSON顶层为`version:1`、`name`、`steps`；不接受重复JSON键、NaN
 
 条件形如`{"step":"daily","field":"daily_verified","op":"eq","value":true}`。只能引用树中前面出现的步骤结果；所引用分支本次没执行、步骤被禁用而字段未知、类型不一致时停止，不将缺值视作false。`step:"@last"`表示最近一次实际执行的task结果，可用于有界观察循环；普通控制步骤不会替换它。
 
-条件字段包括 `status`、`daily_verified`、`completed_runs`、`victories`、`defeats`、`points_verified`、`rewards_verified`、`du_rewards_verified`、`image_found`、`text_found`、`page_verified` 和 `captured`。`du_rewards_verified` 对应本次明确请求的红点。图文及页面字段对应已成功核实的观察或切换步骤。`captured` 须另核对本次 PNG。只有对应子报告确实存在且含该字段时才可比较，日常实训也须有执行证据。计数支持 `eq/ne/lt/le/gt/ge`，状态和布尔值支持 `eq/ne`。`completed_runs` 对应差分已完成数或货币战争已结束数，货币战争胜负另有 `victories` 和 `defeats`。
+条件字段包括 `status`、`daily_verified`、`completed_runs`、`victories`、`defeats`、`points_verified`、`rewards_verified`、`du_rewards_verified`、`image_found`、`text_found`、`page_verified`、`captured`、`training_activity` 和 `synthesis_needed`。`du_rewards_verified` 对应本次明确请求的红点。图文及页面字段对应已成功核实的观察或切换步骤。`captured` 须另核对本次 PNG。实训活跃度和合成需求来自本次的同游戏日实训回执。只有对应子报告确实存在且含该字段时才可比较。计数支持 `eq/ne/lt/le/gt/ge`，状态和布尔值支持 `eq/ne`。`completed_runs` 对应差分已完成数或货币战争已结束数，货币战争胜负另有 `victories` 和 `defeats`。
 
 上限为1 MiB定义、256个节点、12层、最多10000次展开执行；禁用节点也计执行数量。每个可能路径最多一份日常预算、一个差分批次、一个CW批次；循环乘算，互斥分支取最大值。不能用两个daily步骤或for循环重复创建240预算。`plan`保守预留日常、差分与CW各一个所有者，不能再叠加独立同类任务；其10局预留值仅为静态最大值，不是实际请求或完成数。
 

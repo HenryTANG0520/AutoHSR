@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from autohsr.app import Context
 from autohsr.config import Settings
-from autohsr.daily_training_observe import observe_training, training_observation_receipt
+from autohsr.daily_training_observe import observe_training, training_condition_facts, training_observation_receipt
 from autohsr.tests.test_daily_support import training as captured_support_card
 from autohsr.tests.test_du_team import fixture
 from autohsr.tests.test_reward_only_milestones import training
@@ -53,6 +53,19 @@ class DailyTrainingObservationTests(TestCase):
     def test_crossing_the_daily_reset_does_not_report_an_opportunity(self):
         with patch('autohsr.daily_training_observe._task_game_day', side_effect=('2026-11-07', '2026-11-08')):
             self.assertIsNone(self.observe(training(400), training(400)))
+
+    def test_synthesis_condition_preserves_completed_missing_and_conflicting_cards(self):
+        card = dict(task='synthesis', progress=1, target=1, points=100, state='claimable')
+        observed = dict(game_day='2026-11-08', activity=400, visible_tasks=[card], synthesis_task='unknown')
+        self.assertEqual(training_condition_facts(observed, '4.6.0'),
+                         dict(training_activity=400, synthesis_needed=False))
+        self.assertEqual(training_condition_facts(dict(observed, synthesis_task='available'), '4.6.0'),
+                         dict(training_activity=400))
+        scan = dict(game_day='2026-11-08', activity=400, state='unverified',
+                    cards=[dict(card, progress=0, state='pending')])
+        self.assertEqual(training_condition_facts(scan, '4.6.0'), dict(training_activity=400))
+        del scan['game_day']
+        self.assertEqual(training_condition_facts(scan, '4.6.0'), {})
 
     def test_known_cards_keep_progress_reward_and_claim_state_separate(self):
         captured = captured_support_card().tokens

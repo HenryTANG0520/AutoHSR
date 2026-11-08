@@ -49,6 +49,17 @@ def condition(identity, field='status', value='success', op='eq'):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_training_condition_does_not_reuse_the_previous_game_day(self):
+        flow = self.runner(recipe(task('view', 'workflow_open_page', target='daily_training')))
+        flow._latest['view'] = dict(training_activity=400, synthesis_needed=True, _training_game_day='2026-11-08')
+        with patch('autohsr.du_daily.game_day', return_value='2026-11-08'):
+            self.assertTrue(flow._condition(condition('view', 'synthesis_needed', True)))
+            self.assertTrue(flow._condition(condition('view', 'training_activity', 500, 'lt')))
+        with patch('autohsr.du_daily.game_day', return_value='2026-11-09'):
+            for field, value in (('synthesis_needed', True), ('training_activity', 400)):
+                with self.subTest(field=field), self.assertRaisesRegex(WorkflowError, '跨游戏日'):
+                    flow._condition(condition('view', field, value))
+
     def test_independent_synthesis_reserves_once_and_can_pair_with_reward_only(self):
         synthesize = task('craft', 'daily_training_synthesis')
         reward = task('reward', 'daily_training_rewards')

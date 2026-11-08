@@ -242,6 +242,11 @@ class TaskWorkflowRunner:
         field = condition['field']
         if previous is None or type(previous.get(field)) is not FIELDS[field]:
             raise WorkflowError('条件依赖的步骤没有本次已知结果，未猜测为真或假。')
+        if field in ('training_activity', 'synthesis_needed'):
+            from .du_daily import game_day
+
+            if previous.get('_training_game_day') != game_day():
+                raise WorkflowError('实训条件已跨游戏日，请重新读取卡片。')
         compare = {'eq': operator.eq, 'ne': operator.ne, 'lt': operator.lt,
                    'le': operator.le, 'gt': operator.gt, 'ge': operator.ge}[condition['op']]
         return compare(previous[field], condition['value'])
@@ -629,6 +634,12 @@ class TaskWorkflowRunner:
                     entry['assignment'] = assignment
             entry['facts'] = {'status': result['status']} if scoped_daily else self._facts(result)
             entry['status'] = result['status']
+            training_source = entry.get('training_scan') or entry.get('training_observation')
+            if entry['status'] == 'success' and training_source is not None:
+                from .daily_training_observe import training_condition_facts
+
+                entry['facts'].update(training_condition_facts(
+                    training_source, result['workflow_navigation'].get('client_version')))
             if training is not None:
                 entry['training_milestones'] = training
                 if node.get('params', {}).get('reached_only') is True:
@@ -805,7 +816,11 @@ class TaskWorkflowRunner:
                 entry.setdefault('error', str(error))
                 raise
             finally:
-                self._latest[node['id']] = dict(entry.get('facts', {}), status=entry['status'])
+                facts = dict(entry.get('facts', {}), status=entry['status'])
+                training_source = entry.get('training_scan') or entry.get('training_observation')
+                if 'training_activity' in facts and training_source is not None:
+                    facts['_training_game_day'] = training_source['game_day']
+                self._latest[node['id']] = facts
                 if node['type'] == 'task' and entry['status'] != 'skipped':
                     self._latest['@last'] = self._latest[node['id']]
                 self._finish_step(entry)
