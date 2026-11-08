@@ -105,7 +105,13 @@ P1 底栏「仅补领奖」和 `--run --reward-only` 继续直达同一原生入
 }
 ```
 
-「每日实训」和「实训任务巡查」的回执也可提供 `training_activity`。核实合成任务待完成时，`synthesis_needed` 为真。卡片已经完成或活跃度已满时为假。卡片缺失或读数冲突时条件保持未知，流程停在该分支。两个结果均限本游戏日。实际合成仍重新核对卡片和材料。
+「每日实训」和「实训任务巡查」的回执也可提供 `training_activity`。核实合成任务待完成时，`synthesis_needed` 为真。拍照卡使用 `photo_needed`，同一游戏日核实「拍照1次」待完成时为真。卡片已经完成或活跃度已满时为假。卡片缺失或读数冲突时相应条件保持未知。读取过往游戏日的这些字段会停止分支。实际合成仍重新核对卡片和材料。
+
+### 普通相机导航
+
+任务流编辑器选择「切换到游戏页面 → 普通相机」，或将 `workflow_open_page` 的 `target` 设为 `camera`。从已核实的简中 4.6.0 前台大世界或手机主菜单开始。进入相机前在手机右侧核对唯一图标，随后用同账号双帧核对取景、快门图标附近的 F 提示及镜头控件。已在符合条件的取景页时零输入。剧情、拍摄活动及照片预览停止，反馈未知时不重发。任务流中的「大世界」也可从已核实的普通取景页按一次 Esc 返回。
+
+此节点止于取景。从实训页开始时，可用 `photo_needed` 判断是否需要拍照，再依次安排「大世界」和「普通相机」。快门、成片预览和返回实训卡的完成回执仍待实机校准。[实训取证](../DAILY_FLOW.md#拍照实训取证)
 
 ### 明确指南页签
 
@@ -325,7 +331,7 @@ UTF-8 JSON顶层为`version:1`、`name`、`steps`；不接受重复JSON键、NaN
 
 条件形如`{"step":"daily","field":"daily_verified","op":"eq","value":true}`。只能引用树中前面出现的步骤结果；所引用分支本次没执行、步骤被禁用而字段未知、类型不一致时停止，不将缺值视作false。`step:"@last"`表示最近一次实际执行的task结果，可用于有界观察循环；普通控制步骤不会替换它。
 
-条件字段包括 `status`、`daily_verified`、`completed_runs`、`victories`、`defeats`、`points_verified`、`rewards_verified`、`du_rewards_verified`、`image_found`、`text_found`、`page_verified`、`captured`、`training_activity` 和 `synthesis_needed`。`du_rewards_verified` 对应本次明确请求的红点。图文及页面字段对应已成功核实的观察或切换步骤。`captured` 须另核对本次 PNG。实训活跃度和合成需求来自本次的同游戏日实训回执。只有对应子报告确实存在且含该字段时才可比较。计数支持 `eq/ne/lt/le/gt/ge`，状态和布尔值支持 `eq/ne`。`completed_runs` 对应差分已完成数或货币战争已结束数，货币战争胜负另有 `victories` 和 `defeats`。
+条件字段包括 `status`、`daily_verified`、`completed_runs`、`victories`、`defeats`、`points_verified`、`rewards_verified`、`du_rewards_verified`、`image_found`、`text_found`、`page_verified`、`captured`、`training_activity`、`synthesis_needed` 和 `photo_needed`。`du_rewards_verified` 对应本次明确请求的红点。图文及页面字段对应已成功核实的观察或切换步骤。`captured` 须另核对本次 PNG。实训活跃度、合成需求和拍照需求来自本次的同游戏日实训回执。只有对应子报告确实存在且含该字段时才可比较。计数支持 `eq/ne/lt/le/gt/ge`，状态和布尔值支持 `eq/ne`。`completed_runs` 对应差分已完成数或货币战争已结束数，货币战争胜负另有 `victories` 和 `defeats`。
 
 上限为1 MiB定义、256个节点、12层、最多10000次展开执行；禁用节点也计执行数量。每个可能路径最多一份日常预算、一个差分批次、一个CW批次；循环乘算，互斥分支取最大值。不能用两个daily步骤或for循环重复创建240预算。`plan`保守预留日常、差分与CW各一个所有者，不能再叠加独立同类任务；其10局预留值仅为静态最大值，不是实际请求或完成数。
 

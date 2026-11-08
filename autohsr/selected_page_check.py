@@ -8,7 +8,7 @@ import re
 from .config import ROOT
 from .daily_training_scan import MAX_SCROLLS, SCAN_ACTION, scan_receipt
 from .storage import hold_read_sources
-from .task_workflow import (ACHIEVEMENT_OVERVIEW_PAGE, ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES, MAX_BYTES,
+from .task_workflow import (ACHIEVEMENT_OVERVIEW_PAGE, ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES, CAMERA_WORKFLOW_PAGE, MAX_BYTES,
                             MESSAGE_WORKFLOW_PAGE, PAGE_TASK, REDEMPTION_FORM_PAGE, SCREEN_CHECK_EXTRA_PAGES,
                             SCREEN_CHECK_PAGES, TRAINING_SCAN_PAGE, VISA_CHARACTERS_PAGE, VISA_COLLECTION_PAGE, WORKFLOW_PAGES,
                             WORLD_WORKFLOW_PAGE, Recipe, WorkflowError, _pairs, compile_recipe)
@@ -101,6 +101,8 @@ def _action_counts(actions, target):
     if target in _EXTRA_ACTIONS:
         allowed_actions = _EXTRA_ACTIONS[target]
         allowed_pages = allowed_pages.union(SCREEN_CHECK_EXTRA_PAGES, (_REDEMPTION_MORE, _VISA_MORE_MENU))
+    if target == WORLD_WORKFLOW_PAGE:
+        allowed_pages = allowed_pages | {CAMERA_WORKFLOW_PAGE}
     previous = None
     sent = unconfirmed = 0
     for index, action in enumerate(actions):

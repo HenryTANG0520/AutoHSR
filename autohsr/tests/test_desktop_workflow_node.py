@@ -122,7 +122,7 @@ class WorkflowNodeFormTests(unittest.TestCase):
         self.form.page_target.set("漫游签证角色展示")
         self.form._select_page(None)
         self.assertEqual(self.submitted()["params"], {"target": "visa_characters"})
-        for label, target in (("漫游签证收集展示", "visa_collection"), ("大世界", "world"),
+        for label, target in (("漫游签证收集展示", "visa_collection"), ("大世界", "world"), ("普通相机", "camera"),
                               ("逐光捡金", "difficulty_guide"), ("旷宇纷争", "universe_guide"),
                               ("无名勋礼", "battlepass"), ("无名勋礼 · 奖励", "battlepass_rewards"),
                               ("无名勋礼 · 任务", "battlepass_tasks")):

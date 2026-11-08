@@ -1,5 +1,14 @@
 # AutoHSR resource attribution
 
+## 2026-11-08 普通相机
+
+`assets/upstream/March7thAssistant/camera/` 两张原始控件来自三月七固定提交 `7cf6c6bed474539485d3b1504077ac352866829f`，均未变换。上游项目使用 GPL-3.0，游戏美术归 HoYoverse 及相应权利人。
+
+| 本地素材 | 上游路径 | 尺寸与字节数 | SHA-256 |
+| --- | --- | --- | --- |
+| `menu.png` | [assets/images/share/menu/camera.png](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/images/share/menu/camera.png) | 41×35，1596 字节 | `cff21f41fc9f6f519989c45e51bb60b53a4e5fbf2b66844d84f4894a2da17569` |
+| `shutter.png` | [assets/images/screen/camera.png](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/images/screen/camera.png) | 74×61，2780 字节 | `9371ccbbb4aca875ade0fd05977f193c466b857bd959dccbdaee7e7c693d31a5` |
+
 ## 2026-11-08 漫游签证支援提示
 
 `assets/upstream/March7thAssistant/reward/support-gift.png` 从三月七 v2026.11.7 固定提交 `a46a5fa7014307364b4aa6b69592911096e66025` 原样保留，51×59 RGBA，4712 字节，SHA-256 为 `19a7bfa037549d1e7aa45586ce1a66f9e58f295849a5b8c40a50e73292aefa31`。上游项目使用 GPL-3.0，游戏美术归 HoYoverse 及相应权利人。素材只作为礼物提示的匹配参考。[上游素材](https://github.com/moesnow/March7thAssistant/blob/a46a5fa7014307364b4aa6b69592911096e66025/assets/images/share/reward/assist/gift.png)

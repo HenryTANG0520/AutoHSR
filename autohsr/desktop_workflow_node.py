@@ -24,7 +24,7 @@ _FIELDS = {
     "rewards_verified": "奖励已核实", "du_rewards_verified": "差分奖励已核实",
     "image_found": "图片已匹配", "text_found": "文字已匹配", "page_verified": "游戏页面已核实",
     "captured": "截图已导出",
-    "training_activity": "每日实训活跃度", "synthesis_needed": "实训仍需单件合成",
+    "training_activity": "每日实训活跃度", "synthesis_needed": "实训仍需单件合成", "photo_needed": "实训仍需拍照",
 }
 _OPERATORS = {"eq": "等于", "ne": "不等于", "lt": "小于", "le": "小于或等于", "gt": "大于", "ge": "大于或等于"}
 _VALUE_LABELS = {
@@ -42,7 +42,7 @@ _PAGES = {
     "battlepass_rewards": "无名勋礼 · 奖励", "battlepass_tasks": "无名勋礼 · 任务",
     "difficulty_guide": "逐光捡金", "universe_guide": "旷宇纷争",
     "messages": "短信通知", "visa_collection": "漫游签证收集展示", "visa_characters": "漫游签证角色展示",
-    "achievement_overview": "成就总览", "redemption_form": "兑换码表单",
+    "achievement_overview": "成就总览", "redemption_form": "兑换码表单", "camera": "普通相机",
     TRAINING_SCAN_PAGE: "实训任务巡查",
 }
 _DAILY_NAMES = {

@@ -65,7 +65,8 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                        achievement_page_kind="overview", redemption_state="form", current_redemption_form=False,
                        visa_pages=None, expect_visa_stop=False, observe_only=False, resume=False,
                        training_page=None, selected_page=False, scan_pages=None, scan_reject=False,
-                       scan_account_changed=False, branch_field='page_verified', unknown_condition=False):
+                       scan_account_changed=False, branch_field='page_verified', unknown_condition=False,
+                       camera_case='ordinary', camera_from_world=False, camera_return=False):
         source = phone()
         mailbox = Scene([ACCOUNT, Token('邮箱', .99, (.03, .027, .072, .054)),
                          Token('暂无邮件', .99, (.28, .45, .34, .49))], source.image)
@@ -118,6 +119,27 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 source = phone(Token('成就', .78, (.473, .109, .499, .143)),
                                Token('奖励', .78, (.501, .109, .527, .143)))
             pages = (source, achievement)
+        elif target == 'camera' or camera_return:
+            from autohsr.daily_camera_pages import _ASSETS
+
+            shutter = cv2.imdecode(np.fromfile(_ASSETS / 'shutter.png', np.uint8), cv2.IMREAD_COLOR)
+            pixels = np.full_like(source.image, 43)
+            x, y = 1750, 608
+            h, w = shutter.shape[:2]
+            pixels[y:y+h, x:x+w] = shutter
+            labels = [ACCOUNT, Token('缩放', .99, (.72, .86, .76, .89))]
+            if camera_case != 'missing_key':
+                labels.append(Token('F', .99, (.927, .635, .940, .66)))
+            if camera_case == 'activity':
+                labels.append(Token('拍摄结束', .78, (.47, .12, .58, .16)))
+            elif camera_case == 'split_activity':
+                labels.extend((Token('拍摄', .95, (.47, .12, .52, .16)),
+                               Token('结束', .95, (.524, .12, .58, .16))))
+            viewfinder = Scene(labels, pixels)
+            if camera_return:
+                pages = (viewfinder, world_hud())
+            else:
+                pages = (world_hud(), source, viewfinder) if camera_from_world else (source, viewfinder)
         elif target == 'visa_characters':
             pages = visa_pages or (visa_collection(), visa_collection('characters'))
         elif target == 'visa_collection':
@@ -193,7 +215,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
         window = _Window(frames())
         if scan_pages is not None:
             window.scroll_down_once = GameWindow.scroll_down_once.__get__(window)
-        if target in ('world', 'visa_characters'):
+        if target in ('world', 'visa_characters', 'camera'):
             window.key = GameWindow.key.__get__(window)
         if battlepass_size is not None:
             window.geometry = Geometry(0, 0, *battlepass_size)
@@ -278,7 +300,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
 
         def vision(confidence):
             engine = window.vision(confidence)
-            if target in ('world', 'visa_characters') or guide_target:
+            if target in ('world', 'visa_characters', 'camera') or guide_target:
                 engine.template = Vision.__new__(Vision).template
             return engine
 
@@ -329,7 +351,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 ('autohsr.workflow_lease.NAME', 'Local\\AutoHSR.WorkflowNavigationQA.' + uuid4().hex),
             ):
                 stack.enter_context(patch(name, value))
-            if target not in ('world', 'visa_characters') and not guide_target:
+            if target not in ('world', 'visa_characters', 'camera') and not guide_target:
                 stack.enter_context(patch('autohsr.app.Context.template', return_value=None))
             for name, kwargs in (
                 ('autohsr.app.C.get_last_error', dict(return_value=0)),
@@ -357,6 +379,7 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                            or lose_focus_after_geometry or (target != 'daily_training' and version != '4.6.0')
                            or duplicate_tab or first_escape_native_count != 2 or guide_overlay is not None
                            or achievement_page_kind != 'overview' or redemption_state != 'form' or expect_visa_stop
+                           or camera_case != 'ordinary'
                            or ((observe_only or resume) and not already_open))
             self.assertEqual(code, 1 if interrupted else 0, err.getvalue() + out.getvalue())
             if lose_focus_after_geometry:
@@ -442,6 +465,44 @@ class WorkflowNavigationIntegrationTests(unittest.TestCase):
                 self.assertEqual(len(record['actions']), inputs)
                 if inputs:
                     self.assertEqual(record['actions'][0]['destination_page'], 'achievement_overview')
+
+    def test_camera_yaml_navigation_stops_at_the_viewfinder_without_a_shutter_input(self):
+        click = (0xC001, 0x0002, 0x0004)
+        for from_world, already_open, expected in ((False, False, [click]), (False, True, []),
+                                                     (True, False, [(0x08,), (0x0A,), click])):
+            with self.subTest(from_world=from_world, already_open=already_open):
+                sent, steps, native = self.run_navigation(target='camera', upstream_screen='camera',
+                    already_open=already_open, camera_from_world=from_world)
+                self.assertEqual(sent, expected)
+                self.assertEqual(self.key_scans, [0x1B, 0x1B] if from_world else [])
+                self.assertTrue(steps[0]['facts']['page_verified'])
+                self.assertEqual(native['workflow_navigation']['target'], 'camera')
+
+    def test_camera_does_not_replay_a_click_for_an_unknown_or_activity_viewfinder(self):
+        for case in ('missing_key', 'activity', 'split_activity'):
+            with self.subTest(case=case):
+                sent, steps, native = self.run_navigation(target='camera', camera_case=case)
+                self.assertEqual(sent, [(0xC001, 0x0002, 0x0004)])
+                self.assertNotIn('page_verified', steps[0]['facts'])
+                record = native['workflow_navigation']
+                self.assertFalse(record['page_verified'])
+                self.assertEqual(record['actions'][0]['destination_status'], 'unknown')
+
+    def test_world_return_accepts_only_the_verified_ordinary_camera(self):
+        sent, steps, native = self.run_navigation(target='world', camera_return=True)
+        self.assertEqual(sent, [(0x08,), (0x0A,)])
+        self.assertEqual(self.key_scans, [0x1B, 0x1B])
+        self.assertTrue(steps[0]['facts']['page_verified'])
+        action, = native['workflow_navigation']['actions']
+        self.assertEqual((action['source_page'], action['destination_page']), ('camera', 'world'))
+        sent, rows, _ = self.run_navigation(target='world', camera_return=True, selected_page=True)
+        self.assertEqual(sent, [(0x08,), (0x0A,)])
+        self.assertEqual((rows[0]['actions_sent'], rows[0]['status']), (1, 'verified'))
+        for case in ('activity', 'split_activity'):
+            with self.subTest(case=case):
+                sent, steps, _ = self.run_navigation(target='world', camera_return=True, camera_case=case)
+                self.assertEqual(sent, [])
+                self.assertNotIn('page_verified', steps[0]['facts'])
 
     def test_achievement_title_and_category_do_not_certify_arrival_or_retry(self):
         for kind, already_open, inputs in (('title', False, 1), ('category', True, 0),

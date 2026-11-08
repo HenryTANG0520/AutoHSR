@@ -242,7 +242,7 @@ class TaskWorkflowRunner:
         field = condition['field']
         if previous is None or type(previous.get(field)) is not FIELDS[field]:
             raise WorkflowError('条件依赖的步骤没有本次已知结果，未猜测为真或假。')
-        if field in ('training_activity', 'synthesis_needed'):
+        if field in ('training_activity', 'synthesis_needed', 'photo_needed'):
             from .du_daily import game_day
 
             if previous.get('_training_game_day') != game_day():

@@ -13,6 +13,7 @@ from .build_target_read import _has_split_label
 from .config import RESOURCE_ROOT
 from .currency_wars_identity import AccountNotObserved, UID_COUNTEREVIDENCE, checked_account_key
 from .currency_wars_prepare import trusted
+from .daily_camera_pages import CAMERA_LAYOUT_VERSION, camera_menu_target, ordinary_viewfinder, other_camera_mode
 from .daily_event_navigation import odyssey_list_entry, reward_guide_entry
 from .daily_event_observe import read_event_installation
 from .daily_event_pages import _VERSION, phone_journey_event_entry, read_gift_of_odyssey
@@ -29,7 +30,7 @@ from .models import FULL, AutomationError, EmptyCapture, InputInterrupted, Stopp
 from .policy import du_guide_details, has_du_field_plane_marker
 from .screenshot_tool import MAX_PIXELS
 from .storage import hold_read_sources
-from .task_workflow import (ACHIEVEMENT_OVERVIEW_PAGE, ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES,
+from .task_workflow import (ACHIEVEMENT_OVERVIEW_PAGE, ACTIVITY_WORKFLOW_PAGES, BATTLEPASS_WORKFLOW_PAGES, CAMERA_WORKFLOW_PAGE,
                             GUIDE_WORKFLOW_SUBPAGES, MESSAGE_WORKFLOW_PAGE, REDEMPTION_FORM_PAGE, TRAINING_SCAN_PAGE,
                             VISA_CHARACTERS_PAGE, VISA_COLLECTION_PAGE, WORKFLOW_NAVIGATION_TARGETS,
                             WORLD_WORKFLOW_PAGE)
@@ -392,6 +393,22 @@ class WorkflowNavigation:
         if self.target == REDEMPTION_FORM_PAGE:
             return self._read_redemption_page(scene)
         page = self._page(scene)
+        if self.target == CAMERA_WORKFLOW_PAGE:
+            low = trusted(scene, COLLECTION_FLOOR)
+            if other_camera_mode(scene) or _activity_title(low) or message_panel(low):
+                raise AutomationError('当前为拍摄活动、照片预览或其他页面，普通相机导航已停止。')
+            if page is None and ordinary_viewfinder(scene, self.c.vision, self.confidence):
+                return self._world_return_page(scene, CAMERA_WORKFLOW_PAGE)
+            if page == 'world':
+                return self._world_return_page(scene, page)
+            if page == 'phone':
+                from .redemption_pages import MORE_MENU
+
+                if low.has(_REDEMPTION_MENU_LABELS, MORE_MENU, exact=True) or _has_split_label(
+                        low, _REDEMPTION_MENU_LABELS, MORE_MENU):
+                    return None
+                return page
+            return None
         if self.target in (VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE):
             low = trusted(scene, COLLECTION_FLOOR)
             if _route_blocked(low, _VISA_CLAIM_PROMPTS, _VISA_CLAIM_PROMPTS):
@@ -408,6 +425,8 @@ class WorkflowNavigation:
                 return self._world_return_page(scene, page)
             return 'phone' if support_more_target(scene, self.confidence) is not None else None
         if self.target == WORLD_WORKFLOW_PAGE:
+            if page is None and ordinary_viewfinder(scene, self.c.vision, self.confidence):
+                page = CAMERA_WORKFLOW_PAGE
             return self._world_return_page(scene, page)
         if self.target in GUIDE_WORKFLOW_SUBPAGES:
             return page
@@ -444,6 +463,11 @@ class WorkflowNavigation:
 
     def _action(self, frame):
         page = frame.page
+        if self.target == CAMERA_WORKFLOW_PAGE:
+            if page == 'world':
+                return _Action('open_phone', ('phone',))
+            target = camera_menu_target(frame.scene, self.c.vision, self.confidence) if page == 'phone' else None
+            return _Action('open_camera', (self.target,), target) if target is not None else None
         if self.target in GUIDE_WORKFLOW_SUBPAGES:
             if page == 'phone':
                 token = self._phone_control(frame.scene, 'guide')
@@ -453,7 +477,7 @@ class WorkflowNavigation:
                 return _Action('open_' + self.target, (self.target,), tab) if tab else None
             return None
         if self.target == WORLD_WORKFLOW_PAGE:
-            if page == 'phone':
+            if page in ('phone', CAMERA_WORKFLOW_PAGE):
                 return _Action('return_to_hub', (WORLD_WORKFLOW_PAGE,))
             if page in _WORLD_RETURN_PANELS:
                 return _Action('return_to_hub', (WORLD_WORKFLOW_PAGE, 'phone'))
@@ -823,6 +847,8 @@ class WorkflowNavigation:
             expected, version = ('phone', _REDEMPTION_MORE, self.target), _REDEMPTION_LAYOUT_VERSION
         elif self.target == ACHIEVEMENT_OVERVIEW_PAGE:
             expected, version = ('phone', self.target), _ACHIEVEMENT_LAYOUT_VERSION
+        elif self.target == CAMERA_WORKFLOW_PAGE:
+            expected, version = ('world', 'phone', self.target), CAMERA_LAYOUT_VERSION
         elif self.target == VISA_COLLECTION_PAGE:
             expected, version = ('phone', VISA_COLLECTION_PAGE), VISA_LAYOUT_VERSION
         elif self.target == VISA_CHARACTERS_PAGE:
@@ -832,7 +858,7 @@ class WorkflowNavigation:
         elif self.target in (*GUIDE_WORKFLOW_SUBPAGES, TRAINING_SCAN_PAGE):
             expected, version = ('phone', *_EXACT_GUIDE_PAGES), _GUIDE_LAYOUT_VERSION
         elif self.target == WORLD_WORKFLOW_PAGE:
-            expected, version = (WORLD_WORKFLOW_PAGE, 'phone', *_WORLD_RETURN_PANELS), _WORLD_LAYOUT_VERSION
+            expected, version = (WORLD_WORKFLOW_PAGE, 'phone', CAMERA_WORKFLOW_PAGE, *_WORLD_RETURN_PANELS), _WORLD_LAYOUT_VERSION
         elif self.target in (*ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE):
             version = _VERSION
             if self._bound_to_event_claim():

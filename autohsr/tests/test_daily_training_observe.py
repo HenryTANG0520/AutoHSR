@@ -67,6 +67,18 @@ class DailyTrainingObservationTests(TestCase):
         del scan['game_day']
         self.assertEqual(training_condition_facts(scan, '4.6.0'), {})
 
+    def test_photo_condition_requires_a_known_card_or_full_activity(self):
+        card = dict(task='photo', progress=0, target=1, points=100, state='pending')
+        receipt = dict(game_day='2026-11-08', activity=400, visible_tasks=[card])
+        self.assertIs(training_condition_facts(receipt, '4.6.0')['photo_needed'], True)
+        receipt['visible_tasks'] = [dict(card, progress=1, state='claimable')]
+        self.assertIs(training_condition_facts(receipt, '4.6.0')['photo_needed'], False)
+        self.assertNotIn('photo_needed', training_condition_facts(receipt, '4.7.0'))
+        receipt['visible_tasks'] = []
+        self.assertNotIn('photo_needed', training_condition_facts(receipt, '4.6.0'))
+        receipt['activity'] = 500
+        self.assertIs(training_condition_facts(receipt, '4.6.0')['photo_needed'], False)
+
     def test_known_cards_keep_progress_reward_and_claim_state_separate(self):
         captured = captured_support_card().tokens
         support = [token for token in captured if token.within((.325, .375, .475, .81))]

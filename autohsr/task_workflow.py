@@ -38,6 +38,7 @@ MESSAGE_WORKFLOW_PAGE = 'messages'
 VISA_COLLECTION_PAGE = 'visa_collection'
 VISA_CHARACTERS_PAGE = 'visa_characters'
 ACHIEVEMENT_OVERVIEW_PAGE = 'achievement_overview'
+CAMERA_WORKFLOW_PAGE = 'camera'
 REDEMPTION_FORM_PAGE = 'redemption_form'
 WORLD_WORKFLOW_PAGE = 'world'
 TRAINING_SCAN_PAGE = 'daily_training_scan'
@@ -45,7 +46,7 @@ WORKFLOW_PAGES = ('phone', 'guide', 'daily_training', 'survival_index', 'assignm
                   *ACTIVITY_WORKFLOW_PAGES, MESSAGE_WORKFLOW_PAGE)
 BACKGROUND_NAVIGATION_PAGES = ('phone', 'guide', 'daily_training', 'survival_index')
 WORKFLOW_NAVIGATION_TARGETS = (*WORKFLOW_PAGES, *BATTLEPASS_WORKFLOW_PAGES, *GUIDE_WORKFLOW_SUBPAGES,
-                               VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE, ACHIEVEMENT_OVERVIEW_PAGE,
+                               VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE, ACHIEVEMENT_OVERVIEW_PAGE, CAMERA_WORKFLOW_PAGE,
                                REDEMPTION_FORM_PAGE, WORLD_WORKFLOW_PAGE, TRAINING_SCAN_PAGE)
 SCREEN_CHECK_EXTRA_PAGES = (VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE, ACHIEVEMENT_OVERVIEW_PAGE,
                             *BATTLEPASS_WORKFLOW_PAGES, REDEMPTION_FORM_PAGE, WORLD_WORKFLOW_PAGE, TRAINING_SCAN_PAGE)
@@ -64,7 +65,7 @@ ASSIGNMENT_FLOW = '仅领取持续委托'
 FIELDS = {'status': str, 'daily_verified': bool, 'completed_runs': int,
           'victories': int, 'defeats': int, 'points_verified': bool, 'rewards_verified': bool,
           'du_rewards_verified': bool, 'image_found': bool, 'text_found': bool, 'page_verified': bool,
-          'captured': bool, 'training_activity': int, 'synthesis_needed': bool}
+          'captured': bool, 'training_activity': int, 'synthesis_needed': bool, 'photo_needed': bool}
 
 
 class WorkflowError(ValueError):

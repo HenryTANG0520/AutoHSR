@@ -231,7 +231,7 @@ P178 的 18.138125、18.438250 秒前帧与 19.205125、19.505188 秒后帧通�
 
 ### 每日实训卡片
 
-三月七先把 OCR 分栏合并，再按任务标题和进度判断待办。AutoHSR 在 4.6.0 简中布局中按同一列分别核对标题、进度、奖励点数与按钮状态，连续两张一致画面才在工具与任务流回执中报告该卡。32 种卡片标题及进度、点数来自同一固定版本的实训池、任务标题、完成条件及奖励数据。部分同标题副本任务有 100 与 200 两种奖励，以当前卡片实读为准。刷本和领奖继续使用原有独立入口，拍照待取证后接入。[三月七实训源码](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/daily/tasks.py) · [固定版本表](https://gitlab.com/Dimbreath/turnbasedgamedata/-/tree/74a7b96fba32f00cf495a5c00b0311bd02207aaf/ExcelOutput) · [回执字段](docs/task-workflows.md#核对所选页面)
+三月七先把 OCR 分栏合并，再按任务标题和进度判断待办。AutoHSR 在 4.6.0 简中布局中按同一列分别核对标题、进度、奖励点数与按钮状态，连续两张一致画面才在工具与任务流回执中报告该卡。32 种卡片标题及进度、点数来自同一固定版本的实训池、任务标题、完成条件及奖励数据。部分同标题副本任务有 100 与 200 两种奖励，以当前卡片实读为准。刷本和领奖继续使用原有独立入口。拍照的待办判断与取景导航已接入任务流，快门及完成反馈待取证。[三月七实训源码](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/daily/tasks.py) · [固定版本表](https://gitlab.com/Dimbreath/turnbasedgamedata/-/tree/74a7b96fba32f00cf495a5c00b0311bd02207aaf/ExcelOutput) · [回执字段](docs/task-workflows.md#核对所选页面)
 
 工具「核对所选页面 → 实训任务巡查」可明确要求查看右侧卡片。原「每日实训」核对只观察当前视区。巡查参考三月七的滚轮用法，核实卡片内部后每次只发送一格，并重新核对新的视区。结果列出已读卡片及停止原因。真实客户端滚动反馈待实机核对。[巡查入口和回执](docs/task-workflows.md#实训任务巡查) · [三月七滚动入口](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/daily/tasks.py#L50-L53)
 
@@ -248,6 +248,8 @@ P178 的 18.138125、18.438250 秒前帧与 19.205125、19.505188 秒后帧通�
 三月七的取景标记是圆形快门图，预览标记只含「编辑」。后续需要独立核对取景控件、同一普通相机预览的操作区，以及实训卡反馈。单独出现任一标记时，保持待核对。[上游取景标记](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/images/screen/camera.png) · [上游预览标记](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/images/screen/photo_preview.png)
 
 固定导航表从手机右侧图标进入取景，从预览按 Esc 回取景，再按 Esc 回大世界。上游拍照函数在预览标记出现前可能重复按 F，结束时未重读实训任务卡。AutoHSR 的采样应把快门、预览、两段返回和卡片状态分开记录，并在反馈不明时停在原阶段。[上游导航表](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/assets/config/screens.json#L562-L586) · [上游拍照函数](https://github.com/moesnow/March7thAssistant/blob/7cf6c6bed474539485d3b1504077ac352866829f/tasks/daily/photo.py#L9-L21)
+
+任务流新增普通相机导航和同游戏日 `photo_needed` 条件。手机相机图标在现有 4.6 脱敏画面原尺寸及缩放图中匹配到同一个位置。取景与返回仍用合成取景画面和模拟 Windows 窗口验证。[任务流用法](docs/task-workflows.md#普通相机导航) · [素材来源](assets/ATTRIBUTION.md#2026-11-08-普通相机)
 
 现场应先核实同一张「拍照1次」、0/1、+100 的待完成卡，再从普通手机相机保留入口、取景及快门提示。经本次授权只操作一次快门，保留预览和返回操作区。回同卡后留两张 1/1 或可领取画面。未核实回页时保留待核对。照片编辑、保存、分享、活动摄影和任务点数领取各属独立操作。
 

@@ -102,6 +102,7 @@ def training_condition_facts(receipt, client_version):
     facts = dict(training_activity=activity)
     if activity == 500:
         facts['synthesis_needed'] = False
+        facts['photo_needed'] = False
     elif client_version == TRAINING_CARD_VERSION and receipt.get('state') != 'unverified':
         cards = receipt.get('cards', receipt.get('visible_tasks', ()))
         card = next((item for item in cards if item['task'] == 'synthesis'), None)
@@ -112,4 +113,7 @@ def training_condition_facts(receipt, client_version):
                 facts['synthesis_needed'] = pending
         elif available:
             facts['synthesis_needed'] = True
+        photo = next((item for item in cards if item['task'] == 'photo'), None)
+        if photo is not None:
+            facts['photo_needed'] = photo['state'] == 'pending'
     return facts
