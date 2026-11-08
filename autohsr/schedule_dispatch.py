@@ -15,7 +15,7 @@ from pathlib import Path
 import re
 
 from .config import ROOT, Settings
-from .daily_observe import EVENT_CLAIM_OPERATION
+from .daily_observe import ACHIEVEMENT_CLAIM_OPERATION, EVENT_CLAIM_OPERATION
 from .schedule_plan import ScheduleError, ScheduleSourceUnverified, completion_options, revision, validate as validate_plan
 from .storage import hold_read_sources
 from .task_workflow import GAME_TASKS, MAX_BYTES, TRAINING_SYNTHESIS_TASK, compile_recipe, execution_tasks, loads, step_path, task_spec
@@ -169,6 +169,8 @@ class NativeScheduleExecutor:
                 raise ScheduleError('实训单件合成需要明确的手动运行。')
             if node['task'] == EVENT_CLAIM_OPERATION:
                 raise ScheduleError('巡星之礼单日提交需要手动关闭弹窗核验，请手动运行任务流。')
+            if node['task'] == ACHIEVEMENT_CLAIM_OPERATION:
+                raise ScheduleError('成就一键领取需要手动关闭物品提示，请手动运行任务流。')
             params = node.get('params', {})
             if params.get('background') is True:
                 raise ScheduleError('试验后台页面导航需手动运行任务流。')

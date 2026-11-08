@@ -15,14 +15,17 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
+import cv2
+
 from autohsr.__main__ import main
 from autohsr.achievement_bulk_claim import AchievementBulkClaim
 from autohsr.app import Context, Runner
 from autohsr.config import Settings
 from autohsr.models import FocusLost, Scene, Token
 from autohsr.tests.test_achievement_pages import gold_controls, label, overview, receipt_rows
-from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, _Window
-from autohsr.windows import Geometry, INPUT
+from autohsr.tests.test_daily_reward_observe import ACCOUNT, OTHER, _Window, phone
+from autohsr.vision import Vision
+from autohsr.windows import GameWindow, Geometry, INPUT
 
 
 OPERATION = 'achievement_bulk_claim'
@@ -83,7 +86,7 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
 
     def run_cli(self, *, after_claim=None, short_at=None, lose_foreground=False, stop_confirm=False,
                 wallet=False, marked=False, change_receipt=False, publish=None, wait_for_foreground=False,
-                keep_overlay=False, stop_at_final_guard=False):
+                keep_overlay=False, stop_at_final_guard=False, workflow=False, navigate=False):
         self.events = []
         self.actions = []
         clicks = 0
@@ -94,12 +97,17 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
         overlay = overlay_scene(returned)
 
         def frames():
+            if navigate:
+                source = phone()
+                menu = Scene(source.tokens, cv2.resize(source.image, (1280, 720)))
+                while clicks == 0:
+                    yield menu
             if wallet:
                 yield wallet_scene(4508)
                 yield wallet_scene(4508)
-            while clicks == 0:
+            while clicks == int(navigate):
                 yield ready
-            while clicks == 1:
+            while clicks == int(navigate) + 1:
                 yield receipt
             yield overlay
             yield overlay
@@ -113,6 +121,7 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
         self.window = window = _Window(frames())
         window.geometry = Geometry(0, 0, 1280, 720)
         window.guard.return_value = window.geometry
+        window.require_foreground = GameWindow.require_foreground.__get__(window)
         executable = self.root / 'StarRail.exe'
         executable.touch()
         executable.with_name('config.ini').write_text('[General]\ngame_version=4.6.0\n', encoding='utf8')
@@ -138,6 +147,7 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
             return length
 
         user32 = SimpleNamespace(GetAsyncKeyState=Mock(side_effect=lambda key: int(emergency and key == 0x79)),
+                                 GetForegroundWindow=Mock(return_value=window.hwnd),
                                  GetSystemMetrics=Mock(side_effect={76: 0, 77: 0, 78: 1280, 79: 720}.__getitem__),
                                  SendInput=Mock(side_effect=submit))
         kernel32 = SimpleNamespace(CreateMutexW=Mock(return_value=1), OpenMutexW=Mock(return_value=None),
@@ -154,6 +164,12 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
                 source = next(run.glob('*_achievement_receipt.png'))
                 source.write_bytes(b'replaced')
             return original_input(context, scene, action)
+
+        def vision(confidence):
+            engine = window.vision(confidence)
+            if navigate:
+                engine.template = Vision.__new__(Vision).template
+            return engine
 
         def guard_claim(claim, *, installation=False):
             if installation or self.actions != ['claim'] or emergency:
@@ -193,12 +209,14 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
                     ('autohsr.app.C.get_last_error', dict(return_value=0)),
                     ('autohsr.app.threading.Thread', {}),
                     ('autohsr.app.is_elevated', dict(return_value=False)),
-                    ('autohsr.app.Vision', dict(side_effect=window.vision)),
-                    ('autohsr.notify_runtime.hooks', dict(side_effect=AssertionError('no notifications'))),
+                    ('autohsr.app.Vision', dict(side_effect=vision)),
                     ('autohsr.overlay.OverlayService', dict(side_effect=AssertionError('no overlay'))),
                     ('autohsr.app.Runner._arm_hotkeys', {}),
                     ('autohsr.app.Runner._prepare_daily_game', dict(side_effect=AssertionError('no startup')))):
                 stack.enter_context(patch(target, **kwargs))
+            hooks = (dict(side_effect=lambda settings, emit: (emit, lambda runner: runner))
+                     if workflow else dict(side_effect=AssertionError('no notifications')))
+            stack.enter_context(patch('autohsr.notify_runtime.hooks', **hooks))
             self.find_game = stack.enter_context(patch('autohsr.app.find_game', return_value=window))
             stack.enter_context(patch.object(Context, 'sleep', lambda ctx, _seconds: ctx.checkpoint()))
             stack.enter_context(patch.object(Context, 'achievement_bulk_input', achievement_input))
@@ -220,12 +238,24 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
                 report = run.run()
                 print(json.dumps(report.to_dict()))
                 exit_code = 0 if report.status == 'success' else 1
+            elif workflow:
+                source = self.root / 'workflow.json'
+                steps = []
+                if navigate:
+                    steps.append(dict(id='overview', type='task', task='workflow_open_page',
+                                      params=dict(target='achievement_overview')))
+                steps.append(dict(id='claim', type='task', task=OPERATION))
+                source.write_text(json.dumps(dict(version=1, name='claim', steps=steps)), 'utf8')
+                stack.enter_context(patch('autohsr.task_workflow_run.ROOT', self.root))
+                stack.enter_context(patch('autohsr.workflow_identity.time', clock))
+                stack.enter_context(patch('autohsr.workflow_navigation.time', clock))
+                exit_code = main(['--task-workflow', str(source), '--config', str(self.config)])
             else:
                 exit_code = main(['--achievement-bulk-claim', '--config', str(self.config)])
 
         self.assertTrue(output.getvalue(), logs.getvalue())
         report = json.loads(output.getvalue())
-        self.assertEqual(report['operation'], OPERATION)
+        self.assertEqual(report['operation'], 'task_workflow' if workflow else OPERATION)
         self.assertEqual((report['stamina_spent'], report['stamina_pending'], report['battle_completed']), (0, 0, 0))
         self.assertEqual(json.loads((Path(report['run_dir']) / 'report.json').read_text('utf8')), report)
         self.assertEqual(self.config.read_bytes(), self.original_config)
@@ -233,6 +263,32 @@ class AchievementBulkClaimCliTests(unittest.TestCase):
         for name in ('focus', 'move', 'key', 'scroll', 'drag'):
             getattr(window, name).assert_not_called()
         return exit_code, report
+
+    def test_workflow_uses_native_claim_and_projects_the_same_account_return(self):
+        code, report = self.run_cli(workflow=True, navigate=True, marked=True)
+        self.assertEqual((code, report['status']), (0, 'success'), report['error'])
+        self.assertEqual(self.actions, ['claim', 'confirm'])
+        self.assertEqual(len(self.events), 3)
+        overview, step = report['workflow']['steps']
+        self.assertIs(overview['facts']['page_verified'], True)
+        self.assertIs(step['account_verified'], True)
+        self.assertEqual(step[OPERATION], dict(receipt_total=20, overlay_quantity=20,
+                                              overview_return_verified=True, overview_controls_cleared=True))
+        original = json.loads(Path(step['source']['path']).read_bytes())
+        self.assertEqual(original['operation'], OPERATION)
+        self.assertIsNone(original[OPERATION]['jade_attributed'])
+
+    def test_workflow_preserves_native_pending_if_the_player_leaves_the_overlay_open(self):
+        code, report = self.run_cli(workflow=True, keep_overlay=True)
+        self.assertEqual((code, report['status']), (1, 'partial'))
+        step, = report['workflow']['steps']
+        self.assertNotIn(OPERATION, step)
+        self.assertEqual(self.actions, ['claim', 'confirm'])
+        marker = self.root / 'runs' / 'achievement-bulk-pending.json'
+        original = marker.read_bytes()
+        code, repeated = self.run_cli(workflow=True)
+        self.assertEqual((code, repeated['status'], self.events), (1, 'partial', []))
+        self.assertEqual(marker.read_bytes(), original)
 
     def test_claim_confirms_once_and_returns_with_unknown_jade_attribution(self):
         exit_code, report = self.run_cli()

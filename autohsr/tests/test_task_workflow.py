@@ -185,6 +185,19 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(WorkflowError, '最多提交一个'):
             compile_recipe(recipe(signup, task('another', EVENT_CLAIM_OPERATION, day=5)))
 
+    def test_achievement_reserves_one_manual_claim_per_path(self):
+        claim = task('claim', 'achievement_bulk_claim')
+        overview = task('overview', 'workflow_open_page', target='achievement_overview')
+        compiled = compile_recipe(recipe(overview, claim))
+        self.assertEqual(compiled.profile['achievement_claim_calls'], 1)
+        self.assertNotIn('achievement_claim_calls', compile_recipe(recipe(overview)).profile)
+        for repeated in ((claim, task('another', 'achievement_bulk_claim')),
+                         (dict(id='repeat', type='for', count=2, steps=[claim]),)):
+            with self.subTest(steps=repeated), self.assertRaisesRegex(WorkflowError, '最多执行一次'):
+                compile_recipe(recipe(*repeated))
+        with self.assertRaises(WorkflowError):
+            compile_recipe(recipe(task('claim', 'achievement_bulk_claim', navigate=True)))
+
     def setUp(self):
         self.lease_name = 'Local\\AutoHSR.TaskWorkflowQA.' + uuid4().hex
         self.enterContext(patch('autohsr.workflow_lease.NAME', self.lease_name))

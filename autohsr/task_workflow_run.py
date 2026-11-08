@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 import uuid
 
 from .config import ROOT
-from .daily_observe import EVENT_CLAIM_OPERATION
+from .daily_observe import ACHIEVEMENT_CLAIM_OPERATION, EVENT_CLAIM_OPERATION
 from .du_points_followup import FollowupWeek, followup_week_scope
 from .models import AutomationError, RunReport, Stopped, TaskResult
 from .storage import replace_file
@@ -268,7 +268,8 @@ class TaskWorkflowRunner:
         options = deepcopy(options)
         if self._initial_foreground_pending and not options.get('workflow_page_background'):
             self._initial_foreground_pending = False
-            if task in WORKFLOW_FOREGROUND_TASKS or task in (EVENT_CLAIM_OPERATION, TRAINING_SYNTHESIS_TASK):
+            if task in WORKFLOW_FOREGROUND_TASKS or task in (
+                    ACHIEVEMENT_CLAIM_OPERATION, EVENT_CLAIM_OPERATION, TRAINING_SYNTHESIS_TASK):
                 options['observation_wait_for_foreground'] = True
         if task == 'plan':
             from .plan_runner import PlanRunner
@@ -566,6 +567,13 @@ class TaskWorkflowRunner:
                     raise WorkflowError('巡星之礼缺少同账号指定日卡的已保存领取回执。')
                 if claim is not None:
                     entry['daily_event_claim'] = claim
+            if node['task'] == ACHIEVEMENT_CLAIM_OPERATION and result['status'] == 'success':
+                from .achievement_bulk_claim import claim_receipt
+
+                claim = claim_receipt(result.get('achievement_bulk_claim'))
+                if claim is None or not self._identity.has_step_proof(identity_mark, run_dir=result.get('run_dir') or ''):
+                    raise WorkflowError('成就领奖缺少同账号的已保存展示及回页回执。')
+                entry['achievement_bulk_claim'] = claim
             if node['task'] == PAGE_TASK and result['status'] == 'success' and options['workflow_page'] == 'daily_training':
                 from .daily_training_observe import training_observation_receipt
 

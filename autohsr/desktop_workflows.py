@@ -11,7 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import theme as t
 from .models import Stopped
-from .daily_observe import EVENT_CLAIM_OPERATION
+from .daily_observe import ACHIEVEMENT_CLAIM_OPERATION, EVENT_CLAIM_OPERATION
 from .schedule_dispatch import validate_target
 from .schedule_plan import (CHINA, ScheduleError, loads as load_schedule_json, preview as schedule_preview,
                             validate as validate_schedule)
@@ -36,6 +36,7 @@ _TASK_NAMES = {"daily": "每日任务", "plan": "日常与到期周常", "differ
                TRAINING_SYNTHESIS_TASK: "实训合成一次奇巧零食",
                ASSIGNMENT_REWARDS_TASK: "仅领取持续委托",
                FREE_ATTACHMENT_TASK: "独立免费领奖",
+               ACHIEVEMENT_CLAIM_OPERATION: "本次成就一键领取",
                EVENT_CLAIM_OPERATION: "巡星之礼单日提交",
                "du_rewards": "差分红点领奖", "warp_analysis": "跃迁记录分析", "warp_export": "跃迁记录导出",
                "currency_wars_loop": "货币战争循环", "currency_wars_points": "货币战争积分",
@@ -829,6 +830,8 @@ class _WorkflowPanel(_Panel):
                            if 'free_attachment_calls' in fields else "")
                         + (f"\n实训单件合成最多 {fields['synthesis_calls']} 次"
                            if 'synthesis_calls' in fields else "")
+                        + (f"\n成就一键领取最多 {fields['achievement_claim_calls']} 次"
+                           if 'achievement_claim_calls' in fields else "")
                         + (f"\n主动通知最多 {fields['notification_calls']} 个步骤" if 'notification_calls' in fields else ""))
 
     def _error(self, label, error):

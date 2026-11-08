@@ -281,11 +281,12 @@ class ScheduleDispatchTests(unittest.TestCase):
             self.executor.create(dict(type='workflow', path='another.json'), frozen, lambda event: None)
         self.factory.assert_not_called()
 
-    def test_manual_odyssey_handoff_cannot_be_scheduled(self):
-        self.write_workflow(steps=[dict(id='signup', type='task', task='daily_event_claim', params={'day': 4})])
-        for check in (self.executor.freeze, self.executor.preview_budget):
-            with self.subTest(check=check.__name__), self.assertRaisesRegex(ScheduleError, '手动关闭'):
-                check(self.plan())
+    def test_manual_reward_handoffs_cannot_be_scheduled(self):
+        for task, params in (('daily_event_claim', {'day': 4}), ('achievement_bulk_claim', {})):
+            self.write_workflow(steps=[dict(id='claim', type='task', task=task, params=params)])
+            for check in (self.executor.freeze, self.executor.preview_budget):
+                with self.subTest(task=task, check=check.__name__), self.assertRaisesRegex(ScheduleError, '手动关闭'):
+                    check(self.plan())
         self.factory.assert_not_called()
 
     def test_game_repeat_and_automatic_resume_cannot_add_or_reuse_budget(self):

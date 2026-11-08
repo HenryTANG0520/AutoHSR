@@ -30,6 +30,7 @@ from .workflows import DailyWorkflow
 
 
 SAFE_NEXT = '请查看成就领奖回执和当前画面，未决动作保留原记录，不重放。'
+_VERSION = '4.6.0'
 _PENDING = 'achievement-bulk-pending.json'
 _TERMINAL = 'achievement-bulk-terminal.json'
 _MAX_CAPTURES = 12
@@ -41,6 +42,21 @@ _RUN_NAME = re.compile(r'[0-9]{8}_[0-9]{6}_[0-9]{6}(?P<suffix>_[a-z0-9_]{8})?')
 
 def initial_record():
     return dict(schema=1, client_version=None, account_verified=False, samples={}, **asdict(BulkClaimResult()))
+
+
+def claim_receipt(record):
+    """Project verified display and return facts from the saved native report."""
+    if (not isinstance(record, dict) or type(record.get('schema')) is not int or record['schema'] != 1
+            or record.get('client_version') != _VERSION or record.get('account_verified') is not True
+            or record.get('bulk_input') != 'sent' or record.get('confirm_input') != 'sent'
+            or record.get('overview_return_verified') is not True
+            or type(record.get('overview_controls_cleared')) is not bool or record.get('stopped') is not False):
+        return None
+    total, displayed = record.get('receipt_total'), record.get('overlay_quantity')
+    if type(total) is not int or type(displayed) is not int or total <= 0 or displayed != total:
+        return None
+    return dict(receipt_total=total, overlay_quantity=displayed, overview_return_verified=True,
+                overview_controls_cleared=record['overview_controls_cleared'])
 
 
 def _json(value):
@@ -443,7 +459,7 @@ class AchievementBulkClaim:
         self.reader.guard()
         version = self._installation.version
         self.record['client_version'] = version
-        if version != '4.6.0':
+        if version != _VERSION:
             raise AutomationError('当前客户端版本未校准成就领奖。')
         ready, initial = self._collect(2, lambda f: self._claim_view(f) or self._wallet(f))
         if not ready:

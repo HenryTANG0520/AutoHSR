@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 
 from .config import ROOT, Settings
-from .daily_observe import EVENT_CLAIM_OPERATION
+from .daily_observe import ACHIEVEMENT_CLAIM_OPERATION, EVENT_CLAIM_OPERATION
 
 MAX_BYTES = 1024 * 1024
 MAX_NODES = 256
@@ -50,7 +50,8 @@ SCREEN_CHECK_EXTRA_PAGES = (VISA_COLLECTION_PAGE, VISA_CHARACTERS_PAGE, ACHIEVEM
                             *BATTLEPASS_WORKFLOW_PAGES, REDEMPTION_FORM_PAGE, WORLD_WORKFLOW_PAGE, TRAINING_SCAN_PAGE)
 SCREEN_CHECK_PAGES = (*WORKFLOW_PAGES, *SCREEN_CHECK_EXTRA_PAGES)
 WORKFLOW_FOREGROUND_TASKS = WORKFLOW_SCREEN_TASKS | {PAGE_TASK}
-GAME_TASKS = {'daily', TRAINING_REWARDS_TASK, TRAINING_SYNTHESIS_TASK, ASSIGNMENT_REWARDS_TASK, FREE_ATTACHMENT_TASK, EVENT_CLAIM_OPERATION,
+GAME_TASKS = {'daily', TRAINING_REWARDS_TASK, TRAINING_SYNTHESIS_TASK, ASSIGNMENT_REWARDS_TASK, FREE_ATTACHMENT_TASK,
+              EVENT_CLAIM_OPERATION, ACHIEVEMENT_CLAIM_OPERATION,
               'plan', 'differential_universe', 'currency_wars_loop',
               'currency_wars_points', 'currency_wars_rewards', 'du_rewards'} | WORKFLOW_FOREGROUND_TASKS
 VISION_TASKS = {'workflow_image', 'workflow_text'} | GAME_VISION_TASKS
@@ -215,6 +216,7 @@ def _params(task, params):
         ASSIGNMENT_REWARDS_TASK: set(),
         TRAINING_SYNTHESIS_TASK: set(),
         FREE_ATTACHMENT_TASK: {'target'},
+        ACHIEVEMENT_CLAIM_OPERATION: set(),
         EVENT_CLAIM_OPERATION: {'day', 'navigate'},
         'differential_universe': {'runs', 'mode', 'team', 'save', 'rewards', 'resume_active', 'periodic_rank',
                                   'until_points'},
@@ -367,7 +369,7 @@ def _profile(nodes):
     """Worst-case reservations: mutually exclusive branches use max, loops multiply."""
     total = dict(daily_calls=0, du_calls=0, currency_calls=0, du_runs=0, currency_games=0,
                  du_rewards_calls=0, notification_calls=0, free_attachment_calls=0, assignment_reward_calls=0,
-                 odyssey_claim_calls=0, synthesis_calls=0, synthesis_owners=0,
+                 odyssey_claim_calls=0, achievement_claim_calls=0, synthesis_calls=0, synthesis_owners=0,
                  assignments_owners=0, mail_owners=0, battlepass_owners=0, executions=0)
     for node in nodes:
         kind = node['type']
@@ -395,6 +397,8 @@ def _profile(nodes):
                 current[f"{params['target']}_owners"] = 1
             if task == EVENT_CLAIM_OPERATION:
                 current['odyssey_claim_calls'] = 1
+            if task == ACHIEVEMENT_CLAIM_OPERATION:
+                current['achievement_claim_calls'] = 1
             if task in ('differential_universe', 'plan'):
                 current.update(du_calls=1, du_runs=params.get('runs', 1) if task != 'plan' else 10)
             if task in ('currency_wars_loop', 'plan'):
@@ -555,6 +559,8 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
         raise WorkflowError('同一路径的持续委托、邮件附件或无名勋礼各只能由一个步骤处理。')
     if profile['odyssey_claim_calls'] > 1:
         raise WorkflowError('同一路径的巡星之礼最多提交一个明确日卡。')
+    if profile['achievement_claim_calls'] > 1:
+        raise WorkflowError('同一路径最多执行一次成就一键领取。')
     synthesis_owners = profile.pop('synthesis_owners')
     if profile['synthesis_calls'] and synthesis_owners > 1:
         raise WorkflowError('同一路径最多一次单件合成，不能与可能合成的普通日常重复安排。')
@@ -565,7 +571,7 @@ def compile_recipe(value, *, selected_path=None, base_dir=None):
     # Existing frozen scheduler manifests compare this exact public mapping.
     # Keep the old key set when the selected scope has no new reward owner.
     for key in ('du_rewards_calls', 'notification_calls', 'free_attachment_calls', 'assignment_reward_calls',
-                'odyssey_claim_calls', 'synthesis_calls'):
+                'odyssey_claim_calls', 'achievement_claim_calls', 'synthesis_calls'):
         if profile[key] == 0:
             profile.pop(key)
     return Recipe(document, selected, path, profile, Path(base_dir or ROOT).resolve())
@@ -627,6 +633,9 @@ def task_spec(settings: Settings, node, base_dir):
         current = attachment_settings(current, target)
         current.validate('daily')
         options = dict(operation='daily', daily_attachment_only=target)
+    elif task == ACHIEVEMENT_CLAIM_OPERATION:
+        current.validate('check')
+        options = dict(operation=task)
     elif task == EVENT_CLAIM_OPERATION:
         current.validate('check')
         options = dict(operation=task, daily_event_claim_day=params['day'], daily_event_workflow=True,
