@@ -11,7 +11,7 @@ from . import theme
 from .config import ROOT
 from .notify_profiles import MAX_BYTES as PROFILE_MAX_BYTES
 from .notify_profiles import PROVIDERS, NotifyCancelled, NotifyError, ProfileStore, alias, loads
-from .notify_runtime import STATUSES, STATUS_LABELS, NotificationService
+from .notify_runtime import NOTIFICATION_LEVELS, STATUSES, STATUS_LABELS, NotificationService
 from .redemption_codes import MAX_ROWS, CatalogCancelled, fetch_catalog, from_file, from_values
 from .redemption_report import report_summary
 from .redemption_settings import validate_settings as validate_redemption
@@ -35,6 +35,7 @@ _TEST_STATUS = {
 }
 _TEST_ACTION = '发送测试通知'
 _IMAGE_ACTION = '发送奖励指南图片'
+_LEVEL_LABELS = {'all': '所有结果', 'error': '失败或待核对'}
 _IMAGE_STATUS = {
     'accepted': 'SMTP 已受理，送达待核对。',
     'partial': 'SMTP 部分受理，请核对接收状态。',
@@ -526,15 +527,23 @@ class _NotificationsPanel(_PaperPanel):
             side='left', padx=(self.pad, 0))
         row = self._row(6, '运行结束通知')
         self._control(ttk.Checkbutton(row, text='启用', variable=fields['enabled'])).pack(side='left')
+        self.level = tk.StringVar(master=ui.root)
+        self.level_picker = self._control(ttk.Combobox(row, textvariable=self.level,
+                                                       values=tuple(_LEVEL_LABELS.values()), width=13,
+                                                       state='readonly'), state='readonly')
+        self.level_picker.pack(side='left', padx=(self.pad, 0))
+        self.level_picker.bind('<<ComboboxSelected>>', self._apply_level)
+        row = self._row(7, '结果范围')
         for status in STATUSES:
-            self._control(ttk.Checkbutton(row, text=STATUS_LABELS[status], variable=fields[status])).pack(
+            self._control(ttk.Checkbutton(row, text=STATUS_LABELS[status], variable=fields[status],
+                                          command=self._sync_level)).pack(
                 side='left', padx=(self.pad, 0))
-        for index, label, field in ((7, '通知名单', 'profiles'), (8, '标题模板', 'title'), (9, '正文模板', 'body')):
+        for index, label, field in ((8, '通知名单', 'profiles'), (9, '标题模板', 'title'), (10, '正文模板', 'body')):
             row = self._row(index, label)
             self._control(ttk.Entry(row, textvariable=fields[field], width=18)).pack(fill='x', expand=True)
-        self._note(10, text='通知名单用逗号分隔。模板可用 {operation}、{status}、{summary}。')
-        self._note(11, variable=fields['result'])
-        self._note(12, variable=fields['run_result'])
+        self._note(11, text='通知名单用逗号分隔。模板可用 {operation}、{status}、{summary}。')
+        self._note(12, variable=fields['result'])
+        self._note(13, variable=fields['run_result'])
         for key in ('selected', 'action', 'image_path'):
             self._watch(fields[key])
         self.refresh_controls()
@@ -564,6 +573,7 @@ class _NotificationsPanel(_PaperPanel):
 
     def refresh_controls(self):
         super().refresh_controls()
+        self._sync_level()
         identity, provider = self._selected()
         catalog = self.ui._desktop_notify_catalog
         self.profiles.configure(values=tuple(catalog))
@@ -581,6 +591,20 @@ class _NotificationsPanel(_PaperPanel):
             '所选配置无法由当前 Windows 用户读取。' if identity in catalog else
             '请选择已保存的配置。测试发送到所选渠道。'
         )
+
+    def _sync_level(self):
+        statuses = tuple(status for status in STATUSES if self.draft[status].get())
+        label = next((_LEVEL_LABELS[level] for level, selected in NOTIFICATION_LEVELS.items()
+                      if selected == statuses), '自定义')
+        self.level.set(label)
+
+    def _apply_level(self, _event=None):
+        if self.ui.busy:
+            return
+        level = next((level for level, label in _LEVEL_LABELS.items() if self.level.get() == label), None)
+        if level is not None:
+            for status in STATUSES:
+                self.draft[status].set(status in NOTIFICATION_LEVELS[level])
 
     def settings_values(self):
         fields = self.draft

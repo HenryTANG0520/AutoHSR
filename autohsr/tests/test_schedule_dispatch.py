@@ -671,6 +671,27 @@ class ScheduleDispatchTests(unittest.TestCase):
             finally:
                 release.set();controller.stop(wait=True,timeout=4)
 
+    def test_frozen_schedule_uses_original_notification_result_range(self):
+        from autohsr.notify_http import Reply
+        from autohsr.notify_runtime import NOTIFICATION_LEVELS, NotificationService
+
+        request = Mock(return_value=Reply(200, b'{}'))
+        service = NotificationService(root=self.root / 'notify-filter', request=request)
+        service.store.save(dict(id='offline-hook', provider='webhook', params=dict(url='https://example.test/notify')))
+        self.executor.notification_service = service
+        self.executor.settings.notification_enabled = True
+        self.executor.settings.notification_profiles = ['offline-hook']
+        self.executor.settings.notification_statuses = list(NOTIFICATION_LEVELS['error'])
+        plan = self.plan()
+        manifest = self.executor.freeze(plan)
+        self.executor.settings.notification_statuses = list(NOTIFICATION_LEVELS['all'])
+        events = []
+        runner = self.executor.create(plan['target'], manifest, events.append)
+        with patch('autohsr.notify_runtime._notification_key_state', return_value=(False, False, False)):
+            self.assertEqual(runner.run()['status'], 'success')
+        self.assertTrue(any(event['type'] == 'notification_summary' and event['status'] == 'filtered' for event in events))
+        request.assert_not_called()
+
     def test_cli_rejects_notification_version_swapped_between_checks(self):
         from autohsr.__main__ import main
         from autohsr.notify_http import Reply

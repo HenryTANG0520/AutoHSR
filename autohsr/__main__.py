@@ -332,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     from .task_workflow_cli import dispatch as dispatch_workflow
     workflow_result = dispatch_workflow(args, parser, raw_args)
     if workflow_result is not None:return workflow_result
-    if (args.notify is not None or args.notify_profile is not None) and not any((args.run, args.plan,
+    if (args.notify is not None or args.notify_profile is not None or args.notify_level is not None) and not any((args.run, args.plan,
             args.differential_universe, args.du_rewards_only, args.redeem_codes, args.challenge_prepare, args.currency_wars_check, args.currency_wars_prepare,
             args.currency_wars_locate, args.currency_wars_configure, args.currency_wars_standard,
             args.currency_wars_loop, args.currency_wars_points, args.currency_wars_rewards, args.scan_dungeons)):

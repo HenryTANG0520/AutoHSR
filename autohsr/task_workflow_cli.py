@@ -187,7 +187,7 @@ def dispatch(args, parser, raw_args):
         return None
     allowed = {'--task-workflow', '--task-workflow-check', '--workflow-step-path'}
     if args.task_workflow is not None:
-        allowed.update(('--config', '--notify', '--no-notify', '--notify-profile', '--workflow-allow-notify',
+        allowed.update(('--config', '--notify', '--no-notify', '--notify-profile', '--notify-level', '--workflow-allow-notify',
                         '--workflow-notify-png', '--workflow-allow-capture-notify'))
     provided = [arg.partition('=')[0] for arg in raw_args if arg.startswith('--')]
     if set(provided) - allowed:

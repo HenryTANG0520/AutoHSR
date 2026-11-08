@@ -273,6 +273,21 @@ class NotificationTests(unittest.TestCase):
         with self.assertRaises(NotifyError):
             report_message(replace(settings, notification_body='{error}'), report)
 
+    def test_workflow_summary_counts_task_results_without_exposing_step_labels(self):
+        report = dict(operation='task_workflow', status='partial', report_saved=True,
+                      workflow=dict(steps=[
+                          dict(type='task', status='success', name=SECRET),
+                          dict(type='task', status='partial', source=SECRET),
+                          dict(type='task', status='failed', error=SECRET),
+                          dict(type='task', status='skipped'),
+                          dict(type='if', status='success'),
+                          dict(type='condition', status='success'),
+                          dict(type='task', status=['malformed']),
+                      ]))
+        _, body = report_message(Settings(), report)
+        self.assertIn('任务步骤：完成 1，部分完成 1，失败 1，跳过 1', body)
+        self.assertNotIn(SECRET, body)
+
     def test_redemption_cli_notifies_counts_without_mislabeling_rejections_or_leaking_private_data(self):
         from autohsr.__main__ import main
 
@@ -477,6 +492,27 @@ class NotificationTests(unittest.TestCase):
         with self.assertRaises(SettingsError):
             Settings(notification_enabled=True).validate('save')
 
+    def test_error_level_sends_unverified_or_failed_results_but_skips_success_and_stop(self):
+        from autohsr.notify_runtime import NOTIFICATION_LEVELS
+
+        requester = Mock(return_value=Reply(200, b'{}'))
+        service, frozen = self.service(requester=requester)
+        settings = Settings(notification_enabled=True, notification_profiles=[frozen[0]['id']],
+                            notification_statuses=list(NOTIFICATION_LEVELS['error']))
+        for status, saved, expected in (
+                ('success', True, 'filtered'), ('stopped', True, 'filtered'),
+                ('partial', True, 'accepted'), ('failed', True, 'accepted'), ('success', False, 'accepted')):
+            with self.subTest(status=status, saved=saved):
+                events = []
+                _, wrap = hooks(settings, events.append, service=service)
+                child = Mock()
+                child.run.return_value = RunReport(status=status, report_saved=saved)
+                with patch('autohsr.notify_runtime._notification_key_state', return_value=(False, False, False)):
+                    self.assertIs(wrap(child).run(), child.run.return_value)
+                self.assertEqual(next(e['status'] for e in events if e['type'] == 'notification_summary'), expected)
+        self.assertEqual(requester.call_count, 3)
+        self.assertIn('报告未保存', requester.call_args.args[0].data.decode('utf8'))
+
     def test_http_redirect_timeout_and_oversized_response_never_leak_credentials(self):
         self.assertIsNone(_NoRedirect().redirect_request(None, None, 302, '', {}, 'https://other.example.test'))
         with patch('autohsr.notify_http.build_opener') as opener:
@@ -569,6 +605,26 @@ class NotificationTests(unittest.TestCase):
                                    '--notify-profile', frozen[0]['id']]), 0)
         self.assertEqual(json.loads(output.getvalue())['status'], 'success')
         self.assertEqual(len(list((self.root / 'attempts').glob('*.json'))), 1)
+
+    def test_workflow_cli_notification_level_is_a_one_run_override(self):
+        from autohsr.__main__ import main
+
+        requester = Mock(return_value=Reply(200, b'{}'))
+        service, frozen = self.service(requester=requester)
+        config = self.root / 'notify-config.json'
+        Settings(notification_enabled=True, notification_profiles=[frozen[0]['id']],
+                 notification_statuses=['failed']).save(config)
+        original = config.read_bytes()
+        definition = self.root / 'offline-flow.json'
+        definition.write_text(json.dumps(dict(version=1, name='offline',
+                                             steps=[dict(id='wait', type='wait', seconds=0)])), 'utf8')
+        for level, count in (('error', 0), ('all', 1)):
+            with self.subTest(level=level), patch('autohsr.notify_runtime.NotificationService', return_value=service), \
+                    redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(main(['--task-workflow', str(definition), '--config', str(config),
+                                       '--notify-level', level]), 0)
+                self.assertEqual(requester.call_count, count)
+        self.assertEqual(config.read_bytes(), original)
 
     def test_smtp_uses_tls_and_keeps_recipient_rejection_separate(self):
         from autohsr.notify_local import send

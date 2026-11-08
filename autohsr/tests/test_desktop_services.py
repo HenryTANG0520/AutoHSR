@@ -429,6 +429,25 @@ class DesktopServiceTests(TestCase):
         self.ui._submit_tool_job.assert_not_called()
         self.save_settings.assert_not_called()
 
+    def test_notification_level_presets_preserve_custom_results_and_do_not_save(self):
+        panel = services.build_notifications_panel(None, self.ui)
+        self.assertEqual(panel.level.get(), '自定义')
+        panel.level.set('失败或待核对')
+        panel._apply_level()
+        self.assertEqual(panel.settings_values()['notification_statuses'], ['partial', 'failed'])
+        panel.draft['stopped'].set(True)
+        panel._sync_level()
+        self.assertEqual(panel.level.get(), '自定义')
+        rebuilt = services.build_notifications_panel(None, self.ui)
+        self.assertEqual(rebuilt.settings_values()['notification_statuses'], ['partial', 'failed', 'stopped'])
+        rebuilt.level.set('所有结果')
+        rebuilt._apply_level()
+        self.assertEqual(rebuilt.settings_values()['notification_statuses'], ['success', 'partial', 'failed', 'stopped'])
+        self.assertEqual(self.ui.settings.notification_statuses, ['success', 'partial', 'failed'])
+        self.assertFalse(rebuilt.settings_values()['notification_enabled'])
+        self.save_settings.assert_not_called()
+        self.notification_service.assert_not_called()
+
     def test_new_notification_profile_selects_saved_alias_without_enabling_or_sending(self):
         panel = services.build_notifications_panel(None, self.ui)
         signature = tuple(var.get() for var in self.ui.form_variables)

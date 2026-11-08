@@ -19,6 +19,7 @@ from .redemption_report import report_summary as redemption_summary
 from .storage import replace_file
 
 STATUSES = ('success', 'partial', 'failed', 'stopped')
+NOTIFICATION_LEVELS = {'all': STATUSES, 'error': ('partial', 'failed')}
 TEMPLATE_FIELDS = {'operation', 'status', 'summary'}
 OPERATIONS = {'daily': '日常', 'reward_only': '补领奖', 'plan': '日常与周常计划',
               'differential_universe': '差分宇宙', 'currency_wars_loop': '货币战争循环',
@@ -105,6 +106,18 @@ def report_message(settings, report):
             lines.append('货币战争积分：已核实')
         if currency.get('rewards_verified') is True:
             lines.append('货币战争领奖：已核实')
+    workflow = report.get('workflow')
+    steps = workflow.get('steps') if isinstance(workflow, dict) else None
+    if report.get('operation') == 'task_workflow' and isinstance(steps, list):
+        counts = dict.fromkeys((*STATUSES, 'skipped'), 0)
+        for step in steps:
+            if isinstance(step, dict) and step.get('type') == 'task':
+                state = step.get('status')
+                if isinstance(state, str) and state in counts:
+                    counts[state] += 1
+        if any(counts.values()):
+            lines.append('任务步骤：' + '，'.join(f"{STATUS_LABELS.get(key, '跳过')} {count}"
+                                          for key, count in counts.items() if count))
     fields = dict(operation=operation, status=status, summary='\n'.join(lines))
     _template(settings.notification_title); _template(settings.notification_body)
     title, body = (settings.notification_title.format_map(fields), settings.notification_body.format_map(fields))
@@ -248,7 +261,9 @@ class NotificationControl:
     def finish(self, report):
         report = report.to_dict() if hasattr(report, 'to_dict') else deepcopy(report)
         status = report.get('status')
-        if status not in self.settings.notification_statuses:
+        statuses = self.settings.notification_statuses
+        report_unverified = status == 'success' and report.get('report_saved') is False
+        if status not in statuses and not (report_unverified and 'partial' in statuses):
             self.emit(dict(type='notification_summary', status='filtered', profiles=0))
             return
         title, body = report_message(self.settings, report)

@@ -14,7 +14,11 @@
 
 通知依据原报告的`success / partial / failed / stopped`过滤，默认不通知`stopped`。它不改变游戏报告、已验证的每日／胜利、游戏退出码或验收计数。通知失败、取消或未知单独报告。原Runner抛出普通异常时可尝试一条“失败／报告未保存”的摘要，随后继续抛出原异常；键盘中断保留中断语义。
 
+「运行结束通知」可一键选择「所有结果」或「失败或待核对」，也可在「结果范围」逐项勾选。后一个预设包含部分完成、失败及报告未保存的成功，不包含主动停止。报告未保存仍保留原运行状态。选项沿用现有配置字段，定时采用启用时冻结的范围。手动试送和任务流里的主动通知步骤各自按明确授权执行。[三月七通知级别](https://github.com/moesnow/March7thAssistant/blob/26bee153544db44a882313f361b5ddbcefb001fa/assets/config/config.example.yaml#L485-L486)
+
 当前是运行结束摘要，不推送逐条日志或每个战斗结果。摘要只从允许字段生成：任务类型、原结果、报告是否保存、每日核实、副本完成和已记账／待核对体力、差分请求／完成局数，以及已有的货币战争胜负／积分／领奖结论。缺失数字显示“未核实”，不补零。自动摘要不含UID、账号指纹、安装路径、原始异常、截图、OCR或原始日志；自定义模板和接收地址由用户自行明确配置。
+
+任务流摘要按执行回执汇总完成、部分完成、失败、停止和跳过的任务步骤。循环中的每次实际执行分别计数，条件、循环容器和等待步骤不参与计数。
 
 兑换码通知分别展示运行结果和逐码反馈。新成功、服务器返回的过期／已使用／无效和旧回执复用各自计数。待核对、空批和缺失反馈分开显示。接续计划沿用的日常结果标为历史，原码及账户材料留在原生报告。通知正文使用[匿名兑换摘要](redemption-codes.md#页面与界面接入接口)。
 
@@ -50,11 +54,13 @@
 # 仅切换本次总开关；--notify要求设置中已经有配置列表
 .\.venv\Scripts\python.exe -m autohsr --run --notify
 .\.venv\Scripts\python.exe -m autohsr --run --no-notify
+# 仅覆盖本次结束通知的结果范围
+.\.venv\Scripts\python.exe -m autohsr --plan --notify-profile example-hook --notify-level error
 # 任务树只包装整个父流程；只读--task-workflow-check不接受通知覆盖
 .\.venv\Scripts\python.exe -m autohsr --task-workflow .\example-workflow.json --notify-profile example-hook
 ```
 
-`--notify-profile`可重复，名称不得重复；不能同时与`--no-notify`使用。不带任务而只传这些运行覆盖参数会报错。导入不自动启用总开关，也不自动把该配置加入运行列表。
+`--notify-profile` 可重复，名称须各不相同，且不能同时使用 `--no-notify`。`--notify-level` 接受 `all` 和 `error`，只设置范围，启用通知仍由当前设置或其他本次参数决定。只传运行覆盖参数时须同时选择任务。导入后的配置须明确加入通知名单。
 
 ## 配置、凭据与模板
 
@@ -126,7 +132,7 @@
 
 数字型接收ID只在`userid / user_id / group_id / agentid / appid / qq / target_id`字段接受JSON整数并转成文字。其余连接参数为单行字符串；布尔字段不能用`"true"`替代。整数校验及最终请求以[当前适配源码](../autohsr/notify_providers.py)为准，SMTP端口额外限制1～65535。
 
-常规结束通知的截图、手动任务流中 SMTP 和 Telegram 以外的图片渠道、Bark 密文、Matrix E2EE 和设备会话、QQ 机器人事件／接收 ID 发现、上游 PAC 与代理高级项、上游通知等级／图片开关和自动合并机制仍待接入。部分文本可采用 Markdown 或 HTML 承载。
+常规结束通知的截图、手动任务流中 SMTP 和 Telegram 以外的图片渠道、Bark 密文、Matrix E2EE 和设备会话、QQ 机器人事件／接收 ID 发现、上游 PAC 与代理高级项、逐条通知级别、图片开关和自动合并机制仍待接入。部分文本可采用 Markdown 或 HTML 承载。
 
 ### 活动日历 SMTP 附件
 

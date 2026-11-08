@@ -6,6 +6,7 @@ import sys
 import uuid
 
 from .notify_profiles import MAX_BYTES, PROVIDERS, NotifyError, ProfileStore, loads
+from .notify_runtime import NOTIFICATION_LEVELS
 
 
 def add_arguments(mode, parser):
@@ -19,6 +20,8 @@ def add_arguments(mode, parser):
     parser.add_argument('--notify', action=argparse.BooleanOptionalAction, default=None,
                         help='本次启用或关闭运行结束通知，不保存设置')
     parser.add_argument('--notify-profile', action='append', help='本次明确选择通知配置，可重复指定；同时启用本次通知')
+    parser.add_argument('--notify-level', choices=NOTIFICATION_LEVELS,
+                        help='仅覆盖本次结束通知的结果范围。all 为所有结果，error 为失败或待核对')
 
 
 def override(args, settings):
@@ -29,6 +32,8 @@ def override(args, settings):
             raise NotifyError('选择通知配置不能同时关闭本次通知。')
         settings.notification_profiles = list(args.notify_profile)
         settings.notification_enabled = True
+    if args.notify_level is not None:
+        settings.notification_statuses = list(NOTIFICATION_LEVELS[args.notify_level])
 
 
 def dispatch(args, parser, raw_args):
