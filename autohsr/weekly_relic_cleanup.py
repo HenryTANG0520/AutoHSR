@@ -4,7 +4,8 @@ Behavior follows the public March7thAssistant weekly cleanup: on the chosen
 weekday after the 04:00 game refresh, salvage 4★ and below, optionally marking
 5★ with smart discard first. Screen rectangles below are search regions for
 already recognized text. Clicks go to that text, never to a bare coordinate.
-Live pages are not calibrated; the command refuses to open the game until they are.
+A due run may launch or focus the game; an unrecognized page stops before the
+salvage confirmation and does not record the weekly timestamp.
 """
 from __future__ import annotations
 
@@ -12,8 +13,9 @@ from datetime import datetime, timedelta
 import json
 from pathlib import Path
 import re
+import time
 
-from .models import AutomationError, Scene, Token, normalize
+from .models import AutomationError, EmptyCapture, Scene, Token, normalize
 from .storage import replace_file
 from .weekly_plan import CHINA
 
@@ -387,11 +389,111 @@ def guard_click(scene, target, intent, state):
         raise AutomationError('遗器清理目标、数量或页面不符，未发送点击。')
 
 
-def open_live_port(settings):
-    """Do not construct a window. Current-client crops and the protection glyph are absent."""
-    del settings
-    raise AutomationError(
-        '周遗器清理已到期，但背包遗器页、弃置保护开关和分解确认文案尚未用当前客户端校准，未启动游戏。')
+def _live_dependencies():
+    """Real window and OCR entry. Tests pass their own triple and never import Win32."""
+    from .vision import Vision
+    from .windows import find_game, launch
+    return find_game, launch, Vision
+
+
+class LiveRelicPort:
+    """Foreground capture and token clicks for one weekly relic cleanup."""
+
+    def __init__(self, window, vision, *, action_delay=1.0, sleeper=time.sleep):
+        self.window = window
+        self.vision = vision
+        self.action_delay = action_delay
+        self.sleeper = sleeper
+        self._scene = None
+
+    def scene(self):
+        blank = None
+        for _ in range(4):
+            try:
+                image, geometry = self.window.capture()
+            except EmptyCapture as error:
+                blank = error
+                self.sleeper(0.5)
+                continue
+            scene = self.vision.read(image, geometry)
+            scene.geometry = geometry
+            if not scene.captured_at:
+                scene.captured_at = time.monotonic()
+            self._scene = scene
+            return scene
+        raise AutomationError('游戏画面持续空白，未发送遗器清理输入。') from blank
+
+    def click(self, scene, token, intent):
+        del intent  # Cleanup.guard_click already bound this token to the intent.
+        if not isinstance(token, Token):
+            raise AutomationError('遗器清理只允许点击已识别的文字控件。')
+        if scene is not self._scene or time.monotonic() - scene.captured_at > 8:
+            raise AutomationError('识别画面已经过期，请重新识别后操作。')
+        if token not in scene.tokens or scene.geometry is None:
+            raise AutomationError('遗器清理点击目标不在当前画面。')
+        self.window.click(token.center[0], token.center[1], scene.geometry)
+        self._scene = None
+        self.sleeper(self.action_delay)
+
+    def press_key(self, name='esc'):
+        if name != 'esc':
+            raise AutomationError('周遗器清理返回只允许 Esc。')
+        expected = self._scene.geometry if self._scene is not None else None
+        self.window.key('esc', expected=expected)
+        self._scene = None
+        self.sleeper(self.action_delay)
+
+    def press_escape(self):
+        self.press_key('esc')
+
+    def _resting(self, scene):
+        if modal_kind(scene) or salvage_page(scene) or bag_page(scene) or relic_bag_page(scene):
+            return False
+        from .workflows import DailyWorkflow
+        return bag_target(scene) is not None or DailyWorkflow._phone(scene)
+
+    def go_home(self):
+        """Leave the relic pages. Stop once a phone menu is visible, or after five returns."""
+        for _ in range(5):
+            scene = self.scene()
+            if self._resting(scene):
+                return
+            if not (salvage_page(scene) or bag_page(scene) or relic_bag_page(scene) or modal_kind(scene)):
+                return
+            self.press_escape()
+
+    def return_home(self):
+        self.go_home()
+
+
+def open_live_port(settings, *, dependencies=None, sleeper=time.sleep, attempts=120):
+    """Focus a running game, or launch StarRail.exe and wait for its window.
+
+    Clicks stay on this port. The daily Context rejects the bag page, and this
+    command is not part of --run or --plan.
+    """
+    if type(attempts) is not int or isinstance(attempts, bool) or attempts < 1:
+        raise AutomationError('周遗器清理的启动等待无效。')
+    find_game, launch_game, vision_type = dependencies or _live_dependencies()
+    try:
+        window = find_game(settings.game_path)
+    except AutomationError:
+        launch_game(settings.game_path)
+        window = None
+        for _ in range(attempts):
+            sleeper(1)
+            try:
+                window = find_game(settings.game_path)
+                break
+            except AutomationError:
+                window = None
+        if window is None:
+            raise AutomationError(f'启动后{attempts}秒仍未找到游戏窗口，已停止。')
+    window.focus()
+    delay = settings.action_delay
+    if type(delay) not in (int, float):
+        delay = 1.0
+    return LiveRelicPort(window, vision_type(settings.ocr_confidence), action_delay=delay, sleeper=sleeper)
 
 
 class Cleanup:

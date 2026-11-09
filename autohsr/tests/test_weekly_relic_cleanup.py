@@ -5,12 +5,13 @@ import io
 import json
 from pathlib import Path
 import tempfile
+import time
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock
 
 from autohsr.config import Settings, SettingsError
-from autohsr.models import AutomationError, Scene, Token
+from autohsr.models import AutomationError, EmptyCapture, Scene, Token
 from autohsr.tests.test_core import token
 from autohsr.weekly_plan import CHINA
 from autohsr.weekly_relic_cleanup import (
@@ -20,7 +21,7 @@ from autohsr.weekly_relic_cleanup import (
     REWARD_BODY, REWARD_CLOSE, REWARD_TITLE, SALVAGE_BREAK, SALVAGE_COUNT,
     SMART_BUTTON, SMART_CONFIRM, SMART_COUNT, SMART_TITLE, TAB_ROW, TITLE,
     UNMATCHED_RULE, ZERO_RULE, Cleanup, TimestampStore, bag_target, decision,
-    guard_click, is_due, open_live_port, perform, unique_text,
+    LiveRelicPort, guard_click, is_due, open_live_port, perform, unique_text,
 )
 from autohsr.weekly_relic_cleanup_cli import run as run_cli
 
@@ -103,6 +104,29 @@ def material_bag():
     return Scene([
         at('背包', TITLE), at('遗器', TAB_ROW, dx=-0.10), at('光锥', TAB_ROW, dx=0.10),
     ])
+
+
+class FakeWindow:
+    def __init__(self, blanks=0):
+        self.blanks = blanks
+        self.focused = 0
+        self.clicks = []
+        self.keys = []
+
+    def focus(self):
+        self.focused += 1
+
+    def capture(self):
+        if self.blanks:
+            self.blanks -= 1
+            raise EmptyCapture('截图为空或黑屏')
+        return object(), SimpleNamespace(width=1920, height=1080)
+
+    def click(self, x, y, geometry, **kwargs):
+        self.clicks.append((x, y, geometry))
+
+    def key(self, name, **kwargs):
+        self.keys.append(name)
 
 
 class ScriptedPort:
@@ -433,6 +457,95 @@ class TimestampTests(TestCase):
         self.assertEqual(self.store.write_count, 0)
 
 
+class LivePortTests(TestCase):
+    def _vision(self, scenes):
+        queue = list(scenes)
+
+        class Vision:
+            def __init__(self, confidence):
+                self.confidence = confidence
+                self.index = 0
+
+            def read(self, image, geometry):
+                scene = queue[min(self.index, len(queue) - 1)]
+                self.index += 1
+                scene.geometry = geometry
+                scene.captured_at = time.monotonic()
+                return scene
+
+        return Vision
+
+    def test_reuses_a_running_window_and_launches_only_when_it_is_absent(self):
+        window = FakeWindow()
+        launches = []
+
+        def running(path):
+            self.assertTrue(path.lower().endswith('starrail.exe'))
+            return window
+
+        port = open_live_port(enabled(), dependencies=(running, lambda path: launches.append(path), self._vision([Scene([])])),
+                              sleeper=lambda *_: None)
+        self.assertIsInstance(port, LiveRelicPort)
+        self.assertEqual(launches, [])
+        self.assertEqual(window.focused, 1)
+
+        finds = []
+
+        def absent(path):
+            finds.append(path)
+            if len(finds) == 1:
+                raise AutomationError('未找到指定 StarRail.exe 的游戏窗口。')
+            return window
+
+        window.focused = 0
+        port = open_live_port(enabled(), dependencies=(absent, lambda path: launches.append(path), self._vision([Scene([])])),
+                              sleeper=lambda *_: None, attempts=3)
+        self.assertEqual(len(launches), 1)
+        self.assertEqual(window.focused, 1)
+        self.assertIsInstance(port, LiveRelicPort)
+
+        def missing(path):
+            raise AutomationError('未找到指定 StarRail.exe 的游戏窗口。')
+
+        with self.assertRaisesRegex(AutomationError, '仍未找到游戏窗口'):
+            open_live_port(enabled(), dependencies=(missing, lambda path: None, self._vision([Scene([])])),
+                           sleeper=lambda *_: None, attempts=2)
+
+    def test_click_uses_the_current_token_and_escape_stops_on_the_phone_grid(self):
+        window = FakeWindow()
+        marker = token('分解', 0.2, 0.3)
+        vision = self._vision([Scene([marker]), salvage(0), phone_grid()])
+        port = LiveRelicPort(window, vision(0.65), action_delay=0, sleeper=lambda *_: None)
+        scene = port.scene()
+        with self.assertRaisesRegex(AutomationError, '已识别的文字控件'):
+            port.click(scene, (0.5, 0.5), 'open_salvage')
+        self.assertEqual(window.clicks, [])
+        port.click(scene, marker, 'open_salvage')
+        self.assertEqual(window.clicks, [(marker.center[0], marker.center[1], scene.geometry)])
+        with self.assertRaisesRegex(AutomationError, '已经过期'):
+            port.click(scene, marker, 'open_salvage')
+        scene.captured_at = time.monotonic()
+        port._scene = scene
+        scene.captured_at = time.monotonic() - 9
+        with self.assertRaisesRegex(AutomationError, '已经过期'):
+            port.click(scene, marker, 'open_salvage')
+        self.assertEqual(len(window.clicks), 1)
+        port.go_home()
+        self.assertEqual(window.keys, ['esc'])
+        self.assertEqual(window.clicks, [(marker.center[0], marker.center[1], scene.geometry)])
+
+    def test_blank_frames_are_reread_and_a_stuck_blank_sends_nothing(self):
+        window = FakeWindow(blanks=2)
+        port = LiveRelicPort(window, self._vision([Scene([token('背包', 0.2, 0.2)])])(0.65),
+                             action_delay=0, sleeper=lambda *_: None)
+        self.assertIsNotNone(port.scene())
+        stuck = LiveRelicPort(FakeWindow(blanks=4), self._vision([Scene([])])(0.65),
+                              action_delay=0, sleeper=lambda *_: None)
+        with self.assertRaisesRegex(AutomationError, '持续空白'):
+            stuck.scene()
+        self.assertEqual(stuck.window.clicks, [])
+
+
 class EntryTests(TestCase):
     def test_command_is_exclusive_and_daily_plan_never_reference_it(self):
         root = Path(__file__).resolve().parents[1]
@@ -453,34 +566,62 @@ class EntryTests(TestCase):
                     ['--weekly-relic-cleanup', '--run'], SimpleNamespace(error=reject))
         self.assertEqual(caught.exception.code, 2)
 
-    def test_cli_skips_when_disabled_and_refuses_to_open_the_game_when_due(self):
+    def test_cli_skips_when_disabled_and_a_due_mismatch_does_not_write(self):
         import inspect
+        from unittest.mock import patch
         from autohsr import weekly_relic_cleanup as cleanup
-        self.assertNotIn('find_game', inspect.getsource(cleanup.open_live_port))
-        self.assertNotIn('launch', inspect.getsource(cleanup.open_live_port))
+        source = inspect.getsource(cleanup.open_live_port)
+        self.assertNotIn('未启动游戏', source)
+        self.assertIn('find_game', inspect.getsource(cleanup._live_dependencies))
+        self.assertIn('launch', inspect.getsource(cleanup._live_dependencies))
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'config.json'
+            ledger = Path(folder) / 'weekly-relic-cleanup.json'
             Settings(assignments=False, battle=False, daily=False).save(path)
             with redirect_stdout(io.StringIO()) as output:
                 code = run_cli(SimpleNamespace(config=path, game_path=None),
                                ['--weekly-relic-cleanup', '--config', str(path)],
-                               SimpleNamespace(error=self.fail),
-                               store_path=Path(folder) / 'weekly-relic-cleanup.json')
+                               SimpleNamespace(error=self.fail), store_path=ledger)
             self.assertEqual(code, 0)
             self.assertEqual(json.loads(output.getvalue())['reason'], 'disabled')
+            self.assertFalse(ledger.exists())
             enabled().save(path)
-            with redirect_stdout(io.StringIO()) as output:
+            window = FakeWindow()
+            finds, launches = [], []
+
+            def find_game(game_path):
+                finds.append(game_path)
+                return window
+
+            def launch(game_path):
+                launches.append(game_path)
+                raise AssertionError('已有窗口时不应再次启动')
+
+            class Vision:
+                def __init__(self, confidence):
+                    self.confidence = confidence
+
+                def read(self, image, geometry):
+                    scene = Scene([token('未知页面', 0.4, 0.4)])
+                    scene.geometry = geometry
+                    scene.captured_at = time.monotonic()
+                    return scene
+
+            with patch('autohsr.weekly_relic_cleanup._live_dependencies',
+                       return_value=(find_game, launch, Vision)), \
+                    redirect_stdout(io.StringIO()) as output:
                 code = run_cli(SimpleNamespace(config=path, game_path=None),
                                ['--weekly-relic-cleanup', '--config', str(path)],
-                               SimpleNamespace(error=self.fail), now=NOW,
-                               store_path=Path(folder) / 'weekly-relic-cleanup.json')
-            self.assertEqual(code, 1)
+                               SimpleNamespace(error=self.fail), now=NOW, store_path=ledger)
             body = json.loads(output.getvalue())
+            self.assertEqual(code, 1)
             self.assertFalse(body['timestamp_written'])
-            self.assertIn('未启动游戏', body['error'])
-            self.assertFalse((Path(folder) / 'weekly-relic-cleanup.json').exists())
-            with self.assertRaisesRegex(AutomationError, '未启动游戏'):
-                open_live_port(enabled())
+            self.assertIn('无法确认背包遗器入口', body['error'])
+            self.assertFalse(ledger.exists())
+            self.assertEqual(window.clicks, [])
+            self.assertEqual(window.focused, 1)
+            self.assertEqual(launches, [])
+            self.assertTrue(finds and finds[0].lower().endswith('starrail.exe'))
 
     def test_cli_success_uses_the_injected_port_and_writes_once(self):
         with tempfile.TemporaryDirectory() as folder:
