@@ -38,6 +38,7 @@
 | 日常副本 | `workflows.py`、`dungeon_workflow.py`、`dungeons.py` |
 | 饰品 | `planar_team.py`、`planar_resources.py`、`planar_entry.py` |
 | 合成/免费奖励 | `daily_synthesis.py`、`free_rewards.py` |
+| 周遗器清理 | `weekly_relic_cleanup.py`、`weekly_relic_cleanup_cli.py` |
 | 差分 | `differential_universe.py`、`du_*.py` |
 | 资源恢复 | `recovery.py`、`storage.py`、`du_daily.py` |
 | 字幕 | `overlay.py`、`overlay_native.py` |

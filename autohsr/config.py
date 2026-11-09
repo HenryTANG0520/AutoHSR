@@ -72,6 +72,9 @@ class Settings:
     echo_of_war_start_day: int = 1
     echo_of_war_target: str = '毁灭的开端'
     echo_of_war_location: str = '支援舱段'
+    break_down_level_four_relicset: bool = False
+    weekly_relic_smart_discard_enable: bool = False
+    weekly_relic_cleanup_day_of_week: int = 1
     support_preferences: list[dict] = field(default_factory=list)
     support_scroll_pages: int = 10
     support_fallback: str = 'stop'
@@ -111,6 +114,8 @@ class Settings:
         validate_support(self)
         from .echo_weekly import validate_settings as validate_echo
         validate_echo(self)
+        from .weekly_relic_cleanup import validate_settings as validate_relic_cleanup
+        validate_relic_cleanup(self)
         if operation in ('save','power_plan'):
             from .power_plan import items,plan_spec
             items(self.power_plan)
