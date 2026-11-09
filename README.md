@@ -73,6 +73,7 @@ AutoHSR默认使用本地Python流程、OCR、图像规则和ONNX检测模型决
 | 差分附加功能 | 存档、红点领奖、首次通关后日常三个开关 | 均默认关闭，边界见下文 |
 | [差分独立领奖](docs/du-rewards-only.md) | 桌面“操作设置 → 独立领奖”、CLI或任务流程，从已打开主页处理拟合／稳态／画廊已有奖励，可另选已有月下卡带 | 独立意图／反馈与演算计数分开；真实完整路径待验收，不代表周积分奖励完成 |
 | 日常与周常计划 | 一次启动，先日常、后到期周常。差分默认按局数，CLI 可选周期积分目标。货币战争核对积分、有限对局与领奖 | 编排与界面通过离线验证；货币战争仍限标准A8-40开发流程，组合路径未实机验收 |
+| 周遗器清理 | 配置 `break_down_level_four_relicset` 后，仅 `--weekly-relic-cleanup` 在所选星期的 04:00 刷新后分解四星及以下；可选先智能弃置五星。已选数量少于已标记数量时不分解 | 默认关闭，不进入 `--run`／`--plan`。当前客户端页面未校准，到期命令拒绝启动游戏；完成时间不写入配置 |
 | 日志与控制 | BetterGI风格透明字幕，F9暂停/继续，F10停止，保存报告 | 字幕不抢焦点、鼠标穿透，从识别截图排除 |
 | [跃迁记录](docs/warp-records.md) | 设置 → 工具中导入本地记录，或用所选缓存目录／链接文件联网读取。可将所选本地历史并入联网快照，按账号和卡池查看，导出 UIGF、SRGF 或 XLSX | 统计覆盖本次读取窗口。联网入口使用合成响应验证，实际账号接口待验收 |
 | [兑换码](docs/redemption-codes.md)与[通知](docs/notifications.md) | 设置 → 工具中预览码表、独立兑换、明确加入日常，或新建、导入并测试已保存的通知配置。手动任务流可通过 CLI 明确绑定本地 PNG 和 SMTP 方案 | 码表预览、逐码兑换与通知回执分别呈现。实际兑换和真实发送另行验收 |
@@ -504,6 +505,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 | `weekly_enabled` / `weekly_mode` | `false` / `differential_universe` | 加入开始计划；玩法可选差分或`currency_wars`标准开发周常 |
 | `weekly_day` / `weekly_time` | `1` / `04:00` | 星期一至日为1～7；北京时间，到期后随下一次开始计划执行 |
 | `weekly_runs` | `1` | 1～10局；差分为演算目标，货币战争为冻结的本周新对局上限，积分已满可0局 |
+| `break_down_level_four_relicset` | `false` | 周遗器清理总开关。默认关闭，且不会随日常或周常计划执行 |
+| `weekly_relic_smart_discard_enable` | `false` | 清理前先标记不匹配推荐角色、强化 0 次的五星，并要求弃置保护已开启 |
+| `weekly_relic_cleanup_day_of_week` | `1` | 周一至周日为 1～7；北京时间 04:00 游戏刷新后才到期 |
 | `differential_universe_team` | 哈哈哈哈 | 预设名称 |
 | `differential_universe_save` / `differential_universe_rewards` | 均`false` | 存档、红点领奖 |
 | `differential_universe_daily` / `differential_universe_daily_from` | `false` / 空 | 通关后日常、起始游戏日 |
@@ -530,6 +534,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -PythonPath "C:\
 .\.venv\Scripts\python.exe -m autohsr --run --support-daily-only
 # 按配置执行日常与到期周常，不登记定时任务
 .\.venv\Scripts\python.exe -m autohsr --plan
+# 周遗器清理：配置开关默认关闭。即使打开，也只有这条命令会执行，且页面未校准前不启动游戏
+.\.venv\Scripts\python.exe -m autohsr --weekly-relic-cleanup
 # 单轮花萼参数；其他任务开关仍取配置
 .\.venv\Scripts\python.exe -m autohsr --run --category calyx_golden --target "回忆之蕾" --location "绘世学院" --count 1 --stamina 10 --rounds 1
 # 只补实训奖励

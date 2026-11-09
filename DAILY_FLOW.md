@@ -8,6 +8,8 @@
 
 货币战争周常按当前积分、原生有限循环和独立领奖顺序执行，仍限标准A8-40开发；1～10局为本周新开发局数上限，积分已满可0局，上限耗尽未满仍为部分完成。主按钮“继续周常”或CLI `--plan --resume-weekly-currency`明确接续原目标，沿用原日常报告和原上限，不重跑日常或新建预算。积分、奖励、原报告及完整周回执均核实才算货币周常完成；完整实机与组合路径仍未验收。具体边界见[周常计划](docs/weekly-plan.md)。
 
+周遗器清理不在上述日常或周常里。`break_down_level_four_relicset` 默认关闭；即使改为开启，`--run` 和 `--plan` 也不会打开背包。只有单独的 `--weekly-relic-cleanup` 会在 `weekly_relic_cleanup_day_of_week` 当天、北京时间 04:00 刷新之后执行。未到期、已选数量少于智能弃置已标记件数、识别失败或分解确认文案与数量不一致时，都不更新 `runs/weekly-relic-cleanup.json` 里的 `weekly_relic_cleanup_timestamp`。该时间不写进 `config.json`。
+
 同一普通日常的最终报告与原体力账匹配、两类待核对为零，并核实实训及刷本都已完成时，只有勋礼未核实的结果可在下一游戏日 04:00 后建立新预算。本游戏日即使明确新增预算也会停止。原勋礼、原报告与支付事实分别保留。[AutoMHY 实机回执](VALIDATION.md#automhy-本轮实机与跨日恢复)
 
 ## 执行顺序

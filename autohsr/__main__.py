@@ -74,6 +74,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reward-guide-output", type=Path, metavar='NEW_PNG',
                         help="拼接结果的本地新文件，配合 --reward-guide-stitch")
     mode.add_argument("--screen-test", action="store_true", help="只读核对当前前台日常页面，输出匿名双帧回执")
+    mode.add_argument('--weekly-relic-cleanup', action='store_true',
+                      help='独立执行已启用且到期的周遗器清理；默认关闭，不随 --run 或 --plan，未校准前不启动游戏')
     mode.add_argument('--achievement-bulk-claim', action='store_true',
                       help='从当前前台的成就总览提交一次一键领取及专属确认')
     mode.add_argument("--preview-build-target", action="store_true", help="只读核对培养目标、材料详情与配方、花萼预览及结算提示")
@@ -178,6 +180,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.daily_event_claim is not None:
         from .daily_event_claim_cli import run as run_daily_event_claim
         return run_daily_event_claim(args, raw_args, parser)
+    if args.weekly_relic_cleanup:
+        from .weekly_relic_cleanup_cli import run as run_weekly_relic_cleanup
+        return run_weekly_relic_cleanup(args, raw_args, parser)
     if args.achievement_bulk_claim:
         from .achievement_bulk_claim_cli import run as run_achievement_claim
         return run_achievement_claim(args, raw_args, parser)
